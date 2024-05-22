@@ -10,6 +10,9 @@
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=permguard_permguard&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=permguard_permguard)
 [![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=permguard_permguard&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=permguard_permguard)
 
+<p align="left">
+  <img src="https://raw.githubusercontent.com/permguard/permguard-assets/main/pink-txt//1line.svg" class="center" width="400px" height="auto"/>
+</p>
 
 `PermGuard` an Open Source Multi-Account and Multi-Tenant Authorization Provider that implements the authorization layer, enabling the segregation of the application's authorization logic from the core application code.
 
