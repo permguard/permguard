@@ -22,43 +22,43 @@ tasks:
     - task: addlicense  -c "Nitro Agility S.r.l." -s .
   push-docs:
     desc: git push for documentation
-    cmd: 'git add -A && git commit -m "docs: {{.CLI_ARGS}}" && git push origin || echo DONE'
+    cmd: 'git add -A && git commit -m "docs: {{.CLI_ARGS}}" && git push origin main || echo DONE'
   push-style:
     desc: git push for formatting, missing semi colons, etc; no code change
-    cmd: 'git add -A && git commit -m "style: {{.CLI_ARGS}}" && git push origin || echo DONE'
+    cmd: 'git add -A && git commit -m "style: {{.CLI_ARGS}}" && git push origin main || echo DONE'
   push-refactor:
     desc: git push for refactoring production code
-    cmd: 'git add -A && git commit -m "refactor: {{.CLI_ARGS}}" && git push origin || echo DONE'
+    cmd: 'git add -A && git commit -m "refactor: {{.CLI_ARGS}}" && git push origin main || echo DONE'
   push-fix:
     desc: git push for bug fix
-    cmd: 'git add -A && git commit -m "fix: {{.CLI_ARGS}}" && git push origin || echo DONE'
+    cmd: 'git add -A && git commit -m "fix: {{.CLI_ARGS}}" && git push origin main || echo DONE'
   push-feat:
     desc: git push for new feature
-    cmd: 'git add -A && git commit -m "feat: {{.CLI_ARGS}}" && git push origin || echo DONE'
+    cmd: 'git add -A && git commit -m "feat: {{.CLI_ARGS}}" && git push origin main || echo DONE'
   push-breaking:
     desc: git push for code change that breaks existing functionality
-    cmd: 'git add -A && git commit -m "breaking: {{.CLI_ARGS}}" && git push origin || echo DONE'
+    cmd: 'git add -A && git commit -m "breaking: {{.CLI_ARGS}}" && git push origin main || echo DONE'
   push-test:
     desc: git push for adding tests, refactoring test; no production code change
-    cmd: 'git add -A && git commit -m "test: {{.CLI_ARGS}}" && git push origin || echo DONE'
+    cmd: 'git add -A && git commit -m "test: {{.CLI_ARGS}}" && git push origin main || echo DONE'
   push-build:
     desc: git push for code change that affects the build system or external dependencies
-    cmd: 'git add -A && git commit -m "build: {{.CLI_ARGS}}" && git push origin || echo DONE'
+    cmd: 'git add -A && git commit -m "build: {{.CLI_ARGS}}" && git push origin main || echo DONE'
   push-chore:
     desc: git push for updating build tasks, package manager configs, etc; no production code change
-    cmd: 'git add -A && git commit -m "chore: {{.CLI_ARGS}}" && git push origin || echo DONE'
+    cmd: 'git add -A && git commit -m "chore: {{.CLI_ARGS}}" && git push origin main || echo DONE'
   push-perf:
     desc: git push for code change that improves performance
-    cmd: 'git add -A && git commit -m "perf: {{.CLI_ARGS}}" && git push origin || echo DONE'
+    cmd: 'git add -A && git commit -m "perf: {{.CLI_ARGS}}" && git push origin main || echo DONE'
   push-security:
     desc: git push for code change that improves security
-    cmd: 'git add -A && git commit -m "security: {{.CLI_ARGS}}" && git push origin || echo DONE'
+    cmd: 'git add -A && git commit -m "security: {{.CLI_ARGS}}" && git push origin main || echo DONE'
   push-ci:
     desc: git push for updating CI build tasks, etc; no production code change
-    cmd: 'git add -A && git commit -m "ci: {{.CLI_ARGS}}" && git push origin || echo DONE'
+    cmd: 'git add -A && git commit -m "ci: {{.CLI_ARGS}}" && git push origin main || echo DONE'
   push-release:
     desc: git push for code change for release
-    cmd: 'git add -A && git commit -m "release: {{.CLI_ARGS}}" && git push origin || echo DONE'
+    cmd: 'git add -A && git commit -m "release: {{.CLI_ARGS}}" && git push origin main || echo DONE'
   proto:
     cmds:
       - make protoc
