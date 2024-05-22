@@ -29,9 +29,6 @@ func validateAccountID(entity string, accountID int64) error {
 		AccountID int64 `validate:"required,gt=0"`
 	}{AccountID: accountID}
 	if isValid, err := azvalidators.ValidateInstance(vAccountID); err != nil || !isValid {
-		if err == nil {
-			return azerrors.ErrClientAccountID
-		}
 		return fmt.Errorf("storage: %s name %d is not valid. %w", entity, vAccountID.AccountID, azerrors.ErrClientAccountID)
 	}
 	return nil
@@ -43,9 +40,6 @@ func validateUUID(entity string, id string) error {
 		ID string `validate:"required,uuid4"`
 	}{ID: id}
 	if isValid, err := azvalidators.ValidateInstance(vID); err != nil || !isValid {
-		if err == nil {
-			return azerrors.ErrClientUUID
-		}
 		return fmt.Errorf("storage: %s name %s is not valid. %w", entity, vID.ID, azerrors.ErrClientUUID)
 	}
 	return nil
@@ -57,9 +51,6 @@ func validateName(entity string, name string) error {
 		Name string `validate:"required,name"`
 	}{Name: name}
 	if isValid, err := azvalidators.ValidateInstance(vName); err != nil || !isValid {
-		if err == nil {
-			return azerrors.ErrClientName
-		}
 		return fmt.Errorf("storage: %s name %s is not valid. %w", entity, vName.Name, azerrors.ErrClientName)
 	}
 	return nil
