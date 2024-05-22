@@ -1,0 +1,23 @@
+[en]
+  languageName = "English"
+  contentDir = "content/en"
+  weight = 10
+  [en.params]
+    languageISO = "EN"
+    languageTag = "en-US"
+    footer = 'Brought to you by <a class="text-muted" href="https://www.nitroagility.com/" target="_blank">Nitro Agility S.r.l.</a>'
+    alertText = '<a class="alert-link stretched-link fw-normal" href="/blog/example-post/">Doks version 1.0 just shipped!</a>'
+    homeDescription = 'PermGuard implements the authorization layer, enabling the <b>segregation</b> of the application’s <b>authorization logic</b> from the core <b>application code</b>. The application can enforce permissions from anywhere, including <code>VMs</code>, <code>Containers</code>, and <code>Serverless.</code>'
+    homeAccountTitle = 'Accounts'
+    homeAccountBody = 'Create and configure an <code>Account</code>.'
+    homeIdentitiesTitle = "Identities"
+    homeIdentitiesBody = "Create identity sources and populate them with <code>Users</code> using available SDKs. Then, define <code>Roles</code> and <code>Trusted Delegations</code>."
+    homeSchemaTitle = 'Schemas'
+    homeSchemaBody = 'Create schemas and configure <code>Domains</code>, <code>Resources</code> and <code>Actions</code>.'
+    homePolicyTitle = 'Policies'
+    homePolicyBody = 'Code <code>Policies</code> to permit or deny actions on specific resources.'
+    homePermissionsTitle = "Permissions"
+    homePermissionsBody = "Assign <code>Permissions</code> to identities (Users and Roles) by associating policies with them."
+    homeEnforceTitle = 'Enforce'
+    homeEnforceBody = 'Enforce permissions within the application using the available SDKs.'
+    docsIntroduction = 'Get Started'

@@ -1,0 +1,68 @@
+import {
+	renting "581616507495/renting-company/renting/v1.0"
+}
+
+# Policy to list all cars.
+policy ListCars {
+    resources = uur:581616507495:default:car-rental:renting:car/*,
+    actions = ra:car:ListCars
+}
+
+# Policy to list all available cars.
+policy ListAvailableCars extends ListCars {
+    condition = base.condition
+        and ctx.Data["CARS"].Status = "AVAILABLE"
+}
+
+# Defines permissions to manage any reservation.
+permission ManageAnyReservation {
+    permit = [ BookRent, CancelRent, ConfirmRent, ReturnCar ],
+    forbid = []
+}
+
+# Defines permissions to manage my reservation.
+permission ManageMyReservation {
+    permit = [ BookMyRent, CancelMyRent, ConfirmMyRent, ReturnMyCar ],
+    forbid = []
+}
+
+# Defines permissions to read all cars.
+permission CarReadAll {
+    permit = [ ListCars ],
+    forbid = []
+}
+
+# Defines permissions to auditing any car.
+permission CarAuditing {
+    permit = [ ListAuditingHistory, CreateAudit ],
+    forbid = []
+}
+
+# Defines a role for the customer which is the person that rent the car.
+role Customer {
+    permissions = []
+}
+
+# Defines a base role for all kinds of agents.
+role Agent {
+    permissions = [CarReadAll]
+}
+
+role Manager {
+    permissions = [ManageMyReservation]
+}
+
+# Defines a role for the rental agent which in charge of the rental of the cars.
+role RentalAgent extends Agent {
+	permissions = [CarReadAll]
+}
+
+# Defines a role for the return agent which in charge of the return of the cars.
+role ReturnAgent extends Agent {
+	permissions = [CarReadAll]
+}
+
+# Defines a role for the auditor who is in charge of the auditing of the rental and return of the cars.
+role Auditor {
+    permissions = []
+}

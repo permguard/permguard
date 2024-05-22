@@ -1,0 +1,22 @@
+[
+  {
+    "Actions": [
+      "person:ListEmployee",
+      "person:ReadEmployee"
+    ],
+    "Resources": [
+      "uur:581616507495:default:hr-app:organisation:person/nicola.gallo"
+    ],
+    "Condition": "DateGreaterThan({{.PermGuard.TokenIssueTime}})' && DateLessThan('{{.PermGuard.CurrentTime}}': '2023-12-31T23:59:59Z')"
+  },
+  {
+    "Actions": [
+      "person:ListEmployee",
+      "person:ReadEmployee"
+    ],
+    "Resources": [
+      "uur:581616507495:default:hr-app:organisation:person/irene.banchi"
+    ],
+    "Condition": "DateGreaterThan({{.PermGuard.TokenIssueTime}})' && DateLessThan('{{.PermGuard.CurrentTime}}': '2023-12-31T23:59:59Z')"
+  }
+]

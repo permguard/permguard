@@ -1,0 +1,7 @@
+{
+  "Syntax": "permguard1",
+  "Type": "AC",
+  "Name": "person-base-reader",
+  "Permit": [],
+  "Forbid": []
+}

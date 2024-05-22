@@ -1,0 +1,96 @@
+# Copyright 2024 Nitro Agility S.r.l.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License atnewPostgresCentralStorage
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+version: '3'
+
+includes:
+  wks: ../../Taskfile.yml
+
+tasks:
+  # Code and Docs
+  license:
+    - task: addlicense  -c "Nitro Agility S.r.l." -s .
+  push:
+    - task: "wks:push"
+  proto:
+    cmds:
+      - make protoc
+  docs:
+    cmds:
+      - cd site && npm i && npm run dev
+  # Build and Run
+  build:
+    cmds:
+      - make build
+    silent: false
+  hot:
+    cmds:
+      - air --build.cmd "go build -o dist/host ./cmd/server-all-in-one/main.go" --build.bin "./dist/host"
+  test:
+    cmds:
+      - make coverage
+    silent: true
+  e2e:
+    cmds:
+      - make teste2e
+    silent: true
+  # Up and down tasks
+  up:
+    cmds:
+      - make postgres-up
+  up-pg:
+    cmds:
+      - go run ./cmd/provisioner-db-posgres/main.go --stroage.engine.postgres.port 5433 --up --debug
+  down:
+    cmds:
+      - make postgres-down
+      - rm -rf ./docker-compose/.tmp
+  down-pg:
+    cmds:
+      - go run ./cmd/provisioner-db-posgres/main.go --stroage.engine.postgres.port 5433 --down --debug
+  # Servers
+  cli:
+    cmds:
+      - go run cmd/cli/main.go {{.CLI_ARGS}}
+    silent: false
+  server-allinone:
+    cmds:
+      - go run cmd/server-all-in-one/main.go {{.CLI_ARGS}}
+    silent: false
+  server-aap:
+    cmds:
+      - go run cmd/server-aap/main.go {{.CLI_ARGS}}
+    silent: false
+  server-pap:
+    cmds:
+      - go run cmd/server-pap/main.go {{.CLI_ARGS}}
+    silent: false
+  server-pip:
+    cmds:
+      - go run cmd/server-pip/main.go {{.CLI_ARGS}}
+    silent: false
+  server-prp:
+    cmds:
+      - go run cmd/server-prp/main.go {{.CLI_ARGS}}
+    silent: false
+  server-idp:
+    cmds:
+      - go run cmd/server-idp/main.go {{.CLI_ARGS}}
+    silent: false
+  server-pdp:
+    cmds:
+      - go run cmd/server-pdp/main.go {{.CLI_ARGS}}
+    silent: false

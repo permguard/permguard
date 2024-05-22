@@ -1,0 +1,233 @@
+// Copyright 2024 Nitro Agility S.r.l.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+
+syntax="proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package accountadministrationpoint;
+
+option go_package = "github.com/permguard/permguard/internal/hosts/api/aap/v1";
+
+// Accounts
+
+// Account get request
+message AccountGetRequest {
+	optional int64 AccountID = 1;
+	optional string Name = 2;
+}
+
+// Account create request
+message AccountCreateRequest {
+	string Name = 1;
+}
+
+// Account update request
+message AccountUpdateRequest {
+    int64 AccountID = 1;
+    string Name = 2;
+}
+
+// Account delete request
+message AccountDeleteRequest {
+	int64 AccountID = 1;
+}
+
+// Account response
+message AccountResponse {
+    int64 AccountID = 1;
+    google.protobuf.Timestamp CreatedAt = 2;
+    google.protobuf.Timestamp UpdatedAt = 3;
+    string Name = 4;
+}
+
+// AccountList is a list of Accounts
+message AccountListResponse {
+	repeated AccountResponse Accounts = 1;
+}
+
+// Tenants
+
+// Tenant get request
+message TenantGetRequest {
+    int64 AccountID = 1;
+    optional string TenantID = 2;
+	optional string Name = 3;
+}
+
+// Tenant create request
+message TenantCreateRequest {
+    int64 AccountID = 1;
+	string Name = 2;
+}
+
+// Tenant update request
+message TenantUpdateRequest {
+    int64 AccountID = 1;
+    string TenantID = 2;
+    string Name = 3;
+}
+
+// Tenant delete request
+message TenantDeleteRequest {
+	int64 AccountID = 1;
+	string TenantID = 2;
+}
+
+// Tenant response
+message TenantResponse {
+    string TenantID = 1;
+    int64 AccountID = 2;
+    google.protobuf.Timestamp CreatedAt = 3;
+    google.protobuf.Timestamp UpdatedAt = 4;
+    string Name = 5;
+}
+
+// TenantList is a list of Tenants
+message TenantListResponse {
+	repeated TenantResponse Tenants = 1;
+}
+
+// IdentitySources
+
+// IdentitySource get request
+message IdentitySourceGetRequest {
+    int64 AccountID = 1;
+    optional string IdentitySourceID = 2;
+	optional string Name = 3;
+}
+
+// IdentitySource create request
+message IdentitySourceCreateRequest {
+    int64 AccountID = 1;
+	string Name = 2;
+}
+
+// IdentitySource update request
+message IdentitySourceUpdateRequest {
+	int64 AccountID = 1;
+    string IdentitySourceID = 2;
+    string Name = 3;
+}
+
+// IdentitySource delete request
+message IdentitySourceDeleteRequest {
+	int64 AccountID = 1;
+	string IdentitySourceID = 2;
+}
+
+// IdentitySource response
+message IdentitySourceResponse {
+    string IdentitySourceID = 1;
+    int64 AccountID = 2;
+    google.protobuf.Timestamp CreatedAt = 3;
+    google.protobuf.Timestamp UpdatedAt = 4;
+    string Name = 5;
+}
+
+// IdentitySourceList is a list of IdentitySources
+message IdentitySourceListResponse {
+	repeated IdentitySourceResponse IdentitySources = 1;
+}
+
+// Identities
+
+// Identities
+message IdentityGetRequest {
+	int64 AccountID = 1;
+    optional string IdentityID = 2;
+    optional string IdentitySourceID = 3;
+    optional string Kind = 4;
+	optional string Name = 5;
+}
+
+// Identity create request
+message IdentityCreateRequest {
+	int64 AccountID = 1;
+	string IdentitySourceID = 2;
+    string Kind = 3;
+	string Name = 4;
+}
+
+// Identity update request
+message IdentityUpdateRequest {
+	int64 AccountID = 1;
+    string IdentityID = 2;
+    string Kind = 3;
+	string Name = 4;
+}
+
+// Identity delete request
+message IdentityDeleteRequest {
+	int64 AccountID = 1;
+	string IdentityID = 2;
+}
+
+// Identity response
+message IdentityResponse {
+    string IdentityID = 1;
+    int64 AccountID = 2;
+    string IdentitySourceID = 3;
+    google.protobuf.Timestamp CreatedAt = 4;
+    google.protobuf.Timestamp UpdatedAt = 5;
+    string Kind = 6;
+    string Name = 7;
+}
+
+// IdentityList is a list of Identities
+message IdentityListResponse {
+	repeated IdentityResponse Identities = 1;
+}
+
+// V1AAPService is the service for the Account Administration Point
+service V1AAPService {
+	// Create an account
+	rpc CreateAccount(AccountCreateRequest) returns (AccountResponse) {}
+	// Update an account
+	rpc UpdateAccount(AccountUpdateRequest) returns (AccountResponse) {}
+	// Delete an account
+	rpc DeleteAccount(AccountDeleteRequest) returns (AccountResponse) {}
+	// Get all Accounts
+	rpc GetAllAccounts(AccountGetRequest) returns (AccountListResponse) {}
+
+	// Create an identity source
+	rpc CreateIdentitySource(IdentitySourceCreateRequest) returns (IdentitySourceResponse) {}
+	// Update an identity source
+	rpc UpdateIdentitySource(IdentitySourceUpdateRequest) returns (IdentitySourceResponse) {}
+	// Delete an identity source
+	rpc DeleteIdentitySource(IdentitySourceDeleteRequest) returns (IdentitySourceResponse) {}
+	// Get all identity sources
+	rpc GetAllIdentitySources(IdentitySourceGetRequest) returns (IdentitySourceListResponse) {}
+
+	// Create an identity
+	rpc CreateIdentity(IdentityCreateRequest) returns (IdentityResponse) {}
+	// Update an identity
+	rpc UpdateIdentity(IdentityUpdateRequest) returns (IdentityResponse) {}
+	// Delete an identity
+	rpc DeleteIdentity(IdentityDeleteRequest) returns (IdentityResponse) {}
+	// Get all Identities
+	rpc GetAllIdentities(IdentityGetRequest) returns (IdentityListResponse) {}
+
+	// Create an tenant
+	rpc CreateTenant(TenantCreateRequest) returns (TenantResponse) {}
+	// Update an tenant
+	rpc UpdateTenant(TenantUpdateRequest) returns (TenantResponse) {}
+	// Delete an tenant
+	rpc DeleteTenant(TenantDeleteRequest) returns (TenantResponse) {}
+	// Get all Tenants
+	rpc GetAllTenants(TenantGetRequest) returns (TenantListResponse) {}
+}

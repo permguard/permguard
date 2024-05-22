@@ -1,0 +1,22 @@
+{
+    "go.inferGopath": false,
+    "go.lintOnSave": "package",
+    "go.vetOnSave": "package",
+    "go.buildTags": "",
+    "go.buildFlags": [],
+    "go.lintFlags": [],
+    "go.vetFlags": [],
+    "go.coverOnSave": false,
+    "go.alternateTools": {
+      "go-langserver": "gopls",
+    },
+    "go.testEnvVars": {
+      "E2E": "FALSE",
+      "SEEDDATA": "TRUE"
+    },
+    "[go]": {
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        },
+    }
+}

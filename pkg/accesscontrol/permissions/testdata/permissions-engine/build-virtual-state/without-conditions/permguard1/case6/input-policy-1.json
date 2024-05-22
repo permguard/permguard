@@ -1,0 +1,51 @@
+{
+  "Syntax": "permguard1",
+  "Type": "AC",
+  "Name": "person-base-reader",
+  "Permit": [
+    {
+      "Name": "permit-hr/person/reader/any1",
+      "Actions": [
+        "person:ListEmployee",
+        "person:ReadEmployee"
+      ],
+      "Resources": [
+        "uur:581616507495:default:hr-app:organisation:person/nicola.gallo",
+        "uur:581616507495:default:hr-app:organisation:person/irene.banchi"
+      ]
+    },
+    {
+      "Name": "permit-hr/person/reader/any1",
+      "Actions": [
+        "person:ReadEmployee",
+        "person:WriteEmployee"
+      ],
+      "Resources": [
+        "uur:581616507495:default:hr-app:organisation:person/irene.banchi"
+      ]
+    }
+  ],
+  "Forbid": [
+    {
+      "Name": "forbid-hr/person/reader/any1",
+      "Actions": [
+        "person:ListEmployee",
+        "person:ReadEmployee"
+      ],
+      "Resources": [
+        "uur:581616507495:default:hr-app:organisation:person/nicola.gallo",
+        "uur:581616507495:default:hr-app:organisation:person/irene.banchi"
+      ]
+    },
+    {
+      "Name": "forbid-hr/person/reader/any1",
+      "Actions": [
+        "person:ReadEmployee",
+        "person:WriteEmployee"
+      ],
+      "Resources": [
+        "uur:581616507495:default:hr-app:organisation:person/irene.banchi"
+      ]
+    }
+  ]
+}

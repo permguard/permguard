@@ -1,0 +1,84 @@
+
+package services
+
+import (
+	"errors"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/davecgh/go-spew/spew"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/permguard/permguard/pkg/accesscontrol/permissions"
+	"github.com/permguard/permguard/pkg/accesscontrol/policies"
+
+	authzIntHostConfigs "github.com/permguard/permguard/internal/hosts/hosts/configs"
+	authzIntHostErrors "github.com/permguard/permguard/internal/hosts/hosts/errors"
+)
+
+func TestBuildPermissionsState(t *testing.T) {
+	type TestStruct struct {
+		Name        string
+		User        string
+		Combined    bool
+		LenOfForbid int
+		LenOfPermit int
+	}
+	tests := []TestStruct{
+		{
+			"EMPTY-NOT-COMBINED",
+			"",
+			false,
+			0,
+			0,
+		},
+		{
+			"USER-NOT-COMBINED",
+			"uur:581616507495:permguard:identities:iam:user/nicola.gallo@nitroagility.com",
+			false,
+			1,
+			9,
+		},
+		{
+			"USER-COMBINED",
+			"uur:581616507495:permguard:identities:iam:user/nicola.gallo@nitroagility.com",
+			true,
+			1,
+			3,
+		},
+	}
+	for _, test := range tests {
+		t.Run(strings.ToUpper(test.Name), func(t *testing.T) {
+			assert := assert.New(t)
+			os.Setenv(authzIntHostConfigs.EnvKeyPermGuardHostAppData, "./testdata/local-service/permguard1")
+			config, err := authzIntHostConfigs.NewHostConfig()
+			assert.Nil(err, "wrong result\nerr shold be nil and not % s", spew.Sdump(err))
+			service, _ := NewPDPLocalService(config)
+			_ = service.Setup()
+			settings := []permissions.PermissionsEngineOption{
+				permissions.WithPermissionsEngineVirtualState(true),
+				permissions.WithPermissionsEngineVirtualStateViewCombined(test.Combined),
+			}
+			permState, err := service.GetPermissionsState(policies.UURString(test.User), settings[:]...)
+			assert.Nil(err, "wrong result\nerr shold be nil and not %s", spew.Sdump(err))
+			assert.NotNil(permState, "wrong result\npermState shold be not nil")
+
+			forbidden, _ := permState.GetACForbiddenPermissions()
+			assert.Equal(test.LenOfForbid, len(forbidden), "wrong result\nforbidden shold be equale to 0")
+
+			permit, _ := permState.GetACPermittedPermissions()
+			assert.Equal(test.LenOfPermit, len(permit), "wrong result\nforbidden shold be equale to 0")
+		})
+	}
+}
+
+func TestBuildPermissionsStateInvalidPath(t *testing.T) {
+	assert := assert.New(t)
+	os.Setenv(authzIntHostConfigs.EnvKeyPermGuardHostAppData, "./testdata/none")
+	config, err := authzIntHostConfigs.NewHostConfig()
+	assert.Nil(err, "wrong result\nerr shold be nil and not % s", spew.Sdump(err))
+	service, _ := NewPDPLocalService(config)
+	err = service.Setup()
+	assert.True(errors.Is(err, authzIntHostErrors.ErrHostInvalidAppData), "wrong result\nerr should not be equale to %s", spew.Sdump(err))
+}

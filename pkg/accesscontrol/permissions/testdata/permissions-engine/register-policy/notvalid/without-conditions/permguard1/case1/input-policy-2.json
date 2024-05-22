@@ -1,0 +1,40 @@
+{
+  "Syntax": "permguard1",
+  "Name": "person-base-reader",
+  "Type": "AC",
+  "Permit": [
+      {
+          "Name": "Invalid name",
+          "Actions": [
+              "person:ListEmployee",
+              "person:ReadEmployee"
+          ],
+          "Resources": [
+              "uur:581616507495:default:hr-app:organisation:person/*"
+          ]
+      },
+      {
+          "Name": "permit-hr:timesheet:writer:any",
+          "Actions": [
+              "person:ReadTimesheet",
+              "person:CreateTimesheet",
+              "person:UpdateTimesheet",
+              "person:DeleteTimesheet"
+          ],
+          "Resources": [
+              "uur:581616507495:default:hr-app:time-management:person/*"
+          ]
+      }
+  ],
+  "Forbid": [
+    {
+        "Name": "forbid-hr/person/reader/johon",
+        "Actions": [
+            "person:ReadEmployee"
+        ],
+        "Resources": [
+            "uur:581616507495:default:hr-app:organisation:person/johon"
+        ]
+    }
+  ]
+}

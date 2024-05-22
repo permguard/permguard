@@ -1,0 +1,11 @@
+{
+  "permissionsEngine": {
+    "virtualState": {
+      "enabled": true,
+      "view": "COMBINED"
+    }
+  },
+  "identity": {
+    "uur": "uur:581616507495:permguard:identities:iam:user/nicola.gallo@nitroagility.com"
+  }
+}
