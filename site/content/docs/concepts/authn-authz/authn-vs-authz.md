@@ -23,6 +23,6 @@ Authentication (**authn**) and Authorization (**authz**) are two distinct concep
 Authentication verifies the identity of a person or device, ensuring that they are indeed **who or what they claim to be**. This process safeguards data from unauthorized access by ensuring it is only accessible to authenticated entities.
 There exist several methods for authenticating individuals or devices, including `Username and Password`, `Multi-Factor Authentication (MFA)`, `Biometric authentication`, and `Public Key Certificate`.
 
-On the other hand, Authorization dictates **what actions an authorized user or device can perform**. The authorization level assigned to a user determines the scope of their permissions, often referred to as **permissions**.
+On the other hand, Authorization dictates **what actions an authenticated user or device can perform**. The authorization level assigned to a user determines the scope of their permissions, often referred to as **permissions**.
 
 Organizations implement various authorization solutions to govern user actions, permitting or denying access to resources. These solutions typically determine which actions are permissible based on the identity of the user. Consequently, authentication closely intertwines with authorization.
