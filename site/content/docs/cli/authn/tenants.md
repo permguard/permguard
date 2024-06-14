@@ -47,7 +47,7 @@ Use "PermGuard authn tenants [command] --help" for more information about a comm
 The output from your current version of PermGuard may differ from the example provided on this page.
 {{< /callout >}}
 
-## Create an Tenant
+## Create a Tenant
 
 The `permguard authn tenants create` command allows to create a tenant for the mandatory input account and name.
 
