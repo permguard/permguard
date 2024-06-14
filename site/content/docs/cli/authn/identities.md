@@ -91,10 +91,12 @@ The `permguard authn identities list` command allows for the retrieval of all id
 
 ```bash
 ❯ permguard authn identities list --account 837151783797 --identitysourceid 6d492d4a-8752-405f-a8b3-859b5a219e56
+```
+`output:` 
+```
 7e43160f-d4a3-4301-9139-6e2b78b9290b: nicolagallo
 ad5ef94c-f996-4242-af90-eda96abb8206: manager
 ```
-
 {{< /tab >}}
 {{< tab "json" >}}
 
