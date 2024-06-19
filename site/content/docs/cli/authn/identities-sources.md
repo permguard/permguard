@@ -56,8 +56,10 @@ The `permguard authn identitysources create` command allows to create an identit
 
 ```bash
 ❯ permguard authn identitysources create --account 789251338948 --name permguard
-8bd19f65-c92d-4fc4-97d7-c5e553e9d5c4: permguard
 ```
+output:
+```
+ 8bd19f65-c92d-4fc4-97d7-c5e553e9d5c4: permguard
 
 {{< /tab >}}
 {{< tab "json" >}}
@@ -89,10 +91,11 @@ The `permguard authn identitysources list` command allows for the retrieval of a
 
 ```bash
 ❯ permguard authn identitysources list --account 789251338948
-56ed842a-e216-4726-9a80-2794c92a5a98: default
-8bd19f65-c92d-4fc4-97d7-c5e553e9d5c4: permguard
 ```
-
+output:
+```
+ 56ed842a-e216-4726-9a80-2794c92a5a98: default
+ 8bd19f65-c92d-4fc4-97d7-c5e553e9d5c4: permguard
 {{< /tab >}}
 {{< tab "json" >}}
 
