@@ -48,7 +48,7 @@ The output from your current version of PermGuard may differ from the example pr
 
 ## Validate a Schema
 
-A schema can be modeled using either JSON or YAML, and then validated.
+A schema can be modeled using either JSON or YAML,  and then validated using YAML format.
 
 {{< tabs "permguard-schemas-validate" >}}
 {{< tab "yaml" >}}
@@ -153,21 +153,22 @@ permguard authz schemas validate -f ./car-rental/schema.yml --verbose
 
 ## Update an Schema
 
-The `permguard authz schemas create` command allows to update a schema for the mandatory input account, schema id.
+The `permguard authz schemas update` command allows to update a schema for the mandatory input account, schema id.
 
 {{< tabs "permguard-schemas-create" >}}
 {{< tab "terminal" >}}
 
 ```bash
-❯ permguard authz schemas create --account 567269058122 -f ./car-rental/schema-001.json -o json  --schemaid 8a753a7b-720c-4eb5-a22b-5e6eb83cf88b
-8a753a7b-720c-4eb5-a22b-5e6eb83cf88b: car-rental
+❯ permguard authz schemas update --account 567269058122 -f ./car-rental/schema-001.yml -o json  --schemaid 8a753a7b-720c-4eb5-a22b-5e6eb83cf88b
 ```
-
+output:
+```
+ 8a753a7b-720c-4eb5-a22b-5e6eb83cf88b: car-rental
 {{< /tab >}}
 {{< tab "json" >}}
 
 ```bash
-❯ permguard authz schemas create --account 567269058122 -f ./car-rental/schema-001.json -o json  --schemaid 8a753a7b-720c-4eb5-a22b-5e6eb83cf88b --output json
+❯ permguard authz schemas update --account 567269058122 -f ./car-rental/schema-001.yml -o json  --schemaid 8a753a7b-720c-4eb5-a22b-5e6eb83cf88b --output json
 {
   "schema": [
     {
@@ -215,9 +216,11 @@ The `permguard authz schemas list` command allows for the retrieval of all schem
 
 ```bash
 ❯ permguard authz schemas list --account 567269058122
-46968b2e-21df-4c1d-8606-f772a3f30b70: default
-6957ef83-6693-41c4-80b8-fe025a745f88: car-rental
 ```
+output:
+```
+ 46968b2e-21df-4c1d-8606-f772a3f30b70: default
+ 6957ef83-6693-41c4-80b8-fe025a745f88: car-rental
 
 {{< /tab >}}
 {{< tab "json" >}}
