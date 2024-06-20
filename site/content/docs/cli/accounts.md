@@ -54,8 +54,10 @@ The `permguard accounts create` command allows to create an account for the inpu
 
 ```bash
 ❯ permguard accounts create --name prod-corporate
-664601180677: prod-corporate
 ```
+output:
+```
+ 664601180677: prod-corporate
 
 {{< /tab >}}
 {{< tab "json" >}}
@@ -86,10 +88,12 @@ The `permguard accounts list` command allows for the retrieval of all accounts.
 
 ```bash
 ❯ permguard accounts list
-337648258874: dev-corporate
-996721273374: uat-corporate
-664601180677: prod-corporate
 ```
+output:
+```
+ 337648258874: dev-corporate
+ 996721273374: uat-corporate
+ 664601180677: prod-corporate
 
 {{< /tab >}}
 {{< tab "json" >}}
