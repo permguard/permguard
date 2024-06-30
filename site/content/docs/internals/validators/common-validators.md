@@ -21,6 +21,6 @@ seo:
 
 `PermGuard` implements common validators that are universally used across multiple components
 
-| TYPE | VALIDATION                             | DESCRIPTION                            |
-|------|----------------------------------------|----------------------------------------|
-| NAME | `^[a-zA-Z][a-zA-Z0-9\-_]*[a-zA-Z0-9]$` | A valid name should satisfy the regex. |
+| TYPE | VALIDATION                             | CASE   | DESCRIPTION                            |
+|------|----------------------------------------|--------|----------------------------------------|
+| NAME | `^[a-zA-Z][a-zA-Z0-9\-_]*[a-zA-Z0-9]$` | lower  | A valid name should satisfy the regex. |
