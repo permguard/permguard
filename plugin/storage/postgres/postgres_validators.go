@@ -18,6 +18,7 @@ package postgres
 
 import (
 	"fmt"
+	"strings"
 
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
@@ -47,6 +48,9 @@ func validateUUID(entity string, id string) error {
 
 // validateName validates a name.
 func validateName(entity string, name string) error {
+	if name != strings.ToLower(name) {
+		return fmt.Errorf("storage: %s name %s is not valid. It must be in lower case. %w", entity, name, azerrors.ErrClientName)
+	}
 	vName := struct {
 		Name string `validate:"required,name"`
 	}{Name: name}
