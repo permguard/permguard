@@ -42,14 +42,14 @@ func runECommandForDeleteRepository(cmd *cobra.Command, v *viper.Viper) error {
 	papTarget := ctx.GetPAPTarget()
 	client, err := aziclients.NewGrpcPAPClient(papTarget)
 	if err != nil {
-		printer.Error(fmt.Sprintf("invalid pap target %s", papTarget), err)
+		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
 		return ErrCommandSilent
 	}
 	accountID := v.GetInt64(azconfigs.FlagName(commandNameForRepository, flagCommonAccountID))
 	repositoryID := v.GetString(azconfigs.FlagName(commandNameForRepositoriesDelete, flagRepositoryID))
 	repository, err := client.DeleteRepository(accountID, repositoryID)
 	if err != nil {
-		printer.Error("operation cannot be completed", err)
+		printer.Error(err)
 		return ErrCommandSilent
 	}
 	output := map[string]any{}

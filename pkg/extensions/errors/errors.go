@@ -45,7 +45,7 @@ func NewSystemError(errCode string) error {
 	}
 	errMessage := errorCodes[errCode]
 	return SystemError{
-		error:      fmt.Errorf("code: %q, message: %s", errCode, errMessage),
+		error:      fmt.Errorf("code: %s, message: %s", errCode, errMessage),
 		errCode:    errCode,
 		errMessage: errMessage,
 	}
@@ -59,8 +59,21 @@ func NewSystemErrorWithMessage(errCode string, errMessage string) error {
 		return NewSystemError("00000")
 	}
 	return SystemError{
-		error:      fmt.Errorf("code: %q, message: %s", errCode, errMessage),
+		error:      fmt.Errorf("code: %s, message: %s", errCode, errMessage),
 		errCode:    errCode,
+		errMessage: errMessage,
+	}
+}
+
+// WrapSystemError wrap a system error.
+func WrapSystemError(err error, errMessage string) error {
+	sysErr := ConvertToSystemError(err)
+	if sysErr == nil || len(sysErr.errCode) != 5 {
+		return NewSystemErrorWithMessage("", errMessage)
+	}
+	return SystemError{
+		error:      fmt.Errorf("code: %s, message: %s", sysErr.errCode, errMessage),
+		errCode:    sysErr.errCode,
 		errMessage: errMessage,
 	}
 }

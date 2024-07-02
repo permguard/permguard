@@ -42,13 +42,13 @@ func runECommandForDeleteAccount(cmd *cobra.Command, v *viper.Viper) error {
 	aapTarget := ctx.GetAAPTarget()
 	client, err := aziclients.NewGrpcAAPClient(aapTarget)
 	if err != nil {
-		printer.Error(fmt.Sprintf("invalid aap target %s", aapTarget), err)
+		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return ErrCommandSilent
 	}
 	accountID := v.GetInt64(azconfigs.FlagName(commandNameForAccountsDelete, flagCommonAccountID))
 	account, err := client.DeleteAccount(accountID)
 	if err != nil {
-		printer.Error("operation cannot be completed", err)
+		printer.Error(err)
 		return ErrCommandSilent
 	}
 	output := map[string]any{}

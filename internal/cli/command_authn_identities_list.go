@@ -41,7 +41,7 @@ func runECommandForListIdentities(cmd *cobra.Command, v *viper.Viper) error {
 	aapTarget := ctx.GetAAPTarget()
 	client, err := aziclients.NewGrpcAAPClient(aapTarget)
 	if err != nil {
-		printer.Error(fmt.Sprintf("invalid aap target %s", aapTarget), err)
+		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return ErrCommandSilent
 	}
 	accountID := v.GetInt64(azconfigs.FlagName(commandNameForIdentity, flagCommonAccountID))
@@ -51,7 +51,7 @@ func runECommandForListIdentities(cmd *cobra.Command, v *viper.Viper) error {
 	name := v.GetString(azconfigs.FlagName(commandNameForIdentitiesList, flagCommonName))
 	identities, err := client.GetIdentitiesBy(accountID, identitySourceID, identityID, kind, name)
 	if err != nil {
-		printer.Error("operation cannot be completed", err)
+		printer.Error(err)
 		return ErrCommandSilent
 	}
 	output := map[string]any{}

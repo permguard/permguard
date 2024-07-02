@@ -43,7 +43,7 @@ func runECommandForUpsertRepository(cmd *cobra.Command, v *viper.Viper, flagPref
 	papTarget := ctx.GetPAPTarget()
 	client, err := aziclients.NewGrpcPAPClient(papTarget)
 	if err != nil {
-		printer.Error(fmt.Sprintf("invalid pap target %s", papTarget), err)
+		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
 		return ErrCommandSilent
 	}
 	accountID := v.GetInt64(azconfigs.FlagName(commandNameForRepository, flagCommonAccountID))
@@ -60,7 +60,7 @@ func runECommandForUpsertRepository(cmd *cobra.Command, v *viper.Viper, flagPref
 		repository, err = client.UpdateRepository(repository)
 	}
 	if err != nil {
-		printer.Error("operation cannot be completed", err)
+		printer.Error(err)
 		return ErrCommandSilent
 	}
 	output := map[string]any{}

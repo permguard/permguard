@@ -41,7 +41,7 @@ func runECommandForListRepositories(cmd *cobra.Command, v *viper.Viper) error {
 	papTarget := ctx.GetPAPTarget()
 	client, err := aziclients.NewGrpcPAPClient(papTarget)
 	if err != nil {
-		printer.Error(fmt.Sprintf("invalid pap target %s", papTarget), err)
+		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
 		return ErrCommandSilent
 	}
 	accountID := v.GetInt64(azconfigs.FlagName(commandNameForRepository, flagCommonAccountID))
@@ -49,7 +49,7 @@ func runECommandForListRepositories(cmd *cobra.Command, v *viper.Viper) error {
 	name := v.GetString(azconfigs.FlagName(commandNameForRepositoriesList, flagCommonName))
 	repositories, err := client.GetRepositoriesBy(accountID, repositoryID, name)
 	if err != nil {
-		printer.Error("operation cannot be completed", err)
+		printer.Error(err)
 		return ErrCommandSilent
 	}
 	output := map[string]any{}
