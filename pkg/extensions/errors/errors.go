@@ -29,6 +29,16 @@ type SystemError struct {
 	errMessage string
 }
 
+// Code returns the error code.
+func (e SystemError) Code() string {
+	return e.errCode
+}
+
+// Message returns the error message.
+func (e SystemError) Message() string {
+	return e.errMessage
+}
+
 // Equal checks if the error is equal to the input error.
 func (e SystemError) Equal(err error) bool {
 	sysErr := ConvertToSystemError(err)
@@ -108,6 +118,19 @@ func IsErrorInClass(err error, mask string) bool {
 		}
 	}
 	return true
+}
+
+// GetSuperclassErrorCode returns the superclass error code of the input error code.
+func GetSuperclassErrorCode(code string) (error) {
+	superclassCode := code[:2]
+	for i := 2; i < len(code); i++ {
+		superclassCode += "0"
+	}
+	errorCode := errorCodes[superclassCode]
+	if errorCode == "" {
+		return ErrUnknown
+	}
+	return NewSystemError(superclassCode)
 }
 
 // IsErrorWithCode verify if the error is a valid systemerror with the input code
