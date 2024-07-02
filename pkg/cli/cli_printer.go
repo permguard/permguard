@@ -155,7 +155,11 @@ func (cp *CliPrinter) Error(err error) {
 		code, msg, err := cp.extractCodeAndMessage(errInputMsg)
 		if err != nil {
 			if cp.output == OutputJSON {
-				output = map[string]any{"errorCode": "00000", "errorMessage": errInputMsg}
+				if cp.verbose {
+					output = map[string]any{"errorCode": "00000", "errorMessage": errInputMsg}
+				} else {
+					output = map[string]any{"errorCode": "00000", "errorMessage": "operation cannot be completed"}
+				}
 			} else {
 				output = map[string]any{"error": errInputMsg}
 			}
