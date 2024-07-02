@@ -182,7 +182,10 @@ func (cp *CliPrinter) Error(err error) {
 			} else {
 				code = "00000"
 				message := "unknown error"
-				sysErr := azerrors.ConvertToSystemError(azerrors.GetSuperclassErrorCode(errCode))
+				sysErr := azerrors.ConvertToSystemError(azerrors.GetErrorFromCode(errCode))
+				if sysErr == nil {
+					sysErr = azerrors.ConvertToSystemError(azerrors.GetSuperClassErrorFromCode(errCode))
+				}
 				if sysErr != nil {
 					code = sysErr.Code()
 					message = sysErr.Message()

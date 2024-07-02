@@ -120,8 +120,13 @@ func IsErrorInClass(err error, mask string) bool {
 	return true
 }
 
-// GetSuperclassErrorCode returns the superclass error code of the input error code.
-func GetSuperclassErrorCode(code string) (error) {
+// GetErrorFromCode returns the error with the input code.
+func GetErrorFromCode(code string) error {
+	return NewSystemError(code)
+}
+
+// GetSuperClassErrorFromCode returns the superclass error with the input code.
+func GetSuperClassErrorFromCode(code string) error {
 	superclassCode := code[:2]
 	for i := 2; i < len(code); i++ {
 		superclassCode += "0"
