@@ -156,18 +156,20 @@ func (cp *CliPrinter) Error(err error) {
 		}
 		code, msg, err := cp.extractCodeAndMessage(errInputMsg)
 		if err != nil {
+			code = "00000"
 			if cp.verbose {
 				if cp.output == OutputJSON {
-					output = map[string]any{"errorCode": "00000", "errorMessage": errInputMsg}
+					output = map[string]any{"errorCode": code, "errorMessage": errInputMsg}
 				} else {
-					output = map[string]any{"error": errInputMsg}
+					output = map[string]any{"error": fmt.Sprintf("%s, %s", code, errInputMsg)}
+
 				}
 			} else {
 				message := "unknown error"
 				if cp.output == OutputJSON {
-					output = map[string]any{"errorCode": "00000", "errorMessage": message}
+					output = map[string]any{"errorCode": code, "errorMessage": message}
 				} else {
-					output = map[string]any{"error": message}
+					output = map[string]any{"error": fmt.Sprintf("%s, %s", code, message)}
 				}
 			}
 		} else {
