@@ -48,12 +48,12 @@ func runECommandForAAPSet(cmd *cobra.Command, v *viper.Viper, args []string) err
 		return ErrCommandSilent
 	}
 	if len(args) == 0 {
-		printer.Error("invalid inputs", err)
+		printer.Error(fmt.Errorf("invalid inputs"))
 		return ErrCommandSilent
 	}
 	err = viperWriteEndpoint(v, azconfigs.FlagName(flagPrefixAAP, flagSuffixAAPTarget), args[0])
 	if err != nil {
-		printer.Error("operation cannot be completed", err)
+		printer.Error(err)
 		return ErrCommandSilent
 	}
 	return nil
@@ -67,12 +67,12 @@ func runECommandForPAPSet(cmd *cobra.Command, v *viper.Viper, args []string) err
 		return ErrCommandSilent
 	}
 	if len(args) == 0 {
-		printer.Error("invalid inputs", err)
+		printer.Error(fmt.Errorf("invalid inputs"))
 		return ErrCommandSilent
 	}
 	err = viperWriteEndpoint(v, azconfigs.FlagName(flagPrefixPAP, flagSuffixPAPTarget), args[0])
 	if err != nil {
-		printer.Error("operation cannot be completed", err)
+		printer.Error(err)
 		return ErrCommandSilent
 	}
 	return nil

@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -112,15 +113,62 @@ func (cp *CliPrinter) Print(output map[string]any) {
 	}
 }
 
-// Error prints the output.
-func (cp *CliPrinter) Error(message string, err error) {
-	var errMsg string
-	if !cp.verbose || err == nil {
-		errMsg = message
-	} else {
-		errMsg = fmt.Sprintf("%s: %s", message, err)
+// extractCodeAndMessage takes an input string and returns the code and the message as separate strings.
+func (cp *CliPrinter) extractCodeAndMessage(input string) (string, string, error) {
+	codePrefix := "code: "
+	messagePrefix := "message: "
+
+	codeIndex := strings.Index(input, codePrefix)
+	messageIndex := strings.Index(input, messagePrefix)
+
+	if codeIndex == -1 || messageIndex == -1 {
+		return "", "", fmt.Errorf("invalid input format")
 	}
-	output := map[string]any{"error": errMsg}
+
+	codeStart := codeIndex + len(codePrefix)
+	codeEnd := strings.Index(input[codeStart:], ",")
+	if codeEnd == -1 {
+		return "", "", fmt.Errorf("invalid input format")
+	}
+	code := input[codeStart : codeStart+codeEnd]
+
+	messageStart := messageIndex + len(messagePrefix)
+	message := input[messageStart:]
+
+	return code, message, nil
+}
+
+// Error prints the output.
+func (cp *CliPrinter) Error(err error) {
+	var output map[string]any
+	var errMsg string
+	var errCode string
+	if err == nil {
+		errMsg = "unknown error"
+	} else {
+		var errInputMsg string
+		if stsErr, ok := status.FromError(err); ok {
+			errInputMsg = stsErr.Message()
+		} else {
+			errInputMsg = err.Error()
+		}
+		code, msg, err := cp.extractCodeAndMessage(errInputMsg)
+		if err != nil {
+			if cp.output == OutputJSON {
+				output = map[string]any{"errorCode": "00000", "errorMessage": errInputMsg}
+			} else {
+				output = map[string]any{"error": errInputMsg}
+			}
+		} else {
+			errCode = code
+			errMsg = msg
+			if cp.output == OutputJSON {
+				output = map[string]any{"errorCode": errCode, "errorMessage": errMsg}
+			} else {
+				output = map[string]any{"error": fmt.Sprintf("%s, %s", errCode, errMsg)}
+			}
+		}
+	}
 	switch cp.output {
 	case OutputJSON:
 		cp.printJSON(output)

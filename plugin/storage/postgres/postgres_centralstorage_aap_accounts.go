@@ -39,9 +39,9 @@ func (s PostgresCentralStorageAAP) upsertAccount(db *gorm.DB, isCreate bool, acc
 	}
 	if err := validateName("account", account.Name); err != nil {
 		if account.AccountID == 0 {
-			return nil, fmt.Errorf("storage: invalid account name %s (it is required to be lower case). %w", account.Name, azerrors.ErrClientName)
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid account name %s (it is required to be lower case).", account.Name))
 		} else {
-			return nil, fmt.Errorf("storage: invalid account name %s for account id %d (it is required to be lower case). %w", account.Name, account.AccountID, azerrors.ErrClientName)
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid account name %s for account id %d (it is required to be lower case).", account.Name, account.AccountID))
 		}
 	}
 

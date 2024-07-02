@@ -17,7 +17,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/fatih/color"
@@ -41,14 +40,11 @@ func loadSchemaDomainsFromFile(file string, printer *azcli.CliPrinter) (*azmodel
 	var schemadomains *azmodels.SchemaDomains
 	err := azfiles.UnmarshalJSONYamlFile(file, &schemadomains)
 	if err != nil {
-		printer.Error(fmt.Sprintf("file %s is not a valid schema", file), err)
+		printer.Error(fmt.Errorf("file %s is not a valid schema", file))
 		return nil, ErrCommandSilent
 	}
 	if isValid, err := schemadomains.Validate(); err != nil || !isValid {
-		if err == nil {
-			err = errors.New("undefined error")
-		}
-		printer.Error(fmt.Sprintf("file %s is not a valid schema", file), err)
+		printer.Error(fmt.Errorf("file %s is not a valid schema", file))
 		return nil, ErrCommandSilent
 	}
 	return schemadomains, nil
@@ -64,7 +60,7 @@ func runECommandForUpsertSchema(cmd *cobra.Command, v *viper.Viper, flagPrefix s
 	papTarget := ctx.GetPAPTarget()
 	client, err := aziclients.NewGrpcPAPClient(papTarget)
 	if err != nil {
-		printer.Error(fmt.Sprintf("invalid pap target %s", papTarget), err)
+		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
 		return ErrCommandSilent
 	}
 	accountID := v.GetInt64(azconfigs.FlagName(commandNameForSchema, flagCommonAccountID))
@@ -85,7 +81,7 @@ func runECommandForUpsertSchema(cmd *cobra.Command, v *viper.Viper, flagPrefix s
 		schema, err = client.UpdateSchema(schema)
 	}
 	if err != nil {
-		printer.Error("operation cannot be completed", err)
+		printer.Error(err)
 		return ErrCommandSilent
 	}
 	output := map[string]any{}

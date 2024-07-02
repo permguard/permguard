@@ -42,14 +42,14 @@ func runECommandForDeleteIdentity(cmd *cobra.Command, v *viper.Viper) error {
 	aapTarget := ctx.GetAAPTarget()
 	client, err := aziclients.NewGrpcAAPClient(aapTarget)
 	if err != nil {
-		printer.Error(fmt.Sprintf("invalid aap target %s", aapTarget), err)
+		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return ErrCommandSilent
 	}
 	accountID := v.GetInt64(azconfigs.FlagName(commandNameForIdentity, flagCommonAccountID))
 	identityID := v.GetString(azconfigs.FlagName(commandNameForIdentitiesDelete, flagIdentityID))
 	identity, err := client.DeleteIdentity(accountID, identityID)
 	if err != nil {
-		printer.Error("operation cannot be completed", err)
+		printer.Error(err)
 		return ErrCommandSilent
 	}
 	output := map[string]any{}

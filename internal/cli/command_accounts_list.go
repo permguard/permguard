@@ -41,7 +41,7 @@ func runECommandForListAccounts(cmd *cobra.Command, v *viper.Viper) error {
 	aapTarget := ctx.GetAAPTarget()
 	client, err := aziclients.NewGrpcAAPClient(aapTarget)
 	if err != nil {
-		printer.Error(fmt.Sprintf("invalid aap target %s", aapTarget), err)
+		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return ErrCommandSilent
 	}
 
@@ -50,7 +50,7 @@ func runECommandForListAccounts(cmd *cobra.Command, v *viper.Viper) error {
 
 	accounts, err := client.GetAccountsBy(accountID, name)
 	if err != nil {
-		printer.Error("operation cannot be completed", err)
+		printer.Error(err)
 		return ErrCommandSilent
 	}
 	output := map[string]any{}

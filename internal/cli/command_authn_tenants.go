@@ -43,7 +43,7 @@ func runECommandForUpsertTenant(cmd *cobra.Command, v *viper.Viper, flagPrefix s
 	aapTarget := ctx.GetAAPTarget()
 	client, err := aziclients.NewGrpcAAPClient(aapTarget)
 	if err != nil {
-		printer.Error(fmt.Sprintf("invalid aap target %s", aapTarget), err)
+		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return ErrCommandSilent
 	}
 	accountID := v.GetInt64(azconfigs.FlagName(commandNameForTenant, flagCommonAccountID))
@@ -60,7 +60,7 @@ func runECommandForUpsertTenant(cmd *cobra.Command, v *viper.Viper, flagPrefix s
 		tenant, err = client.UpdateTenant(tenant)
 	}
 	if err != nil {
-		printer.Error("operation cannot be completed", err)
+		printer.Error(err)
 		return ErrCommandSilent
 	}
 	output := map[string]any{}

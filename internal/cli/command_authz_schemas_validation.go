@@ -59,7 +59,7 @@ func runECommandForValidateSchema(cmd *cobra.Command, v *viper.Viper) error {
 	} else if ctx.IsJSONOutput() {
 		dMap, err := azcopier.ConvertStructToMap(schemadomains)
 		if err != nil {
-			printer.Error(fmt.Sprintf("invalid schema file %s", file), err)
+			printer.Error(fmt.Errorf("invalid schema file %s", file))
 			return ErrCommandSilent
 		}
 		output["domains"] = dMap

@@ -20,8 +20,6 @@ import (
 	"fmt"
 	"net"
 
-	"google.golang.org/grpc/status"
-
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -41,7 +39,7 @@ func runECommandForUpsertAccount(cmd *cobra.Command, v *viper.Viper, flagPrefix 
 	aapTarget := ctx.GetAAPTarget()
 	client, err := aziclients.NewGrpcAAPClient(aapTarget)
 	if err != nil {
-		printer.Error(fmt.Sprintf("invalid aap target %s", aapTarget), err)
+		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return ErrCommandSilent
 	}
 	name := v.GetString(azconfigs.FlagName(flagPrefix, flagCommonName))
@@ -57,12 +55,10 @@ func runECommandForUpsertAccount(cmd *cobra.Command, v *viper.Viper, flagPrefix 
 		account, err = client.UpdateAccount(inputAccount)
 	}
 	if err != nil {
-		if _, ok := status.FromError(err); ok {
-			printer.Error("server cannot be reached", nil)
-		} else if netErr, ok := err.(*net.OpError); ok {
-			printer.Error("server cannot be reached", netErr)
+		if _, ok := err.(*net.OpError); ok {
+			printer.Error(fmt.Errorf("server cannot be reached"))
 		} else {
-			printer.Error("operation cannot be completed", err)
+			printer.Error(err)
 		}
 		return ErrCommandSilent
 	}
