@@ -18,6 +18,9 @@ package cli
 
 import (
 	"fmt"
+	"net"
+
+	"google.golang.org/grpc/status"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -54,7 +57,13 @@ func runECommandForUpsertAccount(cmd *cobra.Command, v *viper.Viper, flagPrefix 
 		account, err = client.UpdateAccount(inputAccount)
 	}
 	if err != nil {
-		printer.Error("operation cannot be completed", err)
+		if _, ok := status.FromError(err); ok {
+			printer.Error("server cannot be reached", nil)
+		} else if netErr, ok := err.(*net.OpError); ok {
+			printer.Error("server cannot be reached", netErr)
+		} else {
+			printer.Error("operation cannot be completed", err)
+		}
 		return ErrCommandSilent
 	}
 	output := map[string]any{}
