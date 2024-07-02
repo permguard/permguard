@@ -23,65 +23,40 @@ seo:
 
 ## 00xxx Generic errors
 
-Group of errors that are not specific to any category.
-
----
-**00000**: *generic unknown error*
-
----
-**00101**: *invalid input parameter*
+| Error Code | Description                       |
+|------------|-----------------------------------|
+| 00000      | generic unknown error             |
+| 00101      | invalid input parameter           |
 
 ## 01xxx Configuration errors
 
-Group of errors that are related to configuration.
-
----
-**01000**: *generic configuration error*
+| Error Code | Description                       |
+|------------|-----------------------------------|
+| 01000      | generic configuration error       |
 
 ## 04xxx Client errors
 
-Group of errors that are related to client requests.
-
----
-**04000**: *generic client error*
-
----
-**04100**: *invalid entity*
-
----
-**04101**: *invalid account id*
-
----
-**04102**: *invalid id*
-
----
-**04103**: *invalid uuid*
-
----
-**04104**: *invalid name*
+| Error Code | Description                       |
+|------------|-----------------------------------|
+| 04000      | generic client error              |
+| 04100      | invalid entity                    |
+| 04101      | invalid account id                |
+| 04102      | invalid id                        |
+| 04103      | invalid uuid                      |
+| 04104      | invalid name                      |
 
 ## 05xxx Server errors
 
-Group of errors that are related to server.
-
----
-**05000**: *generic server error*
-
----
-**05001**: *infrastractural error*
-
----
-**05100**: *generic storage error*
-
----
-**05101**: *duplicate entity*
-
----
-**05102**: *not found*
+| Error Code | Description                       |
+|------------|-----------------------------------|
+| 05000      | generic server error              |
+| 05001      | infrastructural error             |
+| 05100      | generic storage error             |
+| 05101      | duplicate entity                  |
+| 05102      | not found                         |
 
 ## 09xxx Plugin errors
 
-Group of errors that are related to plugins.
-
----
-**09000**: *generic plugin error*
+| Error Code | Description                       |
+|------------|-----------------------------------|
+| 09000      | generic plugin error              |
