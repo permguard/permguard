@@ -25,6 +25,8 @@ import (
 
 	"github.com/fatih/color"
 	"google.golang.org/grpc/status"
+
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
 const (
@@ -154,22 +156,42 @@ func (cp *CliPrinter) Error(err error) {
 		}
 		code, msg, err := cp.extractCodeAndMessage(errInputMsg)
 		if err != nil {
-			if cp.output == OutputJSON {
-				if cp.verbose {
+			if cp.verbose {
+				if cp.output == OutputJSON {
 					output = map[string]any{"errorCode": "00000", "errorMessage": errInputMsg}
 				} else {
-					output = map[string]any{"errorCode": "00000", "errorMessage": "operation cannot be completed"}
+					output = map[string]any{"error": errInputMsg}
 				}
 			} else {
-				output = map[string]any{"error": errInputMsg}
+				message := "unknown error"
+				if cp.output == OutputJSON {
+					output = map[string]any{"errorCode": "00000", "errorMessage": message}
+				} else {
+					output = map[string]any{"error": message}
+				}
 			}
 		} else {
 			errCode = code
 			errMsg = msg
-			if cp.output == OutputJSON {
-				output = map[string]any{"errorCode": errCode, "errorMessage": errMsg}
+			if cp.verbose {
+				if cp.output == OutputJSON {
+					output = map[string]any{"errorCode": errCode, "errorMessage": errMsg}
+				} else {
+					output = map[string]any{"error": fmt.Sprintf("%s, %s", errCode, errMsg)}
+				}
 			} else {
-				output = map[string]any{"error": fmt.Sprintf("%s, %s", errCode, errMsg)}
+				code = "00000"
+				message := "unknown error"
+				sysErr := azerrors.ConvertToSystemError(azerrors.GetSuperclassErrorCode(errCode))
+				if sysErr != nil {
+					code = sysErr.Code()
+					message = sysErr.Message()
+				}
+				if cp.output == OutputJSON {
+					output = map[string]any{"errorCode": code, "errorMessage": message}
+				} else {
+					output = map[string]any{"error": fmt.Sprintf("%s, %s", code, message)}
+				}
 			}
 		}
 	}
