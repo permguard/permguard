@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"reflect"
 	"strings"
 
@@ -142,6 +143,9 @@ func (cp *CliPrinter) extractCodeAndMessage(input string) (string, string, error
 
 // Error prints the output.
 func (cp *CliPrinter) Error(err error) {
+	if _, ok := err.(*net.OpError); ok {
+		err = fmt.Errorf("server cannot be reached")
+	}
 	var output map[string]any
 	if err != nil {
 		var errMsg string
