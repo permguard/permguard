@@ -18,7 +18,6 @@ package cli
 
 import (
 	"fmt"
-	"net"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -55,11 +54,7 @@ func runECommandForUpsertAccount(cmd *cobra.Command, v *viper.Viper, flagPrefix 
 		account, err = client.UpdateAccount(inputAccount)
 	}
 	if err != nil {
-		if _, ok := err.(*net.OpError); ok {
-			printer.Error(fmt.Errorf("server cannot be reached"))
-		} else {
-			printer.Error(err)
-		}
+		printer.Error(err)
 		return ErrCommandSilent
 	}
 	output := map[string]any{}
