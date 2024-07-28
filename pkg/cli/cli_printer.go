@@ -143,11 +143,9 @@ func (cp *CliPrinter) extractCodeAndMessage(input string) (string, string, error
 // Error prints the output.
 func (cp *CliPrinter) Error(err error) {
 	var output map[string]any
-	var errMsg string
-	var errCode string
-	if err == nil {
-		errMsg = "unknown error"
-	} else {
+	if err != nil {
+		var errMsg string
+		var errCode string
 		var errInputMsg string
 		if stsErr, ok := status.FromError(err); ok {
 			errInputMsg = stsErr.Message()
