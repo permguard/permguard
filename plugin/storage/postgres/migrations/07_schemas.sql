@@ -34,45 +34,6 @@ CREATE TRIGGER bfr_u_schemas
 	BEFORE UPDATE ON schemas
 	FOR EACH ROW EXECUTE FUNCTION udf_row_update_timestamp();
 
-CREATE TABLE schemas_changestreams (
-    changestream_id SERIAL PRIMARY KEY NOT NULL,
-	operation VARCHAR(10) NOT NULL,
-	operation_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    schema_id UUID NOT NULL,
-    created_at TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP NOT NULL,
-	domains JSONB NOT NULL DEFAULT '{}',
-	-- REFERENCES
-	account_id BIGINT NOT NULL,
-	repository_id UUID NOT NULL
-);
-
-CREATE INDEX schemas_changestreams_account_id_idx ON schemas_changestreams(account_id);
-CREATE INDEX schemas_changestreams_repository_id_idx ON schemas_changestreams(repository_id);
-
--- +goose StatementBegin
-CREATE FUNCTION udf_audit_change_for_schemas()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF (TG_OP = 'DELETE') THEN
-        INSERT INTO schemas_changestreams (operation, schema_id, created_at, updated_at, domains, account_id, repository_id)
-        VALUES (TG_OP, OLD.schema_id, OLD.created_at, OLD.updated_at, OLD.domains, OLD.account_id, OLD.repository_id);
-        RETURN OLD;
-    ELSE
-        INSERT INTO schemas_changestreams (operation, schema_id, created_at, updated_at, domains, account_id, repository_id)
-        VALUES (TG_OP, NEW.schema_id, NEW.created_at, NEW.updated_at, NEW.domains, NEW.account_id, NEW.repository_id);
-        RETURN NEW;
-    END IF;
-END;
-$$ LANGUAGE "plpgsql";
--- +goose StatementEnd
-
-CREATE TRIGGER afr_iud_schemas_for_changestreams
-	AFTER INSERT OR UPDATE OR DELETE ON schemas
-	FOR EACH ROW EXECUTE FUNCTION udf_audit_change_for_schemas();
-
 -- +goose Down
-DROP FUNCTION IF EXISTS udf_audit_change_for_schemas CASCADE;
-DROP TABLE IF EXISTS schemas_changestreams CASCADE;
-
+DROP TRIGGER IF EXISTS bfr_u_schemas ON schemas;
 DROP TABLE IF EXISTS schemas CASCADE;
