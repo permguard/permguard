@@ -17,11 +17,11 @@
 package postgres
 
 import (
-	"errors"
 	"flag"
 
 	"github.com/spf13/viper"
 
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 )
 
@@ -77,5 +77,5 @@ func (f *PostgresStorageFactory) CreateCentralStorage(storageContext *azstorage.
 
 // CreateProximityStorage returns the proximity storage.
 func (f *PostgresStorageFactory) CreateProximityStorage(storageContext *azstorage.StorageContext) (azstorage.ProximityStorage, error) {
-	return nil, errors.New("posgres: proximity storage not implemented")
+	return nil, azerrors.WrapSystemError(azerrors.ErrNotImplemented, "storage: proximity storage not implemented by the postgres plugin.")
 }

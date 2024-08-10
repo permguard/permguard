@@ -42,5 +42,5 @@ func (s PostgresCentralStorage) GetAAPCentralStorage() (azstorage.AAPCentralStor
 
 // GetPAPCentralStorage returns the PAP central storage.
 func (s PostgresCentralStorage) GetPAPCentralStorage() (azstorage.PAPCentralStorage, error) {
-	return nil, nil //azerrors.WrapSystemError(azerrors.ErrNotImplemented, "storage: pap central storage has not been implemented by the postgres plugin.")
+	return nil, nil //TODO: azerrors.WrapSystemError(azerrors.ErrNotImplemented, "storage: pap central storage has not been implemented by the postgres plugin.")
 }
