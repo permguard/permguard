@@ -40,7 +40,7 @@ const (
 	flagSuffixDataStorageCentral   = "central.engine"
 	flagValDefDataStorageCentral   = "postgres"
 	flagSuffixDataStorageProximity = "proximity.engine"
-	flagValDefDataStorageProximity = "badger"
+	flagValDefDataStorageProximity = "filesystem"
 )
 
 //go:embed "art.txt"
