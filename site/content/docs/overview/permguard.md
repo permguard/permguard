@@ -26,9 +26,9 @@ The decoupling between the authorization layer and the application code enables 
 Furthermore, it makes it easier to create a central authorization layer for managing all permissions across multiple applications, similar to how modern software solutions manage users in one central place for the authentication layer.
 {{< /callout >}}
 
-The platform follows a code-first approach using the **PermGuard Policy Language**, although it also offers the option to adopt a JSON-based API.
+The platform uses a code-first approach with the **PermGuard Policy Language**, but it also offers the option to use YAML or JSON, all providing the same functionality.
 
-Using the permguard policy language it is possible to specify who or what can access resources through finely detailed permissions:
+Through the chosen approach, it is possible to specify who or what can access resources through finely detailed permissions.
 
 - `Who`: *Identities (Users and Roles)*
 - `Can Access`: *Permissions granted by attaching policies*

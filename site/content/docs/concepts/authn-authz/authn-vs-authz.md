@@ -21,7 +21,7 @@ seo:
 Authentication (**authn**) and Authorization (**authz**) are two distinct concepts within the realm of security. They are often confused with each other, but they serve separate purposes.
 
 Authentication verifies the identity of a person or device, ensuring that they are indeed **who or what they claim to be**. This process safeguards data from unauthorized access by ensuring it is only accessible to authenticated entities.
-There exist several methods for authenticating individuals or devices, including `Username and Password`, `Multi-Factor Authentication (MFA)`, `Biometric authentication`, and `Public Key Certificate`.
+There exist several methods for authenticating individuals or devices, including `Username and Password`, `Multi-Factor Authentication (MFA)`, `Biometric authentication` and `Public Key Certificate`.
 
 On the other hand, Authorization dictates **what actions an authenticated user or device can perform**. The authorization level assigned to a user determines the scope of their permissions, often referred to as **permissions**.
 

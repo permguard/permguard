@@ -89,33 +89,6 @@ role RentalAgent {
 ```
 
 {{< /tab >}}
-{{< tab "bash" >}}
-
-```bash
-permguard authz permission create --account 581616507495 --data <<EOF
-{
-  "Syntax": "permguard1",
-  "Name": "car-read-all",
-  "Type": "AC",
-  "Permit": [
-    {
-      "Name": "list-cars",
-      "Actions": [
-        "ra:car:ListCars"
-      ],
-      "Resources": [
-        "uur:581616507495:default:car-rental:renting:car/*"
-      ]
-    }
-  ],
-  "Forbid": []
-}
-EOF
-
-permguard authz identities assign --account 581616507495 --idenity "uur:581616507495:permguard:identities:iam:role/rental-agent" --permission "car-read-all"
-```
-
-{{< /tab >}}
 {{< /tabs >}}
 
 Once the policy has been created and associated with the role by specifying the required permissions, the next and final step is to perform the permission evaluation within the application.
