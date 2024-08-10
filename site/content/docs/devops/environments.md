@@ -21,5 +21,5 @@ seo:
 `PermGuard` takes a firm stance on environments, discouraging the creation of multiple environments within a single account. Instead, each account must be labeled by the owner with a specific environment. This approach is enforced to minimize the security risks associated with the software.
 
 {{< callout context="danger" icon="alert-octagon" >}}
-Creating two schemas within a single account to represent multiple environments of the same schema is strongly discouraged as it is considered a bad practice
+Creating a schema within a single account to represent multiple environments of the same schema is strongly discouraged as it is considered a bad practice
 {{< /callout >}}

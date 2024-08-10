@@ -24,9 +24,11 @@ It has been designed to be user-friendly and packed with essential features such
 - **Multi Accounts:** Ability to manage multiple isolated accounts.
 - **Multi Tenants:** Each account can have multiple isolated tenants.
 - **Identities:** Ability to manage multiple identities in the form of users or roles for each account.
-- **Schemas:** Creation of schemas to define the authorization model, segmented across multiple domains.
-- **Resources and Actions:** Definition and configuration of resources and actions.
-- **PermGuard Policy Language:** A policy language designed to define policies, specifying actions that can be performed on specific resources. Additionally it is possible to specify identities, permissions associated with identities and trusted delegations.
+- **Repositories:** Ability to manage multiple authorization repositories for each account:
+  - **Schema:** Creation of the schema to define the authorization model, segmented across multiple domains.
+  - **Resources and Actions:** Definition and configuration of resources and actions.
+  - **Permissions:** Creation of permissions to define the access control model for each identity.
+  - **Configuration Language:** Ability to configure the repository using a code-first approach with either the PermGuard Policy Language, YAML, or JSON.
 
 {{< inline-svg src="images/overview/permguard-community.svg" width="100%" height="100%" class="svg-inline-custom svg-lightmode" >}}
 {{< inline-svg src="images/overview/permguard-community.svg" width="100%" height="100%" style="background-color:#ffffff; border: 4px solid #d53ec6;"  class="svg-inline-custom svg-darkmode" >}}
