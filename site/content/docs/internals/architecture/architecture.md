@@ -32,12 +32,8 @@ The `Account Administration Point (AAP)` serves as the central repository for ma
 
 The `Policy Administration Point (PAP)`  serves as the central repository for managing the account policies. Furthermore, it provides an administration API.
 
-## Policy Retrieval Point (PRP)
-
-The `Policy Retrieval Point (PRP)` serves as a bridge with the PDP, facilitating the retrieval of policies and their input information.
-
 ## Policy Decision Point (PDP)
 
 The `Policy Decision Point (PDP)` is the service responsible for evaluating policies and making decisions based on them. It can be deployed as either a `remote service` or a `proximity service`.
 
-The key difference lies in the fact that the `remote service` return consistent decisions to the caller but may experience high latency. In contrast, `proximity service`s are deployed in proximity to the caller, providing low latency as they operate on an eventual consistent basis. This ensures faster decision returns as they synchronize policies from the `prp`. It's important to note that this service can be out of sync, especially in the event of network partitioning.
+The key difference lies in the fact that the `remote service` return consistent decisions to the caller but may experience high latency. In contrast, `proximity service`s are deployed in proximity to the caller, providing low latency as they operate on an eventual consistent basis. This ensures faster decision returns as they synchronize policies. It's important to note that this service can be out of sync, especially in the event of network partitioning.

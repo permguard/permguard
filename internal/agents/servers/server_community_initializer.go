@@ -43,14 +43,12 @@ func NewCommunityServerInitializer(host azservices.HostKind) (azservers.ServerIn
 		azservices.HostAllInOne: {Name: "AllInOne", Use: "all-in-one", Short: "Start all the services", Long: "Using this option all the services are started."},
 		azservices.HostAAP:      {Name: "AAP (Account Administration Point)", Use: "pdp", Short: "Start the AAP service", Long: "Using this option the Account Administration Point (AAP) service is started."},
 		azservices.HostPAP:      {Name: "PAP (Policy Administration Point)", Use: "pap", Short: "Start the PAP service", Long: "Using this option the Policy Administration Point (PAP) service is started."},
-		azservices.HostPIP:      {Name: "PIP (Policy Information Point)", Use: "pip", Short: "Start the PIP service", Long: "Using this option the Policy Information Point service (PIP) is started."},
-		azservices.HostPRP:      {Name: "PRP (Policy Retrieval Point)", Use: "pip", Short: "Start the PRP service", Long: "Using this option the Policy Retrieval Point (PRP) service is started."},
 		azservices.HostIDP:      {Name: "IDP (Identity Provider)", Use: "idp", Short: "Start the IDP service", Long: "Using this option the Identity Provider (IDP) service is started."},
 		azservices.HostPDP:      {Name: "PDP (Policy Decision Point)", Use: "pdp", Short: "Start the PDP service", Long: "Using this option the Policy Decision Point (PDP) service is started."},
 	}
-	hosts := []azservices.HostKind{azservices.HostAllInOne, azservices.HostAAP, azservices.HostPAP, azservices.HostPIP, azservices.HostPRP, azservices.HostIDP, azservices.HostPDP}
+	hosts := []azservices.HostKind{azservices.HostAllInOne, azservices.HostAAP, azservices.HostPAP, azservices.HostIDP, azservices.HostPDP}
 	storages := []azstorage.StorageKind{azstorage.StoragePostgres, azstorage.StorageBadger}
-	services := []azservices.ServiceKind{azservices.ServiceAAP, azservices.ServicePAP, azservices.ServicePIP, azservices.ServicePRP, azservices.ServiceIDP, azservices.ServicePDP}
+	services := []azservices.ServiceKind{azservices.ServiceAAP, azservices.ServicePAP, azservices.ServiceIDP, azservices.ServicePDP}
 
 	if !host.IsValid(hosts) {
 		panic(fmt.Sprintf("server: invalid server kind: %s", host))
@@ -152,10 +150,6 @@ func (c *CommunityServerInitializer) GetServicesFactories() (map[azservices.Serv
 				return nil, err
 			}
 			factories[serviceKind] = *fcty
-			continue
-		case azservices.ServicePIP:
-			continue
-		case azservices.ServicePRP:
 			continue
 		case azservices.ServiceIDP:
 			continue

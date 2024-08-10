@@ -96,8 +96,6 @@ build-release:
 	go build -o dist/server-aap ./cmd/server-aap
 	go build -o dist/server-pap ./cmd/server-pap
 	go build -o dist/server-idp ./cmd/server-idp
-	go build -o dist/server-pip ./cmd/server-pip
-	go build -o dist/server-prp ./cmd/server-prp
 	go build -o dist/server-pdp ./cmd/server-pdp
 	go build -o dist/permguard ./cmd/cli
 

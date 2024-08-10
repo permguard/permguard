@@ -24,8 +24,6 @@ const (
 	HostAllInOne HostKind = "ALL-IN-ONE"
 	HostAAP      HostKind = "AAP"
 	HostPAP      HostKind = "PAP"
-	HostPIP      HostKind = "PIP"
-	HostPRP      HostKind = "PRP"
 	HostIDP      HostKind = "IDP"
 	HostPDP      HostKind = "PDP"
 )
