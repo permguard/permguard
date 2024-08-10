@@ -21,9 +21,9 @@ import (
 )
 
 const (
-	StorageNone     StorageKind = ""
-	StorageBadger   StorageKind = "BADGER"
-	StoragePostgres StorageKind = "POSTGRES"
+	StorageNone     	StorageKind = ""
+	StorageFileSystem	StorageKind = "FILESYSTEM"
+	StoragePostgres 	StorageKind = "POSTGRES"
 )
 
 // StorageKind is the type of storage.

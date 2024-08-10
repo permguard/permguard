@@ -39,7 +39,7 @@ type CommunityServerInitializer struct {
 
 // NewCommunityServerInitializer creates a new community server initializer.
 func NewCommunityServerInitializer(host azservices.HostKind) (azservers.ServerInitializer, error) {
-	serviceKindsDescriptions := map[azservices.HostKind]*azservices.HostInfo{
+	hostInfos := map[azservices.HostKind]*azservices.HostInfo{
 		azservices.HostAllInOne: {Name: "AllInOne", Use: "all-in-one", Short: "Start all the services", Long: "Using this option all the services are started."},
 		azservices.HostAAP:      {Name: "AAP (Account Administration Point)", Use: "pdp", Short: "Start the AAP service", Long: "Using this option the Account Administration Point (AAP) service is started."},
 		azservices.HostPAP:      {Name: "PAP (Policy Administration Point)", Use: "pap", Short: "Start the PAP service", Long: "Using this option the Policy Administration Point (PAP) service is started."},
@@ -47,7 +47,7 @@ func NewCommunityServerInitializer(host azservices.HostKind) (azservers.ServerIn
 		azservices.HostPDP:      {Name: "PDP (Policy Decision Point)", Use: "pdp", Short: "Start the PDP service", Long: "Using this option the Policy Decision Point (PDP) service is started."},
 	}
 	hosts := []azservices.HostKind{azservices.HostAllInOne, azservices.HostAAP, azservices.HostPAP, azservices.HostIDP, azservices.HostPDP}
-	storages := []azstorage.StorageKind{azstorage.StoragePostgres, azstorage.StorageBadger}
+	storages := []azstorage.StorageKind{azstorage.StoragePostgres, azstorage.StorageFileSystem}
 	services := []azservices.ServiceKind{azservices.ServiceAAP, azservices.ServicePAP, azservices.ServiceIDP, azservices.ServicePDP}
 
 	if !host.IsValid(hosts) {
@@ -55,7 +55,7 @@ func NewCommunityServerInitializer(host azservices.HostKind) (azservers.ServerIn
 	}
 	return &CommunityServerInitializer{
 		host:      host,
-		hostInfos: serviceKindsDescriptions,
+		hostInfos: hostInfos,
 		storages:  storages,
 		services:  host.GetServices(hosts, services),
 	}, nil
@@ -111,7 +111,7 @@ func (c *CommunityServerInitializer) GetStoragesFactories(centralStorageEngine a
 			}
 			factories[storageKind] = *fcty
 			continue
-		case azstorage.StorageBadger:
+		case azstorage.StorageFileSystem:
 			// TODO: To be implemented.
 			continue
 		}
