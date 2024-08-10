@@ -112,14 +112,6 @@ tasks:
     cmds:
       - go run cmd/server-pap/main.go {{.CLI_ARGS}}
     silent: false
-  server-pip:
-    cmds:
-      - go run cmd/server-pip/main.go {{.CLI_ARGS}}
-    silent: false
-  server-prp:
-    cmds:
-      - go run cmd/server-prp/main.go {{.CLI_ARGS}}
-    silent: false
   server-idp:
     cmds:
       - go run cmd/server-idp/main.go {{.CLI_ARGS}}

@@ -134,10 +134,6 @@ Irrespective of the chosen distribution, the binary supports the following flags
 
 ---
 
-### server-prp
-
-{{< callout >}} Policy Retrieval Point. {{< /callout >}}
-
 ### server-pdp
 
 {{< callout >}} Policy Decision Point. {{< /callout >}}

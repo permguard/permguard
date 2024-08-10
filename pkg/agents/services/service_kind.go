@@ -23,8 +23,6 @@ import (
 const (
 	ServiceAAP ServiceKind = "AAP"
 	ServicePAP ServiceKind = "PAP"
-	ServicePIP ServiceKind = "PIP"
-	ServicePRP ServiceKind = "PRP"
 	ServiceIDP ServiceKind = "IDP"
 	ServicePDP ServiceKind = "PDP"
 )
