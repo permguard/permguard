@@ -48,18 +48,25 @@ Irrespective of the chosen distribution, the binary supports the following flags
 
 ---
 
-**--storage.central.engine**: *Data storage engine to be used for central data (default `postgres`).*
+**--storage.central.engine**: *Data storage engine to be used for central data (default `standalone`).*
 
 ---
 
-**--storage.proximity.engine**: *Data storage engine to be used for proximity data (default `badger`).*
+**--storage.proximity.engine**: *Data storage engine to be used for proximity data (default `standalone`).*
 
 ---
 
 **Storage Engines**: Storage engine flags are used to configure the storage engine to be used for the central and proximity data.
 
 <details>
+  <summary>Standalone</summary>
+
+</details>
+
+<details>
   <summary>PostgreSQL</summary>
+
+{{< callout context="caution" icon="alert-triangle" >}} Beware that as of today, PostgreSQL only implements `AAP` storage.{{< /callout >}}
 
 **--stroage.engine.postgres.host**: *postgres host (default `localhost`).*
 
@@ -96,11 +103,6 @@ Irrespective of the chosen distribution, the binary supports the following flags
 **--stroage.engine.postgres.database**: *postgres database (default `permguard`).*
 
 ---
-
-</details>
-
-<details>
-  <summary>Badger</summary>
 
 </details>
 
