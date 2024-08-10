@@ -341,7 +341,6 @@ func TestAAPDeleteAccountWithInvalidAccountID(t *testing.T) {
 
 	account := &azmodels.Account{
 		AccountID: -1,
-		Name: "default",
 	}
 	account, err := storage.DeleteAccount(account.AccountID)
 	assert.NotNil(err, "error should be not nil")
@@ -364,7 +363,6 @@ func TestAAPDeleteANotExistingAccount(t *testing.T) {
 
 	inputAccount := &azmodels.Account{
 		AccountID: account.AccountID,
-		Name: account.Name,
 	}
 	outputAccount, err := storage.DeleteAccount(inputAccount.AccountID)
 
@@ -391,7 +389,6 @@ func TestAAPDeleteWithGenericError(t *testing.T) {
 
 	inputAccount := &azmodels.Account{
 		AccountID: account.AccountID,
-		Name: account.Name,
 	}
 	outputAccount, err := storage.DeleteAccount(inputAccount.AccountID)
 
@@ -418,7 +415,6 @@ func TestAAPDeleteAccountWithSuccess(t *testing.T) {
 
 	inputAccount := &azmodels.Account{
 		AccountID: account.AccountID,
-		Name: account.Name,
 	}
 	outputAccount, err := storage.DeleteAccount(inputAccount.AccountID)
 

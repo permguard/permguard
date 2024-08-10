@@ -229,7 +229,6 @@ func TestAAPDeleteIdentitySourceWithInvalidAccountID(t *testing.T) {
 	identitySource := &azmodels.IdentitySource{
 		IdentitySourceID: "f2061bdb-3fcb-4561-bef6-04c535c2f5be",
 		AccountID: -1,
-		Name: "default",
 	}
 	account, err := storage.DeleteIdentitySource(identitySource.AccountID, identitySource.IdentitySourceID)
 	assert.NotNil(err, "error should be not nil")
@@ -247,7 +246,6 @@ func TestAAPDeleteIdentitySourceWithInvalidIdentitySourceID(t *testing.T) {
 	identitySource := &azmodels.IdentitySource{
 		IdentitySourceID: "not valid",
 		AccountID: 581616507495,
-		Name: "default",
 	}
 	account, err := storage.DeleteIdentitySource(identitySource.AccountID, identitySource.IdentitySourceID)
 	assert.NotNil(err, "error should be not nil")
@@ -271,7 +269,6 @@ func TestAAPDeleteANotExistingIdentitySource(t *testing.T) {
 	inputIdentitySource := &azmodels.IdentitySource{
 		IdentitySourceID: identitySource.IdentitySourceID,
 		AccountID: account.AccountID,
-		Name: account.Name,
 	}
 	outputIdentitySource, err := storage.DeleteIdentitySource(inputIdentitySource.AccountID, inputIdentitySource.IdentitySourceID)
 
@@ -297,7 +294,6 @@ func TestAAPDeleteADefaultIdentitySource(t *testing.T) {
 	inputIdentitySource := &azmodels.IdentitySource{
 		IdentitySourceID: identitySource.IdentitySourceID,
 		AccountID: account.AccountID,
-		Name: account.Name,
 	}
 	outputIdentitySource, err := storage.DeleteIdentitySource(inputIdentitySource.AccountID, inputIdentitySource.IdentitySourceID)
 
@@ -325,7 +321,6 @@ func TestAAPDeleteAnIdentitySourceWithAGenericError(t *testing.T) {
 	inputIdentitySource := &azmodels.IdentitySource{
 		IdentitySourceID: identitySource.IdentitySourceID,
 		AccountID: account.AccountID,
-		Name: account.Name,
 	}
 	outputIdentitySource, err := storage.DeleteIdentitySource(inputIdentitySource.AccountID, inputIdentitySource.IdentitySourceID)
 
@@ -354,7 +349,6 @@ func TestAAPDeleteIdentitySourcesWithSuccess(t *testing.T) {
 	inputIdentitySource := &azmodels.IdentitySource{
 		IdentitySourceID: identitySource.IdentitySourceID,
 		AccountID: account.AccountID,
-		Name: account.Name,
 	}
 	outputIdentitySource, err := storage.DeleteIdentitySource(inputIdentitySource.AccountID, inputIdentitySource.IdentitySourceID)
 
