@@ -34,46 +34,6 @@ CREATE TRIGGER bfr_u_identity_sources
 	BEFORE UPDATE ON identity_sources
 	FOR EACH ROW EXECUTE FUNCTION udf_row_update_timestamp();
 
-CREATE TABLE identity_sources_changestreams (
-    changestream_id SERIAL PRIMARY KEY NOT NULL,
-	operation VARCHAR(10) NOT NULL,
-	operation_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    identity_source_id UUID NOT NULL,
-    created_at TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP NOT NULL,
-    name VARCHAR(254) NOT NULL,
-	configurations JSONB NOT NULL DEFAULT '{}',
-	-- REFERENCES
-	account_id BIGINT NOT NULL
-);
-
-CREATE INDEX identity_sources_changestreams_name_idx ON identity_sources_changestreams(name);
-CREATE INDEX identity_sources_changestreams_account_id_idx ON identity_sources_changestreams(account_id);
-
--- +goose StatementBegin
-CREATE FUNCTION udf_audit_change_for_identity_sources()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF (TG_OP = 'DELETE') THEN
-        INSERT INTO identity_sources_changestreams (operation, identity_source_id, created_at, updated_at, name, configurations, account_id)
-        VALUES (TG_OP, OLD.identity_source_id, OLD.created_at, OLD.updated_at, OLD.name, OLD.configurations, OLD.account_id);
-        RETURN OLD;
-    ELSE
-        INSERT INTO identity_sources_changestreams (operation, identity_source_id, created_at, updated_at, name, configurations, account_id)
-        VALUES (TG_OP, NEW.identity_source_id, NEW.created_at, NEW.updated_at, NEW.name, NEW.configurations, NEW.account_id);
-        RETURN NEW;
-    END IF;
-END;
-$$ LANGUAGE "plpgsql";
--- +goose StatementEnd
-
-CREATE TRIGGER afr_iud_identity_sources_for_changestreams
-	AFTER INSERT OR UPDATE OR DELETE ON identity_sources
-	FOR EACH ROW EXECUTE FUNCTION udf_audit_change_for_identity_sources();
-
 -- +goose Down
-DROP FUNCTION IF EXISTS udf_audit_change_for_identity_sources CASCADE;
-DROP TABLE IF EXISTS identity_sources_changestreams CASCADE;
-
 DROP TRIGGER IF EXISTS bfr_u_identity_sources ON identity_sources;
 DROP TABLE IF EXISTS identity_sources CASCADE;
