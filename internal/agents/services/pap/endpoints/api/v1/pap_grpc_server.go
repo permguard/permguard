@@ -30,8 +30,6 @@ type PAPService interface {
 	UpdateRepository(repository *azmodels.Repository) (*azmodels.Repository, error)
 	DeleteRepository(accountID int64, repositoryID string) (*azmodels.Repository, error)
 	GetAllRepositories(accountID int64, fields map[string]any) ([]azmodels.Repository, error)
-	UpdateSchema(schema *azmodels.Schema) (*azmodels.Schema, error)
-	GetAllSchemas(accountID int64, fields map[string]any) ([]azmodels.Schema, error)
 }
 
 // NewV1PAPServer creates a new PAP server.
@@ -101,56 +99,4 @@ func (s V1PAPServer) GetAllRepositories(ctx context.Context, repositoryRequest *
 		repositoryList.Repositories[i] = cvtedRepository
 	}
 	return repositoryList, nil
-}
-
-// UpdateSchema updates a schema.
-func (s V1PAPServer) UpdateSchema(ctx context.Context, schemaRequest *SchemaUpdateRequest) (*SchemaResponse, error) {
-	schemaID := ""
-	if schemaRequest.SchemaID != nil {
-		schemaID = *schemaRequest.SchemaID
-	}
-	accountID := schemaRequest.AccountID
-	repositoryID := ""
-	if schemaRequest.RepositoryID != nil {
-		repositoryID = *schemaRequest.RepositoryID
-	}
-	domains, err := MapGrpcSchemaDomainResponseToAgentSchemaDomains(schemaRequest.Domains)
-	if err != nil {
-		return nil, err
-	}
-	schema := &azmodels.Schema{
-		SchemaID:      schemaID,
-		AccountID:     accountID,
-		RepositoryID:  repositoryID,
-		SchemaDomains: domains,
-	}
-	schema, err = s.service.UpdateSchema(schema)
-	if err != nil {
-		return nil, err
-	}
-	return MapAgentSchemaToGrpcSchemaResponse(schema)
-}
-
-// GetAllSchemas gets all schemas.
-func (s V1PAPServer) GetAllSchemas(ctx context.Context, schemaRequest *SchemaGetRequest) (*SchemaListResponse, error) {
-	fields := map[string]any{}
-	fields[azmodels.FieldSchemaAccountID] = schemaRequest.AccountID
-	if schemaRequest.SchemaID != nil {
-		fields[azmodels.FieldSchemaAccountID] = *schemaRequest.SchemaID
-	}
-	schemas, err := s.service.GetAllSchemas(schemaRequest.AccountID, fields)
-	if err != nil {
-		return nil, err
-	}
-	schemaList := &SchemaListResponse{
-		Schemas: make([]*SchemaResponse, len(schemas)),
-	}
-	for i, schema := range schemas {
-		cvtedSchema, err := MapAgentSchemaToGrpcSchemaResponse(&schema)
-		if err != nil {
-			return nil, err
-		}
-		schemaList.Schemas[i] = cvtedSchema
-	}
-	return schemaList, nil
 }

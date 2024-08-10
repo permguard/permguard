@@ -37,6 +37,5 @@ func createCommandForAuthZ(v *viper.Viper) *cobra.Command {
 		},
 	}
 	command.AddCommand(createCommandForRepositories(v))
-	command.AddCommand(createCommandForSchemas(v))
 	return command
 }
