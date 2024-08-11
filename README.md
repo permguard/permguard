@@ -14,7 +14,7 @@
   <img src="https://raw.githubusercontent.com/permguard/permguard-assets/main/pink-txt//1line.svg" class="center" width="400px" height="auto"/>
 </p>
 
-`PermGuard` an Open Source Multi-Account and Multi-Tenant Authorization Provider that implements the authorization layer, enabling the segregation of the application's authorization logic from the core application code.
+`PermGuard` is an open-source multi-account and multi-tenant authorization provider that implements the authorization layer, allowing the application’s authorization logic to be separated from the core application code.
 
 As an `PermGuard administrator` you can create multiple accounts and create multiple schemas within each account.
 
