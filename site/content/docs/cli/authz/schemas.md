@@ -48,7 +48,7 @@ The output from your current version of PermGuard may differ from the example pr
 
 ## Validate a Schema
 
-A schema can be modeled using either JSON or YAML,  and then validated using YAML format.
+A schema is modeled using YAML.
 
 {{< tabs "permguard-schemas-validate" >}}
 {{< tab "yaml" >}}

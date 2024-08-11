@@ -26,7 +26,7 @@ The decoupling between the authorization layer and the application code enables 
 Furthermore, it makes it easier to create a central authorization layer for managing all permissions across multiple applications, similar to how modern software solutions manage users in one central place for the authentication layer.
 {{< /callout >}}
 
-The platform uses a code-first approach with the **PermGuard Policy Language**, but it also offers the option to use YAML or JSON, all providing the same functionality.
+The platform uses a code-first approach with either the either Permscript language or YAML, both providing the same functionality.
 
 Through the chosen approach, it is possible to specify who or what can access resources through finely detailed permissions.
 
@@ -47,7 +47,7 @@ resources.
 To enforce the access control process, the application can integrate one of the available **SDKs** or manually integrate the native **APIs**.
 
 {{< callout context="tip" icon="rocket" >}}
-PermGuard Policy Language is designed to define policies, specifying actions that can be performed on specific resources. Additionally it is possible to specify identities, permissions associated with identities and trusted delegations.
+PermScript language is designed to define policies, specifying actions that can be performed on specific resources. Additionally it is possible to specify identities, permissions associated with identities and trusted delegations.
 {{< /callout >}}
 
 <div style="text-align: center">

@@ -5,7 +5,7 @@ description: ""
 summary: ""
 date: 2023-08-01T00:33:06+01:00
 lastmod: 2023-08-01T00:33:06+01:00
-draft: false
+draft: true
 menu:
   docs:
     parent: ""
@@ -18,10 +18,10 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-The PermGuard Policy Language extension for Visual Studio Code supports syntax highlighting.  Install from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=permguard.permguard) or by [searching within VS Code](https://code.visualstudio.com/docs/editor/extension-gallery#_search-for-an-extension).
+The PermGuard extension for Visual Studio Code supports syntax highlighting for the PermScript language. Install from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=permguard.permguard) or by [searching within VS Code](https://code.visualstudio.com/docs/editor/extension-gallery#_search-for-an-extension).
 
 {{< callout context="tip" icon="rocket" >}}
-PermGuard Policy Language is designed to define policies, specifying actions that can be performed on specific resources. Additionally it is possible to specify identities, permissions associated with identities and trusted delegations
+PermScript language is designed to define policies, specifying actions that can be performed on specific resources. Additionally it is possible to specify identities, permissions associated with identities and trusted delegations
 {{< /callout >}}
 
 <div style="text-align: center">
