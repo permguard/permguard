@@ -36,47 +36,6 @@ CREATE TRIGGER bfr_u_identities
 	BEFORE UPDATE ON identities
 	FOR EACH ROW EXECUTE FUNCTION udf_row_update_timestamp();
 
-CREATE TABLE identities_changestreams (
-    changestream_id SERIAL PRIMARY KEY NOT NULL,
-	operation VARCHAR(10) NOT NULL,
-	operation_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    identity_id UUID NOT NULL,
-    created_at TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP NOT NULL,
-	kind SMALLINT NOT NULL,
-    name VARCHAR(254) NOT NULL,
-	-- REFERENCES
-	account_id BIGINT NOT NULL,
-	identity_source_id UUID NOT NULL
-);
-
-CREATE INDEX identities_changestreams_name_idx ON identities_changestreams(name);
-CREATE INDEX identities_changestreams_account_id_idx ON identities_changestreams(account_id);
-
--- +goose StatementBegin
-CREATE FUNCTION udf_audit_change_for_identities()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF (TG_OP = 'DELETE') THEN
-        INSERT INTO identities_changestreams (operation, identity_id, created_at, updated_at, kind, name, account_id, identity_source_id)
-        VALUES (TG_OP, OLD.identity_id, OLD.created_at, OLD.updated_at, OLD.kind, OLD.name, OLD.account_id, OLD.identity_source_id);
-        RETURN OLD;
-    ELSE
-        INSERT INTO identities_changestreams (operation, identity_id, created_at, updated_at, kind, name, account_id, identity_source_id)
-        VALUES (TG_OP, NEW.identity_id, NEW.created_at, NEW.updated_at, NEW.kind, NEW.name, NEW.account_id, NEW.identity_source_id);
-        RETURN NEW;
-    END IF;
-END;
-$$ LANGUAGE "plpgsql";
--- +goose StatementEnd
-
-CREATE TRIGGER afr_iud_identities_for_changestreams
-	AFTER INSERT OR UPDATE OR DELETE ON identities
-	FOR EACH ROW EXECUTE FUNCTION udf_audit_change_for_identities();
-
 -- +goose Down
-DROP FUNCTION IF EXISTS udf_audit_change_for_identities CASCADE;
-DROP TABLE IF EXISTS identities_changestreams CASCADE;
-
 DROP TRIGGER IF EXISTS bfr_u_identities ON identities;
 DROP TABLE IF EXISTS identities CASCADE;

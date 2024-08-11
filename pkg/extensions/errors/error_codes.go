@@ -58,6 +58,7 @@ const (
 var (
 	// 00000 generic system error.
 	ErrUnknown error 				= NewSystemError("00000")
+	ErrNotImplemented error 		= NewSystemError("00001")
 	ErrInvalidInputParameter error 	= NewSystemError("00101")
 	// 01xxx configuration errors.
 	ErrConfigurationGeneric error = NewSystemError("01000")

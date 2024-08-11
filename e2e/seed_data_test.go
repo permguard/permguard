@@ -17,13 +17,9 @@
 package e2e
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
-	azfiles "github.com/permguard/permguard/pkg/extensions/files"
 )
 
 type seedData struct {
@@ -36,7 +32,6 @@ type seedData struct {
 // createSeedData creates a new account.
 func createSeedData(require *require.Assertions, sData *seedData) {
 	aapClient, err := newGrpcAAPClient()
-	papClient, err := newGrpcPAPClient()
 	require.True(err == nil, "Error should be nil.")
 
 	// papClient, err := newGrpcPAPClient()
@@ -77,29 +72,6 @@ func createSeedData(require *require.Assertions, sData *seedData) {
 		tenant, err := aapClient.CreateTenant(account.AccountID, tenantName)
 		require.True(err == nil, "Error should be nil.")
 		require.NotNil(tenant, "Tenant should not be nil.")
-	}
-
-	for kRepository := range sData.repositories {
-		repositoryName := kRepository
-		repository, err := papClient.CreateRepository(account.AccountID, repositoryName)
-		require.True(err == nil, "Error should be nil.")
-		require.NotNil(repository, "Repository should not be nil.")
-
-		file := fmt.Sprintf("testdata/%s/schema.yml", repositoryName)
-
-		var schemadomains *azmodels.SchemaDomains
-		err = azfiles.UnmarshalJSONYamlFile(file, &schemadomains)
-		require.True(err == nil, "Error should be nil.")
-
-		repositoryID := repository.RepositoryID
-		schema := &azmodels.Schema{
-			AccountID:     account.AccountID,
-			RepositoryID:  repositoryID,
-			SchemaDomains: schemadomains,
-		}
-		schema, err = papClient.UpdateSchema(schema)
-		require.True(err == nil, "Error should be nil.")
-		require.True(schema != nil, "Schema should be not nil.")
 	}
 }
 
