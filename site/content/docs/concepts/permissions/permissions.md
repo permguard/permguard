@@ -24,7 +24,7 @@ In `PermGuard`, multiple repositories can be created, and each of them can have 
 A permission serves as a logical representation of a list of policies that can either be permitted or forbidden in an authorization model. Permissions are created to be ultimately associated with identities.
 
 {{< callout context="caution" icon="alert-triangle" >}}
-It's important to note that a permission is represented using a JSON object; however, its definition can be expressed using the PermGuard Policy Configuration Language.
+Permissions can be defined using either PermScript or YAML.
 {{< /callout >}}
 
 ```json

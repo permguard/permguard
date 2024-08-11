@@ -25,7 +25,7 @@ In `PermGuard`, multiple repositories can be created, and each of them can have 
 A policy serves as a logical representation of what can be permitted or forbidden in an authorization model.
 
 {{< callout context="caution" icon="alert-triangle" >}}
-It's important to note that a policy is represented using a JSON object; however, its definition can be expressed using the PermGuard Policy Configuration Language.
+Policies can be defined using either PermScript or YAML.
 {{< /callout >}}
 
 ```json
