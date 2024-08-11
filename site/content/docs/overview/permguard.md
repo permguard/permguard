@@ -18,7 +18,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-`PermGuard` is an open source Multi-Account and Multi-Tenant Authorization Provider that implements the authorization layer, enabling the segregation of the application's authorization logic from the core application code.
+`PermGuard` is an open source Multi-Account and Multi-Tenant Authorization Provider that implements the authorization layer, allowing the application’s authorization logic to be separated from the core application code.
 
 {{< callout context="note" icon="info-circle" >}}
 The decoupling between the authorization layer and the application code enables the administration of roles and permissions without requiring any changes to the application code.
