@@ -48,61 +48,18 @@ Irrespective of the chosen distribution, the binary supports the following flags
 
 ---
 
-**--storage.central.engine**: *Data storage engine to be used for central data (default `standalone`).*
+**--storage.central.engine**: *Data storage engine to be used for central data (default `blob`).*
 
 ---
 
-**--storage.proximity.engine**: *Data storage engine to be used for proximity data (default `standalone`).*
+**--storage.proximity.engine**: *Data storage engine to be used for proximity data (default `blob`).*
 
 ---
 
 **Storage Engines**: Storage engine flags are used to configure the storage engine to be used for the central and proximity data.
 
 <details>
-  <summary>Standalone</summary>
-
-</details>
-
-<details>
-  <summary>PostgreSQL</summary>
-
-{{< callout context="caution" icon="alert-triangle" >}} Beware that as of today, PostgreSQL only implements `AAP` storage.{{< /callout >}}
-
-**--stroage.engine.postgres.host**: *postgres host (default `localhost`).*
-
----
-
-**--stroage.engine.postgres.port**: *postgres port (default `5432`).*
-
----
-
-**--stroage.engine.postgres.sslmode**: *postgres port (default `disable`).*
-
-<details>
-  <summary>Options</summary>
-
-| LEVEL       | MEANING                                                                                                                                                          |
-|-------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| DISABLE     | The user doesn't care about security and doesn't want to pay the overhead of encryption.                                                                         |
-| REQUIRE     | The user wants their data to be encrypted and accepts the overhead. They trust that the network will ensure they always connect to the intended server.          |
-| VERIFY-CA   | The user wants their data encrypted and accepts the overhead. They want to ensure they connect to a server that they trust.                                      |
-| VERIFY-FULL | The user wants their data encrypted and accepts the overhead. They want to ensure they connect to a server they trust and verify that it's the one they specify. |
-
-</details>
-
----
-
-**--stroage.engine.postgres.auth.username**: *postgres username (default `admin`).*
-
----
-
-**--stroage.engine.postgres.auth.password**: *postgres password (default `admin`).*
-
----
-
-**--stroage.engine.postgres.database**: *postgres database (default `permguard`).*
-
----
+  <summary>Blob</summary>
 
 </details>
 
