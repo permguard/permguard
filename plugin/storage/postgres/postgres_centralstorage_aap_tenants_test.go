@@ -229,7 +229,6 @@ func TestAAPDeleteTenantWithInvalidAccountID(t *testing.T) {
 	tenant := &azmodels.Tenant{
 		TenantID: "f2061bdb-3fcb-4561-bef6-04c535c2f5be",
 		AccountID: -1,
-		Name: "default",
 	}
 	account, err := storage.DeleteTenant(tenant.AccountID, tenant.TenantID)
 	assert.NotNil(err, "error should be not nil")
@@ -247,7 +246,6 @@ func TestAAPDeleteTenantWithInvalidTenantID(t *testing.T) {
 	tenant := &azmodels.Tenant{
 		TenantID: "not valid",
 		AccountID: 581616507495,
-		Name: "default",
 	}
 	account, err := storage.DeleteTenant(tenant.AccountID, tenant.TenantID)
 	assert.NotNil(err, "error should be not nil")
@@ -271,7 +269,6 @@ func TestAAPDeleteANotExistingTenant(t *testing.T) {
 	inputTenant := &azmodels.Tenant{
 		TenantID: tenant.TenantID,
 		AccountID: account.AccountID,
-		Name: account.Name,
 	}
 	outputTenant, err := storage.DeleteTenant(inputTenant.AccountID, inputTenant.TenantID)
 
@@ -297,7 +294,6 @@ func TestAAPDeleteADefaultTenant(t *testing.T) {
 	inputTenant := &azmodels.Tenant{
 		TenantID: tenant.TenantID,
 		AccountID: account.AccountID,
-		Name: account.Name,
 	}
 	outputTenant, err := storage.DeleteTenant(inputTenant.AccountID, inputTenant.TenantID)
 
@@ -325,7 +321,6 @@ func TestAAPDeleteAnTenantWithAGenericError(t *testing.T) {
 	inputTenant := &azmodels.Tenant{
 		TenantID: tenant.TenantID,
 		AccountID: account.AccountID,
-		Name: account.Name,
 	}
 	outputTenant, err := storage.DeleteTenant(inputTenant.AccountID, inputTenant.TenantID)
 
@@ -354,7 +349,6 @@ func TestAAPDeleteTenantsWithSuccess(t *testing.T) {
 	inputTenant := &azmodels.Tenant{
 		TenantID: tenant.TenantID,
 		AccountID: account.AccountID,
-		Name: account.Name,
 	}
 	outputTenant, err := storage.DeleteTenant(inputTenant.AccountID, inputTenant.TenantID)
 

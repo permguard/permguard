@@ -19,6 +19,7 @@ clean:
 
 init-dependency:
 	go get -u golang.org/x/crypto@v0.16.0
+	go get -u golang.org/x/net@v0.23.0
 	go get -u github.com/go-playground/validator/v10@v10.15.1
 	go get -u github.com/google/uuid@v1.3.1
 	go get -u github.com/google/go-cmp/cmp@v0.6.0
@@ -32,7 +33,6 @@ init-dependency:
 	go get -u github.com/jackc/pgx
 	go get -u gorm.io/driver/postgres
 	go get -u moul.io/zapgorm2
-	go get -u github.com/dgraph-io/badger/v4
 	go get -u google.golang.org/grpc@v1.59.0
 	go get -u github.com/spf13/cobra@v1.8.0
 	go get -u github.com/spf13/viper

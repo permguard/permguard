@@ -228,7 +228,6 @@ func TestAAPDeleteIdentityWithInvalidAccountID(t *testing.T) {
 	identity := &azmodels.Identity{
 		IdentityID: "f2061bdb-3fcb-4561-bef6-04c535c2f5be",
 		AccountID: -1,
-		Name: "default",
 	}
 	account, err := storage.DeleteIdentity(identity.AccountID, identity.IdentityID)
 	assert.NotNil(err, "error should be not nil")
@@ -246,7 +245,6 @@ func TestAAPDeleteIdentityWithInvalidIdentityID(t *testing.T) {
 	identity := &azmodels.Identity{
 		IdentityID: "not valid",
 		AccountID: 581616507495,
-		Name: "default",
 	}
 	account, err := storage.DeleteIdentity(identity.AccountID, identity.IdentityID)
 	assert.NotNil(err, "error should be not nil")
@@ -270,7 +268,6 @@ func TestAAPDeleteANotExistingIdentity(t *testing.T) {
 	inputIdentity := &azmodels.Identity{
 		IdentityID: identity.IdentityID,
 		AccountID: account.AccountID,
-		Name: account.Name,
 	}
 	outputIdentity, err := storage.DeleteIdentity(inputIdentity.AccountID, inputIdentity.IdentityID)
 
@@ -298,7 +295,6 @@ func TestAAPDeleteAnIdentityWithAGenericError(t *testing.T) {
 	inputIdentity := &azmodels.Identity{
 		IdentityID: identity.IdentityID,
 		AccountID: account.AccountID,
-		Name: account.Name,
 	}
 	outputIdentity, err := storage.DeleteIdentity(inputIdentity.AccountID, inputIdentity.IdentityID)
 
@@ -327,7 +323,6 @@ func TestAAPDeleteIdentitiesWithSuccess(t *testing.T) {
 	inputIdentity := &azmodels.Identity{
 		IdentityID: identity.IdentityID,
 		AccountID: account.AccountID,
-		Name: account.Name,
 	}
 	outputIdentity, err := storage.DeleteIdentity(inputIdentity.AccountID, inputIdentity.IdentityID)
 

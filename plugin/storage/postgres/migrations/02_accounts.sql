@@ -46,43 +46,7 @@ CREATE TRIGGER bfr_u_accounts
 	BEFORE UPDATE ON accounts
 	FOR EACH ROW EXECUTE FUNCTION udf_row_update_timestamp();
 
-CREATE TABLE accounts_changestreams (
-    changestream_id SERIAL PRIMARY KEY NOT NULL,
-	operation VARCHAR(10) NOT NULL,
-	operation_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    account_id BIGINT NOT NULL,
-    created_at TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP NOT NULL,
-    status SMALLINT NOT NULL,
-    name VARCHAR(254) NOT NULL
-);
-
-CREATE INDEX accounts_changestreams_name_idx ON accounts_changestreams(name);
-
--- +goose StatementBegin
-CREATE FUNCTION udf_audit_change_for_accounts()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF (TG_OP = 'DELETE') THEN
-        INSERT INTO accounts_changestreams (operation, account_id, created_at, updated_at, status, name)
-        VALUES (TG_OP, OLD.account_id, OLD.created_at, OLD.updated_at, OLD.status, OLD.name);
-        RETURN OLD;
-    ELSE
-        INSERT INTO accounts_changestreams (operation, account_id, created_at, updated_at, status, name)
-        VALUES (TG_OP, NEW.account_id, NEW.created_at, NEW.updated_at, NEW.status, NEW.name);
-        RETURN NEW;
-    END IF;
-END;
-$$ LANGUAGE "plpgsql";
--- +goose StatementEnd
-
-CREATE TRIGGER afr_iud_accounts_for_changestreams
-	AFTER INSERT OR UPDATE OR DELETE ON accounts
-	FOR EACH ROW EXECUTE FUNCTION udf_audit_change_for_accounts();
-
 -- +goose Down
-DROP FUNCTION IF EXISTS udf_audit_change_for_accounts CASCADE;
-DROP TABLE IF EXISTS accounts_changestreams CASCADE;
-
+DROP TRIGGER IF EXISTS bfr_u_accounts ON accounts;
 DROP TABLE IF EXISTS accounts CASCADE;
 DROP FUNCTION IF EXISTS udf_gen_random_id CASCADE;

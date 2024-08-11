@@ -33,44 +33,6 @@ CREATE TRIGGER bfr_u_tenants
 	BEFORE UPDATE ON tenants
 	FOR EACH ROW EXECUTE FUNCTION udf_row_update_timestamp();
 
-CREATE TABLE tenants_changestreams (
-    changestream_id SERIAL PRIMARY KEY NOT NULL,
-	operation VARCHAR(10) NOT NULL,
-	operation_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    tenant_id UUID NOT NULL,
-    created_at TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP NOT NULL,
-    name VARCHAR(254) NOT NULL,
-	-- REFERENCES
-	account_id BIGINT NOT NULL
-);
-
-CREATE INDEX tenants_changestreams_name_idx ON tenants_changestreams(name);
-CREATE INDEX tenants_changestreams_account_id_idx ON tenants_changestreams(account_id);
-
--- +goose StatementBegin
-CREATE FUNCTION udf_audit_change_for_tenants()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF (TG_OP = 'DELETE') THEN
-        INSERT INTO tenants_changestreams (operation, tenant_id, created_at, updated_at, name, account_id)
-        VALUES (TG_OP, OLD.tenant_id, OLD.created_at, OLD.updated_at, OLD.name, OLD.account_id);
-        RETURN OLD;
-    ELSE
-        INSERT INTO tenants_changestreams (operation, tenant_id, created_at, updated_at, name, account_id)
-        VALUES (TG_OP, NEW.tenant_id, NEW.created_at, NEW.updated_at, NEW.name, NEW.account_id);
-        RETURN NEW;
-    END IF;
-END;
-$$ LANGUAGE "plpgsql";
--- +goose StatementEnd
-
-CREATE TRIGGER afr_iud_tenants_for_changestreams
-	AFTER INSERT OR UPDATE OR DELETE ON tenants
-	FOR EACH ROW EXECUTE FUNCTION udf_audit_change_for_tenants();
-
 -- +goose Down
-DROP FUNCTION IF EXISTS udf_audit_change_for_tenants CASCADE;
-DROP TABLE IF EXISTS tenants_changestreams CASCADE;
-
+DROP TRIGGER IF EXISTS bfr_u_tenants ON tenants;
 DROP TABLE IF EXISTS tenants CASCADE;

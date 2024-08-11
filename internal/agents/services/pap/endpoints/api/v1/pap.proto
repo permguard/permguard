@@ -65,67 +65,6 @@ message RepositoryListResponse {
 	repeated RepositoryResponse Repositories = 1;
 }
 
-// Schemas
-
-message SchemaAction {
-  string Name = 1;
-  optional string Description = 2;
-}
-
-message SchemaResource {
-  string Name = 1;
-  optional string Description = 2;
-  repeated SchemaAction Actions = 3;
-}
-
-message SchemaDomain {
-  string Name = 1;
-  optional string Description = 2;
-  repeated SchemaResource Resources = 3;
-}
-
-// Schema get request
-message SchemaGetRequest {
-	int64 AccountID = 1;
-	optional string SchemaID = 2;
-}
-
-// Schema create request
-message SchemaCreateRequest {
-	int64 AccountID = 1;
-	repeated SchemaDomain Domains = 2;
-}
-
-// Schema update request
-message SchemaUpdateRequest {
-	int64 AccountID = 1;
-	optional string SchemaID = 2;
-	optional string RepositoryID = 3;
-	repeated SchemaDomain Domains = 4;
-}
-
-// Schema delete request
-message SchemaDeleteRequest {
-	int64 AccountID = 1;
-	string SchemaID = 2;
-}
-
-// Schema response
-message SchemaResponse {
-	string SchemaID = 1;
-	int64 AccountID = 2;
-	string RepositoryID = 3;
-	string RepositoryName = 4;
-    google.protobuf.Timestamp CreatedAt = 5;
-    google.protobuf.Timestamp UpdatedAt = 6;
-    repeated SchemaDomain Domains = 7;
-}
-
-// SchemaList is a list of Schemas
-message SchemaListResponse {
-	repeated SchemaResponse Schemas = 1;
-}
-
 // V1PAPService is the service for the Policy Administration Point
 service V1PAPService {
 	// Create an repository
@@ -136,9 +75,4 @@ service V1PAPService {
 	rpc DeleteRepository(RepositoryDeleteRequest) returns (RepositoryResponse) {}
 	// Get all repositories
 	rpc GetAllRepositories(RepositoryGetRequest) returns (RepositoryListResponse) {}
-
-	// Update a schema
-	rpc UpdateSchema(SchemaUpdateRequest) returns (SchemaResponse) {}
-	// Get all Schemas
-	rpc GetAllSchemas(SchemaGetRequest) returns (SchemaListResponse) {}
 }
