@@ -19,17 +19,17 @@ package centralstorage
 import (
 	//azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azfsvolumes "github.com/permguard/permguard/plugin/storage/filestream/volumes"
+	azifsvolumes "github.com/permguard/permguard/plugin/storage/filestream/internal/volumes"
 )
 
 // FileStreamCentralStorage implements the filestream central storage.
 type FileStreamCentralStorage struct {
 	ctx          *azstorage.StorageContext
-	volumeBinder azfsvolumes.FileStreamVolumeBinder
+	volumeBinder azifsvolumes.FileStreamVolumeBinder
 }
 
 // NewFileStreamCentralStorage creates a new filestream central storage.
-func NewFileStreamCentralStorage(storageContext *azstorage.StorageContext, volumeBinder azfsvolumes.FileStreamVolumeBinder) (*FileStreamCentralStorage, error) {
+func NewFileStreamCentralStorage(storageContext *azstorage.StorageContext, volumeBinder azifsvolumes.FileStreamVolumeBinder) (*FileStreamCentralStorage, error) {
 	return &FileStreamCentralStorage{
 		ctx:          storageContext,
 		volumeBinder: volumeBinder,

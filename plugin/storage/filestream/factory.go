@@ -23,18 +23,18 @@ import (
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	azfscentralstorage "github.com/permguard/permguard/plugin/storage/filestream/centralstorage"
-	azfsvolumes "github.com/permguard/permguard/plugin/storage/filestream/volumes"
+	azifsvolumes "github.com/permguard/permguard/plugin/storage/filestream/internal/volumes"
+	azifscntrlstorage "github.com/permguard/permguard/plugin/storage/filestream/internal/centralstorage"
 )
 
 // FileStreamStorageFactoryConfig holds the configuration for the server factory.
 type FileStreamStorageFactoryConfig struct {
-	config *azfsvolumes.FileStreamVolumeConfig
+	config *azifsvolumes.FileStreamVolumeConfig
 }
 
 // NewFileStreamStorageFactoryConfig creates a new server factory configuration.
 func NewFileStreamStorageFactoryConfig() (*FileStreamStorageFactoryConfig, error) {
-	dbConnCfg, err := azfsvolumes.NewFileStreamVolumeConfig()
+	dbConnCfg, err := azifsvolumes.NewFileStreamVolumeConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -57,12 +57,12 @@ func (c *FileStreamStorageFactoryConfig) InitFromViper(v *viper.Viper) error {
 // FileStreamStorageFactory holds the configuration for the server factory.
 type FileStreamStorageFactory struct {
 	config       *FileStreamStorageFactoryConfig
-	volumeBinder azfsvolumes.FileStreamVolumeBinder
+	volumeBinder azifsvolumes.FileStreamVolumeBinder
 }
 
 // NewFileStreamStorageFactory creates a new server factory configuration.
 func NewFileStreamStorageFactory(storageFctyCfg *FileStreamStorageFactoryConfig) (*FileStreamStorageFactory, error) {
-	volume, err := azfsvolumes.NewFileStreamVolume(storageFctyCfg.config)
+	volume, err := azifsvolumes.NewFileStreamVolume(storageFctyCfg.config)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func NewFileStreamStorageFactory(storageFctyCfg *FileStreamStorageFactoryConfig)
 
 // CreateCentralStorage returns the central storage.
 func (f *FileStreamStorageFactory) CreateCentralStorage(storageContext *azstorage.StorageContext) (azstorage.CentralStorage, error) {
-	return azfscentralstorage.NewFileStreamCentralStorage(storageContext, f.volumeBinder)
+	return azifscntrlstorage.NewFileStreamCentralStorage(storageContext, f.volumeBinder)
 }
 
 // CreateProximityStorage returns the proximity storage.
