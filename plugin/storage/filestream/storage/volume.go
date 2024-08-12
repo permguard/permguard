@@ -33,13 +33,13 @@ const (
 
 var flagValDefPosgresSSLModes = []string{"disable", "require", "verify-ca", "verify-full"}
 
-// FileStreamVolumeConfig holds the configuration for the server.
+// FileStreamVolumeConfig holds the configuration for the volume.
 type FileStreamVolumeConfig struct {
 	storageKind azstorage.StorageKind
 	path        string
 }
 
-// NewFileStreamVolumeConfig creates a new server factory configuration.
+// NewFileStreamVolumeConfig creates a new volume factory configuration.
 func NewFileStreamVolumeConfig() (*FileStreamVolumeConfig, error) {
 	return &FileStreamVolumeConfig{
 		storageKind: azstorage.StorageFileStream,
@@ -74,12 +74,12 @@ type FileStreamVolumeBinder interface {
 	GetStorage() azstorage.StorageKind
 }
 
-// FileStreamVolume holds the configuration for the server.
+// FileStreamVolume holds the volume's configuration.
 type FileStreamVolume struct {
 	config *FileStreamVolumeConfig
 }
 
-// NewFileStreamVolume creates a new server configuration.
+// NewFileStreamVolume creates a volume.
 func NewFileStreamVolume(volumeCgf *FileStreamVolumeConfig) (FileStreamVolumeBinder, error) {
 	return &FileStreamVolume{
 		config: volumeCgf,
