@@ -14,16 +14,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package filestream
+package storage
 
 import (
 	"flag"
-	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/spf13/viper"
-	"golang.org/x/exp/slices"
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
@@ -42,8 +39,8 @@ type FileStreamPersistenceConfig struct {
 	path        string
 }
 
-// newFileStreamConnectionConfig creates a new server factory configuration.
-func newFileStreamConnectionConfig() (*FileStreamPersistenceConfig, error) {
+// NewFileStreamPersistenceConfig creates a new server factory configuration.
+func NewFileStreamPersistenceConfig() (*FileStreamPersistenceConfig, error) {
 	return &FileStreamPersistenceConfig{
 		storageKind: azstorage.StorageFileStream,
 	}, nil
@@ -71,26 +68,25 @@ func (c *FileStreamPersistenceConfig) GetPath() string {
 	return c.path
 }
 
-// FileStreamConnector is the interface for the filestream connection.
+// FileStreamConnector is the interface for the filestream persistence.
 type FileStreamConnector interface {
 	// GetStorage returns the storage kind.
 	GetStorage() azstorage.StorageKind
 }
 
-// FileStreamConnection holds the configuration for the server.
-type FileStreamConnection struct {
+// FileStreamPersistence holds the configuration for the server.
+type FileStreamPersistence struct {
 	config     *FileStreamPersistenceConfig
-	volumeLock sync.Mutex
 }
 
-// newFileStreamConnection creates a new server  configuration.
-func newFileStreamConnection(connectionCgf *FileStreamPersistenceConfig) (FileStreamConnector, error) {
-	return &FileStreamConnection{
-		config: connectionCgf,
+// NewFileStreamPersistence creates a new server configuration.
+func NewFileStreamPersistence(persistenceCgf *FileStreamPersistenceConfig) (FileStreamConnector, error) {
+	return &FileStreamPersistence{
+		config: persistenceCgf,
 	}, nil
 }
 
 // GetStorage returns the storage kind.
-func (c *FileStreamConnection) GetStorage() azstorage.StorageKind {
+func (c *FileStreamPersistence) GetStorage() azstorage.StorageKind {
 	return c.config.GetStorage()
 }
