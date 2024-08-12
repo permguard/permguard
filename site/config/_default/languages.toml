@@ -7,7 +7,7 @@
     languageTag = "en-US"
     footer = 'Brought to you by <a class="text-muted" href="https://www.nitroagility.com/" target="_blank">Nitro Agility S.r.l.</a>'
     alertText = '<a class="alert-link stretched-link fw-normal" href="/blog/example-post/">Doks version 1.0 just shipped!</a>'
-    homeDescription = 'PermGuard implements the authorization layer, allowing the application’s authorization logic to be <b>separated</b> from the core <b>application code</b>. The application can enforce permissions from anywhere, including <code>VMs</code>, <code>Containers</code>, and <code>Serverless.</code>'
+    homeDescription = '<b>PermGuard</b> implements the authorization layer, allowing the application’s authorization logic to be <b>separated</b> from the core <b>application code</b>. The application can enforce permissions from anywhere, including <code>VMs</code>, <code>Containers</code>, and <code>Serverless.</code>'
     homeAccountTitle = 'Accounts'
     homeAccountBody = 'Create and configure an <code>Account</code>.'
     homeIdentitiesTitle = "Identities"
