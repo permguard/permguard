@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package postgres
+package filestream
 
 import (
 	"testing"
@@ -29,16 +29,16 @@ func TestValidateAccountID(t *testing.T) {
 	assert := assert.New(t)
 
 	testCases := []struct {
-		entity	 	string
-		accountID	int
-		hasError	bool
+		entity    string
+		accountID int
+		hasError  bool
 	}{
-		{ "account", -15000, true },
-		{ "account", -1, true },
-		{ "account", 0, true },
-		{ "account", 1, false },
-		{ "account", 15000, false },
-		{ "", 15000, false },
+		{"account", -15000, true},
+		{"account", -1, true},
+		{"account", 0, true},
+		{"account", 1, false},
+		{"account", 15000, false},
+		{"", 15000, false},
 	}
 	for _, tc := range testCases {
 		result := validateAccountID(tc.entity, int64(tc.accountID))
@@ -56,19 +56,19 @@ func TestValidateUUID(t *testing.T) {
 	assert := assert.New(t)
 
 	testCases := []struct {
-		entity	 	string
-		UUID		string
-		hasError	bool
+		entity   string
+		UUID     string
+		hasError bool
 	}{
-		{ "account", "", true },
-		{ "account", " ", true },
-		{ "account", "-15000", true },
-		{ "account", "15000", true },
-		{ "account", "5e6c75ca-caeb-4f85-8007-Zdcf6bb1beff", true },
-		{ "account", "d3967c8f54dc4a28bf3ca1dZca94fa95", true },
-		{ "account", "f12bf1c12da44a9a97043650824b0a0b", true },
-		{ "account", "ddd0e6a0-956b-4967-84a0-15c5e54b0b50", false },
-		{ "", "ddd0e6a0-956b-4967-84a0-15c5e54b0b50", false },
+		{"account", "", true},
+		{"account", " ", true},
+		{"account", "-15000", true},
+		{"account", "15000", true},
+		{"account", "5e6c75ca-caeb-4f85-8007-Zdcf6bb1beff", true},
+		{"account", "d3967c8f54dc4a28bf3ca1dZca94fa95", true},
+		{"account", "f12bf1c12da44a9a97043650824b0a0b", true},
+		{"account", "ddd0e6a0-956b-4967-84a0-15c5e54b0b50", false},
+		{"", "ddd0e6a0-956b-4967-84a0-15c5e54b0b50", false},
 	}
 	for _, tc := range testCases {
 		result := validateUUID(tc.entity, tc.UUID)
@@ -86,19 +86,19 @@ func TestValidateName(t *testing.T) {
 	assert := assert.New(t)
 
 	testCases := []struct {
-		entity	 	string
-		name		string
-		hasError	bool
+		entity   string
+		name     string
+		hasError bool
 	}{
-		{ "account", "", true },
-		{ "account", " s s d  ", true },
-		{ "account", "132465", true },
-		{ "account", "13a2aa465", true },
-		{ "account", "nome-@nonvalido", true },
-		{ "account", "nome/nonvalido", true },
-		{ "account", "nome", false },
-		{ "account", "nome-valido", false },
-		{ "", "nome-valido", false },
+		{"account", "", true},
+		{"account", " s s d  ", true},
+		{"account", "132465", true},
+		{"account", "13a2aa465", true},
+		{"account", "nome-@nonvalido", true},
+		{"account", "nome/nonvalido", true},
+		{"account", "nome", false},
+		{"account", "nome-valido", false},
+		{"", "nome-valido", false},
 	}
 	for _, tc := range testCases {
 		result := validateName(tc.entity, tc.name)

@@ -14,18 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package postgres
-
-import (
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
-)
-
-// mapAccountToAgentAccount maps an Account to a model Account.
-func mapAccountToAgentAccount(account *Account) (*azmodels.Account, error) {
-	return &azmodels.Account{
-		AccountID: account.AccountID,
-		CreatedAt: account.CreatedAt,
-		UpdatedAt: account.UpdatedAt,
-		Name:      account.Name,
-	}, nil
-}
+// Package filestream provides the file stream storage implementation.
+package filestream

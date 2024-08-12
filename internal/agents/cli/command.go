@@ -38,9 +38,9 @@ import (
 const (
 	flagPrefixDataStorage          = "storage"
 	flagSuffixDataStorageCentral   = "central.engine"
-	flagValDefDataStorageCentral   = "postgres"
+	flagValDefDataStorageCentral   = "filestream"
 	flagSuffixDataStorageProximity = "proximity.engine"
-	flagValDefDataStorageProximity = "filesystem"
+	flagValDefDataStorageProximity = "filestream"
 )
 
 //go:embed "art.txt"

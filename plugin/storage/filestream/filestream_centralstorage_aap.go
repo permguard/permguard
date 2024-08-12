@@ -14,30 +14,30 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package postgres
+package filestream
 
 import (
 	"fmt"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
-// PostgresCentralStorageAAP implements the postgres central storage.
-type PostgresCentralStorageAAP struct {
+// FileStreamCentralStorageAAP implements the filestream central storage.
+type FileStreamCentralStorageAAP struct {
 	ctx        *azstorage.StorageContext
-	connection PostgresConnector
+	connection FileStreamConnector
 }
 
-// newPostgresAAPCentralStorage creates a new PostgresAAPCentralStorage.
-func newPostgresAAPCentralStorage(storageContext *azstorage.StorageContext, connection PostgresConnector) (*PostgresCentralStorageAAP, error) {
+// newFileStreamAAPCentralStorage creates a new FileStreamAAPCentralStorage.
+func newFileStreamAAPCentralStorage(storageContext *azstorage.StorageContext, connection FileStreamConnector) (*FileStreamCentralStorageAAP, error) {
 	if storageContext == nil {
 		return nil, fmt.Errorf("%q: %w", "storageContext is nil", azerrors.ErrInvalidInputParameter)
 	}
 	if connection == nil {
 		return nil, fmt.Errorf("%q: %w", "connection is nil", azerrors.ErrInvalidInputParameter)
 	}
-	return &PostgresCentralStorageAAP{
+	return &FileStreamCentralStorageAAP{
 		ctx:        storageContext,
 		connection: connection,
 	}, nil

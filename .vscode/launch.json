@@ -32,8 +32,7 @@
           "program": "./cmd/provisioner-db-posgres/main.go",
           "args": ["--down"],
           "env": {
-              "PERMGUARD_DEBUG": "TRUE",
-              "PERMGUARD_STROAGE_ENGINE_POSTGRES_PORT": "5433"
+              "PERMGUARD_DEBUG": "TRUE"
           }
       },
       {
@@ -45,8 +44,7 @@
           // "args": ["-h"],
           "env": {
               "PERMGUARD_DEBUG": "TRUE",
-              "PERMGUARD_SERVER_APPDATA": "../../samples/pdp/local-state/permguard1",
-              "PERMGUARD_STROAGE_ENGINE_POSTGRES_PORT": "5433"
+              "PERMGUARD_SERVER_APPDATA": "../../samples/pdp/local-state/permguard1"
           }
       }
   ]

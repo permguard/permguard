@@ -31,7 +31,6 @@ init-dependency:
 	go get -u github.com/pressly/goose/v3
 	go get -u github.com/lib/pq
 	go get -u github.com/jackc/pgx
-	go get -u gorm.io/driver/postgres
 	go get -u moul.io/zapgorm2
 	go get -u google.golang.org/grpc@v1.59.0
 	go get -u github.com/spf13/cobra@v1.8.0
@@ -99,26 +98,14 @@ build-release:
 	go build -o dist/server-pdp ./cmd/server-pdp
 	go build -o dist/permguard ./cmd/cli
 
-build-docker:
-	docker stop permguard || true && docker rm permguard || true
-	docker build -t permguard .
-
 run-release:
 	go run ./cmd/server-all-in-one
-
-run-docker:
-	docker run --name permguard permguard
 
 build:  clean mod build-release
 
 run:  clean mod lint-fix run-release
 
 docker:  clean mod lint-fix run-docker
-
-postgres-up:
-	docker-compose -f ./docker-compose/docker-compose-postgres.yml -p permguard-postgres up -d
-postgres-down:
-	docker-compose -p permguard-postgres down
 
 # disallow any parallelism (-j) for Make. This is necessary since some
 # commands during the build process create temporary files that collide
