@@ -31,8 +31,6 @@ const (
 	flagSuffixPath             = "path"
 )
 
-var flagValDefPosgresSSLModes = []string{"disable", "require", "verify-ca", "verify-full"}
-
 // FileStreamVolumeConfig holds the configuration for the volume.
 type FileStreamVolumeConfig struct {
 	storageKind azstorage.StorageKind
