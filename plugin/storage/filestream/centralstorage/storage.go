@@ -14,30 +14,31 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package filestream
+package centralstorage
 
 import (
 	//azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	azfilestreamstorage "github.com/permguard/permguard/plugin/storage/filestream/storage"
 )
 
 // FileStreamCentralStorage implements the filestream central storage.
 type FileStreamCentralStorage struct {
-	ctx        *azstorage.StorageContext
-	connection FileStreamConnector
+	ctx         *azstorage.StorageContext
+	persistence azfilestreamstorage.FileStreamPersistence
 }
 
-// newFileStreamCentralStorage creates a new filestream central storage.
-func newFileStreamCentralStorage(storageContext *azstorage.StorageContext, connection FileStreamConnector) (*FileStreamCentralStorage, error) {
+// NewFileStreamCentralStorage creates a new filestream central storage.
+func NewFileStreamCentralStorage(storageContext *azstorage.StorageContext, persistence azfilestreamstorage.FileStreamPersistence) (*FileStreamCentralStorage, error) {
 	return &FileStreamCentralStorage{
 		ctx:        storageContext,
-		connection: connection,
+		persistence: persistence,
 	}, nil
 }
 
 // GetAAPCentralStorage returns the AAP central storage.
 func (s FileStreamCentralStorage) GetAAPCentralStorage() (azstorage.AAPCentralStorage, error) {
-	return newFileStreamAAPCentralStorage(s.ctx, s.connection)
+	return newFileStreamAAPCentralStorage(s.ctx, s.persistence)
 }
 
 // GetPAPCentralStorage returns the PAP central storage.

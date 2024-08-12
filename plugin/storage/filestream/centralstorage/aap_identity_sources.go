@@ -14,32 +14,36 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package filestream
+package centralstorage
 
 import (
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 )
 
-// CreateAccount creates a new account.
-func (s FileStreamCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmodels.Account, error) {
+const (
+	IdentitySourceDefaultName = "default"
+)
+
+// CreateIdentitySource creates a new identity source.
+func (s FileStreamCentralStorageAAP) CreateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }
 
-// UpdateAccount updates an account.
-func (s FileStreamCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmodels.Account, error) {
+// UpdateIdentitySource updates an identity source.
+func (s FileStreamCentralStorageAAP) UpdateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }
 
-// DeleteAccount deletes an account.
-func (s FileStreamCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Account, error) {
+// DeleteIdentitySource deletes an identity source.
+func (s FileStreamCentralStorageAAP) DeleteIdentitySource(accountID int64, identitySourceID string) (*azmodels.IdentitySource, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }
 
-// GetAllAccounts returns all accounts.
-func (s FileStreamCentralStorageAAP) GetAllAccounts(fields map[string]any) ([]azmodels.Account, error) {
+// GetAllIdentitySources returns all identity sources.
+func (s FileStreamCentralStorageAAP) GetAllIdentitySources(accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }
