@@ -24,17 +24,6 @@
             "PERMGUARD_DEBUG": "TRUE",
         }
       },
-        {
-          "name": "provisioner-db-posgres",
-          "type": "go",
-          "request": "launch",
-          "mode": "auto",
-          "program": "./cmd/provisioner-db-posgres/main.go",
-          "args": ["--down"],
-          "env": {
-              "PERMGUARD_DEBUG": "TRUE"
-          }
-      },
       {
           "name": "all-in-one",
           "type": "go",
