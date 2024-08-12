@@ -24,7 +24,7 @@ import (
 	"go.uber.org/zap"
 
 	azconfigs "github.com/permguard/permguard/pkg/configs"
-	azfsstorage "github.com/permguard/permguard/plugin/storage/filestream/storage"
+	azfsvolumes "github.com/permguard/permguard/plugin/storage/filestream/volumes"
 )
 
 const (
@@ -39,12 +39,12 @@ type FileStreamStorageProvisioner struct {
 	logger   *zap.Logger
 	up       bool
 	down     bool
-	config   *azfsstorage.FileStreamVolumeConfig
+	config   *azfsvolumes.FileStreamVolumeConfig
 }
 
 // NewFileStreamStorageProvisioner creates a new FileStreamStorageProvisioner.
 func NewFileStreamStorageProvisioner() (*FileStreamStorageProvisioner, error) {
-	config, err := azfsstorage.NewFileStreamVolumeConfig()
+	config, err := azfsvolumes.NewFileStreamVolumeConfig()
 	if err != nil {
 		return nil, err
 	}

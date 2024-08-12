@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package storage provides common storage implementations.
-package storage
+// Package volumes provides volume implementations.
+package volumes

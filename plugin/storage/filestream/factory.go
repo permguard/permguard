@@ -24,17 +24,17 @@ import (
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azfscentralstorage "github.com/permguard/permguard/plugin/storage/filestream/centralstorage"
-	azfsstorage "github.com/permguard/permguard/plugin/storage/filestream/storage"
+	azfsvolumes "github.com/permguard/permguard/plugin/storage/filestream/volumes"
 )
 
 // FileStreamStorageFactoryConfig holds the configuration for the server factory.
 type FileStreamStorageFactoryConfig struct {
-	config *azfsstorage.FileStreamVolumeConfig
+	config *azfsvolumes.FileStreamVolumeConfig
 }
 
 // NewFileStreamStorageFactoryConfig creates a new server factory configuration.
 func NewFileStreamStorageFactoryConfig() (*FileStreamStorageFactoryConfig, error) {
-	dbConnCfg, err := azfsstorage.NewFileStreamVolumeConfig()
+	dbConnCfg, err := azfsvolumes.NewFileStreamVolumeConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -56,18 +56,18 @@ func (c *FileStreamStorageFactoryConfig) InitFromViper(v *viper.Viper) error {
 
 // FileStreamStorageFactory holds the configuration for the server factory.
 type FileStreamStorageFactory struct {
-	config  *FileStreamStorageFactoryConfig
-	volumeBinder	azfsstorage.FileStreamVolumeBinder
+	config       *FileStreamStorageFactoryConfig
+	volumeBinder azfsvolumes.FileStreamVolumeBinder
 }
 
 // NewFileStreamStorageFactory creates a new server factory configuration.
 func NewFileStreamStorageFactory(storageFctyCfg *FileStreamStorageFactoryConfig) (*FileStreamStorageFactory, error) {
-	volume, err := azfsstorage.NewFileStreamVolume(storageFctyCfg.config)
+	volume, err := azfsvolumes.NewFileStreamVolume(storageFctyCfg.config)
 	if err != nil {
 		return nil, err
 	}
 	return &FileStreamStorageFactory{
-		config:     storageFctyCfg,
+		config:       storageFctyCfg,
 		volumeBinder: volume,
 	}, nil
 }
