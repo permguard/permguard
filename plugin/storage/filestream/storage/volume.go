@@ -33,60 +33,60 @@ const (
 
 var flagValDefPosgresSSLModes = []string{"disable", "require", "verify-ca", "verify-full"}
 
-// FileStreamConnectionConfig holds the configuration for the server.
-type FileStreamConnectionConfig struct {
+// FileStreamVolumeConfig holds the configuration for the server.
+type FileStreamVolumeConfig struct {
 	storageKind azstorage.StorageKind
 	path        string
 }
 
-// NewFileStreamConnectionConfig creates a new server factory configuration.
-func NewFileStreamConnectionConfig() (*FileStreamConnectionConfig, error) {
-	return &FileStreamConnectionConfig{
+// NewFileStreamVolumeConfig creates a new server factory configuration.
+func NewFileStreamVolumeConfig() (*FileStreamVolumeConfig, error) {
+	return &FileStreamVolumeConfig{
 		storageKind: azstorage.StorageFileStream,
 	}, nil
 }
 
 // AddFlags adds flags.
-func (c *FileStreamConnectionConfig) AddFlags(flagSet *flag.FlagSet) error {
+func (c *FileStreamVolumeConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.String(azconfigs.FlagName(flagPrefixEndingFileStream, flagSuffixPath), "localhost", "filestream path")
 	return nil
 }
 
 // InitFromViper initializes the configuration from viper.
-func (c *FileStreamConnectionConfig) InitFromViper(v *viper.Viper) error {
+func (c *FileStreamVolumeConfig) InitFromViper(v *viper.Viper) error {
 	c.path = strings.ToLower(v.GetString(azconfigs.FlagName(flagPrefixEndingFileStream, flagSuffixPath)))
 	return nil
 }
 
 // GetStorage returns the storage kind.
-func (c *FileStreamConnectionConfig) GetStorage() azstorage.StorageKind {
+func (c *FileStreamVolumeConfig) GetStorage() azstorage.StorageKind {
 	return c.storageKind
 }
 
 // GetPath returns the path.
-func (c *FileStreamConnectionConfig) GetPath() string {
+func (c *FileStreamVolumeConfig) GetPath() string {
 	return c.path
 }
 
-// FileStreamConnector is the interface for the filestream connection.
-type FileStreamConnector interface {
+// FileStreamVolumeBinder is the interface for the filestream volume binder.
+type FileStreamVolumeBinder interface {
 	// GetStorage returns the storage kind.
 	GetStorage() azstorage.StorageKind
 }
 
-// FileStreamConnection holds the configuration for the server.
-type FileStreamConnection struct {
-	config *FileStreamConnectionConfig
+// FileStreamVolume holds the configuration for the server.
+type FileStreamVolume struct {
+	config *FileStreamVolumeConfig
 }
 
-// NewFileStreamConnection creates a new server configuration.
-func NewFileStreamConnection(connectionCgf *FileStreamConnectionConfig) (FileStreamConnector, error) {
-	return &FileStreamConnection{
-		config: connectionCgf,
+// NewFileStreamVolume creates a new server configuration.
+func NewFileStreamVolume(volumeCgf *FileStreamVolumeConfig) (FileStreamVolumeBinder, error) {
+	return &FileStreamVolume{
+		config: volumeCgf,
 	}, nil
 }
 
 // GetStorage returns the storage kind.
-func (c *FileStreamConnection) GetStorage() azstorage.StorageKind {
+func (c *FileStreamVolume) GetStorage() azstorage.StorageKind {
 	return c.config.GetStorage()
 }

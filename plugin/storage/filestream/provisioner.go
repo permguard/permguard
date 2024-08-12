@@ -39,12 +39,12 @@ type FileStreamStorageProvisioner struct {
 	logger   *zap.Logger
 	up       bool
 	down     bool
-	config   *azfsstorage.FileStreamConnectionConfig
+	config   *azfsstorage.FileStreamVolumeConfig
 }
 
 // NewFileStreamStorageProvisioner creates a new FileStreamStorageProvisioner.
 func NewFileStreamStorageProvisioner() (*FileStreamStorageProvisioner, error) {
-	config, err := azfsstorage.NewFileStreamConnectionConfig()
+	config, err := azfsstorage.NewFileStreamVolumeConfig()
 	if err != nil {
 		return nil, err
 	}
