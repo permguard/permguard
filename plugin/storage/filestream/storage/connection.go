@@ -33,60 +33,60 @@ const (
 
 var flagValDefPosgresSSLModes = []string{"disable", "require", "verify-ca", "verify-full"}
 
-// FileStreamPersistenceConfig holds the configuration for the server.
-type FileStreamPersistenceConfig struct {
+// FileStreamConnectionConfig holds the configuration for the server.
+type FileStreamConnectionConfig struct {
 	storageKind azstorage.StorageKind
 	path        string
 }
 
-// NewFileStreamPersistenceConfig creates a new server factory configuration.
-func NewFileStreamPersistenceConfig() (*FileStreamPersistenceConfig, error) {
-	return &FileStreamPersistenceConfig{
+// NewFileStreamConnectionConfig creates a new server factory configuration.
+func NewFileStreamConnectionConfig() (*FileStreamConnectionConfig, error) {
+	return &FileStreamConnectionConfig{
 		storageKind: azstorage.StorageFileStream,
 	}, nil
 }
 
 // AddFlags adds flags.
-func (c *FileStreamPersistenceConfig) AddFlags(flagSet *flag.FlagSet) error {
+func (c *FileStreamConnectionConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.String(azconfigs.FlagName(flagPrefixEndingFileStream, flagSuffixPath), "localhost", "filestream path")
 	return nil
 }
 
 // InitFromViper initializes the configuration from viper.
-func (c *FileStreamPersistenceConfig) InitFromViper(v *viper.Viper) error {
+func (c *FileStreamConnectionConfig) InitFromViper(v *viper.Viper) error {
 	c.path = strings.ToLower(v.GetString(azconfigs.FlagName(flagPrefixEndingFileStream, flagSuffixPath)))
 	return nil
 }
 
 // GetStorage returns the storage kind.
-func (c *FileStreamPersistenceConfig) GetStorage() azstorage.StorageKind {
+func (c *FileStreamConnectionConfig) GetStorage() azstorage.StorageKind {
 	return c.storageKind
 }
 
 // GetPath returns the path.
-func (c *FileStreamPersistenceConfig) GetPath() string {
+func (c *FileStreamConnectionConfig) GetPath() string {
 	return c.path
 }
 
-// FileStreamConnector is the interface for the filestream persistence.
+// FileStreamConnector is the interface for the filestream connection.
 type FileStreamConnector interface {
 	// GetStorage returns the storage kind.
 	GetStorage() azstorage.StorageKind
 }
 
-// FileStreamPersistence holds the configuration for the server.
-type FileStreamPersistence struct {
-	config     *FileStreamPersistenceConfig
+// FileStreamConnection holds the configuration for the server.
+type FileStreamConnection struct {
+	config *FileStreamConnectionConfig
 }
 
-// NewFileStreamPersistence creates a new server configuration.
-func NewFileStreamPersistence(persistenceCgf *FileStreamPersistenceConfig) (FileStreamConnector, error) {
-	return &FileStreamPersistence{
-		config: persistenceCgf,
+// NewFileStreamConnection creates a new server configuration.
+func NewFileStreamConnection(connectionCgf *FileStreamConnectionConfig) (FileStreamConnector, error) {
+	return &FileStreamConnection{
+		config: connectionCgf,
 	}, nil
 }
 
 // GetStorage returns the storage kind.
-func (c *FileStreamPersistence) GetStorage() azstorage.StorageKind {
+func (c *FileStreamConnection) GetStorage() azstorage.StorageKind {
 	return c.config.GetStorage()
 }

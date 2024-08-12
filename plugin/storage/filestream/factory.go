@@ -23,19 +23,18 @@ import (
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	azfilestreamstorage "github.com/permguard/permguard/plugin/storage/filestream/storage"
-	azfilestreamcentralstorage "github.com/permguard/permguard/plugin/storage/filestream/centralstorage"
-
+	azfscentralstorage "github.com/permguard/permguard/plugin/storage/filestream/centralstorage"
+	azfsstorage "github.com/permguard/permguard/plugin/storage/filestream/storage"
 )
 
 // FileStreamStorageFactoryConfig holds the configuration for the server factory.
 type FileStreamStorageFactoryConfig struct {
-	config *azfilestreamstorage.FileStreamPersistenceConfig
+	config *azfsstorage.FileStreamConnectionConfig
 }
 
 // NewFileStreamStorageFactoryConfig creates a new server factory configuration.
 func NewFileStreamStorageFactoryConfig() (*FileStreamStorageFactoryConfig, error) {
-	dbConnCfg, err := azfilestreamstorage.NewFileStreamPersistenceConfig()
+	dbConnCfg, err := azfsstorage.NewFileStreamConnectionConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -57,25 +56,25 @@ func (c *FileStreamStorageFactoryConfig) InitFromViper(v *viper.Viper) error {
 
 // FileStreamStorageFactory holds the configuration for the server factory.
 type FileStreamStorageFactory struct {
-	config      *FileStreamStorageFactoryConfig
-	persistence *azfilestreamstorage.FileStreamPersistence
+	config     *FileStreamStorageFactoryConfig
+	connection azfsstorage.FileStreamConnector
 }
 
 // NewFileStreamStorageFactory creates a new server factory configuration.
 func NewFileStreamStorageFactory(storageFctyCfg *FileStreamStorageFactoryConfig) (*FileStreamStorageFactory, error) {
-	persistence, err := NewFileStreamStorageFactoryConfig()
+	connection, err := azfsstorage.NewFileStreamConnection(storageFctyCfg.config)
 	if err != nil {
 		return nil, err
 	}
 	return &FileStreamStorageFactory{
 		config:     storageFctyCfg,
-		persistence: persistence,
+		connection: connection,
 	}, nil
 }
 
 // CreateCentralStorage returns the central storage.
 func (f *FileStreamStorageFactory) CreateCentralStorage(storageContext *azstorage.StorageContext) (azstorage.CentralStorage, error) {
-	return azfilestreamcentralstorage.NewFileStreamCentralStorage(storageContext, f.persistence)
+	return azfscentralstorage.NewFileStreamCentralStorage(storageContext, f.connection)
 }
 
 // CreateProximityStorage returns the proximity storage.
