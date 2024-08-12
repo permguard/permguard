@@ -27,7 +27,7 @@ import (
 
 // FileStreamStorageFactoryConfig holds the configuration for the server factory.
 type FileStreamStorageFactoryConfig struct {
-	config *FileStreamConnectionConfig
+	config *FileStreamPersistenceConfig
 }
 
 // NewFileStreamStorageFactoryConfig creates a new server factory configuration.

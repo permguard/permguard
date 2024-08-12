@@ -38,7 +38,7 @@ type FileStreamStorageProvisioner struct {
 	logger   *zap.Logger
 	up       bool
 	down     bool
-	config   *FileStreamConnectionConfig
+	config   *FileStreamPersistenceConfig
 }
 
 // NewFileStreamStorageProvisioner creates a new FileStreamStorageProvisioner.
