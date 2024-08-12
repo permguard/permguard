@@ -19,26 +19,26 @@ package centralstorage
 import (
 	//azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azfilestreamstorage "github.com/permguard/permguard/plugin/storage/filestream/storage"
+	azfsstorage "github.com/permguard/permguard/plugin/storage/filestream/storage"
 )
 
 // FileStreamCentralStorage implements the filestream central storage.
 type FileStreamCentralStorage struct {
-	ctx         *azstorage.StorageContext
-	persistence azfilestreamstorage.FileStreamPersistence
+	ctx        *azstorage.StorageContext
+	connection azfsstorage.FileStreamConnector
 }
 
 // NewFileStreamCentralStorage creates a new filestream central storage.
-func NewFileStreamCentralStorage(storageContext *azstorage.StorageContext, persistence azfilestreamstorage.FileStreamPersistence) (*FileStreamCentralStorage, error) {
+func NewFileStreamCentralStorage(storageContext *azstorage.StorageContext, connection azfsstorage.FileStreamConnector) (*FileStreamCentralStorage, error) {
 	return &FileStreamCentralStorage{
 		ctx:        storageContext,
-		persistence: persistence,
+		connection: connection,
 	}, nil
 }
 
 // GetAAPCentralStorage returns the AAP central storage.
 func (s FileStreamCentralStorage) GetAAPCentralStorage() (azstorage.AAPCentralStorage, error) {
-	return newFileStreamAAPCentralStorage(s.ctx, s.persistence)
+	return newFileStreamAAPCentralStorage(s.ctx, s.connection)
 }
 
 // GetPAPCentralStorage returns the PAP central storage.
