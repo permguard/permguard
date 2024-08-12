@@ -29,12 +29,12 @@ import (
 
 // FileStreamStorageFactoryConfig holds the configuration for the server factory.
 type FileStreamStorageFactoryConfig struct {
-	config *azfsstorage.FileStreamConnectionConfig
+	config *azfsstorage.FileStreamVolumeConfig
 }
 
 // NewFileStreamStorageFactoryConfig creates a new server factory configuration.
 func NewFileStreamStorageFactoryConfig() (*FileStreamStorageFactoryConfig, error) {
-	dbConnCfg, err := azfsstorage.NewFileStreamConnectionConfig()
+	dbConnCfg, err := azfsstorage.NewFileStreamVolumeConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -56,25 +56,25 @@ func (c *FileStreamStorageFactoryConfig) InitFromViper(v *viper.Viper) error {
 
 // FileStreamStorageFactory holds the configuration for the server factory.
 type FileStreamStorageFactory struct {
-	config     *FileStreamStorageFactoryConfig
-	connection azfsstorage.FileStreamConnector
+	config  *FileStreamStorageFactoryConfig
+	volumeBinder	azfsstorage.FileStreamVolumeBinder
 }
 
 // NewFileStreamStorageFactory creates a new server factory configuration.
 func NewFileStreamStorageFactory(storageFctyCfg *FileStreamStorageFactoryConfig) (*FileStreamStorageFactory, error) {
-	connection, err := azfsstorage.NewFileStreamConnection(storageFctyCfg.config)
+	volume, err := azfsstorage.NewFileStreamVolume(storageFctyCfg.config)
 	if err != nil {
 		return nil, err
 	}
 	return &FileStreamStorageFactory{
 		config:     storageFctyCfg,
-		connection: connection,
+		volumeBinder: volume,
 	}, nil
 }
 
 // CreateCentralStorage returns the central storage.
 func (f *FileStreamStorageFactory) CreateCentralStorage(storageContext *azstorage.StorageContext) (azstorage.CentralStorage, error) {
-	return azfscentralstorage.NewFileStreamCentralStorage(storageContext, f.connection)
+	return azfscentralstorage.NewFileStreamCentralStorage(storageContext, f.volumeBinder)
 }
 
 // CreateProximityStorage returns the proximity storage.

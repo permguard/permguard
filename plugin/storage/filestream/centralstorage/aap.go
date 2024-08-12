@@ -27,16 +27,16 @@ import (
 // FileStreamCentralStorageAAP implements the filestream central storage.
 type FileStreamCentralStorageAAP struct {
 	ctx        *azstorage.StorageContext
-	connection azfsstorage.FileStreamConnector
+	volumeBinder azfsstorage.FileStreamVolumeBinder
 }
 
 // newFileStreamAAPCentralStorage creates a new FileStreamAAPCentralStorage.
-func newFileStreamAAPCentralStorage(storageContext *azstorage.StorageContext, connection azfsstorage.FileStreamConnector) (*FileStreamCentralStorageAAP, error) {
+func newFileStreamAAPCentralStorage(storageContext *azstorage.StorageContext, volumeBinder azfsstorage.FileStreamVolumeBinder) (*FileStreamCentralStorageAAP, error) {
 	if storageContext == nil {
 		return nil, fmt.Errorf("%q: %w", "storageContext is nil", azerrors.ErrInvalidInputParameter)
 	}
 	return &FileStreamCentralStorageAAP{
 		ctx:        storageContext,
-		connection: connection,
+		volumeBinder: volumeBinder,
 	}, nil
 }

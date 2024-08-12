@@ -25,20 +25,20 @@ import (
 // FileStreamCentralStorage implements the filestream central storage.
 type FileStreamCentralStorage struct {
 	ctx        *azstorage.StorageContext
-	connection azfsstorage.FileStreamConnector
+	volumeBinder azfsstorage.FileStreamVolumeBinder
 }
 
 // NewFileStreamCentralStorage creates a new filestream central storage.
-func NewFileStreamCentralStorage(storageContext *azstorage.StorageContext, connection azfsstorage.FileStreamConnector) (*FileStreamCentralStorage, error) {
+func NewFileStreamCentralStorage(storageContext *azstorage.StorageContext, volumeBinder azfsstorage.FileStreamVolumeBinder) (*FileStreamCentralStorage, error) {
 	return &FileStreamCentralStorage{
 		ctx:        storageContext,
-		connection: connection,
+		volumeBinder: volumeBinder,
 	}, nil
 }
 
 // GetAAPCentralStorage returns the AAP central storage.
 func (s FileStreamCentralStorage) GetAAPCentralStorage() (azstorage.AAPCentralStorage, error) {
-	return newFileStreamAAPCentralStorage(s.ctx, s.connection)
+	return newFileStreamAAPCentralStorage(s.ctx, s.volumeBinder)
 }
 
 // GetPAPCentralStorage returns the PAP central storage.
