@@ -28,10 +28,6 @@ init-dependency:
 	go get -u github.com/jinzhu/copier@v0.4.0
 	go get -u go.uber.org/zap@v1.26.0
 	go get -u github.com/go-playground/validator/v10
-	go get -u github.com/pressly/goose/v3
-	go get -u github.com/lib/pq
-	go get -u github.com/jackc/pgx
-	go get -u moul.io/zapgorm2
 	go get -u google.golang.org/grpc@v1.59.0
 	go get -u github.com/spf13/cobra@v1.8.0
 	go get -u github.com/spf13/viper
@@ -104,8 +100,6 @@ run-release:
 build:  clean mod build-release
 
 run:  clean mod lint-fix run-release
-
-docker:  clean mod lint-fix run-docker
 
 # disallow any parallelism (-j) for Make. This is necessary since some
 # commands during the build process create temporary files that collide
