@@ -21,22 +21,22 @@ import (
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	azfsstorage "github.com/permguard/permguard/plugin/storage/filestream/storage"
+	azfsvolumes "github.com/permguard/permguard/plugin/storage/filestream/volumes"
 )
 
 // FileStreamCentralStorageAAP implements the filestream central storage.
 type FileStreamCentralStorageAAP struct {
-	ctx        *azstorage.StorageContext
-	volumeBinder azfsstorage.FileStreamVolumeBinder
+	ctx          *azstorage.StorageContext
+	volumeBinder azfsvolumes.FileStreamVolumeBinder
 }
 
 // newFileStreamAAPCentralStorage creates a new FileStreamAAPCentralStorage.
-func newFileStreamAAPCentralStorage(storageContext *azstorage.StorageContext, volumeBinder azfsstorage.FileStreamVolumeBinder) (*FileStreamCentralStorageAAP, error) {
+func newFileStreamAAPCentralStorage(storageContext *azstorage.StorageContext, volumeBinder azfsvolumes.FileStreamVolumeBinder) (*FileStreamCentralStorageAAP, error) {
 	if storageContext == nil {
 		return nil, fmt.Errorf("%q: %w", "storageContext is nil", azerrors.ErrInvalidInputParameter)
 	}
 	return &FileStreamCentralStorageAAP{
-		ctx:        storageContext,
+		ctx:          storageContext,
 		volumeBinder: volumeBinder,
 	}, nil
 }
