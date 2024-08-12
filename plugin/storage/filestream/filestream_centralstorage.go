@@ -14,33 +14,33 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package postgres
+package filestream
 
 import (
 	//azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 )
 
-// PostgresCentralStorage implements the postgres central storage.
-type PostgresCentralStorage struct {
+// FileStreamCentralStorage implements the filestream central storage.
+type FileStreamCentralStorage struct {
 	ctx        *azstorage.StorageContext
-	connection PostgresConnector
+	connection FileStreamConnector
 }
 
-// newPostgresCentralStorage creates a new postgres central storage.
-func newPostgresCentralStorage(storageContext *azstorage.StorageContext, connection PostgresConnector) (*PostgresCentralStorage, error) {
-	return &PostgresCentralStorage{
+// newFileStreamCentralStorage creates a new filestream central storage.
+func newFileStreamCentralStorage(storageContext *azstorage.StorageContext, connection FileStreamConnector) (*FileStreamCentralStorage, error) {
+	return &FileStreamCentralStorage{
 		ctx:        storageContext,
 		connection: connection,
 	}, nil
 }
 
 // GetAAPCentralStorage returns the AAP central storage.
-func (s PostgresCentralStorage) GetAAPCentralStorage() (azstorage.AAPCentralStorage, error) {
-	return newPostgresAAPCentralStorage(s.ctx, s.connection)
+func (s FileStreamCentralStorage) GetAAPCentralStorage() (azstorage.AAPCentralStorage, error) {
+	return newFileStreamAAPCentralStorage(s.ctx, s.connection)
 }
 
 // GetPAPCentralStorage returns the PAP central storage.
-func (s PostgresCentralStorage) GetPAPCentralStorage() (azstorage.PAPCentralStorage, error) {
-	return nil, nil //TODO: azerrors.WrapSystemError(azerrors.ErrNotImplemented, "storage: pap central storage has not been implemented by the postgres plugin.")
+func (s FileStreamCentralStorage) GetPAPCentralStorage() (azstorage.PAPCentralStorage, error) {
+	return nil, nil //TODO: azerrors.WrapSystemError(azerrors.ErrNotImplemented, "storage: pap central storage has not been implemented by the filestream plugin.")
 }

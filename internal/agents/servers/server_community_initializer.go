@@ -26,7 +26,7 @@ import (
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azcopier "github.com/permguard/permguard/pkg/extensions/copier"
-	azipostgres "github.com/permguard/permguard/plugin/storage/postgres"
+	azifilestream "github.com/permguard/permguard/plugin/storage/filestream"
 )
 
 // CommunityServerInitializer is the community service factory initializer.
@@ -47,7 +47,7 @@ func NewCommunityServerInitializer(host azservices.HostKind) (azservers.ServerIn
 		azservices.HostPDP:      {Name: "PDP (Policy Decision Point)", Use: "pdp", Short: "Start the PDP service", Long: "Using this option the Policy Decision Point (PDP) service is started."},
 	}
 	hosts := []azservices.HostKind{azservices.HostAllInOne, azservices.HostAAP, azservices.HostPAP, azservices.HostIDP, azservices.HostPDP}
-	storages := []azstorage.StorageKind{azstorage.StoragePostgres, azstorage.StorageFileSystem}
+	storages := []azstorage.StorageKind{azstorage.StorageFileStream}
 	services := []azservices.ServiceKind{azservices.ServiceAAP, azservices.ServicePAP, azservices.ServiceIDP, azservices.ServicePDP}
 
 	if !host.IsValid(hosts) {
@@ -100,19 +100,16 @@ func (c *CommunityServerInitializer) GetStoragesFactories(centralStorageEngine a
 	factories := map[azstorage.StorageKind]azstorage.StorageFactoryProvider{}
 	for _, storageKind := range c.GetStorages(centralStorageEngine, proximityStorageEngine) {
 		switch storageKind {
-		case azstorage.StoragePostgres:
-			fFactCfg := func() (azstorage.StorageFactoryConfig, error) { return azipostgres.NewPostgresStorageFactoryConfig() }
+		case azstorage.StorageFileStream:
+			fFactCfg := func() (azstorage.StorageFactoryConfig, error) { return azifilestream.NewFileStreamStorageFactoryConfig() }
 			fFact := func(config azstorage.StorageFactoryConfig) (azstorage.StorageFactory, error) {
-				return azipostgres.NewPostgresStorageFactory(config.(*azipostgres.PostgresStorageFactoryConfig))
+				return azifilestream.NewFileStreamStorageFactory(config.(*azifilestream.FileStreamStorageFactoryConfig))
 			}
 			fcty, err := azstorage.NewStorageFactoryProvider(fFactCfg, fFact)
 			if err != nil {
 				return nil, err
 			}
 			factories[storageKind] = *fcty
-			continue
-		case azstorage.StorageFileSystem:
-			// TODO: To be implemented.
 			continue
 		}
 	}
