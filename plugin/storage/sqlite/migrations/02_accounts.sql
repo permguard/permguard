@@ -78,4 +78,3 @@ DROP TRIGGER IF EXISTS accounts_changestreams_after_update;
 DROP TRIGGER IF EXISTS accounts_changestreams_after_delete;
 DROP TABLE IF EXISTS accounts_changestreams;
 DROP TABLE IF EXISTS accounts;
-
