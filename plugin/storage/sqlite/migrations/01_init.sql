@@ -15,20 +15,13 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 -- +goose Up
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- +goose StatementBegin
-CREATE OR REPLACE FUNCTION udf_row_update_timestamp()
-RETURNS TRIGGER AS $$
-BEGIN
-	NEW.updated_at = CURRENT_TIMESTAMP; RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
--- +goose StatementEnd
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, -- Identificatore univoco per ogni utente
+    username TEXT NOT NULL,               -- Nome utente (stringa)
+    email TEXT NOT NULL,                  -- Email (stringa)
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP, -- Data di creazione con valore predefinito dell'orario corrente
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP  -- Data di aggiornamento con valore predefinito dell'orario corrente
+);
 
 -- +goose Down
-DROP FUNCTION IF EXISTS udf_row_update_timestamp CASCADE;
-
-DROP EXTENSION IF EXISTS pgcrypto;
-DROP EXTENSION IF EXISTS "uuid-ossp";
+DROP TABLE IF EXISTS users;

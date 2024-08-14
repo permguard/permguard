@@ -216,3 +216,5 @@ permguard
 .env
 .env.local
 # End Custom
+
+*.db

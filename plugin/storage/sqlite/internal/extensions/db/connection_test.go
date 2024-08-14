@@ -47,9 +47,9 @@ func newSQLiteConnectionMock(t *testing.T) (SQLiteConnector, *sql.DB, *gorm.DB, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	pgConnMock := azmocks.NewSQLiteConnectionMock()
-	pgConnMock.On("GetStorage").Return(azstorage.StorageSQLite)
-	pgConnMock.On("Connect", mock.Anything, mock.Anything).Return(gormDB, nil)
-	pgConnMock.On("Close", gormDB).Return(nil)
-	return pgConnMock, sqlDB, gormDB, sqlMock
+	sqlConnMock := azmocks.NewSQLiteConnectionMock()
+	sqlConnMock.On("GetStorage").Return(azstorage.StorageSQLite)
+	sqlConnMock.On("Connect", mock.Anything, mock.Anything).Return(gormDB, nil)
+	sqlConnMock.On("Close", gormDB).Return(nil)
+	return sqlConnMock, sqlDB, gormDB, sqlMock
 }
