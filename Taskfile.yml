@@ -85,6 +85,9 @@ tasks:
   up:
     cmds:
       - go run ./cmd/provisioner-db-sqlite/main.go --up --debug
+  down:
+    cmds:
+      - go run ./cmd/provisioner-db-sqlite/main.go --down --debug
   # Servers
   cli:
     cmds:
