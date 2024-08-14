@@ -21,10 +21,10 @@ import (
 	"embed"
 	"flag"
 
-	_ "github.com/lib/pq"
-	"github.com/pressly/goose/v3"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	"github.com/pressly/goose/v3"
+	_ "github.com/mattn/go-sqlite3"
 
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
@@ -97,15 +97,19 @@ func (p *SQLiteStorageProvisioner) InitFromViper(v *viper.Viper) error {
 
 // setup sets up the database.
 func (p *SQLiteStorageProvisioner) setup() (*sql.DB, error) {
-	connStr := ""
-	db, err := sql.Open("postgres", connStr)
+	connStr := "./foo.db"
+	db, err := sql.Open("sqlite3", connStr)
+	if err != nil {
+		return nil, err
+	}
+	err = db.Ping()
 	if err != nil {
 		return nil, err
 	}
 
 	goose.SetLogger(azidb.NewGooseLogger(p.logger))
 	goose.SetBaseFS(embedMigrations)
-	if err := goose.SetDialect("postgres"); err != nil {
+	if err := goose.SetDialect("sqlite"); err != nil {
 		return nil, err
 	}
 	return db, nil
