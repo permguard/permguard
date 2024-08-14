@@ -21,25 +21,25 @@ import (
 )
 
 // CreateAccount creates a new account.
-func (s FileStreamCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmodels.Account, error) {
+func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmodels.Account, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }
 
 // UpdateAccount updates an account.
-func (s FileStreamCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmodels.Account, error) {
+func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmodels.Account, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }
 
 // DeleteAccount deletes an account.
-func (s FileStreamCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Account, error) {
+func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Account, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }
 
 // GetAllAccounts returns all accounts.
-func (s FileStreamCentralStorageAAP) GetAllAccounts(fields map[string]any) ([]azmodels.Account, error) {
+func (s SQLiteCentralStorageAAP) GetAllAccounts(fields map[string]any) ([]azmodels.Account, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }

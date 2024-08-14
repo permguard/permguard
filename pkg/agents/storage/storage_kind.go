@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	StorageNone       StorageKind = ""
-	StorageFileStream StorageKind = "FILESTREAM"
+	StorageNone   StorageKind = ""
+	StorageSQLite StorageKind = "SQLITE"
 )
 
 // StorageKind is the type of storage.

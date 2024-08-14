@@ -21,29 +21,29 @@ import (
 )
 
 const (
-	TenantDefaultName = "default"
+	IdentitySourceDefaultName = "default"
 )
 
-// CreateTenant creates a new tenant.
-func (s FileStreamCentralStorageAAP) CreateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error) {
+// CreateIdentitySource creates a new identity source.
+func (s SQLiteCentralStorageAAP) CreateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }
 
-// UpdateTenant updates an tenant.
-func (s FileStreamCentralStorageAAP) UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error) {
+// UpdateIdentitySource updates an identity source.
+func (s SQLiteCentralStorageAAP) UpdateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }
 
-// DeleteTenant deletes an tenant.
-func (s FileStreamCentralStorageAAP) DeleteTenant(accountID int64, tenantID string) (*azmodels.Tenant, error) {
+// DeleteIdentitySource deletes an identity source.
+func (s SQLiteCentralStorageAAP) DeleteIdentitySource(accountID int64, identitySourceID string) (*azmodels.IdentitySource, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }
 
-// GetAllTenants returns all tenants.
-func (s FileStreamCentralStorageAAP) GetAllTenants(accountID int64, fields map[string]any) ([]azmodels.Tenant, error) {
+// GetAllIdentitySources returns all identity sources.
+func (s SQLiteCentralStorageAAP) GetAllIdentitySources(accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }

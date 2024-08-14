@@ -38,9 +38,9 @@ import (
 const (
 	flagPrefixDataStorage          = "storage"
 	flagSuffixDataStorageCentral   = "central.engine"
-	flagValDefDataStorageCentral   = "filestream"
+	flagValDefDataStorageCentral   = "sqlite"
 	flagSuffixDataStorageProximity = "proximity.engine"
-	flagValDefDataStorageProximity = "filestream"
+	flagValDefDataStorageProximity = "sqlite"
 )
 
 //go:embed "art.txt"

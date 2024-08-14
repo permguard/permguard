@@ -21,22 +21,22 @@ import (
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	azifsvolumes "github.com/permguard/permguard/plugin/storage/filestream/internal/volumes"
+	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
-// FileStreamCentralStorageAAP implements the filestream central storage.
-type FileStreamCentralStorageAAP struct {
-	ctx          *azstorage.StorageContext
-	volumeBinder azifsvolumes.FileStreamVolumeBinder
+// SQLiteCentralStorageAAP implements the sqlite central storage.
+type SQLiteCentralStorageAAP struct {
+	ctx             *azstorage.StorageContext
+	sqliteConnector azidb.SQLiteConnector
 }
 
-// newFileStreamAAPCentralStorage creates a new FileStreamAAPCentralStorage.
-func newFileStreamAAPCentralStorage(storageContext *azstorage.StorageContext, volumeBinder azifsvolumes.FileStreamVolumeBinder) (*FileStreamCentralStorageAAP, error) {
+// newSQLiteAAPCentralStorage creates a new SQLiteAAPCentralStorage.
+func newSQLiteAAPCentralStorage(storageContext *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector) (*SQLiteCentralStorageAAP, error) {
 	if storageContext == nil {
 		return nil, fmt.Errorf("%q: %w", "storageContext is nil", azerrors.ErrInvalidInputParameter)
 	}
-	return &FileStreamCentralStorageAAP{
-		ctx:          storageContext,
-		volumeBinder: volumeBinder,
+	return &SQLiteCentralStorageAAP{
+		ctx:             storageContext,
+		sqliteConnector: sqliteConnector,
 	}, nil
 }

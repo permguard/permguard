@@ -48,18 +48,18 @@ Irrespective of the chosen distribution, the binary supports the following flags
 
 ---
 
-**--storage.central.engine**: *Data storage engine to be used for central data (default `filestream`).*
+**--storage.central.engine**: *Data storage engine to be used for central data (default `sqlite`).*
 
 ---
 
-**--storage.proximity.engine**: *Data storage engine to be used for proximity data (default `filestream`).*
+**--storage.proximity.engine**: *Data storage engine to be used for proximity data (default `sqlite`).*
 
 ---
 
 **Storage Engines**: Storage engine flags are used to configure the storage engine to be used for the central and proximity data.
 
 <details>
-  <summary>FileStream</summary>
+  <summary>SQLITE</summary>
 
 </details>
 

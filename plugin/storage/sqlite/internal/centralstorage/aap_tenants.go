@@ -20,26 +20,30 @@ import (
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 )
 
-// CreateIdentity creates a new identity.
-func (s FileStreamCentralStorageAAP) CreateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error) {
+const (
+	TenantDefaultName = "default"
+)
+
+// CreateTenant creates a new tenant.
+func (s SQLiteCentralStorageAAP) CreateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }
 
-// UpdateIdentity updates an identity.
-func (s FileStreamCentralStorageAAP) UpdateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error) {
+// UpdateTenant updates an tenant.
+func (s SQLiteCentralStorageAAP) UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }
 
-// DeleteIdentity deletes an identity.
-func (s FileStreamCentralStorageAAP) DeleteIdentity(accountID int64, identityID string) (*azmodels.Identity, error) {
+// DeleteTenant deletes an tenant.
+func (s SQLiteCentralStorageAAP) DeleteTenant(accountID int64, tenantID string) (*azmodels.Tenant, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }
 
-// GetAllIdentities returns all identities.
-func (s FileStreamCentralStorageAAP) GetAllIdentities(accountID int64, fields map[string]any) ([]azmodels.Identity, error) {
+// GetAllTenants returns all tenants.
+func (s SQLiteCentralStorageAAP) GetAllTenants(accountID int64, fields map[string]any) ([]azmodels.Tenant, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }
