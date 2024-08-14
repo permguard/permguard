@@ -14,5 +14,30 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package volumes provides volume implementations.
-package volumes
+package db
+
+import (
+	"fmt"
+
+	"go.uber.org/zap"
+)
+
+// GooseLogger is a logger for goose.
+type GooseLogger struct {
+	logger *zap.Logger
+}
+
+// NewGooseLogger creates a new GooseLogger.
+func NewGooseLogger(logger *zap.Logger) *GooseLogger {
+	return &GooseLogger{logger: logger}
+}
+
+// Printf logs a message.
+func (l *GooseLogger) Printf(format string, v ...any) {
+	l.logger.Info(fmt.Sprintf(format, v...))
+}
+
+// Fatalf logs a fatal error.
+func (l *GooseLogger) Fatalf(format string, v ...any) {
+	l.logger.Fatal(fmt.Sprintf(format, v...))
+}

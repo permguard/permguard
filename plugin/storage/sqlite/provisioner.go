@@ -14,17 +14,20 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package filestream
+package sqlite
 
 import (
+	"database/sql"
+	"embed"
 	"flag"
 
 	_ "github.com/lib/pq"
+	"github.com/pressly/goose/v3"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 
 	azconfigs "github.com/permguard/permguard/pkg/configs"
-	azifsvolumes "github.com/permguard/permguard/plugin/storage/filestream/internal/volumes"
+	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
 const (
@@ -32,29 +35,32 @@ const (
 	flagDown = "down"
 )
 
-// FileStreamStorageProvisioner is the storage provisioner for FileStream.
-type FileStreamStorageProvisioner struct {
+//go:embed migrations/*.sql
+var embedMigrations embed.FS
+
+// SQLiteStorageProvisioner is the storage provisioner for SQLite.
+type SQLiteStorageProvisioner struct {
 	debug    bool
 	logLevel string
 	logger   *zap.Logger
 	up       bool
 	down     bool
-	config   *azifsvolumes.FileStreamVolumeConfig
+	config   *azidb.SQLiteConnectionConfig
 }
 
-// NewFileStreamStorageProvisioner creates a new FileStreamStorageProvisioner.
-func NewFileStreamStorageProvisioner() (*FileStreamStorageProvisioner, error) {
-	config, err := azifsvolumes.NewFileStreamVolumeConfig()
+// NewSQLiteStorageProvisioner creates a new SQLiteStorageProvisioner.
+func NewSQLiteStorageProvisioner() (*SQLiteStorageProvisioner, error) {
+	config, err := azidb.NewSQLiteConnectionConfig()
 	if err != nil {
 		return nil, err
 	}
-	return &FileStreamStorageProvisioner{
+	return &SQLiteStorageProvisioner{
 		config: config,
 	}, nil
 }
 
 // AddFlags adds flags.
-func (p *FileStreamStorageProvisioner) AddFlags(flagSet *flag.FlagSet) error {
+func (p *SQLiteStorageProvisioner) AddFlags(flagSet *flag.FlagSet) error {
 	err := azconfigs.AddFlagsForCommon(flagSet)
 	if err != nil {
 		return err
@@ -69,7 +75,7 @@ func (p *FileStreamStorageProvisioner) AddFlags(flagSet *flag.FlagSet) error {
 }
 
 // InitFromViper initializes the configuration from viper.
-func (p *FileStreamStorageProvisioner) InitFromViper(v *viper.Viper) error {
+func (p *SQLiteStorageProvisioner) InitFromViper(v *viper.Viper) error {
 	debug, logLevel, err := azconfigs.InitFromViperForCommon(v)
 	if err != nil {
 		return err
@@ -89,24 +95,59 @@ func (p *FileStreamStorageProvisioner) InitFromViper(v *viper.Viper) error {
 	return nil
 }
 
+// setup sets up the database.
+func (p *SQLiteStorageProvisioner) setup() (*sql.DB, error) {
+	connStr := ""
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		return nil, err
+	}
+
+	goose.SetLogger(azidb.NewGooseLogger(p.logger))
+	goose.SetBaseFS(embedMigrations)
+	if err := goose.SetDialect("postgres"); err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
 // Up provisions the database.
-func (p *FileStreamStorageProvisioner) Up() error {
+func (p *SQLiteStorageProvisioner) Up() error {
 	if !p.up {
 		p.logger.Info("Database provisioning skipped")
 		return nil
 	}
 	p.logger.Debug("Provisioning database")
+	db, err := p.setup()
+	if err != nil {
+		p.logger.Error("Database provisioning failed", zap.Error(err))
+		return err
+	}
+	defer db.Close()
+	if err := goose.Up(db, "migrations"); err != nil {
+		p.logger.Error("Database provisioning failed", zap.Error(err))
+		return err
+	}
 	p.logger.Info("Database provisioned")
 	return nil
 }
 
 // Down deprovisions the database.
-func (p *FileStreamStorageProvisioner) Down() error {
+func (p *SQLiteStorageProvisioner) Down() error {
 	if !p.down {
 		p.logger.Info("Database deprovisioning skipped")
 		return nil
 	}
 	p.logger.Debug("Deprovisioning database")
+	db, err := p.setup()
+	if err != nil {
+		p.logger.Error("Database deprovisioning failed", zap.Error(err))
+		return err
+	}
+	defer db.Close()
+	for err == nil {
+		err = goose.Down(db, "migrations")
+	}
 	p.logger.Info("Database deprovisioned")
 	return nil
 }

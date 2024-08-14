@@ -35,7 +35,11 @@ init-dependency:
 	go get -u github.com/stretchr/testify@v1.9.0
 	go get -u github.com/fatih/color@v1.16.0
 	go get -u get gopkg.in/yaml.v2@v2.4.0
-	go get -u github.com/DATA-DOG/go-sqlmock@1.5.2
+	go get -u github.com/DATA-DOG/go-sqlmock@v1.5.2
+	go get -u github.com/pressly/goose/v3@v3.21.1
+	go get -u gorm.io/gorm@v1.25.11
+	go get -u gorm.io/driver/sqlite@v1.5.6
+
 
 mod:
 	go mod download

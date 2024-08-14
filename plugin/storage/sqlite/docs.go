@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package filestream provides the file stream storage implementation.
-package filestream
+// Package sqlite provides the file stream storage implementation.
+package sqlite
