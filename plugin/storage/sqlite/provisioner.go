@@ -109,7 +109,7 @@ func (p *SQLiteStorageProvisioner) setup() (*sql.DB, error) {
 
 	goose.SetLogger(azidb.NewGooseLogger(p.logger))
 	goose.SetBaseFS(embedMigrations)
-	if err := goose.SetDialect("sqlite"); err != nil {
+	if err := goose.SetDialect("sqlite3"); err != nil {
 		return nil, err
 	}
 	return db, nil
