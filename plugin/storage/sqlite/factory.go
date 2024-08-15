@@ -23,7 +23,7 @@ import (
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	azifscntrlstorage "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage"
+	azicentralstorage "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
@@ -74,7 +74,7 @@ func NewSQLiteStorageFactory(storageFctyCfg *SQLiteStorageFactoryConfig) (*SQLit
 
 // CreateCentralStorage returns the central storage.
 func (f *SQLiteStorageFactory) CreateCentralStorage(storageContext *azstorage.StorageContext) (azstorage.CentralStorage, error) {
-	return azifscntrlstorage.NewSQLiteCentralStorage(storageContext, f.sqliteConnector)
+	return azicentralstorage.NewSQLiteCentralStorage(storageContext, f.sqliteConnector)
 }
 
 // CreateProximityStorage returns the proximity storage.
