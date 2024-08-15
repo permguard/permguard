@@ -97,7 +97,7 @@ func (p *SQLiteStorageProvisioner) InitFromViper(v *viper.Viper) error {
 
 // setup sets up the database.
 func (p *SQLiteStorageProvisioner) setup() (*sql.DB, error) {
-	connStr := "./foo.db"
+	connStr := "./permguard.db"
 	db, err := sql.Open("sqlite3", connStr)
 	if err != nil {
 		return nil, err
