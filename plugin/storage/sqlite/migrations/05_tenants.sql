@@ -29,8 +29,8 @@ CREATE TABLE tenants (
 CREATE INDEX tenants_name_idx ON tenants(name);
 CREATE INDEX tenants_accountid_idx ON tenants(account_id);
 
--- Creating the `tenants_changestreams` table
-CREATE TABLE tenants_changestreams (
+-- Creating the `tenant_changestreams` table
+CREATE TABLE tenant_changestreams (
     changestream_id TEXT PRIMARY KEY,
 	operation TEXT NOT NULL,
 	operation_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -42,28 +42,28 @@ CREATE TABLE tenants_changestreams (
 	account_id INTEGER NOT NULL
 );
 
-CREATE INDEX tenants_changestreams_name_idx ON tenants_changestreams(name);
-CREATE INDEX tenants_changestreams_accountid_idx ON tenants_changestreams(account_id);
+CREATE INDEX tenant_changestreams_name_idx ON tenant_changestreams(name);
+CREATE INDEX tenant_changestreams_accountid_idx ON tenant_changestreams(account_id);
 
 -- Trigger to track changes in the `tenants` table after insert
 -- +goose StatementBegin
-CREATE TRIGGER tenants_changestreams_after_insert
+CREATE TRIGGER tenant_changestreams_after_insert
 AFTER INSERT ON tenants
 FOR EACH ROW
 BEGIN
-    INSERT INTO tenants_changestreams (operation, tenant_id, created_at, updated_at, name, account_id)
+    INSERT INTO tenant_changestreams (operation, tenant_id, created_at, updated_at, name, account_id)
     	VALUES ("INSERT", NEW.tenant_id, NEW.created_at, NEW.updated_at, NEW.name, NEW.account_id);
 END;
 -- +goose StatementEnd
 
 -- Trigger to track changes in the `tenants` table after update
 -- +goose StatementBegin
-CREATE TRIGGER tenants_changestreams_after_update
+CREATE TRIGGER tenant_changestreams_after_update
 AFTER UPDATE ON tenants
 FOR EACH ROW
 BEGIN
     UPDATE tenants SET updated_at = CURRENT_TIMESTAMP WHERE tenant_id = OLD.tenant_id;
-    INSERT INTO tenants_changestreams (operation, tenant_id, created_at, updated_at, name, account_id)
+    INSERT INTO tenant_changestreams (operation, tenant_id, created_at, updated_at, name, account_id)
 	    VALUES ("UPDATE", COALESCE(NEW.tenant_id, OLD.tenant_id), COALESCE(NEW.created_at, OLD.created_at)
 				,CURRENT_TIMESTAMP, COALESCE(NEW.name, OLD.name), COALESCE(NEW.account_id, OLD.account_id));
 END;
@@ -71,18 +71,18 @@ END;
 
 -- Trigger to track changes in the `tenants` table after delete
 -- +goose StatementBegin
-CREATE TRIGGER tenants_changestreams_after_delete
+CREATE TRIGGER tenant_changestreams_after_delete
 AFTER DELETE ON tenants
 FOR EACH ROW
 BEGIN
-    INSERT INTO tenants_changestreams (operation, tenant_id, created_at, updated_at, name, account_id)
+    INSERT INTO tenant_changestreams (operation, tenant_id, created_at, updated_at, name, account_id)
     	VALUES ("DELETE", OLD.tenant_id, OLD.created_at, OLD.updated_at, OLD.name, OLD.account_id);
 END;
 -- +goose StatementEnd
 
 -- +goose Down
-DROP TRIGGER IF EXISTS tenants_changestreams_after_insert;
-DROP TRIGGER IF EXISTS tenants_changestreams_after_update;
-DROP TRIGGER IF EXISTS tenants_changestreams_after_delete;
-DROP TABLE IF EXISTS tenants_changestreams;
+DROP TRIGGER IF EXISTS tenant_changestreams_after_insert;
+DROP TRIGGER IF EXISTS tenant_changestreams_after_update;
+DROP TRIGGER IF EXISTS tenant_changestreams_after_delete;
+DROP TABLE IF EXISTS tenant_changestreams;
 DROP TABLE IF EXISTS tenants;

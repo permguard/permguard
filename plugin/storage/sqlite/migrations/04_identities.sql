@@ -32,8 +32,8 @@ CREATE INDEX identities_name_idx ON identities(name);
 CREATE INDEX identities_account_id_idx ON identities(account_id);
 CREATE INDEX identities_identitysource_id_idx ON identities(identitysource_id);
 
--- Creating the `identities_changestreams` table
-CREATE TABLE identities_changestreams (
+-- Creating the `identity_changestreams` table
+CREATE TABLE identity_changestreams (
     changestream_id TEXT PRIMARY KEY,
 	operation TEXT NOT NULL,
 	operation_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -47,30 +47,30 @@ CREATE TABLE identities_changestreams (
 	identitysource_id TEXT NOT NULL
 );
 
-CREATE INDEX identities_changestreams_name_idx ON identities_changestreams(name);
-CREATE INDEX identities_changestreams_account_id_idx ON identities_changestreams(account_id);
-CREATE INDEX identities_changestreams_identitysource_id_idx ON identities_changestreams(identitysource_id);
+CREATE INDEX identity_changestreams_name_idx ON identity_changestreams(name);
+CREATE INDEX identity_changestreams_account_id_idx ON identity_changestreams(account_id);
+CREATE INDEX identity_changestreams_identitysource_id_idx ON identity_changestreams(identitysource_id);
 
 
 -- Trigger to track changes in the `identities` table after insert
 -- +goose StatementBegin
-CREATE TRIGGER identities_changestreams_after_insert
+CREATE TRIGGER identity_changestreams_after_insert
 AFTER INSERT ON identities
 FOR EACH ROW
 BEGIN
-    INSERT INTO identities_changestreams (operation, identity_id, created_at, updated_at, name, kind, account_id, identitysource_id)
+    INSERT INTO identity_changestreams (operation, identity_id, created_at, updated_at, name, kind, account_id, identitysource_id)
     	VALUES ("INSERT", NEW.identity_id, NEW.created_at, NEW.updated_at, NEW.name, NEW.kind, NEW.account_id, NEW.identitysource_id);
 END;
 -- +goose StatementEnd
 
 -- Trigger to track changes in the `identities` table after update
 -- +goose StatementBegin
-CREATE TRIGGER identities_changestreams_after_update
+CREATE TRIGGER identity_changestreams_after_update
 AFTER UPDATE ON identities
 FOR EACH ROW
 BEGIN
     UPDATE identities SET updated_at = CURRENT_TIMESTAMP WHERE identity_id = OLD.identity_id;
-    INSERT INTO identities_changestreams (operation, identity_id, created_at, updated_at, name, kind, account_id, identitysource_id)
+    INSERT INTO identity_changestreams (operation, identity_id, created_at, updated_at, name, kind, account_id, identitysource_id)
 	    VALUES ("UPDATE", COALESCE(NEW.identity_id, OLD.identity_id), COALESCE(NEW.created_at, OLD.created_at),CURRENT_TIMESTAMP
 			, COALESCE(NEW.name, OLD.name), COALESCE(NEW.kind, OLD.kind), COALESCE(NEW.account_id, OLD.account_id), COALESCE(NEW.identitysource_id, OLD.identitysource_id));
 END;
@@ -78,18 +78,18 @@ END;
 
 -- Trigger to track changes in the `identities` table after delete
 -- +goose StatementBegin
-CREATE TRIGGER identities_changestreams_after_delete
+CREATE TRIGGER identity_changestreams_after_delete
 AFTER DELETE ON identities
 FOR EACH ROW
 BEGIN
-    INSERT INTO identities_changestreams (operation, identity_id, created_at, updated_at, name, kind, account_id, identitysource_id)
+    INSERT INTO identity_changestreams (operation, identity_id, created_at, updated_at, name, kind, account_id, identitysource_id)
     	VALUES ("DELETE", OLD.identity_id, OLD.created_at, OLD.updated_at, OLD.name, OLD.kind, OLD.account_id, OLD.identitysource_id);
 END;
 -- +goose StatementEnd
 
 -- +goose Down
-DROP TRIGGER IF EXISTS identities_changestreams_after_insert;
-DROP TRIGGER IF EXISTS identities_changestreams_after_update;
-DROP TRIGGER IF EXISTS identities_changestreams_after_delete;
-DROP TABLE IF EXISTS identities_changestreams;
+DROP TRIGGER IF EXISTS identity_changestreams_after_insert;
+DROP TRIGGER IF EXISTS identity_changestreams_after_update;
+DROP TRIGGER IF EXISTS identity_changestreams_after_delete;
+DROP TABLE IF EXISTS identity_changestreams;
 DROP TABLE IF EXISTS identities;
