@@ -29,8 +29,8 @@ CREATE TABLE identitysources (
 CREATE INDEX identitysources_name_idx ON identitysources(name);
 CREATE INDEX identitysources_accountid_idx ON identitysources(account_id);
 
--- Creating the `identitysources_changestreams` table
-CREATE TABLE identitysources_changestreams (
+-- Creating the `identitysource_changestreams` table
+CREATE TABLE identitysource_changestreams (
     changestream_id TEXT PRIMARY KEY,
 	operation TEXT NOT NULL,
 	operation_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -42,28 +42,28 @@ CREATE TABLE identitysources_changestreams (
 	account_id INTEGER NOT NULL
 );
 
-CREATE INDEX identitysources_changestreams_name_idx ON identitysources_changestreams(name);
-CREATE INDEX identitysources_changestreams_accountid_idx ON identitysources_changestreams(account_id);
+CREATE INDEX identitysource_changestreams_name_idx ON identitysource_changestreams(name);
+CREATE INDEX identitysource_changestreams_accountid_idx ON identitysource_changestreams(account_id);
 
 -- Trigger to track changes in the `identitysources` table after insert
 -- +goose StatementBegin
-CREATE TRIGGER identitysources_changestreams_after_insert
+CREATE TRIGGER identitysource_changestreams_after_insert
 AFTER INSERT ON identitysources
 FOR EACH ROW
 BEGIN
-    INSERT INTO identitysources_changestreams (operation, identitysource_id, created_at, updated_at, name, account_id)
+    INSERT INTO identitysource_changestreams (operation, identitysource_id, created_at, updated_at, name, account_id)
     	VALUES ("INSERT", NEW.identitysource_id, NEW.created_at, NEW.updated_at, NEW.name, NEW.account_id);
 END;
 -- +goose StatementEnd
 
 -- Trigger to track changes in the `identitysources` table after update
 -- +goose StatementBegin
-CREATE TRIGGER identitysources_changestreams_after_update
+CREATE TRIGGER identitysource_changestreams_after_update
 AFTER UPDATE ON identitysources
 FOR EACH ROW
 BEGIN
     UPDATE identitysources SET updated_at = CURRENT_TIMESTAMP WHERE identitysource_id = OLD.identitysource_id;
-    INSERT INTO identitysources_changestreams (operation, identitysource_id, created_at, updated_at, name, account_id)
+    INSERT INTO identitysource_changestreams (operation, identitysource_id, created_at, updated_at, name, account_id)
 	    VALUES ("UPDATE", COALESCE(NEW.identitysource_id, OLD.identitysource_id), COALESCE(NEW.created_at, OLD.created_at)
 				,CURRENT_TIMESTAMP, COALESCE(NEW.name, OLD.name), COALESCE(NEW.account_id, OLD.account_id));
 END;
@@ -71,18 +71,18 @@ END;
 
 -- Trigger to track changes in the `identitysources` table after delete
 -- +goose StatementBegin
-CREATE TRIGGER identitysources_changestreams_after_delete
+CREATE TRIGGER identitysource_changestreams_after_delete
 AFTER DELETE ON identitysources
 FOR EACH ROW
 BEGIN
-    INSERT INTO identitysources_changestreams (operation, identitysource_id, created_at, updated_at, name, account_id)
+    INSERT INTO identitysource_changestreams (operation, identitysource_id, created_at, updated_at, name, account_id)
     	VALUES ("DELETE", OLD.identitysource_id, OLD.created_at, OLD.updated_at, OLD.name, OLD.account_id);
 END;
 -- +goose StatementEnd
 
 -- +goose Down
-DROP TRIGGER IF EXISTS identitysources_changestreams_after_insert;
-DROP TRIGGER IF EXISTS identitysources_changestreams_after_update;
-DROP TRIGGER IF EXISTS identitysources_changestreams_after_delete;
-DROP TABLE IF EXISTS identitysources_changestreams;
+DROP TRIGGER IF EXISTS identitysource_changestreams_after_insert;
+DROP TRIGGER IF EXISTS identitysource_changestreams_after_update;
+DROP TRIGGER IF EXISTS identitysource_changestreams_after_delete;
+DROP TABLE IF EXISTS identitysource_changestreams;
 DROP TABLE IF EXISTS identitysources;

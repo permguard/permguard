@@ -24,8 +24,8 @@ CREATE TABLE accounts (
 
 CREATE INDEX accounts_name_idx ON accounts(name);
 
--- Creating the `accounts_changestreams` table
-CREATE TABLE accounts_changestreams (
+-- Creating the `account_changestreams` table
+CREATE TABLE account_changestreams (
     changestream_id INTEGER PRIMARY KEY,
 	operation TEXT NOT NULL,
 	operation_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -35,27 +35,27 @@ CREATE TABLE accounts_changestreams (
     name TEXT NOT NULL
 );
 
-CREATE INDEX accounts_changestreams_name_idx ON accounts_changestreams(name);
+CREATE INDEX account_changestreams_name_idx ON account_changestreams(name);
 
 -- Trigger to track changes in the `accounts` table after insert
 -- +goose StatementBegin
-CREATE TRIGGER accounts_changestreams_after_insert
+CREATE TRIGGER account_changestreams_after_insert
 AFTER INSERT ON accounts
 FOR EACH ROW
 BEGIN
-    INSERT INTO accounts_changestreams (operation, account_id, created_at, updated_at, name)
+    INSERT INTO account_changestreams (operation, account_id, created_at, updated_at, name)
     	VALUES ("INSERT", NEW.account_id, NEW.created_at, NEW.updated_at, NEW.name);
 END;
 -- +goose StatementEnd
 
 -- Trigger to track changes in the `accounts` table after update
 -- +goose StatementBegin
-CREATE TRIGGER accounts_changestreams_after_update
+CREATE TRIGGER account_changestreams_after_update
 AFTER UPDATE ON accounts
 FOR EACH ROW
 BEGIN
     UPDATE accounts SET updated_at = CURRENT_TIMESTAMP WHERE account_id = OLD.account_id;
-    INSERT INTO accounts_changestreams (operation, account_id, created_at, updated_at, name)
+    INSERT INTO account_changestreams (operation, account_id, created_at, updated_at, name)
 	    VALUES ("UPDATE", COALESCE(NEW.account_id, OLD.account_id), COALESCE(NEW.created_at, OLD.created_at)
 				,CURRENT_TIMESTAMP, COALESCE(NEW.name, OLD.name));
 END;
@@ -63,18 +63,18 @@ END;
 
 -- Trigger to track changes in the `accounts` table after delete
 -- +goose StatementBegin
-CREATE TRIGGER accounts_changestreams_after_delete
+CREATE TRIGGER account_changestreams_after_delete
 AFTER DELETE ON accounts
 FOR EACH ROW
 BEGIN
-    INSERT INTO accounts_changestreams (operation, account_id, created_at, updated_at, name)
+    INSERT INTO account_changestreams (operation, account_id, created_at, updated_at, name)
     	VALUES ("DELETE", OLD.account_id, OLD.created_at, OLD.updated_at, OLD.name);
 END;
 -- +goose StatementEnd
 
 -- +goose Down
-DROP TRIGGER IF EXISTS accounts_changestreams_after_insert;
-DROP TRIGGER IF EXISTS accounts_changestreams_after_update;
-DROP TRIGGER IF EXISTS accounts_changestreams_after_delete;
-DROP TABLE IF EXISTS accounts_changestreams;
+DROP TRIGGER IF EXISTS account_changestreams_after_insert;
+DROP TRIGGER IF EXISTS account_changestreams_after_update;
+DROP TRIGGER IF EXISTS account_changestreams_after_delete;
+DROP TABLE IF EXISTS account_changestreams;
 DROP TABLE IF EXISTS accounts;
