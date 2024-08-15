@@ -32,8 +32,8 @@ CREATE INDEX repositories_accountid_idx ON repositories(account_id);
 -- Creating the `repository_changestreams` table
 CREATE TABLE repository_changestreams (
     changestream_id TEXT PRIMARY KEY,
-	operation TEXT NOT NULL,
-	operation_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	change_type TEXT NOT NULL,
+	change_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     repository_id TEXT NOT NULL,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,

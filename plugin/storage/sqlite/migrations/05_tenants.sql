@@ -32,8 +32,8 @@ CREATE INDEX tenants_accountid_idx ON tenants(account_id);
 -- Creating the `tenant_changestreams` table
 CREATE TABLE tenant_changestreams (
     changestream_id TEXT PRIMARY KEY,
-	operation TEXT NOT NULL,
-	operation_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	change_type TEXT NOT NULL,
+	change_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     tenant_id TEXT NOT NULL,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,

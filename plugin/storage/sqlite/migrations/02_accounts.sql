@@ -27,8 +27,8 @@ CREATE INDEX accounts_name_idx ON accounts(name);
 -- Creating the `account_changestreams` table
 CREATE TABLE account_changestreams (
     changestream_id INTEGER PRIMARY KEY,
-	operation TEXT NOT NULL,
-	operation_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	change_type TEXT NOT NULL,
+	change_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     account_id INTEGER NOT NULL,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,

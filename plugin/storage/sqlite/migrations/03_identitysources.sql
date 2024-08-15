@@ -32,8 +32,8 @@ CREATE INDEX identitysources_accountid_idx ON identitysources(account_id);
 -- Creating the `identitysource_changestreams` table
 CREATE TABLE identitysource_changestreams (
     changestream_id TEXT PRIMARY KEY,
-	operation TEXT NOT NULL,
-	operation_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	change_type TEXT NOT NULL,
+	change_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     identitysource_id TEXT NOT NULL,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
