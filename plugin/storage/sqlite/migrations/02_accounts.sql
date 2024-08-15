@@ -56,8 +56,7 @@ FOR EACH ROW
 BEGIN
     UPDATE accounts SET updated_at = CURRENT_TIMESTAMP WHERE account_id = OLD.account_id;
     INSERT INTO account_changestreams (change_type, account_id, created_at, updated_at, name)
-	    VALUES ("UPDATE", COALESCE(NEW.account_id, OLD.account_id), COALESCE(NEW.created_at, OLD.created_at)
-				,CURRENT_TIMESTAMP, COALESCE(NEW.name, OLD.name));
+	    VALUES ("UPDATE", NEW.account_id, NEW.created_at, CURRENT_TIMESTAMP, NEW.name);
 END;
 -- +goose StatementEnd
 

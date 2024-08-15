@@ -71,8 +71,7 @@ FOR EACH ROW
 BEGIN
     UPDATE identities SET updated_at = CURRENT_TIMESTAMP WHERE identity_id = OLD.identity_id;
     INSERT INTO identity_changestreams (change_type, identity_id, created_at, updated_at, name, kind, account_id, identitysource_id)
-	    VALUES ("UPDATE", COALESCE(NEW.identity_id, OLD.identity_id), COALESCE(NEW.created_at, OLD.created_at),CURRENT_TIMESTAMP
-			, COALESCE(NEW.name, OLD.name), COALESCE(NEW.kind, OLD.kind), COALESCE(NEW.account_id, OLD.account_id), COALESCE(NEW.identitysource_id, OLD.identitysource_id));
+	    VALUES ("UPDATE", NEW.identity_id, NEW.created_at,CURRENT_TIMESTAMP, NEW.name, NEW.kind, NEW.account_id, NEW.identitysource_id);
 END;
 -- +goose StatementEnd
 
