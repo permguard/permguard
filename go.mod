@@ -68,4 +68,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240808171019-573a1156607a // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	moul.io/zapgorm2 v1.3.0 // indirect
 )

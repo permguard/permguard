@@ -18,6 +18,8 @@ package repositories
 
 import (
 	"fmt"
+    "math/rand"
+    "time"
 
 	"gorm.io/gorm"
 
@@ -25,6 +27,15 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azivalidators "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/validators"
 )
+
+func generateAccountID() int64 {
+    const base = 100000000000
+    const maxRange = 900000000000
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+    randomNumber := r.Int63n(maxRange)
+    accountID := base + randomNumber
+    return accountID
+}
 
 // UpsertAccount creates or updates an account.
 func UpsertAccount(db *gorm.DB, isCreate bool, account *azmodels.Account) (*azmodels.Account, error) {
@@ -47,6 +58,7 @@ func UpsertAccount(db *gorm.DB, isCreate bool, account *azmodels.Account) (*azmo
 	var result *gorm.DB
 	if isCreate {
 		dbAccount = Account{
+			AccountID: generateAccountID(),
 			Name: account.Name,
 		}
 		tx := db.Begin()
@@ -55,7 +67,9 @@ func UpsertAccount(db *gorm.DB, isCreate bool, account *azmodels.Account) (*azmo
 			tx.Rollback()
 			return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be created.")
 		}
-		tx.Commit()
+		if err := tx.Commit().Error; err != nil {
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be committed.")
+		}
 	} else {
 		result = db.Where("account_id = ?", account.AccountID).First(&dbAccount)
 		if result.RowsAffected == 0 {

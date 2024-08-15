@@ -7,7 +7,7 @@
         "request": "launch",
         "mode": "auto",
         "program": "./cmd/cli/main.go",
-        "args": ["accounts", "create", "--name", "paperino"],
+        "args": ["accounts", "create", "--name", "business"],
         // "args": ["authn", "tenants",  "create", "--account", "dasfsdf", "--name", "permguard3"],
         // "args": ["schemas",  "list", "--account", "422043848373", "--name", "c", "--tag", "1"],
         // "args": ["schemas",  "delete", "--account", "422043848373", "--name", "car-rental", "--tag", "1.0.0"],
@@ -22,7 +22,7 @@
         // "args": ["accounts",  "create", "prod-car-rental"],
         "env": {
             "PERMGUARD_DEBUG": "TRUE",
-        }
+        },
       },
       {
           "name": "all-in-one",
@@ -31,9 +31,10 @@
           "mode": "auto",
           "program": "./cmd/server-all-in-one/main.go",
           // "args": ["-h"],
+          "cwd": "${workspaceFolder}",
           "env": {
               "PERMGUARD_DEBUG": "TRUE",
-              "PERMGUARD_SERVER_APPDATA": "../../samples/pdp/local-state/permguard1"
+              "PERMGUARD_SERVER_APPDATA": "./samples/pdp/local-state/permguard1"
           }
       }
   ]
