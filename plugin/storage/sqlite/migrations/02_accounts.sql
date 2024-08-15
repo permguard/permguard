@@ -43,7 +43,7 @@ CREATE TRIGGER account_changestreams_after_insert
 AFTER INSERT ON accounts
 FOR EACH ROW
 BEGIN
-    INSERT INTO account_changestreams (operation, account_id, created_at, updated_at, name)
+    INSERT INTO account_changestreams (change_type, account_id, created_at, updated_at, name)
     	VALUES ("INSERT", NEW.account_id, NEW.created_at, NEW.updated_at, NEW.name);
 END;
 -- +goose StatementEnd
@@ -55,7 +55,7 @@ AFTER UPDATE ON accounts
 FOR EACH ROW
 BEGIN
     UPDATE accounts SET updated_at = CURRENT_TIMESTAMP WHERE account_id = OLD.account_id;
-    INSERT INTO account_changestreams (operation, account_id, created_at, updated_at, name)
+    INSERT INTO account_changestreams (change_type, account_id, created_at, updated_at, name)
 	    VALUES ("UPDATE", COALESCE(NEW.account_id, OLD.account_id), COALESCE(NEW.created_at, OLD.created_at)
 				,CURRENT_TIMESTAMP, COALESCE(NEW.name, OLD.name));
 END;
@@ -67,7 +67,7 @@ CREATE TRIGGER account_changestreams_after_delete
 AFTER DELETE ON accounts
 FOR EACH ROW
 BEGIN
-    INSERT INTO account_changestreams (operation, account_id, created_at, updated_at, name)
+    INSERT INTO account_changestreams (change_type, account_id, created_at, updated_at, name)
     	VALUES ("DELETE", OLD.account_id, OLD.created_at, OLD.updated_at, OLD.name);
 END;
 -- +goose StatementEnd

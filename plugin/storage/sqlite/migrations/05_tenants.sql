@@ -51,7 +51,7 @@ CREATE TRIGGER tenant_changestreams_after_insert
 AFTER INSERT ON tenants
 FOR EACH ROW
 BEGIN
-    INSERT INTO tenant_changestreams (operation, tenant_id, created_at, updated_at, name, account_id)
+    INSERT INTO tenant_changestreams (change_type, tenant_id, created_at, updated_at, name, account_id)
     	VALUES ("INSERT", NEW.tenant_id, NEW.created_at, NEW.updated_at, NEW.name, NEW.account_id);
 END;
 -- +goose StatementEnd
@@ -63,7 +63,7 @@ AFTER UPDATE ON tenants
 FOR EACH ROW
 BEGIN
     UPDATE tenants SET updated_at = CURRENT_TIMESTAMP WHERE tenant_id = OLD.tenant_id;
-    INSERT INTO tenant_changestreams (operation, tenant_id, created_at, updated_at, name, account_id)
+    INSERT INTO tenant_changestreams (change_type, tenant_id, created_at, updated_at, name, account_id)
 	    VALUES ("UPDATE", COALESCE(NEW.tenant_id, OLD.tenant_id), COALESCE(NEW.created_at, OLD.created_at)
 				,CURRENT_TIMESTAMP, COALESCE(NEW.name, OLD.name), COALESCE(NEW.account_id, OLD.account_id));
 END;
@@ -75,7 +75,7 @@ CREATE TRIGGER tenant_changestreams_after_delete
 AFTER DELETE ON tenants
 FOR EACH ROW
 BEGIN
-    INSERT INTO tenant_changestreams (operation, tenant_id, created_at, updated_at, name, account_id)
+    INSERT INTO tenant_changestreams (change_type, tenant_id, created_at, updated_at, name, account_id)
     	VALUES ("DELETE", OLD.tenant_id, OLD.created_at, OLD.updated_at, OLD.name, OLD.account_id);
 END;
 -- +goose StatementEnd
