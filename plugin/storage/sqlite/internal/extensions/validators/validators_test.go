@@ -41,7 +41,7 @@ func TestValidateAccountID(t *testing.T) {
 		{"", 15000, false},
 	}
 	for _, tc := range testCases {
-		result := validateAccountID(tc.entity, int64(tc.accountID))
+		result := ValidateAccountID(tc.entity, int64(tc.accountID))
 		if tc.hasError {
 			assert.NotNil(result, "error should not be nil")
 			assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientAccountID, result), "error should be ErrClientAccountID")
@@ -71,7 +71,7 @@ func TestValidateUUID(t *testing.T) {
 		{"", "ddd0e6a0-956b-4967-84a0-15c5e54b0b50", false},
 	}
 	for _, tc := range testCases {
-		result := validateUUID(tc.entity, tc.UUID)
+		result := ValidateUUID(tc.entity, tc.UUID)
 		if tc.hasError {
 			assert.NotNil(result, "error should not be nil")
 			assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientUUID, result), "error should be ErrClientUUID")
@@ -101,7 +101,7 @@ func TestValidateName(t *testing.T) {
 		{"", "nome-valido", false},
 	}
 	for _, tc := range testCases {
-		result := validateName(tc.entity, tc.name)
+		result := ValidateName(tc.entity, tc.name)
 		if tc.hasError {
 			assert.NotNil(result, "error should not be nil")
 			assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientName, result), "error should be ErrClientName")
