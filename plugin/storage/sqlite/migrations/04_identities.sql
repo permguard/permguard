@@ -35,8 +35,8 @@ CREATE INDEX identities_identitysource_id_idx ON identities(identitysource_id);
 -- Creating the `identity_changestreams` table
 CREATE TABLE identity_changestreams (
     changestream_id TEXT PRIMARY KEY,
-	operation TEXT NOT NULL,
-	operation_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	change_type TEXT NOT NULL,
+	change_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     identity_id TEXT NOT NULL,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
