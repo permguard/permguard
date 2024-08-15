@@ -39,6 +39,7 @@ init-dependency:
 	go get -u github.com/pressly/goose/v3@v3.21.1
 	go get -u gorm.io/gorm@v1.25.11
 	go get -u gorm.io/driver/sqlite@v1.5.6
+	go get -u moul.io/zapgorm2@v1.3.0
 
 
 mod:

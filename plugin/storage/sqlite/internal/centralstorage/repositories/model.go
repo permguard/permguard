@@ -24,10 +24,9 @@ import (
 
 // Account is the model for the account table.
 type Account struct {
-	AccountID int64     `gorm:"primaryKey"`
+	AccountID int64     `gorm:"primaryKey;autoIncrement:false"`
 	CreatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP"`
 	UpdatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP"`
-	Status    int16     `gorm:"default:1"`
 	Name      string    `gorm:"type:varchar(254);unique"`
 }
 

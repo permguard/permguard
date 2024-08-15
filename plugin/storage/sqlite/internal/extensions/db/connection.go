@@ -20,14 +20,18 @@ import (
 	"context"
 	"flag"
 	"strings"
+	"sync"
 
 	"github.com/spf13/viper"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"moul.io/zapgorm2"
 
 	"go.uber.org/zap"
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
 const (
@@ -83,6 +87,8 @@ type SQLiteConnector interface {
 // SQLiteConnection holds the connection's configuration.
 type SQLiteConnection struct {
 	config *SQLiteConnectionConfig
+	connLock sync.Mutex
+	db       *gorm.DB
 }
 
 // NewSQLiteConnection creates a connection.
@@ -99,10 +105,33 @@ func (c *SQLiteConnection) GetStorage() azstorage.StorageKind {
 
 // Connect connects to sqlite and return a client.
 func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx context.Context) (*gorm.DB, error) {
-	return nil, nil
+	c.connLock.Lock()
+	defer c.connLock.Unlock()
+	if c.db != nil {
+		return c.db, nil
+	}
+	db, err := gorm.Open(sqlite.Open("./permguard.db"), &gorm.Config{Logger: zapgorm2.New(logger)})
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: cannot connect to sqlite")
+	}
+	c.db = db
+	return c.db, nil
 }
 
 // Disconnect disconnects from sqlite.
 func (c *SQLiteConnection) Disconnect(logger *zap.Logger, ctx context.Context) error {
+	c.connLock.Lock()
+	defer c.connLock.Unlock()
+	if c.db == nil {
+		return nil
+	}
+	sqlDB, err := c.db.DB()
+	if err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: cannot disconnect from sqlite")
+	}
+	err = sqlDB.Close()
+	if err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: cannot disconnect from sqlite")
+	}
 	return nil
 }
