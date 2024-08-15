@@ -53,19 +53,36 @@ func UpsertAccount(db *gorm.DB, isCreate bool, account *azmodels.Account) (*azmo
 		result = tx.Omit("CreatedAt", "UpdatedAt").Create(&dbAccount)
 		if result.RowsAffected == 0 || result.Error != nil {
 			tx.Rollback()
-			return nil, fmt.Errorf("storage: account cannot be created. %w", azerrors.ErrStorageGeneric)
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be created.")
 		}
 		tx.Commit()
 	} else {
 		result = db.Where("account_id = ?", account.AccountID).First(&dbAccount)
 		if result.RowsAffected == 0 {
-			return nil, fmt.Errorf("storage: account cannot be retrieved. %w", azerrors.ErrStorageNotFound)
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
 		}
 		dbAccount.Name = account.Name
 		result = db.Omit("CreatedAt", "UpdatedAt").Where("account_id = ?", account.AccountID).Updates(account)
 		if result.RowsAffected == 0 || result.Error != nil {
-			return nil, fmt.Errorf("storage: account cannot be updated. %w", azerrors.ErrStorageGeneric)
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be updated.")
 		}
+	}
+	return mapAccountToAgentAccount(&dbAccount)
+}
+
+// DeleteAccount deletes an account.
+func DeleteAccount(accountID int64, db *gorm.DB) (*azmodels.Account, error) {
+	if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
+	}
+	var dbAccount Account
+	result := db.Where("account_id = ?", accountID).First(&dbAccount)
+	if result.RowsAffected == 0 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
+	}
+	result = db.Delete(dbAccount)
+	if result.RowsAffected == 0 || result.Error != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be deleted.")
 	}
 	return mapAccountToAgentAccount(&dbAccount)
 }
