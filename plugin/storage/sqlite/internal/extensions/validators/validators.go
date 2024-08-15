@@ -24,8 +24,8 @@ import (
 	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
 )
 
-// validateAccountID validates an account ID.
-func validateAccountID(entity string, accountID int64) error {
+// ValidateAccountID validates an account ID.
+func ValidateAccountID(entity string, accountID int64) error {
 	vAccountID := struct {
 		AccountID int64 `validate:"required,gt=0"`
 	}{AccountID: accountID}
@@ -35,8 +35,8 @@ func validateAccountID(entity string, accountID int64) error {
 	return nil
 }
 
-// validateUUID validates a UUID.
-func validateUUID(entity string, id string) error {
+// ValidateUUID validates a UUID.
+func ValidateUUID(entity string, id string) error {
 	vID := struct {
 		ID string `validate:"required,uuid4"`
 	}{ID: id}
@@ -46,8 +46,8 @@ func validateUUID(entity string, id string) error {
 	return nil
 }
 
-// validateName validates a name.
-func validateName(entity string, name string) error {
+// ValidateName validates a name.
+func ValidateName(entity string, name string) error {
 	if name != strings.ToLower(name) {
 		return fmt.Errorf("storage: %s name %s is not valid. It must be in lower case. %w", entity, name, azerrors.ErrClientName)
 	}
