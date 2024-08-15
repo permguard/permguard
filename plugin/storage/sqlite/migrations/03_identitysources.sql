@@ -51,7 +51,7 @@ CREATE TRIGGER identitysource_changestreams_after_insert
 AFTER INSERT ON identitysources
 FOR EACH ROW
 BEGIN
-    INSERT INTO identitysource_changestreams (operation, identitysource_id, created_at, updated_at, name, account_id)
+    INSERT INTO identitysource_changestreams (change_type, identitysource_id, created_at, updated_at, name, account_id)
     	VALUES ("INSERT", NEW.identitysource_id, NEW.created_at, NEW.updated_at, NEW.name, NEW.account_id);
 END;
 -- +goose StatementEnd
@@ -63,7 +63,7 @@ AFTER UPDATE ON identitysources
 FOR EACH ROW
 BEGIN
     UPDATE identitysources SET updated_at = CURRENT_TIMESTAMP WHERE identitysource_id = OLD.identitysource_id;
-    INSERT INTO identitysource_changestreams (operation, identitysource_id, created_at, updated_at, name, account_id)
+    INSERT INTO identitysource_changestreams (change_type, identitysource_id, created_at, updated_at, name, account_id)
 	    VALUES ("UPDATE", COALESCE(NEW.identitysource_id, OLD.identitysource_id), COALESCE(NEW.created_at, OLD.created_at)
 				,CURRENT_TIMESTAMP, COALESCE(NEW.name, OLD.name), COALESCE(NEW.account_id, OLD.account_id));
 END;
@@ -75,7 +75,7 @@ CREATE TRIGGER identitysource_changestreams_after_delete
 AFTER DELETE ON identitysources
 FOR EACH ROW
 BEGIN
-    INSERT INTO identitysource_changestreams (operation, identitysource_id, created_at, updated_at, name, account_id)
+    INSERT INTO identitysource_changestreams (change_type, identitysource_id, created_at, updated_at, name, account_id)
     	VALUES ("DELETE", OLD.identitysource_id, OLD.created_at, OLD.updated_at, OLD.name, OLD.account_id);
 END;
 -- +goose StatementEnd
