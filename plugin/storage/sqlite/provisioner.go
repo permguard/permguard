@@ -20,17 +20,20 @@ import (
 	"database/sql"
 	"embed"
 	"flag"
+	"path/filepath"
+	"strings"
 
+	_ "github.com/mattn/go-sqlite3"
+	"github.com/pressly/goose/v3"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
-	"github.com/pressly/goose/v3"
-	_ "github.com/mattn/go-sqlite3"
 
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
 const (
+	flagPath = "filepath"
 	flagUp   = "up"
 	flagDown = "down"
 )
@@ -43,6 +46,7 @@ type SQLiteStorageProvisioner struct {
 	debug    bool
 	logLevel string
 	logger   *zap.Logger
+	filePath string
 	up       bool
 	down     bool
 	config   *azidb.SQLiteConnectionConfig
@@ -65,6 +69,7 @@ func (p *SQLiteStorageProvisioner) AddFlags(flagSet *flag.FlagSet) error {
 	if err != nil {
 		return err
 	}
+	flagSet.String(flagPath, ".", "file path to the database")
 	flagSet.Bool(flagUp, false, "provision the database")
 	flagSet.Bool(flagDown, false, "deprovision the database")
 	err = p.config.AddFlags(flagSet)
@@ -82,6 +87,7 @@ func (p *SQLiteStorageProvisioner) InitFromViper(v *viper.Viper) error {
 	}
 	p.debug = debug
 	p.logLevel = logLevel
+	p.filePath = v.GetString(flagPath)
 	p.up = v.GetBool(flagUp)
 	p.down = v.GetBool(flagDown)
 	err = p.config.InitFromViper(v)
@@ -97,8 +103,13 @@ func (p *SQLiteStorageProvisioner) InitFromViper(v *viper.Viper) error {
 
 // setup sets up the database.
 func (p *SQLiteStorageProvisioner) setup() (*sql.DB, error) {
-	connStr := "./permguard.db"
-	db, err := sql.Open("sqlite3", connStr)
+	filePath := p.filePath
+	dbName := p.config.GetDBName()
+    if !strings.HasSuffix(dbName, ".db") {
+        dbName += ".db"
+    }
+    dbPath := filepath.Join(filePath, dbName)
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, err
 	}

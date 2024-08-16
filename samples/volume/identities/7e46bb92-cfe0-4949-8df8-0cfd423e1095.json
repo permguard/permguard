@@ -1,0 +1,11 @@
+{
+  "items": [
+    {
+      "user_uur": "uur:581616507495:permguard:identities:iam:user/nicola.gallo@nitroagility.com",
+      "policies": [
+        "uur:581616507495:permguard:identities:iam:policy/person-reader",
+        "uur:581616507495:permguard:identities:iam:policy/person-not-reader"
+      ]
+    }
+  ]
+}

@@ -28,6 +28,8 @@ type RuntimeContext interface {
 	GetLogger() *zap.Logger
 	// GetParentLoggerMessage returns the parent logger message.
 	GetParentLoggerMessage() string
+	// GetAppData returns the application data.
+	GetAppData() string
 	// GetContext returns the context.
 	GetContext() context.Context
 }
