@@ -29,7 +29,15 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrServerInfrastructure, "storage: cannot connect to sqlite.")
 	}
-	return azirepo.UpsertAccount(db, true, account)
+	dbaccount := &azirepo.Account{
+		AccountID: account.AccountID,
+		Name:      account.Name,
+	}
+	dbaccount, err = azirepo.UpsertAccount(db, true, dbaccount)
+	if err != nil {
+		return nil, err
+	}
+	return mapAccountToAgentAccount(dbaccount)
 }
 
 // UpdateAccount updates an account.
@@ -39,7 +47,15 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrServerInfrastructure, "storage: cannot connect to sqlite.")
 	}
-	return azirepo.UpsertAccount(db, false, account)
+	dbaccount := &azirepo.Account{
+		AccountID: account.AccountID,
+		Name:      account.Name,
+	}
+	dbaccount, err = azirepo.UpsertAccount(db, false, dbaccount)
+	if err != nil {
+		return nil, err
+	}
+	return mapAccountToAgentAccount(dbaccount)
 }
 
 // DeleteAccount deletes an account.
