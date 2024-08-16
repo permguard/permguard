@@ -21,6 +21,7 @@ import (
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
+	grpc "google.golang.org/grpc"
 )
 
 // AAPService is the service for the AAP.
@@ -91,7 +92,7 @@ func (s V1AAPServer) DeleteAccount(ctx context.Context, accountRequest *AccountD
 }
 
 // GetAllAccounts returns all the accounts.
-func (s V1AAPServer) GetAllAccounts(ctx context.Context, accountRequest *AccountGetRequest) (*AccountListResponse, error) {
+func (s *V1AAPServer) GetAllAccounts(accountRequest *AccountGetRequest, stream grpc.ServerStreamingServer[AccountResponse]) error {
 	fields := map[string]any{}
 	if accountRequest.AccountID != nil {
 		fields[azmodels.FieldAccountAccountID] = *accountRequest.AccountID
@@ -102,19 +103,16 @@ func (s V1AAPServer) GetAllAccounts(ctx context.Context, accountRequest *Account
 	}
 	accounts, err := s.service.GetAllAccounts(fields)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	accountList := &AccountListResponse{
-		Accounts: make([]*AccountResponse, len(accounts)),
-	}
-	for i, account := range accounts {
+	for _, account := range accounts {
 		cvtedAccount, err := MapAgentAccountToGrpcAccountResponse(&account)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		accountList.Accounts[i] = cvtedAccount
+		stream.SendMsg(cvtedAccount)
 	}
-	return accountList, nil
+	return nil
 }
 
 // CreateIdentitySource creates a new identity source.

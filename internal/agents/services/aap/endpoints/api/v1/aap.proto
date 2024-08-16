@@ -55,11 +55,6 @@ message AccountResponse {
     string Name = 4;
 }
 
-// AccountList is a list of Accounts
-message AccountListResponse {
-	repeated AccountResponse Accounts = 1;
-}
-
 // Tenants
 
 // Tenant get request
@@ -202,7 +197,7 @@ service V1AAPService {
 	// Delete an account
 	rpc DeleteAccount(AccountDeleteRequest) returns (AccountResponse) {}
 	// Get all Accounts
-	rpc GetAllAccounts(AccountGetRequest) returns (AccountListResponse) {}
+	rpc GetAllAccounts(AccountGetRequest) returns (stream AccountResponse) {}
 
 	// Create an identity source
 	rpc CreateIdentitySource(IdentitySourceCreateRequest) returns (IdentitySourceResponse) {}
