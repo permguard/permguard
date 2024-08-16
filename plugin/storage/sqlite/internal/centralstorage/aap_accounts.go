@@ -33,9 +33,14 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 		AccountID: account.AccountID,
 		Name:      account.Name,
 	}
-	dbaccount, err = azirepo.UpsertAccount(db, true, dbaccount)
+	tx := db.Begin()
+	dbaccount, err = azirepo.UpsertAccount(tx, true, dbaccount)
 	if err != nil {
+		tx.Rollback()
 		return nil, err
+	}
+	if err := tx.Commit().Error; err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be committed.")
 	}
 	return mapAccountToAgentAccount(dbaccount)
 }
@@ -51,17 +56,30 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 		AccountID: account.AccountID,
 		Name:      account.Name,
 	}
+	tx := db.Begin()
 	dbaccount, err = azirepo.UpsertAccount(db, false, dbaccount)
 	if err != nil {
+		tx.Rollback()
 		return nil, err
+	}
+	if err := tx.Commit().Error; err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be committed.")
 	}
 	return mapAccountToAgentAccount(dbaccount)
 }
 
 // DeleteAccount deletes an account.
 func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Account, error) {
-	// logger := s.ctx.GetLogger()
-	return nil, nil
+	logger := s.ctx.GetLogger()
+	db, err := s.sqliteConnector.Connect(logger, s.ctx)
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrServerInfrastructure, "storage: cannot connect to sqlite.")
+	}
+	dbaccount, err := azirepo.DeleteAccount(db, accountID)
+	if err != nil {
+		return nil, err
+	}
+	return mapAccountToAgentAccount(dbaccount)
 }
 
 // GetAllAccounts returns all accounts.
