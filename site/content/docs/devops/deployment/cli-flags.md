@@ -61,6 +61,10 @@ Irrespective of the chosen distribution, the binary supports the following flags
 <details>
   <summary>SQLITE</summary>
 
+**--stroage.engine.sqlite.dbname**: *sqlite database name (default `permguard`).*
+
+---
+
 </details>
 
 ---
@@ -131,3 +135,12 @@ Irrespective of the chosen distribution, the binary supports the following flags
 </details>
 
 ---
+
+<details>
+  <summary>SQLITE</summary>
+
+**--stroage.engine.sqlite.filepath**: *sqlite database file path (default `.`).*
+
+---
+
+</details>
