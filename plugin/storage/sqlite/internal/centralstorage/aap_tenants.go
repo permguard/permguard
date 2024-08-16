@@ -30,13 +30,13 @@ func (s SQLiteCentralStorageAAP) CreateTenant(tenant *azmodels.Tenant) (*azmodel
 	return nil, nil
 }
 
-// UpdateTenant updates an tenant.
+// UpdateTenant updates a tenant.
 func (s SQLiteCentralStorageAAP) UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }
 
-// DeleteTenant deletes an tenant.
+// DeleteTenant deletes a tenant.
 func (s SQLiteCentralStorageAAP) DeleteTenant(accountID int64, tenantID string) (*azmodels.Tenant, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil

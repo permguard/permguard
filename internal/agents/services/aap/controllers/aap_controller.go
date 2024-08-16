@@ -107,12 +107,12 @@ func (s AAPController) CreateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, 
 	return s.storage.CreateTenant(tenant)
 }
 
-// UpdateTenant updates an tenant.
+// UpdateTenant updates a tenant.
 func (s AAPController) UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error) {
 	return s.storage.UpdateTenant(tenant)
 }
 
-// DeleteTenant delete an tenant.
+// DeleteTenant delete a tenant.
 func (s AAPController) DeleteTenant(accountID int64, tenantID string) (*azmodels.Tenant, error) {
 	return s.storage.DeleteTenant(accountID, tenantID)
 }

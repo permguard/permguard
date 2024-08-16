@@ -238,7 +238,7 @@ func (s V1AAPServer) CreateTenant(ctx context.Context, tenantRequest *TenantCrea
 	return MapAgentTenantToGrpcTenantResponse(tenant)
 }
 
-// UpdateTenant updates an tenant.
+// UpdateTenant updates a tenant.
 func (s V1AAPServer) UpdateTenant(ctx context.Context, tenantRequest *TenantUpdateRequest) (*TenantResponse, error) {
 	tenant, err := s.service.UpdateTenant((&azmodels.Tenant{TenantID: tenantRequest.TenantID, AccountID: tenantRequest.AccountID, Name: tenantRequest.Name}))
 	if err != nil {
@@ -247,7 +247,7 @@ func (s V1AAPServer) UpdateTenant(ctx context.Context, tenantRequest *TenantUpda
 	return MapAgentTenantToGrpcTenantResponse(tenant)
 }
 
-// DeleteTenant deletes an tenant.
+// DeleteTenant deletes a tenant.
 func (s V1AAPServer) DeleteTenant(ctx context.Context, tenantRequest *TenantDeleteRequest) (*TenantResponse, error) {
 	tenant, err := s.service.DeleteTenant(tenantRequest.AccountID, tenantRequest.TenantID)
 	if err != nil {
