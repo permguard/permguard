@@ -37,7 +37,7 @@ func (c *GrpcAAPClient) CreateTenant(accountID int64, name string) (*azmodels.Te
 	return azapiv1aap.MapGrpcTenantResponseToAgentTenant(tenant)
 }
 
-// UpdateTenant updates an tenant.
+// UpdateTenant updates a tenant.
 func (c *GrpcAAPClient) UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error) {
 	if tenant == nil {
 		return nil, errors.New("client: invalid tenant instance")
@@ -57,7 +57,7 @@ func (c *GrpcAAPClient) UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant,
 	return azapiv1aap.MapGrpcTenantResponseToAgentTenant(updatedTenant)
 }
 
-// DeleteTenant deletes an tenant.
+// DeleteTenant deletes a tenant.
 func (c *GrpcAAPClient) DeleteTenant(accountID int64, tenantID string) (*azmodels.Tenant, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
