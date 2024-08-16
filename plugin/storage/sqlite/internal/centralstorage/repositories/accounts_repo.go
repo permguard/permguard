@@ -61,14 +61,9 @@ func UpsertAccount(db *gorm.DB, isCreate bool, account *Account) (*Account, erro
 			AccountID: generateAccountID(),
 			Name: account.Name,
 		}
-		tx := db.Begin()
-		result = tx.Omit("CreatedAt", "UpdatedAt").Create(&dbAccount)
+		result = db.Omit("CreatedAt", "UpdatedAt").Create(&dbAccount)
 		if result.RowsAffected == 0 || result.Error != nil {
-			tx.Rollback()
 			return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be created.")
-		}
-		if err := tx.Commit().Error; err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be committed.")
 		}
 	} else {
 		result = db.Where("account_id = ?", account.AccountID).First(&dbAccount)
@@ -85,7 +80,7 @@ func UpsertAccount(db *gorm.DB, isCreate bool, account *Account) (*Account, erro
 }
 
 // DeleteAccount deletes an account.
-func DeleteAccount(accountID int64, db *gorm.DB) (*Account, error) {
+func DeleteAccount(db *gorm.DB, accountID int64) (*Account, error) {
 	if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
 	}
