@@ -103,21 +103,21 @@ func FetchAccounts(db *gorm.DB, filterID *int64, filterName *string) ([]Account,
 	if filterID != nil {
 		accountID := *filterID
 		if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
-			return nil, fmt.Errorf("storage: invalid account id %d. %w", accountID, azerrors.ErrClientAccountID)
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
 		}
 		query = query.Where("account_id = ?", accountID)
 	}
 	if filterName != nil {
 		accountName := *filterName
 		if err := azivalidators.ValidateName("account", accountName); err != nil {
-			return nil, fmt.Errorf("storage: invalid account name %q. %w", accountName, azerrors.ErrClientName)
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid account name %s (it is required to be lower case).", accountName))
 		}
 		accountName = "%" + accountName + "%"
 		query = query.Where("name LIKE ?", accountName)
 	}
 	result := query.Find(&dbAccounts)
 	if result.Error != nil {
-		return nil, fmt.Errorf("storage: accounts cannot be retrieved. %w", azerrors.ErrStorageNotFound)
+		return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
 	}
 	return dbAccounts, nil
 }
