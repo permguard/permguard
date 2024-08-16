@@ -14,14 +14,15 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package repositories
+package centralstorage
 
 import (
+	azdbmodels "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 )
 
 // mapAccountToAgentAccount maps an Account to a model Account.
-func mapAccountToAgentAccount(account *Account) (*azmodels.Account, error) {
+func mapAccountToAgentAccount(account *azdbmodels.Account) (*azmodels.Account, error) {
 	return &azmodels.Account{
 		AccountID: account.AccountID,
 		CreatedAt: account.CreatedAt,

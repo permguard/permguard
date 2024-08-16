@@ -23,11 +23,11 @@ import (
 
 	"gorm.io/gorm"
 
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azivalidators "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/validators"
 )
 
+// generateAccountID generates a random account id.
 func generateAccountID() int64 {
     const base = 100000000000
     const maxRange = 900000000000
@@ -38,7 +38,7 @@ func generateAccountID() int64 {
 }
 
 // UpsertAccount creates or updates an account.
-func UpsertAccount(db *gorm.DB, isCreate bool, account *azmodels.Account) (*azmodels.Account, error) {
+func UpsertAccount(db *gorm.DB, isCreate bool, account *Account) (*Account, error) {
 	if account == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrInvalidInputParameter, "storage: account is nil.")
 	}
@@ -81,11 +81,11 @@ func UpsertAccount(db *gorm.DB, isCreate bool, account *azmodels.Account) (*azmo
 			return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be updated.")
 		}
 	}
-	return mapAccountToAgentAccount(&dbAccount)
+	return &dbAccount, nil
 }
 
 // DeleteAccount deletes an account.
-func DeleteAccount(accountID int64, db *gorm.DB) (*azmodels.Account, error) {
+func DeleteAccount(accountID int64, db *gorm.DB) (*Account, error) {
 	if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
 	}
@@ -98,5 +98,5 @@ func DeleteAccount(accountID int64, db *gorm.DB) (*azmodels.Account, error) {
 	if result.RowsAffected == 0 || result.Error != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be deleted.")
 	}
-	return mapAccountToAgentAccount(&dbAccount)
+	return &dbAccount, nil
 }
