@@ -95,3 +95,29 @@ func DeleteAccount(db *gorm.DB, accountID int64) (*Account, error) {
 	}
 	return &dbAccount, nil
 }
+
+// FetchAccounts retrieves accounts.
+func FetchAccounts(db *gorm.DB, filterID *int64, filterName *string) ([]Account, error) {
+	var dbAccounts []Account
+	query := db
+	if filterID != nil {
+		accountID := *filterID
+		if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
+			return nil, fmt.Errorf("storage: invalid account id %d. %w", accountID, azerrors.ErrClientAccountID)
+		}
+		query = query.Where("account_id = ?", accountID)
+	}
+	if filterName != nil {
+		accountName := *filterName
+		if err := azivalidators.ValidateName("account", accountName); err != nil {
+			return nil, fmt.Errorf("storage: invalid account name %q. %w", accountName, azerrors.ErrClientName)
+		}
+		accountName = "%" + accountName + "%"
+		query = query.Where("name LIKE ?", accountName)
+	}
+	result := query.Find(&dbAccounts)
+	if result.Error != nil {
+		return nil, fmt.Errorf("storage: accounts cannot be retrieved. %w", azerrors.ErrStorageNotFound)
+	}
+	return dbAccounts, nil
+}
