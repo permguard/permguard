@@ -72,3 +72,8 @@ func (e *EndpointContext) GetParentLoggerMessage() string {
 func (e *EndpointContext) GetLogMessage(message string) string {
 	return fmt.Sprintf("%s: %s", e.GetParentLoggerMessage(), message)
 }
+
+// GetAppData returns the application data.
+func (e *EndpointContext) GetAppData() string {
+	return e.parentCtx.GetAppData()
+}

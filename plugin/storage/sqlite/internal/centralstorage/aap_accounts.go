@@ -17,8 +17,6 @@
 package centralstorage
 
 import (
-	"context"
-
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azirepo "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
@@ -27,7 +25,7 @@ import (
 // CreateAccount creates a new account.
 func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmodels.Account, error) {
 	logger := s.ctx.GetLogger()
-	db, err := s.sqliteConnector.Connect(logger, context.Background())
+	db, err := s.sqliteConnector.Connect(logger, s.ctx)
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrServerInfrastructure, "storage: cannot connect to sqlite.")
 	}
@@ -37,7 +35,7 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 // UpdateAccount updates an account.
 func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmodels.Account, error) {
 	logger := s.ctx.GetLogger()
-	db, err := s.sqliteConnector.Connect(logger, context.Background())
+	db, err := s.sqliteConnector.Connect(logger, s.ctx)
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrServerInfrastructure, "storage: cannot connect to sqlite.")
 	}

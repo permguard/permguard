@@ -34,7 +34,7 @@
           "cwd": "${workspaceFolder}",
           "env": {
               "PERMGUARD_DEBUG": "TRUE",
-              "PERMGUARD_SERVER_APPDATA": "./samples/pdp/local-state/permguard1"
+              "PERMGUARD_SERVER_APPDATA": "./samples/volume"
           }
       }
   ]
