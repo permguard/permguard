@@ -32,7 +32,7 @@ import (
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
 // Requires gRPC-Go v1.64.0 or later.
-const _ = grpc.SupportPackageIsVersion8
+const _ = grpc.SupportPackageIsVersion9
 
 const (
 	V1AAPService_CreateAccount_FullMethodName         = "/accountadministrationpoint.V1AAPService/CreateAccount"
@@ -66,7 +66,7 @@ type V1AAPServiceClient interface {
 	// Delete an account
 	DeleteAccount(ctx context.Context, in *AccountDeleteRequest, opts ...grpc.CallOption) (*AccountResponse, error)
 	// Get all Accounts
-	GetAllAccounts(ctx context.Context, in *AccountGetRequest, opts ...grpc.CallOption) (*AccountListResponse, error)
+	GetAllAccounts(ctx context.Context, in *AccountGetRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AccountResponse], error)
 	// Create an identity source
 	CreateIdentitySource(ctx context.Context, in *IdentitySourceCreateRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error)
 	// Update an identity source
@@ -131,15 +131,24 @@ func (c *v1AAPServiceClient) DeleteAccount(ctx context.Context, in *AccountDelet
 	return out, nil
 }
 
-func (c *v1AAPServiceClient) GetAllAccounts(ctx context.Context, in *AccountGetRequest, opts ...grpc.CallOption) (*AccountListResponse, error) {
+func (c *v1AAPServiceClient) GetAllAccounts(ctx context.Context, in *AccountGetRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AccountResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(AccountListResponse)
-	err := c.cc.Invoke(ctx, V1AAPService_GetAllAccounts_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &V1AAPService_ServiceDesc.Streams[0], V1AAPService_GetAllAccounts_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[AccountGetRequest, AccountResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type V1AAPService_GetAllAccountsClient = grpc.ServerStreamingClient[AccountResponse]
 
 func (c *v1AAPServiceClient) CreateIdentitySource(ctx context.Context, in *IdentitySourceCreateRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -274,7 +283,7 @@ type V1AAPServiceServer interface {
 	// Delete an account
 	DeleteAccount(context.Context, *AccountDeleteRequest) (*AccountResponse, error)
 	// Get all Accounts
-	GetAllAccounts(context.Context, *AccountGetRequest) (*AccountListResponse, error)
+	GetAllAccounts(*AccountGetRequest, grpc.ServerStreamingServer[AccountResponse]) error
 	// Create an identity source
 	CreateIdentitySource(context.Context, *IdentitySourceCreateRequest) (*IdentitySourceResponse, error)
 	// Update an identity source
@@ -318,8 +327,8 @@ func (UnimplementedV1AAPServiceServer) UpdateAccount(context.Context, *AccountUp
 func (UnimplementedV1AAPServiceServer) DeleteAccount(context.Context, *AccountDeleteRequest) (*AccountResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteAccount not implemented")
 }
-func (UnimplementedV1AAPServiceServer) GetAllAccounts(context.Context, *AccountGetRequest) (*AccountListResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetAllAccounts not implemented")
+func (UnimplementedV1AAPServiceServer) GetAllAccounts(*AccountGetRequest, grpc.ServerStreamingServer[AccountResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method GetAllAccounts not implemented")
 }
 func (UnimplementedV1AAPServiceServer) CreateIdentitySource(context.Context, *IdentitySourceCreateRequest) (*IdentitySourceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateIdentitySource not implemented")
@@ -432,23 +441,16 @@ func _V1AAPService_DeleteAccount_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_GetAllAccounts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AccountGetRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _V1AAPService_GetAllAccounts_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(AccountGetRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(V1AAPServiceServer).GetAllAccounts(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: V1AAPService_GetAllAccounts_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1AAPServiceServer).GetAllAccounts(ctx, req.(*AccountGetRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(V1AAPServiceServer).GetAllAccounts(m, &grpc.GenericServerStream[AccountGetRequest, AccountResponse]{ServerStream: stream})
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type V1AAPService_GetAllAccountsServer = grpc.ServerStreamingServer[AccountResponse]
 
 func _V1AAPService_CreateIdentitySource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(IdentitySourceCreateRequest)
@@ -686,10 +688,6 @@ var V1AAPService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _V1AAPService_DeleteAccount_Handler,
 		},
 		{
-			MethodName: "GetAllAccounts",
-			Handler:    _V1AAPService_GetAllAccounts_Handler,
-		},
-		{
 			MethodName: "CreateIdentitySource",
 			Handler:    _V1AAPService_CreateIdentitySource_Handler,
 		},
@@ -738,6 +736,12 @@ var V1AAPService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _V1AAPService_GetAllTenants_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "GetAllAccounts",
+			Handler:       _V1AAPService_GetAllAccounts_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "internal/agents/services/aap/endpoints/api/v1/aap.proto",
 }

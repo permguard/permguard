@@ -18,29 +18,27 @@ clean:
 	rm -f result.json
 
 init-dependency:
-	go get -u golang.org/x/crypto@v0.16.0
-	go get -u golang.org/x/net@v0.23.0
-	go get -u github.com/go-playground/validator/v10@v10.15.1
-	go get -u github.com/google/uuid@v1.3.1
-	go get -u github.com/google/go-cmp/cmp@v0.6.0
-	go get -u github.com/davecgh/go-spew/spew@v1.1.1
-	go get -u github.com/xeipuuv/gojsonschema@v1.2.0
-	go get -u github.com/jinzhu/copier@v0.4.0
-	go get -u go.uber.org/zap@v1.26.0
+	go get -u golang.org/x/crypto
+	go get -u golang.org/x/net
 	go get -u github.com/go-playground/validator/v10
-	go get -u google.golang.org/grpc@v1.59.0
-	go get -u github.com/spf13/cobra@v1.8.0
+	go get -u github.com/google/uuid
+	go get -u github.com/davecgh/go-spew
+	go get -u github.com/xeipuuv/gojsonschema
+	go get -u github.com/jinzhu/copier
+	go get -u go.uber.org/zap
+	go get -u github.com/go-playground/validator/v10
+	go get -u google.golang.org/grpc
+	go get -u github.com/spf13/cobra
 	go get -u github.com/spf13/viper
-	go get -u github.com/spf13/viper v1.18.2
-	go get -u github.com/stretchr/testify@v1.9.0
-	go get -u github.com/fatih/color@v1.16.0
-	go get -u get gopkg.in/yaml.v2@v2.4.0
-	go get -u github.com/DATA-DOG/go-sqlmock@v1.5.2
-	go get -u github.com/pressly/goose/v3@v3.21.1
-	go get -u gorm.io/gorm@v1.25.11
-	go get -u gorm.io/driver/sqlite@v1.5.6
-	go get -u moul.io/zapgorm2@v1.3.0
-
+	go get -u github.com/spf13/viper
+	go get -u github.com/stretchr/testify
+	go get -u github.com/fatih/color
+	go get -u get gopkg.in/yaml.v2
+	go get -u github.com/DATA-DOG/go-sqlmock
+	go get -u github.com/pressly/goose/v3
+	go get -u gorm.io/gorm
+	go get -u gorm.io/driver/sqlite
+	go get -u moul.io/zapgorm2
 
 mod:
 	go mod download
