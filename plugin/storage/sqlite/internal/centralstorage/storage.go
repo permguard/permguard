@@ -17,10 +17,22 @@
 package centralstorage
 
 import (
-	//azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	"gorm.io/gorm"
+
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
+
+// sqliteConnect connects to the sqlite database.
+func sqliteConnect(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector) (*gorm.DB, error) {
+	logger := ctx.GetLogger()
+	db, err := sqliteConnector.Connect(logger, ctx)
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrServerInfrastructure, "storage: cannot connect to sqlite.")
+	}
+	return db, nil
+}
 
 // SQLiteCentralStorage implements the sqlite central storage.
 type SQLiteCentralStorage struct {

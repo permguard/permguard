@@ -26,10 +26,9 @@ import (
 
 // CreateAccount creates a new account.
 func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmodels.Account, error) {
-	logger := s.ctx.GetLogger()
-	db, err := s.sqliteConnector.Connect(logger, s.ctx)
+	db, err := sqliteConnect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrServerInfrastructure, "storage: cannot connect to sqlite.")
+		return nil, err
 	}
 	dbaccount := &azirepo.Account{
 		AccountID: account.AccountID,
@@ -49,10 +48,9 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 
 // UpdateAccount updates an account.
 func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmodels.Account, error) {
-	logger := s.ctx.GetLogger()
-	db, err := s.sqliteConnector.Connect(logger, s.ctx)
+	db, err := sqliteConnect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrServerInfrastructure, "storage: cannot connect to sqlite.")
+		return nil, err
 	}
 	dbaccount := &azirepo.Account{
 		AccountID: account.AccountID,
@@ -72,10 +70,9 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 
 // DeleteAccount deletes an account.
 func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Account, error) {
-	logger := s.ctx.GetLogger()
-	db, err := s.sqliteConnector.Connect(logger, s.ctx)
+	db, err := sqliteConnect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrServerInfrastructure, "storage: cannot connect to sqlite.")
+		return nil, err
 	}
 	dbaccount, err := azirepo.DeleteAccount(db, accountID)
 	if err != nil {
@@ -86,10 +83,9 @@ func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Accou
 
 // GetAllAccounts returns all accounts.
 func (s SQLiteCentralStorageAAP) GetAllAccounts(fields map[string]any) ([]azmodels.Account, error) {
-	logger := s.ctx.GetLogger()
-	db, err := s.sqliteConnector.Connect(logger, s.ctx)
+	db, err := sqliteConnect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrServerInfrastructure, "storage: cannot connect to sqlite.")
+		return nil, err
 	}
 	var filterID *int64
 	if _, ok := fields[azmodels.FieldAccountAccountID]; ok {
