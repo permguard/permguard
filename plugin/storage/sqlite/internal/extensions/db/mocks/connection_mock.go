@@ -17,11 +17,10 @@
 package mocks
 
 import (
-	"context"
-
-	mock "github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
+
+	mock "github.com/stretchr/testify/mock"
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 )
@@ -45,18 +44,18 @@ func (c *SQLiteConnectionMock) GetStorage() azstorage.StorageKind {
 }
 
 // Connect connects to the storage.
-func (c *SQLiteConnectionMock) Connect(logger *zap.Logger, ctx context.Context) (*gorm.DB, error) {
+func (c *SQLiteConnectionMock) Connect(logger *zap.Logger, ctx *azstorage.StorageContext) (*gorm.DB, error) {
 	ret := c.Called(logger, ctx)
 
 	var r0 *gorm.DB
-	if rf, ok := ret.Get(0).(func(*zap.Logger, context.Context) *gorm.DB); ok {
+	if rf, ok := ret.Get(0).(func(*zap.Logger, *azstorage.StorageContext) *gorm.DB); ok {
 		r0 = rf(logger, ctx)
 	} else {
 		r0 = ret.Get(0).(*gorm.DB)
 	}
 
 	var r1 error = nil
-	if rf, ok := ret.Get(1).(func(*zap.Logger, context.Context) error); ok {
+	if rf, ok := ret.Get(1).(func(*zap.Logger, *azstorage.StorageContext) error); ok {
 		r1 = rf(logger, ctx)
 	} else {
 		if ret.Get(1) != nil {
@@ -67,11 +66,11 @@ func (c *SQLiteConnectionMock) Connect(logger *zap.Logger, ctx context.Context) 
 }
 
 // Disconnect disconnects the connection.
-func (c *SQLiteConnectionMock) Disconnect(logger *zap.Logger, ctx context.Context) error {
+func (c *SQLiteConnectionMock) Disconnect(logger *zap.Logger, ctx *azstorage.StorageContext) error {
 	ret := c.Called(logger, ctx)
 
 	var r0 error = nil
-	if rf, ok := ret.Get(0).(func(*zap.Logger, context.Context) error); ok {
+	if rf, ok := ret.Get(0).(func(*zap.Logger, *azstorage.StorageContext) error); ok {
 		r0 = rf(logger, ctx)
 	} else {
 		if ret.Get(0) != nil {
