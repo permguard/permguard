@@ -115,7 +115,7 @@ func (s SQLiteCentralStorageAAP) GetAllAccounts(fields map[string]any) ([]azmode
 	for i, a := range dbAccounts {
 		account, err := mapAccountToAgentAccount(&a)
 		if err != nil {
-			return nil, fmt.Errorf("storage: accounts cannot be converted. %w", azerrors.ErrServerGeneric)
+			return nil, azerrors.WrapSystemError(azerrors.ErrServerGeneric, "storage: account cannot be converted.")
 		}
 		accounts[i] = *account
 	}
