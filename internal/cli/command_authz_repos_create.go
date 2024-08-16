@@ -41,7 +41,7 @@ func createCommandForRepositoryCreate(v *viper.Viper) *cobra.Command {
 
 Examples:
   # create a repository with name repository1 and account 301990992055
-  permguard authn repositories create --account 301990992055 --name repository1
+  permguard authz repos create --account 301990992055 --name repository1
 		`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCreateRepository(cmd, v)
