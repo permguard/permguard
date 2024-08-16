@@ -19,7 +19,6 @@ package grpcclients
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 
 	azapiv1aap "github.com/permguard/permguard/internal/agents/services/aap/endpoints/api/v1"
@@ -103,6 +102,7 @@ func (c *GrpcAAPClient) GetAccountsBy(accountID int64, name string) ([]azmodels.
 	if err != nil {
 		return nil, err
 	}
+	accounts := []azmodels.Account{}
     for {
         response, err := stream.Recv()
         if err == io.EOF {
@@ -111,8 +111,11 @@ func (c *GrpcAAPClient) GetAccountsBy(accountID int64, name string) ([]azmodels.
         if err != nil {
 			return nil, err
         }
-		println(fmt.Sprintf("Account: %v", response))
+		account, err := azapiv1aap.MapGrpcAccountResponseToAgentAccount(response)
+		if err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, *account)
     }
-	accounts := make([]azmodels.Account, 0)
 	return accounts, nil
 }
