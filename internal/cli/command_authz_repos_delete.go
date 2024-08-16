@@ -73,7 +73,7 @@ func createCommandForRepositoryDelete(v *viper.Viper) *cobra.Command {
 
 Examples:
   # delete a repository with id 19159d69-e902-418e-966a-148c4d5169a4 and account 301990992055
-  permguard authn repositories delete --account 301990992055 --repositoryid 19159d69-e902-418e-966a-148c4d5169a4
+  permguard authz repos delete --account 301990992055 --repositoryid 19159d69-e902-418e-966a-148c4d5169a4
 		`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteRepository(cmd, v)

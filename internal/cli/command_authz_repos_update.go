@@ -41,7 +41,7 @@ func createCommandForRepositoryUpdate(v *viper.Viper) *cobra.Command {
 
 Examples:
   # update a repository with name repository1, id 19159d69-e902-418e-966a-148c4d5169a4 and account 301990992055
-  permguard authn repositories update --account 301990992055 --repositoryid 19159d69-e902-418e-966a-148c4d5169a4 --name repository1
+  permguard authz repos update --account 301990992055 --repositoryid 19159d69-e902-418e-966a-148c4d5169a4 --name repository1
 		`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForUpdateRepository(cmd, v)

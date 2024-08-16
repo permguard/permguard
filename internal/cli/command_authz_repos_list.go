@@ -75,11 +75,11 @@ func createCommandForRepositoryList(v *viper.Viper) *cobra.Command {
 
 Examples:
   # list all repositories for account 301990992055
-  permguard authn repositories list --account 301990992055
+  permguard authz repos list --account 301990992055
   # list all repositories for account 301990992055 and filter by name repository1
-  permguard authn repositories list --account 301990992055 --name repository1
+  permguard authz repos list --account 301990992055 --name repository1
   # list all repositories for account 301990992055 and filter by repository id 377532e1-befe-47cb-a55a-0a789c5ec8fd
-  permguard authn repositories list --account 301990992055 --repositoryid 377532e1-befe-47cb-a55a-0a789c5ec8fd
+  permguard authz repos list --account 301990992055 --repositoryid 377532e1-befe-47cb-a55a-0a789c5ec8fd
 		`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListRepositories(cmd, v)
