@@ -17,6 +17,8 @@
 package centralstorage
 
 import (
+	"fmt"
+
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azirepo "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
@@ -84,6 +86,38 @@ func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Accou
 
 // GetAllAccounts returns all accounts.
 func (s SQLiteCentralStorageAAP) GetAllAccounts(fields map[string]any) ([]azmodels.Account, error) {
-	// logger := s.ctx.GetLogger()
-	return nil, nil
+	logger := s.ctx.GetLogger()
+	db, err := s.sqliteConnector.Connect(logger, s.ctx)
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrServerInfrastructure, "storage: cannot connect to sqlite.")
+	}
+	var filterID *int64
+	if _, ok := fields[azmodels.FieldAccountAccountID]; ok {
+		accountID, ok := fields[azmodels.FieldAccountAccountID].(int64)
+		if !ok {
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
+		}
+		filterID = &accountID
+	}
+	var filterName *string
+	if _, ok := fields[azmodels.FieldAccountName]; ok {
+		accountName, ok := fields[azmodels.FieldAccountName].(string)
+		if !ok {
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid account name %s (it is required to be lower case).", accountName))
+		}
+		filterName = &accountName
+	}
+	dbAccounts, err := azirepo.FetchAccounts(db, filterID, filterName)
+	if err != nil {
+		return nil, err
+	}
+	accounts := make([]azmodels.Account, len(dbAccounts))
+	for i, a := range dbAccounts {
+		account, err := mapAccountToAgentAccount(&a)
+		if err != nil {
+			return nil, fmt.Errorf("storage: accounts cannot be converted. %w", azerrors.ErrServerGeneric)
+		}
+		accounts[i] = *account
+	}
+	return accounts, nil
 }
