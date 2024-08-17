@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/fatih/color"
@@ -95,13 +96,18 @@ func (cp *CliPrinter) printValue(key string, value interface{}) {
 
 // printTerminal prints the output as terminal text.
 func (cp *CliPrinter) printTerminal(output map[string]any, isError bool) {
-	for k, v := range output {
+	keys := make([]string, 0, len(output))
+    for k := range output {
+        keys = append(keys, k)
+    }
+	sort.Strings(keys)
+    for _, k := range keys {
 		if isError {
-			color.Red("%s: %s\n", k, v)
+			color.Red("%s: %s\n", k, output[k])
 		} else {
-			cp.printValue(k, v)
+			cp.printValue(k, output[k])
 		}
-	}
+    }
 }
 
 // Print prints the output.

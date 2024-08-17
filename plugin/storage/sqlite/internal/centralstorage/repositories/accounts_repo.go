@@ -115,7 +115,7 @@ func FetchAccounts(db *gorm.DB, filterID *int64, filterName *string) ([]Account,
 		accountName = "%" + accountName + "%"
 		query = query.Where("name LIKE ?", accountName)
 	}
-	result := query.Find(&dbAccounts)
+	result := query.Order("account_id asc").Find(&dbAccounts)
 	if result.Error != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
 	}
