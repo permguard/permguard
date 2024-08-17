@@ -20,6 +20,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -107,37 +108,60 @@ func FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, fil
 	}
 	var dbAccounts []Account
 
-	limit := pageSize
-	offset := (page - 1) * pageSize
+    // Base query without conditions
+    baseQuery := "SELECT * FROM accounts"
+    var conditions []string
+    var args []interface{}
 
-	query := "SELECT * FROM accounts LIMIT ? OFFSET ?"
-	err := db.Select(&dbAccounts, query, limit, offset)
-	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
-	}
+    // Add condition for account_id if filterID is provided
+    if filterID != nil {
+        accountID := *filterID
+        // Validate the account ID
+        if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
+            return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
+        }
+        // Add condition to the WHERE clause
+        conditions = append(conditions, "account_id = ?")
+        // Add corresponding value to args
+        args = append(args, accountID)
+    }
 
-	return dbAccounts, nil
-	// query := db
-	// if filterID != nil {
-	// 	accountID := *filterID
-	// 	if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
-	// 		return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
-	// 	}
-	// 	query = query.Where("account_id = ?", accountID)
-	// }
-	// if filterName != nil {
-	// 	accountName := *filterName
-	// 	if err := azivalidators.ValidateName("account", accountName); err != nil {
-	// 		return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid account name %s (it is required to be lower case).", accountName))
-	// 	}
-	// 	accountName = "%" + accountName + "%"
-	// 	query = query.Where("name LIKE ?", accountName)
-	// }
-	// size := int(pageSize)
-	// offset := int((page - 1) * pageSize)
-	// result := query.Order("account_id asc").Limit(size).Offset(offset).Find(&dbAccounts)
-	// if result.Error != nil {
-	// 	return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
-	// }
-	// return dbAccounts, nil
+    // Add condition for name if filterName is provided
+    if filterName != nil {
+        accountName := *filterName
+        // Validate the account name
+        if err := azivalidators.ValidateName("account", accountName); err != nil {
+            return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid account name %s (it is required to be lower case).", accountName))
+        }
+        // Add wildcard search pattern
+        accountName = "%" + accountName + "%"
+        // Add condition to the WHERE clause
+        conditions = append(conditions, "name LIKE ?")
+        // Add corresponding value to args
+        args = append(args, accountName)
+    }
+
+    // Append WHERE clause to the base query if conditions exist
+    if len(conditions) > 0 {
+        baseQuery += " WHERE " + strings.Join(conditions, " AND ")
+    }
+
+	// Add ORDER BY clause to the query
+	baseQuery += " ORDER BY account_id"
+
+    // Append LIMIT and OFFSET to the query
+    limit := pageSize
+    offset := (page - 1) * pageSize
+    baseQuery += " LIMIT ? OFFSET ?"
+    // Add LIMIT and OFFSET values to args
+    args = append(args, limit, offset)
+
+    // Execute the query with the constructed SQL and arguments
+    err := db.Select(&dbAccounts, baseQuery, args...)
+    if err != nil {
+        return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
+    }
+
+    // Return the list of accounts
+    return dbAccounts, nil
 }
