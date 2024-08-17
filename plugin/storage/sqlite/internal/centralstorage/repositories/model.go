@@ -24,10 +24,10 @@ import (
 
 // Account is the model for the account table.
 type Account struct {
-	AccountID int64     `gorm:"primaryKey;autoIncrement:false"`
-	CreatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP"`
-	UpdatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP"`
-	Name      string    `gorm:"type:varchar(254);unique"`
+	AccountID int64     `db:"account_id"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
+	Name      string    `db:"name"`
 }
 
 // IdentitySource is the model for the identity_source table.

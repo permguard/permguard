@@ -22,7 +22,7 @@ import (
 	"strings"
 	"sync"
 
-	"database/sql"
+	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/spf13/viper"
@@ -78,7 +78,7 @@ type SQLiteConnector interface {
 	// GetStorage returns the storage kind.
 	GetStorage() azstorage.StorageKind
 	// Connect connects to sqlite and return a client.
-	Connect(logger *zap.Logger, ctx *azstorage.StorageContext) (*sql.DB, error)
+	Connect(logger *zap.Logger, ctx *azstorage.StorageContext) (*sqlx.DB, error)
 	// Disconnect disconnects from sqlite.
 	Disconnect(logger *zap.Logger, ctx *azstorage.StorageContext) error
 }
@@ -87,7 +87,7 @@ type SQLiteConnector interface {
 type SQLiteConnection struct {
 	config   *SQLiteConnectionConfig
 	connLock sync.Mutex
-	db       *sql.DB
+	db       *sqlx.DB
 }
 
 // NewSQLiteConnection creates a connection.
@@ -103,7 +103,7 @@ func (c *SQLiteConnection) GetStorage() azstorage.StorageKind {
 }
 
 // Connect connects to sqlite and return a client.
-func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *azstorage.StorageContext) (*sql.DB, error) {
+func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *azstorage.StorageContext) (*sqlx.DB, error) {
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
 	if c.db != nil {
@@ -115,7 +115,7 @@ func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *azstorage.StorageCon
 		dbName += ".db"
 	}
 	dbPath := filepath.Join(filePath, dbName)
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sqlx.Connect("sqlite3", dbPath)
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: cannot connect to sqlite")
 	}
