@@ -65,7 +65,7 @@ type V1AAPServiceClient interface {
 	UpdateAccount(ctx context.Context, in *AccountUpdateRequest, opts ...grpc.CallOption) (*AccountResponse, error)
 	// Delete an account
 	DeleteAccount(ctx context.Context, in *AccountDeleteRequest, opts ...grpc.CallOption) (*AccountResponse, error)
-	// Get all Accounts
+	// Fetch Accounts
 	FetchAccounts(ctx context.Context, in *AccountFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AccountResponse], error)
 	// Create an identity source
 	CreateIdentitySource(ctx context.Context, in *IdentitySourceCreateRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error)
@@ -282,7 +282,7 @@ type V1AAPServiceServer interface {
 	UpdateAccount(context.Context, *AccountUpdateRequest) (*AccountResponse, error)
 	// Delete an account
 	DeleteAccount(context.Context, *AccountDeleteRequest) (*AccountResponse, error)
-	// Get all Accounts
+	// Fetch Accounts
 	FetchAccounts(*AccountFetchRequest, grpc.ServerStreamingServer[AccountResponse]) error
 	// Create an identity source
 	CreateIdentitySource(context.Context, *IdentitySourceCreateRequest) (*IdentitySourceResponse, error)

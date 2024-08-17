@@ -79,7 +79,7 @@ output:
 {{< /tab >}}
 {{< /tabs >}}
 
-## Get All Account
+## Fetch Accounts
 
 The `permguard accounts list` command allows for the retrieval of all accounts.
 

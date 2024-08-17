@@ -41,7 +41,7 @@ func generateAccountID() int64 {
 }
 
 // UpsertAccount creates or updates an account.
-func UpsertAccount(db *sql.Tx, isCreate bool, account *Account) (*Account, error) {
+func UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Account, error) {
 	if account == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrInvalidInputParameter, "storage: account is nil.")
 	}
@@ -57,48 +57,55 @@ func UpsertAccount(db *sql.Tx, isCreate bool, account *Account) (*Account, error
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid account name %s for account id %d (it is required to be lower case).", account.Name, account.AccountID))
 		}
 	}
-	// var dbAccount Account
-	// var result *sqlx.DB
-	// if isCreate {
-	// 	dbAccount = Account{
-	// 		AccountID: generateAccountID(),
-	// 		Name:      account.Name,
-	// 	}
-	// 	result = db.Omit("CreatedAt", "UpdatedAt").Create(&dbAccount)
-	// 	if result.RowsAffected == 0 || result.Error != nil {
-	// 		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be created.")
-	// 	}
-	// } else {
-	// 	result = db.Where("account_id = ?", account.AccountID).First(&dbAccount)
-	// 	if result.RowsAffected == 0 {
-	// 		return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
-	// 	}
-	// 	dbAccount.Name = account.Name
-	// 	result = db.Omit("CreatedAt", "UpdatedAt").Where("account_id = ?", account.AccountID).Updates(account)
-	// 	if result.RowsAffected == 0 || result.Error != nil {
-	// 		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be updated.")
-	// 	}
-	// }
-	// return &dbAccount, nil
-	return nil, nil
+	var accountID int64
+	if isCreate {
+		accountID = generateAccountID()
+		accountName := account.Name
+		result, err := tx.Exec("INSERT INTO accounts (account_id, name) VALUES (?, ?)", accountID, accountName)
+		if err != nil || result == nil {
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be created.")
+		}
+	} else {
+		accountID = account.AccountID
+		accountName := account.Name
+		result, err := tx.Exec("UPDATE accounts SET name = ? WHERE account_id = ?", accountName, accountID)
+		if err != nil || result == nil {
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be updated.")
+		}
+	}
+	var dbAccount Account
+	err := tx.QueryRow("SELECT account_id, created_at, updated_at, name FROM accounts WHERE account_id = ?", accountID).Scan(
+		&dbAccount.AccountID,
+		&dbAccount.CreatedAt,
+		&dbAccount.UpdatedAt,
+		&dbAccount.Name,
+	)
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account upsert has failed.")
+
+    }
+	return &dbAccount, nil
 }
 
 // DeleteAccount deletes an account.
 func DeleteAccount(db *sqlx.DB, accountID int64) (*Account, error) {
-	// if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
-	// 	return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
-	// }
-	// var dbAccount Account
-	// result := db.Where("account_id = ?", accountID).First(&dbAccount)
-	// if result.RowsAffected == 0 {
-	// 	return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
-	// }
-	// result = db.Delete(dbAccount)
-	// if result.RowsAffected == 0 || result.Error != nil {
-	// 	return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be deleted.")
-	// }
-	// return &dbAccount, nil
-	return nil, nil
+	if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
+	}
+	var dbAccount Account
+	err := db.Get(&dbAccount, "SELECT * FROM accounts WHERE account_id = ?", accountID)
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account to be deleted was not found.")
+	}
+	res, err := db.Exec("DELETE FROM accounts WHERE account_id = ?", accountID)
+	if err != nil || res == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be deleted.")
+	}
+	rows, err := res.RowsAffected()
+	if err != nil || rows != 1 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be deleted.")
+	}
+	return &dbAccount, nil
 }
 
 // FetchAccounts retrieves accounts.

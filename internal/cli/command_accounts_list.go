@@ -78,6 +78,8 @@ func createCommandForAccountList(v *viper.Viper) *cobra.Command {
 Examples:
   # list all accounts
   permguard accounts list
+  # list all accounts with pagination
+  permguard accounts list --page 1 --size 100
   # list accounts and filter by account
   permguard accounts list --account 301
   # list accounts and filter by account and name
