@@ -7,7 +7,8 @@
         "request": "launch",
         "mode": "auto",
         "program": "./cmd/cli/main.go",
-        "args": ["accounts", "create", "--name", "business"],
+        "args": ["accounts", "list"],
+        // "args": ["accounts", "create", "--name", "business"],
         // "args": ["authn", "tenants",  "create", "--account", "dasfsdf", "--name", "permguard3"],
         // "args": ["schemas",  "list", "--account", "422043848373", "--name", "c", "--tag", "1"],
         // "args": ["schemas",  "delete", "--account", "422043848373", "--name", "car-rental", "--tag", "1.0.0"],
@@ -34,7 +35,8 @@
           "cwd": "${workspaceFolder}",
           "env": {
               "PERMGUARD_DEBUG": "TRUE",
-              "PERMGUARD_SERVER_APPDATA": "./samples/volume"
+              "PERMGUARD_SERVER_APPDATA": "./samples/volume",
+              "PERMGUARD_LOG_LEVEL": "INFO"
           }
       }
   ]

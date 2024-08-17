@@ -18,10 +18,8 @@ package repositories
 
 import (
 	"fmt"
-    "math/rand"
-    "time"
-
-	"gorm.io/gorm"
+	"math/rand"
+	"time"
 
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azivalidators "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/validators"
@@ -29,12 +27,12 @@ import (
 
 // generateAccountID generates a random account id.
 func generateAccountID() int64 {
-    const base = 100000000000
-    const maxRange = 900000000000
+	const base = 100000000000
+	const maxRange = 900000000000
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-    randomNumber := r.Int63n(maxRange)
-    accountID := base + randomNumber
-    return accountID
+	randomNumber := r.Int63n(maxRange)
+	accountID := base + randomNumber
+	return accountID
 }
 
 // UpsertAccount creates or updates an account.
@@ -54,50 +52,55 @@ func UpsertAccount(db *gorm.DB, isCreate bool, account *Account) (*Account, erro
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid account name %s for account id %d (it is required to be lower case).", account.Name, account.AccountID))
 		}
 	}
-	var dbAccount Account
-	var result *gorm.DB
-	if isCreate {
-		dbAccount = Account{
-			AccountID: generateAccountID(),
-			Name: account.Name,
-		}
-		result = db.Omit("CreatedAt", "UpdatedAt").Create(&dbAccount)
-		if result.RowsAffected == 0 || result.Error != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be created.")
-		}
-	} else {
-		result = db.Where("account_id = ?", account.AccountID).First(&dbAccount)
-		if result.RowsAffected == 0 {
-			return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
-		}
-		dbAccount.Name = account.Name
-		result = db.Omit("CreatedAt", "UpdatedAt").Where("account_id = ?", account.AccountID).Updates(account)
-		if result.RowsAffected == 0 || result.Error != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be updated.")
-		}
-	}
-	return &dbAccount, nil
+	// var dbAccount Account
+	// var result *gorm.DB
+	// if isCreate {
+	// 	dbAccount = Account{
+	// 		AccountID: generateAccountID(),
+	// 		Name:      account.Name,
+	// 	}
+	// 	result = db.Omit("CreatedAt", "UpdatedAt").Create(&dbAccount)
+	// 	if result.RowsAffected == 0 || result.Error != nil {
+	// 		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be created.")
+	// 	}
+	// } else {
+	// 	result = db.Where("account_id = ?", account.AccountID).First(&dbAccount)
+	// 	if result.RowsAffected == 0 {
+	// 		return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
+	// 	}
+	// 	dbAccount.Name = account.Name
+	// 	result = db.Omit("CreatedAt", "UpdatedAt").Where("account_id = ?", account.AccountID).Updates(account)
+	// 	if result.RowsAffected == 0 || result.Error != nil {
+	// 		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be updated.")
+	// 	}
+	// }
+	// return &dbAccount, nil
+	return nil, nil
 }
 
 // DeleteAccount deletes an account.
 func DeleteAccount(db *gorm.DB, accountID int64) (*Account, error) {
-	if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
-	}
-	var dbAccount Account
-	result := db.Where("account_id = ?", accountID).First(&dbAccount)
-	if result.RowsAffected == 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
-	}
-	result = db.Delete(dbAccount)
-	if result.RowsAffected == 0 || result.Error != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be deleted.")
-	}
-	return &dbAccount, nil
+	// if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
+	// 	return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
+	// }
+	// var dbAccount Account
+	// result := db.Where("account_id = ?", accountID).First(&dbAccount)
+	// if result.RowsAffected == 0 {
+	// 	return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
+	// }
+	// result = db.Delete(dbAccount)
+	// if result.RowsAffected == 0 || result.Error != nil {
+	// 	return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be deleted.")
+	// }
+	// return &dbAccount, nil
+	return nil, nil
 }
 
 // FetchAccounts retrieves accounts.
-func FetchAccounts(db *gorm.DB, filterID *int64, filterName *string) ([]Account, error) {
+func FetchAccounts(db *gorm.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]Account, error) {
+	if page <= 0 || pageSize <= 0 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, "storage: invalid page or page size.")
+	}
 	var dbAccounts []Account
 	query := db
 	if filterID != nil {
@@ -115,7 +118,9 @@ func FetchAccounts(db *gorm.DB, filterID *int64, filterName *string) ([]Account,
 		accountName = "%" + accountName + "%"
 		query = query.Where("name LIKE ?", accountName)
 	}
-	result := query.Order("account_id asc").Find(&dbAccounts)
+	size := int(pageSize)
+	offset := int((page - 1) * pageSize)
+	result := query.Order("account_id asc").Limit(size).Offset(offset).Find(&dbAccounts)
 	if result.Error != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
 	}

@@ -26,9 +26,11 @@ option go_package = "github.com/permguard/permguard/internal/hosts/api/aap/v1";
 // Accounts
 
 // Account get request
-message AccountGetRequest {
-	optional int64 AccountID = 1;
-	optional string Name = 2;
+message AccountFetchRequest {
+	optional int32 Page 		 = 1;
+	optional int32 PageSize	 = 2;
+	optional int64 AccountID = 3;
+	optional string Name 	 = 4;
 }
 
 // Account create request
@@ -197,7 +199,7 @@ service V1AAPService {
 	// Delete an account
 	rpc DeleteAccount(AccountDeleteRequest) returns (AccountResponse) {}
 	// Get all Accounts
-	rpc FetchAccounts(AccountGetRequest) returns (stream AccountResponse) {}
+	rpc FetchAccounts(AccountFetchRequest) returns (stream AccountResponse) {}
 
 	// Create an identity source
 	rpc CreateIdentitySource(IdentitySourceCreateRequest) returns (IdentitySourceResponse) {}

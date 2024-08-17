@@ -66,7 +66,7 @@ type V1AAPServiceClient interface {
 	// Delete an account
 	DeleteAccount(ctx context.Context, in *AccountDeleteRequest, opts ...grpc.CallOption) (*AccountResponse, error)
 	// Get all Accounts
-	FetchAccounts(ctx context.Context, in *AccountGetRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AccountResponse], error)
+	FetchAccounts(ctx context.Context, in *AccountFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AccountResponse], error)
 	// Create an identity source
 	CreateIdentitySource(ctx context.Context, in *IdentitySourceCreateRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error)
 	// Update an identity source
@@ -131,13 +131,13 @@ func (c *v1AAPServiceClient) DeleteAccount(ctx context.Context, in *AccountDelet
 	return out, nil
 }
 
-func (c *v1AAPServiceClient) FetchAccounts(ctx context.Context, in *AccountGetRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AccountResponse], error) {
+func (c *v1AAPServiceClient) FetchAccounts(ctx context.Context, in *AccountFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AccountResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &V1AAPService_ServiceDesc.Streams[0], V1AAPService_FetchAccounts_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[AccountGetRequest, AccountResponse]{ClientStream: stream}
+	x := &grpc.GenericClientStream[AccountFetchRequest, AccountResponse]{ClientStream: stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -283,7 +283,7 @@ type V1AAPServiceServer interface {
 	// Delete an account
 	DeleteAccount(context.Context, *AccountDeleteRequest) (*AccountResponse, error)
 	// Get all Accounts
-	FetchAccounts(*AccountGetRequest, grpc.ServerStreamingServer[AccountResponse]) error
+	FetchAccounts(*AccountFetchRequest, grpc.ServerStreamingServer[AccountResponse]) error
 	// Create an identity source
 	CreateIdentitySource(context.Context, *IdentitySourceCreateRequest) (*IdentitySourceResponse, error)
 	// Update an identity source
@@ -327,7 +327,7 @@ func (UnimplementedV1AAPServiceServer) UpdateAccount(context.Context, *AccountUp
 func (UnimplementedV1AAPServiceServer) DeleteAccount(context.Context, *AccountDeleteRequest) (*AccountResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteAccount not implemented")
 }
-func (UnimplementedV1AAPServiceServer) FetchAccounts(*AccountGetRequest, grpc.ServerStreamingServer[AccountResponse]) error {
+func (UnimplementedV1AAPServiceServer) FetchAccounts(*AccountFetchRequest, grpc.ServerStreamingServer[AccountResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method FetchAccounts not implemented")
 }
 func (UnimplementedV1AAPServiceServer) CreateIdentitySource(context.Context, *IdentitySourceCreateRequest) (*IdentitySourceResponse, error) {
@@ -442,11 +442,11 @@ func _V1AAPService_DeleteAccount_Handler(srv interface{}, ctx context.Context, d
 }
 
 func _V1AAPService_FetchAccounts_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(AccountGetRequest)
+	m := new(AccountFetchRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(V1AAPServiceServer).FetchAccounts(m, &grpc.GenericServerStream[AccountGetRequest, AccountResponse]{ServerStream: stream})
+	return srv.(V1AAPServiceServer).FetchAccounts(m, &grpc.GenericServerStream[AccountFetchRequest, AccountResponse]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.

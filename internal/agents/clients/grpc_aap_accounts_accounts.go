@@ -71,34 +71,36 @@ func (c *GrpcAAPClient) DeleteAccount(accountID int64) (*azmodels.Account, error
 }
 
 // FetchAccounts returns all the accounts.
-func (c *GrpcAAPClient) FetchAccounts() ([]azmodels.Account, error) {
-	return c.FetchAccountsBy(0, "")
+func (c *GrpcAAPClient) FetchAccounts(page int32, pageSize int32) ([]azmodels.Account, error) {
+	return c.FetchAccountsBy(page, pageSize, 0, "")
 }
 
 // FetchAccountsByID returns all accounts filtering by account id.
-func (c *GrpcAAPClient) FetchAccountsByID(accountID int64) ([]azmodels.Account, error) {
-	return c.FetchAccountsBy(accountID, "")
+func (c *GrpcAAPClient) FetchAccountsByID(page int32, pageSize int32, accountID int64) ([]azmodels.Account, error) {
+	return c.FetchAccountsBy(page, pageSize, accountID, "")
 }
 
 // FetchAccountsByName returns all accounts filtering by name.
-func (c *GrpcAAPClient) FetchAccountsByName(name string) ([]azmodels.Account, error) {
-	return c.FetchAccountsBy(0, name)
+func (c *GrpcAAPClient) FetchAccountsByName(page int32, pageSize int32, name string) ([]azmodels.Account, error) {
+	return c.FetchAccountsBy(page, pageSize, 0, name)
 }
 
 // FetchAccountsBy returns all accounts filtering by account id and name.
-func (c *GrpcAAPClient) FetchAccountsBy(accountID int64, name string) ([]azmodels.Account, error) {
+func (c *GrpcAAPClient) FetchAccountsBy(page int32, pageSize int32, accountID int64, name string) ([]azmodels.Account, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	accountGetRequest := &azapiv1aap.AccountGetRequest{}
+	accountFetchRequest := &azapiv1aap.AccountFetchRequest{}
+	accountFetchRequest.Page = &page
+	accountFetchRequest.PageSize = &pageSize
 	if accountID > 0 {
-		accountGetRequest.AccountID = &accountID
+		accountFetchRequest.AccountID = &accountID
 	}
 	if name != "" {
-		accountGetRequest.Name = &name
+		accountFetchRequest.Name = &name
 	}
-	stream, err := client.FetchAccounts(context.Background(), accountGetRequest)
+	stream, err := client.FetchAccounts(context.Background(), accountFetchRequest)
 	if err != nil {
 		return nil, err
 	}

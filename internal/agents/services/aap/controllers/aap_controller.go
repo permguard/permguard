@@ -58,8 +58,8 @@ func (s AAPController) DeleteAccount(accountID int64) (*azmodels.Account, error)
 }
 
 // FetchAccounts returns all accounts filtering by search criteria.
-func (s AAPController) FetchAccounts(fields map[string]any) ([]azmodels.Account, error) {
-	return s.storage.FetchAccounts(fields)
+func (s AAPController) FetchAccounts(page int32, pageSize int32, fields map[string]any) ([]azmodels.Account, error) {
+	return s.storage.FetchAccounts(page, pageSize, fields)
 }
 
 // CreateIdentitySource creates a new identity source.
