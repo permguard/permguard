@@ -48,7 +48,7 @@ func runECommandForListAccounts(cmd *cobra.Command, v *viper.Viper) error {
 	accountID := v.GetInt64(azconfigs.FlagName(commandNameForAccountsList, flagCommonAccountID))
 	name := v.GetString(azconfigs.FlagName(commandNameForAccountsList, flagCommonName))
 
-	accounts, err := client.GetAccountsBy(accountID, name)
+	accounts, err := client.FetchAccountsBy(accountID, name)
 	if err != nil {
 		printer.Error(err)
 		return ErrCommandSilent

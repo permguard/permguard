@@ -70,23 +70,23 @@ func (c *GrpcAAPClient) DeleteAccount(accountID int64) (*azmodels.Account, error
 	return azapiv1aap.MapGrpcAccountResponseToAgentAccount(account)
 }
 
-// GetAllAccounts returns all the accounts.
-func (c *GrpcAAPClient) GetAllAccounts() ([]azmodels.Account, error) {
-	return c.GetAccountsBy(0, "")
+// FetchAccounts returns all the accounts.
+func (c *GrpcAAPClient) FetchAccounts() ([]azmodels.Account, error) {
+	return c.FetchAccountsBy(0, "")
 }
 
-// GetAccountsByID returns all accounts filtering by account id.
-func (c *GrpcAAPClient) GetAccountsByID(accountID int64) ([]azmodels.Account, error) {
-	return c.GetAccountsBy(accountID, "")
+// FetchAccountsByID returns all accounts filtering by account id.
+func (c *GrpcAAPClient) FetchAccountsByID(accountID int64) ([]azmodels.Account, error) {
+	return c.FetchAccountsBy(accountID, "")
 }
 
-// GetAccountsByName returns all accounts filtering by name.
-func (c *GrpcAAPClient) GetAccountsByName(name string) ([]azmodels.Account, error) {
-	return c.GetAccountsBy(0, name)
+// FetchAccountsByName returns all accounts filtering by name.
+func (c *GrpcAAPClient) FetchAccountsByName(name string) ([]azmodels.Account, error) {
+	return c.FetchAccountsBy(0, name)
 }
 
-// GetAccountsBy returns all accounts filtering by account id and name.
-func (c *GrpcAAPClient) GetAccountsBy(accountID int64, name string) ([]azmodels.Account, error) {
+// FetchAccountsBy returns all accounts filtering by account id and name.
+func (c *GrpcAAPClient) FetchAccountsBy(accountID int64, name string) ([]azmodels.Account, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
@@ -98,24 +98,24 @@ func (c *GrpcAAPClient) GetAccountsBy(accountID int64, name string) ([]azmodels.
 	if name != "" {
 		accountGetRequest.Name = &name
 	}
-	stream, err := client.GetAllAccounts(context.Background(), accountGetRequest)
+	stream, err := client.FetchAccounts(context.Background(), accountGetRequest)
 	if err != nil {
 		return nil, err
 	}
 	accounts := []azmodels.Account{}
-    for {
-        response, err := stream.Recv()
-        if err == io.EOF {
-            break
-        }
-        if err != nil {
+	for {
+		response, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
 			return nil, err
-        }
+		}
 		account, err := azapiv1aap.MapGrpcAccountResponseToAgentAccount(response)
 		if err != nil {
 			return nil, err
 		}
 		accounts = append(accounts, *account)
-    }
+	}
 	return accounts, nil
 }

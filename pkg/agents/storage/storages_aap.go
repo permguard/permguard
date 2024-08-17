@@ -28,8 +28,8 @@ type AAPCentralStorage interface {
 	UpdateAccount(account *azmodels.Account) (*azmodels.Account, error)
 	// DeleteAccount deletes an account.
 	DeleteAccount(accountID int64) (*azmodels.Account, error)
-	// GetAllAccounts returns all accounts filtering by search criteria.
-	GetAllAccounts(fields map[string]any) ([]azmodels.Account, error)
+	// FetchAccounts returns all accounts filtering by search criteria.
+	FetchAccounts(fields map[string]any) ([]azmodels.Account, error)
 
 	// CreateIdentitySource creates a new identity source.
 	CreateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error)
