@@ -63,7 +63,8 @@ var (
 	// 01xxx configuration errors.
 	ErrConfigurationGeneric error = NewSystemError("01000")
 	// 04xxx client errors.
-	ErrClientGeneric error = NewSystemError("04000")
+	ErrClientGeneric 	error = NewSystemError("04000")
+	ErrClientPagination error = NewSystemError("04050")
 	// 041xx client entity errors.
 	ErrClientEntity		error = NewSystemError("04100")
 	ErrClientAccountID  error = NewSystemError("04101")

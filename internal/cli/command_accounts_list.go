@@ -45,10 +45,12 @@ func runECommandForListAccounts(cmd *cobra.Command, v *viper.Viper) error {
 		return ErrCommandSilent
 	}
 
+	page := v.GetInt32(azconfigs.FlagName(commandNameForAccountsList, flagCommonPage))
+	pageSize := v.GetInt32(azconfigs.FlagName(commandNameForAccountsList, flagCommonPageSize))
 	accountID := v.GetInt64(azconfigs.FlagName(commandNameForAccountsList, flagCommonAccountID))
 	name := v.GetString(azconfigs.FlagName(commandNameForAccountsList, flagCommonName))
 
-	accounts, err := client.FetchAccountsBy(accountID, name)
+	accounts, err := client.FetchAccountsBy(page, pageSize, accountID, name)
 	if err != nil {
 		printer.Error(err)
 		return ErrCommandSilent
@@ -85,6 +87,10 @@ Examples:
 			return runECommandForListAccounts(cmd, v)
 		},
 	}
+	command.Flags().Int32P(flagCommonPage, flagCommonPageShort, 1, "page number")
+	v.BindPFlag(azconfigs.FlagName(commandNameForAccountsList, flagCommonPage), command.Flags().Lookup(flagCommonPage))
+	command.Flags().Int32P(flagCommonPageSize, flagCommonPageSizeShort, 1000, "page size")
+	v.BindPFlag(azconfigs.FlagName(commandNameForAccountsList, flagCommonPageSize), command.Flags().Lookup(flagCommonPageSize))
 	command.Flags().Int64(flagCommonAccountID, 0, "account id filter")
 	v.BindPFlag(azconfigs.FlagName(commandNameForAccountsList, flagCommonAccountID), command.Flags().Lookup(flagCommonAccountID))
 	command.Flags().String(flagCommonName, "", "account name filter")

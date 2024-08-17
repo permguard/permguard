@@ -31,7 +31,7 @@ type AAPService interface {
 	CreateAccount(account *azmodels.Account) (*azmodels.Account, error)
 	UpdateAccount(account *azmodels.Account) (*azmodels.Account, error)
 	DeleteAccount(accountID int64) (*azmodels.Account, error)
-	FetchAccounts(filter map[string]any) ([]azmodels.Account, error)
+	FetchAccounts(page int32, pageSize int32, filter map[string]any) ([]azmodels.Account, error)
 
 	CreateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error)
 	UpdateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error)
@@ -92,7 +92,7 @@ func (s V1AAPServer) DeleteAccount(ctx context.Context, accountRequest *AccountD
 }
 
 // FetchAccounts returns all the accounts.
-func (s *V1AAPServer) FetchAccounts(accountRequest *AccountGetRequest, stream grpc.ServerStreamingServer[AccountResponse]) error {
+func (s *V1AAPServer) FetchAccounts(accountRequest *AccountFetchRequest, stream grpc.ServerStreamingServer[AccountResponse]) error {
 	fields := map[string]any{}
 	if accountRequest.AccountID != nil {
 		fields[azmodels.FieldAccountAccountID] = *accountRequest.AccountID
@@ -101,7 +101,9 @@ func (s *V1AAPServer) FetchAccounts(accountRequest *AccountGetRequest, stream gr
 		fields[azmodels.FieldAccountName] = *accountRequest.Name
 
 	}
-	accounts, err := s.service.FetchAccounts(fields)
+	page := *accountRequest.Page
+	pageSize := *accountRequest.PageSize
+	accounts, err := s.service.FetchAccounts(page, pageSize, fields)
 	if err != nil {
 		return err
 	}

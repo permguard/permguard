@@ -82,7 +82,7 @@ func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Accou
 }
 
 // FetchAccounts returns all accounts.
-func (s SQLiteCentralStorageAAP) FetchAccounts(fields map[string]any) ([]azmodels.Account, error) {
+func (s SQLiteCentralStorageAAP) FetchAccounts(page int32, pageSize int32, fields map[string]any) ([]azmodels.Account, error) {
 	db, err := sqliteConnect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, err
@@ -103,7 +103,7 @@ func (s SQLiteCentralStorageAAP) FetchAccounts(fields map[string]any) ([]azmodel
 		}
 		filterName = &accountName
 	}
-	dbAccounts, err := azirepo.FetchAccounts(db, filterID, filterName)
+	dbAccounts, err := azirepo.FetchAccounts(db, page, pageSize, filterID, filterName)
 	if err != nil {
 		return nil, err
 	}
