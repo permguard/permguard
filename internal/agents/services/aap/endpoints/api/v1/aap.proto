@@ -198,7 +198,7 @@ service V1AAPService {
 	rpc UpdateAccount(AccountUpdateRequest) returns (AccountResponse) {}
 	// Delete an account
 	rpc DeleteAccount(AccountDeleteRequest) returns (AccountResponse) {}
-	// Get all Accounts
+	// Fetch Accounts
 	rpc FetchAccounts(AccountFetchRequest) returns (stream AccountResponse) {}
 
 	// Create an identity source
