@@ -81,8 +81,8 @@ func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Accou
 	return mapAccountToAgentAccount(dbaccount)
 }
 
-// GetAllAccounts returns all accounts.
-func (s SQLiteCentralStorageAAP) GetAllAccounts(fields map[string]any) ([]azmodels.Account, error) {
+// FetchAccounts returns all accounts.
+func (s SQLiteCentralStorageAAP) FetchAccounts(fields map[string]any) ([]azmodels.Account, error) {
 	db, err := sqliteConnect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, err
