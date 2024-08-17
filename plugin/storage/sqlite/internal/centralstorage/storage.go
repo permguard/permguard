@@ -17,7 +17,7 @@
 package centralstorage
 
 import (
-	"gorm.io/gorm"
+	"database/sql"
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
@@ -25,7 +25,7 @@ import (
 )
 
 // sqliteConnect connects to the sqlite database.
-func sqliteConnect(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector) (*gorm.DB, error) {
+func sqliteConnect(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector) (*sql.DB, error) {
 	logger := ctx.GetLogger()
 	db, err := sqliteConnector.Connect(logger, ctx)
 	if err != nil {

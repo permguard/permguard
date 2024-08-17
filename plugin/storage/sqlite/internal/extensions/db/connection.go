@@ -22,11 +22,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/spf13/viper"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
-	"moul.io/zapgorm2"
+	"database/sql"
+	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/spf13/viper"
 	"go.uber.org/zap"
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
@@ -35,8 +34,8 @@ import (
 )
 
 const (
-	flagPrefixEndingSQLite 	= "stroage.engine.sqlite"
-	flagSuffixDBName  		= "dbname"
+	flagPrefixEndingSQLite = "stroage.engine.sqlite"
+	flagSuffixDBName       = "dbname"
 )
 
 // SQLiteConnectionConfig holds the configuration for the connection.
@@ -79,16 +78,16 @@ type SQLiteConnector interface {
 	// GetStorage returns the storage kind.
 	GetStorage() azstorage.StorageKind
 	// Connect connects to sqlite and return a client.
-	Connect(logger *zap.Logger, ctx *azstorage.StorageContext) (*gorm.DB, error)
+	Connect(logger *zap.Logger, ctx *azstorage.StorageContext) (*sql.DB, error)
 	// Disconnect disconnects from sqlite.
 	Disconnect(logger *zap.Logger, ctx *azstorage.StorageContext) error
 }
 
 // SQLiteConnection holds the connection's configuration.
 type SQLiteConnection struct {
-	config *SQLiteConnectionConfig
+	config   *SQLiteConnectionConfig
 	connLock sync.Mutex
-	db       *gorm.DB
+	db       *sql.DB
 }
 
 // NewSQLiteConnection creates a connection.
@@ -104,7 +103,7 @@ func (c *SQLiteConnection) GetStorage() azstorage.StorageKind {
 }
 
 // Connect connects to sqlite and return a client.
-func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *azstorage.StorageContext) (*gorm.DB, error) {
+func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *azstorage.StorageContext) (*sql.DB, error) {
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
 	if c.db != nil {
@@ -112,31 +111,27 @@ func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *azstorage.StorageCon
 	}
 	filePath := ctx.GetAppData()
 	dbName := c.config.GetDBName()
-    if !strings.HasSuffix(dbName, ".db") {
-        dbName += ".db"
-    }
-    dbPath := filepath.Join(filePath, dbName)
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{Logger: zapgorm2.New(logger)})
+	if !strings.HasSuffix(dbName, ".db") {
+		dbName += ".db"
+	}
+	dbPath := filepath.Join(filePath, dbName)
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: cannot connect to sqlite")
 	}
-    db = db.Exec("PRAGMA foreign_keys = ON;")
+	db.Exec("PRAGMA foreign_keys = ON;")
 	c.db = db
 	return c.db, nil
 }
 
 // Disconnect disconnects from sqlite.
-func (c *SQLiteConnection) Disconnect(logger *zap.Logger,  ctx *azstorage.StorageContext) error {
+func (c *SQLiteConnection) Disconnect(logger *zap.Logger, ctx *azstorage.StorageContext) error {
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
 	if c.db == nil {
 		return nil
 	}
-	sqlDB, err := c.db.DB()
-	if err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: cannot disconnect from sqlite")
-	}
-	err = sqlDB.Close()
+	err := c.db.Close()
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: cannot disconnect from sqlite")
 	}

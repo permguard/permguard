@@ -17,9 +17,12 @@
 package repositories
 
 import (
+	"database/sql"
 	"fmt"
 	"math/rand"
 	"time"
+
+	_ "github.com/mattn/go-sqlite3"
 
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azivalidators "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/validators"
@@ -36,7 +39,7 @@ func generateAccountID() int64 {
 }
 
 // UpsertAccount creates or updates an account.
-func UpsertAccount(db *gorm.DB, isCreate bool, account *Account) (*Account, error) {
+func UpsertAccount(db *sql.Tx, isCreate bool, account *Account) (*Account, error) {
 	if account == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrInvalidInputParameter, "storage: account is nil.")
 	}
@@ -53,7 +56,7 @@ func UpsertAccount(db *gorm.DB, isCreate bool, account *Account) (*Account, erro
 		}
 	}
 	// var dbAccount Account
-	// var result *gorm.DB
+	// var result *sql.DB
 	// if isCreate {
 	// 	dbAccount = Account{
 	// 		AccountID: generateAccountID(),
@@ -79,7 +82,7 @@ func UpsertAccount(db *gorm.DB, isCreate bool, account *Account) (*Account, erro
 }
 
 // DeleteAccount deletes an account.
-func DeleteAccount(db *gorm.DB, accountID int64) (*Account, error) {
+func DeleteAccount(db *sql.DB, accountID int64) (*Account, error) {
 	// if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
 	// 	return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
 	// }
@@ -97,32 +100,52 @@ func DeleteAccount(db *gorm.DB, accountID int64) (*Account, error) {
 }
 
 // FetchAccounts retrieves accounts.
-func FetchAccounts(db *gorm.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]Account, error) {
+func FetchAccounts(db *sql.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]Account, error) {
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, "storage: invalid page or page size.")
 	}
-	var dbAccounts []Account
-	query := db
-	if filterID != nil {
-		accountID := *filterID
-		if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
-		}
-		query = query.Where("account_id = ?", accountID)
-	}
-	if filterName != nil {
-		accountName := *filterName
-		if err := azivalidators.ValidateName("account", accountName); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid account name %s (it is required to be lower case).", accountName))
-		}
-		accountName = "%" + accountName + "%"
-		query = query.Where("name LIKE ?", accountName)
-	}
-	size := int(pageSize)
+    var dbAccounts []Account
+	limit := int(pageSize)
 	offset := int((page - 1) * pageSize)
-	result := query.Order("account_id asc").Limit(size).Offset(offset).Find(&dbAccounts)
-	if result.Error != nil {
+    query := "SELECT * FROM 'accounts' LIMIT ? OFFSET ?"
+    rows, err := db.Query(query, limit, offset)
+    if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
-	}
+    }
+    defer rows.Close()
+    for rows.Next() {
+        var account Account
+        err := rows.Scan(&account.AccountID, &account.CreatedAt, &account.UpdatedAt, &account.Name)
+        if err != nil {
+            return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
+        }
+        dbAccounts = append(dbAccounts, account)
+    }
+    if err = rows.Err(); err != nil {
+        return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
+    }
+	// query := db
+	// if filterID != nil {
+	// 	accountID := *filterID
+	// 	if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
+	// 		return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
+	// 	}
+	// 	query = query.Where("account_id = ?", accountID)
+	// }
+	// if filterName != nil {
+	// 	accountName := *filterName
+	// 	if err := azivalidators.ValidateName("account", accountName); err != nil {
+	// 		return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid account name %s (it is required to be lower case).", accountName))
+	// 	}
+	// 	accountName = "%" + accountName + "%"
+	// 	query = query.Where("name LIKE ?", accountName)
+	// }
+	// size := int(pageSize)
+	// offset := int((page - 1) * pageSize)
+	// result := query.Order("account_id asc").Limit(size).Offset(offset).Find(&dbAccounts)
+	// if result.Error != nil {
+	// 	return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
+	// }
+	// return dbAccounts, nil
 	return dbAccounts, nil
 }

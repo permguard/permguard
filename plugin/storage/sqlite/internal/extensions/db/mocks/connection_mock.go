@@ -17,8 +17,9 @@
 package mocks
 
 import (
+	"database/sql"
+
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 
 	mock "github.com/stretchr/testify/mock"
 
@@ -44,14 +45,14 @@ func (c *SQLiteConnectionMock) GetStorage() azstorage.StorageKind {
 }
 
 // Connect connects to the storage.
-func (c *SQLiteConnectionMock) Connect(logger *zap.Logger, ctx *azstorage.StorageContext) (*gorm.DB, error) {
+func (c *SQLiteConnectionMock) Connect(logger *zap.Logger, ctx *azstorage.StorageContext) (*sql.DB, error) {
 	ret := c.Called(logger, ctx)
 
-	var r0 *gorm.DB
-	if rf, ok := ret.Get(0).(func(*zap.Logger, *azstorage.StorageContext) *gorm.DB); ok {
+	var r0 *sql.DB
+	if rf, ok := ret.Get(0).(func(*zap.Logger, *azstorage.StorageContext) *sql.DB); ok {
 		r0 = rf(logger, ctx)
 	} else {
-		r0 = ret.Get(0).(*gorm.DB)
+		r0 = ret.Get(0).(*sql.DB)
 	}
 
 	var r1 error = nil
