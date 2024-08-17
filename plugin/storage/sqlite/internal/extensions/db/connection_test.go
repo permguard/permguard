@@ -17,21 +17,20 @@
 package db
 
 import (
-	"database/sql"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/jmoiron/sqlx"
 	// "github.com/stretchr/testify/mock"
 	// "gorm.io/driver/sqlite"
 	// "gorm.io/gorm"
 	// "gorm.io/gorm/logger"
-
 	// azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	// azmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db/mocks"
 )
 
-// newSQLiteConnectionMock creates a new SQLiteConnection mock with a mock sql.DB and sql.DB.
-func newSQLiteConnectionMock(t *testing.T) (SQLiteConnector, *sql.DB, *sql.DB, sqlmock.Sqlmock) {
+// newSQLiteConnectionMock creates a new SQLiteConnection mock with a mock sqlx.DB and sqlx.DB.
+func newSQLiteConnectionMock(t *testing.T) (SQLiteConnector, *sqlx.DB, *sqlx.DB, sqlmock.Sqlmock) {
 	// logger := logger.Default.LogMode(logger.Info)
 
 	// sqlDB, sqlMock, err := sqlmock.New()

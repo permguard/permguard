@@ -17,15 +17,14 @@
 package centralstorage
 
 import (
-	"database/sql"
-
+	"github.com/jmoiron/sqlx"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
 // sqliteConnect connects to the sqlite database.
-func sqliteConnect(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector) (*sql.DB, error) {
+func sqliteConnect(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector) (*sqlx.DB, error) {
 	logger := ctx.GetLogger()
 	db, err := sqliteConnector.Connect(logger, ctx)
 	if err != nil {

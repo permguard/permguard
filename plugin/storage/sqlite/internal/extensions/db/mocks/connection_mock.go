@@ -17,10 +17,9 @@
 package mocks
 
 import (
-	"database/sql"
-
 	"go.uber.org/zap"
 
+	"github.com/jmoiron/sqlx"
 	mock "github.com/stretchr/testify/mock"
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
@@ -45,14 +44,14 @@ func (c *SQLiteConnectionMock) GetStorage() azstorage.StorageKind {
 }
 
 // Connect connects to the storage.
-func (c *SQLiteConnectionMock) Connect(logger *zap.Logger, ctx *azstorage.StorageContext) (*sql.DB, error) {
+func (c *SQLiteConnectionMock) Connect(logger *zap.Logger, ctx *azstorage.StorageContext) (*sqlx.DB, error) {
 	ret := c.Called(logger, ctx)
 
-	var r0 *sql.DB
-	if rf, ok := ret.Get(0).(func(*zap.Logger, *azstorage.StorageContext) *sql.DB); ok {
+	var r0 *sqlx.DB
+	if rf, ok := ret.Get(0).(func(*zap.Logger, *azstorage.StorageContext) *sqlx.DB); ok {
 		r0 = rf(logger, ctx)
 	} else {
-		r0 = ret.Get(0).(*sql.DB)
+		r0 = ret.Get(0).(*sqlx.DB)
 	}
 
 	var r1 error = nil

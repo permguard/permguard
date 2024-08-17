@@ -22,6 +22,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
@@ -56,7 +57,7 @@ func UpsertAccount(db *sql.Tx, isCreate bool, account *Account) (*Account, error
 		}
 	}
 	// var dbAccount Account
-	// var result *sql.DB
+	// var result *sqlx.DB
 	// if isCreate {
 	// 	dbAccount = Account{
 	// 		AccountID: generateAccountID(),
@@ -82,7 +83,7 @@ func UpsertAccount(db *sql.Tx, isCreate bool, account *Account) (*Account, error
 }
 
 // DeleteAccount deletes an account.
-func DeleteAccount(db *sql.DB, accountID int64) (*Account, error) {
+func DeleteAccount(db *sqlx.DB, accountID int64) (*Account, error) {
 	// if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
 	// 	return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
 	// }
@@ -100,30 +101,22 @@ func DeleteAccount(db *sql.DB, accountID int64) (*Account, error) {
 }
 
 // FetchAccounts retrieves accounts.
-func FetchAccounts(db *sql.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]Account, error) {
+func FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]Account, error) {
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, "storage: invalid page or page size.")
 	}
-    var dbAccounts []Account
-	limit := int(pageSize)
-	offset := int((page - 1) * pageSize)
-    query := "SELECT * FROM 'accounts' LIMIT ? OFFSET ?"
-    rows, err := db.Query(query, limit, offset)
-    if err != nil {
+	var dbAccounts []Account
+
+	limit := pageSize
+	offset := (page - 1) * pageSize
+
+	query := "SELECT * FROM accounts LIMIT ? OFFSET ?"
+	err := db.Select(&dbAccounts, query, limit, offset)
+	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
-    }
-    defer rows.Close()
-    for rows.Next() {
-        var account Account
-        err := rows.Scan(&account.AccountID, &account.CreatedAt, &account.UpdatedAt, &account.Name)
-        if err != nil {
-            return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
-        }
-        dbAccounts = append(dbAccounts, account)
-    }
-    if err = rows.Err(); err != nil {
-        return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
-    }
+	}
+
+	return dbAccounts, nil
 	// query := db
 	// if filterID != nil {
 	// 	accountID := *filterID
@@ -147,5 +140,4 @@ func FetchAccounts(db *sql.DB, page int32, pageSize int32, filterID *int64, filt
 	// 	return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
 	// }
 	// return dbAccounts, nil
-	return dbAccounts, nil
 }
