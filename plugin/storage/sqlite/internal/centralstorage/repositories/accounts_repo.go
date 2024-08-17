@@ -108,60 +108,45 @@ func FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, fil
 	}
 	var dbAccounts []Account
 
-    // Base query without conditions
     baseQuery := "SELECT * FROM accounts"
     var conditions []string
     var args []interface{}
 
-    // Add condition for account_id if filterID is provided
     if filterID != nil {
         accountID := *filterID
-        // Validate the account ID
         if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
             return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
         }
-        // Add condition to the WHERE clause
         conditions = append(conditions, "account_id = ?")
-        // Add corresponding value to args
         args = append(args, accountID)
     }
 
-    // Add condition for name if filterName is provided
     if filterName != nil {
         accountName := *filterName
-        // Validate the account name
         if err := azivalidators.ValidateName("account", accountName); err != nil {
             return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid account name %s (it is required to be lower case).", accountName))
         }
-        // Add wildcard search pattern
         accountName = "%" + accountName + "%"
-        // Add condition to the WHERE clause
         conditions = append(conditions, "name LIKE ?")
-        // Add corresponding value to args
         args = append(args, accountName)
     }
 
-    // Append WHERE clause to the base query if conditions exist
     if len(conditions) > 0 {
         baseQuery += " WHERE " + strings.Join(conditions, " AND ")
     }
 
-	// Add ORDER BY clause to the query
 	baseQuery += " ORDER BY account_id"
 
-    // Append LIMIT and OFFSET to the query
     limit := pageSize
     offset := (page - 1) * pageSize
     baseQuery += " LIMIT ? OFFSET ?"
-    // Add LIMIT and OFFSET values to args
+
     args = append(args, limit, offset)
 
-    // Execute the query with the constructed SQL and arguments
     err := db.Select(&dbAccounts, baseQuery, args...)
     if err != nil {
         return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
     }
 
-    // Return the list of accounts
     return dbAccounts, nil
 }
