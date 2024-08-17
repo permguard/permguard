@@ -34,13 +34,16 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 		AccountID: account.AccountID,
 		Name:      account.Name,
 	}
-	tx := db.Begin()
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrServerInfrastructure, "storage: cannot open the transaction.")
+	}
 	dbaccount, err = azirepo.UpsertAccount(tx, true, dbaccount)
 	if err != nil {
 		tx.Rollback()
 		return nil, err
 	}
-	if err := tx.Commit().Error; err != nil {
+	if err := tx.Commit(); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be committed.")
 	}
 	return mapAccountToAgentAccount(dbaccount)
@@ -56,13 +59,16 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 		AccountID: account.AccountID,
 		Name:      account.Name,
 	}
-	tx := db.Begin()
-	dbaccount, err = azirepo.UpsertAccount(db, false, dbaccount)
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrServerInfrastructure, "storage: cannot open the transaction.")
+	}
+	dbaccount, err = azirepo.UpsertAccount(tx, false, dbaccount)
 	if err != nil {
 		tx.Rollback()
 		return nil, err
 	}
-	if err := tx.Commit().Error; err != nil {
+	if err := tx.Commit(); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be committed.")
 	}
 	return mapAccountToAgentAccount(dbaccount)

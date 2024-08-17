@@ -21,35 +21,36 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/stretchr/testify/mock"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+	// "github.com/stretchr/testify/mock"
+	// "gorm.io/driver/sqlite"
+	// "gorm.io/gorm"
+	// "gorm.io/gorm/logger"
 
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db/mocks"
+	// azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	// azmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db/mocks"
 )
 
-// newSQLiteConnectionMock creates a new SQLiteConnection mock with a mock sql.DB and gorm.DB.
-func newSQLiteConnectionMock(t *testing.T) (SQLiteConnector, *sql.DB, *gorm.DB, sqlmock.Sqlmock) {
-	logger := logger.Default.LogMode(logger.Info)
+// newSQLiteConnectionMock creates a new SQLiteConnection mock with a mock sql.DB and sql.DB.
+func newSQLiteConnectionMock(t *testing.T) (SQLiteConnector, *sql.DB, *sql.DB, sqlmock.Sqlmock) {
+	// logger := logger.Default.LogMode(logger.Info)
 
-	sqlDB, sqlMock, err := sqlmock.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	gormDB, err := gorm.Open(sqlite.New(sqlite.Config{
-		Conn: sqlDB,
-	}), &gorm.Config{
-		Logger: logger,
-	})
+	// sqlDB, sqlMock, err := sqlmock.New()
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	// gormDB, err := gorm.Open(sqlite.New(sqlite.Config{
+	// 	Conn: sqlDB,
+	// }), &gorm.Config{
+	// 	Logger: logger,
+	// })
 
-	if err != nil {
-		t.Fatal(err)
-	}
-	sqlConnMock := azmocks.NewSQLiteConnectionMock()
-	sqlConnMock.On("GetStorage").Return(azstorage.StorageSQLite)
-	sqlConnMock.On("Connect", mock.Anything, mock.Anything).Return(gormDB, nil)
-	sqlConnMock.On("Close", gormDB).Return(nil)
-	return sqlConnMock, sqlDB, gormDB, sqlMock
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	// sqlConnMock := azmocks.NewSQLiteConnectionMock()
+	// sqlConnMock.On("GetStorage").Return(azstorage.StorageSQLite)
+	// sqlConnMock.On("Connect", mock.Anything, mock.Anything).Return(gormDB, nil)
+	// sqlConnMock.On("Close", gormDB).Return(nil)
+	// return sqlConnMock, sqlDB, gormDB, sqlMock
+	return nil, nil, nil, nil
 }
