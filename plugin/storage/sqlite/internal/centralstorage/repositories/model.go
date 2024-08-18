@@ -17,6 +17,7 @@
 package repositories
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,6 +29,14 @@ type Account struct {
 	CreatedAt time.Time `db:"created_at"`
 	UpdatedAt time.Time `db:"updated_at"`
 	Name      string    `db:"name"`
+}
+
+// LogAccountEntry returns a string representation of the account.
+func LogAccountEntry(account *Account) string {
+	if account == nil {
+		return "account is nil"
+	}
+	return fmt.Sprintf("accound id: %d, name: %s", account.AccountID, account.Name)
 }
 
 // IdentitySource is the model for the identity_source table.

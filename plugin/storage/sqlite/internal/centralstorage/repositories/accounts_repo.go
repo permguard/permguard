@@ -43,18 +43,18 @@ func generateAccountID() int64 {
 // UpsertAccount creates or updates an account.
 func UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Account, error) {
 	if account == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: account is nil.")
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: client input is not valid (%s).", LogAccountEntry(account)))
 	}
 	if !isCreate {
 		if err := azivalidators.ValidateAccountID("account", account.AccountID); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", account.AccountID))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: client account id is not valid (%s).", LogAccountEntry(account)))
 		}
 	}
 	if err := azivalidators.ValidateName("account", account.Name); err != nil {
 		if account.AccountID == 0 {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid account name %s (it is required to be lower case).", account.Name))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: client account name is not valid (%s).", LogAccountEntry(account)))
 		} else {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid account name %s for account id %d (it is required to be lower case).", account.Name, account.AccountID))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: client account id or name is not valid (%s).", LogAccountEntry(account)))
 		}
 	}
 	var accountID int64
@@ -63,14 +63,14 @@ func UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Account, error
 		accountName := account.Name
 		result, err := tx.Exec("INSERT INTO accounts (account_id, name) VALUES (?, ?)", accountID, accountName)
 		if err != nil || result == nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be created.")
+			return nil, WrapSqlite3Error(fmt.Sprintf("operation create-account, entity %s", LogAccountEntry(account)), err)
 		}
 	} else {
 		accountID = account.AccountID
 		accountName := account.Name
 		result, err := tx.Exec("UPDATE accounts SET name = ? WHERE account_id = ?", accountName, accountID)
 		if err != nil || result == nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be updated.")
+			return nil, WrapSqlite3Error(fmt.Sprintf("operation update-account, entity %s", LogAccountEntry(account)), err)
 		}
 	}
 	var dbAccount Account
@@ -81,8 +81,7 @@ func UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Account, error
 		&dbAccount.Name,
 	)
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account upsert has failed.")
-
+		return nil, WrapSqlite3Error(fmt.Sprintf("operation retrieve-created-account, entity %s", LogAccountEntry(account)), err)
 	}
 	return &dbAccount, nil
 }
@@ -90,20 +89,20 @@ func UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Account, error
 // DeleteAccount deletes an account.
 func DeleteAccount(db *sqlx.DB, accountID int64) (*Account, error) {
 	if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: client account id is not valid (account id: %d).", accountID))
 	}
 	var dbAccount Account
 	err := db.Get(&dbAccount, "SELECT * FROM accounts WHERE account_id = ?", accountID)
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account to be deleted was not found.")
+		return nil, WrapSqlite3Error(fmt.Sprintf("operation retrieve-account, entity account id: %d", accountID), err)
 	}
 	res, err := db.Exec("DELETE FROM accounts WHERE account_id = ?", accountID)
 	if err != nil || res == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be deleted.")
+		return nil, WrapSqlite3Error(fmt.Sprintf("operation delete-account, entity account id: %d", accountID), err)
 	}
 	rows, err := res.RowsAffected()
 	if err != nil || rows != 1 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account cannot be deleted.")
+		return nil, WrapSqlite3Error(fmt.Sprintf("operation delete-account, entity account id: %d", accountID), err)
 	}
 	return &dbAccount, nil
 }
@@ -111,7 +110,7 @@ func DeleteAccount(db *sqlx.DB, accountID int64) (*Account, error) {
 // FetchAccounts retrieves accounts.
 func FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]Account, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, "storage: invalid page or page size.")
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: client invalid page %d or size %d.", page, pageSize))
 	}
 	var dbAccounts []Account
 
@@ -122,7 +121,7 @@ func FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, fil
 	if filterID != nil {
 		accountID := *filterID
 		if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: client account id is not valid (account id: %d).", accountID))
 		}
 		conditions = append(conditions, "account_id = ?")
 		args = append(args, accountID)
@@ -131,7 +130,7 @@ func FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, fil
 	if filterName != nil {
 		accountName := *filterName
 		if err := azivalidators.ValidateName("account", accountName); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid account name %s (it is required to be lower case).", accountName))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: client account name is not valid (account name: %s).", accountName))
 		}
 		accountName = "%" + accountName + "%"
 		conditions = append(conditions, "name LIKE ?")
@@ -152,7 +151,7 @@ func FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, fil
 
 	err := db.Select(&dbAccounts, baseQuery, args...)
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
+		return nil, WrapSqlite3Error(fmt.Sprintf("operation retrieve-accounts, entity params %v", args), err)
 	}
 
 	return dbAccounts, nil

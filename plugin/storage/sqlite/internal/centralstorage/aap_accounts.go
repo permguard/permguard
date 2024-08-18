@@ -36,7 +36,7 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepo.WrapSqlStorageError("cannot open the transaction.", err)
+		return nil, azirepo.WrapSqlite3Error("cannot open the transaction.", err)
 	}
 	dbaccount, err = azirepo.UpsertAccount(tx, true, dbaccount)
 	if err != nil {
@@ -44,7 +44,7 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepo.WrapSqlStorageError("account cannot be committed.", err)
+		return nil, azirepo.WrapSqlite3Error("cannot commit the transaction.", err)
 	}
 	return mapAccountToAgentAccount(dbaccount)
 }
@@ -61,7 +61,7 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepo.WrapSqlStorageError("cannot open the transaction.", err)
+		return nil, azirepo.WrapSqlite3Error("cannot open the transaction.", err)
 	}
 	dbaccount, err = azirepo.UpsertAccount(tx, false, dbaccount)
 	if err != nil {
@@ -69,7 +69,7 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepo.WrapSqlStorageError("account cannot be committed.", err)
+		return nil, azirepo.WrapSqlite3Error("cannot commit the transaction.", err)
 	}
 	return mapAccountToAgentAccount(dbaccount)
 }
@@ -97,7 +97,7 @@ func (s SQLiteCentralStorageAAP) FetchAccounts(page int32, pageSize int32, field
 	if _, ok := fields[azmodels.FieldAccountAccountID]; ok {
 		accountID, ok := fields[azmodels.FieldAccountAccountID].(int64)
 		if !ok {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: client account id is not valid (account id: %d).", accountID))
 		}
 		filterID = &accountID
 	}
@@ -105,7 +105,7 @@ func (s SQLiteCentralStorageAAP) FetchAccounts(page int32, pageSize int32, field
 	if _, ok := fields[azmodels.FieldAccountName]; ok {
 		accountName, ok := fields[azmodels.FieldAccountName].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid account name %s (it is required to be lower case).", accountName))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: client account name is not valid (account name: %s).", accountName))
 		}
 		filterName = &accountName
 	}
@@ -117,7 +117,7 @@ func (s SQLiteCentralStorageAAP) FetchAccounts(page int32, pageSize int32, field
 	for i, a := range dbAccounts {
 		account, err := mapAccountToAgentAccount(&a)
 		if err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrServerGeneric, "storage: account cannot be converted.")
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: account cannot be converted (%s).", azirepo.LogAccountEntry(&a)))
 		}
 		accounts[i] = *account
 	}
