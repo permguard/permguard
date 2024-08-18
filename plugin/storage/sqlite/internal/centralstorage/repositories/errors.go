@@ -17,6 +17,7 @@
 package repositories
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/mattn/go-sqlite3"
@@ -24,19 +25,22 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
-// WrapSqlStorageError wraps the sql error with a storage error.
-func WrapSqlStorageError(msg string, err error) error {
-	errMsg := fmt.Sprintf("storage: %s", msg)
+// WrapSqlite3Error wraps a sqlite3 error.
+func WrapSqlite3Error(msg string, err error) error {
+	genericErrMsg := fmt.Sprintf("storage: generic error (%s)", msg)
 	sqliteErr, ok := err.(sqlite3.Error)
 	if !ok {
-		return azerrors.WrapSystemError(azerrors.ErrStorageGeneric, errMsg)
+		return azerrors.WrapSystemError(azerrors.ErrStorageGeneric, genericErrMsg)
 	}
 	switch sqliteErr.Code {
 	case sqlite3.ErrConstraint:
-		return err
+		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique {
+			return azerrors.WrapSystemError(azerrors.ErrStorageConstraintUnique, fmt.Sprintf("storage: unique constraint failed (%s)", msg))
+		}
+		return azerrors.WrapSystemError(azerrors.ErrStorageConstraintUnique, fmt.Sprintf("storage: constraint failed (%s)", msg))
 	case sqlite3.ErrNotFound:
-		return err
+		return azerrors.WrapSystemError(azerrors.ErrStorageConstraintUnique, fmt.Sprintf("storage: record not found (%s).", msg))
 	default:
-		return azerrors.WrapSystemError(azerrors.ErrStorageGeneric, errMsg)
+		return azerrors.WrapSystemError(azerrors.ErrStorageGeneric, genericErrMsg)
 	}
 }

@@ -72,11 +72,13 @@ var (
 	ErrClientUUID       error = NewSystemError("04114")
 	ErrClientName       error = NewSystemError("04115")
 	// 05xxx server errors.
-	ErrServerGeneric        error = NewSystemError("05000")
-	ErrServerInfrastructure error = NewSystemError("05001")
-	ErrStorageGeneric       error = NewSystemError("05100")
-	ErrStorageDuplicate     error = NewSystemError("05101")
-	ErrStorageNotFound      error = NewSystemError("05102")
+	ErrServerGeneric            error = NewSystemError("05000")
+	ErrServerInfrastructure     error = NewSystemError("05001")
+	ErrStorageGeneric           error = NewSystemError("05100")
+	ErrStorageEntityMapping     error = NewSystemError("05101")
+	ErrStorageConstraint 		error = NewSystemError("05110")
+	ErrStorageConstraintUnique  error = NewSystemError("05111")
+	ErrStorageNotFound          error = NewSystemError("05120")
 	// 09xxx plugin errors.
 	ErrPluginGeneric error = NewSystemError("09000")
 )
