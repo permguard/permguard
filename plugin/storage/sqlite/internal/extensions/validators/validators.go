@@ -30,7 +30,7 @@ func ValidateAccountID(entity string, accountID int64) error {
 		AccountID int64 `validate:"required,gt=0"`
 	}{AccountID: accountID}
 	if isValid, err := azvalidators.ValidateInstance(vAccountID); err != nil || !isValid {
-		return fmt.Errorf("storage: %s name %d is not valid. %w", entity, vAccountID.AccountID, azerrors.ErrClientAccountID)
+		return fmt.Errorf("storage: %s name %d is not valid. %w", entity, vAccountID.AccountID, azerrors.ErrClientID)
 	}
 	return nil
 }

@@ -44,7 +44,7 @@ func TestValidateAccountID(t *testing.T) {
 		result := ValidateAccountID(tc.entity, int64(tc.accountID))
 		if tc.hasError {
 			assert.NotNil(result, "error should not be nil")
-			assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientAccountID, result), "error should be ErrClientAccountID")
+			assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, result), "error should be ErrClientID")
 		} else {
 			assert.Nil(result, "error should be nil")
 		}

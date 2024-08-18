@@ -17,25 +17,30 @@
 package errors
 
 var errorCodes = map[string]string{
-	// 00000 unknown error.
+	// 00000 unknown 01101error.
 	"00000": "unknown error",
 	// 001xx implementation errors.
-	"00101": "invalid input parameter",
+	"00101": "not implemented",
 	// 01xxx configuration errors.
 	"01000": "generic configuration error",
 	// 04xxx client errors.
 	"04000": "generic client error",
-	"04100": "invalid entity",
-	"04101": "invalid account id",
-	"04102": "invalid id",
-	"04103": "invalid uuid",
-	"04104": "invalid name",
+	// 041xx client parameters errors.
+	"04100": "invalid client parameter",
+	"04101": "invalid pagination",
+	// 041xx client entity errors.
+	"04110": "invalid entity",
+	"04111": "invalid id",
+	"04112": "invalid uuid",
+	"04113": "invalid name",
 	// 05xxx server errors.
 	"05000": "generic server error",
 	"05001": "infrastractural error",
 	"05100": "generic storage error",
-	"05101": "duplicate entity",
-	"05102": "not found",
+	"05101": "storage entity mapping error",
+	"05110": "storage constraint error",
+	"05111": "storage constraint unique error",
+	"05120": "storage not found error",
 	// 09xxx plugin errors.
 	"09000": "generic plugin error",
 }
@@ -57,28 +62,29 @@ const (
 
 var (
 	// 00000 generic system error.
-	ErrUnknown        error = NewSystemError("00000")
-	ErrNotImplemented error = NewSystemError("00001")
+	ErrUnknown error = NewSystemError("00000")
+	// 001xx implementation errors.
+	ErrNotImplemented error = NewSystemError("00101")
 	// 01xxx configuration errors.
 	ErrConfigurationGeneric error = NewSystemError("01000")
 	// 04xxx client errors.
 	ErrClientGeneric error = NewSystemError("04000")
-	// 041xx client entity errors.
+	// 041xx client parameters errors.
 	ErrClientParameter  error = NewSystemError("04100")
-	ErrClientPagination error = NewSystemError("01101")
-	ErrClientEntity     error = NewSystemError("04111")
-	ErrClientAccountID  error = NewSystemError("04112")
-	ErrClientID         error = NewSystemError("04113")
-	ErrClientUUID       error = NewSystemError("04114")
-	ErrClientName       error = NewSystemError("04115")
+	ErrClientPagination error = NewSystemError("04101")
+	// 041xx client entity errors.
+	ErrClientEntity error = NewSystemError("04110")
+	ErrClientID     error = NewSystemError("04111")
+	ErrClientUUID   error = NewSystemError("04112")
+	ErrClientName   error = NewSystemError("04113")
 	// 05xxx server errors.
-	ErrServerGeneric            error = NewSystemError("05000")
-	ErrServerInfrastructure     error = NewSystemError("05001")
-	ErrStorageGeneric           error = NewSystemError("05100")
-	ErrStorageEntityMapping     error = NewSystemError("05101")
-	ErrStorageConstraint 		error = NewSystemError("05110")
-	ErrStorageConstraintUnique  error = NewSystemError("05111")
-	ErrStorageNotFound          error = NewSystemError("05120")
+	ErrServerGeneric           error = NewSystemError("05000")
+	ErrServerInfrastructure    error = NewSystemError("05001")
+	ErrStorageGeneric          error = NewSystemError("05100")
+	ErrStorageEntityMapping    error = NewSystemError("05101")
+	ErrStorageConstraint       error = NewSystemError("05110")
+	ErrStorageConstraintUnique error = NewSystemError("05111")
+	ErrStorageNotFound         error = NewSystemError("05120")
 	// 09xxx plugin errors.
 	ErrPluginGeneric error = NewSystemError("09000")
 )
