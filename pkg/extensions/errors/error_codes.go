@@ -57,26 +57,26 @@ const (
 
 var (
 	// 00000 generic system error.
-	ErrUnknown error 				= NewSystemError("00000")
-	ErrNotImplemented error 		= NewSystemError("00001")
-	ErrInvalidInputParameter error 	= NewSystemError("00101")
+	ErrUnknown        error = NewSystemError("00000")
+	ErrNotImplemented error = NewSystemError("00001")
 	// 01xxx configuration errors.
 	ErrConfigurationGeneric error = NewSystemError("01000")
 	// 04xxx client errors.
-	ErrClientGeneric 	error = NewSystemError("04000")
-	ErrClientPagination error = NewSystemError("04050")
+	ErrClientGeneric error = NewSystemError("04000")
 	// 041xx client entity errors.
-	ErrClientEntity		error = NewSystemError("04100")
-	ErrClientAccountID  error = NewSystemError("04101")
-	ErrClientID   		error = NewSystemError("04102")
-	ErrClientUUID   	error = NewSystemError("04103")
-	ErrClientName   	error = NewSystemError("04104")
+	ErrClientParameter  error = NewSystemError("04100")
+	ErrClientPagination error = NewSystemError("01101")
+	ErrClientEntity     error = NewSystemError("04111")
+	ErrClientAccountID  error = NewSystemError("04112")
+	ErrClientID         error = NewSystemError("04113")
+	ErrClientUUID       error = NewSystemError("04114")
+	ErrClientName       error = NewSystemError("04115")
 	// 05xxx server errors.
-	ErrServerGeneric 		error = NewSystemError("05000")
+	ErrServerGeneric        error = NewSystemError("05000")
 	ErrServerInfrastructure error = NewSystemError("05001")
-	ErrStorageGeneric 		error = NewSystemError("05100")
-	ErrStorageDuplicate 	error = NewSystemError("05101")
-	ErrStorageNotFound	 	error = NewSystemError("05102")
+	ErrStorageGeneric       error = NewSystemError("05100")
+	ErrStorageDuplicate     error = NewSystemError("05101")
+	ErrStorageNotFound      error = NewSystemError("05102")
 	// 09xxx plugin errors.
 	ErrPluginGeneric error = NewSystemError("09000")
 )
