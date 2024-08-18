@@ -121,7 +121,7 @@ func FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, fil
 	if filterID != nil {
 		accountID := *filterID
 		if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: client account id is not valid (account id: %d).", accountID))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: client account id is not valid (account id: %d).", accountID))
 		}
 		conditions = append(conditions, "account_id = ?")
 		args = append(args, accountID)
