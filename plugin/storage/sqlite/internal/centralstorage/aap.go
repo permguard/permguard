@@ -17,8 +17,6 @@
 package centralstorage
 
 import (
-	"fmt"
-
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
@@ -33,7 +31,8 @@ type SQLiteCentralStorageAAP struct {
 // newSQLiteAAPCentralStorage creates a new SQLiteAAPCentralStorage.
 func newSQLiteAAPCentralStorage(storageContext *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector) (*SQLiteCentralStorageAAP, error) {
 	if storageContext == nil {
-		return nil, fmt.Errorf("%q: %w", "storageContext is nil", azerrors.ErrInvalidInputParameter)
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: storageContext is nil.")
+
 	}
 	return &SQLiteCentralStorageAAP{
 		ctx:             storageContext,

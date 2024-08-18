@@ -43,7 +43,7 @@ func generateAccountID() int64 {
 // UpsertAccount creates or updates an account.
 func UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Account, error) {
 	if account == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrInvalidInputParameter, "storage: account is nil.")
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: account is nil.")
 	}
 	if !isCreate {
 		if err := azivalidators.ValidateAccountID("account", account.AccountID); err != nil {
@@ -83,7 +83,7 @@ func UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Account, error
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: account upsert has failed.")
 
-    }
+	}
 	return &dbAccount, nil
 }
 
@@ -115,45 +115,45 @@ func FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, fil
 	}
 	var dbAccounts []Account
 
-    baseQuery := "SELECT * FROM accounts"
-    var conditions []string
-    var args []interface{}
+	baseQuery := "SELECT * FROM accounts"
+	var conditions []string
+	var args []interface{}
 
-    if filterID != nil {
-        accountID := *filterID
-        if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
-            return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
-        }
-        conditions = append(conditions, "account_id = ?")
-        args = append(args, accountID)
-    }
+	if filterID != nil {
+		accountID := *filterID
+		if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientAccountID, fmt.Sprintf("storage: invalid account id %d.", accountID))
+		}
+		conditions = append(conditions, "account_id = ?")
+		args = append(args, accountID)
+	}
 
-    if filterName != nil {
-        accountName := *filterName
-        if err := azivalidators.ValidateName("account", accountName); err != nil {
-            return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid account name %s (it is required to be lower case).", accountName))
-        }
-        accountName = "%" + accountName + "%"
-        conditions = append(conditions, "name LIKE ?")
-        args = append(args, accountName)
-    }
+	if filterName != nil {
+		accountName := *filterName
+		if err := azivalidators.ValidateName("account", accountName); err != nil {
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid account name %s (it is required to be lower case).", accountName))
+		}
+		accountName = "%" + accountName + "%"
+		conditions = append(conditions, "name LIKE ?")
+		args = append(args, accountName)
+	}
 
-    if len(conditions) > 0 {
-        baseQuery += " WHERE " + strings.Join(conditions, " AND ")
-    }
+	if len(conditions) > 0 {
+		baseQuery += " WHERE " + strings.Join(conditions, " AND ")
+	}
 
 	baseQuery += " ORDER BY account_id"
 
-    limit := pageSize
-    offset := (page - 1) * pageSize
-    baseQuery += " LIMIT ? OFFSET ?"
+	limit := pageSize
+	offset := (page - 1) * pageSize
+	baseQuery += " LIMIT ? OFFSET ?"
 
-    args = append(args, limit, offset)
+	args = append(args, limit, offset)
 
-    err := db.Select(&dbAccounts, baseQuery, args...)
-    if err != nil {
-        return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
-    }
+	err := db.Select(&dbAccounts, baseQuery, args...)
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: account cannot be retrieved.")
+	}
 
-    return dbAccounts, nil
+	return dbAccounts, nil
 }
