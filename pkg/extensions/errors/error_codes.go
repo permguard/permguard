@@ -17,32 +17,39 @@
 package errors
 
 var errorCodes = map[string]string{
-	// 00000 unknown 01101error.
+	// 00000: Unknown Errors
 	"00000": "unknown error",
-	// 001xx implementation errors.
-	"00101": "not implemented",
-	// 01xxx configuration errors.
-	"01000": "generic configuration error",
-	// 04xxx client errors.
-	"04000": "generic client error",
-	// 041xx client parameters errors.
+
+	// 001xx: Implementation Errors
+	"00101": "feature not implemented",
+
+	// 01xxx: Configuration Errors
+	"01000": "general configuration error",
+
+	// 04xxx: Client Errors
+	"04000": "general client error",
+
+	// 041xx: Client Parameter Errors
 	"04100": "invalid client parameter",
-	"04101": "invalid pagination",
-	// 041xx client entity errors.
+	"04101": "invalid pagination parameter",
+
+	// 041xx: Client Entity Errors
 	"04110": "invalid entity",
-	"04111": "invalid id",
-	"04112": "invalid uuid",
+	"04111": "invalid ID",
+	"04112": "invalid UUID",
 	"04113": "invalid name",
-	// 05xxx server errors.
-	"05000": "generic server error",
-	"05001": "infrastractural error",
-	"05100": "generic storage error",
+
+	// 05xxx: Server Errors
+	"05000": "general server error",
+	"05001": "infrastructure error",
+	"05100": "general storage error",
 	"05101": "storage entity mapping error",
 	"05110": "storage constraint error",
-	"05111": "storage constraint unique error",
-	"05120": "storage not found error",
-	// 09xxx plugin errors.
-	"09000": "generic plugin error",
+	"05111": "unique constraint violation",
+	"05120": "entity not found in storage",
+
+	// 09xxx: Plugin Errors
+	"09000": "general plugin error",
 }
 
 const (
