@@ -18,38 +18,39 @@ package errors
 
 var errorCodes = map[string]string{
 	// 00000: Unknown Errors
-	"00000": "unknown error",
+	"00000": "core: unknown error",
 
 	// 001xx: Implementation Errors
-	"00101": "feature not implemented",
+	"00101": "code: feature not implemented",
 
 	// 01xxx: Configuration Errors
-	"01000": "general configuration error",
+	"01000": "config: generic error",
 
 	// 04xxx: Client Errors
-	"04000": "general client error",
+	"04000": "client: generic error",
 
 	// 041xx: Client Parameter Errors
-	"04100": "invalid client parameter",
-	"04101": "invalid pagination parameter",
+	"04100": "client: invalid client parameter",
+	"04101": "client: invalid pagination parameter",
 
 	// 041xx: Client Entity Errors
-	"04110": "invalid entity",
-	"04111": "invalid ID",
-	"04112": "invalid UUID",
-	"04113": "invalid name",
+	"04110": "client: invalid entity",
+	"04111": "client: invalid ID",
+	"04112": "client: invalid UUID",
+	"04113": "client: invalid name",
 
 	// 05xxx: Server Errors
-	"05000": "general server error",
-	"05001": "infrastructure error",
-	"05100": "general storage error",
-	"05101": "storage entity mapping error",
-	"05110": "storage constraint error",
-	"05111": "unique constraint violation",
-	"05120": "entity not found in storage",
+	"05000": "server: generic error",
+	"05001": "server: infrastructure error",
+	// 051xx: Storage Errors
+	"05100": "stroage: generic error",
+	"05101": "storage: entity mapping error",
+	"05110": "storage: constraint error",
+	"05111": "stroage: unique constraint violation",
+	"05120": "stroage: entity not found in storage",
 
 	// 09xxx: Plugin Errors
-	"09000": "general plugin error",
+	"09000": "plugin: generic error",
 }
 
 const (
