@@ -45,36 +45,38 @@ func UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Account, error
 	if account == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account data is missing or malformed (%s).", LogAccountEntry(account)))
 	}
-	if !isCreate {
-		if err := azivalidators.ValidateAccountID("account", account.AccountID); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (%s).", LogAccountEntry(account)))
-		}
+	if !isCreate && azivalidators.ValidateAccountID("account", account.AccountID) != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (%s).", LogAccountEntry(account)))
 	}
 	if err := azivalidators.ValidateName("account", account.Name); err != nil {
+		errorMessage := "storage: invalid client input - either account id or account name is not valid (%s)."
 		if account.AccountID == 0 {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account name is not valid (%s).", LogAccountEntry(account)))
-		} else {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - either account id or account name is not valid (%s).", LogAccountEntry(account)))
+			errorMessage = "storage: invalid client input - account name is not valid (%s)."
 		}
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogAccountEntry(account)))
 	}
-	var accountID int64
+	accountID := account.AccountID
+	accountName := account.Name
+	var result sql.Result
+	var err error
+
 	if isCreate {
 		accountID = generateAccountID()
-		accountName := account.Name
-		result, err := tx.Exec("INSERT INTO accounts (account_id, name) VALUES (?, ?)", accountID, accountName)
-		if err != nil || result == nil {
-			return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - either account id or account name is not valid (%s).", LogAccountEntry(account)), err)
-		}
+		result, err = tx.Exec("INSERT INTO accounts (account_id, name) VALUES (?, ?)", accountID, accountName)
 	} else {
-		accountID = account.AccountID
-		accountName := account.Name
-		result, err := tx.Exec("UPDATE accounts SET name = ? WHERE account_id = ?", accountName, accountID)
-		if err != nil || result == nil {
-			return nil, WrapSqlite3Error(fmt.Sprintf("failed to create account - operation 'create-account' encountered an issue (%s).", LogAccountEntry(account)), err)
-		}
+		result, err = tx.Exec("UPDATE accounts SET name = ? WHERE account_id = ?", accountName, accountID)
 	}
+
+	if err != nil || result == nil {
+		action := "update"
+		if isCreate {
+			action = "create"
+		}
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to %s account - operation '%s-account' encountered an issue (%s).", action, action, LogAccountEntry(account)), err)
+	}
+
 	var dbAccount Account
-	err := tx.QueryRow("SELECT account_id, created_at, updated_at, name FROM accounts WHERE account_id = ?", accountID).Scan(
+	err = tx.QueryRow("SELECT account_id, created_at, updated_at, name FROM accounts WHERE account_id = ?", accountID).Scan(
 		&dbAccount.AccountID,
 		&dbAccount.CreatedAt,
 		&dbAccount.UpdatedAt,
