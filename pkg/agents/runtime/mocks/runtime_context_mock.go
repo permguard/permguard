@@ -68,11 +68,25 @@ func (c *RuntimeContextMock) GetContext() context.Context {
 	return r0
 }
 
-// newRuntimeContextMock creates a new RuntimeContextMock.
+// GetContext returns the context.
+func (c *RuntimeContextMock) GetAppData() string {
+	ret := c.Called()
+
+	var r0 string
+	if rf, ok := ret.Get(0).(func() string); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	return r0
+}
+
+// NewRuntimeContextMock creates a new RuntimeContextMock.
 func NewRuntimeContextMock() *RuntimeContextMock {
 	ctx := &RuntimeContextMock{}
 	ctx.On("GetLogger").Return(zap.NewNop())
 	ctx.On("GetParentLoggerMessage").Return("")
 	ctx.On("GetContext").Return(context.Background())
+	ctx.On("GetAppData").Return(".")
 	return ctx
 }

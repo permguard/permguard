@@ -14,9 +14,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package mocks
+package testutils
 
 import (
+
 	"go.uber.org/zap"
 
 	"github.com/jmoiron/sqlx"
