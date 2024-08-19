@@ -55,18 +55,17 @@ func UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Account, error
 		}
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogAccountEntry(account)))
 	}
+
 	accountID := account.AccountID
 	accountName := account.Name
 	var result sql.Result
 	var err error
-
 	if isCreate {
 		accountID = generateAccountID()
 		result, err = tx.Exec("INSERT INTO accounts (account_id, name) VALUES (?, ?)", accountID, accountName)
 	} else {
 		result, err = tx.Exec("UPDATE accounts SET name = ? WHERE account_id = ?", accountName, accountID)
 	}
-
 	if err != nil || result == nil {
 		action := "update"
 		if isCreate {
