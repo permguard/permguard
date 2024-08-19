@@ -25,6 +25,7 @@ import (
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
+	azidbmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db/testutils/mocks"
 )
 
 // NewSqliteConnectionMocks creates a new SQLiteConnectionMock with a mock sqlx.DB.
@@ -38,7 +39,7 @@ func NewSqliteConnectionMocks(t *testing.T) (azidb.SQLiteConnector, *sqlx.DB, *s
 	if err != nil {
 		t.Fatal(err)
 	}
-	sqlConnMock := NewSQLiteConnectionMock()
+	sqlConnMock := azidbmocks.NewSQLiteConnectionMock()
 	sqlConnMock.On("GetStorage").Return(azstorage.StorageSQLite)
 	sqlConnMock.On("Connect", mock.Anything, mock.Anything).Return(sqlxDB, nil)
 	sqlConnMock.On("Close", sqlxDB).Return(nil)
