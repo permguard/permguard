@@ -42,7 +42,7 @@ func TestIsErrorInClass(t *testing.T) {
 
 		{"04xxx", ErrClientEntity, true},
 		{"041xx", ErrClientEntity, true},
-		{"0411x", ErrClientEntity, false},
+		{"0412x", ErrClientEntity, false},
 		{"041xx", ErrClientID, true},
 		{"041xx", ErrClientName, true},
 	}
@@ -61,11 +61,11 @@ func TestNewSystemErrorWithMessage(t *testing.T) {
 		expectedCode    string
 		expectedMessage string
 	}{
-		{"00000", "", "00000", "unknown error"},
-		{"00000", "not valid", "00000", "unknown error"},
-		{"00191", "", "00000", "unknown error"},
+		{"00000", "", "00000", "core: unknown error"},
+		{"00000", "not valid", "00000", "core: unknown error"},
+		{"00191", "", "00000", "core: unknown error"},
 		{"00181", "not valid", "00181", "not valid"},
-		{"04100", "not valid", "04100", "invalid entity"},
+		{"04100", "not valid", "04100", "client: invalid client parameter"},
 		{"04151", "new custom error", "04151", "new custom error"},
 	}
 	for _, tc := range testCases {
@@ -108,10 +108,10 @@ func TestSystemError(t *testing.T) {
 		expectedCode    string
 		expectedMessage string
 	}{
-		{"00000", "00000", "unknown error"},
-		{"00181", "00000", "unknown error"},
-		{"04141", "00000", "unknown error"},
-		{"04101", "04101", "invalid account id"},
+		{"00000", "00000", "core: unknown error"},
+		{"00181", "00000", "core: unknown error"},
+		{"04141", "00000", "core: unknown error"},
+		{"04101", "04101", "client: invalid pagination parameter"},
 	}
 	for _, tc := range testCases {
 		result := ConvertToSystemError(NewSystemError(tc.code))
