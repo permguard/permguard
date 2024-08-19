@@ -62,18 +62,3 @@ func registerAccountForInsertMocking() (*azmodels.Account, string, *sqlmock.Rows
 		AddRow(account.AccountID, account.CreatedAt, account.UpdatedAt, account.Name)
 	return account, sql, sqlRows
 }
-
-// registerTenantsForInsertMocking registers tenants for insert mocking.
-func registerTenantsForInsertMocking(account *azmodels.Account, name string) (*azmodels.Tenant, string, *sqlmock.Rows) {
-	tenant := &azmodels.Tenant{
-		TenantID: uuid.New().String(),
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-		AccountID: account.AccountID,
-		Name: name,
-	}
-	sql := "INSERT INTO \"tenants\" (.+) VALUES (.+)"
-	sqlRows := sqlmock.NewRows([]string{"tenant_id", "created_at", "updated_at", "account_id", "name"}).
-		AddRow(tenant.TenantID, tenant.CreatedAt, tenant.UpdatedAt, tenant.AccountID, tenant.Name)
-	return tenant, sql, sqlRows
-}
