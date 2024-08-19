@@ -69,11 +69,11 @@ func TestAAPCreateAccountWithSuccess(t *testing.T) {
         WithArgs(sqlmock.AnyArg(), "rent-a-car").
         WillReturnResult(sqlmock.NewResult(1, 1))
 
-	mock.ExpectCommit()
-
     mock.ExpectQuery(`SELECT account_id, created_at, updated_at, name FROM accounts WHERE account_id = \?`).
         WithArgs(sqlmock.AnyArg()).
         WillReturnRows(sqlAccountRows)
+
+	mock.ExpectCommit()
 
 	inputAccount := &azmodels.Account{
 		Name: account.Name,
