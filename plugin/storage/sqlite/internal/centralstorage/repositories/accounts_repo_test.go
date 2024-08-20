@@ -14,19 +14,34 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package centralstorage
+package repositories
 
 import (
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
 
 	_ "github.com/mattn/go-sqlite3"
 
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
 )
+
+// registerAccountForInsertMocking registers an account for insert mocking.
+func registerAccountForInsertMocking() (*Account, string, *sqlmock.Rows) {
+	account := &Account{
+		AccountID: 581616507495,
+		Name: "rent-a-car",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	sql := "INSERT INTO \"accounts\" (.+) VALUES (.+)"
+	sqlRows := sqlmock.NewRows([]string{"account_id", "created_at", "updated_at", "name"}).
+		AddRow(account.AccountID, account.CreatedAt, account.UpdatedAt, account.Name)
+	return account, sql, sqlRows
+}
 
 // TestAAPCreateAccountWithNil tests the creation of an account with a nil account.
 func TestAAPCreateAccountWithInvalidName(t *testing.T) {
@@ -40,49 +55,48 @@ func TestAAPCreateAccountWithInvalidName(t *testing.T) {
 		"X-@x"}
 	for _, test := range tests {
 		accountName := test
-		storage, sqlDB, _, sqlMock := NewSqliteCentralStorageAAPMock(t)
+		_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 		defer sqlDB.Close()
 
-		sqlMock.ExpectBegin()
+		tx, _ := sqlDB.Begin()
 
-		account := &azmodels.Account{
+		dbInAccount := &Account{
 			Name: accountName,
 		}
-		account, err := storage.CreateAccount(account)
+		dbOutAccount, err := UpsertAccount(tx, true, dbInAccount)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be ErrClientParameter")
-		assert.Nil(account, "accounts should be nil")
+		assert.Nil(dbOutAccount, "accounts should be nil")
 	}
 }
 
 func TestAAPCreateAccountWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 
-	storage, sqlDB, _, mock := NewSqliteCentralStorageAAPMock(t)
+	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
 	account, _, sqlAccountRows := registerAccountForInsertMocking()
-	// account, accountsSQL, sqlAccounts := registerAccountForInsertMocking()
 
-	mock.ExpectBegin()
-    mock.ExpectExec(`INSERT INTO accounts \(account_id, name\) VALUES \(\?, \?\)`).
+	sqlDBMock.ExpectBegin()
+    sqlDBMock.ExpectExec(`INSERT INTO accounts \(account_id, name\) VALUES \(\?, \?\)`).
         WithArgs(sqlmock.AnyArg(), "rent-a-car").
         WillReturnResult(sqlmock.NewResult(1, 1))
 
-    mock.ExpectQuery(`SELECT account_id, created_at, updated_at, name FROM accounts WHERE account_id = \?`).
+    sqlDBMock.ExpectQuery(`SELECT account_id, created_at, updated_at, name FROM accounts WHERE account_id = \?`).
         WithArgs(sqlmock.AnyArg()).
         WillReturnRows(sqlAccountRows)
 
-	mock.ExpectCommit()
 
-	inputAccount := &azmodels.Account{
+	dbInAccount := &Account{
 		Name: account.Name,
 	}
-	outputAccount, err := storage.CreateAccount(inputAccount)
+	tx, _ := sqlDB.Begin()
+	dbOutAccount, err := UpsertAccount(tx, true, dbInAccount)
 
-	assert.Nil(mock.ExpectationsWereMet(), "there were unfulfilled expectations")
-	assert.NotNil(outputAccount, "account should be not nil")
-	assert.Equal(account.AccountID, outputAccount.AccountID, "account name is not correct")
-	assert.Equal(account.Name, outputAccount.Name, "account name is not correct")
+	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
+	assert.NotNil(dbOutAccount, "account should be not nil")
+	assert.Equal(account.AccountID, dbOutAccount.AccountID, "account name is not correct")
+	assert.Equal(account.Name, dbOutAccount.Name, "account name is not correct")
 	assert.Nil(err, "error should be nil")
 }
