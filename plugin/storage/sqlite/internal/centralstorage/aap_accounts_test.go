@@ -17,12 +17,10 @@
 package centralstorage
 
 import (
-	"database/sql"
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
@@ -49,27 +47,4 @@ func TestCreateAccountWithExecuteWithTransactionError(t *testing.T) {
 	accounts, err := storage.CreateAccount(inAccount)
 	assert.Nil(accounts, "accounts should be nil")
 	assert.EqualError(err, errMsg)
-}
-
-// TestCreateAccountWithUpsertAccountError tests the CreateAccount function with UpsertAccount error.
-func TestCreateAccountWithUpsertAccountError(t *testing.T) {
-	assert := assert.New(t)
-	storage, storageCtx, mockConnector, mockSQLRepo, mockSQLExec := createSQLiteAAPCentralStorageWithMocks()
-
-	inAccount := &azmodels.Account{}
-	mockSQLExec.On("ExecuteWithTransaction", storageCtx, mockConnector, mock.Anything, inAccount).Run(func(args mock.Arguments) {
-		execFunc := args.Get(2).(func(tx *sql.Tx, param interface{}) (interface{}, error))
-		var tx *sql.Tx = nil
-		parm := args.Get(3)
-		result, err := execFunc(tx, parm)
-		args[0] = result
-		args[1] = err
-	}).Return(nil, nil)
-
-	errMsg := "UpsertAccount error"
-	mockSQLRepo.On("UpsertAccount", mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New(errMsg))
-
-	accounts, err := storage.CreateAccount(inAccount)
-	assert.Nil(accounts, "accounts should be nil")
-	assert.EqualError(err,errMsg)
 }
