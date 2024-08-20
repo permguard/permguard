@@ -22,12 +22,14 @@ import (
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
+	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // SQLiteCentralStorageAAP implements the sqlite central storage.
 type SQLiteCentralStorageAAP struct {
 	ctx             *azstorage.StorageContext
 	sqliteConnector azidb.SQLiteConnector
+	repo 		  	*azrepos.Repo
 }
 
 // newSQLiteAAPCentralStorage creates a new SQLiteAAPCentralStorage.
@@ -38,6 +40,7 @@ func newSQLiteAAPCentralStorage(storageContext *azstorage.StorageContext, sqlite
 	return &SQLiteCentralStorageAAP{
 		ctx:             storageContext,
 		sqliteConnector: sqliteConnector,
+		repo: 			 &azrepos.Repo{},
 	}, nil
 }
 

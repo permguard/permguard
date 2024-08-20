@@ -32,7 +32,7 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 			AccountID: account.AccountID,
 			Name:      account.Name,
 		}
-		dbaccount, err := azirepo.UpsertAccount(tx, false, dbaccount)
+		dbaccount, err := s.repo.UpsertAccount(tx, false, dbaccount)
 		if err != nil {
 			return nil, err
 		}
@@ -52,7 +52,7 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 			AccountID: account.AccountID,
 			Name:      account.Name,
 		}
-		dbaccount, err := azirepo.UpsertAccount(tx, false, dbaccount)
+		dbaccount, err := s.repo.UpsertAccount(tx, false, dbaccount)
 		if err != nil {
 			return nil, err
 		}
@@ -68,7 +68,7 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 // DeleteAccount deletes an account.
 func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Account, error) {
 	execFunc := func(tx *sql.Tx) (interface{}, error) {
-		dbaccount, err := azirepo.DeleteAccount(tx, accountID)
+		dbaccount, err := s.repo.DeleteAccount(tx, accountID)
 		if err != nil {
 			return nil, err
 		}
@@ -103,7 +103,7 @@ func (s SQLiteCentralStorageAAP) FetchAccounts(page int32, pageSize int32, field
 		}
 		filterName = &accountName
 	}
-	dbAccounts, err := azirepo.FetchAccounts(db, page, pageSize, filterID, filterName)
+	dbAccounts, err := s.repo.FetchAccounts(db, page, pageSize, filterID, filterName)
 	if err != nil {
 		return nil, err
 	}
