@@ -30,10 +30,11 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 	if account == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - account is nil.")
 	}
-	execFunc := func(tx *sql.Tx) (interface{}, error) {
+	execFunc := func(tx *sql.Tx, param interface{}) (interface{}, error) {
+		inAccount, _ := param.(*azmodels.Account)
 		dbaccount := &azirepo.Account{
-			AccountID: account.AccountID,
-			Name:      account.Name,
+			AccountID: inAccount.AccountID,
+			Name:      inAccount.Name,
 		}
 		dbaccount, err := s.sqlRepo.UpsertAccount(tx, false, dbaccount)
 		if err != nil {
@@ -41,7 +42,7 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 		}
 		return mapAccountToAgentAccount(dbaccount)
 	}
-	result, err := s.sqlExec.ExecuteWithTransaction(s.ctx, s.sqliteConnector, execFunc)
+	result, err := s.sqlExec.ExecuteWithTransaction(s.ctx, s.sqliteConnector, execFunc, account)
 	if err != nil {
 		return nil, err
 	}
@@ -53,10 +54,11 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 
 // UpdateAccount updates an account.
 func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmodels.Account, error) {
-	execFunc := func(tx *sql.Tx) (interface{}, error) {
+	execFunc := func(tx *sql.Tx, param interface{}) (interface{}, error) {
+		inAccount, _ := param.(*azmodels.Account)
 		dbaccount := &azirepo.Account{
-			AccountID: account.AccountID,
-			Name:      account.Name,
+			AccountID: inAccount.AccountID,
+			Name:      inAccount.Name,
 		}
 		dbaccount, err := s.sqlRepo.UpsertAccount(tx, false, dbaccount)
 		if err != nil {
@@ -64,7 +66,7 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 		}
 		return mapAccountToAgentAccount(dbaccount)
 	}
-	result, err := s.sqlExec.ExecuteWithTransaction(s.ctx, s.sqliteConnector, execFunc)
+	result, err := s.sqlExec.ExecuteWithTransaction(s.ctx, s.sqliteConnector, execFunc, account)
 	if err != nil {
 		return nil, err
 	}
@@ -73,14 +75,15 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 
 // DeleteAccount deletes an account.
 func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Account, error) {
-	execFunc := func(tx *sql.Tx) (interface{}, error) {
-		dbaccount, err := s.sqlRepo.DeleteAccount(tx, accountID)
+	execFunc := func(tx *sql.Tx, param interface{}) (interface{}, error) {
+		inAccountID, _ := param.(int64)
+		dbaccount, err := s.sqlRepo.DeleteAccount(tx, inAccountID)
 		if err != nil {
 			return nil, err
 		}
 		return mapAccountToAgentAccount(dbaccount)
 	}
-	result, err := s.sqlExec.ExecuteWithTransaction(s.ctx, s.sqliteConnector, execFunc)
+	result, err := s.sqlExec.ExecuteWithTransaction(s.ctx, s.sqliteConnector, execFunc, accountID)
 	if err != nil {
 		return nil, err
 	}

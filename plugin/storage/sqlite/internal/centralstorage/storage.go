@@ -29,7 +29,7 @@ import (
 // SqliteExecutor is the interface for executing sqlite commands.
 type SqliteExecutor interface {
 	Connect(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector) (*sqlx.DB, error)
-	ExecuteWithTransaction(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, execFunc func(tx *sql.Tx) (interface{}, error)) (interface{}, error)
+	ExecuteWithTransaction(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, execFunc func(tx *sql.Tx, param interface{}) (interface{}, error), param interface{}) (interface{}, error)
 }
 
 // SqliteExec implements the SqliteExecutor interface.
@@ -47,7 +47,7 @@ func (s SqliteExec) Connect(ctx *azstorage.StorageContext, sqliteConnector azidb
 }
 
 // ExecuteWithTransaction executes a function with a transaction.
-func (s SqliteExec) ExecuteWithTransaction(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, execFunc func(tx *sql.Tx) (interface{}, error)) (interface{}, error) {
+func (s SqliteExec) ExecuteWithTransaction(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, execFunc func(tx *sql.Tx, param interface{}) (interface{}, error), param interface{}) (interface{}, error) {
 	db, err := s.Connect(ctx, sqliteConnector)
 	if err != nil {
 		return nil, err
@@ -56,7 +56,7 @@ func (s SqliteExec) ExecuteWithTransaction(ctx *azstorage.StorageContext, sqlite
 	if err != nil {
 		return nil, azirepo.WrapSqlite3Error("cannot open the transaction.", err)
 	}
-	result, err := execFunc(tx)
+	result, err := execFunc(tx, param)
 	if err != nil {
 		tx.Rollback()
 		return nil, err

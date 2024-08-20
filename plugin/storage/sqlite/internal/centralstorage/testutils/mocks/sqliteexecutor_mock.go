@@ -45,8 +45,8 @@ func (m *MockSqliteExecutor) Connect(ctx *azstorage.StorageContext, sqliteConnec
 }
 
 // ExecuteWithTransaction executes a function with a transaction.
-func (m *MockSqliteExecutor) ExecuteWithTransaction(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, execFunc func(tx *sql.Tx) (interface{}, error)) (interface{}, error) {
-	args := m.Called(ctx, sqliteConnector, execFunc)
+func (m *MockSqliteExecutor) ExecuteWithTransaction(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, execFunc func(tx *sql.Tx, param interface{}) (interface{}, error), param interface{}) (interface{}, error){
+	args := m.Called(ctx, sqliteConnector, execFunc, param)
 	var r0 interface{}
 	if val := args.Get(0); val != nil {
 		r0 = val

@@ -40,7 +40,11 @@ func NewMockSqliteRepo() *MockSqliteRepo{
 // UpsertAccount creates or updates an account.
 func (m *MockSqliteRepo) UpsertAccount(tx *sql.Tx, isCreate bool, account *azrepos.Account) (*azrepos.Account, error) {
 	args := m.Called(tx, isCreate, account)
-	return args.Get(0).(*azrepos.Account), args.Error(1)
+	var r0 *azrepos.Account
+	if val, ok := args.Get(0).(*azrepos.Account); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
 }
 
 // DeleteAccount deletes an account.
