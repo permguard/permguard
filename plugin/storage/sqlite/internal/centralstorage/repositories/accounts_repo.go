@@ -88,16 +88,21 @@ func UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Account, error
 }
 
 // DeleteAccount deletes an account.
-func DeleteAccount(db *sqlx.DB, accountID int64) (*Account, error) {
+func DeleteAccount(tx *sql.Tx, accountID int64) (*Account, error) {
 	if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (id: %d).", accountID))
 	}
 	var dbAccount Account
-	err := db.Get(&dbAccount, "SELECT * FROM accounts WHERE account_id = ?", accountID)
+	err := tx.QueryRow("SELECT account_id, created_at, updated_at, name FROM accounts WHERE account_id = ?", accountID).Scan(
+		&dbAccount.AccountID,
+		&dbAccount.CreatedAt,
+		&dbAccount.UpdatedAt,
+		&dbAccount.Name,
+	)
 	if err != nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - account id is not valid (id: %d).", accountID), err)
 	}
-	res, err := db.Exec("DELETE FROM accounts WHERE account_id = ?", accountID)
+	res, err := tx.Exec("DELETE FROM accounts WHERE account_id = ?", accountID)
 	if err != nil || res == nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete account - operation 'delete-account' encountered an issue (id: %d).", accountID), err)
 	}

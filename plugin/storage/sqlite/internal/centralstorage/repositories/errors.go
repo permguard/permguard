@@ -38,7 +38,7 @@ func WrapSqlite3Error(msg string, err error) error {
 		}
 		return azerrors.WrapSystemError(azerrors.ErrStorageConstraintUnique, fmt.Sprintf("storage: constraint failed - %s", msg))
 	case sqlite3.ErrNotFound:
-		return azerrors.WrapSystemError(azerrors.ErrStorageConstraintUnique, fmt.Sprintf("storage: record not found - %s", msg))
+		return azerrors.WrapSystemError(azerrors.ErrStorageNotFound, fmt.Sprintf("storage: record not found - %s", msg))
 	default:
 		return azerrors.WrapSystemError(azerrors.ErrStorageGeneric, fmt.Sprintf("storage: generic error (%s)", msg))
 	}

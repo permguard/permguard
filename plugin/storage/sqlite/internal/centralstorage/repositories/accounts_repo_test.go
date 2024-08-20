@@ -30,7 +30,7 @@ import (
 	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
 )
 
-// registerAccountForUpsertMocking registers an account for insert mocking.
+// registerAccountForUpsertMocking registers an account for upsert mocking.
 func registerAccountForUpsertMocking(isCreate bool) (*Account, string, *sqlmock.Rows) {
 	account := &Account{
 		AccountID: 581616507495,
@@ -49,7 +49,22 @@ func registerAccountForUpsertMocking(isCreate bool) (*Account, string, *sqlmock.
 	return account, sql, sqlRows
 }
 
-// TestRepoUpsertAccountWithInvalidInput tests the creation of an account with invalid input.
+// registerAccountForDeleteMocking registers an account for delete mocking.
+func registerAccountForDeleteMocking() (string, *Account, *sqlmock.Rows, string) {
+	account := &Account{
+		AccountID: 581616507495,
+		Name: "rent-a-car",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	var sqlSelect = `SELECT account_id, created_at, updated_at, name FROM accounts WHERE account_id = \?`
+	var sqlDelete = `DELETE FROM accounts WHERE account_id = \?`
+	sqlRows := sqlmock.NewRows([]string{"account_id", "created_at", "updated_at", "name"}).
+		AddRow(account.AccountID, account.CreatedAt, account.UpdatedAt, account.Name)
+	return sqlSelect, account, sqlRows, sqlDelete
+}
+
+// TestRepoUpsertAccountWithInvalidInput tests the upsert of an account with invalid input.
 func TestRepoUpsertAccountWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
 
@@ -99,7 +114,7 @@ func TestRepoUpsertAccountWithInvalidInput(t *testing.T) {
 	}
 }
 
-// TestRepoUpsertAccountWithSuccess tests the creation of an account with success.
+// TestRepoUpsertAccountWithSuccess tests the upsert of an account with success.
 func TestRepoUpsertAccountWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 	tests := []bool{
@@ -148,7 +163,7 @@ func TestRepoUpsertAccountWithSuccess(t *testing.T) {
 	}
 }
 
-// TestRepoCreateAccountWithSuccess tests the creation of an account with success.
+// TestRepoCreateAccountWithSuccess tests the upsert of an account with success.
 func TestRepoUpsertAccountWithErrors(t *testing.T) {
 	assert := assert.New(t)
 	tests := []bool{
@@ -189,5 +204,102 @@ func TestRepoUpsertAccountWithErrors(t *testing.T) {
 		assert.Nil(dbOutAccount, "account should be nil")
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrStorageConstraintUnique, err), "error should be errstorageconstraintunique")
+	}
+}
+
+// TestRepoDeleteAccountWithInvalidInput tests the delete of an account with invalid input.
+func TestRepoDeleteAccountWithInvalidInput(t *testing.T) {
+	assert := assert.New(t)
+
+	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
+	defer sqlDB.Close()
+
+	tx, _ := sqlDB.Begin()
+
+	{	// Test with invalid account id
+		_, err := DeleteAccount(tx, 0)
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+	}
+}
+
+
+// TestRepoDeleteAccountWithSuccess tests the delete of an account with success.
+func TestRepoDeleteAccountWithSuccess(t *testing.T) {
+	assert := assert.New(t)
+	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+	defer sqlDB.Close()
+
+	sqlSelect, account, sqlAccountRows, sqlDelete := registerAccountForDeleteMocking()
+
+	sqlDBMock.ExpectBegin()
+
+	sqlDBMock.ExpectQuery(sqlSelect).
+		WithArgs(sqlmock.AnyArg()).
+		WillReturnRows(sqlAccountRows)
+
+	sqlDBMock.ExpectExec(sqlDelete).
+		WithArgs(sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	tx, _ := sqlDB.Begin()
+	dbOutAccount, err := DeleteAccount(tx, account.AccountID)
+
+	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
+	assert.NotNil(dbOutAccount, "account should be not nil")
+	assert.Equal(account.AccountID, dbOutAccount.AccountID, "account name is not correct")
+	assert.Equal(account.Name, dbOutAccount.Name, "account name is not correct")
+	assert.Nil(err, "error should be nil")
+}
+
+
+// TestRepoDeleteAccountWithErrors tests the delete of an account with errors.
+func TestRepoDeleteAccountWithErrors(t *testing.T) {
+	assert := assert.New(t)
+	tests := []int{
+		1,
+		2,
+		3,
+	}
+	for _, test := range tests {
+		_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+		defer sqlDB.Close()
+
+		sqlSelect, account, sqlAccountRows, sqlDelete := registerAccountForDeleteMocking()
+
+		sqlDBMock.ExpectBegin()
+
+		if test == 1 {
+			sqlDBMock.ExpectQuery(sqlSelect).
+				WithArgs(sqlmock.AnyArg()).
+				WillReturnError(sqlite3.Error{Code: sqlite3.ErrNotFound })
+		} else {
+			sqlDBMock.ExpectQuery(sqlSelect).
+				WithArgs(sqlmock.AnyArg()).
+				WillReturnRows(sqlAccountRows)
+		}
+
+		if test == 2 {
+			sqlDBMock.ExpectExec(sqlDelete).
+				WithArgs(sqlmock.AnyArg()).
+				WillReturnError(sqlite3.Error{Code: sqlite3.ErrPerm })
+		} else if test == 3 {
+			sqlDBMock.ExpectExec(sqlDelete).
+				WithArgs(sqlmock.AnyArg()).
+				WillReturnResult(sqlmock.NewResult(0, 0))
+		}
+
+		tx, _ := sqlDB.Begin()
+		dbOutAccount, err := DeleteAccount(tx, account.AccountID)
+
+		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
+		assert.Nil(dbOutAccount, "account should be nil")
+		assert.NotNil(err, "error should be not nil")
+
+		if test == 1 {
+			assert.True(azerrors.AreErrorsEqual(azerrors.ErrStorageNotFound, err), "error should be errstoragenotfound")
+		} else {
+			assert.True(azerrors.AreErrorsEqual(azerrors.ErrStorageGeneric, err), "error should be errstoragegeneric")
+		}
 	}
 }
