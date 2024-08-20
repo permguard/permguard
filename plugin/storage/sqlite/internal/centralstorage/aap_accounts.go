@@ -55,6 +55,9 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 
 // UpdateAccount updates an account.
 func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmodels.Account, error) {
+	if account == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - account is nil.")
+	}
 	execFunc := func(tx *sql.Tx, param interface{}) (interface{}, error) {
 		inAccount, _ := param.(*azmodels.Account)
 		dbaccount := &azirepo.Account{
