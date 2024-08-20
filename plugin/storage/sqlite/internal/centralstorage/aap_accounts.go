@@ -17,6 +17,7 @@
 package centralstorage
 
 import (
+	"database/sql"
 	"fmt"
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
@@ -26,52 +27,42 @@ import (
 
 // CreateAccount creates a new account.
 func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmodels.Account, error) {
-	db, err := sqliteConnect(s.ctx, s.sqliteConnector)
+	execFunc := func(tx *sql.Tx) (interface{}, error) {
+		dbaccount := &azirepo.Account{
+			AccountID: account.AccountID,
+			Name:      account.Name,
+		}
+		dbaccount, err := azirepo.UpsertAccount(tx, false, dbaccount)
+		if err != nil {
+			return nil, err
+		}
+		return mapAccountToAgentAccount(dbaccount)
+	}
+	result, err := executeWithTransaction(s.ctx, s.sqliteConnector, execFunc)
 	if err != nil {
 		return nil, err
 	}
-	dbaccount := &azirepo.Account{
-		AccountID: account.AccountID,
-		Name:      account.Name,
-	}
-	tx, err := db.Begin()
-	if err != nil {
-		return nil, azirepo.WrapSqlite3Error("cannot open the transaction.", err)
-	}
-	dbaccount, err = azirepo.UpsertAccount(tx, true, dbaccount)
-	if err != nil {
-		tx.Rollback()
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, azirepo.WrapSqlite3Error("cannot commit the transaction.", err)
-	}
-	return mapAccountToAgentAccount(dbaccount)
+	return result.(*azmodels.Account), nil
 }
 
 // UpdateAccount updates an account.
 func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmodels.Account, error) {
-	db, err := sqliteConnect(s.ctx, s.sqliteConnector)
+	execFunc := func(tx *sql.Tx) (interface{}, error) {
+		dbaccount := &azirepo.Account{
+			AccountID: account.AccountID,
+			Name:      account.Name,
+		}
+		dbaccount, err := azirepo.UpsertAccount(tx, false, dbaccount)
+		if err != nil {
+			return nil, err
+		}
+		return mapAccountToAgentAccount(dbaccount)
+	}
+	result, err := executeWithTransaction(s.ctx, s.sqliteConnector, execFunc)
 	if err != nil {
 		return nil, err
 	}
-	dbaccount := &azirepo.Account{
-		AccountID: account.AccountID,
-		Name:      account.Name,
-	}
-	tx, err := db.Begin()
-	if err != nil {
-		return nil, azirepo.WrapSqlite3Error("cannot open the transaction.", err)
-	}
-	dbaccount, err = azirepo.UpsertAccount(tx, false, dbaccount)
-	if err != nil {
-		tx.Rollback()
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, azirepo.WrapSqlite3Error("cannot commit the transaction.", err)
-	}
-	return mapAccountToAgentAccount(dbaccount)
+	return result.(*azmodels.Account), nil
 }
 
 // DeleteAccount deletes an account.
