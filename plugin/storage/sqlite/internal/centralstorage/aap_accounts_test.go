@@ -24,23 +24,13 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
-	azrtmmocks "github.com/permguard/permguard/pkg/agents/runtime/mocks"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/testutils/mocks"
 )
 
 // TestNewSQLiteAAPCentralStorage tests the newSQLiteAAPCentralStorage function.
 func TestCreateAccountWithError(t *testing.T) {
 	assert := assert.New(t)
-	runtimeCtx := azrtmmocks.NewRuntimeContextMock()
-	storageCtx, err := azstorage.NewStorageContext(runtimeCtx, azstorage.StorageSQLite)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mockConnector, _ := azmocks.NewMockSQLiteConnector()
-	mockSQLRepo := azmocks.NewMockSqliteRepo()
-	mockSQLExec := azmocks.NewMockSqliteExecutor()
-	storage, _ := newSQLiteAAPCentralStorage(storageCtx, mockConnector, mockSQLRepo, mockSQLExec)
+
+	storage, storageCtx, mockConnector, _, mockSQLExec := createSQLiteAAPCentralStorageWithMocks()
 
 	mockSQLExec.On("ExecuteWithTransaction", storageCtx, mockConnector, mock.Anything).Return(nil, fmt.Errorf("error"))
 
