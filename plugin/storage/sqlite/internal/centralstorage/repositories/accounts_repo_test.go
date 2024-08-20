@@ -17,6 +17,7 @@
 package repositories
 
 import (
+	"regexp"
 	"testing"
 	"time"
 
@@ -24,7 +25,6 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/mattn/go-sqlite3"
-	_ "github.com/mattn/go-sqlite3"
 
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
@@ -62,6 +62,22 @@ func registerAccountForDeleteMocking() (string, *Account, *sqlmock.Rows, string)
 	sqlRows := sqlmock.NewRows([]string{"account_id", "created_at", "updated_at", "name"}).
 		AddRow(account.AccountID, account.CreatedAt, account.UpdatedAt, account.Name)
 	return sqlSelect, account, sqlRows, sqlDelete
+}
+
+// registerAccountForFetchMocking registers an account for fetch mocking.
+func registerAccountForFetchMocking() (string, []Account, *sqlmock.Rows) {
+	accounts := []Account {
+		{
+			AccountID: 581616507495,
+			Name: "rent-a-car",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		},
+	}
+	var sqlSelect = "SELECT * FROM accounts WHERE account_id = ? AND name LIKE ? ORDER BY account_id LIMIT ? OFFSET ?"
+	sqlRows := sqlmock.NewRows([]string{"account_id", "created_at", "updated_at", "name"}).
+		AddRow(accounts[0].AccountID, accounts[0].CreatedAt, accounts[0].UpdatedAt, accounts[0].Name)
+	return sqlSelect, accounts, sqlRows
 }
 
 // TestRepoUpsertAccountWithInvalidInput tests the upsert of an account with invalid input.
@@ -302,4 +318,65 @@ func TestRepoDeleteAccountWithErrors(t *testing.T) {
 			assert.True(azerrors.AreErrorsEqual(azerrors.ErrStorageGeneric, err), "error should be errstoragegeneric")
 		}
 	}
+}
+
+// TestRepoFetchAccountWithInvalidInput tests the fetch of accounts with invalid input.
+func TestRepoFetchAccountWithInvalidInput(t *testing.T) {
+	assert := assert.New(t)
+
+	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
+	defer sqlDB.Close()
+
+	{	// Test with invalid page
+		_, err := FetchAccounts(sqlDB, 0, 100, nil, nil)
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
+	}
+
+	{	// Test with invalid page size
+		_, err := FetchAccounts(sqlDB, 1, 0, nil, nil)
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
+	}
+
+	{	// Test with invalid account id
+		accountID := int64(0)
+		_, err := FetchAccounts(sqlDB, 1, 1, &accountID, nil)
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
+	}
+
+	{	// Test with invalid account id
+		accountName := "@"
+		_, err := FetchAccounts(sqlDB, 1, 1, nil, &accountName)
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientName, err), "error should be errclientname")
+	}
+}
+
+// TestRepoFetchAccountWithSuccess tests the fetch of accounts with success.
+func TestRepoFetchAccountWithSuccess(t *testing.T) {
+	assert := assert.New(t)
+	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+	defer sqlDB.Close()
+
+	sqlSelect, sqlAccounts, sqlAccountRows := registerAccountForFetchMocking()
+
+	page := int32(1)
+	pageSize := int32(100)
+	accountName := "%" + sqlAccounts[0].Name + "%"
+	sqlDBMock.ExpectQuery(regexp.QuoteMeta(sqlSelect)).
+		WithArgs(sqlAccounts[0].AccountID, accountName, pageSize, page - 1).
+		WillReturnRows(sqlAccountRows)
+
+	dbOutAccount, err := FetchAccounts(sqlDB, page, pageSize, &sqlAccounts[0].AccountID, &sqlAccounts[0].Name)
+
+	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
+	assert.NotNil(dbOutAccount, "account should be not nil")
+	assert.Len(dbOutAccount, len(sqlAccounts), "accounts len should be correct")
+	for i, account := range dbOutAccount {
+		assert.Equal(account.AccountID, sqlAccounts[i].AccountID, "account name is not correct")
+		assert.Equal(account.Name, sqlAccounts[i].Name, "account name is not correct")
+	}
+	assert.Nil(err, "error should be nil")
 }
