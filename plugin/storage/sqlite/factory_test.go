@@ -17,8 +17,10 @@
 package sqlite
 
 import (
+	"flag"
 	"testing"
 
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 
 	azrtmmocks "github.com/permguard/permguard/pkg/agents/runtime/mocks"
@@ -29,6 +31,8 @@ import (
 func TestSQLiteStorageFactory(t *testing.T) {
 	assert := assert.New(t)
 	storageFctyCfg, _ := NewSQLiteStorageFactoryConfig()
+	assert.Nil(storageFctyCfg.AddFlags(&flag.FlagSet{}), "error should be nil")
+	assert.Nil(storageFctyCfg.InitFromViper(&viper.Viper{}), "error should be nil")
 	storageFcty, _ := NewSQLiteStorageFactory(storageFctyCfg)
 
 	runtimeCtx := azrtmmocks.NewRuntimeContextMock()
