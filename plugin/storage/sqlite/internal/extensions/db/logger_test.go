@@ -31,7 +31,7 @@ func setupForLogsCapture() (*zap.Logger, *observer.ObservedLogs) {
 // TestGooseLoggerPrintF tests the Printf method of the GooseLogger.
 func TestGooseLoggerPrintF(t *testing.T) {
 	logger, logs := setupForLogsCapture()
-	gooseLogger := &GooseLogger{logger: logger}
+	gooseLogger := NewGooseLogger(logger)
 
 	gooseLogger.Printf("info %s", "message")
 
