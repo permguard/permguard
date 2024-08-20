@@ -43,34 +43,58 @@ func registerAccountForInsertMocking() (*Account, string, *sqlmock.Rows) {
 	return account, sql, sqlRows
 }
 
-// TestAAPCreateAccountWithNil tests the creation of an account with a nil account.
-func TestAAPCreateAccountWithInvalidName(t *testing.T) {
+// TestRepoCreateAccountWithInvalidInput tests the creation of an account with invalid input.
+func TestRepoCreateAccountWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
 
-	tests := []string{
-		"",
-		" ",
-		"@",
-		"1aX",
-		"X-@x"}
-	for _, test := range tests {
-		accountName := test
-		_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
-		defer sqlDB.Close()
+	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
+	defer sqlDB.Close()
 
-		tx, _ := sqlDB.Begin()
+	tx, _ := sqlDB.Begin()
 
-		dbInAccount := &Account{
-			Name: accountName,
-		}
-		dbOutAccount, err := UpsertAccount(tx, true, dbInAccount)
+	{	// Test with nil account
+		_, err := UpsertAccount(tx, true, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be ErrClientParameter")
-		assert.Nil(dbOutAccount, "accounts should be nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+	}
+
+	{	// Test with invalid account id
+		dbInAccount := &Account{
+			AccountID: 0,
+			Name: "rent-a-car",
+		}
+		_, err := UpsertAccount(tx, false, dbInAccount)
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+	}
+
+	{ 	// Test with invalid account name
+		tests := []string{
+			"",
+			" ",
+			"@",
+			"1aX",
+			"X-@x"}
+		for _, test := range tests {
+			accountName := test
+			_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
+			defer sqlDB.Close()
+
+			tx, _ := sqlDB.Begin()
+
+			dbInAccount := &Account{
+				Name: accountName,
+			}
+			dbOutAccount, err := UpsertAccount(tx, true, dbInAccount)
+			assert.NotNil(err, "error should be not nil")
+			assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+			assert.Nil(dbOutAccount, "accounts should be nil")
+		}
 	}
 }
 
-func TestAAPCreateAccountWithSuccess(t *testing.T) {
+// TestRepoCreateAccountWithSuccess tests the creation of an account with success.
+func TestRepoCreateAccountWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
