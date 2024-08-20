@@ -80,7 +80,14 @@ func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Accou
 	if err != nil {
 		return nil, err
 	}
-	dbaccount, err := azirepo.DeleteAccount(db, accountID)
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, azirepo.WrapSqlite3Error("cannot open the transaction.", err)
+	}
+	dbaccount, err := azirepo.DeleteAccount(tx, accountID)
+	if err := tx.Commit(); err != nil {
+		return nil, azirepo.WrapSqlite3Error("cannot commit the transaction.", err)
+	}
 	if err != nil {
 		return nil, err
 	}
