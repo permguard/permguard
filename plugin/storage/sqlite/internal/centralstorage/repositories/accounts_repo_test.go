@@ -83,6 +83,7 @@ func registerAccountForFetchMocking() (string, []Account, *sqlmock.Rows) {
 // TestRepoUpsertAccountWithInvalidInput tests the upsert of an account with invalid input.
 func TestRepoUpsertAccountWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
+	repo := Repo{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -90,7 +91,7 @@ func TestRepoUpsertAccountWithInvalidInput(t *testing.T) {
 	tx, _ := sqlDB.Begin()
 
 	{	// Test with nil account
-		_, err := UpsertAccount(tx, true, nil)
+		_, err := repo.UpsertAccount(tx, true, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -100,7 +101,7 @@ func TestRepoUpsertAccountWithInvalidInput(t *testing.T) {
 			AccountID: 0,
 			Name: "rent-a-car",
 		}
-		_, err := UpsertAccount(tx, false, dbInAccount)
+		_, err := repo.UpsertAccount(tx, false, dbInAccount)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -122,7 +123,7 @@ func TestRepoUpsertAccountWithInvalidInput(t *testing.T) {
 			dbInAccount := &Account{
 				Name: accountName,
 			}
-			dbOutAccount, err := UpsertAccount(tx, true, dbInAccount)
+			dbOutAccount, err := repo.UpsertAccount(tx, true, dbInAccount)
 			assert.NotNil(err, "error should be not nil")
 			assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 			assert.Nil(dbOutAccount, "accounts should be nil")
@@ -133,6 +134,8 @@ func TestRepoUpsertAccountWithInvalidInput(t *testing.T) {
 // TestRepoUpsertAccountWithSuccess tests the upsert of an account with success.
 func TestRepoUpsertAccountWithSuccess(t *testing.T) {
 	assert := assert.New(t)
+	repo := Repo{}
+
 	tests := []bool{
 		true,
 		false,
@@ -169,7 +172,7 @@ func TestRepoUpsertAccountWithSuccess(t *testing.T) {
 
 
 		tx, _ := sqlDB.Begin()
-		dbOutAccount, err := UpsertAccount(tx, isCreate, dbInAccount)
+		dbOutAccount, err := repo.UpsertAccount(tx, isCreate, dbInAccount)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.NotNil(dbOutAccount, "account should be not nil")
@@ -182,6 +185,8 @@ func TestRepoUpsertAccountWithSuccess(t *testing.T) {
 // TestRepoCreateAccountWithSuccess tests the upsert of an account with success.
 func TestRepoUpsertAccountWithErrors(t *testing.T) {
 	assert := assert.New(t)
+	repo := Repo{}
+
 	tests := []bool{
 		true,
 		false,
@@ -214,7 +219,7 @@ func TestRepoUpsertAccountWithErrors(t *testing.T) {
 		}
 
 		tx, _ := sqlDB.Begin()
-		dbOutAccount, err := UpsertAccount(tx, isCreate, dbInAccount)
+		dbOutAccount, err := repo.UpsertAccount(tx, isCreate, dbInAccount)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutAccount, "account should be nil")
@@ -225,15 +230,16 @@ func TestRepoUpsertAccountWithErrors(t *testing.T) {
 
 // TestRepoDeleteAccountWithInvalidInput tests the delete of an account with invalid input.
 func TestRepoDeleteAccountWithInvalidInput(t *testing.T) {
-	assert := assert.New(t)
+	repo := Repo{}
 
+	assert := assert.New(t)
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
 	tx, _ := sqlDB.Begin()
 
 	{	// Test with invalid account id
-		_, err := DeleteAccount(tx, 0)
+		_, err := repo.DeleteAccount(tx, 0)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -243,6 +249,8 @@ func TestRepoDeleteAccountWithInvalidInput(t *testing.T) {
 // TestRepoDeleteAccountWithSuccess tests the delete of an account with success.
 func TestRepoDeleteAccountWithSuccess(t *testing.T) {
 	assert := assert.New(t)
+	repo := Repo{}
+
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
@@ -259,7 +267,7 @@ func TestRepoDeleteAccountWithSuccess(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	tx, _ := sqlDB.Begin()
-	dbOutAccount, err := DeleteAccount(tx, account.AccountID)
+	dbOutAccount, err := repo.DeleteAccount(tx, account.AccountID)
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutAccount, "account should be not nil")
@@ -272,6 +280,8 @@ func TestRepoDeleteAccountWithSuccess(t *testing.T) {
 // TestRepoDeleteAccountWithErrors tests the delete of an account with errors.
 func TestRepoDeleteAccountWithErrors(t *testing.T) {
 	assert := assert.New(t)
+	repo := Repo{}
+
 	tests := []int{
 		1,
 		2,
@@ -306,7 +316,7 @@ func TestRepoDeleteAccountWithErrors(t *testing.T) {
 		}
 
 		tx, _ := sqlDB.Begin()
-		dbOutAccount, err := DeleteAccount(tx, account.AccountID)
+		dbOutAccount, err := repo.DeleteAccount(tx, account.AccountID)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutAccount, "account should be nil")
@@ -323,32 +333,33 @@ func TestRepoDeleteAccountWithErrors(t *testing.T) {
 // TestRepoFetchAccountWithInvalidInput tests the fetch of accounts with invalid input.
 func TestRepoFetchAccountWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
+	repo := Repo{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
 	{	// Test with invalid page
-		_, err := FetchAccounts(sqlDB, 0, 100, nil, nil)
+		_, err := repo.FetchAccounts(sqlDB, 0, 100, nil, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{	// Test with invalid page size
-		_, err := FetchAccounts(sqlDB, 1, 0, nil, nil)
+		_, err := repo.FetchAccounts(sqlDB, 1, 0, nil, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{	// Test with invalid account id
 		accountID := int64(0)
-		_, err := FetchAccounts(sqlDB, 1, 1, &accountID, nil)
+		_, err := repo.FetchAccounts(sqlDB, 1, 1, &accountID, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
 	}
 
 	{	// Test with invalid account id
 		accountName := "@"
-		_, err := FetchAccounts(sqlDB, 1, 1, nil, &accountName)
+		_, err := repo.FetchAccounts(sqlDB, 1, 1, nil, &accountName)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientName, err), "error should be errclientname")
 	}
@@ -357,6 +368,8 @@ func TestRepoFetchAccountWithInvalidInput(t *testing.T) {
 // TestRepoFetchAccountWithSuccess tests the fetch of accounts with success.
 func TestRepoFetchAccountWithSuccess(t *testing.T) {
 	assert := assert.New(t)
+	repo := Repo{}
+
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
@@ -369,7 +382,7 @@ func TestRepoFetchAccountWithSuccess(t *testing.T) {
 		WithArgs(sqlAccounts[0].AccountID, accountName, pageSize, page - 1).
 		WillReturnRows(sqlAccountRows)
 
-	dbOutAccount, err := FetchAccounts(sqlDB, page, pageSize, &sqlAccounts[0].AccountID, &sqlAccounts[0].Name)
+	dbOutAccount, err := repo.FetchAccounts(sqlDB, page, pageSize, &sqlAccounts[0].AccountID, &sqlAccounts[0].Name)
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutAccount, "account should be not nil")
