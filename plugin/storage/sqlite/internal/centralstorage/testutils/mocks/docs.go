@@ -14,20 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package centralstorage
-import (
-	"testing"
-
-	"github.com/stretchr/testify/assert"
-
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-)
-
-// TestNewSQLiteAAPCentralStorage tests the newSQLiteAAPCentralStorage function.
-func TestNewSQLiteAAPCentralStorage(t *testing.T) {
-	assert := assert.New(t)
-	storage, err := newSQLiteAAPCentralStorage(nil, nil, nil)
-	assert.Nil(storage, "storage should be nil")
-	assert.NotNil(err, "error should not be nil")
-	assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
-}
+// Package mocks implements mocks for testing.
+package mocks

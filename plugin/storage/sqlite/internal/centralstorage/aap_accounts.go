@@ -38,7 +38,7 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 		}
 		return mapAccountToAgentAccount(dbaccount)
 	}
-	result, err := executeWithTransaction(s.ctx, s.sqliteConnector, execFunc)
+	result, err := s.executeWithTransaction(s.ctx, s.sqliteConnector, execFunc)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 		}
 		return mapAccountToAgentAccount(dbaccount)
 	}
-	result, err := executeWithTransaction(s.ctx, s.sqliteConnector, execFunc)
+	result, err := s.executeWithTransaction(s.ctx, s.sqliteConnector, execFunc)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Accou
 		}
 		return mapAccountToAgentAccount(dbaccount)
 	}
-	result, err := executeWithTransaction(s.ctx, s.sqliteConnector, execFunc)
+	result, err := s.executeWithTransaction(s.ctx, s.sqliteConnector, execFunc)
 	if err != nil {
 		return nil, err
 	}
