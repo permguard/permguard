@@ -23,6 +23,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/mattn/go-sqlite3"
 	_ "github.com/mattn/go-sqlite3"
 
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
@@ -144,5 +145,49 @@ func TestRepoCreateAccountWithSuccess(t *testing.T) {
 		assert.Equal(account.AccountID, dbOutAccount.AccountID, "account name is not correct")
 		assert.Equal(account.Name, dbOutAccount.Name, "account name is not correct")
 		assert.Nil(err, "error should be nil")
+	}
+}
+
+// TestRepoCreateAccountWithSuccess tests the creation of an account with success.
+func TestRepoCreateAccountWithErrors(t *testing.T) {
+	assert := assert.New(t)
+	tests := []bool{
+		true,
+		false,
+	}
+	for _, test := range tests {
+		_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+		defer sqlDB.Close()
+
+		isCreate := test
+		account, sql, _ := registerAccountForUpsertMocking(isCreate)
+
+		sqlDBMock.ExpectBegin()
+
+		var dbInAccount *Account
+		if isCreate {
+			dbInAccount = &Account{
+				Name: account.Name,
+			}
+			sqlDBMock.ExpectExec(sql).
+				WithArgs(sqlmock.AnyArg(), account.Name).
+				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique })
+		} else {
+			dbInAccount = &Account{
+				AccountID: account.AccountID,
+				Name: account.Name,
+			}
+			sqlDBMock.ExpectExec(sql).
+				WithArgs(account.Name, account.AccountID).
+				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique })
+		}
+
+		tx, _ := sqlDB.Begin()
+		dbOutAccount, err := UpsertAccount(tx, isCreate, dbInAccount)
+
+		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
+		assert.Nil(dbOutAccount, "account should be nil")
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrStorageConstraintUnique, err), "error should be errstorageconstraintunique")
 	}
 }
