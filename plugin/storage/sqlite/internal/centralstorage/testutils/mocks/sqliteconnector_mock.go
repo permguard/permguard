@@ -18,43 +18,46 @@
 package mocks
 
 import (
-	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
+	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 )
 
+// MockSQLiteConnector sqlite connector mock
 type MockSQLiteConnector struct {
-	mock sqlmock.Sqlmock
-	db   *sqlx.DB
+	mock.Mock
 }
 
-func NewMockSQLiteConnector() (*MockSQLiteConnector, error) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		return nil, err
-	}
-
-	sqlxDB := sqlx.NewDb(db, "sqlmock")
+// NewMockSQLiteConnector creates a new mock of SQLiteConnector.
+func NewMockSQLiteConnector() *MockSQLiteConnector{
 	return &MockSQLiteConnector{
-		mock: mock,
-		db:   sqlxDB,
-	}, nil
+	}
 }
 
+// GetStorage returns the storage kind.
 func (m *MockSQLiteConnector) GetStorage() azstorage.StorageKind {
-	return azstorage.StorageSQLite
+	args := m.Called()
+	var r0 azstorage.StorageKind
+	if val, ok := args.Get(0).(azstorage.StorageKind); ok {
+		r0 = val
+	}
+	return r0
 }
 
+// Connect connects to the sqlite database.
 func (m *MockSQLiteConnector) Connect(logger *zap.Logger, ctx *azstorage.StorageContext) (*sqlx.DB, error) {
-	// In un contesto reale, dovresti gestire la connessione al DB qui.
-	// Poiché stai usando go-sqlmock, restituirai semplicemente il DB mockato.
-	return m.db, nil
+	args := m.Called(logger, ctx)
+	var r0 *sqlx.DB
+	if val, ok := args.Get(0).(*sqlx.DB); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
 }
 
+// Disconnect disconnects from the sqlite database.
 func (m *MockSQLiteConnector) Disconnect(logger *zap.Logger, ctx *azstorage.StorageContext) error {
-	// In un contesto reale, dovresti gestire la disconnessione qui.
-	// Poiché stai usando go-sqlmock, puoi semplicemente chiudere il mock DB.
-	return m.db.Close()
+	args := m.Called(logger, ctx)
+	return args.Error(0)
 }

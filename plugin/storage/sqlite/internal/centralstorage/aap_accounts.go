@@ -30,26 +30,27 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 	if account == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - account is nil.")
 	}
-	execFunc := func(tx *sql.Tx, param interface{}) (interface{}, error) {
-		inAccount, _ := param.(*azmodels.Account)
-		dbaccount := &azirepo.Account{
-			AccountID: inAccount.AccountID,
-			Name:      inAccount.Name,
-		}
-		dbaccount, err := s.sqlRepo.UpsertAccount(tx, false, dbaccount)
-		if err != nil {
-			return nil, err
-		}
-		return mapAccountToAgentAccount(dbaccount)
-	}
-	result, err := s.sqlExec.ExecuteWithTransaction(s.ctx, s.sqliteConnector, execFunc, account)
+	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, err
 	}
-	if result == nil {
-		return nil, nil
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, azirepo.WrapSqlite3Error("cannot open the transaction.", err)
 	}
-	return result.(*azmodels.Account), nil
+	dbInAccount := &azirepo.Account{
+		AccountID: account.AccountID,
+		Name:      account.Name,
+	}
+	dbOutaccount, err := s.sqlRepo.UpsertAccount(tx, false, dbInAccount)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, azirepo.WrapSqlite3Error("cannot commit the transaction.", err)
+	}
+	return mapAccountToAgentAccount(dbOutaccount)
 }
 
 // UpdateAccount updates an account.
