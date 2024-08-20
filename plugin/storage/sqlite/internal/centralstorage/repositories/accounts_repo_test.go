@@ -49,8 +49,8 @@ func registerAccountForUpsertMocking(isCreate bool) (*Account, string, *sqlmock.
 	return account, sql, sqlRows
 }
 
-// TestRepoCreateAccountWithInvalidInput tests the creation of an account with invalid input.
-func TestRepoCreateAccountWithInvalidInput(t *testing.T) {
+// TestRepoUpsertAccountWithInvalidInput tests the creation of an account with invalid input.
+func TestRepoUpsertAccountWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
@@ -99,8 +99,8 @@ func TestRepoCreateAccountWithInvalidInput(t *testing.T) {
 	}
 }
 
-// TestRepoCreateAccountWithSuccess tests the creation of an account with success.
-func TestRepoCreateAccountWithSuccess(t *testing.T) {
+// TestRepoUpsertAccountWithSuccess tests the creation of an account with success.
+func TestRepoUpsertAccountWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 	tests := []bool{
 		true,
@@ -149,7 +149,7 @@ func TestRepoCreateAccountWithSuccess(t *testing.T) {
 }
 
 // TestRepoCreateAccountWithSuccess tests the creation of an account with success.
-func TestRepoCreateAccountWithErrors(t *testing.T) {
+func TestRepoUpsertAccountWithErrors(t *testing.T) {
 	assert := assert.New(t)
 	tests := []bool{
 		true,
