@@ -17,6 +17,8 @@
 package centralstorage
 
 import (
+	"database/sql"
+
 	"github.com/jmoiron/sqlx"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azirepo "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
@@ -31,6 +33,27 @@ func sqliteConnect(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteCo
 		return nil, azirepo.WrapSqlite3Error("cannot connect to sqlite.", err)
 	}
 	return db, nil
+}
+
+// executeWithTransaction executes a function with a transaction.
+func executeWithTransaction(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, execFunc func(tx *sql.Tx) (interface{}, error)) (interface{}, error) {
+	db, err := sqliteConnect(ctx, sqliteConnector)
+	if err != nil {
+		return nil, err
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, azirepo.WrapSqlite3Error("cannot open the transaction.", err)
+	}
+	result, err := execFunc(tx)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, azirepo.WrapSqlite3Error("cannot commit the transaction.", err)
+	}
+	return result, nil
 }
 
 // SQLiteCentralStorage implements the sqlite central storage.
