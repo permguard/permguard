@@ -21,7 +21,22 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azrtmmocks "github.com/permguard/permguard/pkg/agents/runtime/mocks"
+	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	azmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/testutils/mocks"
 )
+
+// createSQLiteAAPCentralStorageWithMocks creates a new SQLiteCentralStorageAAP with mocks.
+func createSQLiteAAPCentralStorageWithMocks() (*SQLiteCentralStorageAAP, *azstorage.StorageContext, *azmocks.MockSQLiteConnector, *azmocks.MockSqliteRepo, *azmocks.MockSqliteExecutor) {
+	runtimeCtx := azrtmmocks.NewRuntimeContextMock()
+	storageCtx, _ := azstorage.NewStorageContext(runtimeCtx, azstorage.StorageSQLite)
+	mockConnector, _ := azmocks.NewMockSQLiteConnector()
+	mockSQLRepo := azmocks.NewMockSqliteRepo()
+	mockSQLExec := azmocks.NewMockSqliteExecutor()
+
+	storage, _ := newSQLiteAAPCentralStorage(storageCtx, mockConnector, mockSQLRepo, mockSQLExec)
+	return storage, storageCtx, mockConnector, mockSQLRepo, mockSQLExec
+}
 
 // TestNewSQLiteAAPCentralStorage tests the newSQLiteAAPCentralStorage function.
 func TestNewSQLiteAAPCentralStorage(t *testing.T) {
