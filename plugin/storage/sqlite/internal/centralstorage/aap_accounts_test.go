@@ -42,13 +42,13 @@ func TestCreateAccountWithExecuteWithTransactionError(t *testing.T) {
 	assert := assert.New(t)
 	storage, storageCtx, mockConnector, _, mockSQLExec := createSQLiteAAPCentralStorageWithMocks()
 
-	errMsg := "ExecuteWithTransaction error"
+	errMsg := "Connect error"
 	inAccount := &azmodels.Account{}
-	mockSQLExec.On("ExecuteWithTransaction", storageCtx, mockConnector, mock.Anything, inAccount).Return(nil, errors.New(errMsg))
+	mockSQLExec.On("Connect", storageCtx, mockConnector).Return(nil, errors.New(errMsg))
 
 	accounts, err := storage.CreateAccount(inAccount)
 	assert.Nil(accounts, "accounts should be nil")
-	assert.EqualError(err,errMsg)
+	assert.EqualError(err, errMsg)
 }
 
 // TestCreateAccountWithUpsertAccountError tests the CreateAccount function with UpsertAccount error.
@@ -69,7 +69,7 @@ func TestCreateAccountWithUpsertAccountError(t *testing.T) {
 	errMsg := "UpsertAccount error"
 	mockSQLRepo.On("UpsertAccount", mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New(errMsg))
 
-	accounts, _ := storage.CreateAccount(inAccount)
+	accounts, err := storage.CreateAccount(inAccount)
 	assert.Nil(accounts, "accounts should be nil")
 	assert.EqualError(err,errMsg)
 }

@@ -41,7 +41,11 @@ func NewMockSqliteExecutor() *MockSqliteExecutor{
 // Connect connects to the sqlite database.
 func (m *MockSqliteExecutor) Connect(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector) (*sqlx.DB, error) {
 	args := m.Called(ctx, sqliteConnector)
-	return args.Get(0).(*sqlx.DB), args.Error(1)
+	var r0 *sqlx.DB
+	if val, ok := args.Get(0).(*sqlx.DB); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
 }
 
 // ExecuteWithTransaction executes a function with a transaction.

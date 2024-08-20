@@ -30,7 +30,7 @@ import (
 func createSQLiteAAPCentralStorageWithMocks() (*SQLiteCentralStorageAAP, *azstorage.StorageContext, *azmocks.MockSQLiteConnector, *azmocks.MockSqliteRepo, *azmocks.MockSqliteExecutor) {
 	runtimeCtx := azrtmmocks.NewRuntimeContextMock()
 	storageCtx, _ := azstorage.NewStorageContext(runtimeCtx, azstorage.StorageSQLite)
-	mockConnector, _ := azmocks.NewMockSQLiteConnector()
+	mockConnector := azmocks.NewMockSQLiteConnector()
 	mockSQLRepo := azmocks.NewMockSqliteRepo()
 	mockSQLExec := azmocks.NewMockSqliteExecutor()
 
