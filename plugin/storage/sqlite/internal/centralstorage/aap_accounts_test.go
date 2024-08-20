@@ -43,9 +43,10 @@ func TestCreateAccountWithExecuteWithTransactionError(t *testing.T) {
 	storage, storageCtx, mockConnector, _, mockSQLExec := createSQLiteAAPCentralStorageWithMocks()
 
 	errMsg := "ExecuteWithTransaction error"
-	mockSQLExec.On("ExecuteWithTransaction", storageCtx, mockConnector, mock.Anything).Return(nil, errors.New(errMsg))
+	inAccount := &azmodels.Account{}
+	mockSQLExec.On("ExecuteWithTransaction", storageCtx, mockConnector, mock.Anything, inAccount).Return(nil, errors.New(errMsg))
 
-	accounts, err := storage.CreateAccount(&azmodels.Account{})
+	accounts, err := storage.CreateAccount(inAccount)
 	assert.Nil(accounts, "accounts should be nil")
 	assert.EqualError(err,errMsg)
 }
@@ -55,15 +56,20 @@ func TestCreateAccountWithUpsertAccountError(t *testing.T) {
 	assert := assert.New(t)
 	storage, storageCtx, mockConnector, mockSQLRepo, mockSQLExec := createSQLiteAAPCentralStorageWithMocks()
 
-	mockSQLExec.On("ExecuteWithTransaction", storageCtx, mockConnector, mock.Anything).Return(nil, nil).Run(func(args mock.Arguments) {
-		execFunc := args.Get(2).(func(tx *sql.Tx) (interface{}, error))
-		execFunc(nil)
-	}).Once()
+	inAccount := &azmodels.Account{}
+	mockSQLExec.On("ExecuteWithTransaction", storageCtx, mockConnector, mock.Anything, inAccount).Run(func(args mock.Arguments) {
+		execFunc := args.Get(2).(func(tx *sql.Tx, param interface{}) (interface{}, error))
+		var tx *sql.Tx = nil
+		parm := args.Get(3)
+		result, err := execFunc(tx, parm)
+		args[0] = result
+		args[1] = err
+	}).Return(nil, nil)
 
 	errMsg := "UpsertAccount error"
 	mockSQLRepo.On("UpsertAccount", mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New(errMsg))
 
-	accounts, err := storage.CreateAccount(&azmodels.Account{})
+	accounts, _ := storage.CreateAccount(inAccount)
 	assert.Nil(accounts, "accounts should be nil")
 	assert.EqualError(err,errMsg)
 }
