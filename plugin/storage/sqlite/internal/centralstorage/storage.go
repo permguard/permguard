@@ -72,7 +72,7 @@ func NewSQLiteCentralStorage(storageContext *azstorage.StorageContext, sqliteCon
 
 // GetAAPCentralStorage returns the AAP central storage.
 func (s SQLiteCentralStorage) GetAAPCentralStorage() (azstorage.AAPCentralStorage, error) {
-	return newSQLiteAAPCentralStorage(s.ctx, s.sqliteConnector)
+	return newSQLiteAAPCentralStorage(s.ctx, s.sqliteConnector, nil)
 }
 
 // GetPAPCentralStorage returns the PAP central storage.

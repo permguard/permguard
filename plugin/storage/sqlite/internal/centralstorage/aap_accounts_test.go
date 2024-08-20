@@ -15,19 +15,25 @@
 // SPDX-License-Identifier: Apache-2.0
 
 package centralstorage
-// import (
-// 	"testing"
+import (
+	"testing"
 
-// 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/assert"
 
-// 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-// )
+	azrtmmocks "github.com/permguard/permguard/pkg/agents/runtime/mocks"
+	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	azmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/testutils/mocks"
+)
 
-// // TestNewSQLiteAAPCentralStorage tests the newSQLiteAAPCentralStorage function.
-// func TestNewSQLiteAAPCentralStorage(t *testing.T) {
-// 	assert := assert.New(t)
-// 	storage, err := newSQLiteAAPCentralStorage(nil, nil)
-// 	assert.Nil(storage, "storage should be nil")
-// 	assert.NotNil(err, "error should not be nil")
-// 	assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
-// }
+// TestNewSQLiteAAPCentralStorage tests the newSQLiteAAPCentralStorage function.
+func TestCreateAccountWithError(t *testing.T) {
+	assert := assert.New(t)
+	runtimeCtx := azrtmmocks.NewRuntimeContextMock()
+	storageCtx, err := azstorage.NewStorageContext(runtimeCtx, azstorage.StorageSQLite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mockConnector, _ := azmocks.NewMockSQLiteConnector()
+	storage, _ := newSQLiteAAPCentralStorage(storageCtx, mockConnector, nil)
+	assert.NotNil(storage, "storage should be nil")
+}

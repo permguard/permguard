@@ -19,31 +19,43 @@ package centralstorage
 import (
 	"database/sql"
 
+	"github.com/jmoiron/sqlx"
+	
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
+
+type SqliteRepo interface {
+	UpsertAccount(tx *sql.Tx, isCreate bool, account *azrepos.Account) (*azrepos.Account, error)
+	DeleteAccount(tx *sql.Tx, accountID int64) (*azrepos.Account, error)
+	FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]azrepos.Account, error)
+}
 
 // SQLiteCentralStorageAAP implements the sqlite central storage.
 type SQLiteCentralStorageAAP struct {
 	ctx             *azstorage.StorageContext
 	sqliteConnector azidb.SQLiteConnector
-	repo 		  	*azrepos.Repo
+	repo 		  	SqliteRepo
 }
 
 // newSQLiteAAPCentralStorage creates a new SQLiteAAPCentralStorage.
-func newSQLiteAAPCentralStorage(storageContext *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector) (*SQLiteCentralStorageAAP, error) {
+func newSQLiteAAPCentralStorage(storageContext *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, repo SqliteRepo) (*SQLiteCentralStorageAAP, error) {
 	if storageContext == nil || sqliteConnector == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: storageContext is nil.")
+	}
+	if repo == nil {
+		repo = &azrepos.Repo{}
 	}
 	return &SQLiteCentralStorageAAP{
 		ctx:             storageContext,
 		sqliteConnector: sqliteConnector,
-		repo: 			 &azrepos.Repo{},
+		repo: 			 repo,
 	}, nil
 }
 
+// executeWithTransaction executes a function with a transaction.
 func (s SQLiteCentralStorageAAP) executeWithTransaction(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, execFunc func(tx *sql.Tx) (interface{}, error)) (interface{}, error) {
 	return executeWithTransaction(ctx, sqliteConnector, execFunc)
 }
