@@ -35,8 +35,8 @@ func TestCreateAccountWithInvalidInputs(t *testing.T) {
 	assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 }
 
-// TestCreateAccountWithExecuteWithTransactionError tests the CreateAccount function with ExecuteWithTransaction error.
-func TestCreateAccountWithExecuteWithTransactionError(t *testing.T) {
+// TestCreateAccountWithErrors tests the CreateAccount function with errors.
+func TestCreateAccountWithErrors(t *testing.T) {
 	assert := assert.New(t)
 	storage, storageCtx, mockConnector, _, mockSQLExec := createSQLiteAAPCentralStorageWithMocks()
 
