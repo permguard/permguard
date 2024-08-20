@@ -27,6 +27,9 @@ import (
 
 // CreateAccount creates a new account.
 func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmodels.Account, error) {
+	if account == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - account is nil.")
+	}
 	execFunc := func(tx *sql.Tx) (interface{}, error) {
 		dbaccount := &azirepo.Account{
 			AccountID: account.AccountID,
@@ -41,6 +44,9 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 	result, err := s.sqlExec.ExecuteWithTransaction(s.ctx, s.sqliteConnector, execFunc)
 	if err != nil {
 		return nil, err
+	}
+	if result == nil {
+		return nil, nil
 	}
 	return result.(*azmodels.Account), nil
 }

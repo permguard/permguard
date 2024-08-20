@@ -17,25 +17,53 @@
 package centralstorage
 
 import (
-	"fmt"
+	"database/sql"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
-// TestNewSQLiteAAPCentralStorage tests the newSQLiteAAPCentralStorage function.
-func TestCreateAccountWithError(t *testing.T) {
+// TestCreateAccountWithInvalidInputs tests the CreateAccount function with invalid inputs.
+func TestCreateAccountWithInvalidInputs(t *testing.T) {
 	assert := assert.New(t)
+	storage, _, _, _, _ := createSQLiteAAPCentralStorageWithMocks()
+	accounts, err := storage.CreateAccount(nil)
+	assert.Nil(accounts, "accounts should be nil")
+	assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+}
 
+// TestCreateAccountWithExecuteWithTransactionError tests the CreateAccount function with ExecuteWithTransaction error.
+func TestCreateAccountWithExecuteWithTransactionError(t *testing.T) {
+	assert := assert.New(t)
 	storage, storageCtx, mockConnector, _, mockSQLExec := createSQLiteAAPCentralStorageWithMocks()
 
-	mockSQLExec.On("ExecuteWithTransaction", storageCtx, mockConnector, mock.Anything).Return(nil, fmt.Errorf("error"))
+	errMsg := "ExecuteWithTransaction error"
+	mockSQLExec.On("ExecuteWithTransaction", storageCtx, mockConnector, mock.Anything).Return(nil, errors.New(errMsg))
 
-	account:=  &azmodels.Account{}
-	accounts, err := storage.CreateAccount(account)
+	accounts, err := storage.CreateAccount(&azmodels.Account{})
 	assert.Nil(accounts, "accounts should be nil")
-	assert.NotNil(err, "error should not be nil")
+	assert.EqualError(err,errMsg)
+}
+
+// TestCreateAccountWithUpsertAccountError tests the CreateAccount function with UpsertAccount error.
+func TestCreateAccountWithUpsertAccountError(t *testing.T) {
+	assert := assert.New(t)
+	storage, storageCtx, mockConnector, mockSQLRepo, mockSQLExec := createSQLiteAAPCentralStorageWithMocks()
+
+	mockSQLExec.On("ExecuteWithTransaction", storageCtx, mockConnector, mock.Anything).Return(nil, nil).Run(func(args mock.Arguments) {
+		execFunc := args.Get(2).(func(tx *sql.Tx) (interface{}, error))
+		execFunc(nil)
+	}).Once()
+
+	errMsg := "UpsertAccount error"
+	mockSQLRepo.On("UpsertAccount", mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New(errMsg))
+
+	accounts, err := storage.CreateAccount(&azmodels.Account{})
+	assert.Nil(accounts, "accounts should be nil")
+	assert.EqualError(err,errMsg)
 }

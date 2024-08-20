@@ -28,7 +28,7 @@ import (
 
 // MockSqliteRepo sqlite repo mock
 type MockSqliteRepo struct {
-	mock mock.Mock
+	mock.Mock
 }
 
 // NewMockSqliteRepo create a new mock of SqliteRepo
@@ -39,18 +39,18 @@ func NewMockSqliteRepo() *MockSqliteRepo{
 
 // UpsertAccount creates or updates an account.
 func (m *MockSqliteRepo) UpsertAccount(tx *sql.Tx, isCreate bool, account *azrepos.Account) (*azrepos.Account, error) {
-	args := m.mock.Called(tx, isCreate, account)
+	args := m.Called(tx, isCreate, account)
 	return args.Get(0).(*azrepos.Account), args.Error(1)
 }
 
 // DeleteAccount deletes an account.
 func (m *MockSqliteRepo) DeleteAccount(tx *sql.Tx, accountID int64) (*azrepos.Account, error) {
-	args := m.mock.Called(tx, accountID)
+	args := m.Called(tx, accountID)
 	return args.Get(0).(*azrepos.Account), args.Error(1)
 }
 
 // FetchAccounts fetches accounts.
 func (m *MockSqliteRepo) FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]azrepos.Account, error) {
-	args := m.mock.Called(db, page, pageSize, filterID, filterName)
+	args := m.Called(db, page, pageSize, filterID, filterName)
 	return args.Get(0).([]azrepos.Account), args.Error(1)
 }
