@@ -25,8 +25,19 @@ import (
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
-// sqliteConnect connects to the sqlite database.
-func sqliteConnect(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector) (*sqlx.DB, error) {
+
+// SqliteExecutor is the interface for executing sqlite commands.
+type SqliteExecutor interface {
+	Connect(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector) (*sqlx.DB, error)
+	ExecuteWithTransaction(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, execFunc func(tx *sql.Tx) (interface{}, error)) (interface{}, error)
+}
+
+// SqliteExec implements the SqliteExecutor interface.
+type SqliteExec struct {
+}
+
+// Connect connects to the sqlite database.
+func (s SqliteExec) Connect(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector) (*sqlx.DB, error) {
 	logger := ctx.GetLogger()
 	db, err := sqliteConnector.Connect(logger, ctx)
 	if err != nil {
@@ -35,9 +46,9 @@ func sqliteConnect(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteCo
 	return db, nil
 }
 
-// executeWithTransaction executes a function with a transaction.
-func executeWithTransaction(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, execFunc func(tx *sql.Tx) (interface{}, error)) (interface{}, error) {
-	db, err := sqliteConnect(ctx, sqliteConnector)
+// ExecuteWithTransaction executes a function with a transaction.
+func (s SqliteExec) ExecuteWithTransaction(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, execFunc func(tx *sql.Tx) (interface{}, error)) (interface{}, error) {
+	db, err := s.Connect(ctx, sqliteConnector)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +83,7 @@ func NewSQLiteCentralStorage(storageContext *azstorage.StorageContext, sqliteCon
 
 // GetAAPCentralStorage returns the AAP central storage.
 func (s SQLiteCentralStorage) GetAAPCentralStorage() (azstorage.AAPCentralStorage, error) {
-	return newSQLiteAAPCentralStorage(s.ctx, s.sqliteConnector, nil)
+	return newSQLiteAAPCentralStorage(s.ctx, s.sqliteConnector, nil, nil)
 }
 
 // GetPAPCentralStorage returns the PAP central storage.
