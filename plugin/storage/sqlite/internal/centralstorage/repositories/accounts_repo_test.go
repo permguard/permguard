@@ -29,15 +29,20 @@ import (
 	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
 )
 
-// registerAccountForInsertMocking registers an account for insert mocking.
-func registerAccountForInsertMocking() (*Account, string, *sqlmock.Rows) {
+// registerAccountForUpsertMocking registers an account for insert mocking.
+func registerAccountForUpsertMocking(isCreate bool) (*Account, string, *sqlmock.Rows) {
 	account := &Account{
 		AccountID: 581616507495,
 		Name: "rent-a-car",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	sql := "INSERT INTO \"accounts\" (.+) VALUES (.+)"
+	var sql string
+	if isCreate {
+		sql =`INSERT INTO accounts \(account_id, name\) VALUES \(\?, \?\)`
+	} else {
+		sql = `UPDATE accounts SET name = \? WHERE account_id = \?`
+	}
 	sqlRows := sqlmock.NewRows([]string{"account_id", "created_at", "updated_at", "name"}).
 		AddRow(account.AccountID, account.CreatedAt, account.UpdatedAt, account.Name)
 	return account, sql, sqlRows
@@ -96,31 +101,48 @@ func TestRepoCreateAccountWithInvalidInput(t *testing.T) {
 // TestRepoCreateAccountWithSuccess tests the creation of an account with success.
 func TestRepoCreateAccountWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-
-	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
-	defer sqlDB.Close()
-
-	account, _, sqlAccountRows := registerAccountForInsertMocking()
-
-	sqlDBMock.ExpectBegin()
-    sqlDBMock.ExpectExec(`INSERT INTO accounts \(account_id, name\) VALUES \(\?, \?\)`).
-        WithArgs(sqlmock.AnyArg(), "rent-a-car").
-        WillReturnResult(sqlmock.NewResult(1, 1))
-
-    sqlDBMock.ExpectQuery(`SELECT account_id, created_at, updated_at, name FROM accounts WHERE account_id = \?`).
-        WithArgs(sqlmock.AnyArg()).
-        WillReturnRows(sqlAccountRows)
-
-
-	dbInAccount := &Account{
-		Name: account.Name,
+	tests := []bool{
+		true,
+		false,
 	}
-	tx, _ := sqlDB.Begin()
-	dbOutAccount, err := UpsertAccount(tx, true, dbInAccount)
+	for _, test := range tests {
+		_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+		defer sqlDB.Close()
 
-	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
-	assert.NotNil(dbOutAccount, "account should be not nil")
-	assert.Equal(account.AccountID, dbOutAccount.AccountID, "account name is not correct")
-	assert.Equal(account.Name, dbOutAccount.Name, "account name is not correct")
-	assert.Nil(err, "error should be nil")
+		isCreate := test
+		account, sql, sqlAccountRows := registerAccountForUpsertMocking(isCreate)
+
+		sqlDBMock.ExpectBegin()
+		var dbInAccount *Account
+		if isCreate {
+			dbInAccount = &Account{
+				Name: account.Name,
+			}
+			sqlDBMock.ExpectExec(sql).
+				WithArgs(sqlmock.AnyArg(), account.Name).
+				WillReturnResult(sqlmock.NewResult(1, 1))
+		} else {
+			dbInAccount = &Account{
+				AccountID: account.AccountID,
+				Name: account.Name,
+			}
+			sqlDBMock.ExpectExec(sql).
+				WithArgs(account.Name, account.AccountID).
+				WillReturnResult(sqlmock.NewResult(1, 1))
+		}
+
+		sqlDBMock.ExpectQuery(`SELECT account_id, created_at, updated_at, name FROM accounts WHERE account_id = \?`).
+			WithArgs(sqlmock.AnyArg()).
+			WillReturnRows(sqlAccountRows)
+
+
+		tx, _ := sqlDB.Begin()
+		dbOutAccount, err := UpsertAccount(tx, isCreate, dbInAccount)
+
+		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
+		assert.NotNil(dbOutAccount, "account should be not nil")
+		assert.Equal(account.AccountID, dbOutAccount.AccountID, "account name is not correct")
+		assert.Equal(account.Name, dbOutAccount.Name, "account name is not correct")
+		assert.Nil(err, "error should be nil")
+	}
 }
