@@ -21,27 +21,14 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
-	mock "github.com/stretchr/testify/mock"
 
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	_ "github.com/mattn/go-sqlite3"
+
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
-	azidbmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db/testutils/mocks"
+	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db/testutils"
 )
 
-// NewSqliteConnectionMocks creates mocks for the SQLite connection.
-func NewSqliteConnectionMocks(t *testing.T) (azidb.SQLiteConnector, *sqlx.DB, sqlmock.Sqlmock) {
-	sqlDB, sqlMock, err := sqlmock.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sqlxDB := sqlx.NewDb(sqlDB, "sqlite3")
-
-	if err != nil {
-		t.Fatal(err)
-	}
-	sqlConnMock := azidbmocks.NewSQLiteConnectionMock()
-	sqlConnMock.On("GetStorage").Return(azstorage.StorageSQLite)
-	sqlConnMock.On("Connect", mock.Anything, mock.Anything).Return(sqlxDB, nil)
-	sqlConnMock.On("Close", sqlxDB).Return(nil)
-	return sqlConnMock, sqlxDB, sqlMock
+func CreateConnectionMocks(t *testing.T) (azidb.SQLiteConnector, *sqlx.DB, *sqlx.DB, sqlmock.Sqlmock) {
+	sqlConnector, sqlDB, sqlDBMock := azidbtestutils.NewSqliteConnectionMocks(t)
+	return sqlConnector, sqlDB, sqlDB, sqlDBMock
 }
