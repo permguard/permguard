@@ -26,7 +26,7 @@ import (
 // TestNewSQLiteAAPCentralStorage tests the newSQLiteAAPCentralStorage function.
 func TestNewSQLiteAAPCentralStorage(t *testing.T) {
 	assert := assert.New(t)
-	storage, err := newSQLiteAAPCentralStorage(nil, nil, nil)
+	storage, err := newSQLiteAAPCentralStorage(nil, nil, nil, nil)
 	assert.Nil(storage, "storage should be nil")
 	assert.NotNil(err, "error should not be nil")
 	assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")

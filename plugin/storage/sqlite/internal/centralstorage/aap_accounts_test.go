@@ -15,11 +15,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 package centralstorage
+
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 
+	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azrtmmocks "github.com/permguard/permguard/pkg/agents/runtime/mocks"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/testutils/mocks"
@@ -34,6 +38,14 @@ func TestCreateAccountWithError(t *testing.T) {
 		t.Fatal(err)
 	}
 	mockConnector, _ := azmocks.NewMockSQLiteConnector()
-	storage, _ := newSQLiteAAPCentralStorage(storageCtx, mockConnector, nil)
-	assert.NotNil(storage, "storage should be nil")
+	mockSQLRepo := azmocks.NewMockSqliteRepo()
+	mockSQLExec := azmocks.NewMockSqliteExecutor()
+	storage, _ := newSQLiteAAPCentralStorage(storageCtx, mockConnector, mockSQLRepo, mockSQLExec)
+
+	mockSQLExec.On("ExecuteWithTransaction", storageCtx, mockConnector, mock.Anything).Return(nil, fmt.Errorf("error"))
+
+	account:=  &azmodels.Account{}
+	accounts, err := storage.CreateAccount(account)
+	assert.Nil(accounts, "accounts should be nil")
+	assert.NotNil(err, "error should not be nil")
 }

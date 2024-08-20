@@ -32,13 +32,13 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 			AccountID: account.AccountID,
 			Name:      account.Name,
 		}
-		dbaccount, err := s.repo.UpsertAccount(tx, false, dbaccount)
+		dbaccount, err := s.sqlRepo.UpsertAccount(tx, false, dbaccount)
 		if err != nil {
 			return nil, err
 		}
 		return mapAccountToAgentAccount(dbaccount)
 	}
-	result, err := s.executeWithTransaction(s.ctx, s.sqliteConnector, execFunc)
+	result, err := s.sqlExec.ExecuteWithTransaction(s.ctx, s.sqliteConnector, execFunc)
 	if err != nil {
 		return nil, err
 	}
@@ -52,13 +52,13 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 			AccountID: account.AccountID,
 			Name:      account.Name,
 		}
-		dbaccount, err := s.repo.UpsertAccount(tx, false, dbaccount)
+		dbaccount, err := s.sqlRepo.UpsertAccount(tx, false, dbaccount)
 		if err != nil {
 			return nil, err
 		}
 		return mapAccountToAgentAccount(dbaccount)
 	}
-	result, err := s.executeWithTransaction(s.ctx, s.sqliteConnector, execFunc)
+	result, err := s.sqlExec.ExecuteWithTransaction(s.ctx, s.sqliteConnector, execFunc)
 	if err != nil {
 		return nil, err
 	}
@@ -68,13 +68,13 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 // DeleteAccount deletes an account.
 func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Account, error) {
 	execFunc := func(tx *sql.Tx) (interface{}, error) {
-		dbaccount, err := s.repo.DeleteAccount(tx, accountID)
+		dbaccount, err := s.sqlRepo.DeleteAccount(tx, accountID)
 		if err != nil {
 			return nil, err
 		}
 		return mapAccountToAgentAccount(dbaccount)
 	}
-	result, err := s.executeWithTransaction(s.ctx, s.sqliteConnector, execFunc)
+	result, err := s.sqlExec.ExecuteWithTransaction(s.ctx, s.sqliteConnector, execFunc)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Accou
 
 // FetchAccounts returns all accounts.
 func (s SQLiteCentralStorageAAP) FetchAccounts(page int32, pageSize int32, fields map[string]any) ([]azmodels.Account, error) {
-	db, err := sqliteConnect(s.ctx, s.sqliteConnector)
+	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (s SQLiteCentralStorageAAP) FetchAccounts(page int32, pageSize int32, field
 		}
 		filterName = &accountName
 	}
-	dbAccounts, err := s.repo.FetchAccounts(db, page, pageSize, filterID, filterName)
+	dbAccounts, err := s.sqlRepo.FetchAccounts(db, page, pageSize, filterID, filterName)
 	if err != nil {
 		return nil, err
 	}

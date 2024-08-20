@@ -20,7 +20,7 @@ import (
 	"database/sql"
 
 	"github.com/jmoiron/sqlx"
-	
+
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
@@ -37,25 +37,25 @@ type SqliteRepo interface {
 type SQLiteCentralStorageAAP struct {
 	ctx             *azstorage.StorageContext
 	sqliteConnector azidb.SQLiteConnector
-	repo 		  	SqliteRepo
+	sqlRepo         SqliteRepo
+	sqlExec         SqliteExecutor
 }
 
 // newSQLiteAAPCentralStorage creates a new SQLiteAAPCentralStorage.
-func newSQLiteAAPCentralStorage(storageContext *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, repo SqliteRepo) (*SQLiteCentralStorageAAP, error) {
+func newSQLiteAAPCentralStorage(storageContext *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, repo SqliteRepo, sqlExec SqliteExecutor) (*SQLiteCentralStorageAAP, error) {
 	if storageContext == nil || sqliteConnector == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: storageContext is nil.")
 	}
 	if repo == nil {
 		repo = &azrepos.Repo{}
 	}
+	if sqlExec == nil {
+		sqlExec = &SqliteExec{}
+	}
 	return &SQLiteCentralStorageAAP{
 		ctx:             storageContext,
 		sqliteConnector: sqliteConnector,
-		repo: 			 repo,
+		sqlRepo:         repo,
+		sqlExec:         sqlExec,
 	}, nil
-}
-
-// executeWithTransaction executes a function with a transaction.
-func (s SQLiteCentralStorageAAP) executeWithTransaction(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, execFunc func(tx *sql.Tx) (interface{}, error)) (interface{}, error) {
-	return executeWithTransaction(ctx, sqliteConnector, execFunc)
 }
