@@ -92,6 +92,9 @@ type SQLiteConnection struct {
 
 // NewSQLiteConnection creates a connection.
 func NewSQLiteConnection(connectionCgf *SQLiteConnectionConfig) (SQLiteConnector, error) {
+	if connectionCgf == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrConfigurationGeneric, "storage: sqlite connection configuration cannot be nil.")
+	}
 	return &SQLiteConnection{
 		config: connectionCgf,
 	}, nil
