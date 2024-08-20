@@ -67,22 +67,18 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 
 // DeleteAccount deletes an account.
 func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Account, error) {
-	db, err := sqliteConnect(s.ctx, s.sqliteConnector)
+	execFunc := func(tx *sql.Tx) (interface{}, error) {
+		dbaccount, err := azirepo.DeleteAccount(tx, accountID)
+		if err != nil {
+			return nil, err
+		}
+		return mapAccountToAgentAccount(dbaccount)
+	}
+	result, err := executeWithTransaction(s.ctx, s.sqliteConnector, execFunc)
 	if err != nil {
 		return nil, err
 	}
-	tx, err := db.Begin()
-	if err != nil {
-		return nil, azirepo.WrapSqlite3Error("cannot open the transaction.", err)
-	}
-	dbaccount, err := azirepo.DeleteAccount(tx, accountID)
-	if err := tx.Commit(); err != nil {
-		return nil, azirepo.WrapSqlite3Error("cannot commit the transaction.", err)
-	}
-	if err != nil {
-		return nil, err
-	}
-	return mapAccountToAgentAccount(dbaccount)
+	return result.(*azmodels.Account), nil
 }
 
 // FetchAccounts returns all accounts.
