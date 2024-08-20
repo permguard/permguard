@@ -33,7 +33,12 @@ func TestSQLiteStorageFactory(t *testing.T) {
 	storageFctyCfg, _ := NewSQLiteStorageFactoryConfig()
 	assert.Nil(storageFctyCfg.AddFlags(&flag.FlagSet{}), "error should be nil")
 	assert.Nil(storageFctyCfg.InitFromViper(&viper.Viper{}), "error should be nil")
-	storageFcty, _ := NewSQLiteStorageFactory(storageFctyCfg)
+
+	storageFcty, err := NewSQLiteStorageFactory(nil)
+	assert.Nil(storageFcty, "storage factory should be nil")
+	assert.NotNil(err, "error should not be nil")
+
+	storageFcty, _ = NewSQLiteStorageFactory(storageFctyCfg)
 
 	runtimeCtx := azrtmmocks.NewRuntimeContextMock()
 	storageCtx, err := azstorage.NewStorageContext(runtimeCtx, azstorage.StorageSQLite)
