@@ -270,6 +270,14 @@ func TestFetchAccountWithErrors(t *testing.T) {
 	assert := assert.New(t)
 
 	{	// Test with invalid page
+		storage, mockStorageCtx, mockConnector, _, mockSQLExec, _, _ := createSQLiteAAPCentralStorageWithMocks()
+		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(nil, azerrors.ErrServerGeneric)
+		outAccounts, err := storage.FetchAccounts(1, 100,nil)
+		assert.Nil(outAccounts, "accounts should be nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrServerGeneric, err), "error should be errservergeneric")
+	}
+
+	{	// Test with invalid page
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outAccounts, err := storage.FetchAccounts(0, 100,nil)
