@@ -52,10 +52,11 @@ func (f *PDPService) GetEndpoints() ([]azservices.EndpointInitializer, error) {
 			if err != nil {
 				return nil
 			}
-			err = controller.Setup()
-			if err != nil {
-				return err
-			}
+			// TODO: Implement Setup
+			//err = controller.Setup()
+			// if err != nil {
+			// 	return err
+			// }
 			pdpServer, err := azapiv1pdp.NewV1PDPServer(endptCtx, controller)
 			azapiv1pdp.RegisterV1PDPServiceServer(grpcServer, pdpServer)
 			return err

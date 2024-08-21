@@ -23,10 +23,7 @@
 package v1
 
 import (
-	context "context"
 	grpc "google.golang.org/grpc"
-	codes "google.golang.org/grpc/codes"
-	status "google.golang.org/grpc/status"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -34,19 +31,12 @@ import (
 // Requires gRPC-Go v1.64.0 or later.
 const _ = grpc.SupportPackageIsVersion9
 
-const (
-	V1PDPService_GetPermissionsState_FullMethodName = "/policydecisionpoint.V1PDPService/GetPermissionsState"
-	V1PDPService_EvaluatePermissions_FullMethodName = "/policydecisionpoint.V1PDPService/EvaluatePermissions"
-)
-
 // V1PDPServiceClient is the client API for V1PDPService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // V1PDPService	is the service for the Policy Decision Point
 type V1PDPServiceClient interface {
-	GetPermissionsState(ctx context.Context, in *PermissionsStateRequest, opts ...grpc.CallOption) (*PermissionsStateResponse, error)
-	EvaluatePermissions(ctx context.Context, in *PermissionsEvaluationRequest, opts ...grpc.CallOption) (*PermissionsEvaluationResponse, error)
 }
 
 type v1PDPServiceClient struct {
@@ -57,34 +47,12 @@ func NewV1PDPServiceClient(cc grpc.ClientConnInterface) V1PDPServiceClient {
 	return &v1PDPServiceClient{cc}
 }
 
-func (c *v1PDPServiceClient) GetPermissionsState(ctx context.Context, in *PermissionsStateRequest, opts ...grpc.CallOption) (*PermissionsStateResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(PermissionsStateResponse)
-	err := c.cc.Invoke(ctx, V1PDPService_GetPermissionsState_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *v1PDPServiceClient) EvaluatePermissions(ctx context.Context, in *PermissionsEvaluationRequest, opts ...grpc.CallOption) (*PermissionsEvaluationResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(PermissionsEvaluationResponse)
-	err := c.cc.Invoke(ctx, V1PDPService_EvaluatePermissions_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // V1PDPServiceServer is the server API for V1PDPService service.
 // All implementations must embed UnimplementedV1PDPServiceServer
 // for forward compatibility.
 //
 // V1PDPService	is the service for the Policy Decision Point
 type V1PDPServiceServer interface {
-	GetPermissionsState(context.Context, *PermissionsStateRequest) (*PermissionsStateResponse, error)
-	EvaluatePermissions(context.Context, *PermissionsEvaluationRequest) (*PermissionsEvaluationResponse, error)
 	mustEmbedUnimplementedV1PDPServiceServer()
 }
 
@@ -95,12 +63,6 @@ type V1PDPServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedV1PDPServiceServer struct{}
 
-func (UnimplementedV1PDPServiceServer) GetPermissionsState(context.Context, *PermissionsStateRequest) (*PermissionsStateResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetPermissionsState not implemented")
-}
-func (UnimplementedV1PDPServiceServer) EvaluatePermissions(context.Context, *PermissionsEvaluationRequest) (*PermissionsEvaluationResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method EvaluatePermissions not implemented")
-}
 func (UnimplementedV1PDPServiceServer) mustEmbedUnimplementedV1PDPServiceServer() {}
 func (UnimplementedV1PDPServiceServer) testEmbeddedByValue()                      {}
 
@@ -122,58 +84,13 @@ func RegisterV1PDPServiceServer(s grpc.ServiceRegistrar, srv V1PDPServiceServer)
 	s.RegisterService(&V1PDPService_ServiceDesc, srv)
 }
 
-func _V1PDPService_GetPermissionsState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PermissionsStateRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(V1PDPServiceServer).GetPermissionsState(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: V1PDPService_GetPermissionsState_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1PDPServiceServer).GetPermissionsState(ctx, req.(*PermissionsStateRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _V1PDPService_EvaluatePermissions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PermissionsEvaluationRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(V1PDPServiceServer).EvaluatePermissions(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: V1PDPService_EvaluatePermissions_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1PDPServiceServer).EvaluatePermissions(ctx, req.(*PermissionsEvaluationRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // V1PDPService_ServiceDesc is the grpc.ServiceDesc for V1PDPService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var V1PDPService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "policydecisionpoint.V1PDPService",
 	HandlerType: (*V1PDPServiceServer)(nil),
-	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "GetPermissionsState",
-			Handler:    _V1PDPService_GetPermissionsState_Handler,
-		},
-		{
-			MethodName: "EvaluatePermissions",
-			Handler:    _V1PDPService_EvaluatePermissions_Handler,
-		},
-	},
-	Streams:  []grpc.StreamDesc{},
-	Metadata: "internal/agents/services/pdp/endpoints/api/v1/pdp.proto",
+	Methods:     []grpc.MethodDesc{},
+	Streams:     []grpc.StreamDesc{},
+	Metadata:    "internal/agents/services/pdp/endpoints/api/v1/pdp.proto",
 }
