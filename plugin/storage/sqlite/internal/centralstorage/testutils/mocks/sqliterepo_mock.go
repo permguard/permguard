@@ -50,7 +50,11 @@ func (m *MockSqliteRepo) UpsertAccount(tx *sql.Tx, isCreate bool, account *azrep
 // DeleteAccount deletes an account.
 func (m *MockSqliteRepo) DeleteAccount(tx *sql.Tx, accountID int64) (*azrepos.Account, error) {
 	args := m.Called(tx, accountID)
-	return args.Get(0).(*azrepos.Account), args.Error(1)
+	var r0 *azrepos.Account
+	if val, ok := args.Get(0).(*azrepos.Account); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
 }
 
 // FetchAccounts fetches accounts.

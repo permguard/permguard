@@ -17,7 +17,6 @@
 package centralstorage
 
 import (
-	"database/sql"
 	"fmt"
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
@@ -83,19 +82,23 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 
 // DeleteAccount deletes an account.
 func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Account, error) {
-	execFunc := func(tx *sql.Tx, param interface{}) (interface{}, error) {
-		inAccountID, _ := param.(int64)
-		dbaccount, err := s.sqlRepo.DeleteAccount(tx, inAccountID)
-		if err != nil {
-			return nil, err
-		}
-		return mapAccountToAgentAccount(dbaccount)
-	}
-	result, err := s.sqlExec.ExecuteWithTransaction(s.ctx, s.sqliteConnector, execFunc, accountID)
+	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
+		return nil, azirepos.WrapSqlite3Error("cannot connect.", err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, azirepos.WrapSqlite3Error("cannot open the transaction.", err)
+	}
+	dbOutaccount, err := s.sqlRepo.DeleteAccount(tx, accountID)
+	if err != nil {
+		tx.Rollback()
 		return nil, err
 	}
-	return result.(*azmodels.Account), nil
+	if err := tx.Commit(); err != nil {
+		return nil, azirepos.WrapSqlite3Error("cannot commit the transaction.", err)
+	}
+	return mapAccountToAgentAccount(dbOutaccount)
 }
 
 // FetchAccounts returns all accounts.

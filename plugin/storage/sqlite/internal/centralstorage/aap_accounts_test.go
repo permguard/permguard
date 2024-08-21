@@ -190,3 +190,77 @@ func TestUpdateAccountWithSuccess(t *testing.T) {
 	assert.Equal(dbOutAccount.CreatedAt, outAccounts.CreatedAt, "created at should be equal")
 	assert.Equal(dbOutAccount.UpdatedAt, outAccounts.UpdatedAt, "updated at should be equal")
 }
+
+// TestDeleteAccountWithErrors tests the DeleteAccount function with errors.
+func TestDeleteAccountWithErrors(t *testing.T) {
+	assert := assert.New(t)
+
+	tests := map[string]struct {
+		IsCustomError bool
+		Error1        error
+	}{
+		"CONNECT-ERROR":  {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"BEGIN-ERROR":    {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"ROLLBACK-ERROR": {IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR")},
+		"COMMIT-ERROR":   {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+	}
+	for testcase, test := range tests {
+		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
+		switch testcase {
+		case "CONNECT-ERROR":
+			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(nil, errors.New(testcase))
+		case "BEGIN-ERROR":
+			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
+			mockSQLDB.ExpectBegin().WillReturnError(errors.New(testcase))
+		case "ROLLBACK-ERROR":
+			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
+			mockSQLDB.ExpectBegin()
+			mockSQLRepo.On("DeleteAccount", mock.Anything, mock.Anything).Return(nil, errors.New(testcase))
+		case "COMMIT-ERROR":
+			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
+			mockSQLDB.ExpectBegin()
+			mockSQLRepo.On("DeleteAccount", mock.Anything, mock.Anything).Return(nil, nil)
+			mockSQLDB.ExpectCommit().WillReturnError(errors.New(testcase))
+		default:
+			assert.FailNow("Unknown testcase")
+		}
+
+		inAccountID :=int64(232956849236)
+		outAccounts, err := storage.DeleteAccount(inAccountID)
+		assert.Nil(outAccounts, "accounts should be nil")
+		assert.Error(err)
+		if test.IsCustomError {
+			assert.True(azerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
+		} else {
+			assert.Equal(test.Error1, err, "error should be equal")
+		}
+	}
+}
+
+// TestDeleteAccountWithSuccess tests the DeleteAccount function with success.
+func TestDeleteAccountWithSuccess(t *testing.T) {
+	assert := assert.New(t)
+
+	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
+
+	dbOutAccount := &azirepos.Account{
+		AccountID: 232956849236,
+		Name: "rent-a-car1",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
+	mockSQLDB.ExpectBegin()
+	mockSQLRepo.On("DeleteAccount", mock.Anything, mock.Anything).Return(dbOutAccount, nil)
+	mockSQLDB.ExpectCommit().WillReturnError(nil)
+
+	inAccountID :=int64(232956849236)
+	outAccounts, err := storage.DeleteAccount(inAccountID)
+	assert.Nil(err, "error should be nil")
+	assert.NotNil(outAccounts, "accounts should not be nil")
+	assert.Equal(dbOutAccount.AccountID, outAccounts.AccountID, "account id should be equal")
+	assert.Equal(dbOutAccount.Name, outAccounts.Name, "account name should be equal")
+	assert.Equal(dbOutAccount.CreatedAt, outAccounts.CreatedAt, "created at should be equal")
+	assert.Equal(dbOutAccount.UpdatedAt, outAccounts.UpdatedAt, "updated at should be equal")
+}
