@@ -68,6 +68,14 @@ type Tenant struct {
 	Name      string    `gorm:"type:varchar(254);uniqueIndex:tenants_name_idx"`
 }
 
+// LogTenantEntry returns a string representation of the tenant.
+func LogTenantEntry(tenant *Tenant) string {
+	if tenant == nil {
+		return "tenant is nil"
+	}
+	return fmt.Sprintf("tenant id: %s, account id: %d, name: %s", tenant.TenantID, tenant.AccountID, tenant.Name)
+}
+
 // Repository is the model for the schema table.
 type Repository struct {
 	RepositoryID uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4()"`
