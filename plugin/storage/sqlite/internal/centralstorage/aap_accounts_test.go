@@ -311,3 +311,39 @@ func TestFetchAccountWithErrors(t *testing.T) {
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrServerGeneric, err), "error should be errservergeneric")
 	}
 }
+
+// TestFetchAccountWithSuccess tests the DeleteAccount function with success.
+func TestFetchAccountWithSuccess(t *testing.T) {
+	assert := assert.New(t)
+
+	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
+
+	dbOutAccounts := []azirepos.Account{
+		{
+			AccountID: 232956849236,
+			Name: "rent-a-car1",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		},
+		{
+			AccountID: 506074038324,
+			Name: "rent-a-car2",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		},
+	}
+
+	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
+	mockSQLRepo.On("FetchAccounts", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutAccounts, nil)
+
+	outAccounts, err := storage.FetchAccounts(1, 100, map[string]interface{}{azmodels.FieldAccountAccountID: int64(506074038324), azmodels.FieldAccountName: "rent-a-car2"})
+	assert.Nil(err, "error should be nil")
+	assert.NotNil(outAccounts, "accounts should not be nil")
+	assert.Equal(len(outAccounts), len(dbOutAccounts), "accounts  and dbAccounts should have the same length")
+	for i, outAccount := range outAccounts {
+		assert.Equal(dbOutAccounts[i].AccountID, outAccount.AccountID, "account id should be equal")
+		assert.Equal(dbOutAccounts[i].Name, outAccount.Name, "account name should be equal")
+		assert.Equal(dbOutAccounts[i].CreatedAt, outAccount.CreatedAt, "created at should be equal")
+		assert.Equal(dbOutAccounts[i].UpdatedAt, outAccount.UpdatedAt, "updated at should be equal")
+	}
+}
