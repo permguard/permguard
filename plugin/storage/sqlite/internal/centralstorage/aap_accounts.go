@@ -103,6 +103,9 @@ func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Accou
 
 // FetchAccounts returns all accounts.
 func (s SQLiteCentralStorageAAP) FetchAccounts(page int32, pageSize int32, fields map[string]any) ([]azmodels.Account, error) {
+	if page <= 0 || pageSize <= 0 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
+	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, err
@@ -119,7 +122,7 @@ func (s SQLiteCentralStorageAAP) FetchAccounts(page int32, pageSize int32, field
 	if _, ok := fields[azmodels.FieldAccountName]; ok {
 		accountName, ok := fields[azmodels.FieldAccountName].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - account name is not valid (account name: %s).", accountName))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account name is not valid (account name: %s).", accountName))
 		}
 		filterName = &accountName
 	}
