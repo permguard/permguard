@@ -82,6 +82,7 @@ func TestCreateAccountWithErrors(t *testing.T) {
 	}
 }
 
+// TestCreateAccountWithSuccess tests the CreateAccount function with success.
 func TestCreateAccountWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 
@@ -101,6 +102,87 @@ func TestCreateAccountWithSuccess(t *testing.T) {
 
 	inAccount := &azmodels.Account{}
 	outAccounts, err := storage.CreateAccount(inAccount)
+	assert.Nil(err, "error should be nil")
+	assert.NotNil(outAccounts, "accounts should not be nil")
+	assert.Equal(dbOutAccount.AccountID, outAccounts.AccountID, "account id should be equal")
+	assert.Equal(dbOutAccount.Name, outAccounts.Name, "account name should be equal")
+	assert.Equal(dbOutAccount.CreatedAt, outAccounts.CreatedAt, "created at should be equal")
+	assert.Equal(dbOutAccount.UpdatedAt, outAccounts.UpdatedAt, "updated at should be equal")
+}
+
+// TestUpdateAccountWithErrors tests the UpdateAccount function with errors.
+func TestUpdateAccountWithErrors(t *testing.T) {
+	assert := assert.New(t)
+
+	{ // Test with nil account
+		storage, _, _, _, _, _, _ := createSQLiteAAPCentralStorageWithMocks()
+		accounts, err := storage.UpdateAccount(nil)
+		assert.Nil(accounts, "accounts should be nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+	}
+
+	tests := map[string]struct {
+		IsCustomError bool
+		Error1        error
+	}{
+		"CONNECT-ERROR":  {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"BEGIN-ERROR":    {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"ROLLBACK-ERROR": {IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR")},
+		"COMMIT-ERROR":   {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+	}
+	for testcase, test := range tests {
+		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
+		switch testcase {
+		case "CONNECT-ERROR":
+			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(nil, errors.New(testcase))
+		case "BEGIN-ERROR":
+			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
+			mockSQLDB.ExpectBegin().WillReturnError(errors.New(testcase))
+		case "ROLLBACK-ERROR":
+			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
+			mockSQLDB.ExpectBegin()
+			mockSQLRepo.On("UpsertAccount", mock.Anything, false, mock.Anything).Return(nil, errors.New(testcase))
+		case "COMMIT-ERROR":
+			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
+			mockSQLDB.ExpectBegin()
+			mockSQLRepo.On("UpsertAccount", mock.Anything, false, mock.Anything).Return(nil, nil)
+			mockSQLDB.ExpectCommit().WillReturnError(errors.New(testcase))
+		default:
+			assert.FailNow("Unknown testcase")
+		}
+
+		inAccount := &azmodels.Account{}
+		outAccounts, err := storage.UpdateAccount(inAccount)
+		assert.Nil(outAccounts, "accounts should be nil")
+		assert.Error(err)
+		if test.IsCustomError {
+			assert.True(azerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
+		} else {
+			assert.Equal(test.Error1, err, "error should be equal")
+		}
+	}
+}
+
+// TestUpdateAccountWithSuccess tests the UpdateAccount function with success.
+func TestUpdateAccountWithSuccess(t *testing.T) {
+	assert := assert.New(t)
+
+	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
+
+	dbOutAccount := &azirepos.Account{
+		AccountID: 232956849236,
+		Name: "rent-a-car1",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
+	mockSQLDB.ExpectBegin()
+	mockSQLRepo.On("UpsertAccount", mock.Anything, false, mock.Anything).Return(dbOutAccount, nil)
+	mockSQLDB.ExpectCommit().WillReturnError(nil)
+
+	inAccount := &azmodels.Account{}
+	outAccounts, err := storage.UpdateAccount(inAccount)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outAccounts, "accounts should not be nil")
 	assert.Equal(dbOutAccount.AccountID, outAccounts.AccountID, "account id should be equal")
