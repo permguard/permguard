@@ -264,3 +264,40 @@ func TestDeleteAccountWithSuccess(t *testing.T) {
 	assert.Equal(dbOutAccount.CreatedAt, outAccounts.CreatedAt, "created at should be equal")
 	assert.Equal(dbOutAccount.UpdatedAt, outAccounts.UpdatedAt, "updated at should be equal")
 }
+
+// TestFetchAccountWithErrors tests the FetchAccount function with errors.
+func TestFetchAccountWithErrors(t *testing.T) {
+	assert := assert.New(t)
+
+	{	// Test with invalid page
+		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
+		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
+		outAccounts, err := storage.FetchAccounts(0, 100,nil)
+		assert.Nil(outAccounts, "accounts should be nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
+	}
+
+	{	// Test with invalid page size
+		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
+		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
+		outAccounts, err := storage.FetchAccounts(1, 0,nil)
+		assert.Nil(outAccounts, "accounts should be nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
+	}
+
+	{	// Test with invalid account id
+		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
+		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
+		outAccounts, err := storage.FetchAccounts(1, 100, map[string]interface{}{azmodels.FieldAccountAccountID: "not valid"})
+		assert.Nil(outAccounts, "accounts should be nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientid")
+	}
+
+	{	// Test with invalid account name
+		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
+		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
+		outAccounts, err := storage.FetchAccounts(1, 100, map[string]interface{}{azmodels.FieldAccountName: 2 })
+		assert.Nil(outAccounts, "accounts should be nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientname")
+	}
+}
