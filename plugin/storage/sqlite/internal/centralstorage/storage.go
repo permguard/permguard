@@ -21,10 +21,9 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azirepo "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
-
 
 // SqliteExecutor is the interface for executing sqlite commands.
 type SqliteExecutor interface {
@@ -41,7 +40,7 @@ func (s SqliteExec) Connect(ctx *azstorage.StorageContext, sqliteConnector azidb
 	logger := ctx.GetLogger()
 	db, err := sqliteConnector.Connect(logger, ctx)
 	if err != nil {
-		return nil, azirepo.WrapSqlite3Error("cannot connect to sqlite.", err)
+		return nil, azirepos.WrapSqlite3Error("cannot connect to sqlite.", err)
 	}
 	return db, nil
 }
@@ -54,7 +53,7 @@ func (s SqliteExec) ExecuteWithTransaction(ctx *azstorage.StorageContext, sqlite
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepo.WrapSqlite3Error("cannot open the transaction.", err)
+		return nil, azirepos.WrapSqlite3Error("cannot open the transaction.", err)
 	}
 	result, err := execFunc(tx, param)
 	if err != nil {
@@ -62,7 +61,7 @@ func (s SqliteExec) ExecuteWithTransaction(ctx *azstorage.StorageContext, sqlite
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepo.WrapSqlite3Error("cannot commit the transaction.", err)
+		return nil, azirepos.WrapSqlite3Error("cannot commit the transaction.", err)
 	}
 	return result, nil
 }

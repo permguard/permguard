@@ -19,12 +19,14 @@ package centralstorage
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // TestCreateAccountWithErrors tests the CreateAccount function with errors.
@@ -40,16 +42,15 @@ func TestCreateAccountWithErrors(t *testing.T) {
 
 	tests := map[string]struct {
 		IsCustomError bool
-		Error1 error
+		Error1        error
 	}{
-		"CONNECT-ERROR": { IsCustomError: true, Error1: azerrors.ErrStorageGeneric },
-		"BEGIN-ERROR": { IsCustomError: true, Error1: azerrors.ErrStorageGeneric },
-		"ROLLBACK-ERROR": { IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR") },
-		"COMMIT-ERROR": { IsCustomError: true, Error1: azerrors.ErrStorageGeneric },
+		"CONNECT-ERROR":  {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"BEGIN-ERROR":    {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"ROLLBACK-ERROR": {IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR")},
+		"COMMIT-ERROR":   {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
 	}
 	for testcase, test := range tests {
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
-		inAccount := &azmodels.Account{}
 		switch testcase {
 		case "CONNECT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(nil, errors.New(testcase))
@@ -69,8 +70,9 @@ func TestCreateAccountWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		accounts, err := storage.CreateAccount(inAccount)
-		assert.Nil(accounts, "accounts should be nil")
+		inAccount := &azmodels.Account{}
+		outAccounts, err := storage.CreateAccount(inAccount)
+		assert.Nil(outAccounts, "accounts should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
 			assert.True(azerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
@@ -78,4 +80,31 @@ func TestCreateAccountWithErrors(t *testing.T) {
 			assert.Equal(test.Error1, err, "error should be equal")
 		}
 	}
+}
+
+func TestCreateAccountWithSuccess(t *testing.T) {
+	assert := assert.New(t)
+
+	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
+
+	dbOutAccount := &azirepos.Account{
+		AccountID: 232956849236,
+		Name: "rent-a-car1",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
+	mockSQLDB.ExpectBegin()
+	mockSQLRepo.On("UpsertAccount", mock.Anything, true, mock.Anything).Return(dbOutAccount, nil)
+	mockSQLDB.ExpectCommit().WillReturnError(nil)
+
+	inAccount := &azmodels.Account{}
+	outAccounts, err := storage.CreateAccount(inAccount)
+	assert.Nil(err, "error should be nil")
+	assert.NotNil(outAccounts, "accounts should not be nil")
+	assert.Equal(dbOutAccount.AccountID, outAccounts.AccountID, "account id should be equal")
+	assert.Equal(dbOutAccount.Name, outAccounts.Name, "account name should be equal")
+	assert.Equal(dbOutAccount.CreatedAt, outAccounts.CreatedAt, "created at should be equal")
+	assert.Equal(dbOutAccount.UpdatedAt, outAccounts.UpdatedAt, "updated at should be equal")
 }

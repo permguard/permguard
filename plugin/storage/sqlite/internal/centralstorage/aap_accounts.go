@@ -22,7 +22,7 @@ import (
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	azirepo "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // CreateAccount creates a new account.
@@ -32,13 +32,13 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepo.WrapSqlite3Error("cannot connect.", err)
+		return nil, azirepos.WrapSqlite3Error("cannot connect.", err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepo.WrapSqlite3Error("cannot open the transaction.", err)
+		return nil, azirepos.WrapSqlite3Error("cannot open the transaction.", err)
 	}
-	dbInAccount := &azirepo.Account{
+	dbInAccount := &azirepos.Account{
 		AccountID: account.AccountID,
 		Name:      account.Name,
 	}
@@ -48,7 +48,7 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepo.WrapSqlite3Error("cannot commit the transaction.", err)
+		return nil, azirepos.WrapSqlite3Error("cannot commit the transaction.", err)
 	}
 	return mapAccountToAgentAccount(dbOutaccount)
 }
@@ -60,7 +60,7 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 	}
 	execFunc := func(tx *sql.Tx, param interface{}) (interface{}, error) {
 		inAccount, _ := param.(*azmodels.Account)
-		dbaccount := &azirepo.Account{
+		dbaccount := &azirepos.Account{
 			AccountID: inAccount.AccountID,
 			Name:      inAccount.Name,
 		}
@@ -124,7 +124,7 @@ func (s SQLiteCentralStorageAAP) FetchAccounts(page int32, pageSize int32, field
 	for i, a := range dbAccounts {
 		account, err := mapAccountToAgentAccount(&a)
 		if err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert account entity (%s).", azirepo.LogAccountEntry(&a)))
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert account entity (%s).", azirepos.LogAccountEntry(&a)))
 		}
 		accounts[i] = *account
 	}
