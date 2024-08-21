@@ -32,7 +32,7 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, err
+		return nil, azirepo.WrapSqlite3Error("cannot connect.", err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
@@ -42,7 +42,7 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 		AccountID: account.AccountID,
 		Name:      account.Name,
 	}
-	dbOutaccount, err := s.sqlRepo.UpsertAccount(tx, false, dbInAccount)
+	dbOutaccount, err := s.sqlRepo.UpsertAccount(tx, true, dbInAccount)
 	if err != nil {
 		tx.Rollback()
 		return nil, err
