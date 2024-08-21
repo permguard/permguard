@@ -15,27 +15,31 @@
 // SPDX-License-Identifier: Apache-2.0
 
 package centralstorage
+
 import (
 	"testing"
 
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azrtmmocks "github.com/permguard/permguard/pkg/agents/runtime/mocks"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/testutils/mocks"
 )
 
 // createSQLiteAAPCentralStorageWithMocks creates a new SQLiteCentralStorageAAP with mocks.
-func createSQLiteAAPCentralStorageWithMocks() (*SQLiteCentralStorageAAP, *azstorage.StorageContext, *azmocks.MockSQLiteConnector, *azmocks.MockSqliteRepo, *azmocks.MockSqliteExecutor) {
-	runtimeCtx := azrtmmocks.NewRuntimeContextMock()
-	storageCtx, _ := azstorage.NewStorageContext(runtimeCtx, azstorage.StorageSQLite)
+func createSQLiteAAPCentralStorageWithMocks() (*SQLiteCentralStorageAAP, *azstorage.StorageContext, *azmocks.MockSQLiteConnector, *azmocks.MockSqliteRepo, *azmocks.MockSqliteExecutor, *sqlx.DB, sqlmock.Sqlmock) {
+	mockRuntimeCtx := azrtmmocks.NewRuntimeContextMock()
+	mockStorageCtx, _ := azstorage.NewStorageContext(mockRuntimeCtx, azstorage.StorageSQLite)
 	mockConnector := azmocks.NewMockSQLiteConnector()
 	mockSQLRepo := azmocks.NewMockSqliteRepo()
 	mockSQLExec := azmocks.NewMockSqliteExecutor()
-
-	storage, _ := newSQLiteAAPCentralStorage(storageCtx, mockConnector, mockSQLRepo, mockSQLExec)
-	return storage, storageCtx, mockConnector, mockSQLRepo, mockSQLExec
+	storage, _ := newSQLiteAAPCentralStorage(mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec)
+	sqlDB, sqlMock, _ := sqlmock.New()
+	sqlxDB := sqlx.NewDb(sqlDB, "sqlite3")
+	return storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlxDB, sqlMock
 }
 
 // TestNewSQLiteAAPCentralStorage tests the newSQLiteAAPCentralStorage function.
