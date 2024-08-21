@@ -61,11 +61,11 @@ type Identity struct {
 
 // Tenant is the model for the tenant table.
 type Tenant struct {
-	TenantID  uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4()"`
-	CreatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP"`
-	UpdatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP"`
-	AccountID int64     `gorm:"uniqueIndex:tenants_account_id_idx"`
-	Name      string    `gorm:"type:varchar(254);uniqueIndex:tenants_name_idx"`
+	TenantID  uuid.UUID `db:"tenant_id"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
+	AccountID int64     `db:"account_id"`
+	Name      string    `db:"name"`
 }
 
 // LogTenantEntry returns a string representation of the tenant.
