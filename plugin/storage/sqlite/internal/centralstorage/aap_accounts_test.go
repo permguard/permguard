@@ -290,7 +290,7 @@ func TestFetchAccountWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outAccounts, err := storage.FetchAccounts(1, 100, map[string]interface{}{azmodels.FieldAccountAccountID: "not valid"})
 		assert.Nil(outAccounts, "accounts should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientid")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	{	// Test with invalid account name
@@ -298,6 +298,16 @@ func TestFetchAccountWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outAccounts, err := storage.FetchAccounts(1, 100, map[string]interface{}{azmodels.FieldAccountName: 2 })
 		assert.Nil(outAccounts, "accounts should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientname")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+	}
+
+
+	{	// Test with invalid account name
+		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
+		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
+		mockSQLRepo.On("FetchAccounts", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, azerrors.ErrServerGeneric)
+		outAccounts, err := storage.FetchAccounts(1, 100, nil)
+		assert.Nil(outAccounts, "accounts should be nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrServerGeneric, err), "error should be errservergeneric")
 	}
 }
