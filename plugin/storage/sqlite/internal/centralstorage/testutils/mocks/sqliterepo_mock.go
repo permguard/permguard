@@ -60,5 +60,9 @@ func (m *MockSqliteRepo) DeleteAccount(tx *sql.Tx, accountID int64) (*azrepos.Ac
 // FetchAccounts fetches accounts.
 func (m *MockSqliteRepo) FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]azrepos.Account, error) {
 	args := m.Called(db, page, pageSize, filterID, filterName)
-	return args.Get(0).([]azrepos.Account), args.Error(1)
+	var r0 []azrepos.Account
+	if val, ok := args.Get(0).([]azrepos.Account); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
 }
