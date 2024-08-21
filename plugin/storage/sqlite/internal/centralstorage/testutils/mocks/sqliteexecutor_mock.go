@@ -18,8 +18,6 @@
 package mocks
 
 import (
-	"database/sql"
-
 	"github.com/stretchr/testify/mock"
 	"github.com/jmoiron/sqlx"
 
@@ -48,14 +46,3 @@ func (m *MockSqliteExecutor) Connect(ctx *azstorage.StorageContext, sqliteConnec
 	return r0, args.Error(1)
 }
 
-// ExecuteWithTransaction executes a function with a transaction.
-func (m *MockSqliteExecutor) ExecuteWithTransaction(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, execFunc func(tx *sql.Tx, param interface{}) (interface{}, error), param interface{}) (interface{}, error){
-	args := m.Called(ctx, sqliteConnector, execFunc, param)
-	var r0 interface{}
-	if val := args.Get(0); val != nil {
-		r0 = val
-	} else {
-		r0 = nil
-	}
-	return r0, args.Error(1)
-}
