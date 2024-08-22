@@ -18,11 +18,11 @@ package centralstorage
 
 import (
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
-	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // mapTenantToAgentTenant maps a Tenant to a model Tenant.
-func mapTenantToAgentTenant(tenant *azrepos.Tenant) (*azmodels.Tenant, error) {
+func mapTenantToAgentTenant(tenant *azirepos.Tenant) (*azmodels.Tenant, error) {
 	return &azmodels.Tenant{
 		TenantID:  tenant.TenantID,
 		CreatedAt: tenant.CreatedAt,

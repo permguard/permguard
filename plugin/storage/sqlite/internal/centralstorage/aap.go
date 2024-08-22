@@ -23,24 +23,32 @@ import (
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
 type SqliteRepo interface {
 	// UpsertAccount creates or updates an account.
-	UpsertAccount(tx *sql.Tx, isCreate bool, account *azrepos.Account) (*azrepos.Account, error)
+	UpsertAccount(tx *sql.Tx, isCreate bool, account *azirepos.Account) (*azirepos.Account, error)
 	// DeleteAccount deletes an account.
-	DeleteAccount(tx *sql.Tx, accountID int64) (*azrepos.Account, error)
+	DeleteAccount(tx *sql.Tx, accountID int64) (*azirepos.Account, error)
 	// FetchAccount fetches an account.
-	FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]azrepos.Account, error)
+	FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]azirepos.Account, error)
+
+	// UpsertIdentitySource creates or updates an identity source.
+	UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *azirepos.IdentitySource) (*azirepos.IdentitySource, error)
+	// DeleteIdentitySource deletes an identity source.
+	DeleteIdentitySource(tx *sql.Tx, accountID int64, identitySourceID string) (*azirepos.IdentitySource, error)
+	// FetchIdentitySources fetches identity sources.
+	FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.IdentitySource, error)
+
 
 	// UpsertTenant creates or updates an tenant.
-	UpsertTenant(tx *sql.Tx, isCreate bool, tenant *azrepos.Tenant) (*azrepos.Tenant, error)
+	UpsertTenant(tx *sql.Tx, isCreate bool, tenant *azirepos.Tenant) (*azirepos.Tenant, error)
 	// DeleteTenant deletes an tenant.
-	DeleteTenant(tx *sql.Tx, accountID int64, tenantID string) (*azrepos.Tenant, error)
+	DeleteTenant(tx *sql.Tx, accountID int64, tenantID string) (*azirepos.Tenant, error)
 	// FetchTenant fetches an tenant.
-	FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azrepos.Tenant, error)
+	FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.Tenant, error)
 }
 
 // SQLiteCentralStorageAAP implements the sqlite central storage.
@@ -57,7 +65,7 @@ func newSQLiteAAPCentralStorage(storageContext *azstorage.StorageContext, sqlite
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: storageContext is nil.")
 	}
 	if repo == nil {
-		repo = &azrepos.Repo{}
+		repo = &azirepos.Repo{}
 	}
 	if sqlExec == nil {
 		sqlExec = &SqliteExec{}

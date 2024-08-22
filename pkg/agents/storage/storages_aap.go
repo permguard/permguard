@@ -38,7 +38,7 @@ type AAPCentralStorage interface {
 	// DeleteIdentitySource deletes an identity source.
 	DeleteIdentitySource(accountID int64, identitySourceID string) (*azmodels.IdentitySource, error)
 	// FetchIdentitySources gets all identity sources.
-	FetchIdentitySources(accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error)
+	FetchIdentitySources(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error)
 
 	// CreateIdentity creates a new identity.
 	CreateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error)

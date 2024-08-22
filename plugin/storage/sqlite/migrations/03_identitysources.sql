@@ -15,26 +15,26 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 -- +goose Up
-CREATE TABLE identitysources (
-    identitysource_id TEXT NOT NULL PRIMARY KEY,
+CREATE TABLE identity_sources (
+    identity_source_id TEXT NOT NULL PRIMARY KEY,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     name TEXT NOT NULL UNIQUE,
 	-- REFERENCES
 	account_id INTEGER NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
 	-- CONSTRAINTS
-	CONSTRAINT identitysources_accountid_name_key UNIQUE (account_id, name)
+	CONSTRAINT identity_sources_accountid_name_key UNIQUE (account_id, name)
 );
 
-CREATE INDEX identitysources_name_idx ON identitysources(name);
-CREATE INDEX identitysources_accountid_idx ON identitysources(account_id);
+CREATE INDEX identity_sources_name_idx ON identity_sources(name);
+CREATE INDEX identity_sources_accountid_idx ON identity_sources(account_id);
 
--- Creating the `identitysource_changestreams` table
-CREATE TABLE identitysource_changestreams (
+-- Creating the `identity_source_changestreams` table
+CREATE TABLE identity_source_changestreams (
     changestream_id INTEGER NOT NULL PRIMARY KEY,
 	change_type TEXT NOT NULL,
 	change_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    identitysource_id TEXT NOT NULL,
+    identity_source_id TEXT NOT NULL,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
     name TEXT NOT NULL,
@@ -42,46 +42,46 @@ CREATE TABLE identitysource_changestreams (
 	account_id INTEGER NOT NULL
 );
 
-CREATE INDEX identitysource_changestreams_name_idx ON identitysource_changestreams(name);
-CREATE INDEX identitysource_changestreams_accountid_idx ON identitysource_changestreams(account_id);
+CREATE INDEX identity_source_changestreams_name_idx ON identity_source_changestreams(name);
+CREATE INDEX identity_source_changestreams_accountid_idx ON identity_source_changestreams(account_id);
 
--- Trigger to track changes in the `identitysources` table after insert
+-- Trigger to track changes in the `identity_sources` table after insert
 -- +goose StatementBegin
-CREATE TRIGGER identitysource_changestreams_after_insert
-AFTER INSERT ON identitysources
+CREATE TRIGGER identity_source_changestreams_after_insert
+AFTER INSERT ON identity_sources
 FOR EACH ROW
 BEGIN
-    INSERT INTO identitysource_changestreams (change_type, identitysource_id, created_at, updated_at, name, account_id)
-    	VALUES ('INSERT', NEW.identitysource_id, NEW.created_at, NEW.updated_at, NEW.name, NEW.account_id);
+    INSERT INTO identity_source_changestreams (change_type, identity_source_id, created_at, updated_at, name, account_id)
+    	VALUES ('INSERT', NEW.identity_source_id, NEW.created_at, NEW.updated_at, NEW.name, NEW.account_id);
 END;
 -- +goose StatementEnd
 
--- Trigger to track changes in the `identitysources` table after update
+-- Trigger to track changes in the `identity_sources` table after update
 -- +goose StatementBegin
-CREATE TRIGGER identitysource_changestreams_after_update
-AFTER UPDATE ON identitysources
+CREATE TRIGGER identity_source_changestreams_after_update
+AFTER UPDATE ON identity_sources
 FOR EACH ROW
 BEGIN
-    UPDATE identitysources SET updated_at = CURRENT_TIMESTAMP WHERE identitysource_id = OLD.identitysource_id;
-    INSERT INTO identitysource_changestreams (change_type, identitysource_id, created_at, updated_at, name, account_id)
-	    VALUES ('UPDATE', NEW.identitysource_id, NEW.created_at, CURRENT_TIMESTAMP, NEW.name, NEW.account_id);
+    UPDATE identity_sources SET updated_at = CURRENT_TIMESTAMP WHERE identity_source_id = OLD.identity_source_id;
+    INSERT INTO identity_source_changestreams (change_type, identity_source_id, created_at, updated_at, name, account_id)
+	    VALUES ('UPDATE', NEW.identity_source_id, NEW.created_at, CURRENT_TIMESTAMP, NEW.name, NEW.account_id);
 END;
 -- +goose StatementEnd
 
--- Trigger to track changes in the `identitysources` table after delete
+-- Trigger to track changes in the `identity_sources` table after delete
 -- +goose StatementBegin
-CREATE TRIGGER identitysource_changestreams_after_delete
-AFTER DELETE ON identitysources
+CREATE TRIGGER identity_source_changestreams_after_delete
+AFTER DELETE ON identity_sources
 FOR EACH ROW
 BEGIN
-    INSERT INTO identitysource_changestreams (change_type, identitysource_id, created_at, updated_at, name, account_id)
-    	VALUES ('DELETE', OLD.identitysource_id, OLD.created_at, OLD.updated_at, OLD.name, OLD.account_id);
+    INSERT INTO identity_source_changestreams (change_type, identity_source_id, created_at, updated_at, name, account_id)
+    	VALUES ('DELETE', OLD.identity_source_id, OLD.created_at, OLD.updated_at, OLD.name, OLD.account_id);
 END;
 -- +goose StatementEnd
 
 -- +goose Down
-DROP TRIGGER IF EXISTS identitysource_changestreams_after_insert;
-DROP TRIGGER IF EXISTS identitysource_changestreams_after_update;
-DROP TRIGGER IF EXISTS identitysource_changestreams_after_delete;
-DROP TABLE IF EXISTS identitysource_changestreams;
-DROP TABLE IF EXISTS identitysources;
+DROP TRIGGER IF EXISTS identity_source_changestreams_after_insert;
+DROP TRIGGER IF EXISTS identity_source_changestreams_after_update;
+DROP TRIGGER IF EXISTS identity_source_changestreams_after_delete;
+DROP TABLE IF EXISTS identity_source_changestreams;
+DROP TABLE IF EXISTS identity_sources;

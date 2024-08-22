@@ -71,27 +71,29 @@ func (c *GrpcAAPClient) DeleteIdentitySource(accountID int64, identitySourceID s
 }
 
 // FetchIdentitySources returns all the identity sources.
-func (c *GrpcAAPClient) FetchIdentitySources(accountID int64) ([]azmodels.IdentitySource, error) {
-	return c.FetchIdentitySourcesBy(accountID, "", "")
+func (c *GrpcAAPClient) FetchIdentitySources(page int32, pageSize int32, accountID int64) ([]azmodels.IdentitySource, error) {
+	return c.FetchIdentitySourcesBy(page, pageSize, accountID, "", "")
 }
 
 // FetchIdentitySourcesByID returns all identity sources filtering by identity source id.
-func (c *GrpcAAPClient) FetchIdentitySourcesByID(accountID int64, identitySourceID string) ([]azmodels.IdentitySource, error) {
-	return c.FetchIdentitySourcesBy(accountID, identitySourceID, "")
+func (c *GrpcAAPClient) FetchIdentitySourcesByID(page int32, pageSize int32, accountID int64, identitySourceID string) ([]azmodels.IdentitySource, error) {
+	return c.FetchIdentitySourcesBy(page, pageSize, accountID, identitySourceID, "")
 }
 
 // FetchIdentitySourcesByName returns all identity sources filtering by name.
-func (c *GrpcAAPClient) FetchIdentitySourcesByName(accountID int64, name string) ([]azmodels.IdentitySource, error) {
-	return c.FetchIdentitySourcesBy(accountID, "", name)
+func (c *GrpcAAPClient) FetchIdentitySourcesByName(page int32, pageSize int32, accountID int64, name string) ([]azmodels.IdentitySource, error) {
+	return c.FetchIdentitySourcesBy(page, pageSize, accountID, "", name)
 }
 
 // FetchIdentitySourcesBy returns all identity sources filtering by identity source id and name.
-func (c *GrpcAAPClient) FetchIdentitySourcesBy(accountID int64, identitySourceID string, name string) ([]azmodels.IdentitySource, error) {
+func (c *GrpcAAPClient) FetchIdentitySourcesBy(page int32, pageSize int32, accountID int64, identitySourceID string, name string) ([]azmodels.IdentitySource, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	identitySourceFetchRequest := &azapiv1aap.IdentitySourceFetchRequest{}
+	identitySourceFetchRequest.Page = &page
+	identitySourceFetchRequest.PageSize = &pageSize
 	if accountID > 0 {
 		identitySourceFetchRequest.AccountID = accountID
 	}
