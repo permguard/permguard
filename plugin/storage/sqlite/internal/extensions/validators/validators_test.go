@@ -66,7 +66,7 @@ func TestValidateUUID(t *testing.T) {
 		{"account", "15000", true},
 		{"account", "5e6c75ca-caeb-4f85-8007-Zdcf6bb1beff", true},
 		{"account", "d3967c8f54dc4a28bf3ca1dZca94fa95", true},
-		{"account", "f12bf1c12da44a9a97043650824b0a0b", true},
+		{"account", "f12bf1c12da44a9a97043650824b0a0b", false},
 		{"account", "ddd0e6a0-956b-4967-84a0-15c5e54b0b50", false},
 		{"", "ddd0e6a0-956b-4967-84a0-15c5e54b0b50", false},
 	}

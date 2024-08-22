@@ -35,11 +35,26 @@ func ValidateAccountID(entity string, accountID int64) error {
 	return nil
 }
 
+// formatAsUUID formats a string as a UUID.
+func formatAsUUID(s string) string {
+    if strings.Contains(s, "-") || strings.Contains(s, " ") || len(s) != 32 {
+        return s
+    }
+    return fmt.Sprintf("%s-%s-%s-%s-%s",
+        s[0:8],
+        s[8:12],
+        s[12:16],
+        s[16:20],
+        s[20:32],
+    )
+}
+
 // ValidateUUID validates a UUID.
 func ValidateUUID(entity string, id string) error {
+	formattedID := formatAsUUID(id)
 	vID := struct {
 		ID string `validate:"required,uuid4"`
-	}{ID: id}
+	}{ID: formattedID}
 	if isValid, err := azvalidators.ValidateInstance(vID); err != nil || !isValid {
 		return fmt.Errorf("storage: %s name %s is not valid. %w", entity, vID.ID, azerrors.ErrClientUUID)
 	}
