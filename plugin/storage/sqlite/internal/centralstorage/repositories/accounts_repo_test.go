@@ -176,7 +176,7 @@ func TestRepoUpsertAccountWithSuccess(t *testing.T) {
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.NotNil(dbOutAccount, "account should be not nil")
-		assert.Equal(account.AccountID, dbOutAccount.AccountID, "account name is not correct")
+		assert.Equal(account.AccountID, dbOutAccount.AccountID, "account id is not correct")
 		assert.Equal(account.Name, dbOutAccount.Name, "account name is not correct")
 		assert.Nil(err, "error should be nil")
 	}
@@ -271,7 +271,7 @@ func TestRepoDeleteAccountWithSuccess(t *testing.T) {
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutAccount, "account should be not nil")
-	assert.Equal(account.AccountID, dbOutAccount.AccountID, "account name is not correct")
+	assert.Equal(account.AccountID, dbOutAccount.AccountID, "account id is not correct")
 	assert.Equal(account.Name, dbOutAccount.Name, "account name is not correct")
 	assert.Nil(err, "error should be nil")
 }
@@ -388,7 +388,7 @@ func TestRepoFetchAccountWithSuccess(t *testing.T) {
 	assert.NotNil(dbOutAccount, "account should be not nil")
 	assert.Len(dbOutAccount, len(sqlAccounts), "accounts len should be correct")
 	for i, account := range dbOutAccount {
-		assert.Equal(account.AccountID, sqlAccounts[i].AccountID, "account name is not correct")
+		assert.Equal(account.AccountID, sqlAccounts[i].AccountID, "account id is not correct")
 		assert.Equal(account.Name, sqlAccounts[i].Name, "account name is not correct")
 	}
 	assert.Nil(err, "error should be nil")

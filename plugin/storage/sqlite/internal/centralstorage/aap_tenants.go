@@ -43,6 +43,7 @@ func (s SQLiteCentralStorageAAP) CreateTenant(tenant *azmodels.Tenant) (*azmodel
 	}
 	dbInTenant := &azirepos.Tenant{
 		TenantID:  tenant.TenantID,
+		AccountID: tenant.AccountID,
 		Name:      tenant.Name,
 	}
 	dbOutTenant, err := s.sqlRepo.UpsertTenant(tx, true, dbInTenant)
