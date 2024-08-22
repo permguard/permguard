@@ -39,6 +39,9 @@ func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant,
 	if tenant == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant data is missing or malformed (%s).", LogTenantEntry(tenant)))
 	}
+	if err := azivalidators.ValidateAccountID("tenant", tenant.AccountID); err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (id: %d).", tenant.AccountID))
+	}
 	if !isCreate && azivalidators.ValidateUUID("tenant", tenant.TenantID) != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (%s).", LogTenantEntry(tenant)))
 	}
@@ -47,15 +50,16 @@ func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant,
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogTenantEntry(tenant)))
 	}
 
+	accountID := tenant.AccountID
 	tenantID := tenant.TenantID
 	tenantName := tenant.Name
 	var result sql.Result
 	var err error
 	if isCreate {
 		tenantID = generateTenantID()
-		result, err = tx.Exec("INSERT INTO tenants (tenant_id, name) VALUES (?, ?)", tenantID, tenantName)
+		result, err = tx.Exec("INSERT INTO tenants (account_id, tenant_id, name) VALUES (?, ?, ?)", accountID, tenantID, tenantName)
 	} else {
-		result, err = tx.Exec("UPDATE tenants SET name = ? WHERE tenant_id = ?", tenantName, tenantID)
+		result, err = tx.Exec("UPDATE tenants SET name = ? WHERE account_id = ? and tenant_id = ?", tenantName, accountID, tenantID)
 	}
 	if err != nil || result == nil {
 		action := "update"
@@ -66,7 +70,8 @@ func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant,
 	}
 
 	var dbTenant Tenant
-	err = tx.QueryRow("SELECT tenant_id, created_at, updated_at, name FROM tenants WHERE tenant_id = ?", tenantID).Scan(
+	err = tx.QueryRow("SELECT account_id, tenant_id, created_at, updated_at, name FROM tenants WHERE account_id = ? and tenant_id = ?", accountID, tenantID).Scan(
+		&dbTenant.AccountID,
 		&dbTenant.TenantID,
 		&dbTenant.CreatedAt,
 		&dbTenant.UpdatedAt,
@@ -84,7 +89,8 @@ func (r *Repo) DeleteTenant(tx *sql.Tx, tenantID string) (*Tenant, error) {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (id: %s).", tenantID))
 	}
 	var dbTenant Tenant
-	err := tx.QueryRow("SELECT tenant_id, created_at, updated_at, name FROM tenants WHERE tenant_id = ?", tenantID).Scan(
+	err := tx.QueryRow("SELECT account_id, tenant_id, created_at, updated_at, name FROM tenants WHERE tenant_id = ?", tenantID).Scan(
+		&dbTenant.AccountID,
 		&dbTenant.TenantID,
 		&dbTenant.CreatedAt,
 		&dbTenant.UpdatedAt,
