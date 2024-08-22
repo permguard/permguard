@@ -34,7 +34,7 @@ import (
 // registerTenantForUpsertMocking registers an tenant for upsert mocking.
 func registerTenantForUpsertMocking(isCreate bool) (*Tenant, string, *sqlmock.Rows) {
 	tenant := &Tenant{
-		TenantID:  generateUUID(),
+		TenantID:  GenerateUUID(),
 		AccountID: 581616507495,
 		Name:      "rent-a-car",
 		CreatedAt: time.Now(),
@@ -54,7 +54,7 @@ func registerTenantForUpsertMocking(isCreate bool) (*Tenant, string, *sqlmock.Ro
 // registerTenantForDeleteMocking registers an tenant for delete mocking.
 func registerTenantForDeleteMocking() (string, *Tenant, *sqlmock.Rows, string) {
 	tenant := &Tenant{
-		TenantID:  generateUUID(),
+		TenantID:  GenerateUUID(),
 		AccountID: 581616507495,
 		Name:      "rent-a-car",
 		CreatedAt: time.Now(),
@@ -71,7 +71,7 @@ func registerTenantForDeleteMocking() (string, *Tenant, *sqlmock.Rows, string) {
 func registerTenantForFetchMocking() (string, []Tenant, *sqlmock.Rows) {
 	tenants := []Tenant{
 		{
-			TenantID:  generateUUID(),
+			TenantID:  GenerateUUID(),
 			AccountID: 581616507495,
 			Name:      "rent-a-car",
 			CreatedAt: time.Now(),
@@ -102,7 +102,7 @@ func TestRepoUpsertTenantWithInvalidInput(t *testing.T) {
 
 	{ // Test with invalid account id
 		dbInTenant := &Tenant{
-			TenantID: generateUUID(),
+			TenantID: GenerateUUID(),
 			Name:     "rent-a-car",
 		}
 		_, err := repo.UpsertTenant(tx, false, dbInTenant)
@@ -257,7 +257,7 @@ func TestRepoDeleteTenantWithInvalidInput(t *testing.T) {
 	tx, _ := sqlDB.Begin()
 
 	{ // Test with invalid account id
-		_, err := repo.DeleteTenant(tx, 0, generateUUID())
+		_, err := repo.DeleteTenant(tx, 0, GenerateUUID())
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -374,7 +374,7 @@ func TestRepoFetchTenantWithInvalidInput(t *testing.T) {
 	}
 
 	{ // Test with invalid account id
-		tenantID := generateUUID()
+		tenantID := GenerateUUID()
 		_, err := repo.FetchTenants(sqlDB, 1, 1, 0, &tenantID, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
@@ -422,7 +422,7 @@ func TestRepoFetchTenantWithSuccess(t *testing.T) {
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutTenant, "tenant should be not nil")
-	assert.Len(dbOutTenant, len(orderedSQLTenants), "tenants len should be correct")
+	assert.Len(orderedSQLTenants, len(dbOutTenant), "tenants len should be correct")
 	for i, tenant := range dbOutTenant {
 		assert.Equal(tenant.TenantID, orderedSQLTenants[i].TenantID, "tenant id is not correct")
 		assert.Equal(tenant.AccountID, orderedSQLTenants[i].AccountID, "tenant account id is not correct")

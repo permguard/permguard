@@ -55,7 +55,7 @@ func (r *Repo) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *I
 	var result sql.Result
 	var err error
 	if isCreate {
-		identitySourceID = generateUUID()
+		identitySourceID = GenerateUUID()
 		result, err = tx.Exec("INSERT INTO identity_sources (account_id, identity_source_id, name) VALUES (?, ?, ?)", accountID, identitySourceID, identitySourceName)
 	} else {
 		result, err = tx.Exec("UPDATE identity_sources SET name = ? WHERE account_id = ? and identity_source_id = ?", identitySourceName, accountID, identitySourceID)
@@ -168,4 +168,3 @@ func (r *Repo) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, acc
 
 	return dbIdentitySources, nil
 }
-
