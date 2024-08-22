@@ -44,10 +44,12 @@ func runECommandForListTenants(cmd *cobra.Command, v *viper.Viper) error {
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return ErrCommandSilent
 	}
+	page := v.GetInt32(azconfigs.FlagName(commandNameForAccountsList, flagCommonPage))
+	pageSize := v.GetInt32(azconfigs.FlagName(commandNameForAccountsList, flagCommonPageSize))
 	accountID := v.GetInt64(azconfigs.FlagName(commandNameForTenant, flagCommonAccountID))
 	tenantID := v.GetString(azconfigs.FlagName(commandNameForTenantsList, flagTenantID))
 	name := v.GetString(azconfigs.FlagName(commandNameForTenantsList, flagCommonName))
-	tenants, err := client.FetchTenantsBy(accountID, tenantID, name)
+	tenants, err := client.FetchTenantsBy(page, pageSize, accountID, tenantID, name)
 	if err != nil {
 		printer.Error(err)
 		return ErrCommandSilent
@@ -85,6 +87,10 @@ Examples:
 			return runECommandForListTenants(cmd, v)
 		},
 	}
+	command.Flags().Int32P(flagCommonPage, flagCommonPageShort, 1, "page number")
+	v.BindPFlag(azconfigs.FlagName(commandNameForAccountsList, flagCommonPage), command.Flags().Lookup(flagCommonPage))
+	command.Flags().Int32P(flagCommonPageSize, flagCommonPageSizeShort, 1000, "page size")
+	v.BindPFlag(azconfigs.FlagName(commandNameForAccountsList, flagCommonPageSize), command.Flags().Lookup(flagCommonPageSize))
 	command.Flags().String(flagTenantID, "", "tenant id filter")
 	v.BindPFlag(azconfigs.FlagName(commandNameForTenantsList, flagTenantID), command.Flags().Lookup(flagTenantID))
 	command.Flags().String(flagCommonName, "", "tenant name filter")

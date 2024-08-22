@@ -101,8 +101,14 @@ func (s *V1AAPServer) FetchAccounts(accountRequest *AccountFetchRequest, stream 
 		fields[azmodels.FieldAccountName] = *accountRequest.Name
 
 	}
-	page := *accountRequest.Page
-	pageSize := *accountRequest.PageSize
+	page := int32(0)
+	if accountRequest.Page != nil {
+		page = int32(*accountRequest.Page)
+	}
+	pageSize := int32(0)
+	if accountRequest.PageSize != nil {
+		pageSize = int32(*accountRequest.PageSize)
+	}
 	accounts, err := s.service.FetchAccounts(page, pageSize, fields)
 	if err != nil {
 		return err
@@ -268,8 +274,14 @@ func (s V1AAPServer) FetchTenants(ctx context.Context, tenantRequest *TenantFetc
 	if tenantRequest.TenantID != nil {
 		fields[azmodels.FieldTenantTenantID] = *tenantRequest.TenantID
 	}
-	page := *tenantRequest.Page
-	pageSize := *tenantRequest.PageSize
+	page := int32(0)
+	if tenantRequest.Page != nil {
+		page = int32(*tenantRequest.Page)
+	}
+	pageSize := int32(0)
+	if tenantRequest.PageSize != nil {
+		pageSize = int32(*tenantRequest.PageSize)
+	}
 	tenants, err := s.service.FetchTenants(page, pageSize, tenantRequest.AccountID, fields)
 	if err != nil {
 		return nil, err
