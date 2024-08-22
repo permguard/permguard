@@ -91,17 +91,17 @@ func (c *GrpcAAPClient) FetchTenantsBy(accountID int64, tenantID string, name st
 	if err != nil {
 		return nil, err
 	}
-	tenantGetRequest := &azapiv1aap.TenantGetRequest{}
+	tenantFetchRequest := &azapiv1aap.TenantFetchRequest{}
 	if accountID > 0 {
-		tenantGetRequest.AccountID = accountID
+		tenantFetchRequest.AccountID = accountID
 	}
 	if name != "" {
-		tenantGetRequest.Name = &name
+		tenantFetchRequest.Name = &name
 	}
 	if tenantID != "" {
-		tenantGetRequest.TenantID = &tenantID
+		tenantFetchRequest.TenantID = &tenantID
 	}
-	tenantList, err := client.FetchTenants(context.Background(), tenantGetRequest)
+	tenantList, err := client.FetchTenants(context.Background(), tenantFetchRequest)
 	if err != nil {
 		return nil, err
 	}

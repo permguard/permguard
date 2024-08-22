@@ -114,7 +114,7 @@ func (r *Repo) DeleteTenant(tx *sql.Tx, accountID int64, tenantID string) (*Tena
 }
 
 // FetchTenants retrieves tenants.
-func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, filterID *string, filterName *string) ([]Tenant, error) {
+func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]Tenant, error) {
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
 	}
@@ -123,6 +123,9 @@ func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, filterID *s
 	baseQuery := "SELECT * FROM tenants"
 	var conditions []string
 	var args []interface{}
+
+	conditions = append(conditions, "account_id = ?")
+	args = append(args, accountID)
 
 	if filterID != nil {
 		tenantID := *filterID

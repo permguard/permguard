@@ -54,7 +54,7 @@ type V1PAPServiceClient interface {
 	// Delete an repository
 	DeleteRepository(ctx context.Context, in *RepositoryDeleteRequest, opts ...grpc.CallOption) (*RepositoryResponse, error)
 	// Fetch repositories
-	FetchRepositories(ctx context.Context, in *RepositoryGetRequest, opts ...grpc.CallOption) (*RepositoryListResponse, error)
+	FetchRepositories(ctx context.Context, in *RepositoryFetchRequest, opts ...grpc.CallOption) (*RepositoryListResponse, error)
 }
 
 type v1PAPServiceClient struct {
@@ -95,7 +95,7 @@ func (c *v1PAPServiceClient) DeleteRepository(ctx context.Context, in *Repositor
 	return out, nil
 }
 
-func (c *v1PAPServiceClient) FetchRepositories(ctx context.Context, in *RepositoryGetRequest, opts ...grpc.CallOption) (*RepositoryListResponse, error) {
+func (c *v1PAPServiceClient) FetchRepositories(ctx context.Context, in *RepositoryFetchRequest, opts ...grpc.CallOption) (*RepositoryListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RepositoryListResponse)
 	err := c.cc.Invoke(ctx, V1PAPService_FetchRepositories_FullMethodName, in, out, cOpts...)
@@ -118,7 +118,7 @@ type V1PAPServiceServer interface {
 	// Delete an repository
 	DeleteRepository(context.Context, *RepositoryDeleteRequest) (*RepositoryResponse, error)
 	// Fetch repositories
-	FetchRepositories(context.Context, *RepositoryGetRequest) (*RepositoryListResponse, error)
+	FetchRepositories(context.Context, *RepositoryFetchRequest) (*RepositoryListResponse, error)
 	mustEmbedUnimplementedV1PAPServiceServer()
 }
 
@@ -138,7 +138,7 @@ func (UnimplementedV1PAPServiceServer) UpdateRepository(context.Context, *Reposi
 func (UnimplementedV1PAPServiceServer) DeleteRepository(context.Context, *RepositoryDeleteRequest) (*RepositoryResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteRepository not implemented")
 }
-func (UnimplementedV1PAPServiceServer) FetchRepositories(context.Context, *RepositoryGetRequest) (*RepositoryListResponse, error) {
+func (UnimplementedV1PAPServiceServer) FetchRepositories(context.Context, *RepositoryFetchRequest) (*RepositoryListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FetchRepositories not implemented")
 }
 func (UnimplementedV1PAPServiceServer) mustEmbedUnimplementedV1PAPServiceServer() {}
@@ -217,7 +217,7 @@ func _V1PAPService_DeleteRepository_Handler(srv interface{}, ctx context.Context
 }
 
 func _V1PAPService_FetchRepositories_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RepositoryGetRequest)
+	in := new(RepositoryFetchRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -229,7 +229,7 @@ func _V1PAPService_FetchRepositories_Handler(srv interface{}, ctx context.Contex
 		FullMethod: V1PAPService_FetchRepositories_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1PAPServiceServer).FetchRepositories(ctx, req.(*RepositoryGetRequest))
+		return srv.(V1PAPServiceServer).FetchRepositories(ctx, req.(*RepositoryFetchRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

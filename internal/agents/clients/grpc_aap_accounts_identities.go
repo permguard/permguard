@@ -92,23 +92,23 @@ func (c *GrpcAAPClient) FetchIdentitiesBy(accountID int64, identitySourceID stri
 	if err != nil {
 		return nil, err
 	}
-	identityGetRequest := &azapiv1aap.IdentityGetRequest{}
+	identityFetchRequest := &azapiv1aap.IdentityFetchRequest{}
 	if accountID > 0 {
-		identityGetRequest.AccountID = accountID
+		identityFetchRequest.AccountID = accountID
 	}
 	if identitySourceID != "" {
-		identityGetRequest.IdentitySourceID = &identitySourceID
+		identityFetchRequest.IdentitySourceID = &identitySourceID
 	}
 	if kind != "" {
-		identityGetRequest.Kind = &kind
+		identityFetchRequest.Kind = &kind
 	}
 	if name != "" {
-		identityGetRequest.Name = &name
+		identityFetchRequest.Name = &name
 	}
 	if identityID != "" {
-		identityGetRequest.IdentityID = &identityID
+		identityFetchRequest.IdentityID = &identityID
 	}
-	identityList, err := client.FetchIdentities(context.Background(), identityGetRequest)
+	identityList, err := client.FetchIdentities(context.Background(), identityFetchRequest)
 	if err != nil {
 		return nil, err
 	}
