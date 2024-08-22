@@ -34,7 +34,7 @@ import (
 // registerIdentitySourceForUpsertMocking registers an identity source for upsert mocking.
 func registerIdentitySourceForUpsertMocking(isCreate bool) (*IdentitySource, string, *sqlmock.Rows) {
 	identitySource := &IdentitySource{
-		IdentitySourceID: generateUUID(),
+		IdentitySourceID: GenerateUUID(),
 		AccountID:        581616507495,
 		Name:             "rent-a-car",
 		CreatedAt:        time.Now(),
@@ -54,7 +54,7 @@ func registerIdentitySourceForUpsertMocking(isCreate bool) (*IdentitySource, str
 // registerIdentitySourceForDeleteMocking registers an identity source for delete mocking.
 func registerIdentitySourceForDeleteMocking() (string, *IdentitySource, *sqlmock.Rows, string) {
 	identitySource := &IdentitySource{
-		IdentitySourceID: generateUUID(),
+		IdentitySourceID: GenerateUUID(),
 		AccountID:        581616507495,
 		Name:             "rent-a-car",
 		CreatedAt:        time.Now(),
@@ -71,7 +71,7 @@ func registerIdentitySourceForDeleteMocking() (string, *IdentitySource, *sqlmock
 func registerIdentitySourceForFetchMocking() (string, []IdentitySource, *sqlmock.Rows) {
 	identitySources := []IdentitySource{
 		{
-			IdentitySourceID: generateUUID(),
+			IdentitySourceID: GenerateUUID(),
 			AccountID:        581616507495,
 			Name:             "rent-a-car",
 			CreatedAt:        time.Now(),
@@ -102,7 +102,7 @@ func TestRepoUpsertIdentitySourceWithInvalidInput(t *testing.T) {
 
 	{ // Test with invalid account id
 		dbInIdentitySource := &IdentitySource{
-			IdentitySourceID: generateUUID(),
+			IdentitySourceID: GenerateUUID(),
 			Name:             "rent-a-car",
 		}
 		_, err := repo.UpsertIdentitySource(tx, false, dbInIdentitySource)
@@ -257,7 +257,7 @@ func TestRepoDeleteIdentitySourceWithInvalidInput(t *testing.T) {
 	tx, _ := sqlDB.Begin()
 
 	{ // Test with invalid account id
-		_, err := repo.DeleteIdentitySource(tx, 0, generateUUID())
+		_, err := repo.DeleteIdentitySource(tx, 0, GenerateUUID())
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -374,7 +374,7 @@ func TestRepoFetchIdentitySourceWithInvalidInput(t *testing.T) {
 	}
 
 	{ // Test with invalid account id
-		identitySourceID := generateUUID()
+		identitySourceID := GenerateUUID()
 		_, err := repo.FetchIdentitySources(sqlDB, 1, 1, 0, &identitySourceID, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
@@ -422,7 +422,7 @@ func TestRepoFetchIdentitySourceWithSuccess(t *testing.T) {
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutIdentitySource, "identity source should be not nil")
-	assert.Len(dbOutIdentitySource, len(orderedSQLIdentitySources), "identity sources len should be correct")
+	assert.Len(orderedSQLIdentitySources, len(dbOutIdentitySource), "identity sources len should be correct")
 	for i, identitySource := range dbOutIdentitySource {
 		assert.Equal(identitySource.IdentitySourceID, orderedSQLIdentitySources[i].IdentitySourceID, "identity source id is not correct")
 		assert.Equal(identitySource.AccountID, orderedSQLIdentitySources[i].AccountID, "identity source account id is not correct")

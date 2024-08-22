@@ -26,8 +26,8 @@ import (
 type Repo struct {
 }
 
-// generateUUID generates a UUID.
-func generateUUID() string {
+// GenerateUUID generates a UUID.
+func GenerateUUID() string {
 	id := uuid.NewString()
 	return strings.ReplaceAll(id, "-", "")
 }

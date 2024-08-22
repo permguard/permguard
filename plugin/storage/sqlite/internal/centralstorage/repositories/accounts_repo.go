@@ -30,8 +30,8 @@ import (
 	azivalidators "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/validators"
 )
 
-// generateAccountID generates a random account id.
-func generateAccountID() int64 {
+// GenerateAccountID generates a random account id.
+func GenerateAccountID() int64 {
 	const base = 100000000000
 	const maxRange = 900000000000
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -61,7 +61,7 @@ func (r *Repo) UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Acco
 	var result sql.Result
 	var err error
 	if isCreate {
-		accountID = generateAccountID()
+		accountID = GenerateAccountID()
 		result, err = tx.Exec("INSERT INTO accounts (account_id, name) VALUES (?, ?)", accountID, accountName)
 	} else {
 		result, err = tx.Exec("UPDATE accounts SET name = ? WHERE account_id = ?", accountName, accountID)

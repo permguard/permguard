@@ -393,7 +393,7 @@ func TestRepoFetchAccountWithSuccess(t *testing.T) {
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutAccount, "account should be not nil")
-	assert.Len(dbOutAccount, len(orderedSQLAccounts), "accounts len should be correct")
+	assert.Len(orderedSQLAccounts, len(dbOutAccount), "accounts len should be correct")
 	for i, account := range dbOutAccount {
 		assert.Equal(account.AccountID, orderedSQLAccounts[i].AccountID, "account id is not correct")
 		assert.Equal(account.Name, orderedSQLAccounts[i].Name, "account name is not correct")

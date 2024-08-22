@@ -29,14 +29,14 @@ import (
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
-// TestCreateAccountWithErrors tests the CreateAccount function with errors.
-func TestCreateAccountWithErrors(t *testing.T) {
+// TestCreateTenantWithErrors tests the CreateTenant function with errors.
+func TestCreateTenantWithErrors(t *testing.T) {
 	assert := assert.New(t)
 
-	{ // Test with nil account
+	{ // Test with nil tenant
 		storage, _, _, _, _, _, _ := createSQLiteAAPCentralStorageWithMocks()
-		accounts, err := storage.CreateAccount(nil)
-		assert.Nil(accounts, "accounts should be nil")
+		tenants, err := storage.CreateTenant(nil)
+		assert.Nil(tenants, "tenants should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
@@ -60,19 +60,19 @@ func TestCreateAccountWithErrors(t *testing.T) {
 		case "ROLLBACK-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			mockSQLRepo.On("UpsertAccount", mock.Anything, true, mock.Anything).Return(nil, errors.New(testcase))
+			mockSQLRepo.On("UpsertTenant", mock.Anything, true, mock.Anything).Return(nil, errors.New(testcase))
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			mockSQLRepo.On("UpsertAccount", mock.Anything, true, mock.Anything).Return(nil, nil)
+			mockSQLRepo.On("UpsertTenant", mock.Anything, true, mock.Anything).Return(nil, nil)
 			mockSQLDB.ExpectCommit().WillReturnError(errors.New(testcase))
 		default:
 			assert.FailNow("Unknown testcase")
 		}
 
-		inAccount := &azmodels.Account{}
-		outAccounts, err := storage.CreateAccount(inAccount)
-		assert.Nil(outAccounts, "accounts should be nil")
+		inTenant := &azmodels.Tenant{}
+		outTenants, err := storage.CreateTenant(inTenant)
+		assert.Nil(outTenants, "tenants should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
 			assert.True(azerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
@@ -82,42 +82,43 @@ func TestCreateAccountWithErrors(t *testing.T) {
 	}
 }
 
-// TestCreateAccountWithSuccess tests the CreateAccount function with success.
-func TestCreateAccountWithSuccess(t *testing.T) {
+// TestCreateTenantWithSuccess tests the CreateTenant function with success.
+func TestCreateTenantWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
-	dbOutAccount := &azirepos.Account{
+	dbOutTenant := &azirepos.Tenant{
 		AccountID: 232956849236,
-		Name: "rent-a-car1",
+		TenantID:  azirepos.GenerateUUID(),
+		Name:      "rent-a-car1",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLDB.ExpectBegin()
-	mockSQLRepo.On("UpsertAccount", mock.Anything, true, mock.Anything).Return(dbOutAccount, nil)
+	mockSQLRepo.On("UpsertTenant", mock.Anything, true, mock.Anything).Return(dbOutTenant, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inAccount := &azmodels.Account{}
-	outAccounts, err := storage.CreateAccount(inAccount)
+	inTenant := &azmodels.Tenant{}
+	outTenants, err := storage.CreateTenant(inTenant)
 	assert.Nil(err, "error should be nil")
-	assert.NotNil(outAccounts, "accounts should not be nil")
-	assert.Equal(dbOutAccount.AccountID, outAccounts.AccountID, "account id should be equal")
-	assert.Equal(dbOutAccount.Name, outAccounts.Name, "account name should be equal")
-	assert.Equal(dbOutAccount.CreatedAt, outAccounts.CreatedAt, "created at should be equal")
-	assert.Equal(dbOutAccount.UpdatedAt, outAccounts.UpdatedAt, "updated at should be equal")
+	assert.NotNil(outTenants, "tenants should not be nil")
+	assert.Equal(dbOutTenant.TenantID, outTenants.TenantID, "tenant id should be equal")
+	assert.Equal(dbOutTenant.Name, outTenants.Name, "tenant name should be equal")
+	assert.Equal(dbOutTenant.CreatedAt, outTenants.CreatedAt, "created at should be equal")
+	assert.Equal(dbOutTenant.UpdatedAt, outTenants.UpdatedAt, "updated at should be equal")
 }
 
-// TestUpdateAccountWithErrors tests the UpdateAccount function with errors.
-func TestUpdateAccountWithErrors(t *testing.T) {
+// TestUpdateTenantWithErrors tests the UpdateTenant function with errors.
+func TestUpdateTenantWithErrors(t *testing.T) {
 	assert := assert.New(t)
 
-	{ // Test with nil account
+	{ // Test with nil tenant
 		storage, _, _, _, _, _, _ := createSQLiteAAPCentralStorageWithMocks()
-		accounts, err := storage.UpdateAccount(nil)
-		assert.Nil(accounts, "accounts should be nil")
+		tenants, err := storage.UpdateTenant(nil)
+		assert.Nil(tenants, "tenants should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
@@ -141,19 +142,19 @@ func TestUpdateAccountWithErrors(t *testing.T) {
 		case "ROLLBACK-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			mockSQLRepo.On("UpsertAccount", mock.Anything, false, mock.Anything).Return(nil, errors.New(testcase))
+			mockSQLRepo.On("UpsertTenant", mock.Anything, false, mock.Anything).Return(nil, errors.New(testcase))
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			mockSQLRepo.On("UpsertAccount", mock.Anything, false, mock.Anything).Return(nil, nil)
+			mockSQLRepo.On("UpsertTenant", mock.Anything, false, mock.Anything).Return(nil, nil)
 			mockSQLDB.ExpectCommit().WillReturnError(errors.New(testcase))
 		default:
 			assert.FailNow("Unknown testcase")
 		}
 
-		inAccount := &azmodels.Account{}
-		outAccounts, err := storage.UpdateAccount(inAccount)
-		assert.Nil(outAccounts, "accounts should be nil")
+		inTenant := &azmodels.Tenant{}
+		outTenants, err := storage.UpdateTenant(inTenant)
+		assert.Nil(outTenants, "tenants should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
 			assert.True(azerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
@@ -163,36 +164,37 @@ func TestUpdateAccountWithErrors(t *testing.T) {
 	}
 }
 
-// TestUpdateAccountWithSuccess tests the UpdateAccount function with success.
-func TestUpdateAccountWithSuccess(t *testing.T) {
+// TestUpdateTenantWithSuccess tests the UpdateTenant function with success.
+func TestUpdateTenantWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
-	dbOutAccount := &azirepos.Account{
+	dbOutTenant := &azirepos.Tenant{
 		AccountID: 232956849236,
-		Name: "rent-a-car1",
+		TenantID:  azirepos.GenerateUUID(),
+		Name:      "rent-a-car1",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLDB.ExpectBegin()
-	mockSQLRepo.On("UpsertAccount", mock.Anything, false, mock.Anything).Return(dbOutAccount, nil)
+	mockSQLRepo.On("UpsertTenant", mock.Anything, false, mock.Anything).Return(dbOutTenant, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inAccount := &azmodels.Account{}
-	outAccounts, err := storage.UpdateAccount(inAccount)
+	inTenant := &azmodels.Tenant{}
+	outTenants, err := storage.UpdateTenant(inTenant)
 	assert.Nil(err, "error should be nil")
-	assert.NotNil(outAccounts, "accounts should not be nil")
-	assert.Equal(dbOutAccount.AccountID, outAccounts.AccountID, "account id should be equal")
-	assert.Equal(dbOutAccount.Name, outAccounts.Name, "account name should be equal")
-	assert.Equal(dbOutAccount.CreatedAt, outAccounts.CreatedAt, "created at should be equal")
-	assert.Equal(dbOutAccount.UpdatedAt, outAccounts.UpdatedAt, "updated at should be equal")
+	assert.NotNil(outTenants, "tenants should not be nil")
+	assert.Equal(dbOutTenant.TenantID, outTenants.TenantID, "tenant id should be equal")
+	assert.Equal(dbOutTenant.Name, outTenants.Name, "tenant name should be equal")
+	assert.Equal(dbOutTenant.CreatedAt, outTenants.CreatedAt, "created at should be equal")
+	assert.Equal(dbOutTenant.UpdatedAt, outTenants.UpdatedAt, "updated at should be equal")
 }
 
-// TestDeleteAccountWithErrors tests the DeleteAccount function with errors.
-func TestDeleteAccountWithErrors(t *testing.T) {
+// TestDeleteTenantWithErrors tests the DeleteTenant function with errors.
+func TestDeleteTenantWithErrors(t *testing.T) {
 	assert := assert.New(t)
 
 	tests := map[string]struct {
@@ -215,19 +217,19 @@ func TestDeleteAccountWithErrors(t *testing.T) {
 		case "ROLLBACK-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			mockSQLRepo.On("DeleteAccount", mock.Anything, mock.Anything).Return(nil, errors.New(testcase))
+			mockSQLRepo.On("DeleteTenant", mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New(testcase))
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			mockSQLRepo.On("DeleteAccount", mock.Anything, mock.Anything).Return(nil, nil)
+			mockSQLRepo.On("DeleteTenant", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 			mockSQLDB.ExpectCommit().WillReturnError(errors.New(testcase))
 		default:
 			assert.FailNow("Unknown testcase")
 		}
 
-		inAccountID :=int64(232956849236)
-		outAccounts, err := storage.DeleteAccount(inAccountID)
-		assert.Nil(outAccounts, "accounts should be nil")
+		inTenantID := azirepos.GenerateUUID()
+		outTenants, err := storage.DeleteTenant(azirepos.GenerateAccountID(), inTenantID)
+		assert.Nil(outTenants, "tenants should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
 			assert.True(azerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
@@ -237,121 +239,123 @@ func TestDeleteAccountWithErrors(t *testing.T) {
 	}
 }
 
-// TestDeleteAccountWithSuccess tests the DeleteAccount function with success.
-func TestDeleteAccountWithSuccess(t *testing.T) {
+// TestDeleteTenantWithSuccess tests the DeleteTenant function with success.
+func TestDeleteTenantWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
-	dbOutAccount := &azirepos.Account{
+	dbOutTenant := &azirepos.Tenant{
 		AccountID: 232956849236,
-		Name: "rent-a-car1",
+		TenantID:  azirepos.GenerateUUID(),
+		Name:      "rent-a-car1",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLDB.ExpectBegin()
-	mockSQLRepo.On("DeleteAccount", mock.Anything, mock.Anything).Return(dbOutAccount, nil)
+	mockSQLRepo.On("DeleteTenant", mock.Anything, mock.Anything, mock.Anything).Return(dbOutTenant, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inAccountID :=int64(232956849236)
-	outAccounts, err := storage.DeleteAccount(inAccountID)
+	inTenantID := azirepos.GenerateUUID()
+	outTenants, err := storage.DeleteTenant(azirepos.GenerateAccountID(), inTenantID)
 	assert.Nil(err, "error should be nil")
-	assert.NotNil(outAccounts, "accounts should not be nil")
-	assert.Equal(dbOutAccount.AccountID, outAccounts.AccountID, "account id should be equal")
-	assert.Equal(dbOutAccount.Name, outAccounts.Name, "account name should be equal")
-	assert.Equal(dbOutAccount.CreatedAt, outAccounts.CreatedAt, "created at should be equal")
-	assert.Equal(dbOutAccount.UpdatedAt, outAccounts.UpdatedAt, "updated at should be equal")
+	assert.NotNil(outTenants, "tenants should not be nil")
+	assert.Equal(dbOutTenant.TenantID, outTenants.TenantID, "tenant id should be equal")
+	assert.Equal(dbOutTenant.Name, outTenants.Name, "tenant name should be equal")
+	assert.Equal(dbOutTenant.CreatedAt, outTenants.CreatedAt, "created at should be equal")
+	assert.Equal(dbOutTenant.UpdatedAt, outTenants.UpdatedAt, "updated at should be equal")
 }
 
-// TestFetchAccountWithErrors tests the FetchAccount function with errors.
-func TestFetchAccountWithErrors(t *testing.T) {
+// TestFetchTenantWithErrors tests the FetchTenant function with errors.
+func TestFetchTenantWithErrors(t *testing.T) {
 	assert := assert.New(t)
 
 	{	// Test with invalid page
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, _, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(nil, azerrors.ErrServerGeneric)
-		outAccounts, err := storage.FetchAccounts(1, 100,nil)
-		assert.Nil(outAccounts, "accounts should be nil")
+		outTenants, err := storage.FetchTenants(1, 100, 232956849236, nil)
+		assert.Nil(outTenants, "tenants should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrServerGeneric, err), "error should be errservergeneric")
 	}
 
 	{	// Test with invalid page
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outAccounts, err := storage.FetchAccounts(0, 100,nil)
-		assert.Nil(outAccounts, "accounts should be nil")
+		outTenants, err := storage.FetchTenants(0, 100, 232956849236, nil)
+		assert.Nil(outTenants, "tenants should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{	// Test with invalid page size
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outAccounts, err := storage.FetchAccounts(1, 0,nil)
-		assert.Nil(outAccounts, "accounts should be nil")
+		outTenants, err := storage.FetchTenants(1, 0, 232956849236, nil)
+		assert.Nil(outTenants, "tenants should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
-	{	// Test with invalid account id
+	{	// Test with invalid tenant id
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outAccounts, err := storage.FetchAccounts(1, 100, map[string]interface{}{azmodels.FieldAccountAccountID: "not valid"})
-		assert.Nil(outAccounts, "accounts should be nil")
+		outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]interface{}{azmodels.FieldTenantTenantID: 232956849236})
+		assert.Nil(outTenants, "tenants should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
-	{	// Test with invalid account name
+	{	// Test with invalid tenant name
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outAccounts, err := storage.FetchAccounts(1, 100, map[string]interface{}{azmodels.FieldAccountName: 2 })
-		assert.Nil(outAccounts, "accounts should be nil")
+		outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]interface{}{azmodels.FieldTenantName: 2 })
+		assert.Nil(outTenants, "tenants should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
-
-	{	// Test with invalid account name
+	{	// Test with server error
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		mockSQLRepo.On("FetchAccounts", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, azerrors.ErrServerGeneric)
-		outAccounts, err := storage.FetchAccounts(1, 100, nil)
-		assert.Nil(outAccounts, "accounts should be nil")
+		mockSQLRepo.On("FetchTenants",mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, azerrors.ErrServerGeneric)
+		outTenants, err := storage.FetchTenants(1, 100, 232956849236, nil)
+		assert.Nil(outTenants, "tenants should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrServerGeneric, err), "error should be errservergeneric")
 	}
 }
 
-// TestFetchAccountWithSuccess tests the DeleteAccount function with success.
-func TestFetchAccountWithSuccess(t *testing.T) {
+// TestFetchTenantWithSuccess tests the FetchTenant function with success.
+func TestFetchTenantWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 
-	dbOutAccounts := []azirepos.Account{
+	dbOutTenants := []azirepos.Tenant{
 		{
 			AccountID: 232956849236,
-			Name: "rent-a-car1",
+			TenantID:  azirepos.GenerateUUID(),
+			Name:      "rent-a-car1",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		},
 		{
-			AccountID: 506074038324,
-			Name: "rent-a-car2",
+			AccountID: 232956849236,
+			TenantID:  azirepos.GenerateUUID(),
+			Name:      "rent-a-car2",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		},
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-	mockSQLRepo.On("FetchAccounts", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutAccounts, nil)
+	mockSQLRepo.On("FetchTenants", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutTenants, nil)
 
-	outAccounts, err := storage.FetchAccounts(1, 100, map[string]interface{}{azmodels.FieldAccountAccountID: int64(506074038324), azmodels.FieldAccountName: "rent-a-car2"})
+	outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]interface{}{azmodels.FieldTenantTenantID: azirepos.GenerateUUID(), azmodels.FieldTenantName: "rent-a-car2"})
 	assert.Nil(err, "error should be nil")
-	assert.NotNil(outAccounts, "accounts should not be nil")
-	assert.Equal(len(dbOutAccounts), len(outAccounts), "accounts  and dbAccounts should have the same length")
-	for i, outAccount := range outAccounts {
-		assert.Equal(dbOutAccounts[i].AccountID, outAccount.AccountID, "account id should be equal")
-		assert.Equal(dbOutAccounts[i].Name, outAccount.Name, "account name should be equal")
-		assert.Equal(dbOutAccounts[i].CreatedAt, outAccount.CreatedAt, "created at should be equal")
-		assert.Equal(dbOutAccounts[i].UpdatedAt, outAccount.UpdatedAt, "updated at should be equal")
+	assert.NotNil(outTenants, "tenants should not be nil")
+	assert.Equal(len(outTenants), len(dbOutTenants), "tenants and dbTenants should have the same length")
+	for i, outTenant := range outTenants {
+		assert.Equal(dbOutTenants[i].TenantID, outTenant.TenantID, "tenant id should be equal")
+		assert.Equal(dbOutTenants[i].Name, outTenant.Name, "tenant name should be equal")
+		assert.Equal(dbOutTenants[i].CreatedAt, outTenant.CreatedAt, "created at should be equal")
+		assert.Equal(dbOutTenants[i].UpdatedAt, outTenant.UpdatedAt, "updated at should be equal")
 	}
 }

@@ -55,7 +55,7 @@ func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant,
 	var result sql.Result
 	var err error
 	if isCreate {
-		tenantID = generateUUID()
+		tenantID = GenerateUUID()
 		result, err = tx.Exec("INSERT INTO tenants (account_id, tenant_id, name) VALUES (?, ?, ?)", accountID, tenantID, tenantName)
 	} else {
 		result, err = tx.Exec("UPDATE tenants SET name = ? WHERE account_id = ? and tenant_id = ?", tenantName, accountID, tenantID)
