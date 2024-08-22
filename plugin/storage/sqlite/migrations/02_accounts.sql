@@ -16,7 +16,7 @@
 
 -- +goose Up
 CREATE TABLE accounts (
-    account_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     name TEXT NOT NULL UNIQUE
@@ -26,7 +26,7 @@ CREATE INDEX accounts_name_idx ON accounts(name);
 
 -- Creating the `account_changestreams` table
 CREATE TABLE account_changestreams (
-    changestream_id INTEGER PRIMARY KEY,
+    changestream_id INTEGER NOT NULL PRIMARY KEY,
 	change_type TEXT NOT NULL,
 	change_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     account_id INTEGER NOT NULL,
