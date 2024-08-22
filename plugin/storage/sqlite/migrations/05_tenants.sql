@@ -16,7 +16,7 @@
 
 -- +goose Up
 CREATE TABLE tenants (
-    tenant_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL PRIMARY KEY,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     name TEXT NOT NULL UNIQUE,
@@ -31,7 +31,7 @@ CREATE INDEX tenants_accountid_idx ON tenants(account_id);
 
 -- Creating the `tenant_changestreams` table
 CREATE TABLE tenant_changestreams (
-    changestream_id TEXT PRIMARY KEY,
+    changestream_id INTEGER NOT NULL PRIMARY KEY,
 	change_type TEXT NOT NULL,
 	change_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     tenant_id TEXT NOT NULL,

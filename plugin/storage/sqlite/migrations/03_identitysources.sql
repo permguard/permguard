@@ -16,7 +16,7 @@
 
 -- +goose Up
 CREATE TABLE identitysources (
-    identitysource_id TEXT PRIMARY KEY,
+    identitysource_id TEXT NOT NULL PRIMARY KEY,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     name TEXT NOT NULL UNIQUE,
@@ -31,7 +31,7 @@ CREATE INDEX identitysources_accountid_idx ON identitysources(account_id);
 
 -- Creating the `identitysource_changestreams` table
 CREATE TABLE identitysource_changestreams (
-    changestream_id TEXT PRIMARY KEY,
+    changestream_id INTEGER NOT NULL PRIMARY KEY,
 	change_type TEXT NOT NULL,
 	change_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     identitysource_id TEXT NOT NULL,

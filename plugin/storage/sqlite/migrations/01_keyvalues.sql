@@ -16,7 +16,7 @@
 
 -- +goose Up
 CREATE TABLE keyvalues (
-    key TEXT PRIMARY KEY,
+    key TEXT NOT NULL PRIMARY KEY,
     value BLOB NOT NULL
 );
 
