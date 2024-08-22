@@ -49,7 +49,7 @@ func runECommandForListIdentities(cmd *cobra.Command, v *viper.Viper) error {
 	identityID := v.GetString(azconfigs.FlagName(commandNameForIdentitiesList, flagIdentityID))
 	kind := v.GetString(azconfigs.FlagName(commandNameForIdentitiesList, flagIdentityKind))
 	name := v.GetString(azconfigs.FlagName(commandNameForIdentitiesList, flagCommonName))
-	identities, err := client.GetIdentitiesBy(accountID, identitySourceID, identityID, kind, name)
+	identities, err := client.FetchIdentitiesBy(accountID, identitySourceID, identityID, kind, name)
 	if err != nil {
 		printer.Error(err)
 		return ErrCommandSilent

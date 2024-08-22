@@ -226,5 +226,5 @@ service V1AAPService {
 	// Delete an tenant
 	rpc DeleteTenant(TenantDeleteRequest) returns (TenantResponse) {}
 	// Fetch Tenants
-	rpc GetTenants(TenantGetRequest) returns (TenantListResponse) {}
+	rpc FetchTenants(TenantGetRequest) returns (TenantListResponse) {}
 }

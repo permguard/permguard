@@ -398,7 +398,7 @@ func (*RepositoryListResponse) Descriptor() ([]byte, []int) {
 	return file_internal_agents_services_pap_endpoints_api_v1_pap_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *RepositoryListResponse) GetRepositories() []*RepositoryResponse {
+func (x *RepositoryListResponse) FetchRepositories() []*RepositoryResponse {
 	if x != nil {
 		return x.Repositories
 	}

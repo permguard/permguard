@@ -70,23 +70,23 @@ func (c *GrpcAAPClient) DeleteTenant(accountID int64, tenantID string) (*azmodel
 	return azapiv1aap.MapGrpcTenantResponseToAgentTenant(tenant)
 }
 
-// GetTenants returns all the tenants.
-func (c *GrpcAAPClient) GetTenants(accountID int64) ([]azmodels.Tenant, error) {
-	return c.GetTenantsBy(accountID, "", "")
+// FetchTenants returns all the tenants.
+func (c *GrpcAAPClient) FetchTenants(accountID int64) ([]azmodels.Tenant, error) {
+	return c.FetchTenantsBy(accountID, "", "")
 }
 
-// GetTenantsByID returns all tenants filtering by tenant id.
-func (c *GrpcAAPClient) GetTenantsByID(accountID int64, tenantID string) ([]azmodels.Tenant, error) {
-	return c.GetTenantsBy(accountID, tenantID, "")
+// FetchTenantsByID returns all tenants filtering by tenant id.
+func (c *GrpcAAPClient) FetchTenantsByID(accountID int64, tenantID string) ([]azmodels.Tenant, error) {
+	return c.FetchTenantsBy(accountID, tenantID, "")
 }
 
-// GetTenantsByName returns all tenants filtering by name.
-func (c *GrpcAAPClient) GetTenantsByName(accountID int64, name string) ([]azmodels.Tenant, error) {
-	return c.GetTenantsBy(accountID, "", name)
+// FetchTenantsByName returns all tenants filtering by name.
+func (c *GrpcAAPClient) FetchTenantsByName(accountID int64, name string) ([]azmodels.Tenant, error) {
+	return c.FetchTenantsBy(accountID, "", name)
 }
 
-// GetTenantsBy returns all tenants filtering by tenant id and name.
-func (c *GrpcAAPClient) GetTenantsBy(accountID int64, tenantID string, name string) ([]azmodels.Tenant, error) {
+// FetchTenantsBy returns all tenants filtering by tenant id and name.
+func (c *GrpcAAPClient) FetchTenantsBy(accountID int64, tenantID string, name string) ([]azmodels.Tenant, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
@@ -101,7 +101,7 @@ func (c *GrpcAAPClient) GetTenantsBy(accountID int64, tenantID string, name stri
 	if tenantID != "" {
 		tenantGetRequest.TenantID = &tenantID
 	}
-	tenantList, err := client.GetTenants(context.Background(), tenantGetRequest)
+	tenantList, err := client.FetchTenants(context.Background(), tenantGetRequest)
 	if err != nil {
 		return nil, err
 	}

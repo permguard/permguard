@@ -47,7 +47,7 @@ func runECommandForListTenants(cmd *cobra.Command, v *viper.Viper) error {
 	accountID := v.GetInt64(azconfigs.FlagName(commandNameForTenant, flagCommonAccountID))
 	tenantID := v.GetString(azconfigs.FlagName(commandNameForTenantsList, flagTenantID))
 	name := v.GetString(azconfigs.FlagName(commandNameForTenantsList, flagCommonName))
-	tenants, err := client.GetTenantsBy(accountID, tenantID, name)
+	tenants, err := client.FetchTenantsBy(accountID, tenantID, name)
 	if err != nil {
 		printer.Error(err)
 		return ErrCommandSilent

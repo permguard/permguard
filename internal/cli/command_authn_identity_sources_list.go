@@ -47,7 +47,7 @@ func runECommandForListIdentitySources(cmd *cobra.Command, v *viper.Viper) error
 	accountID := v.GetInt64(azconfigs.FlagName(commandNameForIdentitySource, flagCommonAccountID))
 	identitySourceID := v.GetString(azconfigs.FlagName(commandNameForIdentitySourcesList, flagIdentitySourceID))
 	name := v.GetString(azconfigs.FlagName(commandNameForIdentitySourcesList, flagCommonName))
-	identitySources, err := client.GetIdentitySourcesBy(accountID, identitySourceID, name)
+	identitySources, err := client.FetchIdentitySourcesBy(accountID, identitySourceID, name)
 	if err != nil {
 		printer.Error(err)
 		return ErrCommandSilent
