@@ -87,8 +87,23 @@ func (s SQLiteCentralStorageAAP) UpdateTenant(tenant *azmodels.Tenant) (*azmodel
 
 // DeleteTenant deletes a tenant.
 func (s SQLiteCentralStorageAAP) DeleteTenant(accountID int64, tenantID string) (*azmodels.Tenant, error) {
-	// logger := s.ctx.GetLogger()
-	return nil, nil
+	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
+	if err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+	}
+	dbOutTenant, err := s.sqlRepo.DeleteTenant(tx, accountID, tenantID)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+	}
+	return mapTenantToAgentTenant(dbOutTenant)
 }
 
 // FetchTenants returns all tenants.

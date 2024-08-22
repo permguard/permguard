@@ -259,11 +259,11 @@ func TestRepoDeleteAccountWithSuccess(t *testing.T) {
 	sqlDBMock.ExpectBegin()
 
 	sqlDBMock.ExpectQuery(sqlSelect).
-		WithArgs(sqlmock.AnyArg()).
+		WithArgs(account.AccountID).
 		WillReturnRows(sqlAccountRows)
 
 	sqlDBMock.ExpectExec(sqlDelete).
-		WithArgs(sqlmock.AnyArg()).
+		WithArgs(account.AccountID).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	tx, _ := sqlDB.Begin()

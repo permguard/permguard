@@ -34,7 +34,7 @@ import (
 // registerTenantForUpsertMocking registers an tenant for upsert mocking.
 func registerTenantForUpsertMocking(isCreate bool) (*Tenant, string, *sqlmock.Rows) {
 	tenant := &Tenant{
-		TenantID:  uuid.New().String(),
+		TenantID:  uuid.NewString(),
 		AccountID: 581616507495,
 		Name:      "rent-a-car",
 		CreatedAt: time.Now(),
@@ -54,16 +54,16 @@ func registerTenantForUpsertMocking(isCreate bool) (*Tenant, string, *sqlmock.Ro
 // registerTenantForDeleteMocking registers an tenant for delete mocking.
 func registerTenantForDeleteMocking() (string, *Tenant, *sqlmock.Rows, string) {
 	tenant := &Tenant{
-		TenantID:  uuid.New().String(),
+		TenantID:  uuid.NewString(),
 		AccountID: 581616507495,
 		Name:      "rent-a-car",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	var sqlSelect = `SELECT tenant_id, created_at, updated_at, name FROM tenants WHERE tenant_id = \?`
-	var sqlDelete = `DELETE FROM tenants WHERE tenant_id = \?`
-	sqlRows := sqlmock.NewRows([]string{"tenant_id", "created_at", "updated_at", "name"}).
-		AddRow(tenant.TenantID, tenant.CreatedAt, tenant.UpdatedAt, tenant.Name)
+	var sqlSelect = `SELECT account_id, tenant_id, created_at, updated_at, name FROM tenants WHERE account_id = \? and tenant_id = \?`
+	var sqlDelete = `DELETE FROM tenants WHERE account_id = \? and tenant_id = \?`
+	sqlRows := sqlmock.NewRows([]string{"account_id", "tenant_id", "created_at", "updated_at", "name"}).
+		AddRow(tenant.AccountID, tenant.TenantID, tenant.CreatedAt, tenant.UpdatedAt, tenant.Name)
 	return sqlSelect, tenant, sqlRows, sqlDelete
 }
 
@@ -71,7 +71,7 @@ func registerTenantForDeleteMocking() (string, *Tenant, *sqlmock.Rows, string) {
 func registerTenantForFetchMocking() (string, []Tenant, *sqlmock.Rows) {
 	tenants := []Tenant{
 		{
-			TenantID:  uuid.New().String(),
+			TenantID:  uuid.NewString(),
 			AccountID: 581616507495,
 			Name:      "rent-a-car",
 			CreatedAt: time.Now(),
@@ -102,7 +102,7 @@ func TestRepoUpsertTenantWithInvalidInput(t *testing.T) {
 
 	{ // Test with invalid account id
 		dbInTenant := &Tenant{
-			TenantID: uuid.New().String(),
+			TenantID: uuid.NewString(),
 			Name:     "rent-a-car",
 		}
 		_, err := repo.UpsertTenant(tx, false, dbInTenant)
@@ -219,17 +219,17 @@ func TestRepoUpsertTenantWithErrors(t *testing.T) {
 		var dbInTenant *Tenant
 		if isCreate {
 			dbInTenant = &Tenant{
-				AccountID: 	tenant.AccountID,
-				Name: 		tenant.Name,
+				AccountID: tenant.AccountID,
+				Name:      tenant.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
 				WithArgs(tenant.AccountID, sqlmock.AnyArg(), tenant.Name).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 		} else {
 			dbInTenant = &Tenant{
-				TenantID: 	tenant.TenantID,
-				AccountID: 	tenant.AccountID,
-				Name:    	tenant.Name,
+				TenantID:  tenant.TenantID,
+				AccountID: tenant.AccountID,
+				Name:      tenant.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
 				WithArgs(tenant.Name, tenant.AccountID, tenant.TenantID).
@@ -256,8 +256,14 @@ func TestRepoDeleteTenantWithInvalidInput(t *testing.T) {
 
 	tx, _ := sqlDB.Begin()
 
+	{ // Test with invalid account id
+		_, err := repo.DeleteTenant(tx, 0, uuid.NewString())
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+	}
+
 	{ // Test with invalid tenant id
-		_, err := repo.DeleteTenant(tx, "")
+		_, err := repo.DeleteTenant(tx, 581616507495, "")
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -276,15 +282,15 @@ func TestRepoDeleteTenantWithSuccess(t *testing.T) {
 	sqlDBMock.ExpectBegin()
 
 	sqlDBMock.ExpectQuery(sqlSelect).
-		WithArgs(sqlmock.AnyArg()).
+		WithArgs(tenant.AccountID, tenant.TenantID).
 		WillReturnRows(sqlTenantRows)
 
 	sqlDBMock.ExpectExec(sqlDelete).
-		WithArgs(sqlmock.AnyArg()).
+		WithArgs(tenant.AccountID, tenant.TenantID).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	tx, _ := sqlDB.Begin()
-	dbOutTenant, err := repo.DeleteTenant(tx, tenant.TenantID)
+	dbOutTenant, err := repo.DeleteTenant(tx, tenant.AccountID, tenant.TenantID)
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutTenant, "tenant should be not nil")
@@ -314,26 +320,26 @@ func TestRepoDeleteTenantWithErrors(t *testing.T) {
 
 		if test == 1 {
 			sqlDBMock.ExpectQuery(sqlSelect).
-				WithArgs(sqlmock.AnyArg()).
+				WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrNotFound})
 		} else {
 			sqlDBMock.ExpectQuery(sqlSelect).
-				WithArgs(sqlmock.AnyArg()).
+				WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
 				WillReturnRows(sqlTenantRows)
 		}
 
 		if test == 2 {
 			sqlDBMock.ExpectExec(sqlDelete).
-				WithArgs(sqlmock.AnyArg()).
+				WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrPerm})
 		} else if test == 3 {
 			sqlDBMock.ExpectExec(sqlDelete).
-				WithArgs(sqlmock.AnyArg()).
+				WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
 				WillReturnResult(sqlmock.NewResult(0, 0))
 		}
 
 		tx, _ := sqlDB.Begin()
-		dbOutTenant, err := repo.DeleteTenant(tx, tenant.TenantID)
+		dbOutTenant, err := repo.DeleteTenant(tx, tenant.AccountID, tenant.TenantID)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutTenant, "tenant should be nil")
