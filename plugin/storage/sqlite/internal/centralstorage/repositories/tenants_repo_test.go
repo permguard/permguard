@@ -18,6 +18,7 @@ package repositories
 
 import (
 	"regexp"
+	"sort"
 	"testing"
 	"time"
 
@@ -78,7 +79,7 @@ func registerTenantForFetchMocking() (string, []Tenant, *sqlmock.Rows) {
 			UpdatedAt: time.Now(),
 		},
 	}
-	var sqlSelect = "SELECT * FROM tenants WHERE account_id = ? AND tenant_id = ? AND name LIKE ? ORDER BY tenant_id LIMIT ? OFFSET ?"
+	var sqlSelect = "SELECT * FROM tenants WHERE account_id = ? AND tenant_id = ? AND name LIKE ? ORDER BY tenant_id ASC LIMIT ? OFFSET ?"
 	sqlRows := sqlmock.NewRows([]string{"account_id", "tenant_id", "created_at", "updated_at", "name"}).
 		AddRow(tenants[0].AccountID, tenants[0].TenantID, tenants[0].CreatedAt, tenants[0].UpdatedAt, tenants[0].Name)
 	return sqlSelect, tenants, sqlRows
@@ -373,12 +374,12 @@ func TestRepoFetchTenantWithInvalidInput(t *testing.T) {
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
-	// { // Test with invalid account id
-	// 	tenantID := uuid.NewString()
-	// 	_, err := repo.FetchTenants(sqlDB, 1, 1, 0, &tenantID, nil)
-	// 	assert.NotNil(err, "error should be not nil")
-	// 	assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
-	// }
+	{ // Test with invalid account id
+		tenantID := uuid.NewString()
+		_, err := repo.FetchTenants(sqlDB, 1, 1, 0, &tenantID, nil)
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
+	}
 
 	{ // Test with invalid tenant id
 		tenantID := ""
@@ -414,13 +415,19 @@ func TestRepoFetchTenantWithSuccess(t *testing.T) {
 
 	dbOutTenant, err := repo.FetchTenants(sqlDB, page, pageSize, sqlTenants[0].AccountID, &sqlTenants[0].TenantID, &sqlTenants[0].Name)
 
+	orderedSQLTenants := make([]Tenant, len(sqlTenants))
+	copy(orderedSQLTenants, sqlTenants)
+	sort.Slice(orderedSQLTenants, func(i, j int) bool {
+		return orderedSQLTenants[i].TenantID < orderedSQLTenants[j].TenantID
+	})
+
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutTenant, "tenant should be not nil")
-	assert.Len(dbOutTenant, len(sqlTenants), "tenants len should be correct")
+	assert.Len(dbOutTenant, len(orderedSQLTenants), "tenants len should be correct")
 	for i, tenant := range dbOutTenant {
-		assert.Equal(tenant.TenantID, sqlTenants[i].TenantID, "tenant id is not correct")
-		assert.Equal(tenant.AccountID, sqlTenants[i].AccountID, "tenant account id is not correct")
-		assert.Equal(tenant.Name, sqlTenants[i].Name, "tenant name is not correct")
+		assert.Equal(tenant.TenantID, orderedSQLTenants[i].TenantID, "tenant id is not correct")
+		assert.Equal(tenant.AccountID, orderedSQLTenants[i].AccountID, "tenant account id is not correct")
+		assert.Equal(tenant.Name, orderedSQLTenants[i].Name, "tenant name is not correct")
 	}
 	assert.Nil(err, "error should be nil")
 }

@@ -59,7 +59,7 @@ type Identity struct {
 
 // Tenant is the model for the tenant table.
 type Tenant struct {
-	TenantID  string `db:"tenant_id"`
+	TenantID  string 	`db:"tenant_id"`
 	CreatedAt time.Time `db:"created_at"`
 	UpdatedAt time.Time `db:"updated_at"`
 	AccountID int64     `db:"account_id"`

@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
@@ -33,11 +32,6 @@ const (
 	// errorMessageTenantInvalidAccountID is the error message tenant invalid account id.
 	errorMessageTenantInvalidAccountID = "storage: invalid client input - account id is not valid (id: %d)."
 )
-
-// generateTenantID generates a random tenant id.
-func generateTenantID() string {
-	return uuid.NewString()
-}
 
 // UpsertTenant creates or updates an tenant.
 func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant, error) {
@@ -61,7 +55,7 @@ func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant,
 	var result sql.Result
 	var err error
 	if isCreate {
-		tenantID = generateTenantID()
+		tenantID = generateUUID()
 		result, err = tx.Exec("INSERT INTO tenants (account_id, tenant_id, name) VALUES (?, ?, ?)", accountID, tenantID, tenantName)
 	} else {
 		result, err = tx.Exec("UPDATE tenants SET name = ? WHERE account_id = ? and tenant_id = ?", tenantName, accountID, tenantID)
@@ -159,7 +153,7 @@ func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID i
 		baseQuery += " WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	baseQuery += " ORDER BY tenant_id"
+	baseQuery += " ORDER BY tenant_id ASC"
 
 	limit := pageSize
 	offset := (page - 1) * pageSize
