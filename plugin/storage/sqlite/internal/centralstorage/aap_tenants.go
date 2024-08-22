@@ -42,7 +42,6 @@ func (s SQLiteCentralStorageAAP) CreateTenant(tenant *azmodels.Tenant) (*azmodel
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	dbInTenant := &azirepos.Tenant{
-		TenantID:  tenant.TenantID,
 		AccountID: tenant.AccountID,
 		Name:      tenant.Name,
 	}
@@ -59,8 +58,31 @@ func (s SQLiteCentralStorageAAP) CreateTenant(tenant *azmodels.Tenant) (*azmodel
 
 // UpdateTenant updates a tenant.
 func (s SQLiteCentralStorageAAP) UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error) {
-	// logger := s.ctx.GetLogger()
-	return nil, nil
+	if tenant == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - tenant is nil.")
+	}
+	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
+	if err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+	}
+	dbInTenant := &azirepos.Tenant{
+		TenantID: 	tenant.TenantID,
+		AccountID: 	tenant.AccountID,
+		Name:      	tenant.Name,
+	}
+	dbOutTenant, err := s.sqlRepo.UpsertTenant(tx, false, dbInTenant)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+	}
+	return mapTenantToAgentTenant(dbOutTenant)
 }
 
 // DeleteTenant deletes a tenant.

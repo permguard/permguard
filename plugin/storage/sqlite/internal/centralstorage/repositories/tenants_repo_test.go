@@ -219,18 +219,20 @@ func TestRepoUpsertTenantWithErrors(t *testing.T) {
 		var dbInTenant *Tenant
 		if isCreate {
 			dbInTenant = &Tenant{
-				Name: tenant.Name,
+				AccountID: 	tenant.AccountID,
+				Name: 		tenant.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(sqlmock.AnyArg(), tenant.Name).
+				WithArgs(tenant.AccountID, sqlmock.AnyArg(), tenant.Name).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 		} else {
 			dbInTenant = &Tenant{
-				TenantID: tenant.TenantID,
-				Name:     tenant.Name,
+				TenantID: 	tenant.TenantID,
+				AccountID: 	tenant.AccountID,
+				Name:    	tenant.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(tenant.Name, tenant.TenantID).
+				WithArgs(tenant.Name, tenant.AccountID, tenant.TenantID).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 		}
 
