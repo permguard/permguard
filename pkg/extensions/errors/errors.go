@@ -22,6 +22,11 @@ import (
 	"strings"
 )
 
+const (
+	// errorMessageCodeMsg is the error message code message.
+	errorMessageCodeMsg = "error code: %s, message: %s"
+)
+
 // SystemError custom error
 type SystemError struct {
 	error
@@ -55,7 +60,7 @@ func NewSystemError(errCode string) error {
 	}
 	errMessage := errorCodes[errCode]
 	return SystemError{
-		error:      fmt.Errorf("code: %s, message: %s", errCode, errMessage),
+		error:      fmt.Errorf(errorMessageCodeMsg, errCode, errMessage),
 		errCode:    errCode,
 		errMessage: errMessage,
 	}
@@ -69,7 +74,7 @@ func NewSystemErrorWithMessage(errCode string, errMessage string) error {
 		return NewSystemError("00000")
 	}
 	return SystemError{
-		error:      fmt.Errorf("code: %s, message: %s", errCode, errMessage),
+		error:      fmt.Errorf(errorMessageCodeMsg, errCode, errMessage),
 		errCode:    errCode,
 		errMessage: errMessage,
 	}
@@ -82,7 +87,7 @@ func WrapSystemError(err error, errMessage string) error {
 		return NewSystemErrorWithMessage("", errMessage)
 	}
 	return SystemError{
-		error:      fmt.Errorf("code: %s, message: %s", sysErr.errCode, errMessage),
+		error:      fmt.Errorf(errorMessageCodeMsg, sysErr.errCode, errMessage),
 		errCode:    sysErr.errCode,
 		errMessage: errMessage,
 	}

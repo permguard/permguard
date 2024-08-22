@@ -32,6 +32,11 @@ import (
 )
 
 const (
+	// errorMessageCodeMsg is the error message code message.
+	errorMessageCodeMsg = "error code: %s, message: %s"
+)
+
+const (
 	// OutputTerminal is the text output.
 	OutputTerminal = "TERMINAL"
 	// OutputJSON is the json output.
@@ -169,7 +174,7 @@ func (cp *CliPrinter) Error(err error) {
 				if cp.output == OutputJSON {
 					output = map[string]any{"errorCode": code, "errorMessage": errInputMsg}
 				} else {
-					output = map[string]any{"error": fmt.Sprintf("%s, %s", code, errInputMsg)}
+					output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, code, errInputMsg)}
 
 				}
 			} else {
@@ -177,7 +182,7 @@ func (cp *CliPrinter) Error(err error) {
 				if cp.output == OutputJSON {
 					output = map[string]any{"errorCode": code, "errorMessage": message}
 				} else {
-					output = map[string]any{"error": fmt.Sprintf("%s, %s", code, message)}
+					output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, code, message)}
 				}
 			}
 		} else {
@@ -187,7 +192,7 @@ func (cp *CliPrinter) Error(err error) {
 				if cp.output == OutputJSON {
 					output = map[string]any{"errorCode": errCode, "errorMessage": errMsg}
 				} else {
-					output = map[string]any{"error": fmt.Sprintf("%s, %s", errCode, errMsg)}
+					output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, errCode, errMsg)}
 				}
 			} else {
 				code = "00000"
@@ -203,7 +208,7 @@ func (cp *CliPrinter) Error(err error) {
 				if cp.output == OutputJSON {
 					output = map[string]any{"errorCode": code, "errorMessage": message}
 				} else {
-					output = map[string]any{"error": fmt.Sprintf("%s, %s", code, message)}
+					output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, code, message)}
 				}
 			}
 		}

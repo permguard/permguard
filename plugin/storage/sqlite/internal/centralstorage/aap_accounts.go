@@ -31,11 +31,11 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error("cannot connect.", err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error("cannot open the transaction.", err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	dbInAccount := &azirepos.Account{
 		AccountID: account.AccountID,
@@ -47,7 +47,7 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error("cannot commit the transaction.", err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapAccountToAgentAccount(dbOutaccount)
 }
@@ -59,11 +59,11 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error("cannot connect.", err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error("cannot open the transaction.", err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	dbInAccount := &azirepos.Account{
 		AccountID: account.AccountID,
@@ -75,7 +75,7 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error("cannot commit the transaction.", err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapAccountToAgentAccount(dbOutaccount)
 }
@@ -84,11 +84,11 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Account, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error("cannot connect.", err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error("cannot open the transaction.", err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	dbOutaccount, err := s.sqlRepo.DeleteAccount(tx, accountID)
 	if err != nil {
@@ -96,7 +96,7 @@ func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Accou
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error("cannot commit the transaction.", err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapAccountToAgentAccount(dbOutaccount)
 }
