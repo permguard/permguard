@@ -152,6 +152,59 @@ func (cp *CliPrinter) extractCodeAndMessage(input string) (string, string, error
 	return code, message, nil
 }
 
+// createOutputWithputError creates the output with the error.
+func (cp *CliPrinter) createOutputWithputError(code string, msg string) (map[string]any) {
+	var output map[string]any
+	errCode := code
+	errMsg := msg
+	if cp.verbose {
+		if cp.output == OutputJSON {
+			output = map[string]any{"errorCode": errCode, "errorMessage": errMsg}
+		} else {
+			output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, errCode, errMsg)}
+		}
+	} else {
+		code = "00000"
+		message := "unknown error"
+		sysErr := azerrors.ConvertToSystemError(azerrors.GetErrorFromCode(errCode))
+		if sysErr == nil {
+			sysErr = azerrors.ConvertToSystemError(azerrors.GetSuperClassErrorFromCode(errCode))
+		}
+		if sysErr != nil {
+			code = sysErr.Code()
+			message = sysErr.Message()
+		}
+		if cp.output == OutputJSON {
+			output = map[string]any{"errorCode": code, "errorMessage": message}
+		} else {
+			output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, code, message)}
+		}
+	}
+	return output
+}
+
+// createOutputWithError creates the output with the error.
+func (cp *CliPrinter) createOutputWithError(errInputMsg string) (map[string]any) {
+	var output map[string]any
+	code := "00000"
+	if cp.verbose {
+		if cp.output == OutputJSON {
+			output = map[string]any{"errorCode": code, "errorMessage": errInputMsg}
+		} else {
+			output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, code, errInputMsg)}
+
+		}
+	} else {
+		message := "unknown error"
+		if cp.output == OutputJSON {
+			output = map[string]any{"errorCode": code, "errorMessage": message}
+		} else {
+			output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, code, message)}
+		}
+	}
+	return output
+}
+
 // Error prints the output.
 func (cp *CliPrinter) Error(err error) {
 	if _, ok := err.(*net.OpError); ok {
@@ -159,8 +212,6 @@ func (cp *CliPrinter) Error(err error) {
 	}
 	var output map[string]any
 	if err != nil {
-		var errMsg string
-		var errCode string
 		var errInputMsg string
 		if stsErr, ok := status.FromError(err); ok {
 			errInputMsg = stsErr.Message()
@@ -169,48 +220,9 @@ func (cp *CliPrinter) Error(err error) {
 		}
 		code, msg, err := cp.extractCodeAndMessage(errInputMsg)
 		if err != nil {
-			code = "00000"
-			if cp.verbose {
-				if cp.output == OutputJSON {
-					output = map[string]any{"errorCode": code, "errorMessage": errInputMsg}
-				} else {
-					output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, code, errInputMsg)}
-
-				}
-			} else {
-				message := "unknown error"
-				if cp.output == OutputJSON {
-					output = map[string]any{"errorCode": code, "errorMessage": message}
-				} else {
-					output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, code, message)}
-				}
-			}
+			output = cp.createOutputWithError(errInputMsg)
 		} else {
-			errCode = code
-			errMsg = msg
-			if cp.verbose {
-				if cp.output == OutputJSON {
-					output = map[string]any{"errorCode": errCode, "errorMessage": errMsg}
-				} else {
-					output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, errCode, errMsg)}
-				}
-			} else {
-				code = "00000"
-				message := "unknown error"
-				sysErr := azerrors.ConvertToSystemError(azerrors.GetErrorFromCode(errCode))
-				if sysErr == nil {
-					sysErr = azerrors.ConvertToSystemError(azerrors.GetSuperClassErrorFromCode(errCode))
-				}
-				if sysErr != nil {
-					code = sysErr.Code()
-					message = sysErr.Message()
-				}
-				if cp.output == OutputJSON {
-					output = map[string]any{"errorCode": code, "errorMessage": message}
-				} else {
-					output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, code, message)}
-				}
-			}
+			output = cp.createOutputWithputError(code, msg)
 		}
 	}
 	switch cp.output {
