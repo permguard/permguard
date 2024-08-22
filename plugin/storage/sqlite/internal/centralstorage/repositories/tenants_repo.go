@@ -119,9 +119,9 @@ func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID i
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
 	}
 	if err := azivalidators.ValidateAccountID("tenant", accountID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (id: %d).", accountID))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - account id is not valid (id: %d).", accountID))
 	}
-	
+
 	var dbTenants []Tenant
 
 	baseQuery := "SELECT * FROM tenants"
