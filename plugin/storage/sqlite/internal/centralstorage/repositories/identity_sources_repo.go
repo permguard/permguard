@@ -65,7 +65,8 @@ func (r *Repo) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *I
 		if isCreate {
 			action = "create"
 		}
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to %s identity source - operation '%s-identity-source' encountered an issue (%s).", action, action, LogIdentitySourceEntry(identitySource)), err)
+		params := map[string]string{WrapSqlite3ParamForeignKey: string(accountID)}
+		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s identity source - operation '%s-identity-source' encountered an issue (%s).", action, action, LogIdentitySourceEntry(identitySource)), err, params)
 	}
 
 	var dbIdentitySource IdentitySource
@@ -107,7 +108,7 @@ func (r *Repo) DeleteIdentitySource(tx *sql.Tx, accountID int64, identitySourceI
 	}
 	rows, err := res.RowsAffected()
 	if err != nil || rows != 1 {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete identity source - operation 'delete-identity-source' encountered an issue (id: %s).", identitySourceID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete identity source - operation 'delete-identity-source' could not find the identity source (id: %s).", identitySourceID), err)
 	}
 	return &dbIdentitySource, nil
 }

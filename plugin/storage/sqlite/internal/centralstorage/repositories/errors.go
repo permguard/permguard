@@ -25,15 +25,41 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
+const (
+	WrapSqlite3ParamForeignKey = "foreign-key"
+)
+
 // WrapSqlite3Error wraps a sqlite3 error.
 func WrapSqlite3Error(msg string, err error) error {
+	return WrapSqlite3ErrorWithParams(msg, err, nil)
+}
+
+// readErroMapParam reads a parameter from a map.
+func readErroMapParam(key string, params map[string]string) string {
+	if params == nil {
+		return ""
+	}
+	if value, ok := params[key]; ok {
+		return value
+	}
+	return ""
+}
+
+func WrapSqlite3ErrorWithParams(msg string, err error, params map[string]string) error {
 	sqliteErr, ok := err.(sqlite3.Error)
 	if !ok {
 		return azerrors.WrapSystemError(azerrors.ErrStorageGeneric, fmt.Sprintf("storage: (%s)", msg))
 	}
 	switch sqliteErr.Code {
 	case sqlite3.ErrConstraint:
-		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique {
+		if errors.As(err, &sqliteErr) {
+			if (sqliteErr.ExtendedCode == sqlite3.ErrConstraintForeignKey){
+				foreignKey := readErroMapParam(WrapSqlite3ParamForeignKey, params)
+				if foreignKey != "" {
+					return azerrors.WrapSystemError(azerrors.ErrStorageConstraintForeignKey, fmt.Sprintf("storage: %s validation failed: the provided account id does not exist - %s", foreignKey, msg))
+				}
+				return azerrors.WrapSystemError(azerrors.ErrStorageConstraintForeignKey, fmt.Sprintf("storage: foreign key constraint failed - %s", msg))
+			}
 			return azerrors.WrapSystemError(azerrors.ErrStorageConstraintUnique, fmt.Sprintf("storage: unique constraint failed - %s", msg))
 		}
 		return azerrors.WrapSystemError(azerrors.ErrStorageConstraintUnique, fmt.Sprintf("storage: constraint failed - %s", msg))
