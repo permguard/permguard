@@ -35,7 +35,7 @@ const (
 func runECommandForListRepositories(cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := createContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red("invalid inputs")
+		color.Red(errorMessageInvalidInputs)
 		return ErrCommandSilent
 	}
 	papTarget := ctx.GetPAPTarget()

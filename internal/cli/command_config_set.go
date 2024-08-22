@@ -44,11 +44,11 @@ func viperWriteEndpoint(v *viper.Viper, key string, value string) error {
 func runECommandForAAPSet(cmd *cobra.Command, v *viper.Viper, args []string) error {
 	_, printer, err := createContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red("invalid inputs")
+		color.Red(errorMessageInvalidInputs)
 		return ErrCommandSilent
 	}
 	if len(args) == 0 {
-		printer.Error(fmt.Errorf("invalid inputs"))
+		printer.Error(fmt.Errorf(errorMessageInvalidInputs))
 		return ErrCommandSilent
 	}
 	err = viperWriteEndpoint(v, azconfigs.FlagName(flagPrefixAAP, flagSuffixAAPTarget), args[0])
@@ -63,11 +63,11 @@ func runECommandForAAPSet(cmd *cobra.Command, v *viper.Viper, args []string) err
 func runECommandForPAPSet(cmd *cobra.Command, v *viper.Viper, args []string) error {
 	_, printer, err := createContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red("invalid inputs")
+		color.Red(errorMessageInvalidInputs)
 		return ErrCommandSilent
 	}
 	if len(args) == 0 {
-		printer.Error(fmt.Errorf("invalid inputs"))
+		printer.Error(fmt.Errorf(errorMessageInvalidInputs))
 		return ErrCommandSilent
 	}
 	err = viperWriteEndpoint(v, azconfigs.FlagName(flagPrefixPAP, flagSuffixPAPTarget), args[0])
