@@ -26,7 +26,7 @@ import (
 func runECommandForAAPGet(cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := createContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red("invalid inputs")
+		color.Red(errorMessageInvalidInputs)
 		return ErrCommandSilent
 	}
 	printer.Print(map[string]any{"aap_target": ctx.GetAAPTarget()})
@@ -37,7 +37,7 @@ func runECommandForAAPGet(cmd *cobra.Command, v *viper.Viper) error {
 func runECommandForPAPGet(cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := createContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red("invalid inputs")
+		color.Red(errorMessageInvalidInputs)
 		return ErrCommandSilent
 	}
 	printer.Print(map[string]any{"pap_target": ctx.GetPAPTarget()})
