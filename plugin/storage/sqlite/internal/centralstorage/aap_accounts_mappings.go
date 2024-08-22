@@ -18,11 +18,11 @@ package centralstorage
 
 import (
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
-	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // mapAccountToAgentAccount maps an Account to a model Account.
-func mapAccountToAgentAccount(account *azrepos.Account) (*azmodels.Account, error) {
+func mapAccountToAgentAccount(account *azirepos.Account) (*azmodels.Account, error) {
 	return &azmodels.Account{
 		AccountID: account.AccountID,
 		CreatedAt: account.CreatedAt,

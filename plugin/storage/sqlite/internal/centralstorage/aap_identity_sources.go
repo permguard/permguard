@@ -17,7 +17,11 @@
 package centralstorage
 
 import (
+	"fmt"
+
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 const (
@@ -26,24 +30,118 @@ const (
 
 // CreateIdentitySource creates a new identity source.
 func (s SQLiteCentralStorageAAP) CreateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error) {
-	// logger := s.ctx.GetLogger()
-	return nil, nil
+	if identitySource == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - identity source is nil.")
+	}
+	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
+	if err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+	}
+	dbInIdentitySource := &azirepos.IdentitySource{
+		AccountID: identitySource.AccountID,
+		Name:      identitySource.Name,
+	}
+	dbOutIdentitySource, err := s.sqlRepo.UpsertIdentitySource(tx, true, dbInIdentitySource)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+	}
+	return mapIdentitySourceToAgentIdentitySource(dbOutIdentitySource)
 }
 
 // UpdateIdentitySource updates an identity source.
 func (s SQLiteCentralStorageAAP) UpdateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error) {
-	// logger := s.ctx.GetLogger()
-	return nil, nil
+	if identitySource == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - identity source is nil.")
+	}
+	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
+	if err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+	}
+	dbInIdentitySource := &azirepos.IdentitySource{
+		IdentitySourceID: identitySource.IdentitySourceID,
+		AccountID:        identitySource.AccountID,
+		Name:             identitySource.Name,
+	}
+	dbOutIdentitySource, err := s.sqlRepo.UpsertIdentitySource(tx, false, dbInIdentitySource)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+	}
+	return mapIdentitySourceToAgentIdentitySource(dbOutIdentitySource)
 }
 
 // DeleteIdentitySource deletes an identity source.
 func (s SQLiteCentralStorageAAP) DeleteIdentitySource(accountID int64, identitySourceID string) (*azmodels.IdentitySource, error) {
-	// logger := s.ctx.GetLogger()
-	return nil, nil
+	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
+	if err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+	}
+	dbOutIdentitySource, err := s.sqlRepo.DeleteIdentitySource(tx, accountID, identitySourceID)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+	}
+	return mapIdentitySourceToAgentIdentitySource(dbOutIdentitySource)
 }
 
 // FetchIdentitySources returns all identity sources.
-func (s SQLiteCentralStorageAAP) FetchIdentitySources(accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error) {
-	// logger := s.ctx.GetLogger()
-	return nil, nil
+func (s SQLiteCentralStorageAAP) FetchIdentitySources(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error) {
+	if page <= 0 || pageSize <= 0 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
+	}
+	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
+	if err != nil {
+		return nil, err
+	}
+	var filterID *string
+	if _, ok := fields[azmodels.FieldIdentitySourceIdentitySourceID]; ok {
+		identitySourceID, ok := fields[azmodels.FieldIdentitySourceIdentitySourceID].(string)
+		if !ok {
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source id is not valid (identity source id: %s).", identitySourceID))
+		}
+		filterID = &identitySourceID
+	}
+	var filterName *string
+	if _, ok := fields[azmodels.FieldIdentitySourceName]; ok {
+		identitySourceName, ok := fields[azmodels.FieldIdentitySourceName].(string)
+		if !ok {
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source name is not valid (identity source name: %s).", identitySourceName))
+		}
+		filterName = &identitySourceName
+	}
+	dbIdentitySources, err := s.sqlRepo.FetchIdentitySources(db, page, pageSize, accountID, filterID, filterName)
+	if err != nil {
+		return nil, err
+	}
+	identitySources := make([]azmodels.IdentitySource, len(dbIdentitySources))
+	for i, a := range dbIdentitySources {
+		identitySource, err := mapIdentitySourceToAgentIdentitySource(&a)
+		if err != nil {
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert identity source entity (%s).", azirepos.LogIdentitySourceEntry(&a)))
+		}
+		identitySources[i] = *identitySource
+	}
+	return identitySources, nil
 }

@@ -44,10 +44,12 @@ func runECommandForListIdentitySources(cmd *cobra.Command, v *viper.Viper) error
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return ErrCommandSilent
 	}
+	page := v.GetInt32(azconfigs.FlagName(commandNameForIdentitySourcesList, flagCommonPage))
+	pageSize := v.GetInt32(azconfigs.FlagName(commandNameForIdentitySourcesList, flagCommonPageSize))
 	accountID := v.GetInt64(azconfigs.FlagName(commandNameForIdentitySource, flagCommonAccountID))
 	identitySourceID := v.GetString(azconfigs.FlagName(commandNameForIdentitySourcesList, flagIdentitySourceID))
 	name := v.GetString(azconfigs.FlagName(commandNameForIdentitySourcesList, flagCommonName))
-	identitySources, err := client.FetchIdentitySourcesBy(accountID, identitySourceID, name)
+	identitySources, err := client.FetchIdentitySourcesBy(page, pageSize, accountID, identitySourceID, name)
 	if err != nil {
 		printer.Error(err)
 		return ErrCommandSilent
@@ -85,6 +87,10 @@ Examples:
 			return runECommandForListIdentitySources(cmd, v)
 		},
 	}
+	command.Flags().Int32P(flagCommonPage, flagCommonPageShort, 1, "page number")
+	v.BindPFlag(azconfigs.FlagName(commandNameForIdentitySourcesList, flagCommonPage), command.Flags().Lookup(flagCommonPage))
+	command.Flags().Int32P(flagCommonPageSize, flagCommonPageSizeShort, 1000, "page size")
+	v.BindPFlag(azconfigs.FlagName(commandNameForIdentitySourcesList, flagCommonPageSize), command.Flags().Lookup(flagCommonPageSize))
 	command.Flags().String(flagIdentitySourceID, "", "identity source id filter")
 	v.BindPFlag(azconfigs.FlagName(commandNameForIdentitySourcesList, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
 	command.Flags().String(flagCommonName, "", "identity source name filter")

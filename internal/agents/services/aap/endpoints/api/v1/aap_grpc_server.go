@@ -36,7 +36,7 @@ type AAPService interface {
 	CreateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error)
 	UpdateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error)
 	DeleteIdentitySource(accountID int64, identitySourceID string) (*azmodels.IdentitySource, error)
-	FetchIdentitySources(accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error)
+	FetchIdentitySources(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error)
 
 	CreateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error)
 	UpdateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error)
@@ -160,7 +160,7 @@ func (s V1AAPServer) FetchIdentitySources(ctx context.Context, identitySourceReq
 	if identitySourceRequest.IdentitySourceID != nil {
 		fields[azmodels.FieldIdentitySourceIdentitySourceID] = *identitySourceRequest.IdentitySourceID
 	}
-	identitySources, err := s.service.FetchIdentitySources(identitySourceRequest.AccountID, fields)
+	identitySources, err := s.service.FetchIdentitySources(*identitySourceRequest.Page, *identitySourceRequest.PageSize, identitySourceRequest.AccountID, fields)
 	if err != nil {
 		return nil, err
 	}

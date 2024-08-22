@@ -78,8 +78,8 @@ func (s AAPController) DeleteIdentitySource(accountID int64, identitySourceID st
 }
 
 // FetchIdentitySources returns all identity sources filtering by search criteria.
-func (s AAPController) FetchIdentitySources(accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error) {
-	return s.storage.FetchIdentitySources(accountID, fields)
+func (s AAPController) FetchIdentitySources(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error) {
+	return s.storage.FetchIdentitySources(page, pageSize, accountID, fields)
 }
 
 // CreateIdentity creates a new identity.
