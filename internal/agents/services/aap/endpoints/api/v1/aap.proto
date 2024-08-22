@@ -27,7 +27,7 @@ option go_package = "github.com/permguard/permguard/internal/hosts/api/aap/v1";
 
 // Account get request
 message AccountFetchRequest {
-	optional int32 Page 		 = 1;
+	optional int32 Page 	 = 1;
 	optional int32 PageSize	 = 2;
 	optional int64 AccountID = 3;
 	optional string Name 	 = 4;
@@ -60,10 +60,12 @@ message AccountResponse {
 // Tenants
 
 // Tenant get request
-message TenantGetRequest {
-    int64 AccountID = 1;
-    optional string TenantID = 2;
-	optional string Name = 3;
+message TenantFetchRequest {
+	optional int32 Page 	 	= 1;
+	optional int32 PageSize	 	= 2;
+    int64 AccountID 			= 3;
+    optional string TenantID 	= 4;
+	optional string Name 		= 5;
 }
 
 // Tenant create request
@@ -102,10 +104,12 @@ message TenantListResponse {
 // IdentitySources
 
 // IdentitySource get request
-message IdentitySourceGetRequest {
-    int64 AccountID = 1;
-    optional string IdentitySourceID = 2;
-	optional string Name = 3;
+message IdentitySourceFetchRequest {
+	optional int32 Page 	 			= 1;
+	optional int32 PageSize	 			= 2;
+    int64 AccountID 		 			= 3;
+    optional string IdentitySourceID 	= 4;
+	optional string Name 				= 5;
 }
 
 // IdentitySource create request
@@ -144,12 +148,14 @@ message IdentitySourceListResponse {
 // Identities
 
 // Identities
-message IdentityGetRequest {
-	int64 AccountID = 1;
-    optional string IdentityID = 2;
-    optional string IdentitySourceID = 3;
-    optional string Kind = 4;
-	optional string Name = 5;
+message IdentityFetchRequest {
+	optional int32 Page 	 			= 1;
+	optional int32 PageSize	 			= 2;
+	int64 AccountID 					= 3;
+    optional string IdentityID 			= 4;
+    optional string IdentitySourceID 	= 5;
+    optional string Kind 				= 6;
+	optional string Name 				= 7;
 }
 
 // Identity create request
@@ -208,7 +214,7 @@ service V1AAPService {
 	// Delete an identity source
 	rpc DeleteIdentitySource(IdentitySourceDeleteRequest) returns (IdentitySourceResponse) {}
 	// Fetch identity sources
-	rpc FetchIdentitySources(IdentitySourceGetRequest) returns (IdentitySourceListResponse) {}
+	rpc FetchIdentitySources(IdentitySourceFetchRequest) returns (IdentitySourceListResponse) {}
 
 	// Create an identity
 	rpc CreateIdentity(IdentityCreateRequest) returns (IdentityResponse) {}
@@ -217,7 +223,7 @@ service V1AAPService {
 	// Delete an identity
 	rpc DeleteIdentity(IdentityDeleteRequest) returns (IdentityResponse) {}
 	// Fetch Identities
-	rpc FetchIdentities(IdentityGetRequest) returns (IdentityListResponse) {}
+	rpc FetchIdentities(IdentityFetchRequest) returns (IdentityListResponse) {}
 
 	// Create an tenant
 	rpc CreateTenant(TenantCreateRequest) returns (TenantResponse) {}
@@ -226,5 +232,5 @@ service V1AAPService {
 	// Delete an tenant
 	rpc DeleteTenant(TenantDeleteRequest) returns (TenantResponse) {}
 	// Fetch Tenants
-	rpc FetchTenants(TenantGetRequest) returns (TenantListResponse) {}
+	rpc FetchTenants(TenantFetchRequest) returns (TenantListResponse) {}
 }

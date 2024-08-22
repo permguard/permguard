@@ -75,7 +75,7 @@ func (s V1PAPServer) DeleteRepository(ctx context.Context, repositoryRequest *Re
 }
 
 // FetchRepositories returns all the repositories.
-func (s V1PAPServer) FetchRepositories(ctx context.Context, repositoryRequest *RepositoryGetRequest) (*RepositoryListResponse, error) {
+func (s V1PAPServer) FetchRepositories(ctx context.Context, repositoryRequest *RepositoryFetchRequest) (*RepositoryListResponse, error) {
 	fields := map[string]any{}
 	fields[azmodels.FieldRepositoryAccountID] = repositoryRequest.AccountID
 	if repositoryRequest.Name != nil {

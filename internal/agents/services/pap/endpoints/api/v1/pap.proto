@@ -26,10 +26,12 @@ option go_package = "github.com/permguard/permguard/internal/hosts/api/pap/v1";
 // Repositories
 
 // Repository get request
-message RepositoryGetRequest {
-    int64 AccountID = 1;
-    optional string RepositoryID = 2;
-	optional string Name = 3;
+message RepositoryFetchRequest {
+	optional int32 Page 	 		= 1;
+	optional int32 PageSize	 		= 2;
+    int64 AccountID 				= 3;
+    optional string RepositoryID 	= 4;
+	optional string Name 			= 5;
 }
 
 // Repository create request
@@ -74,5 +76,5 @@ service V1PAPService {
 	// Delete an repository
 	rpc DeleteRepository(RepositoryDeleteRequest) returns (RepositoryResponse) {}
 	// Fetch repositories
-	rpc FetchRepositories(RepositoryGetRequest) returns (RepositoryListResponse) {}
+	rpc FetchRepositories(RepositoryFetchRequest) returns (RepositoryListResponse) {}
 }

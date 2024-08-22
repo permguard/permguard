@@ -118,6 +118,6 @@ func (s AAPController) DeleteTenant(accountID int64, tenantID string) (*azmodels
 }
 
 // FetchTenants returns all tenants filtering by search criteria.
-func (s AAPController) FetchTenants(accountID int64, fields map[string]any) ([]azmodels.Tenant, error) {
-	return s.storage.FetchTenants(accountID, fields)
+func (s AAPController) FetchTenants(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Tenant, error) {
+	return s.storage.FetchTenants(page, pageSize, accountID, fields)
 }

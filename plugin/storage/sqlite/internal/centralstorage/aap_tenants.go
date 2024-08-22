@@ -17,12 +17,12 @@
 package centralstorage
 
 import (
+	"fmt"
+
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
-
-
 
 const (
 	TenantDefaultName = "default"
@@ -70,9 +70,9 @@ func (s SQLiteCentralStorageAAP) UpdateTenant(tenant *azmodels.Tenant) (*azmodel
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	dbInTenant := &azirepos.Tenant{
-		TenantID: 	tenant.TenantID,
-		AccountID: 	tenant.AccountID,
-		Name:      	tenant.Name,
+		TenantID:  tenant.TenantID,
+		AccountID: tenant.AccountID,
+		Name:      tenant.Name,
 	}
 	dbOutTenant, err := s.sqlRepo.UpsertTenant(tx, false, dbInTenant)
 	if err != nil {
@@ -107,7 +107,41 @@ func (s SQLiteCentralStorageAAP) DeleteTenant(accountID int64, tenantID string) 
 }
 
 // FetchTenants returns all tenants.
-func (s SQLiteCentralStorageAAP) FetchTenants(accountID int64, fields map[string]any) ([]azmodels.Tenant, error) {
-	// logger := s.ctx.GetLogger()
-	return nil, nil
+func (s SQLiteCentralStorageAAP) FetchTenants(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Tenant, error) {
+	if page <= 0 || pageSize <= 0 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
+	}
+	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
+	if err != nil {
+		return nil, err
+	}
+	var filterID *string
+	if _, ok := fields[azmodels.FieldTenantTenantID]; ok {
+		tenantID, ok := fields[azmodels.FieldTenantTenantID].(string)
+		if !ok {
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (tenant id: %s).", tenantID))
+		}
+		filterID = &tenantID
+	}
+	var filterName *string
+	if _, ok := fields[azmodels.FieldTenantName]; ok {
+		tenantName, ok := fields[azmodels.FieldTenantName].(string)
+		if !ok {
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant name is not valid (tenant name: %s).", tenantName))
+		}
+		filterName = &tenantName
+	}
+	dbTenants, err := s.sqlRepo.FetchTenants(db, page, pageSize, accountID, filterID, filterName)
+	if err != nil {
+		return nil, err
+	}
+	tenants := make([]azmodels.Tenant, len(dbTenants))
+	for i, a := range dbTenants {
+		tenant, err := mapTenantToAgentTenant(&a)
+		if err != nil {
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert tenant entity (%s).", azirepos.LogTenantEntry(&a)))
+		}
+		tenants[i] = *tenant
+	}
+	return tenants, nil
 }

@@ -40,7 +40,7 @@ type SqliteRepo interface {
 	// DeleteTenant deletes an tenant.
 	DeleteTenant(tx *sql.Tx, accountID int64, tenantID string) (*azrepos.Tenant, error)
 	// FetchTenant fetches an tenant.
-	FetchTenants(db *sqlx.DB, page int32, pageSize int32, filterID *string, filterName *string) ([]azrepos.Tenant, error)
+	FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azrepos.Tenant, error)
 }
 
 // SQLiteCentralStorageAAP implements the sqlite central storage.

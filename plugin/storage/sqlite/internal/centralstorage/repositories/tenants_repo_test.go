@@ -78,9 +78,9 @@ func registerTenantForFetchMocking() (string, []Tenant, *sqlmock.Rows) {
 			UpdatedAt: time.Now(),
 		},
 	}
-	var sqlSelect = "SELECT * FROM tenants WHERE tenant_id = ? AND name LIKE ? ORDER BY tenant_id LIMIT ? OFFSET ?"
-	sqlRows := sqlmock.NewRows([]string{"tenant_id", "created_at", "updated_at", "name"}).
-		AddRow(tenants[0].AccountID, tenants[0].CreatedAt, tenants[0].UpdatedAt, tenants[0].Name)
+	var sqlSelect = "SELECT * FROM tenants WHERE account_id = ? AND tenant_id = ? AND name LIKE ? ORDER BY tenant_id LIMIT ? OFFSET ?"
+	sqlRows := sqlmock.NewRows([]string{"account_id", "tenant_id", "created_at", "updated_at", "name"}).
+		AddRow(tenants[0].AccountID, tenants[0].TenantID, tenants[0].CreatedAt, tenants[0].UpdatedAt, tenants[0].Name)
 	return sqlSelect, tenants, sqlRows
 }
 
@@ -362,27 +362,34 @@ func TestRepoFetchTenantWithInvalidInput(t *testing.T) {
 	defer sqlDB.Close()
 
 	{ // Test with invalid page
-		_, err := repo.FetchTenants(sqlDB, 0, 100, nil, nil)
+		_, err := repo.FetchTenants(sqlDB, 0, 100, 581616507495, nil, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid page size
-		_, err := repo.FetchTenants(sqlDB, 1, 0, nil, nil)
+		_, err := repo.FetchTenants(sqlDB, 1, 0, 581616507495, nil, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
+	{ // Test with invalid account id
+		tenantID := ""
+		_, err := repo.FetchTenants(sqlDB, 1, 1, 0, &tenantID, nil)
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
+	}
+
 	{ // Test with invalid tenant id
 		tenantID := ""
-		_, err := repo.FetchTenants(sqlDB, 1, 1, &tenantID, nil)
+		_, err := repo.FetchTenants(sqlDB, 1, 1, 581616507495, &tenantID, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
 	}
 
 	{ // Test with invalid tenant id
 		tenantName := "@"
-		_, err := repo.FetchTenants(sqlDB, 1, 1, nil, &tenantName)
+		_, err := repo.FetchTenants(sqlDB, 1, 1, 581616507495, nil, &tenantName)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientName, err), "error should be errclientname")
 	}
@@ -402,10 +409,10 @@ func TestRepoFetchTenantWithSuccess(t *testing.T) {
 	pageSize := int32(100)
 	tenantName := "%" + sqlTenants[0].Name + "%"
 	sqlDBMock.ExpectQuery(regexp.QuoteMeta(sqlSelect)).
-		WithArgs(sqlTenants[0].TenantID, tenantName, pageSize, page-1).
+		WithArgs(sqlTenants[0].AccountID, sqlTenants[0].TenantID, tenantName, pageSize, page-1).
 		WillReturnRows(sqlTenantRows)
 
-	dbOutTenant, err := repo.FetchTenants(sqlDB, page, pageSize, &sqlTenants[0].TenantID, &sqlTenants[0].Name)
+	dbOutTenant, err := repo.FetchTenants(sqlDB, page, pageSize, sqlTenants[0].AccountID, &sqlTenants[0].TenantID, &sqlTenants[0].Name)
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutTenant, "tenant should be not nil")

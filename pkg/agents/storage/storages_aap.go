@@ -56,5 +56,5 @@ type AAPCentralStorage interface {
 	// DeleteTenant deletes a tenant.
 	DeleteTenant(accountID int64, tenantID string) (*azmodels.Tenant, error)
 	// FetchTenants gets all tenants.
-	FetchTenants(accountID int64, fields map[string]any) ([]azmodels.Tenant, error)
+	FetchTenants(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Tenant, error)
 }

@@ -91,17 +91,17 @@ func (c *GrpcPAPClient) FetchRepositoriesBy(accountID int64, repositoryID string
 	if err != nil {
 		return nil, err
 	}
-	repositoryGetRequest := &azapiv1pap.RepositoryGetRequest{}
+	repositoryFetchRequest := &azapiv1pap.RepositoryFetchRequest{}
 	if accountID > 0 {
-		repositoryGetRequest.AccountID = accountID
+		repositoryFetchRequest.AccountID = accountID
 	}
 	if name != "" {
-		repositoryGetRequest.Name = &name
+		repositoryFetchRequest.Name = &name
 	}
 	if repositoryID != "" {
-		repositoryGetRequest.RepositoryID = &repositoryID
+		repositoryFetchRequest.RepositoryID = &repositoryID
 	}
-	repositoryList, err := client.FetchRepositories(context.Background(), repositoryGetRequest)
+	repositoryList, err := client.FetchRepositories(context.Background(), repositoryFetchRequest)
 	if err != nil {
 		return nil, err
 	}

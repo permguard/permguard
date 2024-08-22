@@ -50,7 +50,7 @@ const (
 	V1AAPService_CreateTenant_FullMethodName         = "/accountadministrationpoint.V1AAPService/CreateTenant"
 	V1AAPService_UpdateTenant_FullMethodName         = "/accountadministrationpoint.V1AAPService/UpdateTenant"
 	V1AAPService_DeleteTenant_FullMethodName         = "/accountadministrationpoint.V1AAPService/DeleteTenant"
-	V1AAPService_FetchTenants_FullMethodName           = "/accountadministrationpoint.V1AAPService/FetchTenants"
+	V1AAPService_FetchTenants_FullMethodName         = "/accountadministrationpoint.V1AAPService/FetchTenants"
 )
 
 // V1AAPServiceClient is the client API for V1AAPService service.
@@ -74,7 +74,7 @@ type V1AAPServiceClient interface {
 	// Delete an identity source
 	DeleteIdentitySource(ctx context.Context, in *IdentitySourceDeleteRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error)
 	// Fetch identity sources
-	FetchIdentitySources(ctx context.Context, in *IdentitySourceGetRequest, opts ...grpc.CallOption) (*IdentitySourceListResponse, error)
+	FetchIdentitySources(ctx context.Context, in *IdentitySourceFetchRequest, opts ...grpc.CallOption) (*IdentitySourceListResponse, error)
 	// Create an identity
 	CreateIdentity(ctx context.Context, in *IdentityCreateRequest, opts ...grpc.CallOption) (*IdentityResponse, error)
 	// Update an identity
@@ -82,7 +82,7 @@ type V1AAPServiceClient interface {
 	// Delete an identity
 	DeleteIdentity(ctx context.Context, in *IdentityDeleteRequest, opts ...grpc.CallOption) (*IdentityResponse, error)
 	// Fetch Identities
-	FetchIdentities(ctx context.Context, in *IdentityGetRequest, opts ...grpc.CallOption) (*IdentityListResponse, error)
+	FetchIdentities(ctx context.Context, in *IdentityFetchRequest, opts ...grpc.CallOption) (*IdentityListResponse, error)
 	// Create an tenant
 	CreateTenant(ctx context.Context, in *TenantCreateRequest, opts ...grpc.CallOption) (*TenantResponse, error)
 	// Update an tenant
@@ -90,7 +90,7 @@ type V1AAPServiceClient interface {
 	// Delete an tenant
 	DeleteTenant(ctx context.Context, in *TenantDeleteRequest, opts ...grpc.CallOption) (*TenantResponse, error)
 	// Fetch Tenants
-	FetchTenants(ctx context.Context, in *TenantGetRequest, opts ...grpc.CallOption) (*TenantListResponse, error)
+	FetchTenants(ctx context.Context, in *TenantFetchRequest, opts ...grpc.CallOption) (*TenantListResponse, error)
 }
 
 type v1AAPServiceClient struct {
@@ -180,7 +180,7 @@ func (c *v1AAPServiceClient) DeleteIdentitySource(ctx context.Context, in *Ident
 	return out, nil
 }
 
-func (c *v1AAPServiceClient) FetchIdentitySources(ctx context.Context, in *IdentitySourceGetRequest, opts ...grpc.CallOption) (*IdentitySourceListResponse, error) {
+func (c *v1AAPServiceClient) FetchIdentitySources(ctx context.Context, in *IdentitySourceFetchRequest, opts ...grpc.CallOption) (*IdentitySourceListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(IdentitySourceListResponse)
 	err := c.cc.Invoke(ctx, V1AAPService_FetchIdentitySources_FullMethodName, in, out, cOpts...)
@@ -220,7 +220,7 @@ func (c *v1AAPServiceClient) DeleteIdentity(ctx context.Context, in *IdentityDel
 	return out, nil
 }
 
-func (c *v1AAPServiceClient) FetchIdentities(ctx context.Context, in *IdentityGetRequest, opts ...grpc.CallOption) (*IdentityListResponse, error) {
+func (c *v1AAPServiceClient) FetchIdentities(ctx context.Context, in *IdentityFetchRequest, opts ...grpc.CallOption) (*IdentityListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(IdentityListResponse)
 	err := c.cc.Invoke(ctx, V1AAPService_FetchIdentities_FullMethodName, in, out, cOpts...)
@@ -260,7 +260,7 @@ func (c *v1AAPServiceClient) DeleteTenant(ctx context.Context, in *TenantDeleteR
 	return out, nil
 }
 
-func (c *v1AAPServiceClient) FetchTenants(ctx context.Context, in *TenantGetRequest, opts ...grpc.CallOption) (*TenantListResponse, error) {
+func (c *v1AAPServiceClient) FetchTenants(ctx context.Context, in *TenantFetchRequest, opts ...grpc.CallOption) (*TenantListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(TenantListResponse)
 	err := c.cc.Invoke(ctx, V1AAPService_FetchTenants_FullMethodName, in, out, cOpts...)
@@ -291,7 +291,7 @@ type V1AAPServiceServer interface {
 	// Delete an identity source
 	DeleteIdentitySource(context.Context, *IdentitySourceDeleteRequest) (*IdentitySourceResponse, error)
 	// Fetch identity sources
-	FetchIdentitySources(context.Context, *IdentitySourceGetRequest) (*IdentitySourceListResponse, error)
+	FetchIdentitySources(context.Context, *IdentitySourceFetchRequest) (*IdentitySourceListResponse, error)
 	// Create an identity
 	CreateIdentity(context.Context, *IdentityCreateRequest) (*IdentityResponse, error)
 	// Update an identity
@@ -299,7 +299,7 @@ type V1AAPServiceServer interface {
 	// Delete an identity
 	DeleteIdentity(context.Context, *IdentityDeleteRequest) (*IdentityResponse, error)
 	// Fetch Identities
-	FetchIdentities(context.Context, *IdentityGetRequest) (*IdentityListResponse, error)
+	FetchIdentities(context.Context, *IdentityFetchRequest) (*IdentityListResponse, error)
 	// Create an tenant
 	CreateTenant(context.Context, *TenantCreateRequest) (*TenantResponse, error)
 	// Update an tenant
@@ -307,7 +307,7 @@ type V1AAPServiceServer interface {
 	// Delete an tenant
 	DeleteTenant(context.Context, *TenantDeleteRequest) (*TenantResponse, error)
 	// Fetch Tenants
-	FetchTenants(context.Context, *TenantGetRequest) (*TenantListResponse, error)
+	FetchTenants(context.Context, *TenantFetchRequest) (*TenantListResponse, error)
 	mustEmbedUnimplementedV1AAPServiceServer()
 }
 
@@ -339,7 +339,7 @@ func (UnimplementedV1AAPServiceServer) UpdateIdentitySource(context.Context, *Id
 func (UnimplementedV1AAPServiceServer) DeleteIdentitySource(context.Context, *IdentitySourceDeleteRequest) (*IdentitySourceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteIdentitySource not implemented")
 }
-func (UnimplementedV1AAPServiceServer) FetchIdentitySources(context.Context, *IdentitySourceGetRequest) (*IdentitySourceListResponse, error) {
+func (UnimplementedV1AAPServiceServer) FetchIdentitySources(context.Context, *IdentitySourceFetchRequest) (*IdentitySourceListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FetchIdentitySources not implemented")
 }
 func (UnimplementedV1AAPServiceServer) CreateIdentity(context.Context, *IdentityCreateRequest) (*IdentityResponse, error) {
@@ -351,7 +351,7 @@ func (UnimplementedV1AAPServiceServer) UpdateIdentity(context.Context, *Identity
 func (UnimplementedV1AAPServiceServer) DeleteIdentity(context.Context, *IdentityDeleteRequest) (*IdentityResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteIdentity not implemented")
 }
-func (UnimplementedV1AAPServiceServer) FetchIdentities(context.Context, *IdentityGetRequest) (*IdentityListResponse, error) {
+func (UnimplementedV1AAPServiceServer) FetchIdentities(context.Context, *IdentityFetchRequest) (*IdentityListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FetchIdentities not implemented")
 }
 func (UnimplementedV1AAPServiceServer) CreateTenant(context.Context, *TenantCreateRequest) (*TenantResponse, error) {
@@ -363,7 +363,7 @@ func (UnimplementedV1AAPServiceServer) UpdateTenant(context.Context, *TenantUpda
 func (UnimplementedV1AAPServiceServer) DeleteTenant(context.Context, *TenantDeleteRequest) (*TenantResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteTenant not implemented")
 }
-func (UnimplementedV1AAPServiceServer) FetchTenants(context.Context, *TenantGetRequest) (*TenantListResponse, error) {
+func (UnimplementedV1AAPServiceServer) FetchTenants(context.Context, *TenantFetchRequest) (*TenantListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FetchTenants not implemented")
 }
 func (UnimplementedV1AAPServiceServer) mustEmbedUnimplementedV1AAPServiceServer() {}
@@ -507,7 +507,7 @@ func _V1AAPService_DeleteIdentitySource_Handler(srv interface{}, ctx context.Con
 }
 
 func _V1AAPService_FetchIdentitySources_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(IdentitySourceGetRequest)
+	in := new(IdentitySourceFetchRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -519,7 +519,7 @@ func _V1AAPService_FetchIdentitySources_Handler(srv interface{}, ctx context.Con
 		FullMethod: V1AAPService_FetchIdentitySources_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1AAPServiceServer).FetchIdentitySources(ctx, req.(*IdentitySourceGetRequest))
+		return srv.(V1AAPServiceServer).FetchIdentitySources(ctx, req.(*IdentitySourceFetchRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -579,7 +579,7 @@ func _V1AAPService_DeleteIdentity_Handler(srv interface{}, ctx context.Context, 
 }
 
 func _V1AAPService_FetchIdentities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(IdentityGetRequest)
+	in := new(IdentityFetchRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -591,7 +591,7 @@ func _V1AAPService_FetchIdentities_Handler(srv interface{}, ctx context.Context,
 		FullMethod: V1AAPService_FetchIdentities_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1AAPServiceServer).FetchIdentities(ctx, req.(*IdentityGetRequest))
+		return srv.(V1AAPServiceServer).FetchIdentities(ctx, req.(*IdentityFetchRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -651,7 +651,7 @@ func _V1AAPService_DeleteTenant_Handler(srv interface{}, ctx context.Context, de
 }
 
 func _V1AAPService_FetchTenants_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(TenantGetRequest)
+	in := new(TenantFetchRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -663,7 +663,7 @@ func _V1AAPService_FetchTenants_Handler(srv interface{}, ctx context.Context, de
 		FullMethod: V1AAPService_FetchTenants_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1AAPServiceServer).FetchTenants(ctx, req.(*TenantGetRequest))
+		return srv.(V1AAPServiceServer).FetchTenants(ctx, req.(*TenantFetchRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
