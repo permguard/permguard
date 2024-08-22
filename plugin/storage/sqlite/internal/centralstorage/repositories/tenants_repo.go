@@ -30,8 +30,8 @@ import (
 )
 
 // generateTenantID generates a random tenant id.
-func generateTenantID() uuid.UUID {
-	return uuid.New()
+func generateTenantID() string {
+	return uuid.New().String()
 }
 
 // UpsertTenant creates or updates an tenant.
@@ -39,7 +39,7 @@ func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant,
 	if tenant == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant data is missing or malformed (%s).", LogTenantEntry(tenant)))
 	}
-	if !isCreate && azivalidators.ValidateUUID("tenant", tenant.TenantID.String()) != nil {
+	if !isCreate && azivalidators.ValidateUUID("tenant", tenant.TenantID) != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (%s).", LogTenantEntry(tenant)))
 	}
 	if err := azivalidators.ValidateName("tenant", tenant.Name); err != nil {
@@ -79,9 +79,9 @@ func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant,
 }
 
 // DeleteTenant deletes an tenant.
-func (r *Repo) DeleteTenant(tx *sql.Tx, tenantID uuid.UUID) (*Tenant, error) {
-	if err := azivalidators.ValidateUUID("tenant", tenantID.String()); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (id: %d).", tenantID))
+func (r *Repo) DeleteTenant(tx *sql.Tx, tenantID string) (*Tenant, error) {
+	if err := azivalidators.ValidateUUID("tenant", tenantID); err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (id: %s).", tenantID))
 	}
 	var dbTenant Tenant
 	err := tx.QueryRow("SELECT tenant_id, created_at, updated_at, name FROM tenants WHERE tenant_id = ?", tenantID).Scan(
@@ -91,21 +91,21 @@ func (r *Repo) DeleteTenant(tx *sql.Tx, tenantID uuid.UUID) (*Tenant, error) {
 		&dbTenant.Name,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - tenant id is not valid (id: %d).", tenantID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - tenant id is not valid (id: %s).", tenantID), err)
 	}
 	res, err := tx.Exec("DELETE FROM tenants WHERE tenant_id = ?", tenantID)
 	if err != nil || res == nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete tenant - operation 'delete-tenant' encountered an issue (id: %d).", tenantID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete tenant - operation 'delete-tenant' encountered an issue (id: %s).", tenantID), err)
 	}
 	rows, err := res.RowsAffected()
 	if err != nil || rows != 1 {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete tenant - operation 'delete-tenant' encountered an issue (id: %d).", tenantID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete tenant - operation 'delete-tenant' encountered an issue (id: %s).", tenantID), err)
 	}
 	return &dbTenant, nil
 }
 
 // FetchTenants retrieves tenants.
-func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, filterID *uuid.UUID, filterName *string) ([]Tenant, error) {
+func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, filterID *string, filterName *string) ([]Tenant, error) {
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
 	}
@@ -117,8 +117,8 @@ func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, filterID *u
 
 	if filterID != nil {
 		tenantID := *filterID
-		if err := azivalidators.ValidateUUID("tenant", tenantID.String()); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - tenant id is not valid (id: %d).", tenantID))
+		if err := azivalidators.ValidateUUID("tenant", tenantID); err != nil {
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - tenant id is not valid (id: %s).", tenantID))
 		}
 		conditions = append(conditions, "tenant_id = ?")
 		args = append(args, tenantID)
