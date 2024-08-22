@@ -16,6 +16,18 @@
 
 package repositories
 
+import (
+	"strings"
+
+	"github.com/google/uuid"
+)
+
 // Repo is the central storage repository.
 type Repo struct {
+}
+
+// generateUUID generates a UUID.
+func generateUUID() string {
+	id := uuid.NewString()
+	return strings.ReplaceAll(id, "-", "")
 }

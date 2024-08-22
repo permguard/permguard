@@ -147,7 +147,7 @@ func (r *Repo) FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *
 		baseQuery += " WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	baseQuery += " ORDER BY account_id"
+	baseQuery += " ORDER BY account_id ASC"
 
 	limit := pageSize
 	offset := (page - 1) * pageSize

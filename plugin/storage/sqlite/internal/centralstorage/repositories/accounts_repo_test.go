@@ -18,6 +18,7 @@ package repositories
 
 import (
 	"regexp"
+	"sort"
 	"testing"
 	"time"
 
@@ -74,7 +75,7 @@ func registerAccountForFetchMocking() (string, []Account, *sqlmock.Rows) {
 			UpdatedAt: time.Now(),
 		},
 	}
-	var sqlSelect = "SELECT * FROM accounts WHERE account_id = ? AND name LIKE ? ORDER BY account_id LIMIT ? OFFSET ?"
+	var sqlSelect = "SELECT * FROM accounts WHERE account_id = ? AND name LIKE ? ORDER BY account_id ASC LIMIT ? OFFSET ?"
 	sqlRows := sqlmock.NewRows([]string{"account_id", "created_at", "updated_at", "name"}).
 		AddRow(accounts[0].AccountID, accounts[0].CreatedAt, accounts[0].UpdatedAt, accounts[0].Name)
 	return sqlSelect, accounts, sqlRows
@@ -384,12 +385,18 @@ func TestRepoFetchAccountWithSuccess(t *testing.T) {
 
 	dbOutAccount, err := repo.FetchAccounts(sqlDB, page, pageSize, &sqlAccounts[0].AccountID, &sqlAccounts[0].Name)
 
+	orderedSQLAccounts := make([]Account, len(sqlAccounts))
+	copy(orderedSQLAccounts, sqlAccounts)
+	sort.Slice(orderedSQLAccounts, func(i, j int) bool {
+		return orderedSQLAccounts[i].AccountID < orderedSQLAccounts[j].AccountID
+	})
+
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutAccount, "account should be not nil")
-	assert.Len(dbOutAccount, len(sqlAccounts), "accounts len should be correct")
+	assert.Len(dbOutAccount, len(orderedSQLAccounts), "accounts len should be correct")
 	for i, account := range dbOutAccount {
-		assert.Equal(account.AccountID, sqlAccounts[i].AccountID, "account id is not correct")
-		assert.Equal(account.Name, sqlAccounts[i].Name, "account name is not correct")
+		assert.Equal(account.AccountID, orderedSQLAccounts[i].AccountID, "account id is not correct")
+		assert.Equal(account.Name, orderedSQLAccounts[i].Name, "account name is not correct")
 	}
 	assert.Nil(err, "error should be nil")
 }
