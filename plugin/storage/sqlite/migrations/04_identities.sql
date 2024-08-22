@@ -54,7 +54,7 @@ CREATE INDEX identity_changestreams_identitysource_id_idx ON identity_changestre
 
 -- Trigger to track changes in the `identities` table after insert
 -- +goose StatementBegin
-CREATE TRIGGER identity_changestreams_after_insert
+CREATE OR REPLACE identity_changestreams_after_insert
 AFTER INSERT ON identities
 FOR EACH ROW
 BEGIN
@@ -65,7 +65,7 @@ END;
 
 -- Trigger to track changes in the `identities` table after update
 -- +goose StatementBegin
-CREATE TRIGGER identity_changestreams_after_update
+CREATE OR REPLACE identity_changestreams_after_update
 AFTER UPDATE ON identities
 FOR EACH ROW
 BEGIN
@@ -77,7 +77,7 @@ END;
 
 -- Trigger to track changes in the `identities` table after delete
 -- +goose StatementBegin
-CREATE TRIGGER identity_changestreams_after_delete
+CREATE OR REPLACE identity_changestreams_after_delete
 AFTER DELETE ON identities
 FOR EACH ROW
 BEGIN

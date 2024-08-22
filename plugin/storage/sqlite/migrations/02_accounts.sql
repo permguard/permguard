@@ -39,7 +39,7 @@ CREATE INDEX account_changestreams_name_idx ON account_changestreams(name);
 
 -- Trigger to track changes in the `accounts` table after insert
 -- +goose StatementBegin
-CREATE TRIGGER account_changestreams_after_insert
+CREATE OR REPLACE account_changestreams_after_insert
 AFTER INSERT ON accounts
 FOR EACH ROW
 BEGIN
@@ -50,7 +50,7 @@ END;
 
 -- Trigger to track changes in the `accounts` table after update
 -- +goose StatementBegin
-CREATE TRIGGER account_changestreams_after_update
+CREATE OR REPLACE account_changestreams_after_update
 AFTER UPDATE ON accounts
 FOR EACH ROW
 BEGIN
@@ -62,7 +62,7 @@ END;
 
 -- Trigger to track changes in the `accounts` table after delete
 -- +goose StatementBegin
-CREATE TRIGGER account_changestreams_after_delete
+CREATE OR REPLACE account_changestreams_after_delete
 AFTER DELETE ON accounts
 FOR EACH ROW
 BEGIN

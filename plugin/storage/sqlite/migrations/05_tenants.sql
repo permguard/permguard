@@ -47,7 +47,7 @@ CREATE INDEX tenant_changestreams_accountid_idx ON tenant_changestreams(account_
 
 -- Trigger to track changes in the `tenants` table after insert
 -- +goose StatementBegin
-CREATE TRIGGER tenant_changestreams_after_insert
+CREATE OR REPLACE tenant_changestreams_after_insert
 AFTER INSERT ON tenants
 FOR EACH ROW
 BEGIN
@@ -58,7 +58,7 @@ END;
 
 -- Trigger to track changes in the `tenants` table after update
 -- +goose StatementBegin
-CREATE TRIGGER tenant_changestreams_after_update
+CREATE OR REPLACE tenant_changestreams_after_update
 AFTER UPDATE ON tenants
 FOR EACH ROW
 BEGIN
@@ -70,7 +70,7 @@ END;
 
 -- Trigger to track changes in the `tenants` table after delete
 -- +goose StatementBegin
-CREATE TRIGGER tenant_changestreams_after_delete
+CREATE OR REPLACE tenant_changestreams_after_delete
 AFTER DELETE ON tenants
 FOR EACH ROW
 BEGIN
