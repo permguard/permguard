@@ -39,22 +39,38 @@ func LogAccountEntry(account *Account) string {
 
 // IdentitySource is the model for the identity_source table.
 type IdentitySource struct {
-	IdentitySourceID string `gorm:"type:uuid;default:uuid_generate_v4()"`
-	CreatedAt        time.Time `gorm:"default:CURRENT_TIMESTAMP"`
-	UpdatedAt        time.Time `gorm:"default:CURRENT_TIMESTAMP"`
-	AccountID        int64     `gorm:"uniqueIndex:identity_sources_account_id_idx"`
-	Name             string    `gorm:"type:varchar(254);uniqueIndex:identity_sources_name_idx"`
+	IdentitySourceID 	string 		`db:"identity_source_id"`
+	CreatedAt 			time.Time	`db:"created_at"`
+	UpdatedAt 			time.Time 	`db:"updated_at"`
+	AccountID 			int64     	`db:"account_id"`
+	Name      			string		`db:"name"`
+}
+
+// LogIdentitySourceEntry  returns a string representation of the identity source.
+func LogIdentitySourceEntry(identitySource *IdentitySource) string {
+	if identitySource == nil {
+		return "identity source is nil"
+	}
+	return fmt.Sprintf("identity source id: %s, account id: %d, name: %s", identitySource.IdentitySourceID, identitySource.AccountID, identitySource.Name)
 }
 
 // Identity is the model for the identity table.
 type Identity struct {
-	IdentityID       string `gorm:"type:uuid;default:uuid_generate_v4()"`
-	CreatedAt        time.Time `gorm:"default:CURRENT_TIMESTAMP"`
-	UpdatedAt        time.Time `gorm:"default:CURRENT_TIMESTAMP"`
-	AccountID        int64     `gorm:"uniqueIndex:identities_account_id_idx"`
-	IdentitySourceID string `gorm:"type:uuid;;uniqueIndex:identities_identity_source_id_idx"`
-	Kind             int16     `gorm:"default:1"`
-	Name             string    `gorm:"type:varchar(254);uniqueIndex:identities_name_idx"`
+	IdentityID 			string 	  `db:"identity_id"`
+	CreatedAt 			time.Time `db:"created_at"`
+	UpdatedAt 			time.Time `db:"updated_at"`
+	AccountID 			int64 	  `db:"account_id"`
+	IdentitySourceID 	string 	  `db:"identity_source_id"`
+	Kind 				int16     `db:"kind"`
+	Name      			string    `db:"name"`
+}
+
+// LogIdentityEntry returns a string representation of the identity.
+func LogIdentityEntry(identity *Identity) string {
+	if identity == nil {
+		return "identity is nil"
+	}
+	return fmt.Sprintf("identity id: %s, identity source id %s, account id: %d, name: %s", identity.IdentityID, identity.IdentitySourceID, identity.AccountID, identity.Name)
 }
 
 // Tenant is the model for the tenant table.
@@ -76,9 +92,17 @@ func LogTenantEntry(tenant *Tenant) string {
 
 // Repository is the model for the schema table.
 type Repository struct {
-	RepositoryID string `gorm:"type:uuid;default:uuid_generate_v4()"`
-	CreatedAt    time.Time `gorm:"default:CURRENT_TIMESTAMP"`
-	UpdatedAt    time.Time `gorm:"default:CURRENT_TIMESTAMP"`
-	AccountID    int64     `gorm:"uniqueIndex:repositories_account_id_idx"`
-	Name         string    `gorm:"type:varchar(254);uniqueIndex:repositories_name_idx"`
+	RepositoryID string 	`db:"repository_id"`
+	CreatedAt 	 time.Time  `db:"created_at"`
+	UpdatedAt 	 time.Time  `db:"updated_at"`
+	AccountID 	 int64      `db:"account_id"`
+	Name		 string     `db:"name"`
+}
+
+// LogRepositoryEntry returns a string representation of the repository.
+func LogRepositoryEntry(repository *Repository) string {
+	if repository == nil {
+		return "tenant is nil"
+	}
+	return fmt.Sprintf("repository id: %s, account id: %d, name: %s", repository.RepositoryID, repository.AccountID, repository.Name)
 }
