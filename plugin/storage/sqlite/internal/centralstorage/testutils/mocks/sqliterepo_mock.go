@@ -32,9 +32,8 @@ type MockSqliteRepo struct {
 }
 
 // NewMockSqliteRepo create a new mock of SqliteRepo
-func NewMockSqliteRepo() *MockSqliteRepo{
-	return &MockSqliteRepo{
-	}
+func NewMockSqliteRepo() *MockSqliteRepo {
+	return &MockSqliteRepo{}
 }
 
 // UpsertAccount creates or updates an account.
@@ -62,6 +61,36 @@ func (m *MockSqliteRepo) FetchAccounts(db *sqlx.DB, page int32, pageSize int32, 
 	args := m.Called(db, page, pageSize, filterID, filterName)
 	var r0 []azrepos.Account
 	if val, ok := args.Get(0).([]azrepos.Account); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
+}
+
+// UpsertTenant creates or updates an tenant.
+func (m *MockSqliteRepo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *azrepos.Tenant) (*azrepos.Tenant, error) {
+	args := m.Called(tx, isCreate, tenant)
+	var r0 *azrepos.Tenant
+	if val, ok := args.Get(0).(*azrepos.Tenant); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
+}
+
+// DeleteTenant deletes an tenant.
+func (m *MockSqliteRepo) DeleteTenant(tx *sql.Tx, tenantID string) (*azrepos.Tenant, error) {
+	args := m.Called(tx, tenantID)
+	var r0 *azrepos.Tenant
+	if val, ok := args.Get(0).(*azrepos.Tenant); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
+}
+
+// FetchTenants fetches tenants.
+func (m *MockSqliteRepo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, filterID *string, filterName *string) ([]azrepos.Tenant, error) {
+	args := m.Called(db, page, pageSize, filterID, filterName)
+	var r0 []azrepos.Tenant
+	if val, ok := args.Get(0).([]azrepos.Tenant); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)

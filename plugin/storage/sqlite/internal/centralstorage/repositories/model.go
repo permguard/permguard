@@ -19,8 +19,6 @@ package repositories
 import (
 	"fmt"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // Account is the model for the account table.
@@ -41,7 +39,7 @@ func LogAccountEntry(account *Account) string {
 
 // IdentitySource is the model for the identity_source table.
 type IdentitySource struct {
-	IdentitySourceID uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4()"`
+	IdentitySourceID string `gorm:"type:uuid;default:uuid_generate_v4()"`
 	CreatedAt        time.Time `gorm:"default:CURRENT_TIMESTAMP"`
 	UpdatedAt        time.Time `gorm:"default:CURRENT_TIMESTAMP"`
 	AccountID        int64     `gorm:"uniqueIndex:identity_sources_account_id_idx"`
@@ -50,18 +48,18 @@ type IdentitySource struct {
 
 // Identity is the model for the identity table.
 type Identity struct {
-	IdentityID       uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4()"`
+	IdentityID       string `gorm:"type:uuid;default:uuid_generate_v4()"`
 	CreatedAt        time.Time `gorm:"default:CURRENT_TIMESTAMP"`
 	UpdatedAt        time.Time `gorm:"default:CURRENT_TIMESTAMP"`
 	AccountID        int64     `gorm:"uniqueIndex:identities_account_id_idx"`
-	IdentitySourceID uuid.UUID `gorm:"type:uuid;;uniqueIndex:identities_identity_source_id_idx"`
+	IdentitySourceID string `gorm:"type:uuid;;uniqueIndex:identities_identity_source_id_idx"`
 	Kind             int16     `gorm:"default:1"`
 	Name             string    `gorm:"type:varchar(254);uniqueIndex:identities_name_idx"`
 }
 
 // Tenant is the model for the tenant table.
 type Tenant struct {
-	TenantID  uuid.UUID `db:"tenant_id"`
+	TenantID  string `db:"tenant_id"`
 	CreatedAt time.Time `db:"created_at"`
 	UpdatedAt time.Time `db:"updated_at"`
 	AccountID int64     `db:"account_id"`
@@ -78,7 +76,7 @@ func LogTenantEntry(tenant *Tenant) string {
 
 // Repository is the model for the schema table.
 type Repository struct {
-	RepositoryID uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4()"`
+	RepositoryID string `gorm:"type:uuid;default:uuid_generate_v4()"`
 	CreatedAt    time.Time `gorm:"default:CURRENT_TIMESTAMP"`
 	UpdatedAt    time.Time `gorm:"default:CURRENT_TIMESTAMP"`
 	AccountID    int64     `gorm:"uniqueIndex:repositories_account_id_idx"`

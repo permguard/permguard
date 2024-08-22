@@ -28,9 +28,19 @@ import (
 )
 
 type SqliteRepo interface {
+	// UpsertAccount creates or updates an account.
 	UpsertAccount(tx *sql.Tx, isCreate bool, account *azrepos.Account) (*azrepos.Account, error)
+	// DeleteAccount deletes an account.
 	DeleteAccount(tx *sql.Tx, accountID int64) (*azrepos.Account, error)
+	// FetchAccount fetches an account.
 	FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]azrepos.Account, error)
+
+	// UpsertTenant creates or updates an tenant.
+	UpsertTenant(tx *sql.Tx, isCreate bool, tenant *azrepos.Tenant) (*azrepos.Tenant, error)
+	// DeleteTenant deletes an tenant.
+	DeleteTenant(tx *sql.Tx, tenantID string) (*azrepos.Tenant, error)
+	// FetchTenant fetches an tenant.
+	FetchTenants(db *sqlx.DB, page int32, pageSize int32, filterID *string, filterName *string) ([]azrepos.Tenant, error)
 }
 
 // SQLiteCentralStorageAAP implements the sqlite central storage.
