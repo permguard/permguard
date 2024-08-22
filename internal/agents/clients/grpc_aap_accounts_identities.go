@@ -71,8 +71,8 @@ func (c *GrpcAAPClient) DeleteIdentity(accountID int64, identityID string) (*azm
 	return azapiv1aap.MapGrpcIdentityResponseToAgentIdentity(identity)
 }
 
-// GetAllIdentities returns all the identities.
-func (c *GrpcAAPClient) GetAllIdentities(accountID int64) ([]azmodels.Identity, error) {
+// FetchIdentities returns all the identities.
+func (c *GrpcAAPClient) FetchIdentities(accountID int64) ([]azmodels.Identity, error) {
 	return c.GetIdentitiesBy(accountID, "", "", "", "")
 }
 
@@ -108,7 +108,7 @@ func (c *GrpcAAPClient) GetIdentitiesBy(accountID int64, identitySourceID string
 	if identityID != "" {
 		identityGetRequest.IdentityID = &identityID
 	}
-	identityList, err := client.GetAllIdentities(context.Background(), identityGetRequest)
+	identityList, err := client.FetchIdentities(context.Background(), identityGetRequest)
 	if err != nil {
 		return nil, err
 	}

@@ -70,8 +70,8 @@ func (c *GrpcAAPClient) DeleteTenant(accountID int64, tenantID string) (*azmodel
 	return azapiv1aap.MapGrpcTenantResponseToAgentTenant(tenant)
 }
 
-// GetAllTenants returns all the tenants.
-func (c *GrpcAAPClient) GetAllTenants(accountID int64) ([]azmodels.Tenant, error) {
+// GetTenants returns all the tenants.
+func (c *GrpcAAPClient) GetTenants(accountID int64) ([]azmodels.Tenant, error) {
 	return c.GetTenantsBy(accountID, "", "")
 }
 
@@ -101,7 +101,7 @@ func (c *GrpcAAPClient) GetTenantsBy(accountID int64, tenantID string, name stri
 	if tenantID != "" {
 		tenantGetRequest.TenantID = &tenantID
 	}
-	tenantList, err := client.GetAllTenants(context.Background(), tenantGetRequest)
+	tenantList, err := client.GetTenants(context.Background(), tenantGetRequest)
 	if err != nil {
 		return nil, err
 	}

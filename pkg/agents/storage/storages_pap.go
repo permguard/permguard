@@ -28,8 +28,8 @@ type PAPCentralStorage interface {
 	UpdateRepository(repository *azmodels.Repository) (*azmodels.Repository, error)
 	// DeleteRepository deletes an repository.
 	DeleteRepository(accountID int64, repositoryID string) (*azmodels.Repository, error)
-	// GetAllRepositories gets all repositories.
-	GetAllRepositories(accountID int64, fields map[string]any) ([]azmodels.Repository, error)
+	// FetchRepositories gets all repositories.
+	FetchRepositories(accountID int64, fields map[string]any) ([]azmodels.Repository, error)
 
 	// UpdateSchema updates a schema.
 	UpdateSchema(schema *azmodels.Schema) (*azmodels.Schema, error)

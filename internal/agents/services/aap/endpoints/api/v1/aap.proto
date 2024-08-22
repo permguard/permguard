@@ -207,8 +207,8 @@ service V1AAPService {
 	rpc UpdateIdentitySource(IdentitySourceUpdateRequest) returns (IdentitySourceResponse) {}
 	// Delete an identity source
 	rpc DeleteIdentitySource(IdentitySourceDeleteRequest) returns (IdentitySourceResponse) {}
-	// Get all identity sources
-	rpc GetAllIdentitySources(IdentitySourceGetRequest) returns (IdentitySourceListResponse) {}
+	// Fetch identity sources
+	rpc FetchIdentitySources(IdentitySourceGetRequest) returns (IdentitySourceListResponse) {}
 
 	// Create an identity
 	rpc CreateIdentity(IdentityCreateRequest) returns (IdentityResponse) {}
@@ -216,8 +216,8 @@ service V1AAPService {
 	rpc UpdateIdentity(IdentityUpdateRequest) returns (IdentityResponse) {}
 	// Delete an identity
 	rpc DeleteIdentity(IdentityDeleteRequest) returns (IdentityResponse) {}
-	// Get all Identities
-	rpc GetAllIdentities(IdentityGetRequest) returns (IdentityListResponse) {}
+	// Fetch Identities
+	rpc FetchIdentities(IdentityGetRequest) returns (IdentityListResponse) {}
 
 	// Create an tenant
 	rpc CreateTenant(TenantCreateRequest) returns (TenantResponse) {}
@@ -225,6 +225,6 @@ service V1AAPService {
 	rpc UpdateTenant(TenantUpdateRequest) returns (TenantResponse) {}
 	// Delete an tenant
 	rpc DeleteTenant(TenantDeleteRequest) returns (TenantResponse) {}
-	// Get all Tenants
-	rpc GetAllTenants(TenantGetRequest) returns (TenantListResponse) {}
+	// Fetch Tenants
+	rpc GetTenants(TenantGetRequest) returns (TenantListResponse) {}
 }

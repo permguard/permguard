@@ -42,8 +42,8 @@ func (s SQLiteCentralStorageAAP) DeleteIdentitySource(accountID int64, identityS
 	return nil, nil
 }
 
-// GetAllIdentitySources returns all identity sources.
-func (s SQLiteCentralStorageAAP) GetAllIdentitySources(accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error) {
+// FetchIdentitySources returns all identity sources.
+func (s SQLiteCentralStorageAAP) FetchIdentitySources(accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }

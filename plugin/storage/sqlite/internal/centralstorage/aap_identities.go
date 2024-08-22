@@ -38,8 +38,8 @@ func (s SQLiteCentralStorageAAP) DeleteIdentity(accountID int64, identityID stri
 	return nil, nil
 }
 
-// GetAllIdentities returns all identities.
-func (s SQLiteCentralStorageAAP) GetAllIdentities(accountID int64, fields map[string]any) ([]azmodels.Identity, error) {
+// FetchIdentities returns all identities.
+func (s SQLiteCentralStorageAAP) FetchIdentities(accountID int64, fields map[string]any) ([]azmodels.Identity, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }

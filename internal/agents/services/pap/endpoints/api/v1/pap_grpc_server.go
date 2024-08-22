@@ -29,7 +29,7 @@ type PAPService interface {
 	CreateRepository(repository *azmodels.Repository) (*azmodels.Repository, error)
 	UpdateRepository(repository *azmodels.Repository) (*azmodels.Repository, error)
 	DeleteRepository(accountID int64, repositoryID string) (*azmodels.Repository, error)
-	GetAllRepositories(accountID int64, fields map[string]any) ([]azmodels.Repository, error)
+	FetchRepositories(accountID int64, fields map[string]any) ([]azmodels.Repository, error)
 }
 
 // NewV1PAPServer creates a new PAP server.
@@ -74,8 +74,8 @@ func (s V1PAPServer) DeleteRepository(ctx context.Context, repositoryRequest *Re
 	return MapAgentRepositoryToGrpcRepositoryResponse(repository)
 }
 
-// GetAllRepositories returns all the repositories.
-func (s V1PAPServer) GetAllRepositories(ctx context.Context, repositoryRequest *RepositoryGetRequest) (*RepositoryListResponse, error) {
+// FetchRepositories returns all the repositories.
+func (s V1PAPServer) FetchRepositories(ctx context.Context, repositoryRequest *RepositoryGetRequest) (*RepositoryListResponse, error) {
 	fields := map[string]any{}
 	fields[azmodels.FieldRepositoryAccountID] = repositoryRequest.AccountID
 	if repositoryRequest.Name != nil {
@@ -84,7 +84,7 @@ func (s V1PAPServer) GetAllRepositories(ctx context.Context, repositoryRequest *
 	if repositoryRequest.RepositoryID != nil {
 		fields[azmodels.FieldRepositoryRepositoryID] = *repositoryRequest.RepositoryID
 	}
-	repositories, err := s.service.GetAllRepositories(repositoryRequest.AccountID, fields)
+	repositories, err := s.service.FetchRepositories(repositoryRequest.AccountID, fields)
 	if err != nil {
 		return nil, err
 	}
