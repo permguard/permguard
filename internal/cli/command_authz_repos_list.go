@@ -47,7 +47,7 @@ func runECommandForListRepositories(cmd *cobra.Command, v *viper.Viper) error {
 	accountID := v.GetInt64(azconfigs.FlagName(commandNameForRepository, flagCommonAccountID))
 	repositoryID := v.GetString(azconfigs.FlagName(commandNameForRepositoriesList, flagRepositoryID))
 	name := v.GetString(azconfigs.FlagName(commandNameForRepositoriesList, flagCommonName))
-	repositories, err := client.GetRepositoriesBy(accountID, repositoryID, name)
+	repositories, err := client.FetchRepositoriesBy(accountID, repositoryID, name)
 	if err != nil {
 		printer.Error(err)
 		return ErrCommandSilent

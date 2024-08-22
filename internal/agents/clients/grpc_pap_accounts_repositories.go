@@ -72,21 +72,21 @@ func (c *GrpcPAPClient) DeleteRepository(accountID int64, repositoryID string) (
 
 // FetchRepositories returns all the repositories.
 func (c *GrpcPAPClient) FetchRepositories(accountID int64) ([]azmodels.Repository, error) {
-	return c.GetRepositoriesBy(accountID, "", "")
+	return c.FetchRepositoriesBy(accountID, "", "")
 }
 
-// GetRepositoriesByID returns all repositories filtering by repository id.
-func (c *GrpcPAPClient) GetRepositoriesByID(accountID int64, repositoryID string) ([]azmodels.Repository, error) {
-	return c.GetRepositoriesBy(accountID, repositoryID, "")
+// FetchRepositoriesByID returns all repositories filtering by repository id.
+func (c *GrpcPAPClient) FetchRepositoriesByID(accountID int64, repositoryID string) ([]azmodels.Repository, error) {
+	return c.FetchRepositoriesBy(accountID, repositoryID, "")
 }
 
-// GetRepositoriesByName returns all repositories filtering by name.
-func (c *GrpcPAPClient) GetRepositoriesByName(accountID int64, name string) ([]azmodels.Repository, error) {
-	return c.GetRepositoriesBy(accountID, "", name)
+// FetchRepositoriesByName returns all repositories filtering by name.
+func (c *GrpcPAPClient) FetchRepositoriesByName(accountID int64, name string) ([]azmodels.Repository, error) {
+	return c.FetchRepositoriesBy(accountID, "", name)
 }
 
-// GetRepositoriesBy returns all repositories filtering by repository id and name.
-func (c *GrpcPAPClient) GetRepositoriesBy(accountID int64, repositoryID string, name string) ([]azmodels.Repository, error) {
+// FetchRepositoriesBy returns all repositories filtering by repository id and name.
+func (c *GrpcPAPClient) FetchRepositoriesBy(accountID int64, repositoryID string, name string) ([]azmodels.Repository, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err

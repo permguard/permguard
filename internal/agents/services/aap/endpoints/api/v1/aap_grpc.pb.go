@@ -50,7 +50,7 @@ const (
 	V1AAPService_CreateTenant_FullMethodName         = "/accountadministrationpoint.V1AAPService/CreateTenant"
 	V1AAPService_UpdateTenant_FullMethodName         = "/accountadministrationpoint.V1AAPService/UpdateTenant"
 	V1AAPService_DeleteTenant_FullMethodName         = "/accountadministrationpoint.V1AAPService/DeleteTenant"
-	V1AAPService_GetTenants_FullMethodName           = "/accountadministrationpoint.V1AAPService/GetTenants"
+	V1AAPService_FetchTenants_FullMethodName           = "/accountadministrationpoint.V1AAPService/FetchTenants"
 )
 
 // V1AAPServiceClient is the client API for V1AAPService service.
@@ -90,7 +90,7 @@ type V1AAPServiceClient interface {
 	// Delete an tenant
 	DeleteTenant(ctx context.Context, in *TenantDeleteRequest, opts ...grpc.CallOption) (*TenantResponse, error)
 	// Fetch Tenants
-	GetTenants(ctx context.Context, in *TenantGetRequest, opts ...grpc.CallOption) (*TenantListResponse, error)
+	FetchTenants(ctx context.Context, in *TenantGetRequest, opts ...grpc.CallOption) (*TenantListResponse, error)
 }
 
 type v1AAPServiceClient struct {
@@ -260,10 +260,10 @@ func (c *v1AAPServiceClient) DeleteTenant(ctx context.Context, in *TenantDeleteR
 	return out, nil
 }
 
-func (c *v1AAPServiceClient) GetTenants(ctx context.Context, in *TenantGetRequest, opts ...grpc.CallOption) (*TenantListResponse, error) {
+func (c *v1AAPServiceClient) FetchTenants(ctx context.Context, in *TenantGetRequest, opts ...grpc.CallOption) (*TenantListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(TenantListResponse)
-	err := c.cc.Invoke(ctx, V1AAPService_GetTenants_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, V1AAPService_FetchTenants_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -307,7 +307,7 @@ type V1AAPServiceServer interface {
 	// Delete an tenant
 	DeleteTenant(context.Context, *TenantDeleteRequest) (*TenantResponse, error)
 	// Fetch Tenants
-	GetTenants(context.Context, *TenantGetRequest) (*TenantListResponse, error)
+	FetchTenants(context.Context, *TenantGetRequest) (*TenantListResponse, error)
 	mustEmbedUnimplementedV1AAPServiceServer()
 }
 
@@ -363,8 +363,8 @@ func (UnimplementedV1AAPServiceServer) UpdateTenant(context.Context, *TenantUpda
 func (UnimplementedV1AAPServiceServer) DeleteTenant(context.Context, *TenantDeleteRequest) (*TenantResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteTenant not implemented")
 }
-func (UnimplementedV1AAPServiceServer) GetTenants(context.Context, *TenantGetRequest) (*TenantListResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetTenants not implemented")
+func (UnimplementedV1AAPServiceServer) FetchTenants(context.Context, *TenantGetRequest) (*TenantListResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FetchTenants not implemented")
 }
 func (UnimplementedV1AAPServiceServer) mustEmbedUnimplementedV1AAPServiceServer() {}
 func (UnimplementedV1AAPServiceServer) testEmbeddedByValue()                      {}
@@ -650,20 +650,20 @@ func _V1AAPService_DeleteTenant_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_GetTenants_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _V1AAPService_FetchTenants_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TenantGetRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(V1AAPServiceServer).GetTenants(ctx, in)
+		return srv.(V1AAPServiceServer).FetchTenants(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: V1AAPService_GetTenants_FullMethodName,
+		FullMethod: V1AAPService_FetchTenants_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1AAPServiceServer).GetTenants(ctx, req.(*TenantGetRequest))
+		return srv.(V1AAPServiceServer).FetchTenants(ctx, req.(*TenantGetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -732,8 +732,8 @@ var V1AAPService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _V1AAPService_DeleteTenant_Handler,
 		},
 		{
-			MethodName: "GetTenants",
-			Handler:    _V1AAPService_GetTenants_Handler,
+			MethodName: "FetchTenants",
+			Handler:    _V1AAPService_FetchTenants_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

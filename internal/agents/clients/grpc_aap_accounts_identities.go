@@ -73,21 +73,21 @@ func (c *GrpcAAPClient) DeleteIdentity(accountID int64, identityID string) (*azm
 
 // FetchIdentities returns all the identities.
 func (c *GrpcAAPClient) FetchIdentities(accountID int64) ([]azmodels.Identity, error) {
-	return c.GetIdentitiesBy(accountID, "", "", "", "")
+	return c.FetchIdentitiesBy(accountID, "", "", "", "")
 }
 
-// GetIdentitiesByID returns all identities filtering by identity id.
-func (c *GrpcAAPClient) GetIdentitiesByID(accountID int64, identityID string) ([]azmodels.Identity, error) {
-	return c.GetIdentitiesBy(accountID, "", identityID, "", "")
+// FetchIdentitiesByID returns all identities filtering by identity id.
+func (c *GrpcAAPClient) FetchIdentitiesByID(accountID int64, identityID string) ([]azmodels.Identity, error) {
+	return c.FetchIdentitiesBy(accountID, "", identityID, "", "")
 }
 
-// GetIdentitiesByEmail returns all identities filtering by name.
-func (c *GrpcAAPClient) GetIdentitiesByEmail(accountID int64, name string) ([]azmodels.Identity, error) {
-	return c.GetIdentitiesBy(accountID, "", "", "", name)
+// FetchIdentitiesByEmail returns all identities filtering by name.
+func (c *GrpcAAPClient) FetchIdentitiesByEmail(accountID int64, name string) ([]azmodels.Identity, error) {
+	return c.FetchIdentitiesBy(accountID, "", "", "", name)
 }
 
-// GetIdentitiesBy returns all identities filtering by all criteria.
-func (c *GrpcAAPClient) GetIdentitiesBy(accountID int64, identitySourceID string, identityID string, kind string, name string) ([]azmodels.Identity, error) {
+// FetchIdentitiesBy returns all identities filtering by all criteria.
+func (c *GrpcAAPClient) FetchIdentitiesBy(accountID int64, identitySourceID string, identityID string, kind string, name string) ([]azmodels.Identity, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err

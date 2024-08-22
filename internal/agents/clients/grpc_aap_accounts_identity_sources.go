@@ -72,21 +72,21 @@ func (c *GrpcAAPClient) DeleteIdentitySource(accountID int64, identitySourceID s
 
 // FetchIdentitySources returns all the identity sources.
 func (c *GrpcAAPClient) FetchIdentitySources(accountID int64) ([]azmodels.IdentitySource, error) {
-	return c.GetIdentitySourcesBy(accountID, "", "")
+	return c.FetchIdentitySourcesBy(accountID, "", "")
 }
 
-// GetIdentitySourcesByID returns all identity sources filtering by identity source id.
-func (c *GrpcAAPClient) GetIdentitySourcesByID(accountID int64, identitySourceID string) ([]azmodels.IdentitySource, error) {
-	return c.GetIdentitySourcesBy(accountID, identitySourceID, "")
+// FetchIdentitySourcesByID returns all identity sources filtering by identity source id.
+func (c *GrpcAAPClient) FetchIdentitySourcesByID(accountID int64, identitySourceID string) ([]azmodels.IdentitySource, error) {
+	return c.FetchIdentitySourcesBy(accountID, identitySourceID, "")
 }
 
-// GetIdentitySourcesByName returns all identity sources filtering by name.
-func (c *GrpcAAPClient) GetIdentitySourcesByName(accountID int64, name string) ([]azmodels.IdentitySource, error) {
-	return c.GetIdentitySourcesBy(accountID, "", name)
+// FetchIdentitySourcesByName returns all identity sources filtering by name.
+func (c *GrpcAAPClient) FetchIdentitySourcesByName(accountID int64, name string) ([]azmodels.IdentitySource, error) {
+	return c.FetchIdentitySourcesBy(accountID, "", name)
 }
 
-// GetIdentitySourcesBy returns all identity sources filtering by identity source id and name.
-func (c *GrpcAAPClient) GetIdentitySourcesBy(accountID int64, identitySourceID string, name string) ([]azmodels.IdentitySource, error) {
+// FetchIdentitySourcesBy returns all identity sources filtering by identity source id and name.
+func (c *GrpcAAPClient) FetchIdentitySourcesBy(accountID int64, identitySourceID string, name string) ([]azmodels.IdentitySource, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err

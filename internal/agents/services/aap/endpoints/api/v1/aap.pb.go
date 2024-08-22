@@ -694,7 +694,7 @@ func (*TenantListResponse) Descriptor() ([]byte, []int) {
 	return file_internal_agents_services_aap_endpoints_api_v1_aap_proto_rawDescGZIP(), []int{10}
 }
 
-func (x *TenantListResponse) GetTenants() []*TenantResponse {
+func (x *TenantListResponse) FetchTenants() []*TenantResponse {
 	if x != nil {
 		return x.Tenants
 	}
@@ -1062,7 +1062,7 @@ func (*IdentitySourceListResponse) Descriptor() ([]byte, []int) {
 	return file_internal_agents_services_aap_endpoints_api_v1_aap_proto_rawDescGZIP(), []int{16}
 }
 
-func (x *IdentitySourceListResponse) GetIdentitySources() []*IdentitySourceResponse {
+func (x *IdentitySourceListResponse) FetchIdentitySources() []*IdentitySourceResponse {
 	if x != nil {
 		return x.IdentitySources
 	}
@@ -1486,7 +1486,7 @@ func (*IdentityListResponse) Descriptor() ([]byte, []int) {
 	return file_internal_agents_services_aap_endpoints_api_v1_aap_proto_rawDescGZIP(), []int{22}
 }
 
-func (x *IdentityListResponse) GetIdentities() []*IdentityResponse {
+func (x *IdentityListResponse) FetchIdentities() []*IdentityResponse {
 	if x != nil {
 		return x.Identities
 	}
@@ -1888,7 +1888,7 @@ var file_internal_agents_services_aap_endpoints_api_v1_aap_proto_depIdxs = []int
 	6,  // 23: accountadministrationpoint.V1AAPService.CreateTenant:input_type -> accountadministrationpoint.TenantCreateRequest
 	7,  // 24: accountadministrationpoint.V1AAPService.UpdateTenant:input_type -> accountadministrationpoint.TenantUpdateRequest
 	8,  // 25: accountadministrationpoint.V1AAPService.DeleteTenant:input_type -> accountadministrationpoint.TenantDeleteRequest
-	5,  // 26: accountadministrationpoint.V1AAPService.GetTenants:input_type -> accountadministrationpoint.TenantGetRequest
+	5,  // 26: accountadministrationpoint.V1AAPService.FetchTenants:input_type -> accountadministrationpoint.TenantGetRequest
 	4,  // 27: accountadministrationpoint.V1AAPService.CreateAccount:output_type -> accountadministrationpoint.AccountResponse
 	4,  // 28: accountadministrationpoint.V1AAPService.UpdateAccount:output_type -> accountadministrationpoint.AccountResponse
 	4,  // 29: accountadministrationpoint.V1AAPService.DeleteAccount:output_type -> accountadministrationpoint.AccountResponse
@@ -1904,7 +1904,7 @@ var file_internal_agents_services_aap_endpoints_api_v1_aap_proto_depIdxs = []int
 	9,  // 39: accountadministrationpoint.V1AAPService.CreateTenant:output_type -> accountadministrationpoint.TenantResponse
 	9,  // 40: accountadministrationpoint.V1AAPService.UpdateTenant:output_type -> accountadministrationpoint.TenantResponse
 	9,  // 41: accountadministrationpoint.V1AAPService.DeleteTenant:output_type -> accountadministrationpoint.TenantResponse
-	10, // 42: accountadministrationpoint.V1AAPService.GetTenants:output_type -> accountadministrationpoint.TenantListResponse
+	10, // 42: accountadministrationpoint.V1AAPService.FetchTenants:output_type -> accountadministrationpoint.TenantListResponse
 	27, // [27:43] is the sub-list for method output_type
 	11, // [11:27] is the sub-list for method input_type
 	11, // [11:11] is the sub-list for extension type_name

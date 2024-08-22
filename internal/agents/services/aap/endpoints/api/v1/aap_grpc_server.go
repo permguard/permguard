@@ -46,7 +46,7 @@ type AAPService interface {
 	CreateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error)
 	UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error)
 	DeleteTenant(accountID int64, tenantID string) (*azmodels.Tenant, error)
-	GetTenants(accountID int64, fields map[string]any) ([]azmodels.Tenant, error)
+	FetchTenants(accountID int64, fields map[string]any) ([]azmodels.Tenant, error)
 }
 
 // NewV1AAPServer creates a new AAP server.
@@ -258,8 +258,8 @@ func (s V1AAPServer) DeleteTenant(ctx context.Context, tenantRequest *TenantDele
 	return MapAgentTenantToGrpcTenantResponse(tenant)
 }
 
-// GetTenants returns all the tenants.
-func (s V1AAPServer) GetTenants(ctx context.Context, tenantRequest *TenantGetRequest) (*TenantListResponse, error) {
+// FetchTenants returns all the tenants.
+func (s V1AAPServer) FetchTenants(ctx context.Context, tenantRequest *TenantGetRequest) (*TenantListResponse, error) {
 	fields := map[string]any{}
 	fields[azmodels.FieldTenantAccountID] = tenantRequest.AccountID
 	if tenantRequest.Name != nil {
@@ -268,7 +268,7 @@ func (s V1AAPServer) GetTenants(ctx context.Context, tenantRequest *TenantGetReq
 	if tenantRequest.TenantID != nil {
 		fields[azmodels.FieldTenantTenantID] = *tenantRequest.TenantID
 	}
-	tenants, err := s.service.GetTenants(tenantRequest.AccountID, fields)
+	tenants, err := s.service.FetchTenants(tenantRequest.AccountID, fields)
 	if err != nil {
 		return nil, err
 	}
