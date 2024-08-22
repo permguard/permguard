@@ -46,7 +46,8 @@ var errorCodes = map[string]string{
 	"05100": "stroage: generic error",
 	"05101": "storage: entity mapping error",
 	"05110": "storage: constraint error",
-	"05111": "stroage: unique constraint violation",
+	"05111": "stroage: foreign key constraint violation",
+	"05112": "stroage: unique constraint violation",
 	"05120": "stroage: entity not found in storage",
 
 	// 09xxx: Plugin Errors
@@ -86,13 +87,14 @@ var (
 	ErrClientUUID   error = NewSystemError("04112")
 	ErrClientName   error = NewSystemError("04113")
 	// 05xxx server errors.
-	ErrServerGeneric           error = NewSystemError("05000")
-	ErrServerInfrastructure    error = NewSystemError("05001")
-	ErrStorageGeneric          error = NewSystemError("05100")
-	ErrStorageEntityMapping    error = NewSystemError("05101")
-	ErrStorageConstraint       error = NewSystemError("05110")
-	ErrStorageConstraintUnique error = NewSystemError("05111")
-	ErrStorageNotFound         error = NewSystemError("05120")
+	ErrServerGeneric       			error = NewSystemError("05000")
+	ErrServerInfrastructure			error = NewSystemError("05001")
+	ErrStorageGeneric      			error = NewSystemError("05100")
+	ErrStorageEntityMapping			error = NewSystemError("05101")
+	ErrStorageConstraint   			error = NewSystemError("05110")
+	ErrStorageConstraintForeignKey	error = NewSystemError("05111")
+	ErrStorageConstraintUnique 		error = NewSystemError("05112")
+	ErrStorageNotFound         		error = NewSystemError("05120")
 	// 09xxx plugin errors.
 	ErrPluginGeneric error = NewSystemError("09000")
 )

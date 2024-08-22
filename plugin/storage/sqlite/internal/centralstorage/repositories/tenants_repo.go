@@ -65,7 +65,8 @@ func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant,
 		if isCreate {
 			action = "create"
 		}
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to %s tenant - operation '%s-tenant' encountered an issue (%s).", action, action, LogTenantEntry(tenant)), err)
+		params := map[string]string{WrapSqlite3ParamForeignKey: "account id"}
+		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s tenant - operation '%s-tenant' encountered an issue (%s).", action, action, LogTenantEntry(tenant)), err, params)
 	}
 
 	var dbTenant Tenant
@@ -107,7 +108,7 @@ func (r *Repo) DeleteTenant(tx *sql.Tx, accountID int64, tenantID string) (*Tena
 	}
 	rows, err := res.RowsAffected()
 	if err != nil || rows != 1 {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete tenant - operation 'delete-tenant' encountered an issue (id: %s).", tenantID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete tenant - operation 'delete-tenant' could not find the tenant (id: %s).", tenantID), err)
 	}
 	return &dbTenant, nil
 }
