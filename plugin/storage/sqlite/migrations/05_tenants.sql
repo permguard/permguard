@@ -52,7 +52,7 @@ AFTER INSERT ON tenants
 FOR EACH ROW
 BEGIN
     INSERT INTO tenant_changestreams (change_type, tenant_id, created_at, updated_at, name, account_id)
-    	VALUES ("INSERT", NEW.tenant_id, NEW.created_at, NEW.updated_at, NEW.name, NEW.account_id);
+    	VALUES ('INSERT', NEW.tenant_id, NEW.created_at, NEW.updated_at, NEW.name, NEW.account_id);
 END;
 -- +goose StatementEnd
 
@@ -64,7 +64,7 @@ FOR EACH ROW
 BEGIN
     UPDATE tenants SET updated_at = CURRENT_TIMESTAMP WHERE tenant_id = OLD.tenant_id;
     INSERT INTO tenant_changestreams (change_type, tenant_id, created_at, updated_at, name, account_id)
-	    VALUES ("UPDATE", NEW.tenant_id, NEW.created_at, CURRENT_TIMESTAMP, NEW.name, NEW.account_id);
+	    VALUES ('UPDATE', NEW.tenant_id, NEW.created_at, CURRENT_TIMESTAMP, NEW.name, NEW.account_id);
 END;
 -- +goose StatementEnd
 
@@ -75,7 +75,7 @@ AFTER DELETE ON tenants
 FOR EACH ROW
 BEGIN
     INSERT INTO tenant_changestreams (change_type, tenant_id, created_at, updated_at, name, account_id)
-    	VALUES ("DELETE", OLD.tenant_id, OLD.created_at, OLD.updated_at, OLD.name, OLD.account_id);
+    	VALUES ('DELETE', OLD.tenant_id, OLD.created_at, OLD.updated_at, OLD.name, OLD.account_id);
 END;
 -- +goose StatementEnd
 
