@@ -71,27 +71,29 @@ func (c *GrpcAAPClient) DeleteTenant(accountID int64, tenantID string) (*azmodel
 }
 
 // FetchTenants returns all the tenants.
-func (c *GrpcAAPClient) FetchTenants(accountID int64) ([]azmodels.Tenant, error) {
-	return c.FetchTenantsBy(accountID, "", "")
+func (c *GrpcAAPClient) FetchTenants(page int32, pageSize int32, accountID int64) ([]azmodels.Tenant, error) {
+	return c.FetchTenantsBy(page, pageSize, accountID, "", "")
 }
 
 // FetchTenantsByID returns all tenants filtering by tenant id.
-func (c *GrpcAAPClient) FetchTenantsByID(accountID int64, tenantID string) ([]azmodels.Tenant, error) {
-	return c.FetchTenantsBy(accountID, tenantID, "")
+func (c *GrpcAAPClient) FetchTenantsByID(page int32, pageSize int32, accountID int64, tenantID string) ([]azmodels.Tenant, error) {
+	return c.FetchTenantsBy(page, pageSize, accountID, tenantID, "")
 }
 
 // FetchTenantsByName returns all tenants filtering by name.
-func (c *GrpcAAPClient) FetchTenantsByName(accountID int64, name string) ([]azmodels.Tenant, error) {
-	return c.FetchTenantsBy(accountID, "", name)
+func (c *GrpcAAPClient) FetchTenantsByName(page int32, pageSize int32, accountID int64, name string) ([]azmodels.Tenant, error) {
+	return c.FetchTenantsBy(page, pageSize, accountID, "", name)
 }
 
 // FetchTenantsBy returns all tenants filtering by tenant id and name.
-func (c *GrpcAAPClient) FetchTenantsBy(accountID int64, tenantID string, name string) ([]azmodels.Tenant, error) {
+func (c *GrpcAAPClient) FetchTenantsBy(page int32, pageSize int32, accountID int64, tenantID string, name string) ([]azmodels.Tenant, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	tenantFetchRequest := &azapiv1aap.TenantFetchRequest{}
+	tenantFetchRequest.Page = &page
+	tenantFetchRequest.PageSize = &pageSize
 	if accountID > 0 {
 		tenantFetchRequest.AccountID = accountID
 	}
