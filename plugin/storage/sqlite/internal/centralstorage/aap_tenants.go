@@ -42,8 +42,8 @@ func (s SQLiteCentralStorageAAP) DeleteTenant(accountID int64, tenantID string) 
 	return nil, nil
 }
 
-// GetAllTenants returns all tenants.
-func (s SQLiteCentralStorageAAP) GetAllTenants(accountID int64, fields map[string]any) ([]azmodels.Tenant, error) {
+// GetTenants returns all tenants.
+func (s SQLiteCentralStorageAAP) GetTenants(accountID int64, fields map[string]any) ([]azmodels.Tenant, error) {
 	// logger := s.ctx.GetLogger()
 	return nil, nil
 }

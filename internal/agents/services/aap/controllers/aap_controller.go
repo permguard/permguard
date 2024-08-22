@@ -77,9 +77,9 @@ func (s AAPController) DeleteIdentitySource(accountID int64, identitySourceID st
 	return s.storage.DeleteIdentitySource(accountID, identitySourceID)
 }
 
-// GetAllIdentitySources returns all identity sources filtering by search criteria.
-func (s AAPController) GetAllIdentitySources(accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error) {
-	return s.storage.GetAllIdentitySources(accountID, fields)
+// FetchIdentitySources returns all identity sources filtering by search criteria.
+func (s AAPController) FetchIdentitySources(accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error) {
+	return s.storage.FetchIdentitySources(accountID, fields)
 }
 
 // CreateIdentity creates a new identity.
@@ -97,9 +97,9 @@ func (s AAPController) DeleteIdentity(accountID int64, identityID string) (*azmo
 	return s.storage.DeleteIdentity(accountID, identityID)
 }
 
-// GetAllIdentities returns all identities filtering by search criteria.
-func (s AAPController) GetAllIdentities(accountID int64, fields map[string]any) ([]azmodels.Identity, error) {
-	return s.storage.GetAllIdentities(accountID, fields)
+// FetchIdentities returns all identities filtering by search criteria.
+func (s AAPController) FetchIdentities(accountID int64, fields map[string]any) ([]azmodels.Identity, error) {
+	return s.storage.FetchIdentities(accountID, fields)
 }
 
 // CreateTenant creates a new tenant.
@@ -117,7 +117,7 @@ func (s AAPController) DeleteTenant(accountID int64, tenantID string) (*azmodels
 	return s.storage.DeleteTenant(accountID, tenantID)
 }
 
-// GetAllTenants returns all tenants filtering by search criteria.
-func (s AAPController) GetAllTenants(accountID int64, fields map[string]any) ([]azmodels.Tenant, error) {
-	return s.storage.GetAllTenants(accountID, fields)
+// GetTenants returns all tenants filtering by search criteria.
+func (s AAPController) GetTenants(accountID int64, fields map[string]any) ([]azmodels.Tenant, error) {
+	return s.storage.GetTenants(accountID, fields)
 }

@@ -70,8 +70,8 @@ func (c *GrpcAAPClient) DeleteIdentitySource(accountID int64, identitySourceID s
 	return azapiv1aap.MapGrpcIdentitySourceResponseToAgentIdentitySource(identitySource)
 }
 
-// GetAllIdentitySources returns all the identity sources.
-func (c *GrpcAAPClient) GetAllIdentitySources(accountID int64) ([]azmodels.IdentitySource, error) {
+// FetchIdentitySources returns all the identity sources.
+func (c *GrpcAAPClient) FetchIdentitySources(accountID int64) ([]azmodels.IdentitySource, error) {
 	return c.GetIdentitySourcesBy(accountID, "", "")
 }
 
@@ -101,7 +101,7 @@ func (c *GrpcAAPClient) GetIdentitySourcesBy(accountID int64, identitySourceID s
 	if identitySourceID != "" {
 		identitySourceGetRequest.IdentitySourceID = &identitySourceID
 	}
-	identitySourceList, err := client.GetAllIdentitySources(context.Background(), identitySourceGetRequest)
+	identitySourceList, err := client.FetchIdentitySources(context.Background(), identitySourceGetRequest)
 	if err != nil {
 		return nil, err
 	}

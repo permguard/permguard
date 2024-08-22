@@ -37,8 +37,8 @@ type AAPCentralStorage interface {
 	UpdateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error)
 	// DeleteIdentitySource deletes an identity source.
 	DeleteIdentitySource(accountID int64, identitySourceID string) (*azmodels.IdentitySource, error)
-	// GetAllIdentitySources gets all identity sources.
-	GetAllIdentitySources(accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error)
+	// FetchIdentitySources gets all identity sources.
+	FetchIdentitySources(accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error)
 
 	// CreateIdentity creates a new identity.
 	CreateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error)
@@ -46,8 +46,8 @@ type AAPCentralStorage interface {
 	UpdateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error)
 	// DeleteIdentity deletes an identity.
 	DeleteIdentity(accountID int64, identityID string) (*azmodels.Identity, error)
-	// GetAllIdentities gets all identities.
-	GetAllIdentities(accountID int64, fields map[string]any) ([]azmodels.Identity, error)
+	// FetchIdentities gets all identities.
+	FetchIdentities(accountID int64, fields map[string]any) ([]azmodels.Identity, error)
 
 	// CreateTenant creates a new tenant.
 	CreateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error)
@@ -55,6 +55,6 @@ type AAPCentralStorage interface {
 	UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error)
 	// DeleteTenant deletes a tenant.
 	DeleteTenant(accountID int64, tenantID string) (*azmodels.Tenant, error)
-	// GetAllTenants gets all tenants.
-	GetAllTenants(accountID int64, fields map[string]any) ([]azmodels.Tenant, error)
+	// GetTenants gets all tenants.
+	GetTenants(accountID int64, fields map[string]any) ([]azmodels.Tenant, error)
 }

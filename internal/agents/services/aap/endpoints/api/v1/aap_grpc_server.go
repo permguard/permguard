@@ -36,17 +36,17 @@ type AAPService interface {
 	CreateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error)
 	UpdateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error)
 	DeleteIdentitySource(accountID int64, identitySourceID string) (*azmodels.IdentitySource, error)
-	GetAllIdentitySources(accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error)
+	FetchIdentitySources(accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error)
 
 	CreateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error)
 	UpdateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error)
 	DeleteIdentity(accountID int64, identityID string) (*azmodels.Identity, error)
-	GetAllIdentities(accountID int64, fields map[string]any) ([]azmodels.Identity, error)
+	FetchIdentities(accountID int64, fields map[string]any) ([]azmodels.Identity, error)
 
 	CreateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error)
 	UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error)
 	DeleteTenant(accountID int64, tenantID string) (*azmodels.Tenant, error)
-	GetAllTenants(accountID int64, fields map[string]any) ([]azmodels.Tenant, error)
+	GetTenants(accountID int64, fields map[string]any) ([]azmodels.Tenant, error)
 }
 
 // NewV1AAPServer creates a new AAP server.
@@ -144,8 +144,8 @@ func (s V1AAPServer) DeleteIdentitySource(ctx context.Context, identitySourceReq
 	return MapAgentIdentitySourceToGrpcIdentitySourceResponse(identitySource)
 }
 
-// GetAllIdentitySources returns all the identity sources.
-func (s V1AAPServer) GetAllIdentitySources(ctx context.Context, identitySourceRequest *IdentitySourceGetRequest) (*IdentitySourceListResponse, error) {
+// FetchIdentitySources returns all the identity sources.
+func (s V1AAPServer) FetchIdentitySources(ctx context.Context, identitySourceRequest *IdentitySourceGetRequest) (*IdentitySourceListResponse, error) {
 	fields := map[string]any{}
 	fields[azmodels.FieldIdentitySourceAccountID] = identitySourceRequest.AccountID
 	if identitySourceRequest.Name != nil {
@@ -154,7 +154,7 @@ func (s V1AAPServer) GetAllIdentitySources(ctx context.Context, identitySourceRe
 	if identitySourceRequest.IdentitySourceID != nil {
 		fields[azmodels.FieldIdentitySourceIdentitySourceID] = *identitySourceRequest.IdentitySourceID
 	}
-	identitySources, err := s.service.GetAllIdentitySources(identitySourceRequest.AccountID, fields)
+	identitySources, err := s.service.FetchIdentitySources(identitySourceRequest.AccountID, fields)
 	if err != nil {
 		return nil, err
 	}
@@ -198,8 +198,8 @@ func (s V1AAPServer) DeleteIdentity(ctx context.Context, identityRequest *Identi
 	return MapAgentIdentityToGrpcIdentityResponse(identity)
 }
 
-// GetAllIdentities returns all the identities.
-func (s V1AAPServer) GetAllIdentities(ctx context.Context, identityRequest *IdentityGetRequest) (*IdentityListResponse, error) {
+// FetchIdentities returns all the identities.
+func (s V1AAPServer) FetchIdentities(ctx context.Context, identityRequest *IdentityGetRequest) (*IdentityListResponse, error) {
 	fields := map[string]any{}
 	fields[azmodels.FieldIdentityAccountID] = identityRequest.AccountID
 	if identityRequest.IdentitySourceID != nil {
@@ -214,7 +214,7 @@ func (s V1AAPServer) GetAllIdentities(ctx context.Context, identityRequest *Iden
 	if identityRequest.Name != nil {
 		fields[azmodels.FieldIdentityName] = *identityRequest.Name
 	}
-	identities, err := s.service.GetAllIdentities(identityRequest.AccountID, fields)
+	identities, err := s.service.FetchIdentities(identityRequest.AccountID, fields)
 	if err != nil {
 		return nil, err
 	}
@@ -258,8 +258,8 @@ func (s V1AAPServer) DeleteTenant(ctx context.Context, tenantRequest *TenantDele
 	return MapAgentTenantToGrpcTenantResponse(tenant)
 }
 
-// GetAllTenants returns all the tenants.
-func (s V1AAPServer) GetAllTenants(ctx context.Context, tenantRequest *TenantGetRequest) (*TenantListResponse, error) {
+// GetTenants returns all the tenants.
+func (s V1AAPServer) GetTenants(ctx context.Context, tenantRequest *TenantGetRequest) (*TenantListResponse, error) {
 	fields := map[string]any{}
 	fields[azmodels.FieldTenantAccountID] = tenantRequest.AccountID
 	if tenantRequest.Name != nil {
@@ -268,7 +268,7 @@ func (s V1AAPServer) GetAllTenants(ctx context.Context, tenantRequest *TenantGet
 	if tenantRequest.TenantID != nil {
 		fields[azmodels.FieldTenantTenantID] = *tenantRequest.TenantID
 	}
-	tenants, err := s.service.GetAllTenants(tenantRequest.AccountID, fields)
+	tenants, err := s.service.GetTenants(tenantRequest.AccountID, fields)
 	if err != nil {
 		return nil, err
 	}

@@ -55,9 +55,9 @@ func (s PAPController) DeleteRepository(accountID int64, repositoryID string) (*
 	return s.storage.DeleteRepository(accountID, repositoryID)
 }
 
-// GetAllRepositories gets all repositories.
-func (s PAPController) GetAllRepositories(accountID int64, fields map[string]any) ([]azmodels.Repository, error) {
-	return s.storage.GetAllRepositories(accountID, fields)
+// FetchRepositories gets all repositories.
+func (s PAPController) FetchRepositories(accountID int64, fields map[string]any) ([]azmodels.Repository, error) {
+	return s.storage.FetchRepositories(accountID, fields)
 }
 
 // UpdateSchema updates a schema.

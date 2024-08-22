@@ -73,6 +73,6 @@ service V1PAPService {
 	rpc UpdateRepository(RepositoryUpdateRequest) returns (RepositoryResponse) {}
 	// Delete an repository
 	rpc DeleteRepository(RepositoryDeleteRequest) returns (RepositoryResponse) {}
-	// Get all repositories
-	rpc GetAllRepositories(RepositoryGetRequest) returns (RepositoryListResponse) {}
+	// Fetch repositories
+	rpc FetchRepositories(RepositoryGetRequest) returns (RepositoryListResponse) {}
 }

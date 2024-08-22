@@ -35,10 +35,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	V1PAPService_CreateRepository_FullMethodName   = "/policyadministrationpoint.V1PAPService/CreateRepository"
-	V1PAPService_UpdateRepository_FullMethodName   = "/policyadministrationpoint.V1PAPService/UpdateRepository"
-	V1PAPService_DeleteRepository_FullMethodName   = "/policyadministrationpoint.V1PAPService/DeleteRepository"
-	V1PAPService_GetAllRepositories_FullMethodName = "/policyadministrationpoint.V1PAPService/GetAllRepositories"
+	V1PAPService_CreateRepository_FullMethodName  = "/policyadministrationpoint.V1PAPService/CreateRepository"
+	V1PAPService_UpdateRepository_FullMethodName  = "/policyadministrationpoint.V1PAPService/UpdateRepository"
+	V1PAPService_DeleteRepository_FullMethodName  = "/policyadministrationpoint.V1PAPService/DeleteRepository"
+	V1PAPService_FetchRepositories_FullMethodName = "/policyadministrationpoint.V1PAPService/FetchRepositories"
 )
 
 // V1PAPServiceClient is the client API for V1PAPService service.
@@ -53,8 +53,8 @@ type V1PAPServiceClient interface {
 	UpdateRepository(ctx context.Context, in *RepositoryUpdateRequest, opts ...grpc.CallOption) (*RepositoryResponse, error)
 	// Delete an repository
 	DeleteRepository(ctx context.Context, in *RepositoryDeleteRequest, opts ...grpc.CallOption) (*RepositoryResponse, error)
-	// Get all repositories
-	GetAllRepositories(ctx context.Context, in *RepositoryGetRequest, opts ...grpc.CallOption) (*RepositoryListResponse, error)
+	// Fetch repositories
+	FetchRepositories(ctx context.Context, in *RepositoryGetRequest, opts ...grpc.CallOption) (*RepositoryListResponse, error)
 }
 
 type v1PAPServiceClient struct {
@@ -95,10 +95,10 @@ func (c *v1PAPServiceClient) DeleteRepository(ctx context.Context, in *Repositor
 	return out, nil
 }
 
-func (c *v1PAPServiceClient) GetAllRepositories(ctx context.Context, in *RepositoryGetRequest, opts ...grpc.CallOption) (*RepositoryListResponse, error) {
+func (c *v1PAPServiceClient) FetchRepositories(ctx context.Context, in *RepositoryGetRequest, opts ...grpc.CallOption) (*RepositoryListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RepositoryListResponse)
-	err := c.cc.Invoke(ctx, V1PAPService_GetAllRepositories_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, V1PAPService_FetchRepositories_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -117,8 +117,8 @@ type V1PAPServiceServer interface {
 	UpdateRepository(context.Context, *RepositoryUpdateRequest) (*RepositoryResponse, error)
 	// Delete an repository
 	DeleteRepository(context.Context, *RepositoryDeleteRequest) (*RepositoryResponse, error)
-	// Get all repositories
-	GetAllRepositories(context.Context, *RepositoryGetRequest) (*RepositoryListResponse, error)
+	// Fetch repositories
+	FetchRepositories(context.Context, *RepositoryGetRequest) (*RepositoryListResponse, error)
 	mustEmbedUnimplementedV1PAPServiceServer()
 }
 
@@ -138,8 +138,8 @@ func (UnimplementedV1PAPServiceServer) UpdateRepository(context.Context, *Reposi
 func (UnimplementedV1PAPServiceServer) DeleteRepository(context.Context, *RepositoryDeleteRequest) (*RepositoryResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteRepository not implemented")
 }
-func (UnimplementedV1PAPServiceServer) GetAllRepositories(context.Context, *RepositoryGetRequest) (*RepositoryListResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetAllRepositories not implemented")
+func (UnimplementedV1PAPServiceServer) FetchRepositories(context.Context, *RepositoryGetRequest) (*RepositoryListResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FetchRepositories not implemented")
 }
 func (UnimplementedV1PAPServiceServer) mustEmbedUnimplementedV1PAPServiceServer() {}
 func (UnimplementedV1PAPServiceServer) testEmbeddedByValue()                      {}
@@ -216,20 +216,20 @@ func _V1PAPService_DeleteRepository_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1PAPService_GetAllRepositories_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _V1PAPService_FetchRepositories_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RepositoryGetRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(V1PAPServiceServer).GetAllRepositories(ctx, in)
+		return srv.(V1PAPServiceServer).FetchRepositories(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: V1PAPService_GetAllRepositories_FullMethodName,
+		FullMethod: V1PAPService_FetchRepositories_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1PAPServiceServer).GetAllRepositories(ctx, req.(*RepositoryGetRequest))
+		return srv.(V1PAPServiceServer).FetchRepositories(ctx, req.(*RepositoryGetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -254,8 +254,8 @@ var V1PAPService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _V1PAPService_DeleteRepository_Handler,
 		},
 		{
-			MethodName: "GetAllRepositories",
-			Handler:    _V1PAPService_GetAllRepositories_Handler,
+			MethodName: "FetchRepositories",
+			Handler:    _V1PAPService_FetchRepositories_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

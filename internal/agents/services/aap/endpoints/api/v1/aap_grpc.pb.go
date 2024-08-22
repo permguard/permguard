@@ -35,22 +35,22 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	V1AAPService_CreateAccount_FullMethodName         = "/accountadministrationpoint.V1AAPService/CreateAccount"
-	V1AAPService_UpdateAccount_FullMethodName         = "/accountadministrationpoint.V1AAPService/UpdateAccount"
-	V1AAPService_DeleteAccount_FullMethodName         = "/accountadministrationpoint.V1AAPService/DeleteAccount"
-	V1AAPService_FetchAccounts_FullMethodName         = "/accountadministrationpoint.V1AAPService/FetchAccounts"
-	V1AAPService_CreateIdentitySource_FullMethodName  = "/accountadministrationpoint.V1AAPService/CreateIdentitySource"
-	V1AAPService_UpdateIdentitySource_FullMethodName  = "/accountadministrationpoint.V1AAPService/UpdateIdentitySource"
-	V1AAPService_DeleteIdentitySource_FullMethodName  = "/accountadministrationpoint.V1AAPService/DeleteIdentitySource"
-	V1AAPService_GetAllIdentitySources_FullMethodName = "/accountadministrationpoint.V1AAPService/GetAllIdentitySources"
-	V1AAPService_CreateIdentity_FullMethodName        = "/accountadministrationpoint.V1AAPService/CreateIdentity"
-	V1AAPService_UpdateIdentity_FullMethodName        = "/accountadministrationpoint.V1AAPService/UpdateIdentity"
-	V1AAPService_DeleteIdentity_FullMethodName        = "/accountadministrationpoint.V1AAPService/DeleteIdentity"
-	V1AAPService_GetAllIdentities_FullMethodName      = "/accountadministrationpoint.V1AAPService/GetAllIdentities"
-	V1AAPService_CreateTenant_FullMethodName          = "/accountadministrationpoint.V1AAPService/CreateTenant"
-	V1AAPService_UpdateTenant_FullMethodName          = "/accountadministrationpoint.V1AAPService/UpdateTenant"
-	V1AAPService_DeleteTenant_FullMethodName          = "/accountadministrationpoint.V1AAPService/DeleteTenant"
-	V1AAPService_GetAllTenants_FullMethodName         = "/accountadministrationpoint.V1AAPService/GetAllTenants"
+	V1AAPService_CreateAccount_FullMethodName        = "/accountadministrationpoint.V1AAPService/CreateAccount"
+	V1AAPService_UpdateAccount_FullMethodName        = "/accountadministrationpoint.V1AAPService/UpdateAccount"
+	V1AAPService_DeleteAccount_FullMethodName        = "/accountadministrationpoint.V1AAPService/DeleteAccount"
+	V1AAPService_FetchAccounts_FullMethodName        = "/accountadministrationpoint.V1AAPService/FetchAccounts"
+	V1AAPService_CreateIdentitySource_FullMethodName = "/accountadministrationpoint.V1AAPService/CreateIdentitySource"
+	V1AAPService_UpdateIdentitySource_FullMethodName = "/accountadministrationpoint.V1AAPService/UpdateIdentitySource"
+	V1AAPService_DeleteIdentitySource_FullMethodName = "/accountadministrationpoint.V1AAPService/DeleteIdentitySource"
+	V1AAPService_FetchIdentitySources_FullMethodName = "/accountadministrationpoint.V1AAPService/FetchIdentitySources"
+	V1AAPService_CreateIdentity_FullMethodName       = "/accountadministrationpoint.V1AAPService/CreateIdentity"
+	V1AAPService_UpdateIdentity_FullMethodName       = "/accountadministrationpoint.V1AAPService/UpdateIdentity"
+	V1AAPService_DeleteIdentity_FullMethodName       = "/accountadministrationpoint.V1AAPService/DeleteIdentity"
+	V1AAPService_FetchIdentities_FullMethodName      = "/accountadministrationpoint.V1AAPService/FetchIdentities"
+	V1AAPService_CreateTenant_FullMethodName         = "/accountadministrationpoint.V1AAPService/CreateTenant"
+	V1AAPService_UpdateTenant_FullMethodName         = "/accountadministrationpoint.V1AAPService/UpdateTenant"
+	V1AAPService_DeleteTenant_FullMethodName         = "/accountadministrationpoint.V1AAPService/DeleteTenant"
+	V1AAPService_GetTenants_FullMethodName           = "/accountadministrationpoint.V1AAPService/GetTenants"
 )
 
 // V1AAPServiceClient is the client API for V1AAPService service.
@@ -73,24 +73,24 @@ type V1AAPServiceClient interface {
 	UpdateIdentitySource(ctx context.Context, in *IdentitySourceUpdateRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error)
 	// Delete an identity source
 	DeleteIdentitySource(ctx context.Context, in *IdentitySourceDeleteRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error)
-	// Get all identity sources
-	GetAllIdentitySources(ctx context.Context, in *IdentitySourceGetRequest, opts ...grpc.CallOption) (*IdentitySourceListResponse, error)
+	// Fetch identity sources
+	FetchIdentitySources(ctx context.Context, in *IdentitySourceGetRequest, opts ...grpc.CallOption) (*IdentitySourceListResponse, error)
 	// Create an identity
 	CreateIdentity(ctx context.Context, in *IdentityCreateRequest, opts ...grpc.CallOption) (*IdentityResponse, error)
 	// Update an identity
 	UpdateIdentity(ctx context.Context, in *IdentityUpdateRequest, opts ...grpc.CallOption) (*IdentityResponse, error)
 	// Delete an identity
 	DeleteIdentity(ctx context.Context, in *IdentityDeleteRequest, opts ...grpc.CallOption) (*IdentityResponse, error)
-	// Get all Identities
-	GetAllIdentities(ctx context.Context, in *IdentityGetRequest, opts ...grpc.CallOption) (*IdentityListResponse, error)
+	// Fetch Identities
+	FetchIdentities(ctx context.Context, in *IdentityGetRequest, opts ...grpc.CallOption) (*IdentityListResponse, error)
 	// Create an tenant
 	CreateTenant(ctx context.Context, in *TenantCreateRequest, opts ...grpc.CallOption) (*TenantResponse, error)
 	// Update an tenant
 	UpdateTenant(ctx context.Context, in *TenantUpdateRequest, opts ...grpc.CallOption) (*TenantResponse, error)
 	// Delete an tenant
 	DeleteTenant(ctx context.Context, in *TenantDeleteRequest, opts ...grpc.CallOption) (*TenantResponse, error)
-	// Get all Tenants
-	GetAllTenants(ctx context.Context, in *TenantGetRequest, opts ...grpc.CallOption) (*TenantListResponse, error)
+	// Fetch Tenants
+	GetTenants(ctx context.Context, in *TenantGetRequest, opts ...grpc.CallOption) (*TenantListResponse, error)
 }
 
 type v1AAPServiceClient struct {
@@ -180,10 +180,10 @@ func (c *v1AAPServiceClient) DeleteIdentitySource(ctx context.Context, in *Ident
 	return out, nil
 }
 
-func (c *v1AAPServiceClient) GetAllIdentitySources(ctx context.Context, in *IdentitySourceGetRequest, opts ...grpc.CallOption) (*IdentitySourceListResponse, error) {
+func (c *v1AAPServiceClient) FetchIdentitySources(ctx context.Context, in *IdentitySourceGetRequest, opts ...grpc.CallOption) (*IdentitySourceListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(IdentitySourceListResponse)
-	err := c.cc.Invoke(ctx, V1AAPService_GetAllIdentitySources_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, V1AAPService_FetchIdentitySources_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -220,10 +220,10 @@ func (c *v1AAPServiceClient) DeleteIdentity(ctx context.Context, in *IdentityDel
 	return out, nil
 }
 
-func (c *v1AAPServiceClient) GetAllIdentities(ctx context.Context, in *IdentityGetRequest, opts ...grpc.CallOption) (*IdentityListResponse, error) {
+func (c *v1AAPServiceClient) FetchIdentities(ctx context.Context, in *IdentityGetRequest, opts ...grpc.CallOption) (*IdentityListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(IdentityListResponse)
-	err := c.cc.Invoke(ctx, V1AAPService_GetAllIdentities_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, V1AAPService_FetchIdentities_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -260,10 +260,10 @@ func (c *v1AAPServiceClient) DeleteTenant(ctx context.Context, in *TenantDeleteR
 	return out, nil
 }
 
-func (c *v1AAPServiceClient) GetAllTenants(ctx context.Context, in *TenantGetRequest, opts ...grpc.CallOption) (*TenantListResponse, error) {
+func (c *v1AAPServiceClient) GetTenants(ctx context.Context, in *TenantGetRequest, opts ...grpc.CallOption) (*TenantListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(TenantListResponse)
-	err := c.cc.Invoke(ctx, V1AAPService_GetAllTenants_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, V1AAPService_GetTenants_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -290,24 +290,24 @@ type V1AAPServiceServer interface {
 	UpdateIdentitySource(context.Context, *IdentitySourceUpdateRequest) (*IdentitySourceResponse, error)
 	// Delete an identity source
 	DeleteIdentitySource(context.Context, *IdentitySourceDeleteRequest) (*IdentitySourceResponse, error)
-	// Get all identity sources
-	GetAllIdentitySources(context.Context, *IdentitySourceGetRequest) (*IdentitySourceListResponse, error)
+	// Fetch identity sources
+	FetchIdentitySources(context.Context, *IdentitySourceGetRequest) (*IdentitySourceListResponse, error)
 	// Create an identity
 	CreateIdentity(context.Context, *IdentityCreateRequest) (*IdentityResponse, error)
 	// Update an identity
 	UpdateIdentity(context.Context, *IdentityUpdateRequest) (*IdentityResponse, error)
 	// Delete an identity
 	DeleteIdentity(context.Context, *IdentityDeleteRequest) (*IdentityResponse, error)
-	// Get all Identities
-	GetAllIdentities(context.Context, *IdentityGetRequest) (*IdentityListResponse, error)
+	// Fetch Identities
+	FetchIdentities(context.Context, *IdentityGetRequest) (*IdentityListResponse, error)
 	// Create an tenant
 	CreateTenant(context.Context, *TenantCreateRequest) (*TenantResponse, error)
 	// Update an tenant
 	UpdateTenant(context.Context, *TenantUpdateRequest) (*TenantResponse, error)
 	// Delete an tenant
 	DeleteTenant(context.Context, *TenantDeleteRequest) (*TenantResponse, error)
-	// Get all Tenants
-	GetAllTenants(context.Context, *TenantGetRequest) (*TenantListResponse, error)
+	// Fetch Tenants
+	GetTenants(context.Context, *TenantGetRequest) (*TenantListResponse, error)
 	mustEmbedUnimplementedV1AAPServiceServer()
 }
 
@@ -339,8 +339,8 @@ func (UnimplementedV1AAPServiceServer) UpdateIdentitySource(context.Context, *Id
 func (UnimplementedV1AAPServiceServer) DeleteIdentitySource(context.Context, *IdentitySourceDeleteRequest) (*IdentitySourceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteIdentitySource not implemented")
 }
-func (UnimplementedV1AAPServiceServer) GetAllIdentitySources(context.Context, *IdentitySourceGetRequest) (*IdentitySourceListResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetAllIdentitySources not implemented")
+func (UnimplementedV1AAPServiceServer) FetchIdentitySources(context.Context, *IdentitySourceGetRequest) (*IdentitySourceListResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FetchIdentitySources not implemented")
 }
 func (UnimplementedV1AAPServiceServer) CreateIdentity(context.Context, *IdentityCreateRequest) (*IdentityResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateIdentity not implemented")
@@ -351,8 +351,8 @@ func (UnimplementedV1AAPServiceServer) UpdateIdentity(context.Context, *Identity
 func (UnimplementedV1AAPServiceServer) DeleteIdentity(context.Context, *IdentityDeleteRequest) (*IdentityResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteIdentity not implemented")
 }
-func (UnimplementedV1AAPServiceServer) GetAllIdentities(context.Context, *IdentityGetRequest) (*IdentityListResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetAllIdentities not implemented")
+func (UnimplementedV1AAPServiceServer) FetchIdentities(context.Context, *IdentityGetRequest) (*IdentityListResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FetchIdentities not implemented")
 }
 func (UnimplementedV1AAPServiceServer) CreateTenant(context.Context, *TenantCreateRequest) (*TenantResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateTenant not implemented")
@@ -363,8 +363,8 @@ func (UnimplementedV1AAPServiceServer) UpdateTenant(context.Context, *TenantUpda
 func (UnimplementedV1AAPServiceServer) DeleteTenant(context.Context, *TenantDeleteRequest) (*TenantResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteTenant not implemented")
 }
-func (UnimplementedV1AAPServiceServer) GetAllTenants(context.Context, *TenantGetRequest) (*TenantListResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetAllTenants not implemented")
+func (UnimplementedV1AAPServiceServer) GetTenants(context.Context, *TenantGetRequest) (*TenantListResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetTenants not implemented")
 }
 func (UnimplementedV1AAPServiceServer) mustEmbedUnimplementedV1AAPServiceServer() {}
 func (UnimplementedV1AAPServiceServer) testEmbeddedByValue()                      {}
@@ -506,20 +506,20 @@ func _V1AAPService_DeleteIdentitySource_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_GetAllIdentitySources_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _V1AAPService_FetchIdentitySources_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(IdentitySourceGetRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(V1AAPServiceServer).GetAllIdentitySources(ctx, in)
+		return srv.(V1AAPServiceServer).FetchIdentitySources(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: V1AAPService_GetAllIdentitySources_FullMethodName,
+		FullMethod: V1AAPService_FetchIdentitySources_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1AAPServiceServer).GetAllIdentitySources(ctx, req.(*IdentitySourceGetRequest))
+		return srv.(V1AAPServiceServer).FetchIdentitySources(ctx, req.(*IdentitySourceGetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -578,20 +578,20 @@ func _V1AAPService_DeleteIdentity_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_GetAllIdentities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _V1AAPService_FetchIdentities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(IdentityGetRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(V1AAPServiceServer).GetAllIdentities(ctx, in)
+		return srv.(V1AAPServiceServer).FetchIdentities(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: V1AAPService_GetAllIdentities_FullMethodName,
+		FullMethod: V1AAPService_FetchIdentities_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1AAPServiceServer).GetAllIdentities(ctx, req.(*IdentityGetRequest))
+		return srv.(V1AAPServiceServer).FetchIdentities(ctx, req.(*IdentityGetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -650,20 +650,20 @@ func _V1AAPService_DeleteTenant_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_GetAllTenants_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _V1AAPService_GetTenants_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TenantGetRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(V1AAPServiceServer).GetAllTenants(ctx, in)
+		return srv.(V1AAPServiceServer).GetTenants(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: V1AAPService_GetAllTenants_FullMethodName,
+		FullMethod: V1AAPService_GetTenants_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1AAPServiceServer).GetAllTenants(ctx, req.(*TenantGetRequest))
+		return srv.(V1AAPServiceServer).GetTenants(ctx, req.(*TenantGetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -700,8 +700,8 @@ var V1AAPService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _V1AAPService_DeleteIdentitySource_Handler,
 		},
 		{
-			MethodName: "GetAllIdentitySources",
-			Handler:    _V1AAPService_GetAllIdentitySources_Handler,
+			MethodName: "FetchIdentitySources",
+			Handler:    _V1AAPService_FetchIdentitySources_Handler,
 		},
 		{
 			MethodName: "CreateIdentity",
@@ -716,8 +716,8 @@ var V1AAPService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _V1AAPService_DeleteIdentity_Handler,
 		},
 		{
-			MethodName: "GetAllIdentities",
-			Handler:    _V1AAPService_GetAllIdentities_Handler,
+			MethodName: "FetchIdentities",
+			Handler:    _V1AAPService_FetchIdentities_Handler,
 		},
 		{
 			MethodName: "CreateTenant",
@@ -732,8 +732,8 @@ var V1AAPService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _V1AAPService_DeleteTenant_Handler,
 		},
 		{
-			MethodName: "GetAllTenants",
-			Handler:    _V1AAPService_GetAllTenants_Handler,
+			MethodName: "GetTenants",
+			Handler:    _V1AAPService_GetTenants_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

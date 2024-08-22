@@ -70,8 +70,8 @@ func (c *GrpcPAPClient) DeleteRepository(accountID int64, repositoryID string) (
 	return azapiv1pap.MapGrpcRepositoryResponseToAgentRepository(repository)
 }
 
-// GetAllRepositories returns all the repositories.
-func (c *GrpcPAPClient) GetAllRepositories(accountID int64) ([]azmodels.Repository, error) {
+// FetchRepositories returns all the repositories.
+func (c *GrpcPAPClient) FetchRepositories(accountID int64) ([]azmodels.Repository, error) {
 	return c.GetRepositoriesBy(accountID, "", "")
 }
 
@@ -101,7 +101,7 @@ func (c *GrpcPAPClient) GetRepositoriesBy(accountID int64, repositoryID string, 
 	if repositoryID != "" {
 		repositoryGetRequest.RepositoryID = &repositoryID
 	}
-	repositoryList, err := client.GetAllRepositories(context.Background(), repositoryGetRequest)
+	repositoryList, err := client.FetchRepositories(context.Background(), repositoryGetRequest)
 	if err != nil {
 		return nil, err
 	}
