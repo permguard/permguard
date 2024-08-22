@@ -29,6 +29,11 @@ import (
 	azivalidators "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/validators"
 )
 
+const (
+	// errorMessageTenantInvalidAccountID is the error message tenant invalid account id.
+	errorMessageTenantInvalidAccountID = "storage: invalid client input - account id is not valid (id: %d)."
+)
+
 // generateTenantID generates a random tenant id.
 func generateTenantID() string {
 	return uuid.NewString()
@@ -40,7 +45,7 @@ func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant,
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant data is missing or malformed (%s).", LogTenantEntry(tenant)))
 	}
 	if err := azivalidators.ValidateAccountID("tenant", tenant.AccountID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (id: %d).", tenant.AccountID))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidAccountID, tenant.AccountID))
 	}
 	if !isCreate && azivalidators.ValidateUUID("tenant", tenant.TenantID) != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (%s).", LogTenantEntry(tenant)))
@@ -86,7 +91,7 @@ func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant,
 // DeleteTenant deletes an tenant.
 func (r *Repo) DeleteTenant(tx *sql.Tx, accountID int64, tenantID string) (*Tenant, error) {
 	if err := azivalidators.ValidateAccountID("tenant", accountID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (id: %d).", accountID))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidAccountID, accountID))
 	}
 	if err := azivalidators.ValidateUUID("tenant", tenantID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (id: %s).", tenantID))
@@ -119,7 +124,7 @@ func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID i
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
 	}
 	if err := azivalidators.ValidateAccountID("tenant", accountID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - account id is not valid (id: %d).", accountID))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageTenantInvalidAccountID, accountID))
 	}
 
 	var dbTenants []Tenant
