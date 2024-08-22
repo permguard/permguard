@@ -38,7 +38,7 @@ type SqliteRepo interface {
 	// UpsertTenant creates or updates an tenant.
 	UpsertTenant(tx *sql.Tx, isCreate bool, tenant *azrepos.Tenant) (*azrepos.Tenant, error)
 	// DeleteTenant deletes an tenant.
-	DeleteTenant(tx *sql.Tx, tenantID string) (*azrepos.Tenant, error)
+	DeleteTenant(tx *sql.Tx, accountID int64, tenantID string) (*azrepos.Tenant, error)
 	// FetchTenant fetches an tenant.
 	FetchTenants(db *sqlx.DB, page int32, pageSize int32, filterID *string, filterName *string) ([]azrepos.Tenant, error)
 }

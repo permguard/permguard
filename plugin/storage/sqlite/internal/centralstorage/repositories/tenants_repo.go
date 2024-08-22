@@ -31,7 +31,7 @@ import (
 
 // generateTenantID generates a random tenant id.
 func generateTenantID() string {
-	return uuid.New().String()
+	return uuid.NewString()
 }
 
 // UpsertTenant creates or updates an tenant.
@@ -84,12 +84,15 @@ func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant,
 }
 
 // DeleteTenant deletes an tenant.
-func (r *Repo) DeleteTenant(tx *sql.Tx, tenantID string) (*Tenant, error) {
+func (r *Repo) DeleteTenant(tx *sql.Tx, accountID int64, tenantID string) (*Tenant, error) {
+	if err := azivalidators.ValidateAccountID("tenant", accountID); err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (id: %d).", accountID))
+	}
 	if err := azivalidators.ValidateUUID("tenant", tenantID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (id: %s).", tenantID))
 	}
 	var dbTenant Tenant
-	err := tx.QueryRow("SELECT account_id, tenant_id, created_at, updated_at, name FROM tenants WHERE tenant_id = ?", tenantID).Scan(
+	err := tx.QueryRow("SELECT account_id, tenant_id, created_at, updated_at, name FROM tenants WHERE account_id = ? and tenant_id = ?", accountID, tenantID).Scan(
 		&dbTenant.AccountID,
 		&dbTenant.TenantID,
 		&dbTenant.CreatedAt,
@@ -99,7 +102,7 @@ func (r *Repo) DeleteTenant(tx *sql.Tx, tenantID string) (*Tenant, error) {
 	if err != nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - tenant id is not valid (id: %s).", tenantID), err)
 	}
-	res, err := tx.Exec("DELETE FROM tenants WHERE tenant_id = ?", tenantID)
+	res, err := tx.Exec("DELETE FROM tenants WHERE account_id = ? and tenant_id = ?", accountID, tenantID)
 	if err != nil || res == nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete tenant - operation 'delete-tenant' encountered an issue (id: %s).", tenantID), err)
 	}

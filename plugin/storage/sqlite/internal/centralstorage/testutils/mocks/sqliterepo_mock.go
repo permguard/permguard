@@ -77,7 +77,7 @@ func (m *MockSqliteRepo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *azrepos
 }
 
 // DeleteTenant deletes an tenant.
-func (m *MockSqliteRepo) DeleteTenant(tx *sql.Tx, tenantID string) (*azrepos.Tenant, error) {
+func (m *MockSqliteRepo) DeleteTenant(tx *sql.Tx, accountID int64, tenantID string) (*azrepos.Tenant, error) {
 	args := m.Called(tx, tenantID)
 	var r0 *azrepos.Tenant
 	if val, ok := args.Get(0).(*azrepos.Tenant); ok {
