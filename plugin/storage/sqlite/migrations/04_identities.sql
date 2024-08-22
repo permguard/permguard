@@ -59,7 +59,7 @@ AFTER INSERT ON identities
 FOR EACH ROW
 BEGIN
     INSERT INTO identity_changestreams (change_type, identity_id, created_at, updated_at, name, kind, account_id, identitysource_id)
-    	VALUES ("INSERT", NEW.identity_id, NEW.created_at, NEW.updated_at, NEW.name, NEW.kind, NEW.account_id, NEW.identitysource_id);
+    	VALUES ('INSERT', NEW.identity_id, NEW.created_at, NEW.updated_at, NEW.name, NEW.kind, NEW.account_id, NEW.identitysource_id);
 END;
 -- +goose StatementEnd
 
@@ -71,7 +71,7 @@ FOR EACH ROW
 BEGIN
     UPDATE identities SET updated_at = CURRENT_TIMESTAMP WHERE identity_id = OLD.identity_id;
     INSERT INTO identity_changestreams (change_type, identity_id, created_at, updated_at, name, kind, account_id, identitysource_id)
-	    VALUES ("UPDATE", NEW.identity_id, NEW.created_at,CURRENT_TIMESTAMP, NEW.name, NEW.kind, NEW.account_id, NEW.identitysource_id);
+	    VALUES ('UPDATE', NEW.identity_id, NEW.created_at,CURRENT_TIMESTAMP, NEW.name, NEW.kind, NEW.account_id, NEW.identitysource_id);
 END;
 -- +goose StatementEnd
 
@@ -82,7 +82,7 @@ AFTER DELETE ON identities
 FOR EACH ROW
 BEGIN
     INSERT INTO identity_changestreams (change_type, identity_id, created_at, updated_at, name, kind, account_id, identitysource_id)
-    	VALUES ("DELETE", OLD.identity_id, OLD.created_at, OLD.updated_at, OLD.name, OLD.kind, OLD.account_id, OLD.identitysource_id);
+    	VALUES ('DELETE', OLD.identity_id, OLD.created_at, OLD.updated_at, OLD.name, OLD.kind, OLD.account_id, OLD.identitysource_id);
 END;
 -- +goose StatementEnd
 
