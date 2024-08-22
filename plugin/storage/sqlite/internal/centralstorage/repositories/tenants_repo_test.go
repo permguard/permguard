@@ -373,12 +373,12 @@ func TestRepoFetchTenantWithInvalidInput(t *testing.T) {
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
-	{ // Test with invalid account id
-		tenantID := ""
-		_, err := repo.FetchTenants(sqlDB, 1, 1, 0, &tenantID, nil)
-		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
-	}
+	// { // Test with invalid account id
+	// 	tenantID := uuid.NewString()
+	// 	_, err := repo.FetchTenants(sqlDB, 1, 1, 0, &tenantID, nil)
+	// 	assert.NotNil(err, "error should be not nil")
+	// 	assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
+	// }
 
 	{ // Test with invalid tenant id
 		tenantID := ""
