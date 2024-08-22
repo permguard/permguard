@@ -65,7 +65,7 @@ func (r *Repo) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *I
 		if isCreate {
 			action = "create"
 		}
-		params := map[string]string{WrapSqlite3ParamForeignKey: string(accountID)}
+		params := map[string]string{WrapSqlite3ParamForeignKey: "account id"}
 		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s identity source - operation '%s-identity-source' encountered an issue (%s).", action, action, LogIdentitySourceEntry(identitySource)), err, params)
 	}
 
