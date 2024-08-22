@@ -47,7 +47,7 @@ CREATE INDEX repository_changestreams_accountid_idx ON repository_changestreams(
 
 -- Trigger to track changes in the `repositories` table after insert
 -- +goose StatementBegin
-CREATE OR REPLACE repository_changestreams_after_insert
+CREATE TRIGGER repository_changestreams_after_insert
 AFTER INSERT ON repositories
 FOR EACH ROW
 BEGIN
@@ -58,7 +58,7 @@ END;
 
 -- Trigger to track changes in the `repositories` table after update
 -- +goose StatementBegin
-CREATE OR REPLACE repository_changestreams_after_update
+CREATE TRIGGER repository_changestreams_after_update
 AFTER UPDATE ON repositories
 FOR EACH ROW
 BEGIN
@@ -70,7 +70,7 @@ END;
 
 -- Trigger to track changes in the `repositories` table after delete
 -- +goose StatementBegin
-CREATE OR REPLACE repository_changestreams_after_delete
+CREATE TRIGGER repository_changestreams_after_delete
 AFTER DELETE ON repositories
 FOR EACH ROW
 BEGIN
