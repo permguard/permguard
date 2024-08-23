@@ -46,6 +46,33 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 		tx.Rollback()
 		return nil, err
 	}
+	tenant := &azirepos.Tenant{
+		AccountID:	dbOutaccount.AccountID,
+		Name:		TenantDefaultName,
+	}
+	_, err = s.sqlRepo.UpsertTenant(tx, true, tenant)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	identitySource := &azirepos.IdentitySource{
+		AccountID:	dbOutaccount.AccountID,
+		Name:		IdentitySourceDefaultName,
+	}
+	_, err = s.sqlRepo.UpsertIdentitySource(tx, true, identitySource)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	repository := &azirepos.Repository{
+		AccountID:	dbOutaccount.AccountID,
+		Name:		RepositoryDefaultName,
+	}
+	_, err = s.sqlRepo.UpsertRepository(tx, true, repository)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
