@@ -91,6 +91,7 @@ func (r *Repo) DeleteTenant(tx *sql.Tx, accountID int64, tenantID string) (*Tena
 	if err := azivalidators.ValidateUUID("tenant", tenantID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (id: %s).", tenantID))
 	}
+	
 	var dbTenant Tenant
 	err := tx.QueryRow("SELECT account_id, tenant_id, created_at, updated_at, name FROM tenants WHERE account_id = ? and tenant_id = ?", accountID, tenantID).Scan(
 		&dbTenant.AccountID,

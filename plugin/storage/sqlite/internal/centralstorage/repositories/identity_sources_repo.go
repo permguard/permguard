@@ -91,6 +91,7 @@ func (r *Repo) DeleteIdentitySource(tx *sql.Tx, accountID int64, identitySourceI
 	if err := azivalidators.ValidateUUID("identitySource", identitySourceID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source id is not valid (id: %s).", identitySourceID))
 	}
+	
 	var dbIdentitySource IdentitySource
 	err := tx.QueryRow("SELECT account_id, identity_source_id, created_at, updated_at, name FROM identity_sources WHERE account_id = ? and identity_source_id = ?", accountID, identitySourceID).Scan(
 		&dbIdentitySource.AccountID,

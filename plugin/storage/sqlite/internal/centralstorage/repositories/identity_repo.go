@@ -73,7 +73,7 @@ func (r *Repo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*I
 	if isCreate && azivalidators.ValidateUUID("identity", identity.IdentitySourceID) != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (%s).", LogIdentityEntry(identity)))
 	}
-	if err := azivalidators.ValidateName("identity", identity.Name); err != nil {
+	if err := azivalidators.ValidateIdentityName("identity", identity.Name); err != nil {
 		errorMessage := "storage: invalid client input - either identity id or identity name is not valid (%s)."
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogIdentityEntry(identity)))
 	}
@@ -82,7 +82,7 @@ func (r *Repo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*I
 	identityID := identity.IdentityID
 	identitySourceID := identity.IdentitySourceID
 	kind := identity.Kind
-	identityName := identity.Name
+	identityName := strings.ToLower(identity.Name)
 	var result sql.Result
 	var err error
 	if isCreate {
@@ -177,7 +177,7 @@ func (r *Repo) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, accountI
 
 	if filterName != nil {
 		identityName := *filterName
-		if err := azivalidators.ValidateName("identity", identityName); err != nil {
+		if err := azivalidators.ValidateIdentityName("identity", identityName); err != nil {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - identity name is not valid (name: %s).", identityName))
 		}
 		identityName = "%" + identityName + "%"

@@ -61,6 +61,21 @@ func ValidateUUID(entity string, id string) error {
 	return nil
 }
 
+// ValidateIdentityName validates an identity name.
+func ValidateIdentityName(entity string, name string) error {
+	err := ValidateName(entity, name)
+	if err == nil {
+		return nil
+	}
+	vEmail := struct {
+		Email string `validate:"required,email"`
+	}{Email: name}
+	if isValid, err := azvalidators.ValidateInstance(vEmail); err != nil || !isValid {
+		return fmt.Errorf("storage: %s identity name %s is not valid. %w", entity, vEmail.Email, azerrors.ErrClientName)
+	}
+	return nil
+}
+
 // ValidateName validates a name.
 func ValidateName(entity string, name string) error {
 	if name != strings.ToLower(name) {
