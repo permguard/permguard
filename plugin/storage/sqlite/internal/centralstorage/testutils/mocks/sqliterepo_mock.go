@@ -125,3 +125,33 @@ func (m *MockSqliteRepo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, a
 	}
 	return r0, args.Error(1)
 }
+
+// UpsertRepository creates or updates a repository.
+func (m *MockSqliteRepo) UpsertRepository(tx *sql.Tx, isCreate bool, repository *azirepos.Repository) (*azirepos.Repository, error) {
+	args := m.Called(tx, isCreate, repository)
+	var r0 *azirepos.Repository
+	if val, ok := args.Get(0).(*azirepos.Repository); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
+}
+
+// DeleteRepository deletes a repository.
+func (m *MockSqliteRepo) DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string) (*azirepos.Repository, error) {
+	args := m.Called(tx, accountID, repositoryID)
+	var r0 *azirepos.Repository
+	if val, ok := args.Get(0).(*azirepos.Repository); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
+}
+
+// FetchRepositories fetches repositories.
+func (m *MockSqliteRepo) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.Repository, error) {
+	args := m.Called(db, page, pageSize, accountID, filterID, filterName)
+	var r0 []azirepos.Repository
+	if val, ok := args.Get(0).([]azirepos.Repository); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
+}

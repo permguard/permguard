@@ -23,16 +23,16 @@ import (
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
-// SQLiteCentralStorageAAP implements the sqlite central storage.
-type SQLiteCentralStorageAAP struct {
+// SQLiteCentralStoragePAP implements the sqlite central storage.
+type SQLiteCentralStoragePAP struct {
 	ctx             *azstorage.StorageContext
 	sqliteConnector azidb.SQLiteConnector
 	sqlRepo         SqliteRepo
 	sqlExec         SqliteExecutor
 }
 
-// newSQLiteAAPCentralStorage creates a new SQLiteAAPCentralStorage.
-func newSQLiteAAPCentralStorage(storageContext *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, repo SqliteRepo, sqlExec SqliteExecutor) (*SQLiteCentralStorageAAP, error) {
+// newSQLitePAPCentralStorage creates a new SQLitePAPCentralStorage.
+func newSQLitePAPCentralStorage(storageContext *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, repo SqliteRepo, sqlExec SqliteExecutor) (*SQLiteCentralStoragePAP, error) {
 	if storageContext == nil || sqliteConnector == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: storageContext is nil.")
 	}
@@ -42,7 +42,7 @@ func newSQLiteAAPCentralStorage(storageContext *azstorage.StorageContext, sqlite
 	if sqlExec == nil {
 		sqlExec = &SqliteExec{}
 	}
-	return &SQLiteCentralStorageAAP{
+	return &SQLiteCentralStoragePAP{
 		ctx:             storageContext,
 		sqliteConnector: sqliteConnector,
 		sqlRepo:         repo,

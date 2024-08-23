@@ -71,27 +71,29 @@ func (c *GrpcPAPClient) DeleteRepository(accountID int64, repositoryID string) (
 }
 
 // FetchRepositories returns all the repositories.
-func (c *GrpcPAPClient) FetchRepositories(accountID int64) ([]azmodels.Repository, error) {
-	return c.FetchRepositoriesBy(accountID, "", "")
+func (c *GrpcPAPClient) FetchRepositories(page int32, pageSize int32, accountID int64) ([]azmodels.Repository, error) {
+	return c.FetchRepositoriesBy(page, pageSize, accountID, "", "")
 }
 
 // FetchRepositoriesByID returns all repositories filtering by repository id.
-func (c *GrpcPAPClient) FetchRepositoriesByID(accountID int64, repositoryID string) ([]azmodels.Repository, error) {
-	return c.FetchRepositoriesBy(accountID, repositoryID, "")
+func (c *GrpcPAPClient) FetchRepositoriesByID(page int32, pageSize int32, accountID int64, repositoryID string) ([]azmodels.Repository, error) {
+	return c.FetchRepositoriesBy(page, pageSize, accountID, repositoryID, "")
 }
 
 // FetchRepositoriesByName returns all repositories filtering by name.
-func (c *GrpcPAPClient) FetchRepositoriesByName(accountID int64, name string) ([]azmodels.Repository, error) {
-	return c.FetchRepositoriesBy(accountID, "", name)
+func (c *GrpcPAPClient) FetchRepositoriesByName(page int32, pageSize int32, accountID int64, name string) ([]azmodels.Repository, error) {
+	return c.FetchRepositoriesBy(page, pageSize, accountID, "", name)
 }
 
 // FetchRepositoriesBy returns all repositories filtering by repository id and name.
-func (c *GrpcPAPClient) FetchRepositoriesBy(accountID int64, repositoryID string, name string) ([]azmodels.Repository, error) {
+func (c *GrpcPAPClient) FetchRepositoriesBy(page int32, pageSize int32, accountID int64, repositoryID string, name string) ([]azmodels.Repository, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	repositoryFetchRequest := &azapiv1pap.RepositoryFetchRequest{}
+	repositoryFetchRequest.Page = &page
+	repositoryFetchRequest.PageSize = &pageSize
 	if accountID > 0 {
 		repositoryFetchRequest.AccountID = accountID
 	}

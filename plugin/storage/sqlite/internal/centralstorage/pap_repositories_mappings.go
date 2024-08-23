@@ -14,20 +14,20 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package storage
+package centralstorage
 
 import (
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
-// PAPCentralStorage is the interface for the AAP central storage.
-type PAPCentralStorage interface {
-	// CreateRepository creates a new repository.
-	CreateRepository(repository *azmodels.Repository) (*azmodels.Repository, error)
-	// UpdateRepository updates an repository.
-	UpdateRepository(repository *azmodels.Repository) (*azmodels.Repository, error)
-	// DeleteRepository deletes an repository.
-	DeleteRepository(accountID int64, repositoryID string) (*azmodels.Repository, error)
-	// FetchRepositories gets all repositories.
-	FetchRepositories(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Repository, error)
+// mapRepositoryToAgentRepository maps a Repository to a model Repository.
+func mapRepositoryToAgentRepository(repository *azirepos.Repository) (*azmodels.Repository, error) {
+	return &azmodels.Repository{
+		RepositoryID:  repository.RepositoryID,
+		CreatedAt: repository.CreatedAt,
+		UpdatedAt: repository.UpdatedAt,
+		AccountID: repository.AccountID,
+		Name:      repository.Name,
+	}, nil
 }
