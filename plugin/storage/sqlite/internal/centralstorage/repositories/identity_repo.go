@@ -87,7 +87,7 @@ func (r *Repo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*I
 	var err error
 	if isCreate {
 		identityID = GenerateUUID()
-		result, err = tx.Exec("INSERT INTO identities (account_id, identity_id, identity_source_id, kind, name) VALUES (?, ?, ?)", accountID, identityID, identitySourceID, kind, identityName)
+		result, err = tx.Exec("INSERT INTO identities (account_id, identity_id, identity_source_id, kind, name) VALUES (?, ?, ?, ?, ?)", accountID, identityID, identitySourceID, kind, identityName)
 	} else {
 		result, err = tx.Exec("UPDATE identities SET kind = ? and name = ? WHERE account_id = ? and identity_id = ?", kind, identityName, accountID, identityID)
 	}
@@ -101,11 +101,13 @@ func (r *Repo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*I
 	}
 
 	var dbIdentity Identity
-	err = tx.QueryRow("SELECT account_id, identity_id, created_at, updated_at, name FROM identities WHERE account_id = ? and identity_id = ?", accountID, identityID).Scan(
+	err = tx.QueryRow("SELECT account_id, identity_id, created_at, updated_at, identity_source_id, kind, name FROM identities WHERE account_id = ? and identity_id = ?", accountID, identityID).Scan(
 		&dbIdentity.AccountID,
 		&dbIdentity.IdentityID,
 		&dbIdentity.CreatedAt,
 		&dbIdentity.UpdatedAt,
+		&dbIdentity.IdentitySourceID,
+		&dbIdentity.Kind,
 		&dbIdentity.Name,
 	)
 	if err != nil {
@@ -123,11 +125,13 @@ func (r *Repo) DeleteIdentity(tx *sql.Tx, accountID int64, identityID string) (*
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (id: %s).", identityID))
 	}
 	var dbIdentity Identity
-	err := tx.QueryRow("SELECT account_id, identity_id, created_at, updated_at, name FROM identities WHERE account_id = ? and identity_id = ?", accountID, identityID).Scan(
+	err := tx.QueryRow("SELECT account_id, identity_id, created_at, updated_at, identity_source_id, kind, name FROM identities WHERE account_id = ? and identity_id = ?", accountID, identityID).Scan(
 		&dbIdentity.AccountID,
 		&dbIdentity.IdentityID,
 		&dbIdentity.CreatedAt,
 		&dbIdentity.UpdatedAt,
+		&dbIdentity.IdentitySourceID,
+		&dbIdentity.Kind,
 		&dbIdentity.Name,
 	)
 	if err != nil {

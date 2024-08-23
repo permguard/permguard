@@ -46,10 +46,10 @@ func registerIdentityForUpsertMocking(isCreate bool) (*Identity, string, *sqlmoc
 	if isCreate {
 		sql = `INSERT INTO identities \(account_id, identity_id, identity_source_id, kind, name\) VALUES \(\?, \?, \?, \?, \?\)`
 	} else {
-		sql = `UPDATE identities SET kind = ? and name = ? WHERE account_id = \? and identity_id = \?`
+		sql = `UPDATE identities SET kind = \? and name = \? WHERE account_id = \? and identity_id = \?`
 	}
-	sqlRows := sqlmock.NewRows([]string{"account_id", "identity_id", "created_at", "updated_at", "name"}).
-		AddRow(identity.AccountID, identity.IdentityID, identity.CreatedAt, identity.UpdatedAt, identity.Name)
+	sqlRows := sqlmock.NewRows([]string{"account_id", "identity_id", "created_at", "updated_at", "identity_source_id", "kind", "name"}).
+		AddRow(identity.AccountID, identity.IdentityID, identity.CreatedAt, identity.UpdatedAt, identity.IdentitySourceID, identity.Kind, identity.Name)
 	return identity, sql, sqlRows
 }
 
@@ -64,10 +64,10 @@ func registerIdentityForDeleteMocking() (string, *Identity, *sqlmock.Rows, strin
 		CreatedAt:  		time.Now(),
 		UpdatedAt:  		time.Now(),
 	}
-	var sqlSelect = `SELECT account_id, identity_id, created_at, updated_at, name FROM identities WHERE account_id = \? and identity_id = \?`
+	var sqlSelect = `SELECT account_id, identity_id, created_at, updated_at, identity_source_id, kind, name FROM identities WHERE account_id = \? and identity_id = \?`
 	var sqlDelete = `DELETE FROM identities WHERE account_id = \? and identity_id = \?`
-	sqlRows := sqlmock.NewRows([]string{"account_id", "identity_id", "created_at", "updated_at", "name"}).
-		AddRow(identity.AccountID, identity.IdentityID, identity.CreatedAt, identity.UpdatedAt, identity.Name)
+	sqlRows := sqlmock.NewRows([]string{"account_id", "identity_id", "created_at", "updated_at", "identity_source_id", "kind", "name"}).
+		AddRow(identity.AccountID, identity.IdentityID, identity.CreatedAt, identity.UpdatedAt, identity.IdentitySourceID, identity.Kind, identity.Name)
 	return sqlSelect, identity, sqlRows, sqlDelete
 }
 
@@ -85,8 +85,8 @@ func registerIdentityForFetchMocking() (string, []Identity, *sqlmock.Rows) {
 		},
 	}
 	var sqlSelect = "SELECT * FROM identities WHERE account_id = ? AND identity_id = ? AND name LIKE ? ORDER BY identity_id ASC LIMIT ? OFFSET ?"
-	sqlRows := sqlmock.NewRows([]string{"account_id", "identity_id", "created_at", "updated_at", "name"}).
-		AddRow(identities[0].AccountID, identities[0].IdentityID, identities[0].CreatedAt, identities[0].UpdatedAt, identities[0].Name)
+	sqlRows := sqlmock.NewRows([]string{"account_id", "identity_id", "created_at", "updated_at", "identity_source_id", "kind", "name"}).
+		AddRow(identities[0].AccountID, identities[0].IdentityID, identities[0].CreatedAt, identities[0].UpdatedAt, identities[0].IdentitySourceID, identities[0].Kind, identities[0].Name)
 	return sqlSelect, identities, sqlRows
 }
 
@@ -181,18 +181,18 @@ func TestRepoUpsertIdentityWithSuccess(t *testing.T) {
 				WillReturnResult(sqlmock.NewResult(1, 1))
 		} else {
 			dbInIdentity = &Identity{
-				IdentityID: identity.IdentityID,
-				AccountID:  identity.AccountID,
+				IdentityID: 		identity.IdentityID,
+				AccountID:  		identity.AccountID,
 				IdentitySourceID:  	identity.IdentitySourceID,
 				Kind: 				identity.Kind,
-				Name:       identity.Name,
+				Name:       		identity.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
 				WithArgs(identity.Kind, identity.Name, identity.AccountID, identity.IdentityID).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 		}
 
-		sqlDBMock.ExpectQuery(`SELECT account_id, identity_id, created_at, updated_at, name FROM identities WHERE account_id = \? and identity_id = \?`).
+		sqlDBMock.ExpectQuery(`SELECT account_id, identity_id, created_at, updated_at, identity_source_id, kind, name FROM identities WHERE account_id = \? and identity_id = \?`).
 			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
 			WillReturnRows(sqlIdentityRows)
 
@@ -203,6 +203,8 @@ func TestRepoUpsertIdentityWithSuccess(t *testing.T) {
 		assert.NotNil(dbOutIdentity, "identity should be not nil")
 		assert.Equal(identity.IdentityID, dbOutIdentity.IdentityID, "identity id is not correct")
 		assert.Equal(identity.AccountID, dbOutIdentity.AccountID, "identity account id is not correct")
+		assert.Equal(identity.IdentitySourceID, dbOutIdentity.IdentitySourceID, "identity source id is not correct")
+		assert.Equal(identity.Kind, dbOutIdentity.Kind, "identity kind is not correct")
 		assert.Equal(identity.Name, dbOutIdentity.Name, "identity name is not correct")
 		assert.Nil(err, "error should be nil")
 	}
@@ -235,7 +237,7 @@ func TestRepoUpsertIdentityWithErrors(t *testing.T) {
 				Name:      			identity.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(identity.AccountID, sqlmock.AnyArg(), identity.Name).
+				WithArgs(identity.AccountID, sqlmock.AnyArg(), identity.IdentitySourceID, identity.Kind, identity.Name).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 		} else {
 			dbInIdentity = &Identity{
@@ -246,7 +248,7 @@ func TestRepoUpsertIdentityWithErrors(t *testing.T) {
 				Name:       		identity.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(identity.Name, identity.AccountID, identity.IdentityID).
+				WithArgs(identity.Kind, identity.Name, identity.AccountID, identity.IdentityID).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 		}
 
@@ -310,6 +312,8 @@ func TestRepoDeleteIdentityWithSuccess(t *testing.T) {
 	assert.NotNil(dbOutIdentity, "identity should be not nil")
 	assert.Equal(identity.IdentityID, dbOutIdentity.IdentityID, "identity id is not correct")
 	assert.Equal(identity.AccountID, dbOutIdentity.AccountID, "identity account id is not correct")
+	assert.Equal(identity.IdentitySourceID, dbOutIdentity.IdentitySourceID, "identity source id is not correct")
+	assert.Equal(identity.Kind, dbOutIdentity.Kind, "identity kind is not correct")
 	assert.Equal(identity.Name, dbOutIdentity.Name, "identity name is not correct")
 	assert.Nil(err, "error should be nil")
 }
@@ -440,6 +444,8 @@ func TestRepoFetchIdentityWithSuccess(t *testing.T) {
 	for i, identity := range dbOutIdentities {
 		assert.Equal(identity.IdentityID, orderedSQLIdentities[i].IdentityID, "identity id is not correct")
 		assert.Equal(identity.AccountID, orderedSQLIdentities[i].AccountID, "identity account id is not correct")
+		assert.Equal(identity.IdentitySourceID, orderedSQLIdentities[i].IdentitySourceID, "identity source id is not correct")
+		assert.Equal(identity.Kind, orderedSQLIdentities[i].Kind, "identity kind is not correct")
 		assert.Equal(identity.Name, orderedSQLIdentities[i].Name, "identity name is not correct")
 	}
 	assert.Nil(err, "error should be nil")
