@@ -23,4 +23,4 @@ seo:
 
 | TYPE | VALIDATION                             | CASE   | DESCRIPTION                            |
 |------|----------------------------------------|--------|----------------------------------------|
-| NAME | `^[a-z][a-z0-9\-_]*[a-z0-9]$` | lower  | A valid name should satisfy the regex. |
+| NAME | `^[a-z][a-z0-9\-\._]*[a-z0-9]$` | lower  | A valid name should satisfy the regex. |
