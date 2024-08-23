@@ -17,8 +17,8 @@
 -- +goose Up
 CREATE TABLE accounts (
     account_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
+    updated_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
     name TEXT NOT NULL UNIQUE
 );
 
@@ -43,7 +43,7 @@ CREATE TRIGGER accounts_change_streams_after_update
 AFTER UPDATE ON accounts
 FOR EACH ROW
 BEGIN
-    UPDATE accounts SET updated_at = CURRENT_TIMESTAMP WHERE account_id = OLD.account_id;
+    UPDATE accounts SET updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW') WHERE account_id = OLD.account_id;
     INSERT INTO change_streams (change_entity, change_type, change_entity_id, account_id, payload)
 		VALUES ('ACCOUNT', 'INSERT', NEW.account_id, NEW.account_id,
 				'{"account_id": ' || NEW.account_id || ', "created_at": "' || NEW.created_at ||

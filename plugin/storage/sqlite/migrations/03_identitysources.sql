@@ -17,8 +17,8 @@
 -- +goose Up
 CREATE TABLE identity_sources (
     identity_source_id TEXT NOT NULL PRIMARY KEY,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
+    updated_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
     name TEXT NOT NULL UNIQUE,
 	-- REFERENCES
 	account_id INTEGER NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
@@ -48,7 +48,7 @@ CREATE TRIGGER identity_sources_change_streams_after_update
 AFTER UPDATE ON identity_sources
 FOR EACH ROW
 BEGIN
-    UPDATE identity_sources SET updated_at = CURRENT_TIMESTAMP WHERE identity_source_id = OLD.identity_source_id;
+    UPDATE identity_sources SET updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW') WHERE identity_source_id = OLD.identity_source_id;
     INSERT INTO change_streams (change_entity, change_type, change_entity_id, account_id, payload)
 		VALUES ('IDENTITY-SOURCE', 'UPDATE', NEW.identity_source_id, NEW.account_id,
 				'{"identity_source_id": "' || NEW.identity_source_id || '", "created_at": "' || NEW.created_at ||
