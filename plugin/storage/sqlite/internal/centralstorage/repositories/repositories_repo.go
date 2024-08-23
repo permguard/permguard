@@ -91,6 +91,7 @@ func (r *Repo) DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string
 	if err := azivalidators.ValidateUUID("repository", repositoryID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (id: %s).", repositoryID))
 	}
+	
 	var dbRepository Repository
 	err := tx.QueryRow("SELECT account_id, repository_id, created_at, updated_at, name FROM repositories WHERE account_id = ? and repository_id = ?", accountID, repositoryID).Scan(
 		&dbRepository.AccountID,

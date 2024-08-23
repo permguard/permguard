@@ -92,6 +92,7 @@ func (r *Repo) DeleteAccount(tx *sql.Tx, accountID int64) (*Account, error) {
 	if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (id: %d).", accountID))
 	}
+	
 	var dbAccount Account
 	err := tx.QueryRow("SELECT account_id, created_at, updated_at, name FROM accounts WHERE account_id = ?", accountID).Scan(
 		&dbAccount.AccountID,
