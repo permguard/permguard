@@ -19,7 +19,7 @@ CREATE TABLE identities (
     identity_id TEXT NOT NULL PRIMARY KEY,
     created_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
     updated_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
-    name TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
 	kind INTEGER NOT NULL,
 	-- REFERENCES
 	account_id INTEGER NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
