@@ -43,7 +43,7 @@ func (s SQLiteCentralStorageAAP) CreateIdentity(identity *azmodels.Identity) (*a
 	}
 	kind, err := azirepos.ConvertIdentityKindToID(identity.Kind)
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - identity is kind is not valid.")
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity kind %s is not valid.", identity.Kind))
 	}
 	dbInIdentity := &azirepos.Identity{
 		AccountID: 			identity.AccountID,
@@ -77,7 +77,7 @@ func (s SQLiteCentralStorageAAP) UpdateIdentity(identity *azmodels.Identity) (*a
 	}
 	kind, err := azirepos.ConvertIdentityKindToID(identity.Kind)
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - identity is kind is not valid.")
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity kind %s is not valid.", identity.Kind))
 	}
 	dbInIdentity := &azirepos.Identity{
 		IdentityID: 		identity.IdentityID,

@@ -46,7 +46,7 @@ func registerIdentityForUpsertMocking(isCreate bool) (*Identity, string, *sqlmoc
 	if isCreate {
 		sql = `INSERT INTO identities \(account_id, identity_id, identity_source_id, kind, name\) VALUES \(\?, \?, \?, \?, \?\)`
 	} else {
-		sql = `UPDATE identities SET kind = \? and name = \? WHERE account_id = \? and identity_id = \?`
+		sql = `UPDATE identities SET kind = \?, name = \? WHERE account_id = \? and identity_id = \?`
 	}
 	sqlRows := sqlmock.NewRows([]string{"account_id", "identity_id", "created_at", "updated_at", "identity_source_id", "kind", "name"}).
 		AddRow(identity.AccountID, identity.IdentityID, identity.CreatedAt, identity.UpdatedAt, identity.IdentitySourceID, identity.Kind, identity.Name)
