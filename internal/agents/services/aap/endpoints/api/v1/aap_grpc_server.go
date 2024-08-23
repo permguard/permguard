@@ -53,7 +53,7 @@ type AAPService interface {
 	// DeleteIdentity deletes an identity.
 	DeleteIdentity(accountID int64, identityID string) (*azmodels.Identity, error)
 	// FetchIdentities returns all the identities.
-	FetchIdentities(accountID int64, fields map[string]any) ([]azmodels.Identity, error)
+	FetchIdentities(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Identity, error)
 
 	// CreateTenant creates a new tenant.
 	CreateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error)
@@ -81,7 +81,7 @@ type V1AAPServer struct {
 }
 
 // CreateAccount creates a new account.
-func (s V1AAPServer) CreateAccount(ctx context.Context, accountRequest *AccountCreateRequest) (*AccountResponse, error) {
+func (s *V1AAPServer) CreateAccount(ctx context.Context, accountRequest *AccountCreateRequest) (*AccountResponse, error) {
 	account, err := s.service.CreateAccount(&azmodels.Account{Name: accountRequest.Name})
 	if err != nil {
 		return nil, err
@@ -90,7 +90,7 @@ func (s V1AAPServer) CreateAccount(ctx context.Context, accountRequest *AccountC
 }
 
 // UpdateAccount updates an account.
-func (s V1AAPServer) UpdateAccount(ctx context.Context, accountRequest *AccountUpdateRequest) (*AccountResponse, error) {
+func (s *V1AAPServer) UpdateAccount(ctx context.Context, accountRequest *AccountUpdateRequest) (*AccountResponse, error) {
 	account, err := s.service.UpdateAccount((&azmodels.Account{AccountID: accountRequest.AccountID, Name: accountRequest.Name}))
 	if err != nil {
 		return nil, err
@@ -99,7 +99,7 @@ func (s V1AAPServer) UpdateAccount(ctx context.Context, accountRequest *AccountU
 }
 
 // DeleteAccount deletes an account.
-func (s V1AAPServer) DeleteAccount(ctx context.Context, accountRequest *AccountDeleteRequest) (*AccountResponse, error) {
+func (s *V1AAPServer) DeleteAccount(ctx context.Context, accountRequest *AccountDeleteRequest) (*AccountResponse, error) {
 	account, err := s.service.DeleteAccount(accountRequest.AccountID)
 	if err != nil {
 		return nil, err
@@ -140,7 +140,7 @@ func (s *V1AAPServer) FetchAccounts(accountRequest *AccountFetchRequest, stream 
 }
 
 // CreateIdentitySource creates a new identity source.
-func (s V1AAPServer) CreateIdentitySource(ctx context.Context, identitySourceRequest *IdentitySourceCreateRequest) (*IdentitySourceResponse, error) {
+func (s *V1AAPServer) CreateIdentitySource(ctx context.Context, identitySourceRequest *IdentitySourceCreateRequest) (*IdentitySourceResponse, error) {
 	identitySource, err := s.service.CreateIdentitySource(&azmodels.IdentitySource{AccountID: identitySourceRequest.AccountID, Name: identitySourceRequest.Name})
 	if err != nil {
 		return nil, err
@@ -149,7 +149,7 @@ func (s V1AAPServer) CreateIdentitySource(ctx context.Context, identitySourceReq
 }
 
 // UpdateIdentitySource updates an identity source.
-func (s V1AAPServer) UpdateIdentitySource(ctx context.Context, identitySourceRequest *IdentitySourceUpdateRequest) (*IdentitySourceResponse, error) {
+func (s *V1AAPServer) UpdateIdentitySource(ctx context.Context, identitySourceRequest *IdentitySourceUpdateRequest) (*IdentitySourceResponse, error) {
 	identitySource, err := s.service.UpdateIdentitySource((&azmodels.IdentitySource{IdentitySourceID: identitySourceRequest.IdentitySourceID, AccountID: identitySourceRequest.AccountID, Name: identitySourceRequest.Name}))
 	if err != nil {
 		return nil, err
@@ -158,7 +158,7 @@ func (s V1AAPServer) UpdateIdentitySource(ctx context.Context, identitySourceReq
 }
 
 // DeleteIdentitySource deletes an identity source.
-func (s V1AAPServer) DeleteIdentitySource(ctx context.Context, identitySourceRequest *IdentitySourceDeleteRequest) (*IdentitySourceResponse, error) {
+func (s *V1AAPServer) DeleteIdentitySource(ctx context.Context, identitySourceRequest *IdentitySourceDeleteRequest) (*IdentitySourceResponse, error) {
 	identitySource, err := s.service.DeleteIdentitySource(identitySourceRequest.AccountID, identitySourceRequest.IdentitySourceID)
 	if err != nil {
 		return nil, err
@@ -167,7 +167,7 @@ func (s V1AAPServer) DeleteIdentitySource(ctx context.Context, identitySourceReq
 }
 
 // FetchIdentitySources returns all the identity sources.
-func (s V1AAPServer) FetchIdentitySources(ctx context.Context, identitySourceRequest *IdentitySourceFetchRequest) (*IdentitySourceListResponse, error) {
+func (s *V1AAPServer) FetchIdentitySources(ctx context.Context, identitySourceRequest *IdentitySourceFetchRequest) (*IdentitySourceListResponse, error) {
 	fields := map[string]any{}
 	fields[azmodels.FieldIdentitySourceAccountID] = identitySourceRequest.AccountID
 	if identitySourceRequest.Name != nil {
@@ -176,7 +176,15 @@ func (s V1AAPServer) FetchIdentitySources(ctx context.Context, identitySourceReq
 	if identitySourceRequest.IdentitySourceID != nil {
 		fields[azmodels.FieldIdentitySourceIdentitySourceID] = *identitySourceRequest.IdentitySourceID
 	}
-	identitySources, err := s.service.FetchIdentitySources(*identitySourceRequest.Page, *identitySourceRequest.PageSize, identitySourceRequest.AccountID, fields)
+	page := int32(0)
+	if identitySourceRequest.Page != nil {
+		page = int32(*identitySourceRequest.Page)
+	}
+	pageSize := int32(0)
+	if identitySourceRequest.PageSize != nil {
+		pageSize = int32(*identitySourceRequest.PageSize)
+	}
+	identitySources, err := s.service.FetchIdentitySources(page, pageSize, identitySourceRequest.AccountID, fields)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +202,7 @@ func (s V1AAPServer) FetchIdentitySources(ctx context.Context, identitySourceReq
 }
 
 // CreateIdentity creates a new identity.
-func (s V1AAPServer) CreateIdentity(ctx context.Context, identityRequest *IdentityCreateRequest) (*IdentityResponse, error) {
+func (s *V1AAPServer) CreateIdentity(ctx context.Context, identityRequest *IdentityCreateRequest) (*IdentityResponse, error) {
 	identity, err := s.service.CreateIdentity(&azmodels.Identity{AccountID: identityRequest.AccountID, IdentitySourceID: identityRequest.IdentitySourceID, Kind: identityRequest.Kind, Name: identityRequest.Name})
 	if err != nil {
 		return nil, err
@@ -203,7 +211,7 @@ func (s V1AAPServer) CreateIdentity(ctx context.Context, identityRequest *Identi
 }
 
 // UpdateIdentity updates an identity.
-func (s V1AAPServer) UpdateIdentity(ctx context.Context, identityRequest *IdentityUpdateRequest) (*IdentityResponse, error) {
+func (s *V1AAPServer) UpdateIdentity(ctx context.Context, identityRequest *IdentityUpdateRequest) (*IdentityResponse, error) {
 	identity, err := s.service.UpdateIdentity((&azmodels.Identity{IdentityID: identityRequest.IdentityID, AccountID: identityRequest.AccountID, Kind: identityRequest.Kind, Name: identityRequest.Name}))
 	if err != nil {
 		return nil, err
@@ -212,7 +220,7 @@ func (s V1AAPServer) UpdateIdentity(ctx context.Context, identityRequest *Identi
 }
 
 // DeleteIdentity deletes an identity.
-func (s V1AAPServer) DeleteIdentity(ctx context.Context, identityRequest *IdentityDeleteRequest) (*IdentityResponse, error) {
+func (s *V1AAPServer) DeleteIdentity(ctx context.Context, identityRequest *IdentityDeleteRequest) (*IdentityResponse, error) {
 	identity, err := s.service.DeleteIdentity(identityRequest.AccountID, identityRequest.IdentityID)
 	if err != nil {
 		return nil, err
@@ -221,7 +229,7 @@ func (s V1AAPServer) DeleteIdentity(ctx context.Context, identityRequest *Identi
 }
 
 // FetchIdentities returns all the identities.
-func (s V1AAPServer) FetchIdentities(ctx context.Context, identityRequest *IdentityFetchRequest) (*IdentityListResponse, error) {
+func (s *V1AAPServer) FetchIdentities(ctx context.Context, identityRequest *IdentityFetchRequest) (*IdentityListResponse, error) {
 	fields := map[string]any{}
 	fields[azmodels.FieldIdentityAccountID] = identityRequest.AccountID
 	if identityRequest.IdentitySourceID != nil {
@@ -236,7 +244,15 @@ func (s V1AAPServer) FetchIdentities(ctx context.Context, identityRequest *Ident
 	if identityRequest.Name != nil {
 		fields[azmodels.FieldIdentityName] = *identityRequest.Name
 	}
-	identities, err := s.service.FetchIdentities(identityRequest.AccountID, fields)
+	page := int32(0)
+	if identityRequest.Page != nil {
+		page = int32(*identityRequest.Page)
+	}
+	pageSize := int32(0)
+	if identityRequest.PageSize != nil {
+		pageSize = int32(*identityRequest.PageSize)
+	}
+	identities, err := s.service.FetchIdentities(page, pageSize, identityRequest.AccountID, fields)
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +270,7 @@ func (s V1AAPServer) FetchIdentities(ctx context.Context, identityRequest *Ident
 }
 
 // CreateTenant creates a new tenant.
-func (s V1AAPServer) CreateTenant(ctx context.Context, tenantRequest *TenantCreateRequest) (*TenantResponse, error) {
+func (s *V1AAPServer) CreateTenant(ctx context.Context, tenantRequest *TenantCreateRequest) (*TenantResponse, error) {
 	tenant, err := s.service.CreateTenant(&azmodels.Tenant{AccountID: tenantRequest.AccountID, Name: tenantRequest.Name})
 	if err != nil {
 		return nil, err
@@ -263,7 +279,7 @@ func (s V1AAPServer) CreateTenant(ctx context.Context, tenantRequest *TenantCrea
 }
 
 // UpdateTenant updates a tenant.
-func (s V1AAPServer) UpdateTenant(ctx context.Context, tenantRequest *TenantUpdateRequest) (*TenantResponse, error) {
+func (s *V1AAPServer) UpdateTenant(ctx context.Context, tenantRequest *TenantUpdateRequest) (*TenantResponse, error) {
 	tenant, err := s.service.UpdateTenant((&azmodels.Tenant{TenantID: tenantRequest.TenantID, AccountID: tenantRequest.AccountID, Name: tenantRequest.Name}))
 	if err != nil {
 		return nil, err
@@ -272,7 +288,7 @@ func (s V1AAPServer) UpdateTenant(ctx context.Context, tenantRequest *TenantUpda
 }
 
 // DeleteTenant deletes a tenant.
-func (s V1AAPServer) DeleteTenant(ctx context.Context, tenantRequest *TenantDeleteRequest) (*TenantResponse, error) {
+func (s *V1AAPServer) DeleteTenant(ctx context.Context, tenantRequest *TenantDeleteRequest) (*TenantResponse, error) {
 	tenant, err := s.service.DeleteTenant(tenantRequest.AccountID, tenantRequest.TenantID)
 	if err != nil {
 		return nil, err
@@ -281,7 +297,7 @@ func (s V1AAPServer) DeleteTenant(ctx context.Context, tenantRequest *TenantDele
 }
 
 // FetchTenants returns all the tenants.
-func (s V1AAPServer) FetchTenants(ctx context.Context, tenantRequest *TenantFetchRequest) (*TenantListResponse, error) {
+func (s *V1AAPServer) FetchTenants(ctx context.Context, tenantRequest *TenantFetchRequest) (*TenantListResponse, error) {
 	fields := map[string]any{}
 	fields[azmodels.FieldTenantAccountID] = tenantRequest.AccountID
 	if tenantRequest.Name != nil {

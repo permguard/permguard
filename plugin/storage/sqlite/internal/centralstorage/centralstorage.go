@@ -40,6 +40,13 @@ type SqliteRepo interface {
 	// FetchIdentitySources fetches identity sources.
 	FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.IdentitySource, error)
 
+	// UpsertIdentity creates or updates an identity.
+	UpsertIdentity(tx *sql.Tx, isCreate bool, identity *azirepos.Identity) (*azirepos.Identity, error)
+	// DeleteIdentity deletes an identity.
+	DeleteIdentity(tx *sql.Tx, accountID int64, identityID string) (*azirepos.Identity, error)
+	// FetchIdentities fetches identities.
+	FetchIdentities(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.Identity, error)
+
 	// UpsertTenant creates or updates an tenant.
 	UpsertTenant(tx *sql.Tx, isCreate bool, tenant *azirepos.Tenant) (*azirepos.Tenant, error)
 	// DeleteTenant deletes an tenant.

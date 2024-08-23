@@ -61,7 +61,7 @@ type Identity struct {
 	UpdatedAt 			time.Time `db:"updated_at"`
 	AccountID 			int64 	  `db:"account_id"`
 	IdentitySourceID 	string 	  `db:"identity_source_id"`
-	Kind 				int16     `db:"kind"`
+	Kind 				string     `db:"kind"`
 	Name      			string    `db:"name"`
 }
 

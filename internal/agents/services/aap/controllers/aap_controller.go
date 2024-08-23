@@ -98,8 +98,8 @@ func (s AAPController) DeleteIdentity(accountID int64, identityID string) (*azmo
 }
 
 // FetchIdentities returns all identities filtering by search criteria.
-func (s AAPController) FetchIdentities(accountID int64, fields map[string]any) ([]azmodels.Identity, error) {
-	return s.storage.FetchIdentities(accountID, fields)
+func (s AAPController) FetchIdentities(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Identity, error) {
+	return s.storage.FetchIdentities(page, pageSize, accountID, fields)
 }
 
 // CreateTenant creates a new tenant.
