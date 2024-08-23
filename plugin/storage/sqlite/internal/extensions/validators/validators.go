@@ -37,16 +37,16 @@ func ValidateAccountID(entity string, accountID int64) error {
 
 // formatAsUUID formats a string as a UUID.
 func formatAsUUID(s string) string {
-    if strings.Contains(s, "-") || strings.Contains(s, " ") || len(s) != 32 {
-        return s
-    }
-    return fmt.Sprintf("%s-%s-%s-%s-%s",
-        s[0:8],
-        s[8:12],
-        s[12:16],
-        s[16:20],
-        s[20:32],
-    )
+	if strings.Contains(s, "-") || strings.Contains(s, " ") || len(s) != 32 {
+		return s
+	}
+	return fmt.Sprintf("%s-%s-%s-%s-%s",
+		s[0:8],
+		s[8:12],
+		s[12:16],
+		s[16:20],
+		s[20:32],
+	)
 }
 
 // ValidateUUID validates a UUID.
@@ -61,8 +61,8 @@ func ValidateUUID(entity string, id string) error {
 	return nil
 }
 
-// ValidateIdentityName validates an identity name.
-func ValidateIdentityName(entity string, name string) error {
+// ValidateIdentityUserName validates the identity name specifically for user-type identities.
+func ValidateIdentityUserName(entity string, name string) error {
 	err := ValidateName(entity, name)
 	if err == nil {
 		return nil
