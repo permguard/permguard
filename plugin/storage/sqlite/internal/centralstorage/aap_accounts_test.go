@@ -64,7 +64,16 @@ func TestCreateAccountWithErrors(t *testing.T) {
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			mockSQLRepo.On("UpsertAccount", mock.Anything, true, mock.Anything).Return(nil, nil)
+			account := &azirepos.Account{
+				AccountID: 232956849236,
+				Name: "rent-a-car1",
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			}
+			mockSQLRepo.On("UpsertAccount", mock.Anything, true, mock.Anything).Return(account, nil)
+			mockSQLRepo.On("UpsertTenant", mock.Anything, true, mock.Anything).Return(nil, nil)
+			mockSQLRepo.On("UpsertIdentitySource", mock.Anything, true, mock.Anything).Return(nil, nil)
+			mockSQLRepo.On("UpsertRepository", mock.Anything, true, mock.Anything).Return(nil, nil)
 			mockSQLDB.ExpectCommit().WillReturnError(errors.New(testcase))
 		default:
 			assert.FailNow("Unknown testcase")
@@ -98,6 +107,9 @@ func TestCreateAccountWithSuccess(t *testing.T) {
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLDB.ExpectBegin()
 	mockSQLRepo.On("UpsertAccount", mock.Anything, true, mock.Anything).Return(dbOutAccount, nil)
+	mockSQLRepo.On("UpsertTenant", mock.Anything, true, mock.Anything).Return(nil, nil)
+	mockSQLRepo.On("UpsertIdentitySource", mock.Anything, true, mock.Anything).Return(nil, nil)
+	mockSQLRepo.On("UpsertRepository", mock.Anything, true, mock.Anything).Return(nil, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
 	inAccount := &azmodels.Account{}
@@ -145,7 +157,16 @@ func TestUpdateAccountWithErrors(t *testing.T) {
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			mockSQLRepo.On("UpsertAccount", mock.Anything, false, mock.Anything).Return(nil, nil)
+			account := &azirepos.Account{
+				AccountID: 232956849236,
+				Name: "rent-a-car1",
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			}
+			mockSQLRepo.On("UpsertAccount", mock.Anything, false, mock.Anything).Return(account, nil)
+			mockSQLRepo.On("UpsertTenant", mock.Anything, true, mock.Anything).Return(nil, nil)
+			mockSQLRepo.On("UpsertIdentitySource", mock.Anything, true, mock.Anything).Return(nil, nil)
+			mockSQLRepo.On("UpsertRepository", mock.Anything, true, mock.Anything).Return(nil, nil)
 			mockSQLDB.ExpectCommit().WillReturnError(errors.New(testcase))
 		default:
 			assert.FailNow("Unknown testcase")
