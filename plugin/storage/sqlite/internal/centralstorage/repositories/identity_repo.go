@@ -70,7 +70,7 @@ func (r *Repo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*I
 	if !isCreate && azivalidators.ValidateUUID("identity", identity.IdentityID) != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (%s).", LogIdentityEntry(identity)))
 	}
-	if !isCreate && azivalidators.ValidateUUID("identity", identity.IdentitySourceID) != nil {
+	if isCreate && azivalidators.ValidateUUID("identity", identity.IdentitySourceID) != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (%s).", LogIdentityEntry(identity)))
 	}
 	if err := azivalidators.ValidateName("identity", identity.Name); err != nil {
@@ -80,14 +80,16 @@ func (r *Repo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*I
 
 	accountID := identity.AccountID
 	identityID := identity.IdentityID
+	identitySourceID := identity.IdentitySourceID
+	kind := identity.Kind
 	identityName := identity.Name
 	var result sql.Result
 	var err error
 	if isCreate {
 		identityID = GenerateUUID()
-		result, err = tx.Exec("INSERT INTO identities (account_id, identity_id, name) VALUES (?, ?, ?)", accountID, identityID, identityName)
+		result, err = tx.Exec("INSERT INTO identities (account_id, identity_id, identity_source_id, kind, name) VALUES (?, ?, ?)", accountID, identityID, identitySourceID, kind, identityName)
 	} else {
-		result, err = tx.Exec("UPDATE identities SET name = ? WHERE account_id = ? and identity_id = ?", identityName, accountID, identityID)
+		result, err = tx.Exec("UPDATE identities SET kind = ? and name = ? WHERE account_id = ? and identity_id = ?", kind, identityName, accountID, identityID)
 	}
 	if err != nil || result == nil {
 		action := "update"
