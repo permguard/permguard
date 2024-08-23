@@ -44,7 +44,7 @@ func ConvertIdentityKindToID(kind string) (int16, error) {
 	cKey := strings.ToLower(kind)
 	value, ok := identitiesMap[cKey]
 	if !ok {
-		return 0, fmt.Errorf("storage: invalid identity kind. %w", azerrors.ErrClientGeneric)
+		return 0, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity kind %s is not valid.", kind))
 	}
 	return value, nil
 }
@@ -89,7 +89,7 @@ func (r *Repo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*I
 		identityID = GenerateUUID()
 		result, err = tx.Exec("INSERT INTO identities (account_id, identity_id, identity_source_id, kind, name) VALUES (?, ?, ?, ?, ?)", accountID, identityID, identitySourceID, kind, identityName)
 	} else {
-		result, err = tx.Exec("UPDATE identities SET kind = ? and name = ? WHERE account_id = ? and identity_id = ?", kind, identityName, accountID, identityID)
+		result, err = tx.Exec("UPDATE identities SET kind = ?, name = ? WHERE account_id = ? and identity_id = ?", kind, identityName, accountID, identityID)
 	}
 	if err != nil || result == nil {
 		action := "update"
