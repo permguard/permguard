@@ -72,27 +72,29 @@ func (c *GrpcAAPClient) DeleteIdentity(accountID int64, identityID string) (*azm
 }
 
 // FetchIdentities returns all the identities.
-func (c *GrpcAAPClient) FetchIdentities(accountID int64) ([]azmodels.Identity, error) {
-	return c.FetchIdentitiesBy(accountID, "", "", "", "")
+func (c *GrpcAAPClient) FetchIdentities(page int32, pageSize int32, accountID int64) ([]azmodels.Identity, error) {
+	return c.FetchIdentitiesBy(page, pageSize, accountID, "", "", "", "")
 }
 
 // FetchIdentitiesByID returns all identities filtering by identity id.
-func (c *GrpcAAPClient) FetchIdentitiesByID(accountID int64, identityID string) ([]azmodels.Identity, error) {
-	return c.FetchIdentitiesBy(accountID, "", identityID, "", "")
+func (c *GrpcAAPClient) FetchIdentitiesByID(page int32, pageSize int32, accountID int64, identityID string) ([]azmodels.Identity, error) {
+	return c.FetchIdentitiesBy(page, pageSize, accountID, "", identityID, "", "")
 }
 
 // FetchIdentitiesByEmail returns all identities filtering by name.
-func (c *GrpcAAPClient) FetchIdentitiesByEmail(accountID int64, name string) ([]azmodels.Identity, error) {
-	return c.FetchIdentitiesBy(accountID, "", "", "", name)
+func (c *GrpcAAPClient) FetchIdentitiesByEmail(page int32, pageSize int32, accountID int64, name string) ([]azmodels.Identity, error) {
+	return c.FetchIdentitiesBy(page, pageSize, accountID, "", "", "", name)
 }
 
 // FetchIdentitiesBy returns all identities filtering by all criteria.
-func (c *GrpcAAPClient) FetchIdentitiesBy(accountID int64, identitySourceID string, identityID string, kind string, name string) ([]azmodels.Identity, error) {
+func (c *GrpcAAPClient) FetchIdentitiesBy(page int32, pageSize int32, accountID int64, identitySourceID string, identityID string, kind string, name string) ([]azmodels.Identity, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	identityFetchRequest := &azapiv1aap.IdentityFetchRequest{}
+	identityFetchRequest.Page = &page
+	identityFetchRequest.PageSize = &pageSize
 	if accountID > 0 {
 		identityFetchRequest.AccountID = accountID
 	}

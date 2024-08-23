@@ -96,6 +96,36 @@ func (m *MockSqliteRepo) FetchIdentitySources(db *sqlx.DB, page int32, pageSize 
 	return r0, args.Error(1)
 }
 
+// UpsertIdentity creates or updates an identity.
+func (m *MockSqliteRepo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *azirepos.Identity) (*azirepos.Identity, error) {
+	args := m.Called(tx, isCreate, identity)
+	var r0 *azirepos.Identity
+	if val, ok := args.Get(0).(*azirepos.Identity); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
+}
+
+// DeleteIdentity deletes an identity.
+func (m *MockSqliteRepo) DeleteIdentity(tx *sql.Tx, accountID int64, identityID string) (*azirepos.Identity, error) {
+	args := m.Called(tx, accountID, identityID)
+	var r0 *azirepos.Identity
+	if val, ok := args.Get(0).(*azirepos.Identity); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
+}
+
+// FetchIdentities fetches identities.
+func (m *MockSqliteRepo) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.Identity, error) {
+	args := m.Called(db, page, pageSize, accountID, filterID, filterName)
+	var r0 []azirepos.Identity
+	if val, ok := args.Get(0).([]azirepos.Identity); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
+}
+
 // UpsertTenant creates or updates an tenant.
 func (m *MockSqliteRepo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *azirepos.Tenant) (*azirepos.Tenant, error) {
 	args := m.Called(tx, isCreate, tenant)

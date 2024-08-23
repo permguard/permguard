@@ -1,0 +1,432 @@
+// Copyright 2024 Nitro Agility S.r.l.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package repositories
+
+import (
+	"regexp"
+	"sort"
+	"testing"
+	"time"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/mattn/go-sqlite3"
+
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
+)
+
+// registerIdentityForUpsertMocking registers an identity for upsert mocking.
+func registerIdentityForUpsertMocking(isCreate bool) (*Identity, string, *sqlmock.Rows) {
+	identity := &Identity{
+		IdentityID: GenerateUUID(),
+		AccountID:  581616507495,
+		Name:       "rent-a-car",
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+	var sql string
+	if isCreate {
+		sql = `INSERT INTO identities \(account_id, identity_id, name\) VALUES \(\?, \?, \?\)`
+	} else {
+		sql = `UPDATE identities SET name = \? WHERE account_id = \? and identity_id = \?`
+	}
+	sqlRows := sqlmock.NewRows([]string{"account_id", "identity_id", "created_at", "updated_at", "name"}).
+		AddRow(identity.AccountID, identity.IdentityID, identity.CreatedAt, identity.UpdatedAt, identity.Name)
+	return identity, sql, sqlRows
+}
+
+// registerIdentityForDeleteMocking registers an identity for delete mocking.
+func registerIdentityForDeleteMocking() (string, *Identity, *sqlmock.Rows, string) {
+	identity := &Identity{
+		IdentityID: GenerateUUID(),
+		AccountID:  581616507495,
+		Name:       "rent-a-car",
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+	var sqlSelect = `SELECT account_id, identity_id, created_at, updated_at, name FROM identities WHERE account_id = \? and identity_id = \?`
+	var sqlDelete = `DELETE FROM identities WHERE account_id = \? and identity_id = \?`
+	sqlRows := sqlmock.NewRows([]string{"account_id", "identity_id", "created_at", "updated_at", "name"}).
+		AddRow(identity.AccountID, identity.IdentityID, identity.CreatedAt, identity.UpdatedAt, identity.Name)
+	return sqlSelect, identity, sqlRows, sqlDelete
+}
+
+// registerIdentityForFetchMocking registers an identity for fetch mocking.
+func registerIdentityForFetchMocking() (string, []Identity, *sqlmock.Rows) {
+	identities := []Identity{
+		{
+			IdentityID: GenerateUUID(),
+			AccountID:  581616507495,
+			Name:       "rent-a-car",
+			CreatedAt:  time.Now(),
+			UpdatedAt:  time.Now(),
+		},
+	}
+	var sqlSelect = "SELECT * FROM identities WHERE account_id = ? AND identity_id = ? AND name LIKE ? ORDER BY identity_id ASC LIMIT ? OFFSET ?"
+	sqlRows := sqlmock.NewRows([]string{"account_id", "identity_id", "created_at", "updated_at", "name"}).
+		AddRow(identities[0].AccountID, identities[0].IdentityID, identities[0].CreatedAt, identities[0].UpdatedAt, identities[0].Name)
+	return sqlSelect, identities, sqlRows
+}
+
+// TestRepoUpsertIdentityWithInvalidInput tests the upsert of an identity with invalid input.
+func TestRepoUpsertIdentityWithInvalidInput(t *testing.T) {
+	assert := assert.New(t)
+	repo := Repo{}
+
+	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
+	defer sqlDB.Close()
+
+	tx, _ := sqlDB.Begin()
+
+	{ // Test with nil identity
+		_, err := repo.UpsertIdentity(tx, true, nil)
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+	}
+
+	{ // Test with invalid account id
+		dbInIdentity := &Identity{
+			IdentityID: GenerateUUID(),
+			Name:       "rent-a-car",
+		}
+		_, err := repo.UpsertIdentity(tx, false, dbInIdentity)
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+	}
+
+	{ // Test with invalid identity id
+		dbInIdentity := &Identity{
+			AccountID: 581616507495,
+			Name:      "rent-a-car",
+		}
+		_, err := repo.UpsertIdentity(tx, false, dbInIdentity)
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+	}
+
+	{ // Test with invalid identity name
+		tests := []string{
+			"",
+			" ",
+			"@",
+			"1aX",
+			"X-@x"}
+		for _, test := range tests {
+			identityName := test
+			_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
+			defer sqlDB.Close()
+
+			tx, _ := sqlDB.Begin()
+
+			dbInIdentity := &Identity{
+				Name: identityName,
+			}
+			dbOutIdentity, err := repo.UpsertIdentity(tx, true, dbInIdentity)
+			assert.NotNil(err, "error should be not nil")
+			assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+			assert.Nil(dbOutIdentity, "identity should be nil")
+		}
+	}
+}
+
+// TestRepoUpsertIdentityWithSuccess tests the upsert of an identity with success.
+func TestRepoUpsertIdentityWithSuccess(t *testing.T) {
+	assert := assert.New(t)
+	repo := Repo{}
+
+	tests := []bool{
+		true,
+		false,
+	}
+	for _, test := range tests {
+		_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+		defer sqlDB.Close()
+
+		isCreate := test
+		identity, sql, sqlIdentityRows := registerIdentityForUpsertMocking(isCreate)
+
+		sqlDBMock.ExpectBegin()
+		var dbInIdentity *Identity
+		if isCreate {
+			dbInIdentity = &Identity{
+				AccountID: identity.AccountID,
+				Name:      identity.Name,
+			}
+			sqlDBMock.ExpectExec(sql).
+				WithArgs(identity.AccountID, sqlmock.AnyArg(), identity.Name).
+				WillReturnResult(sqlmock.NewResult(1, 1))
+		} else {
+			dbInIdentity = &Identity{
+				IdentityID: identity.IdentityID,
+				AccountID:  identity.AccountID,
+				Name:       identity.Name,
+			}
+			sqlDBMock.ExpectExec(sql).
+				WithArgs(identity.Name, identity.AccountID, identity.IdentityID).
+				WillReturnResult(sqlmock.NewResult(1, 1))
+		}
+
+		sqlDBMock.ExpectQuery(`SELECT account_id, identity_id, created_at, updated_at, name FROM identities WHERE account_id = \? and identity_id = \?`).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
+			WillReturnRows(sqlIdentityRows)
+
+		tx, _ := sqlDB.Begin()
+		dbOutIdentity, err := repo.UpsertIdentity(tx, isCreate, dbInIdentity)
+
+		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
+		assert.NotNil(dbOutIdentity, "identity should be not nil")
+		assert.Equal(identity.IdentityID, dbOutIdentity.IdentityID, "identity id is not correct")
+		assert.Equal(identity.AccountID, dbOutIdentity.AccountID, "identity account id is not correct")
+		assert.Equal(identity.Name, dbOutIdentity.Name, "identity name is not correct")
+		assert.Nil(err, "error should be nil")
+	}
+}
+
+// TestRepoUpsertIdentityWithErrors tests the upsert of an identity with errors.
+func TestRepoUpsertIdentityWithErrors(t *testing.T) {
+	assert := assert.New(t)
+	repo := Repo{}
+
+	tests := []bool{
+		true,
+		false,
+	}
+	for _, test := range tests {
+		_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+		defer sqlDB.Close()
+
+		isCreate := test
+		identity, sql, _ := registerIdentityForUpsertMocking(isCreate)
+
+		sqlDBMock.ExpectBegin()
+
+		var dbInIdentity *Identity
+		if isCreate {
+			dbInIdentity = &Identity{
+				AccountID: identity.AccountID,
+				Name:      identity.Name,
+			}
+			sqlDBMock.ExpectExec(sql).
+				WithArgs(identity.AccountID, sqlmock.AnyArg(), identity.Name).
+				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
+		} else {
+			dbInIdentity = &Identity{
+				IdentityID: identity.IdentityID,
+				AccountID:  identity.AccountID,
+				Name:       identity.Name,
+			}
+			sqlDBMock.ExpectExec(sql).
+				WithArgs(identity.Name, identity.AccountID, identity.IdentityID).
+				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
+		}
+
+		tx, _ := sqlDB.Begin()
+		dbOutIdentity, err := repo.UpsertIdentity(tx, isCreate, dbInIdentity)
+
+		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
+		assert.Nil(dbOutIdentity, "identity should be nil")
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrStorageConstraintUnique, err), "error should be errstorageconstraintunique")
+	}
+}
+
+// TestRepoDeleteIdentityWithInvalidInput tests the delete of an identity with invalid input.
+func TestRepoDeleteIdentityWithInvalidInput(t *testing.T) {
+	repo := Repo{}
+
+	assert := assert.New(t)
+	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
+	defer sqlDB.Close()
+
+	tx, _ := sqlDB.Begin()
+
+	{ // Test with invalid account id
+		_, err := repo.DeleteIdentity(tx, 0, GenerateUUID())
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+	}
+
+	{ // Test with invalid identity id
+		_, err := repo.DeleteIdentity(tx, 581616507495, "")
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+	}
+}
+
+// TestRepoDeleteIdentityWithSuccess tests the delete of an identity with success.
+func TestRepoDeleteIdentityWithSuccess(t *testing.T) {
+	assert := assert.New(t)
+	repo := Repo{}
+
+	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+	defer sqlDB.Close()
+
+	sqlSelect, identity, sqlIdentityRows, sqlDelete := registerIdentityForDeleteMocking()
+
+	sqlDBMock.ExpectBegin()
+
+	sqlDBMock.ExpectQuery(sqlSelect).
+		WithArgs(identity.AccountID, identity.IdentityID).
+		WillReturnRows(sqlIdentityRows)
+
+	sqlDBMock.ExpectExec(sqlDelete).
+		WithArgs(identity.AccountID, identity.IdentityID).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	tx, _ := sqlDB.Begin()
+	dbOutIdentity, err := repo.DeleteIdentity(tx, identity.AccountID, identity.IdentityID)
+
+	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
+	assert.NotNil(dbOutIdentity, "identity should be not nil")
+	assert.Equal(identity.IdentityID, dbOutIdentity.IdentityID, "identity id is not correct")
+	assert.Equal(identity.AccountID, dbOutIdentity.AccountID, "identity account id is not correct")
+	assert.Equal(identity.Name, dbOutIdentity.Name, "identity name is not correct")
+	assert.Nil(err, "error should be nil")
+}
+
+// TestRepoDeleteIdentityWithErrors tests the delete of an identity with errors.
+func TestRepoDeleteIdentityWithErrors(t *testing.T) {
+	assert := assert.New(t)
+	repo := Repo{}
+
+	tests := []int{
+		1,
+		2,
+		3,
+	}
+	for _, test := range tests {
+		_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+		defer sqlDB.Close()
+
+		sqlSelect, identity, sqlIdentityRows, sqlDelete := registerIdentityForDeleteMocking()
+
+		sqlDBMock.ExpectBegin()
+
+		if test == 1 {
+			sqlDBMock.ExpectQuery(sqlSelect).
+				WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
+				WillReturnError(sqlite3.Error{Code: sqlite3.ErrNotFound})
+		} else {
+			sqlDBMock.ExpectQuery(sqlSelect).
+				WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
+				WillReturnRows(sqlIdentityRows)
+		}
+
+		if test == 2 {
+			sqlDBMock.ExpectExec(sqlDelete).
+				WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
+				WillReturnError(sqlite3.Error{Code: sqlite3.ErrPerm})
+		} else if test == 3 {
+			sqlDBMock.ExpectExec(sqlDelete).
+				WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
+				WillReturnResult(sqlmock.NewResult(0, 0))
+		}
+
+		tx, _ := sqlDB.Begin()
+		dbOutIdentity, err := repo.DeleteIdentity(tx, identity.AccountID, identity.IdentityID)
+
+		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
+		assert.Nil(dbOutIdentity, "identity should be nil")
+		assert.NotNil(err, "error should be not nil")
+
+		if test == 1 {
+			assert.True(azerrors.AreErrorsEqual(azerrors.ErrStorageNotFound, err), "error should be errstoragenotfound")
+		} else {
+			assert.True(azerrors.AreErrorsEqual(azerrors.ErrStorageGeneric, err), "error should be errstoragegeneric")
+		}
+	}
+}
+
+// TestRepoFetchIdentityWithInvalidInput tests the fetch of identities with invalid input.
+func TestRepoFetchIdentityWithInvalidInput(t *testing.T) {
+	assert := assert.New(t)
+	repo := Repo{}
+
+	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
+	defer sqlDB.Close()
+
+	{ // Test with invalid page
+		_, err := repo.FetchIdentities(sqlDB, 0, 100, 581616507495, nil, nil)
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
+	}
+
+	{ // Test with invalid page size
+		_, err := repo.FetchIdentities(sqlDB, 1, 0, 581616507495, nil, nil)
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
+	}
+
+	{ // Test with invalid account id
+		identityID := GenerateUUID()
+		_, err := repo.FetchIdentities(sqlDB, 1, 1, 0, &identityID, nil)
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
+	}
+
+	{ // Test with invalid identity id
+		identityID := ""
+		_, err := repo.FetchIdentities(sqlDB, 1, 1, 581616507495, &identityID, nil)
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
+	}
+
+	{ // Test with invalid identity name
+		identityName := "@"
+		_, err := repo.FetchIdentities(sqlDB, 1, 1, 581616507495, nil, &identityName)
+		assert.NotNil(err, "error should be not nil")
+		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientName, err), "error should be errclientname")
+	}
+}
+
+// TestRepoFetchIdentityWithSuccess tests the fetch of identities with success.
+func TestRepoFetchIdentityWithSuccess(t *testing.T) {
+	assert := assert.New(t)
+	repo := Repo{}
+
+	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+	defer sqlDB.Close()
+
+	sqlSelect, sqlIdentities, sqlIdentityRows := registerIdentityForFetchMocking()
+
+	page := int32(1)
+	pageSize := int32(100)
+	identityName := "%" + sqlIdentities[0].Name + "%"
+	sqlDBMock.ExpectQuery(regexp.QuoteMeta(sqlSelect)).
+		WithArgs(sqlIdentities[0].AccountID, sqlIdentities[0].IdentityID, identityName, pageSize, page-1).
+		WillReturnRows(sqlIdentityRows)
+
+	dbOutIdentities, err := repo.FetchIdentities(sqlDB, page, pageSize, sqlIdentities[0].AccountID, &sqlIdentities[0].IdentityID, &sqlIdentities[0].Name)
+
+	orderedSQLIdentities := make([]Identity, len(sqlIdentities))
+	copy(orderedSQLIdentities, sqlIdentities)
+	sort.Slice(orderedSQLIdentities, func(i, j int) bool {
+		return orderedSQLIdentities[i].IdentityID < orderedSQLIdentities[j].IdentityID
+	})
+
+	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
+	assert.NotNil(dbOutIdentities, "identity should be not nil")
+	assert.Len(orderedSQLIdentities, len(dbOutIdentities), "identities len should be correct")
+	for i, identity := range dbOutIdentities {
+		assert.Equal(identity.IdentityID, orderedSQLIdentities[i].IdentityID, "identity id is not correct")
+		assert.Equal(identity.AccountID, orderedSQLIdentities[i].AccountID, "identity account id is not correct")
+		assert.Equal(identity.Name, orderedSQLIdentities[i].Name, "identity name is not correct")
+	}
+	assert.Nil(err, "error should be nil")
+}

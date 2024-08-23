@@ -47,7 +47,7 @@ type AAPCentralStorage interface {
 	// DeleteIdentity deletes an identity.
 	DeleteIdentity(accountID int64, identityID string) (*azmodels.Identity, error)
 	// FetchIdentities gets all identities.
-	FetchIdentities(accountID int64, fields map[string]any) ([]azmodels.Identity, error)
+	FetchIdentities(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Identity, error)
 
 	// CreateTenant creates a new tenant.
 	CreateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error)

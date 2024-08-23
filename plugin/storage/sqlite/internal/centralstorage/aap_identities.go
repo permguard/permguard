@@ -17,29 +17,131 @@
 package centralstorage
 
 import (
+	"fmt"
+
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+)
+
+const (
+	IdentityDefaultName = "default"
 )
 
 // CreateIdentity creates a new identity.
 func (s SQLiteCentralStorageAAP) CreateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error) {
-	// logger := s.ctx.GetLogger()
-	return nil, nil
+	if identity == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - identity is nil.")
+	}
+	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
+	if err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+	}
+	dbInIdentity := &azirepos.Identity{
+		AccountID: identity.AccountID,
+		Name:      identity.Name,
+	}
+	dbOutIdentity, err := s.sqlRepo.UpsertIdentity(tx, true, dbInIdentity)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+	}
+	return mapIdentityToAgentIdentity(dbOutIdentity)
 }
 
 // UpdateIdentity updates an identity.
 func (s SQLiteCentralStorageAAP) UpdateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error) {
-	// logger := s.ctx.GetLogger()
-	return nil, nil
+	if identity == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - identity is nil.")
+	}
+	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
+	if err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+	}
+	dbInIdentity := &azirepos.Identity{
+		IdentityID: identity.IdentityID,
+		AccountID:  identity.AccountID,
+		Name:       identity.Name,
+	}
+	dbOutIdentity, err := s.sqlRepo.UpsertIdentity(tx, false, dbInIdentity)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+	}
+	return mapIdentityToAgentIdentity(dbOutIdentity)
 }
 
 // DeleteIdentity deletes an identity.
 func (s SQLiteCentralStorageAAP) DeleteIdentity(accountID int64, identityID string) (*azmodels.Identity, error) {
-	// logger := s.ctx.GetLogger()
-	return nil, nil
+	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
+	if err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+	}
+	dbOutIdentity, err := s.sqlRepo.DeleteIdentity(tx, accountID, identityID)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+	}
+	return mapIdentityToAgentIdentity(dbOutIdentity)
 }
 
 // FetchIdentities returns all identities.
-func (s SQLiteCentralStorageAAP) FetchIdentities(accountID int64, fields map[string]any) ([]azmodels.Identity, error) {
-	// logger := s.ctx.GetLogger()
-	return nil, nil
+func (s SQLiteCentralStorageAAP) FetchIdentities(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Identity, error) {
+	if page <= 0 || pageSize <= 0 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
+	}
+	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
+	if err != nil {
+		return nil, err
+	}
+	var filterID *string
+	if _, ok := fields[azmodels.FieldIdentityIdentityID]; ok {
+		identityID, ok := fields[azmodels.FieldIdentityIdentityID].(string)
+		if !ok {
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (identity id: %s).", identityID))
+		}
+		filterID = &identityID
+	}
+	var filterName *string
+	if _, ok := fields[azmodels.FieldIdentityName]; ok {
+		identityName, ok := fields[azmodels.FieldIdentityName].(string)
+		if !ok {
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity name is not valid (identity name: %s).", identityName))
+		}
+		filterName = &identityName
+	}
+	dbIdentities, err := s.sqlRepo.FetchIdentities(db, page, pageSize, accountID, filterID, filterName)
+	if err != nil {
+		return nil, err
+	}
+	identities := make([]azmodels.Identity, len(dbIdentities))
+	for i, a := range dbIdentities {
+		identity, err := mapIdentityToAgentIdentity(&a)
+		if err != nil {
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert identity entity (%s).", azirepos.LogIdentityEntry(&a)))
+		}
+		identities[i] = *identity
+	}
+	return identities, nil
 }
