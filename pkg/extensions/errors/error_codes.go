@@ -42,6 +42,7 @@ var errorCodes = map[string]string{
 	// 05xxx: Server Errors
 	"05000": "server: generic error",
 	"05001": "server: infrastructure error",
+	
 	// 051xx: Storage Errors
 	"05100": "stroage: generic error",
 	"05101": "storage: entity mapping error",

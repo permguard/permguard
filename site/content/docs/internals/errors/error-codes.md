@@ -25,38 +25,62 @@ seo:
 
 | Error Code | Description                       |
 |------------|-----------------------------------|
-| 00000      | generic unknown error             |
-| 00101      | invalid input parameter           |
+| 00000      | core: unknown error               |
+
+## 001xx Implementation Errors
+
+| Error Code | Description                       |
+|------------|-----------------------------------|
+| 00101      | code: feature not implemented     |
 
 ## 01xxx Configuration errors
 
 | Error Code | Description                       |
 |------------|-----------------------------------|
-| 01000      | generic configuration error       |
+| 01000      | config: generic error             |
 
 ## 04xxx Client errors
 
 | Error Code | Description                       |
 |------------|-----------------------------------|
-| 04000      | generic client error              |
-| 04100      | invalid entity                    |
-| 04101      | invalid account id                |
-| 04102      | invalid id                        |
-| 04103      | invalid uuid                      |
-| 04104      | invalid name                      |
+| 04000      | client: generic error             |
 
-## 05xxx Server errors
+### 041xx Client Parameter Errors
+
+| Error Code | Description                           |
+|------------|---------------------------------------|
+| 04100      | client: invalid client parameter      |
+| 04101      | client: invalid pagination parameter  |
+
+### 041xx Client Entity Errors
 
 | Error Code | Description                       |
 |------------|-----------------------------------|
-| 05000      | generic server error              |
-| 05001      | infrastructural error             |
-| 05100      | generic storage error             |
-| 05101      | duplicate entity                  |
-| 05102      | not found                         |
+| 04110      | client: invalid entity            |
+| 04111      | client: invalid ID                |
+| 04112      | client: invalid UUID              |
+| 04113      | client: invalid name              |
+
+## 05xxx Server errors
+
+| Error Code | Description                                      |
+|------------|--------------------------------------------------|
+| 05000      | server: generic error                            |
+| 05001      | server: infrastructure error                     |
+
+### 051xx Storage Errors
+
+| Error Code | Description                                      |
+|------------|--------------------------------------------------|
+| 05100      | storage: generic error                           |
+| 05101      | storage: entity mapping error                    |
+| 05110      | storage: constraint error                        |
+| 05111      | storage: foreign key constraint violation        |
+| 05112      | storage: unique constraint violation             |
+| 05120      | storage: entity not found in storage             |
 
 ## 09xxx Plugin errors
 
 | Error Code | Description                       |
 |------------|-----------------------------------|
-| 09000      | generic plugin error              |
+| 09000      | plugin: generic error             |
