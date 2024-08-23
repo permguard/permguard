@@ -34,11 +34,13 @@ import (
 // registerIdentityForUpsertMocking registers an identity for upsert mocking.
 func registerIdentityForUpsertMocking(isCreate bool) (*Identity, string, *sqlmock.Rows) {
 	identity := &Identity{
-		IdentityID: GenerateUUID(),
-		AccountID:  581616507495,
-		Name:       "rent-a-car",
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		IdentityID: 		GenerateUUID(),
+		AccountID:  		581616507495,
+		IdentitySourceID: 	GenerateUUID(),
+		Kind: 			  	1,
+		Name:       		"nicola",
+		CreatedAt:  		time.Now(),
+		UpdatedAt:  		time.Now(),
 	}
 	var sql string
 	if isCreate {
@@ -54,11 +56,13 @@ func registerIdentityForUpsertMocking(isCreate bool) (*Identity, string, *sqlmoc
 // registerIdentityForDeleteMocking registers an identity for delete mocking.
 func registerIdentityForDeleteMocking() (string, *Identity, *sqlmock.Rows, string) {
 	identity := &Identity{
-		IdentityID: GenerateUUID(),
-		AccountID:  581616507495,
-		Name:       "rent-a-car",
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		IdentityID: 		GenerateUUID(),
+		AccountID:  		581616507495,
+		IdentitySourceID: 	GenerateUUID(),
+		Kind: 			  	1,
+		Name:       		"nicola",
+		CreatedAt:  		time.Now(),
+		UpdatedAt:  		time.Now(),
 	}
 	var sqlSelect = `SELECT account_id, identity_id, created_at, updated_at, name FROM identities WHERE account_id = \? and identity_id = \?`
 	var sqlDelete = `DELETE FROM identities WHERE account_id = \? and identity_id = \?`
@@ -71,11 +75,13 @@ func registerIdentityForDeleteMocking() (string, *Identity, *sqlmock.Rows, strin
 func registerIdentityForFetchMocking() (string, []Identity, *sqlmock.Rows) {
 	identities := []Identity{
 		{
-			IdentityID: GenerateUUID(),
-			AccountID:  581616507495,
-			Name:       "rent-a-car",
-			CreatedAt:  time.Now(),
-			UpdatedAt:  time.Now(),
+			IdentityID: 		GenerateUUID(),
+			AccountID:  		581616507495,
+			IdentitySourceID: 	GenerateUUID(),
+			Kind: 			  	1,
+			Name:       		"nicola",
+			CreatedAt:  		time.Now(),
+			UpdatedAt:  		time.Now(),
 		},
 	}
 	var sqlSelect = "SELECT * FROM identities WHERE account_id = ? AND identity_id = ? AND name LIKE ? ORDER BY identity_id ASC LIMIT ? OFFSET ?"
@@ -165,8 +171,10 @@ func TestRepoUpsertIdentityWithSuccess(t *testing.T) {
 		var dbInIdentity *Identity
 		if isCreate {
 			dbInIdentity = &Identity{
-				AccountID: identity.AccountID,
-				Name:      identity.Name,
+				AccountID: 			identity.AccountID,
+				IdentitySourceID:  	identity.IdentitySourceID,
+				Kind: 				identity.Kind,
+				Name:      			identity.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
 				WithArgs(identity.AccountID, sqlmock.AnyArg(), identity.Name).
@@ -175,6 +183,8 @@ func TestRepoUpsertIdentityWithSuccess(t *testing.T) {
 			dbInIdentity = &Identity{
 				IdentityID: identity.IdentityID,
 				AccountID:  identity.AccountID,
+				IdentitySourceID:  	identity.IdentitySourceID,
+				Kind: 				identity.Kind,
 				Name:       identity.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
@@ -219,17 +229,21 @@ func TestRepoUpsertIdentityWithErrors(t *testing.T) {
 		var dbInIdentity *Identity
 		if isCreate {
 			dbInIdentity = &Identity{
-				AccountID: identity.AccountID,
-				Name:      identity.Name,
+				AccountID: 			identity.AccountID,
+				IdentitySourceID:  	identity.IdentitySourceID,
+				Kind: 				identity.Kind,
+				Name:      			identity.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
 				WithArgs(identity.AccountID, sqlmock.AnyArg(), identity.Name).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 		} else {
 			dbInIdentity = &Identity{
-				IdentityID: identity.IdentityID,
-				AccountID:  identity.AccountID,
-				Name:       identity.Name,
+				IdentityID: 		identity.IdentityID,
+				AccountID:  		identity.AccountID,
+				IdentitySourceID:  	identity.IdentitySourceID,
+				Kind: 				identity.Kind,
+				Name:       		identity.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
 				WithArgs(identity.Name, identity.AccountID, identity.IdentityID).

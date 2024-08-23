@@ -21,15 +21,19 @@ import (
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
-// mapIdentityToAgentIdentity maps a Identity to a model Identity.
-func mapIdentityToAgentIdentity(Identity *azirepos.Identity) (*azmodels.Identity, error) {
+// mapIdentityToAgentIdentity maps an Identity to a model Identity.
+func mapIdentityToAgentIdentity(identity *azirepos.Identity) (*azmodels.Identity, error) {
+	kind, err := azirepos.ConvertIdentityKindToString(identity.Kind)
+	if err != nil {
+		return nil, err
+	}
 	return &azmodels.Identity{
-		IdentityID: 		Identity.IdentityID,
-		CreatedAt:        	Identity.CreatedAt,
-		UpdatedAt:        	Identity.UpdatedAt,
-		AccountID:        	Identity.AccountID,
-		IdentitySourceID:	Identity.IdentitySourceID,
-		Kind: 		   		Identity.Kind,
-		Name:            	Identity.Name,
+		IdentityID:       identity.IdentityID,
+		CreatedAt:        identity.CreatedAt,
+		UpdatedAt:        identity.UpdatedAt,
+		AccountID:        identity.AccountID,
+		IdentitySourceID: identity.IdentitySourceID,
+		Kind:             kind,
+		Name:             identity.Name,
 	}, nil
 }

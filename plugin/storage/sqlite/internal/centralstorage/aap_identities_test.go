@@ -70,7 +70,9 @@ func TestCreateIdentityWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inIdentity := &azmodels.Identity{}
+		inIdentity := &azmodels.Identity{
+			Kind: "user",
+		}
 		outIdentities, err := storage.CreateIdentity(inIdentity)
 		assert.Nil(outIdentities, "identities should be nil")
 		assert.Error(err)
@@ -89,11 +91,13 @@ func TestCreateIdentityWithSuccess(t *testing.T) {
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
 	dbOutIdentity := &azirepos.Identity{
-		AccountID:  232956849236,
-		IdentityID: azirepos.GenerateUUID(),
-		Name:       "rent-a-car1",
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		IdentityID: 		azirepos.GenerateUUID(),
+		AccountID:  		581616507495,
+		IdentitySourceID: 	azirepos.GenerateUUID(),
+		Kind: 			  	1,
+		Name:       		"nicola",
+		CreatedAt:  		time.Now(),
+		UpdatedAt:  		time.Now(),
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
@@ -101,7 +105,9 @@ func TestCreateIdentityWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertIdentity", mock.Anything, true, mock.Anything).Return(dbOutIdentity, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inIdentity := &azmodels.Identity{}
+	inIdentity := &azmodels.Identity{
+		Kind: "user",
+	}
 	outIdentities, err := storage.CreateIdentity(inIdentity)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outIdentities, "identities should not be nil")
@@ -152,7 +158,9 @@ func TestUpdateIdentityWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inIdentity := &azmodels.Identity{}
+		inIdentity := &azmodels.Identity{
+			Kind: "user",
+		}
 		outIdentities, err := storage.UpdateIdentity(inIdentity)
 		assert.Nil(outIdentities, "identities should be nil")
 		assert.Error(err)
@@ -171,11 +179,13 @@ func TestUpdateIdentityWithSuccess(t *testing.T) {
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
 	dbOutIdentity := &azirepos.Identity{
-		AccountID:  232956849236,
-		IdentityID: azirepos.GenerateUUID(),
-		Name:       "rent-a-car1",
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		IdentityID: 		azirepos.GenerateUUID(),
+		AccountID:  		581616507495,
+		IdentitySourceID: 	azirepos.GenerateUUID(),
+		Kind: 			  	1,
+		Name:       		"nicola",
+		CreatedAt:  		time.Now(),
+		UpdatedAt:  		time.Now(),
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
@@ -183,7 +193,9 @@ func TestUpdateIdentityWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertIdentity", mock.Anything, false, mock.Anything).Return(dbOutIdentity, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inIdentity := &azmodels.Identity{}
+	inIdentity := &azmodels.Identity{
+		Kind: "user",
+	}
 	outIdentities, err := storage.UpdateIdentity(inIdentity)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outIdentities, "identities should not be nil")
@@ -246,11 +258,13 @@ func TestDeleteIdentityWithSuccess(t *testing.T) {
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
 	dbOutIdentity := &azirepos.Identity{
-		AccountID:  232956849236,
-		IdentityID: azirepos.GenerateUUID(),
-		Name:       "rent-a-car1",
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		IdentityID: 		azirepos.GenerateUUID(),
+		AccountID:  		581616507495,
+		IdentitySourceID: 	azirepos.GenerateUUID(),
+		Kind: 			  	1,
+		Name:       		"nicola",
+		CreatedAt:  		time.Now(),
+		UpdatedAt:  		time.Now(),
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
@@ -330,18 +344,22 @@ func TestFetchIdentityWithSuccess(t *testing.T) {
 
 	dbOutIdentities := []azirepos.Identity{
 		{
-			AccountID:  232956849236,
-			IdentityID: azirepos.GenerateUUID(),
-			Name:       "rent-a-car1",
-			CreatedAt:  time.Now(),
-			UpdatedAt:  time.Now(),
+			IdentityID: 		azirepos.GenerateUUID(),
+			AccountID:  		232956849236,
+			IdentitySourceID: 	azirepos.GenerateUUID(),
+			Kind: 			  	1,
+			Name:       		"nicola",
+			CreatedAt:  		time.Now(),
+			UpdatedAt:  		time.Now(),
 		},
 		{
-			AccountID:  232956849236,
-			IdentityID: azirepos.GenerateUUID(),
-			Name:       "rent-a-car2",
-			CreatedAt:  time.Now(),
-			UpdatedAt:  time.Now(),
+			IdentityID: 		azirepos.GenerateUUID(),
+			AccountID:  		232956849236,
+			IdentitySourceID: 	azirepos.GenerateUUID(),
+			Kind: 			  	1,
+			Name:       		"francesco",
+			CreatedAt:  		time.Now(),
+			UpdatedAt:  		time.Now(),
 		},
 	}
 
