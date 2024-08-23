@@ -20,5 +20,23 @@ CREATE TABLE keyvalues (
     value BLOB NOT NULL
 );
 
+-- Creating the `change_streams` table
+CREATE TABLE change_streams (
+    changestream_id INTEGER NOT NULL PRIMARY KEY,
+	change_entity TEXT NOT NULL,
+	change_type TEXT NOT NULL,
+	change_entity_id TEXT,
+	change_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    account_id INTEGER NOT NULL,
+    payload TEXT NOT NULL
+);
+
+CREATE INDEX change_streams_change_entity_idx ON change_streams(change_entity);
+CREATE INDEX change_streams_change_type_idx ON change_streams(change_type);
+CREATE INDEX change_streams_change_entity_id_idx ON change_streams(change_entity_id);
+CREATE INDEX change_streams_account_id_idx ON change_streams(account_id);
+CREATE INDEX change_streams_change_at_idx ON change_streams(change_at);
+
 -- +goose Down
+DROP TABLE IF EXISTS change_streams;
 DROP TABLE IF EXISTS keyvalues;
