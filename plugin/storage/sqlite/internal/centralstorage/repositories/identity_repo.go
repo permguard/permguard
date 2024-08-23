@@ -33,6 +33,32 @@ const (
 	errorMessageIdentityInvalidAccountID = "storage: invalid client input - account id is not valid (id: %d)."
 )
 
+// identitiesMap is a map of identity kinds to IDs.
+var identitiesMap = map[string]int16{
+	"user": 1,
+	"role": 2,
+}
+
+// ConvertIdentityKindToID converts an identity kind to an ID.
+func ConvertIdentityKindToID(kind string) (int16, error) {
+	cKey := strings.ToLower(kind)
+	value, ok := identitiesMap[cKey]
+	if !ok {
+		return 0, fmt.Errorf("storage: invalid identity kind. %w", azerrors.ErrClientGeneric)
+	}
+	return value, nil
+}
+
+// ConvertIdentityKindToString converts an identity kind to a string.
+func ConvertIdentityKindToString(id int16) (string, error) {
+	for k, v := range identitiesMap {
+		if v == id {
+			return k, nil
+		}
+	}
+	return "", nil
+}
+
 // UpsertIdentity creates or updates an identity.
 func (r *Repo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*Identity, error) {
 	if identity == nil {
@@ -42,6 +68,9 @@ func (r *Repo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*I
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentityInvalidAccountID, identity.AccountID))
 	}
 	if !isCreate && azivalidators.ValidateUUID("identity", identity.IdentityID) != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (%s).", LogIdentityEntry(identity)))
+	}
+	if !isCreate && azivalidators.ValidateUUID("identity", identity.IdentitySourceID) != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (%s).", LogIdentityEntry(identity)))
 	}
 	if err := azivalidators.ValidateName("identity", identity.Name); err != nil {
