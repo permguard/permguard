@@ -44,9 +44,9 @@ func registerIdentityForUpsertMocking(isCreate bool) (*Identity, string, *sqlmoc
 	}
 	var sql string
 	if isCreate {
-		sql = `INSERT INTO identities \(account_id, identity_id, name\) VALUES \(\?, \?, \?\)`
+		sql = `INSERT INTO identities \(account_id, identity_id, identity_source_id, kind, name\) VALUES \(\?, \?, \?, \?, \?\)`
 	} else {
-		sql = `UPDATE identities SET name = \? WHERE account_id = \? and identity_id = \?`
+		sql = `UPDATE identities SET kind = ? and name = ? WHERE account_id = \? and identity_id = \?`
 	}
 	sqlRows := sqlmock.NewRows([]string{"account_id", "identity_id", "created_at", "updated_at", "name"}).
 		AddRow(identity.AccountID, identity.IdentityID, identity.CreatedAt, identity.UpdatedAt, identity.Name)
@@ -177,7 +177,7 @@ func TestRepoUpsertIdentityWithSuccess(t *testing.T) {
 				Name:      			identity.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(identity.AccountID, sqlmock.AnyArg(), identity.Name).
+				WithArgs(identity.AccountID, sqlmock.AnyArg(), identity.IdentitySourceID, identity.Kind, identity.Name).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 		} else {
 			dbInIdentity = &Identity{
@@ -188,7 +188,7 @@ func TestRepoUpsertIdentityWithSuccess(t *testing.T) {
 				Name:       identity.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(identity.Name, identity.AccountID, identity.IdentityID).
+				WithArgs(identity.Kind, identity.Name, identity.AccountID, identity.IdentityID).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 		}
 
