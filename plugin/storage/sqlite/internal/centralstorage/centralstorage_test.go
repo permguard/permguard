@@ -87,7 +87,7 @@ func TestNewSQLiteCentralStorage(t *testing.T) {
 		assert.Nil(err)
 
 		papcentralstorage, err := sqliteExec.GetPAPCentralStorage()
-		assert.Nil(papcentralstorage)
+		assert.NotNil(papcentralstorage)
 		assert.Nil(err)
 	}
 

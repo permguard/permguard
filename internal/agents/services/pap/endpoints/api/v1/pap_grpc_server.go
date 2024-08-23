@@ -26,10 +26,14 @@ import (
 // PAPService is the service for the PAP.
 type PAPService interface {
 	Setup() error
+	// CreateRepository creates a new repository.
 	CreateRepository(repository *azmodels.Repository) (*azmodels.Repository, error)
+	// UpdateRepository updates an repository.
 	UpdateRepository(repository *azmodels.Repository) (*azmodels.Repository, error)
+	// DeleteRepository deletes an repository.
 	DeleteRepository(accountID int64, repositoryID string) (*azmodels.Repository, error)
-	FetchRepositories(accountID int64, fields map[string]any) ([]azmodels.Repository, error)
+	// FetchRepositories gets all repositories.
+	FetchRepositories(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Repository, error)
 }
 
 // NewV1PAPServer creates a new PAP server.
@@ -84,7 +88,15 @@ func (s V1PAPServer) FetchRepositories(ctx context.Context, repositoryRequest *R
 	if repositoryRequest.RepositoryID != nil {
 		fields[azmodels.FieldRepositoryRepositoryID] = *repositoryRequest.RepositoryID
 	}
-	repositories, err := s.service.FetchRepositories(repositoryRequest.AccountID, fields)
+	page := int32(0)
+	if repositoryRequest.Page != nil {
+		page = int32(*repositoryRequest.Page)
+	}
+	pageSize := int32(0)
+	if repositoryRequest.PageSize != nil {
+		pageSize = int32(*repositoryRequest.PageSize)
+	}
+	repositories, err := s.service.FetchRepositories(page, pageSize, repositoryRequest.AccountID, fields)
 	if err != nil {
 		return nil, err
 	}

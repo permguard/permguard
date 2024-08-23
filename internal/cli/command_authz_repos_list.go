@@ -44,10 +44,12 @@ func runECommandForListRepositories(cmd *cobra.Command, v *viper.Viper) error {
 		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
 		return ErrCommandSilent
 	}
+	page := v.GetInt32(azconfigs.FlagName(commandNameForRepositoriesList, flagCommonPage))
+	pageSize := v.GetInt32(azconfigs.FlagName(commandNameForRepositoriesList, flagCommonPageSize))
 	accountID := v.GetInt64(azconfigs.FlagName(commandNameForRepository, flagCommonAccountID))
 	repositoryID := v.GetString(azconfigs.FlagName(commandNameForRepositoriesList, flagRepositoryID))
 	name := v.GetString(azconfigs.FlagName(commandNameForRepositoriesList, flagCommonName))
-	repositories, err := client.FetchRepositoriesBy(accountID, repositoryID, name)
+	repositories, err := client.FetchRepositoriesBy(page, pageSize, accountID, repositoryID, name)
 	if err != nil {
 		printer.Error(err)
 		return ErrCommandSilent
@@ -85,6 +87,10 @@ Examples:
 			return runECommandForListRepositories(cmd, v)
 		},
 	}
+	command.Flags().Int32P(flagCommonPage, flagCommonPageShort, 1, "page number")
+	v.BindPFlag(azconfigs.FlagName(commandNameForRepositoriesList, flagCommonPage), command.Flags().Lookup(flagCommonPage))
+	command.Flags().Int32P(flagCommonPageSize, flagCommonPageSizeShort, 1000, "page size")
+	v.BindPFlag(azconfigs.FlagName(commandNameForRepositoriesList, flagCommonPageSize), command.Flags().Lookup(flagCommonPageSize))
 	command.Flags().String(flagRepositoryID, "", "repository id filter")
 	v.BindPFlag(azconfigs.FlagName(commandNameForRepositoriesList, flagRepositoryID), command.Flags().Lookup(flagRepositoryID))
 	command.Flags().String(flagCommonName, "", "repository name filter")

@@ -17,12 +17,44 @@
 package centralstorage
 
 import (
+	"database/sql"
 	"github.com/jmoiron/sqlx"
-	
+
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
+
+type SqliteRepo interface {
+	// UpsertAccount creates or updates an account.
+	UpsertAccount(tx *sql.Tx, isCreate bool, account *azirepos.Account) (*azirepos.Account, error)
+	// DeleteAccount deletes an account.
+	DeleteAccount(tx *sql.Tx, accountID int64) (*azirepos.Account, error)
+	// FetchAccount fetches an account.
+	FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]azirepos.Account, error)
+
+	// UpsertIdentitySource creates or updates an identity source.
+	UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *azirepos.IdentitySource) (*azirepos.IdentitySource, error)
+	// DeleteIdentitySource deletes an identity source.
+	DeleteIdentitySource(tx *sql.Tx, accountID int64, identitySourceID string) (*azirepos.IdentitySource, error)
+	// FetchIdentitySources fetches identity sources.
+	FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.IdentitySource, error)
+
+	// UpsertTenant creates or updates an tenant.
+	UpsertTenant(tx *sql.Tx, isCreate bool, tenant *azirepos.Tenant) (*azirepos.Tenant, error)
+	// DeleteTenant deletes an tenant.
+	DeleteTenant(tx *sql.Tx, accountID int64, tenantID string) (*azirepos.Tenant, error)
+	// FetchTenant fetches an tenant.
+	FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.Tenant, error)
+
+	// UpsertRepository creates or updates a repository.
+	UpsertRepository(tx *sql.Tx, isCreate bool, repository *azirepos.Repository) (*azirepos.Repository, error)
+	// DeleteRepository deletes a repository.
+	DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string) (*azirepos.Repository, error)
+	// FetchRepositories fetches repositories.
+	FetchRepositories(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.Repository, error)
+
+}
 
 // SqliteExecutor is the interface for executing sqlite commands.
 type SqliteExecutor interface {
@@ -65,5 +97,5 @@ func (s SQLiteCentralStorage) GetAAPCentralStorage() (azstorage.AAPCentralStorag
 
 // GetPAPCentralStorage returns the PAP central storage.
 func (s SQLiteCentralStorage) GetPAPCentralStorage() (azstorage.PAPCentralStorage, error) {
-	return nil, nil //TODO: azerrors.WrapSystemError(azerrors.ErrNotImplemented, "storage: pap central storage has not been implemented by the sqlite plugin.")
+	return newSQLitePAPCentralStorage(s.ctx, s.sqliteConnector, nil, nil)
 }
