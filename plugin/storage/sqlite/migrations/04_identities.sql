@@ -17,8 +17,8 @@
 -- +goose Up
 CREATE TABLE identities (
     identity_id TEXT NOT NULL PRIMARY KEY,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
+    updated_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
     name TEXT NOT NULL UNIQUE,
 	kind INTEGER NOT NULL,
 	-- REFERENCES
@@ -53,7 +53,7 @@ CREATE TRIGGER change_streams_after_update
 AFTER UPDATE ON identities
 FOR EACH ROW
 BEGIN
-    UPDATE identities SET updated_at = CURRENT_TIMESTAMP WHERE identity_id = OLD.identity_id;
+    UPDATE identities SET updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW') WHERE identity_id = OLD.identity_id;
     INSERT INTO change_streams (change_entity, change_type, change_entity_id, account_id, payload)
 		VALUES ('IDENTITY', 'UPDATE', NEW.identity_id, NEW.account_id,
 				'{"identity_id": "' || NEW.identity_id || '", "created_at": "' || NEW.created_at ||

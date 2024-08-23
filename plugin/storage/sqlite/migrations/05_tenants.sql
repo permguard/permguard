@@ -17,8 +17,8 @@
 -- +goose Up
 CREATE TABLE tenants (
     tenant_id TEXT NOT NULL PRIMARY KEY,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
+    updated_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
     name TEXT NOT NULL UNIQUE,
 	-- REFERENCES
 	account_id INTEGER NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
@@ -49,7 +49,7 @@ CREATE TRIGGER tenants_change_streams_after_update
 AFTER UPDATE ON tenants
 FOR EACH ROW
 BEGIN
-    UPDATE tenants SET updated_at = CURRENT_TIMESTAMP WHERE tenant_id = OLD.tenant_id;
+    UPDATE tenants SET updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW') WHERE tenant_id = OLD.tenant_id;
     INSERT INTO change_streams (change_entity, change_type, change_entity_id, account_id, payload)
 		VALUES ('TENANT', 'UPDATE', NEW.tenant_id, NEW.account_id,
 				'{"tenant_id": "' || NEW.tenant_id || '", "created_at": "' || NEW.created_at ||
