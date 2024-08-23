@@ -45,7 +45,7 @@ func (r *Repo) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Repositor
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (%s).", LogRepositoryEntry(repository)))
 	}
 	if err := azivalidators.ValidateName("repository", repository.Name); err != nil {
-		errorMessage := "storage: invalid client input - either repository id or repository name is not valid (%s)."
+		errorMessage := "storage: invalid client input - repository name is not valid (%s)."
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogRepositoryEntry(repository)))
 	}
 
@@ -91,7 +91,7 @@ func (r *Repo) DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string
 	if err := azivalidators.ValidateUUID("repository", repositoryID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (id: %s).", repositoryID))
 	}
-	
+
 	var dbRepository Repository
 	err := tx.QueryRow("SELECT account_id, repository_id, created_at, updated_at, name FROM repositories WHERE account_id = ? and repository_id = ?", accountID, repositoryID).Scan(
 		&dbRepository.AccountID,

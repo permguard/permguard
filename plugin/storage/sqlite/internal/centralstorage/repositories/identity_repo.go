@@ -74,13 +74,13 @@ func (r *Repo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*I
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (%s).", LogIdentityEntry(identity)))
 	}
 	if identity.Kind == identitiesMap["user"] {
-		if err := azivalidators.ValidateName("identity", identity.Name); err != nil {
-			errorMessage := "storage: invalid client input - either identity id or identity name is not valid (%s)."
+		if err := azivalidators.ValidateIdentityUserName("identity", identity.Name); err != nil {
+			errorMessage := "storage: invalid client input - identity name is not valid (%s)."
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogIdentityEntry(identity)))
 		}
 	} else {
-		if err := azivalidators.ValidateIdentityUserName("identity", identity.Name); err != nil {
-			errorMessage := "storage: invalid client input - either identity id or identity name is not valid (%s)."
+		if err := azivalidators.ValidateName("identity", identity.Name); err != nil {
+			errorMessage := "storage: invalid client input - identity name is not valid (%s)."
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogIdentityEntry(identity)))
 		}
 	}
