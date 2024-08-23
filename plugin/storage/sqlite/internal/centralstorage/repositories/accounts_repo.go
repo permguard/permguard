@@ -49,10 +49,7 @@ func (r *Repo) UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Acco
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (%s).", LogAccountEntry(account)))
 	}
 	if err := azivalidators.ValidateName("account", account.Name); err != nil {
-		errorMessage := "storage: invalid client input - either account id or account name is not valid (%s)."
-		if account.AccountID == 0 {
-			errorMessage = "storage: invalid client input - account name is not valid (%s)."
-		}
+		errorMessage := "storage: invalid client input - account name is not valid (%s)."
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogAccountEntry(account)))
 	}
 
@@ -92,7 +89,7 @@ func (r *Repo) DeleteAccount(tx *sql.Tx, accountID int64) (*Account, error) {
 	if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (id: %d).", accountID))
 	}
-	
+
 	var dbAccount Account
 	err := tx.QueryRow("SELECT account_id, created_at, updated_at, name FROM accounts WHERE account_id = ?", accountID).Scan(
 		&dbAccount.AccountID,
