@@ -22,10 +22,10 @@ CREATE TABLE keyvalues (
 
 -- Creating the `change_streams` table
 CREATE TABLE change_streams (
-    changestream_id INTEGER NOT NULL PRIMARY KEY,
+    change_stream_id INTEGER NOT NULL PRIMARY KEY,
 	change_entity TEXT NOT NULL,
 	change_type TEXT NOT NULL,
-	change_entity_id TEXT,
+	change_entity_id TEXT NOT NULL,
 	change_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     account_id INTEGER NOT NULL,
     payload TEXT NOT NULL
