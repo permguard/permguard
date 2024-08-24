@@ -40,7 +40,7 @@ func TestSQLiteStorageFactory(t *testing.T) {
 
 	storageFcty, _ = NewSQLiteStorageFactory(storageFctyCfg)
 
-	runtimeCtx := azrtmmocks.NewRuntimeContextMock()
+	runtimeCtx := azrtmmocks.NewRuntimeContextMock(nil, nil)
 	storageCtx, err := azstorage.NewStorageContext(runtimeCtx, azstorage.StorageSQLite)
 	if err != nil {
 		t.Fatal(err)

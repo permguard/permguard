@@ -119,16 +119,22 @@ func (s *mockServiceConfig) GetValue(key string) (interface{}, error) {
 }
 
 // NewRuntimeContextMock creates a new RuntimeContextMock.
-func NewRuntimeContextMock() *RuntimeContextMock {
+func NewRuntimeContextMock(hostCfgReader interface{}, svcCfgReader interface{}) *RuntimeContextMock {
 	ctx := &RuntimeContextMock{}
 	ctx.On("GetLogger").Return(zap.NewNop())
 	ctx.On("GetParentLoggerMessage").Return("")
 	ctx.On("GetContext").Return(context.Background())
-	ctx.On("GetHostConfigReader").Return(&mockHostConfig{ appData: "." }, nil)
-	serviceMap := map[string]interface{}{
-		"enable.default.creation": true,
-		"data.fetch.maxpagesize": 10000,
+	if hostCfgReader == nil {
+		hostCfgReader = &mockHostConfig{ appData: "." }
 	}
-	ctx.On("GetServiceConfigReader").Return(&mockServiceConfig{ values: serviceMap}, nil)
+	ctx.On("GetHostConfigReader").Return(hostCfgReader, nil)
+	if svcCfgReader == nil {
+		serviceMap := map[string]interface{}{
+			"enable.default.creation": true,
+			"data.fetch.maxpagesize": 10000,
+		}
+		svcCfgReader = &mockServiceConfig{ values: serviceMap}
+	}
+	ctx.On("GetServiceConfigReader").Return(svcCfgReader, nil)
 	return ctx
 }

@@ -35,7 +35,7 @@ func TestSqliteExecutor(t *testing.T) {
 	assert := assert.New(t)
 
 	{
-		mockRuntimeCtx := azrtmmocks.NewRuntimeContextMock()
+		mockRuntimeCtx := azrtmmocks.NewRuntimeContextMock(nil, nil)
 		mockStorageCtx, _ := azstorage.NewStorageContext(mockRuntimeCtx, azstorage.StorageSQLite)
 		mockConnector := azmocks.NewMockSQLiteConnector()
 
@@ -50,7 +50,7 @@ func TestSqliteExecutor(t *testing.T) {
 	}
 
 	{
-		mockRuntimeCtx := azrtmmocks.NewRuntimeContextMock()
+		mockRuntimeCtx := azrtmmocks.NewRuntimeContextMock(nil, nil)
 		mockStorageCtx, _ := azstorage.NewStorageContext(mockRuntimeCtx, azstorage.StorageSQLite)
 		mockConnector := azmocks.NewMockSQLiteConnector()
 
@@ -69,13 +69,12 @@ func TestSqliteExecutor(t *testing.T) {
 
 }
 
-
 // TestNewSQLiteCentralStorage tests the new sqlite central storage.
 func TestNewSQLiteCentralStorage(t *testing.T) {
 	assert := assert.New(t)
 
 	{
-		mockRuntimeCtx := azrtmmocks.NewRuntimeContextMock()
+		mockRuntimeCtx := azrtmmocks.NewRuntimeContextMock(nil, nil)
 		mockStorageCtx, _ := azstorage.NewStorageContext(mockRuntimeCtx, azstorage.StorageSQLite)
 		mockConnector := azmocks.NewMockSQLiteConnector()
 
