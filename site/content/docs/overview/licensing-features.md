@@ -1,6 +1,6 @@
 ---
-title: "PermGuard Features"
-slug: "PermGuard Features"
+title: "Licensing and Features"
+slug: "Licensing and Features"
 description: ""
 summary: ""
 date: 2023-08-31T23:53:37+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "permguard-features-7a754abe-7a98-45df-8c3a-ff6708d04abc"
+    identifier: "licensing-features-7a754abe-7a98-45df-8c3a-ff6708d04abc"
 weight: 1005
 toc: true
 seo:
@@ -18,7 +18,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-`PermGuard` is open source and it is distributed under the Apache-2.0 license.
+`PermGuard` is open source and it is distributed under the `Apache-2.0 license`.
 It has been designed to be user-friendly and packed with essential features such as:
 
 - **Multi Accounts:** Ability to manage multiple isolated accounts.

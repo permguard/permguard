@@ -1,6 +1,6 @@
 ---
-title: "Common Use Cases"
-slug: "Common Use Cases"
+title: "Patterns Through Use Cases"
+slug: "Patterns Through Use Cases"
 description: ""
 summary: ""
 date: 2023-08-21T22:42:17+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "common-use-cases-ff808103155aea16d2022dd1284416bf"
+    identifier: "patterns-through-use-cases-ff808103155aea16d2022dd1284416bf"
 weight: 1004
 toc: true
 seo:

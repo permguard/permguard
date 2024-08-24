@@ -1,6 +1,6 @@
 ---
-title: "Adopting PermGuard"
-slug: "Adopting PermGuard"
+title: "Adoption Through Example"
+slug: "Adoption Through Example"
 description: ""
 summary: ""
 date: 2023-08-15T14:47:57+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "adopting-permguard-8c89ddc8339f83444fc4b97264bd5c45"
+    identifier: "adoption-through-example-8c89ddc8339f83444fc4b97264bd5c45"
 weight: 1003
 toc: true
 seo:
