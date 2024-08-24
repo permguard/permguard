@@ -35,7 +35,7 @@ Through the chosen approach, it is possible to specify who or what can access re
 - `Resources`: *Resources targeted by permissions*
 
 {{< inline-svg src="images/overview/permguard-flow.svg" width="100%" height="100%" class="svg-inline-custom svg-lightmode" >}}
-{{< inline-svg src="images/overview/permguard-flow.svg" width="100%" height="100%" style="background-color:#ffffff; border: 4px solid #d53ec6;"  class="svg-inline-custom svg-darkmode" >}}
+{{< inline-svg src="images/overview/permguard-flow.svg" width="100%" height="100%" style="background-color:#ffffff; border: 0px solid #d53ec6;"  class="svg-inline-custom svg-darkmode" >}}
 
 Moreover it is possible to define **trusted delegation**, enabling a user to delegate their permissions to another user. This delegation can be restricted for a certain period of time, and it is also possible to narrow down the permissions window by restricting the granted policies.
 

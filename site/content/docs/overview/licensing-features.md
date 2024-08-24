@@ -31,4 +31,4 @@ It has been designed to be user-friendly and packed with essential features such
   - **Configuration Language:** Ability to configure the repository using a code-first approach with either Permscript language or YAML.
 
 {{< inline-svg src="images/overview/permguard-community.svg" width="100%" height="100%" class="svg-inline-custom svg-lightmode" >}}
-{{< inline-svg src="images/overview/permguard-community.svg" width="100%" height="100%" style="background-color:#ffffff; border: 4px solid #d53ec6;"  class="svg-inline-custom svg-darkmode" >}}
+{{< inline-svg src="images/overview/permguard-community.svg" width="100%" height="100%" style="background-color:#ffffff; border: 0px solid #d53ec6;"  class="svg-inline-custom svg-darkmode" >}}
