@@ -101,10 +101,6 @@ Irrespective of the chosen distribution, the binary supports the following flags
 
 ---
 
-**--server.pap.enable.default.creation bool**: *enable the creation of default relationships during data creation. (default false).*
-
----
-
 **--server.pap.grpc.port int**: *port to be used for exposing the pap grpc services. (default `9092`).*
 
 ---
@@ -118,10 +114,6 @@ Irrespective of the chosen distribution, the binary supports the following flags
 {{< callout >}} Policy Decision Point. {{< /callout >}}
 
 **--server.pdp.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
-
----
-
-**--server.pdp.enable.default.creation bool**: *enable the creation of default relationships during data creation. (default false).*
 
 ---
 

@@ -31,7 +31,6 @@ const (
 	flagSuffixGrpcPort  = "grpc.port"
 	flagSuffixHTTPPort  = "http.port"
     flagDataFetchMaxPageSize        = "data.fetch.maxpagesize"
-    flagEnableDefaultCreation       = "enable.default.creation"
 )
 
 // PAPServiceConfig holds the configuration for the server.
@@ -52,8 +51,7 @@ func (c *PAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(azconfigs.FlagName(flagServerPAPPrefix, flagSuffixGrpcPort), 9092, "port to be used for exposing the pap grpc services")
 	flagSet.Int(azconfigs.FlagName(flagServerPAPPrefix, flagSuffixHTTPPort), 8082, "port to be used for exposing the pap http services")
 	flagSet.Int(azconfigs.FlagName(flagServerPAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
-	flagSet.Bool(azconfigs.FlagName(flagServerPAPPrefix, flagEnableDefaultCreation), false, "enable the creation of default relationships during data creation")
-	return nil
+ì	return nil
 }
 
 // InitFromViper initializes the configuration from viper.
