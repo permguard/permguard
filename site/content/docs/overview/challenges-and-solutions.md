@@ -1,5 +1,6 @@
 ---
-title: "Problem and Solution"
+title: "Challenges and Solutions"
+slug: "Challenges and Solutions"
 description: ""
 summary: ""
 date: 2023-08-27T10:21:48+01:00
@@ -8,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "problem-solution-fd262b5997389b467f3cf77720aafe70"
+    identifier: "challenges-and-solutions-fd262b5997389b467f3cf77720aafe70"
 weight: 1002
 toc: true
 seo:
