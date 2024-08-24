@@ -81,7 +81,7 @@ Irrespective of the chosen distribution, the binary supports the following flags
 
 ---
 
-**--server.aap.enable.default.creation bool**: *the creation of default entities (e.g., tenants, identity sources) during data creation. (default false).*
+**--server.aap.enable.default.creation bool**: *the creation of default entities (e.g., tenants, identity sources) during data creation. (default `false`).*
 
 ---
 
