@@ -105,6 +105,19 @@ func (h *mockHostConfig) GetAppData() string {
 	return h.appData
 }
 
+// mockServiceConfig is a mock type for the ServiceConfigReader type.
+type mockServiceConfig struct {
+	values map[string]interface{}
+}
+
+// GetValue returns the value for the given key.
+func (s *mockServiceConfig) GetValue(key string) (interface{}, error) {
+	if v, ok := s.values[key]; ok {
+		return v, nil
+	}
+	return nil, nil
+}
+
 // NewRuntimeContextMock creates a new RuntimeContextMock.
 func NewRuntimeContextMock() *RuntimeContextMock {
 	ctx := &RuntimeContextMock{}
@@ -112,5 +125,10 @@ func NewRuntimeContextMock() *RuntimeContextMock {
 	ctx.On("GetParentLoggerMessage").Return("")
 	ctx.On("GetContext").Return(context.Background())
 	ctx.On("GetHostConfigReader").Return(&mockHostConfig{ appData: "." }, nil)
+	serviceMap := map[string]interface{}{
+		"enable.default.creation": true,
+		"data.fetch.maxpagesize": 10000,
+	}
+	ctx.On("GetServiceConfigReader").Return(&mockServiceConfig{ values: serviceMap}, nil)
 	return ctx
 }
