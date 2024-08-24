@@ -88,6 +88,9 @@ tasks:
   down:
     cmds:
       - go run ./cmd/provisioner-db-sqlite/main.go --down  --filepath ./samples/volume --debug
+  up-magicfarmacia:
+    cmds:
+      - sh ./samples/domains/magicfarmacia/magicfarmacia.sh
   # Servers
   cli:
     cmds:
