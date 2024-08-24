@@ -29,15 +29,16 @@ import (
 const (
 	flagServerAAPPrefix       = "server.aap"
 	flagSuffixGrpcPort        = "grpc.port"
-	flagSuffixHTTPPort        = "http.port"
 	flagDataFetchMaxPageSize  = "data.fetch.maxpagesize"
 	flagEnableDefaultCreation = "enable.default.creation"
 )
 
 // AAPServiceConfig holds the configuration for the server.
 type AAPServiceConfig struct {
-	serviceKind azservices.ServiceKind
-	port        int
+	serviceKind 			azservices.ServiceKind
+	grpcPort 				int
+	dataFetchMaxPageSize 	int
+	enableDefaultCreation 	bool
 }
 
 // NewAAPServiceConfig creates a new server factory configuration.
@@ -50,7 +51,6 @@ func NewAAPServiceConfig() (*AAPServiceConfig, error) {
 // AddFlags adds flags.
 func (c *AAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(azconfigs.FlagName(flagServerAAPPrefix, flagSuffixGrpcPort), 9091, "port to be used for exposing the aap grpc services")
-	flagSet.Int(azconfigs.FlagName(flagServerAAPPrefix, flagSuffixHTTPPort), 8081, "port to be used for exposing the aap http services")
 	flagSet.Int(azconfigs.FlagName(flagServerAAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
 	flagSet.Bool(azconfigs.FlagName(flagServerAAPPrefix, flagEnableDefaultCreation), false, "the creation of default entities (e.g., tenants, identity sources) during data creation")
 	return nil
@@ -58,16 +58,21 @@ func (c *AAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 
 // InitFromViper initializes the configuration from viper.
 func (c *AAPServiceConfig) InitFromViper(v *viper.Viper) error {
-	c.port = v.GetInt(azconfigs.FlagName(flagServerAAPPrefix, flagSuffixGrpcPort))
-	if !azvalidators.IsValidPort(c.port) {
+	c.grpcPort = v.GetInt(azconfigs.FlagName(flagServerAAPPrefix, flagSuffixGrpcPort))
+	if !azvalidators.IsValidPort(c.grpcPort) {
 		return azservices.ErrServiceInvalidPort
 	}
+	c.dataFetchMaxPageSize = v.GetInt(azconfigs.FlagName(flagServerAAPPrefix, flagDataFetchMaxPageSize))
+	if c.dataFetchMaxPageSize <= 0 {
+		return azservices.ErrServiceInvalidDataFetchPageSize
+	}
+	c.enableDefaultCreation = v.GetBool(azconfigs.FlagName(flagServerAAPPrefix, flagEnableDefaultCreation))
 	return nil
 }
 
 // GetPort returns the port.
 func (c *AAPServiceConfig) GetPort() int {
-	return c.port
+	return c.grpcPort
 }
 
 // GetService returns the service kind.

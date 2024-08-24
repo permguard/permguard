@@ -27,16 +27,16 @@ import (
 )
 
 const (
-	flagServerPAPPrefix = "server.pap"
-	flagSuffixGrpcPort  = "grpc.port"
-	flagSuffixHTTPPort  = "http.port"
-    flagDataFetchMaxPageSize        = "data.fetch.maxpagesize"
+	flagServerPAPPrefix 		= "server.pap"
+	flagSuffixGrpcPort 			= "grpc.port"
+    flagDataFetchMaxPageSize 	= "data.fetch.maxpagesize"
 )
 
 // PAPServiceConfig holds the configuration for the server.
 type PAPServiceConfig struct {
-	service azservices.ServiceKind
-	port    int
+	service					azservices.ServiceKind
+	grpcPort 				int
+	dataFetchMaxPageSize 	int
 }
 
 // NewPAPServiceConfig creates a new server factory configuration.
@@ -49,23 +49,26 @@ func NewPAPServiceConfig() (*PAPServiceConfig, error) {
 // AddFlags adds flags.
 func (c *PAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(azconfigs.FlagName(flagServerPAPPrefix, flagSuffixGrpcPort), 9092, "port to be used for exposing the pap grpc services")
-	flagSet.Int(azconfigs.FlagName(flagServerPAPPrefix, flagSuffixHTTPPort), 8082, "port to be used for exposing the pap http services")
 	flagSet.Int(azconfigs.FlagName(flagServerPAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
 	return nil
 }
 
 // InitFromViper initializes the configuration from viper.
 func (c *PAPServiceConfig) InitFromViper(v *viper.Viper) error {
-	c.port = v.GetInt(azconfigs.FlagName(flagServerPAPPrefix, flagSuffixGrpcPort))
-	if !azvalidators.IsValidPort(c.port) {
+	c.grpcPort = v.GetInt(azconfigs.FlagName(flagServerPAPPrefix, flagSuffixGrpcPort))
+	if !azvalidators.IsValidPort(c.grpcPort) {
 		return azservices.ErrServiceInvalidPort
+	}
+	c.dataFetchMaxPageSize = v.GetInt(azconfigs.FlagName(flagServerPAPPrefix, flagDataFetchMaxPageSize))
+	if c.dataFetchMaxPageSize <= 0 {
+		return azservices.ErrServiceInvalidDataFetchPageSize
 	}
 	return nil
 }
 
 // GetPort returns the port.
 func (c *PAPServiceConfig) GetPort() int {
-	return c.port
+	return c.grpcPort
 }
 
 // GetService returns the service kind.

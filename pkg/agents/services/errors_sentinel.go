@@ -19,8 +19,9 @@ package services
 import "errors"
 
 var (
-	ErrServiceGeneric        = errors.New("service: generic error")
-	ErrServiceInvalidKind    = errors.New("service: invalid kind")
-	ErrServiceInvalidAppData = errors.New("service: invalid app data")
-	ErrServiceInvalidPort    = errors.New("service: invalid port")
+	ErrServiceGeneric        			= errors.New("service: generic error")
+	ErrServiceInvalidKind    			= errors.New("service: invalid kind")
+	ErrServiceInvalidAppData 			= errors.New("service: invalid app data")
+	ErrServiceInvalidPort    			= errors.New("service: invalid port")
+	ErrServiceInvalidDataFetchPageSize	= errors.New("service: invalid data fetch page size")
 )
