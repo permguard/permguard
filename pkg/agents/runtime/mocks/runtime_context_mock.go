@@ -22,6 +22,7 @@ import (
 	"go.uber.org/zap"
 
 	mock "github.com/stretchr/testify/mock"
+	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
 )
 
 // RuntimeContextMock is a mock type for the RuntimeContext type.
@@ -68,17 +69,27 @@ func (c *RuntimeContextMock) GetContext() context.Context {
 	return r0
 }
 
-// GetContext returns the context.
-func (c *RuntimeContextMock) GetAppData() string {
+// GetHostConfigReader returns the host configuration reader.
+func (c *RuntimeContextMock) GetHostConfigReader() (azruntime.HostConfigReader, error) {
 	ret := c.Called()
 
-	var r0 string
-	if rf, ok := ret.Get(0).(func() string); ok {
+	var r0 azruntime.HostConfigReader
+	if rf, ok := ret.Get(0).(func() azruntime.HostConfigReader); ok {
 		r0 = rf()
 	} else {
-		r0 = ret.Get(0).(string)
+		r0 = ret.Get(0).(azruntime.HostConfigReader)
 	}
-	return r0
+	return r0, ret.Error(1)
+}
+
+// mockHostConfig is a mock type for the HostConfigReader type.
+type mockHostConfig struct {
+	appData string
+}
+
+// GetAppData returns the application data.
+func (h *mockHostConfig) GetAppData() string {
+	return h.appData
 }
 
 // NewRuntimeContextMock creates a new RuntimeContextMock.
@@ -87,6 +98,6 @@ func NewRuntimeContextMock() *RuntimeContextMock {
 	ctx.On("GetLogger").Return(zap.NewNop())
 	ctx.On("GetParentLoggerMessage").Return("")
 	ctx.On("GetContext").Return(context.Background())
-	ctx.On("GetAppData").Return(".")
+	ctx.On("GetHostConfigReader").Return(&mockHostConfig{ appData: "." }, nil)
 	return ctx
 }

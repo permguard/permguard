@@ -21,6 +21,8 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
+
+	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
 )
 
 const (
@@ -73,7 +75,7 @@ func (s *ServiceContext) GetLogMessage(message string) string {
 	return fmt.Sprintf("%s: %s", s.GetParentLoggerMessage(), message)
 }
 
-// GetAppData returns the app data.
-func (s *ServiceContext) GetAppData() string {
-	return s.parentCtx.GetAppData()
+// GetHostConfigReader returns the host configuration reader.
+func (s *ServiceContext) GetHostConfigReader() (azruntime.HostConfigReader, error) {
+	return s.parentCtx.GetHostConfigReader()
 }

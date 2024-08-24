@@ -21,13 +21,15 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
+
+	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
 )
 
 const (
-	ctxHstHostkey    = "HOST"
-	ctxHstServerkey  = "SERVER"
-	ctxHstLoggerkey  = "LOGGER"
-	ctxHstAppDataKey = "APPDATA"
+	ctxHostHostkey   = "HOST"
+	ctxHostServerkey = "SERVER"
+	ctxHostLoggerkey = "LOGGER"
+	ctxHostCfgReader = "HOST-CONFIG"
 )
 
 type hostCtxKey struct{}
@@ -40,7 +42,8 @@ type HostContext struct {
 // NewHostContext creates a new host context.
 func NewHostContext(host HostKind, hostable Hostable, logger *zap.Logger, appData string) (*HostContext, error) {
 	newLogger := logger.With(zap.String(string("host"), host.String()))
-	data := map[string]any{ctxHstHostkey: host, ctxHstServerkey: hostable, ctxHstLoggerkey: newLogger, ctxHstAppDataKey: appData}
+	hostCfgReader := &hostConfig{appData: appData}
+	data := map[string]any{ctxHostHostkey: host, ctxHostServerkey: hostable, ctxHostLoggerkey: newLogger, ctxHostCfgReader: hostCfgReader}
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, hostCtxKey{}, data)
 	return &HostContext{
@@ -55,22 +58,22 @@ func (h *HostContext) GetContext() context.Context {
 
 // GetHost returns the host.
 func (h *HostContext) GetHost() HostKind {
-	return h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHstHostkey].(HostKind)
+	return h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHostHostkey].(HostKind)
 }
 
 // GetLogger returns the logger.
 func (h *HostContext) GetLogger() *zap.Logger {
-	return h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHstLoggerkey].(*zap.Logger)
+	return h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHostLoggerkey].(*zap.Logger)
 }
 
-// GetAppData returns the app data.
-func (h *HostContext) GetAppData() string {
-	return h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHstAppDataKey].(string)
+// GetHostConfigReader returns the host configuration reader.
+func (h *HostContext) GetHostConfigReader() (azruntime.HostConfigReader, error) {
+	return h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHostCfgReader].(azruntime.HostConfigReader), nil
 }
 
 // Shutdown shuts down the service.
 func (h *HostContext) Shutdown(ctx context.Context) {
-	h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHstServerkey].(Hostable).Shutdown(ctx)
+	h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHostServerkey].(Hostable).Shutdown(ctx)
 }
 
 // GetParentLoggerMessage returns the parent logger message.
