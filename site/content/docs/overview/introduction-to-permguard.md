@@ -1,6 +1,6 @@
 ---
-title: "PermGuard"
-slug: "PermGuard"
+title: "Introduction to PermGuard"
+slug: "Introduction to PermGuard"
 description: ""
 summary: ""
 date: 2023-08-20T17:14:43+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "permguard-24b9ae1383440efb49528d1ecc48ab03"
+    identifier: "introduction-to-permguard-24b9ae1383440efb49528d1ecc48ab03"
 weight: 1001
 toc: true
 seo:
