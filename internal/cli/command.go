@@ -31,24 +31,24 @@ import (
 )
 
 const (
-	flagOutput            	= "output"
-	flagOutputShort       	= "o"
-	flagVerbose           	= "verbose"
-	flagVerboseShort      	= "v"
-	flagCommonPage        	= "page"
-	flagCommonPageShort		= "p"
-	flagCommonPageSize	  	= "size"
+	flagOutput              = "output"
+	flagOutputShort         = "o"
+	flagVerbose             = "verbose"
+	flagVerboseShort        = "v"
+	flagCommonPage          = "page"
+	flagCommonPageShort     = "p"
+	flagCommonPageSize      = "size"
 	flagCommonPageSizeShort = "s"
-	flagCommonAccountID   	= "account"
-	flagCommonName        	= "name"
-	flagCommonEmail       	= "email"
-	flagCommonDescription 	= "description"
-	flagCommonFile        	= "file"
-	flagCommonFileShort   	= "f"
-	flagPrefixAAP         	= "aap"
-	flagSuffixAAPTarget   	= "target"
-	flagPrefixPAP         	= "pap"
-	flagSuffixPAPTarget   	= "target"
+	flagCommonAccountID     = "account"
+	flagCommonName          = "name"
+	flagCommonEmail         = "email"
+	flagCommonDescription   = "description"
+	flagCommonFile          = "file"
+	flagCommonFileShort     = "f"
+	flagPrefixAAP           = "aap"
+	flagSuffixAAPTarget     = "target"
+	flagPrefixPAP           = "pap"
+	flagSuffixPAPTarget     = "target"
 )
 
 //go:embed "art.txt"
@@ -59,7 +59,7 @@ var ErrCommandSilent = errors.New("command: silent error")
 // runECommand runs the command.
 func runECommand(cmdInfo azcli.CliInfo, cmd *cobra.Command) error {
 	fmt.Println(asciiArt)
-	fmt.Printf("PermGuard %s - Copyright (c) 2022 Nitro Agility S.r.l.\n", cmdInfo.Name)
+	fmt.Printf("PermGuard %s - Copyright © 2022 Nitro Agility S.r.l.\n", cmdInfo.Name)
 	fmt.Println("")
 	return cmd.Help()
 }

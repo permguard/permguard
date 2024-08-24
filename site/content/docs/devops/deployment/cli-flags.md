@@ -77,6 +77,14 @@ Irrespective of the chosen distribution, the binary supports the following flags
 
 {{< callout >}} Account Administration Point. {{< /callout >}}
 
+**--server.aap.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
+
+---
+
+**--server.aap.enable.default.creation bool**: *enable the creation of default relationships during data creation. (default false).*
+
+---
+
 **--server.aap.grpc.port int**: *port to be used for exposing the aap grpc services. (default `9091`).*
 
 ---
@@ -89,6 +97,14 @@ Irrespective of the chosen distribution, the binary supports the following flags
 
 {{< callout >}} Policy Administration Point. {{< /callout >}}
 
+**--server.pap.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
+
+---
+
+**--server.pap.enable.default.creation bool**: *enable the creation of default relationships during data creation. (default false).*
+
+---
+
 **--server.pap.grpc.port int**: *port to be used for exposing the pap grpc services. (default `9092`).*
 
 ---
@@ -100,6 +116,14 @@ Irrespective of the chosen distribution, the binary supports the following flags
 ### server-pdp
 
 {{< callout >}} Policy Decision Point. {{< /callout >}}
+
+**--server.pdp.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
+
+---
+
+**--server.pdp.enable.default.creation bool**: *enable the creation of default relationships during data creation. (default false).*
+
+---
 
 **--server.pdp.grpc.port int**: *port to be used for exposing the pdp grpc services. (default `9096`).*
 

@@ -40,13 +40,13 @@ type CommunityServerInitializer struct {
 // NewCommunityServerInitializer creates a new community server initializer.
 func NewCommunityServerInitializer(host azservices.HostKind) (azservers.ServerInitializer, error) {
 	template := `The official PermGuard© Server
-Copyright (c) 2022 Nitro Agility S.r.l.
+Copyright © 2022 Nitro Agility S.r.l.
 
 %s
 
   Find more information at: https://www.permguard.com/docs/devops/deployment/cli-flags/`
 	hostInfos := map[azservices.HostKind]*azservices.HostInfo{
-		azservices.HostAllInOne: {Name: "AllInOne", Use: "all-in-one", Short: "The official PermGuard© Server - Start all the services", Long:fmt.Sprintf(template, "Using this option all the services are started.")},
+		azservices.HostAllInOne: {Name: "AllInOne", Use: "all-in-one", Short: "The official PermGuard© Server - Start all the services", Long: fmt.Sprintf(template, "Using this option all the services are started.")},
 		azservices.HostAAP:      {Name: "AAP (Account Administration Point)", Use: "pdp", Short: "The official PermGuard© Server - Start the AAP service", Long: fmt.Sprintf(template, "Using this option the Account Administration Point (AAP) service is started.")},
 		azservices.HostPAP:      {Name: "PAP (Policy Administration Point)", Use: "pap", Short: "The official PermGuard© Server - Start the PAP service", Long: fmt.Sprintf(template, "Using this option the Policy Administration Point (PAP) service is started.")},
 		azservices.HostIDP:      {Name: "IDP (Identity Provider)", Use: "idp", Short: "The official PermGuard© Server - Start the IDP service", Long: fmt.Sprintf(template, "Using this option the Identity Provider (IDP) service is started.")},

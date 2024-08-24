@@ -30,6 +30,8 @@ const (
 	flagServerPDPPrefix = "server.pdp"
 	flagSuffixGrpcPort  = "grpc.port"
 	flagSuffixHTTPPort  = "http.port"
+    flagDataFetchMaxPageSize        = "data.fetch.maxpagesize"
+    flagEnableDefaultCreation       = "enable.default.creation"
 )
 
 // PDPServiceConfig holds the configuration for the server.
@@ -49,6 +51,8 @@ func NewPDPServiceConfig() (*PDPServiceConfig, error) {
 func (c *PDPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(azconfigs.FlagName(flagServerPDPPrefix, flagSuffixGrpcPort), 9096, "port to be used for exposing the pdp grpc services")
 	flagSet.Int(azconfigs.FlagName(flagServerPDPPrefix, flagSuffixHTTPPort), 8086, "port to be used for exposing the pdp http services")
+	flagSet.Int(azconfigs.FlagName(flagServerPDPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
+	flagSet.Bool(azconfigs.FlagName(flagServerPDPPrefix, flagEnableDefaultCreation), false, "enable the creation of default relationships during data creation")
 	return nil
 }
 
