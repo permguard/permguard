@@ -108,7 +108,7 @@ func (s SQLiteCentralStoragePAP) DeleteRepository(accountID int64, repositoryID 
 
 // FetchRepositories returns all repositories.
 func (s SQLiteCentralStoragePAP) FetchRepositories(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Repository, error) {
-	if page <= 0 || pageSize <= 0 {
+	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)

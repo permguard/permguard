@@ -48,10 +48,10 @@ func newSQLiteAAPCentralStorage(storageContext *azstorage.StorageContext, sqlite
 		return nil, err
 	}
 	return &SQLiteCentralStorageAAP{
-		ctx:             storageContext,
-		sqliteConnector: sqliteConnector,
-		sqlRepo:         repo,
-		sqlExec:         sqlExec,
+		ctx:             	storageContext,
+		sqliteConnector: 	sqliteConnector,
+		sqlRepo:         	repo,
+		sqlExec:         	sqlExec,
 		config:				config,
 	}, nil
 }

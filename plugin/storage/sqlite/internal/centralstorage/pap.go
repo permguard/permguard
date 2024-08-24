@@ -29,6 +29,7 @@ type SQLiteCentralStoragePAP struct {
 	sqliteConnector azidb.SQLiteConnector
 	sqlRepo         SqliteRepo
 	sqlExec         SqliteExecutor
+	config 			*SQLiteCentralStorageConfig
 }
 
 // newSQLitePAPCentralStorage creates a new SQLitePAPCentralStorage.
@@ -42,10 +43,15 @@ func newSQLitePAPCentralStorage(storageContext *azstorage.StorageContext, sqlite
 	if sqlExec == nil {
 		sqlExec = &SqliteExec{}
 	}
+	config, err := NewSQLiteCentralStorageConfig(storageContext)
+	if err != nil {
+		return nil, err
+	}
 	return &SQLiteCentralStoragePAP{
-		ctx:             storageContext,
-		sqliteConnector: sqliteConnector,
-		sqlRepo:         repo,
-		sqlExec:         sqlExec,
+		ctx:             	storageContext,
+		sqliteConnector: 	sqliteConnector,
+		sqlRepo:         	repo,
+		sqlExec:         	sqlExec,
+		config:				config,
 	}, nil
 }

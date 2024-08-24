@@ -64,10 +64,10 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 			}
 			_, err = s.sqlRepo.UpsertRepository(tx, true, repository)
 		}
-		if err != nil {
-			tx.Rollback()
-			return nil, err
-		}
+	}
+	if err != nil {
+		tx.Rollback()
+		return nil, err
 	}
  	if err := tx.Commit(); err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
@@ -126,7 +126,7 @@ func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Accou
 
 // FetchAccounts returns all accounts.
 func (s SQLiteCentralStorageAAP) FetchAccounts(page int32, pageSize int32, fields map[string]any) ([]azmodels.Account, error) {
-	if page <= 0 || pageSize <= 0 {
+	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
