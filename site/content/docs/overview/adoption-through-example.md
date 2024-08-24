@@ -19,46 +19,45 @@ seo:
   noindex: false # false (default) or true
 ---
 
-`PermGuard` is an `Authorization Provider` and it implements the authorization layer.
+`PermGuard` is a modern `Authorization Provider` that implements an advanced authorization layer. It delivers dynamic access control by managing user permissions, roles, and policies, ensuring secure and efficient authorization across diverse systems and applications.
+
 ## Infrastructure
 
-PermGuard can be runninig either in a virtual machine or a container orchestration system like Kubernetes.
+PermGuard can be deployed in various environments, ranging from virtual machines to container orchestration systems like Kubernetes and beyond.
 
 ## Administration
 
-PermGuard expose gRPC endpoints for the administration. This includes the ability to create and manage the following:
+PermGuard exposes gRPC endpoints for administrative functions, including the ability to create and manage:
 
+- Accounts
 - Tenants
-- Identities
-- Schemas where domains, resources, and actions can be explicitly defined
+- Identity Sources and Identities
+- Schema (definitions for domains, resources, and actions)
 - Policies
 - Permissions.
 
 ## Identities
 
-Since PermGuard lacks an authentication layer, it's essential to federate it with an Authentication Provider. This can be achieved by importing Users from the Authentication Provider using either the provided APIs and SDKs or through manual processes.
+Since PermGuard does not include an authentication layer, it is crucial to integrate it with an Authentication Provider. This integration can be accomplished by importing users from the Authentication Provider using the available APIs and SDKs, or through manual processes via the PermGuard CLI.
 
-Additionally, the application has the capability to create and manage users on-the-fly using the available APIs and SDKs.
-
-Additionaly it is possible to create and manage roles.
+Additionally, the application provides the capability to create and manage users on-the-fly through the available APIs and SDKs. It also supports the creation and management of roles.
 
 ## Integration
 
-Integration of PermGuard can be carried out in any type of application, whether it runs on a **server**, **container** or **serverless** environment; there are no limitations on the type of application that can utilize PermGuard.
+PermGuard integrates seamlessly with any application, whether deployed on **servers**, **containers**, or in **serverless** environments. Integration is facilitated through gRPC requests to the `Policy Decision Point`, and SDKs are available for various programming languages to ensure smooth implementation.
 
-This is primarily because the application needs to make a request to the `Policy Decision Point` via gRPC. To facilitate smooth and easy integration, SDKs are available for various programming languages.
 
 {{< callout context="note" icon="info-circle" >}}
-It's important to note that a Policy Decision Point can run in proximity to the node, for instance, as a sidecar container.
-These proximity services synchronize from the remote PermGuard instance, allowing for low latency and high availability.
-A `permission evaluation` can be executed in `approximately 1ms`.
+A Policy Decision Point can be deployed close to the node, such as in a sidecar container. These proximity services synchronize with the remote PermGuard instance, ensuring low latency and high availability. `Permission evaluation` is performed in `approximately 1ms`.
+
 {{< /callout >}}
 
-There are mainly two uses cases where this integration is necessary:
+There are two primary use cases for this integration:
 
-- **API**: An endpoint is provided to accept an authentication token, such as a JWT token, as input. This endpoint evaluates whether the operations can be performed by the identity associated to the authentication token.
-- **Background**: A background process, such as a job or a long-running worker, evaluates whether the operations can be performed by the identity associated with the requested action.
-                  In the context of a distributed system reading messages from a broker, this identity could be included within the message being processed.
+- **API**: An endpoint accepts an authentication token (e.g., JWT) and evaluates if the associated identity has the necessary permissions for the requested operations.
+- **Background**: A background process, such as a job or long-running worker, checks if the identity linked to the action has the required permissions. In a distributed system, this identity might be included in the message being processed.
+
+For additional use cases, see [here](/docs/overview/patterns-through-use-cases).
 
 ## A quick example
 
