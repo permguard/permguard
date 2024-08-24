@@ -16,12 +16,19 @@
 
 package services
 
-// hostConfig declares the host configuration.
-type hostConfig struct {
+// HostConfiguration declares the host configuration.
+type HostConfiguration struct {
 	appData string
 }
 
+// NewHostConfiguration creates a new host configuration.
+func NewHostConfiguration(appData string) *HostConfiguration {
+	return &HostConfiguration{
+		appData: appData,
+	}
+}
+
 // GetAppData returns the application data.
-func (h *hostConfig) GetAppData() string {
+func (h *HostConfiguration) GetAppData() string {
 	return h.appData
 }

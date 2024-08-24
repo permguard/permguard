@@ -82,6 +82,19 @@ func (c *RuntimeContextMock) GetHostConfigReader() (azruntime.HostConfigReader, 
 	return r0, ret.Error(1)
 }
 
+// GetServiceConfigReader returns the service configuration reader.
+func (c *RuntimeContextMock) GetServiceConfigReader() (azruntime.ServiceConfigReader, error) {
+	ret := c.Called()
+
+	var r0 azruntime.ServiceConfigReader
+	if rf, ok := ret.Get(0).(func() azruntime.ServiceConfigReader); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(azruntime.ServiceConfigReader)
+	}
+	return r0, ret.Error(1)
+}
+
 // mockHostConfig is a mock type for the HostConfigReader type.
 type mockHostConfig struct {
 	appData string

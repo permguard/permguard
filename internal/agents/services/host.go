@@ -81,7 +81,8 @@ type Host struct {
 
 // NewHost creates a new host.
 func NewHost(hostCfg *HostConfig) (*Host, error) {
-	hostCtx, err := azservices.NewHostContext(hostCfg.host, hostCfg.hostable, hostCfg.logger, hostCfg.appData)
+	hostCfgReader := azservices.NewHostConfiguration(hostCfg.GetAppData())
+	hostCtx, err := azservices.NewHostContext(hostCfg.host, hostCfg.hostable, hostCfg.logger, hostCfgReader)
 	if err != nil {
 		return nil, err
 	}

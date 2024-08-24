@@ -79,3 +79,8 @@ func (s *StorageContext) GetLogMessage(message string) string {
 func (s *StorageContext) GetHostConfigReader() (azruntime.HostConfigReader, error) {
 	return s.parentCtx.GetHostConfigReader()
 }
+
+// GetServiceConfigReader returns the service configuration reader.
+func (s *StorageContext) GetServiceConfigReader() (azruntime.ServiceConfigReader, error) {
+	return s.parentCtx.GetServiceConfigReader()
+}

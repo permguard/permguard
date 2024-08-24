@@ -30,6 +30,8 @@ type RuntimeContext interface {
 	GetParentLoggerMessage() string
 	// GetHostConfigReader returns the host configuration reader.
 	GetHostConfigReader() (HostConfigReader, error)
+	// GetServiceConfigReader returns the service configuration reader.
+	GetServiceConfigReader() (ServiceConfigReader, error)
 	// GetContext returns the context.
 	GetContext() context.Context
 }
@@ -38,4 +40,10 @@ type RuntimeContext interface {
 type HostConfigReader interface {
 	// GetAppData returns the application data.
 	GetAppData() string
+}
+
+// ServiceConfigReader declares the service configuration reader.
+type ServiceConfigReader interface {
+	// GetValue returns the value for the given key.
+	GetValue(key string) (interface{}, error)
 }

@@ -26,8 +26,9 @@ import (
 )
 
 const (
-	ctxSvcServiceKey = "SERVICE"
-	ctxSvcLoggerKey  = "LOGGER"
+	ctxSvcServiceKey	= "SERVICE"
+	ctxSvcLoggerKey  	= "LOGGER"
+	ctxSvcCfgReader		= "SERVICE-CONFIG"
 )
 
 type serviceCtxKey struct{}
@@ -39,9 +40,9 @@ type ServiceContext struct {
 }
 
 // NewServiceContext creates a new service context.
-func NewServiceContext(hostContext *HostContext, service ServiceKind) (*ServiceContext, error) {
+func NewServiceContext(hostContext *HostContext, service ServiceKind, configReader azruntime.ServiceConfigReader) (*ServiceContext, error) {
 	newLogger := hostContext.GetLogger().With(zap.String(string("service"), service.String()))
-	data := map[string]any{ctxSvcServiceKey: service, ctxSvcLoggerKey: newLogger}
+	data := map[string]any{ctxSvcServiceKey: service, ctxSvcLoggerKey: newLogger, ctxSvcCfgReader: configReader}
 	ctx := context.WithValue(hostContext.ctx, serviceCtxKey{}, data)
 	return &ServiceContext{
 		ctx:       ctx,
@@ -78,4 +79,9 @@ func (s *ServiceContext) GetLogMessage(message string) string {
 // GetHostConfigReader returns the host configuration reader.
 func (s *ServiceContext) GetHostConfigReader() (azruntime.HostConfigReader, error) {
 	return s.parentCtx.GetHostConfigReader()
+}
+
+// GetServiceConfigReader returns the service configuration reader.
+func (s *ServiceContext) GetServiceConfigReader() (azruntime.ServiceConfigReader, error) {
+	return s.ctx.Value(serviceCtxKey{}).(map[string]any)[ctxSvcCfgReader].(azruntime.ServiceConfigReader), nil
 }

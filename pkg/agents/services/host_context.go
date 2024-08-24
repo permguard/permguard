@@ -40,10 +40,9 @@ type HostContext struct {
 }
 
 // NewHostContext creates a new host context.
-func NewHostContext(host HostKind, hostable Hostable, logger *zap.Logger, appData string) (*HostContext, error) {
+func NewHostContext(host HostKind, hostable Hostable, logger *zap.Logger, configReader azruntime.HostConfigReader) (*HostContext, error) {
 	newLogger := logger.With(zap.String(string("host"), host.String()))
-	hostCfgReader := &hostConfig{appData: appData}
-	data := map[string]any{ctxHostHostkey: host, ctxHostServerkey: hostable, ctxHostLoggerkey: newLogger, ctxHostCfgReader: hostCfgReader}
+	data := map[string]any{ctxHostHostkey: host, ctxHostServerkey: hostable, ctxHostLoggerkey: newLogger, ctxHostCfgReader: configReader}
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, hostCtxKey{}, data)
 	return &HostContext{

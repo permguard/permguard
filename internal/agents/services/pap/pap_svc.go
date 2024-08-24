@@ -19,6 +19,7 @@ package pap
 import (
 	"google.golang.org/grpc"
 
+	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
 	azctrlpap "github.com/permguard/permguard/internal/agents/services/pap/controllers"
 	azapiv1pap "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
@@ -27,13 +28,22 @@ import (
 
 // PAPService holds the configuration for the server.
 type PAPService struct {
-	config *PAPServiceConfig
+	config			*PAPServiceConfig
+	configReader	azruntime.ServiceConfigReader
 }
 
 // NewPAPService creates a new server  configuration.
 func NewPAPService(papServiceCfg *PAPServiceConfig) (*PAPService, error) {
+	data := map[string]interface{}{
+		"service": "PAP",
+	}
+	configReader, err := azservices.NewServiceConfiguration(data)
+	if err != nil {
+		return nil, err
+	}
 	return &PAPService{
 		config: papServiceCfg,
+		configReader: configReader,
 	}, nil
 }
 
@@ -73,4 +83,9 @@ func (f *PAPService) GetEndpoints() ([]azservices.EndpointInitializer, error) {
 	}
 	endpoints := []azservices.EndpointInitializer{endpoint}
 	return endpoints, nil
+}
+
+// GetServiceConfigReader returns the service configuration reader.
+func (f *PAPService) GetServiceConfigReader() (azruntime.ServiceConfigReader, error) {
+	return f.configReader, nil
 }
