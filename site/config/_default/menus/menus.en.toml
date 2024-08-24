@@ -16,21 +16,9 @@
 #   identifier = "lorem"
 #   url = "/docs/lorem/"
 
-[[guide]]
-  name = "Lorem"
-  weight = 10
-  identifier = "lorem"
-  url = "/guide/lorem/"
-
-[[tutorial]]
-  name = "Lorem"
-  weight = 10
-  identifier = "lorem"
-  url = "/tutorial/lorem/"
-
 [[main]]
   name = "Docs"
-  url = "/docs/overview/permguard/"
+  url = "/docs/overview/introduction-to-permguard/"
 # url = "/docs/1.0/prologue/introduction/"
   weight = 10
 

@@ -26,7 +26,7 @@ The decoupling between the authorization layer and the application code enables 
 Furthermore, it makes it easier to create a central authorization layer for managing all permissions across multiple applications, similar to how modern software solutions manage users in one central place for the authentication layer.
 {{< /callout >}}
 
-The platform uses a code-first approach with either the either Permscript language or YAML, both providing the same functionality.
+The platform uses a code-first approach with either Permscript language or YAML, both providing the same functionality.
 
 Through the chosen approach, it is possible to specify who or what can access resources through finely detailed permissions.
 
