@@ -22,7 +22,7 @@ seo:
 `PermGuard` consists of several services, which can be deployed either on a single instance using the `all-in-one` distribution, or individually using separate distributions for each service."
 
 {{< inline-svg src="images/architecture/permguard-architecture.svg" width="100%" height="100%" class="svg-inline-custom svg-lightmode" >}}
-{{< inline-svg src="images/architecture/permguard-architecture.svg" width="100%" height="100%" style="background-color:#ffffff; border: 4px solid #d53ec6;"  class="svg-inline-custom svg-darkmode" >}}
+{{< inline-svg src="images/architecture/permguard-architecture.svg" width="100%" height="100%" style="background-color:#ffffff; border: 0px solid #d53ec6;"  class="svg-inline-custom svg-darkmode" >}}
 
 ## Account Administration Point (AAP)
 
