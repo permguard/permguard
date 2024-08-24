@@ -45,7 +45,7 @@ This level of authorization covers the access to the different functionalities o
 ### Level 3: Data Access
 This level of authorization covers the access to the different data of the application. It is the level of authorization that is typically implemented by the application itself.
 
-## The Challenge
+## The Challenges
 
 In a scenario where is missing an authorization layer, users are typically annotated with custom role metadata, and applications implement custom business logic based on the roles associated with users.
 
@@ -57,15 +57,15 @@ However, this approach presents several drawbacks:
 - **Delegation of Permissions**: Delegation is a multifaceted task that involves implementing custom logic to grant permissions to another identity. This is necessary in situations where an identity must pass on permissions to another identity, or where application components like workers or services need to act on behalf of another identity. While companies often use a functional account with extensive permissions for such operations, this poses a security risk. Efforts have been made to create identity tokens for delegating permissions, but they may not be applicable in all scenarios. For example, consider a worker operating on behalf of an identity after receiving a request via Apache Kafka messaging. In such cases, traditional authentication tokens like JWT may not be available or reliable.
 - **Security Risks**: A missing authorization central point open the door to security risks, as it is difficult to track the permissions of each identity on different applications.
 
-## The Solution
+## The Solutions
 
 `PermGuard` implements an authorization layer. With this approach the previous drawbacks are mitigated:
 
-- **Tight Coupled Authorization Logic**: This problem is fixed as the authorization logic is loosely coupled from the application code. Administrators can create new roles and permissions without requiring changes to the application's code base. The application retrieves the latest policies from the authorization layer without any code modifications and evaluates them using PermGuard.
-- **Duplicated Code**: This problem is fixed as the authorization evaluation logic is implemented within PermGuard, eliminating duplicated code as the policies are authored externally to the application code.
-- **Limited Flexibility**: This problem is fixed as using the code-first approach, it is possible to define complex authorization policies. This allows administrators to utilize a configuration language that is highly expressive, enabling the creation of custom and complex permissions.
-- **Delegation of Permissions**: This problem is addressed through the implementation of Trusted Delegation, a feature that enables the creation of a security sandbox within which the application can handle and fulfill requests on behalf of another identity, eliminating the necessity for a functional account with elevated permissions. Additionally, this feature resolves the challenge of processing requests triggered by messages from messaging systems such as Apache Kafka.
-- **Security Risks**: This problem is fixed as having a central point for managing the authorization layer enables the tracking of permissions for each identity across different applications.
+- **Tight Coupled Authorization Logic**: This challenge is fixed as the authorization logic is loosely coupled from the application code. Administrators can create new roles and permissions without requiring changes to the application's code base. The application retrieves the latest policies from the authorization layer without any code modifications and evaluates them using PermGuard.
+- **Duplicated Code**: This challenge is fixed as the authorization evaluation logic is implemented within PermGuard, eliminating duplicated code as the policies are authored externally to the application code.
+- **Limited Flexibility**: This challenge is fixed as using the code-first approach, it is possible to define complex authorization policies. This allows administrators to utilize a configuration language that is highly expressive, enabling the creation of custom and complex permissions.
+- **Delegation of Permissions**: This challenge is addressed through the implementation of Trusted Delegation, a feature that enables the creation of a security sandbox within which the application can handle and fulfill requests on behalf of another identity, eliminating the necessity for a functional account with elevated permissions. Additionally, this feature resolves the challenge of processing requests triggered by messages from messaging systems such as Apache Kafka.
+- **Security Risks**: This challenge is fixed as having a central point for managing the authorization layer enables the tracking of permissions for each identity across different applications.
 
 {{< callout context="note" icon="info-circle" >}}
 `PermGuard` further enhances the concept of the authorization layer by allowing the creation of multiple types of identities, including Users and Roles. Moreover, it implements features to delegate permissions to another identity.
