@@ -51,7 +51,7 @@ func (c *PAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(azconfigs.FlagName(flagServerPAPPrefix, flagSuffixGrpcPort), 9092, "port to be used for exposing the pap grpc services")
 	flagSet.Int(azconfigs.FlagName(flagServerPAPPrefix, flagSuffixHTTPPort), 8082, "port to be used for exposing the pap http services")
 	flagSet.Int(azconfigs.FlagName(flagServerPAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
-ì	return nil
+	return nil
 }
 
 // InitFromViper initializes the configuration from viper.
