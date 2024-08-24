@@ -29,6 +29,7 @@ type SQLiteCentralStorageAAP struct {
 	sqliteConnector azidb.SQLiteConnector
 	sqlRepo         SqliteRepo
 	sqlExec         SqliteExecutor
+	config 			*SQLiteCentralStorageConfig
 }
 
 // newSQLiteAAPCentralStorage creates a new SQLiteAAPCentralStorage.
@@ -42,10 +43,15 @@ func newSQLiteAAPCentralStorage(storageContext *azstorage.StorageContext, sqlite
 	if sqlExec == nil {
 		sqlExec = &SqliteExec{}
 	}
+	config, err := NewSQLiteCentralStorageConfig(storageContext)
+	if err != nil {
+		return nil, err
+	}
 	return &SQLiteCentralStorageAAP{
 		ctx:             storageContext,
 		sqliteConnector: sqliteConnector,
 		sqlRepo:         repo,
 		sqlExec:         sqlExec,
+		config:				config,
 	}, nil
 }

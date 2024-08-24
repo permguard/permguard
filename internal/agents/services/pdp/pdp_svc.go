@@ -34,10 +34,7 @@ type PDPService struct {
 
 // NewPDPService creates a new server  configuration.
 func NewPDPService(pdpServiceCfg *PDPServiceConfig) (*PDPService, error) {
-	data := map[string]interface{}{
-		"service": "PDP",
-	}
-	configReader, err := azservices.NewServiceConfiguration(data)
+	configReader, err := azservices.NewServiceConfiguration(pdpServiceCfg.GetConfigData())
 	if err != nil {
 		return nil, err
 	}

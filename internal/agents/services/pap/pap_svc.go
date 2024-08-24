@@ -34,10 +34,7 @@ type PAPService struct {
 
 // NewPAPService creates a new server  configuration.
 func NewPAPService(papServiceCfg *PAPServiceConfig) (*PAPService, error) {
-	data := map[string]interface{}{
-		"service": "PAP",
-	}
-	configReader, err := azservices.NewServiceConfiguration(data)
+	configReader, err := azservices.NewServiceConfiguration(papServiceCfg.GetConfigData())
 	if err != nil {
 		return nil, err
 	}
