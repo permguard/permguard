@@ -59,44 +59,44 @@ There are two primary use cases for this integration:
 
 For additional use cases, see [here](/docs/overview/patterns-through-use-cases).
 
-## A quick example
+## Integration Use Case: Pharmacy Branch Management
 
-For the sake of the simplicity let's consider a `Car Rental` use case where an identity which represents a customer want to list the available cars.
+To illustrate the integration process and demonstrate features throughout the documentation, we will use an example of a pharmacy, referred to as `MagicFarmacia`, which operates multiple branches across different cities.
 
-The initial step involves creating a policy and associating it with the role by specifying the necessary permissions.
+Below is a specific scenario where an identity representing a pharmacy manager requires access to inventory information across all branches.
 
-{{< tabs "policies-and-permissions" >}}
-{{< tab "authz" >}}
+### Policy and Permissions Definition
 
-```text
-# Policy to list all cars.
-policy ListCars {
-    resources = uur:581616507495:default:car-rental:renting:car/*,
-    actions = ra:car:ListCars
+The first step is to define a policy and associate it with a role by specifying the required permissions.
+
+```python
+# Policy to access inventory across all branches.
+policy AccessInventory {
+    resources = uur:581616507495:default:pharmacy:inventory:branch/*,
+    actions = ra:inventory:Access
 }
 
-# Defines permissions to read all cars.
-permission CarReadAll {
-    permit = [ListCars],
+# Defines permissions to read inventory information.
+permission InventoryRead {
+    permit = [AccessInventory],
     forbid = []
 }
 
-# Defines a role for the rental agent which in charge of the rental of the cars.
-role RentalAgent {
-  permissions = [CarReadAll]
+# Defines a role for the branch manager responsible for managing inventory.
+role BranchManager {
+  permissions = [InventoryRead]
 }
 ```
 
-{{< /tab >}}
-{{< /tabs >}}
+### Performing Permission Evaluation
 
-Once the policy has been created and associated with the role by specifying the required permissions, the next and final step is to perform the permission evaluation within the application.
+After creating and associating the policy with the role, the next step is to perform the permission evaluation within the application.
 
 ```python
-has_permissions = permguard.check("uur:581616507495:permguard:identities:iam:role/rental-agent", "car-rental/1.0.0", "ListCars", "car")
+has_permissions = permguard.check("uur:581616507495:permguard:identities:iam:role/branch-manager", "pharmacy/1.0.0", "Access", "inventory")
 
 if has_permissions:
-    print("Role can list cars")
+    print("Role can access inventory")
 else:
-    print("Role can not list cars")
+    print("Role cannot access inventory")
 ```
