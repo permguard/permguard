@@ -21,6 +21,7 @@ import (
 
 	"github.com/spf13/viper"
 
+	azcopier "github.com/permguard/permguard/pkg/extensions/copier"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
@@ -33,15 +34,15 @@ const (
 
 // PDPServiceConfig holds the configuration for the server.
 type PDPServiceConfig struct {
-	service					azservices.ServiceKind
-	grpcPort 				int
-	dataFetchMaxPageSize 	int
+	service	azservices.ServiceKind
+	config	map[string]interface{}
 }
 
 // NewPDPServiceConfig creates a new server factory configuration.
 func NewPDPServiceConfig() (*PDPServiceConfig, error) {
 	return &PDPServiceConfig{
 		service: azservices.ServicePDP,
+		config: map[string]interface{}{},
 	}, nil
 }
 
@@ -54,20 +55,31 @@ func (c *PDPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 
 // InitFromViper initializes the configuration from viper.
 func (c *PDPServiceConfig) InitFromViper(v *viper.Viper) error {
-	c.grpcPort = v.GetInt(azconfigs.FlagName(flagServerPDPPrefix, flagSuffixGrpcPort))
-	if !azvalidators.IsValidPort(c.grpcPort) {
+	// retrieve the grpc port
+	flagName := azconfigs.FlagName(flagServerPDPPrefix, flagSuffixGrpcPort)
+	grpcPort := v.GetInt(flagName)
+	if !azvalidators.IsValidPort(grpcPort) {
 		return azservices.ErrServiceInvalidPort
 	}
-	c.dataFetchMaxPageSize = v.GetInt(azconfigs.FlagName(flagServerPDPPrefix, flagDataFetchMaxPageSize))
-	if c.dataFetchMaxPageSize <= 0 {
+	c.config[flagSuffixGrpcPort] = grpcPort
+	// retrieve the data fetch max page size
+	flagName = azconfigs.FlagName(flagServerPDPPrefix, flagDataFetchMaxPageSize)
+	dataFetchMaxPageSize := v.GetInt(flagName)
+	if dataFetchMaxPageSize <= 0 {
 		return azservices.ErrServiceInvalidDataFetchPageSize
 	}
+	c.config[flagDataFetchMaxPageSize] = dataFetchMaxPageSize
 	return nil
+}
+
+// GetConfigData returns the configuration data.
+func (c *PDPServiceConfig) GetConfigData() map[string]interface{} {
+	return azcopier.CopyMap(c.config)
 }
 
 // GetPort returns the port.
 func (c *PDPServiceConfig) GetPort() int {
-	return c.grpcPort
+	return c.config[flagSuffixGrpcPort].(int)
 }
 
 // GetService returns the service kind.

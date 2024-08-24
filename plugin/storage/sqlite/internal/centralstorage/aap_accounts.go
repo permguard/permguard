@@ -42,32 +42,34 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 		Name:      account.Name,
 	}
 	dbOutAccount, err := s.sqlRepo.UpsertAccount(tx, true, dbInAccount)
-	if err == nil {
-		tenant := &azirepos.Tenant{
-			AccountID: dbOutAccount.AccountID,
-			Name:      TenantDefaultName,
+	if s.config.GetEnabledDefaultCreation() {
+		if err == nil {
+			tenant := &azirepos.Tenant{
+				AccountID: dbOutAccount.AccountID,
+				Name:      TenantDefaultName,
+			}
+			_, err = s.sqlRepo.UpsertTenant(tx, true, tenant)
 		}
-		_, err = s.sqlRepo.UpsertTenant(tx, true, tenant)
-	}
-	if err == nil {
-		identitySource := &azirepos.IdentitySource{
-			AccountID: dbOutAccount.AccountID,
-			Name:      IdentitySourceDefaultName,
+		if err == nil {
+			identitySource := &azirepos.IdentitySource{
+				AccountID: dbOutAccount.AccountID,
+				Name:      IdentitySourceDefaultName,
+			}
+			_, err = s.sqlRepo.UpsertIdentitySource(tx, true, identitySource)
 		}
-		_, err = s.sqlRepo.UpsertIdentitySource(tx, true, identitySource)
-	}
-	if err == nil {
-		repository := &azirepos.Repository{
-			AccountID: dbOutAccount.AccountID,
-			Name:      RepositoryDefaultName,
+		if err == nil {
+			repository := &azirepos.Repository{
+				AccountID: dbOutAccount.AccountID,
+				Name:      RepositoryDefaultName,
+			}
+			_, err = s.sqlRepo.UpsertRepository(tx, true, repository)
 		}
-		_, err = s.sqlRepo.UpsertRepository(tx, true, repository)
+		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
 	}
-	if err != nil {
-		tx.Rollback()
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
+ 	if err := tx.Commit(); err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapAccountToAgentAccount(dbOutAccount)

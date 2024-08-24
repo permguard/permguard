@@ -21,6 +21,7 @@ import (
 
 	"github.com/spf13/viper"
 
+	azcopier "github.com/permguard/permguard/pkg/extensions/copier"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
@@ -34,15 +35,15 @@ const (
 
 // PAPServiceConfig holds the configuration for the server.
 type PAPServiceConfig struct {
-	service					azservices.ServiceKind
-	grpcPort 				int
-	dataFetchMaxPageSize 	int
+	service	azservices.ServiceKind
+	config	map[string]interface{}
 }
 
 // NewPAPServiceConfig creates a new server factory configuration.
 func NewPAPServiceConfig() (*PAPServiceConfig, error) {
 	return &PAPServiceConfig{
 		service: azservices.ServicePAP,
+		config: map[string]interface{}{},
 	}, nil
 }
 
@@ -55,20 +56,31 @@ func (c *PAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 
 // InitFromViper initializes the configuration from viper.
 func (c *PAPServiceConfig) InitFromViper(v *viper.Viper) error {
-	c.grpcPort = v.GetInt(azconfigs.FlagName(flagServerPAPPrefix, flagSuffixGrpcPort))
-	if !azvalidators.IsValidPort(c.grpcPort) {
+	// retrieve the grpc port
+	flagName := azconfigs.FlagName(flagServerPAPPrefix, flagSuffixGrpcPort)
+	grpcPort := v.GetInt(flagName)
+	if !azvalidators.IsValidPort(grpcPort) {
 		return azservices.ErrServiceInvalidPort
 	}
-	c.dataFetchMaxPageSize = v.GetInt(azconfigs.FlagName(flagServerPAPPrefix, flagDataFetchMaxPageSize))
-	if c.dataFetchMaxPageSize <= 0 {
+	c.config[flagSuffixGrpcPort] = grpcPort
+	// retrieve the data fetch max page size
+	flagName = azconfigs.FlagName(flagServerPAPPrefix, flagDataFetchMaxPageSize)
+	dataFetchMaxPageSize := v.GetInt(flagName)
+	if dataFetchMaxPageSize <= 0 {
 		return azservices.ErrServiceInvalidDataFetchPageSize
 	}
+	c.config[flagDataFetchMaxPageSize] = dataFetchMaxPageSize
 	return nil
+}
+
+// GetConfigData returns the configuration data.
+func (c *PAPServiceConfig) GetConfigData() map[string]interface{} {
+	return azcopier.CopyMap(c.config)
 }
 
 // GetPort returns the port.
 func (c *PAPServiceConfig) GetPort() int {
-	return c.grpcPort
+	return c.config[flagSuffixGrpcPort].(int)
 }
 
 // GetService returns the service kind.

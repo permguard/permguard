@@ -34,10 +34,7 @@ type AAPService struct {
 
 // NewAAPService creates a new server  configuration.
 func NewAAPService(aapServiceCfg *AAPServiceConfig) (*AAPService, error) {
-	data := map[string]interface{}{
-		"service": "AAP",
-	}
-	configReader, err := azservices.NewServiceConfiguration(data)
+	configReader, err := azservices.NewServiceConfiguration(aapServiceCfg.GetConfigData())
 	if err != nil {
 		return nil, err
 	}

@@ -21,6 +21,7 @@ import (
 
 	"github.com/spf13/viper"
 
+	azcopier "github.com/permguard/permguard/pkg/extensions/copier"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
@@ -35,16 +36,15 @@ const (
 
 // AAPServiceConfig holds the configuration for the server.
 type AAPServiceConfig struct {
-	serviceKind 			azservices.ServiceKind
-	grpcPort 				int
-	dataFetchMaxPageSize 	int
-	enableDefaultCreation 	bool
+	serviceKind	azservices.ServiceKind
+	config		map[string]interface{}
 }
 
 // NewAAPServiceConfig creates a new server factory configuration.
 func NewAAPServiceConfig() (*AAPServiceConfig, error) {
 	return &AAPServiceConfig{
 		serviceKind: azservices.ServiceAAP,
+		config: map[string]interface{}{},
 	}, nil
 }
 
@@ -58,21 +58,45 @@ func (c *AAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 
 // InitFromViper initializes the configuration from viper.
 func (c *AAPServiceConfig) InitFromViper(v *viper.Viper) error {
-	c.grpcPort = v.GetInt(azconfigs.FlagName(flagServerAAPPrefix, flagSuffixGrpcPort))
-	if !azvalidators.IsValidPort(c.grpcPort) {
+	// retrieve the grpc port
+	flagName := azconfigs.FlagName(flagServerAAPPrefix, flagSuffixGrpcPort)
+	grpcPort := v.GetInt(flagName)
+	if !azvalidators.IsValidPort(grpcPort) {
 		return azservices.ErrServiceInvalidPort
 	}
-	c.dataFetchMaxPageSize = v.GetInt(azconfigs.FlagName(flagServerAAPPrefix, flagDataFetchMaxPageSize))
-	if c.dataFetchMaxPageSize <= 0 {
+	c.config[flagSuffixGrpcPort] = grpcPort
+	// retrieve the data fetch max page size
+	flagName = azconfigs.FlagName(flagServerAAPPrefix, flagDataFetchMaxPageSize)
+	dataFetchMaxPageSize := v.GetInt(flagName)
+	if dataFetchMaxPageSize <= 0 {
 		return azservices.ErrServiceInvalidDataFetchPageSize
 	}
-	c.enableDefaultCreation = v.GetBool(azconfigs.FlagName(flagServerAAPPrefix, flagEnableDefaultCreation))
+	c.config[flagDataFetchMaxPageSize] = dataFetchMaxPageSize
+	// retrieve the enable default creation
+	flagName = azconfigs.FlagName(flagServerAAPPrefix, flagEnableDefaultCreation)
+	enableDefaultCreation := v.GetBool(flagName)
+	c.config[flagEnableDefaultCreation] = enableDefaultCreation
 	return nil
+}
+
+// GetConfigData returns the configuration data.
+func (c *AAPServiceConfig) GetConfigData() map[string]interface{} {
+	return azcopier.CopyMap(c.config)
 }
 
 // GetPort returns the port.
 func (c *AAPServiceConfig) GetPort() int {
-	return c.grpcPort
+	return c.config[flagSuffixGrpcPort].(int)
+}
+
+// GetDataFetchMaxPageSize returns the maximum number of items to fetch per request.
+func (c *AAPServiceConfig) GetDataFetchMaxPageSize() int {
+	return c.config[flagDataFetchMaxPageSize].(int)
+}
+
+// GetEnabledDefaultCreation return if the default creation is enabled.
+func (c *AAPServiceConfig) GetEnabledDefaultCreation() bool {
+	return c.config[flagEnableDefaultCreation].(bool)
 }
 
 // GetService returns the service kind.
