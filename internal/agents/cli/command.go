@@ -101,7 +101,7 @@ func addFlagsForServerInitalizer(serverInitializer azservers.ServerInitializer, 
 // runECommand runs the command.
 func runECommand(cmdInfo *azservices.HostInfo, serverFactoryCfg *aziservers.ServerFactoryConfig, v *viper.Viper, startup func(*zap.Logger), shutdown func(*zap.Logger)) error {
 	fmt.Println(asciiArt)
-	fmt.Printf("PermGuard %s - Copyright (c) 2022 Nitro Agility S.r.l.\n", cmdInfo.Name)
+	fmt.Printf("PermGuard %s - Copyright © 2022 Nitro Agility S.r.l.\n", cmdInfo.Name)
 	fmt.Println("")
 
 	err := serverFactoryCfg.InitFromViper(v)

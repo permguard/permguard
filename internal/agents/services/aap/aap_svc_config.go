@@ -27,9 +27,11 @@ import (
 )
 
 const (
-	flagPrefixServer   = "server.aap"
-	flagSuffixGrpcPort = "grpc.port"
-	flagSuffixHTTPPort = "http.port"
+	flagServerAAPPrefix			= "server.aap"
+	flagSuffixGrpcPort 			= "grpc.port"
+	flagSuffixHTTPPort 			= "http.port"
+    flagDataFetchMaxPageSize	= "data.fetch.maxpagesize"
+    flagEnableDefaultCreation	= "enable.default.creation"
 )
 
 // AAPServiceConfig holds the configuration for the server.
@@ -47,14 +49,16 @@ func NewAAPServiceConfig() (*AAPServiceConfig, error) {
 
 // AddFlags adds flags.
 func (c *AAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
-	flagSet.Int(azconfigs.FlagName(flagPrefixServer, flagSuffixGrpcPort), 9091, "port to be used for exposing the aap grpc services")
-	flagSet.Int(azconfigs.FlagName(flagPrefixServer, flagSuffixHTTPPort), 8081, "port to be used for exposing the aap http services")
+	flagSet.Int(azconfigs.FlagName(flagServerAAPPrefix, flagSuffixGrpcPort), 9091, "port to be used for exposing the aap grpc services")
+	flagSet.Int(azconfigs.FlagName(flagServerAAPPrefix, flagSuffixHTTPPort), 8081, "port to be used for exposing the aap http services")
+	flagSet.Int(azconfigs.FlagName(flagServerAAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
+	flagSet.Bool(azconfigs.FlagName(flagServerAAPPrefix, flagEnableDefaultCreation), false, "enable the creation of default relationships during data creation")
 	return nil
 }
 
 // InitFromViper initializes the configuration from viper.
 func (c *AAPServiceConfig) InitFromViper(v *viper.Viper) error {
-	c.port = v.GetInt(azconfigs.FlagName(flagPrefixServer, flagSuffixGrpcPort))
+	c.port = v.GetInt(azconfigs.FlagName(flagServerAAPPrefix, flagSuffixGrpcPort))
 	if !azvalidators.IsValidPort(c.port) {
 		return azservices.ErrServiceInvalidPort
 	}
