@@ -45,7 +45,7 @@ This level of authorization covers the access to the different functionalities o
 ### Level 3: Data Access
 This level of authorization covers the access to the different data of the application. It is the level of authorization that is typically implemented by the application itself.
 
-## The Problem
+## The Challenge
 
 In a scenario where is missing an authorization layer, users are typically annotated with custom role metadata, and applications implement custom business logic based on the roles associated with users.
 
