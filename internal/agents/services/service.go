@@ -18,6 +18,7 @@ package services
 
 import (
 	"context"
+	"errors"
 
 	"go.uber.org/zap"
 
@@ -65,7 +66,11 @@ type Service struct {
 
 // newService creates a new service.
 func newService(serviceCfg *ServiceConfig, hostContext *azservices.HostContext) (*Service, error) {
-	serviceCtx, err := azservices.NewServiceContext(hostContext, serviceCfg.serviceable.GetService())
+	svcCfgReader, err := serviceCfg.serviceable.GetServiceConfigReader()
+	if err != nil {
+		return nil, errors.New("service: cannot get service config reader")
+	}
+	serviceCtx, err := azservices.NewServiceContext(hostContext, serviceCfg.serviceable.GetService(), svcCfgReader)
 	if err != nil {
 		return nil, err
 	}

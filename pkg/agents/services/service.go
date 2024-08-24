@@ -16,10 +16,16 @@
 
 package services
 
+import (
+	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
+)
+
 // Serviceable must be implemented by all the services.
 type Serviceable interface {
 	// GetService returns the service kind.
 	GetService() ServiceKind
 	// GetEndpoints returns the service endpoints.
 	GetEndpoints() ([]EndpointInitializer, error)
+	// GetServiceConfigReader returns the service configuration reader.
+	GetServiceConfigReader() (azruntime.ServiceConfigReader, error)
 }

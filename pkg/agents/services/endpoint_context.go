@@ -79,3 +79,8 @@ func (e *EndpointContext) GetLogMessage(message string) string {
 func (e *EndpointContext) GetHostConfigReader() (azruntime.HostConfigReader, error) {
 	return e.parentCtx.GetHostConfigReader()
 }
+
+// GetServiceConfigReader returns the service configuration reader.
+func (e *EndpointContext) GetServiceConfigReader() (azruntime.ServiceConfigReader, error) {
+	return e.parentCtx.GetServiceConfigReader()
+}

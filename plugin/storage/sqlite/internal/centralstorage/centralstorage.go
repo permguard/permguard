@@ -91,6 +91,7 @@ type SQLiteCentralStorage struct {
 
 // NewSQLiteCentralStorage creates a new sqlite central storage.
 func NewSQLiteCentralStorage(storageContext *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector) (*SQLiteCentralStorage, error) {
+	//TODO: Implement logic to get a storage configuration from the storageContext.GetServiceConfigReader()
 	return &SQLiteCentralStorage{
 		ctx:             storageContext,
 		sqliteConnector: sqliteConnector,

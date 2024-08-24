@@ -19,6 +19,7 @@ package aap
 import (
 	"google.golang.org/grpc"
 
+	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
 	azctrlaap "github.com/permguard/permguard/internal/agents/services/aap/controllers"
 	azapiv1aap "github.com/permguard/permguard/internal/agents/services/aap/endpoints/api/v1"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
@@ -27,13 +28,22 @@ import (
 
 // AAPService holds the configuration for the server.
 type AAPService struct {
-	config *AAPServiceConfig
+	config			*AAPServiceConfig
+	configReader	azruntime.ServiceConfigReader
 }
 
 // NewAAPService creates a new server  configuration.
 func NewAAPService(aapServiceCfg *AAPServiceConfig) (*AAPService, error) {
+	data := map[string]interface{}{
+		"service": "AAP",
+	}
+	configReader, err := azservices.NewServiceConfiguration(data)
+	if err != nil {
+		return nil, err
+	}
 	return &AAPService{
 		config: aapServiceCfg,
+		configReader: configReader,
 	}, nil
 }
 
@@ -73,4 +83,9 @@ func (f *AAPService) GetEndpoints() ([]azservices.EndpointInitializer, error) {
 	}
 	endpoints := []azservices.EndpointInitializer{endpoint}
 	return endpoints, nil
+}
+
+// GetServiceConfigReader returns the service configuration reader.
+func (f *AAPService) GetServiceConfigReader() (azruntime.ServiceConfigReader, error) {
+	return f.configReader, nil
 }
