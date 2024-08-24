@@ -21,8 +21,6 @@ seo:
 
 `PermGuard` implements the concept of `multi-tenants`, allowing the creation of multiple **tenants** for each account.
 
-Every account is provisioned with a `default` tenant, which is automatically associated.
-
 Tenants play a crucial role in managing the authorizations and they can be used to `partition` `resources` and `actions` effectively.
 This is quite useful in scenarios where the adopter intends to use PermGuard for developing a multi-tenant application, such as Software as a Service (SaaS).
 

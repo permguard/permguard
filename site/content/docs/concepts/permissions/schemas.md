@@ -28,7 +28,7 @@ A schema serves as a logical representation, organizing resources and actions, a
   "schema_id": "46968b2e-21df-4c1d-8606-f772a3f30b70",
   "account_id": 567269058122,
   "repository_id": "440e5c38-a403-497a-ac69-861f3789b01f",
-  "repository_name": "default",
+  "repository_name": "1.0",
   "domains": []
 }
 ```

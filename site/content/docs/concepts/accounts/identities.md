@@ -21,7 +21,7 @@ seo:
 
 An `identity` is an unique entity that represents either an **user** or a **role**.
 
-Identities are linked to identity sources. By default, there is the native `default` identity source, and more can be created.
+Identities are linked to identity sources.
 
 ```json
 {
