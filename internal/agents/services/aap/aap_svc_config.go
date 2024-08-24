@@ -27,11 +27,11 @@ import (
 )
 
 const (
-	flagServerAAPPrefix			= "server.aap"
-	flagSuffixGrpcPort 			= "grpc.port"
-	flagSuffixHTTPPort 			= "http.port"
-    flagDataFetchMaxPageSize	= "data.fetch.maxpagesize"
-    flagEnableDefaultCreation	= "enable.default.creation"
+	flagServerAAPPrefix       = "server.aap"
+	flagSuffixGrpcPort        = "grpc.port"
+	flagSuffixHTTPPort        = "http.port"
+	flagDataFetchMaxPageSize  = "data.fetch.maxpagesize"
+	flagEnableDefaultCreation = "enable.default.creation"
 )
 
 // AAPServiceConfig holds the configuration for the server.
@@ -52,7 +52,7 @@ func (c *AAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(azconfigs.FlagName(flagServerAAPPrefix, flagSuffixGrpcPort), 9091, "port to be used for exposing the aap grpc services")
 	flagSet.Int(azconfigs.FlagName(flagServerAAPPrefix, flagSuffixHTTPPort), 8081, "port to be used for exposing the aap http services")
 	flagSet.Int(azconfigs.FlagName(flagServerAAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
-	flagSet.Bool(azconfigs.FlagName(flagServerAAPPrefix, flagEnableDefaultCreation), false, "enable the creation of default relationships during data creation")
+	flagSet.Bool(azconfigs.FlagName(flagServerAAPPrefix, flagEnableDefaultCreation), false, "the creation of default entities (e.g., tenants, identity sources) during data creation")
 	return nil
 }
 
