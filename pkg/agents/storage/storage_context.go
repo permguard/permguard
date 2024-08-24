@@ -75,7 +75,7 @@ func (s *StorageContext) GetLogMessage(message string) string {
 	return fmt.Sprintf("%s: %s", s.GetParentLoggerMessage(), message)
 }
 
-// GetAppData returns the app data.
-func (s *StorageContext) GetAppData() string {
-	return s.parentCtx.GetAppData()
+// GetHostConfigReader returns the host configuration reader.
+func (s *StorageContext) GetHostConfigReader() (azruntime.HostConfigReader, error) {
+	return s.parentCtx.GetHostConfigReader()
 }

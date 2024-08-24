@@ -14,28 +14,14 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package runtime
+package services
 
-import (
-	"context"
-
-	"go.uber.org/zap"
-)
-
-// RuntimeContext is the interface for the runtime context.
-type RuntimeContext interface {
-	// GetLogger returns the logger.
-	GetLogger() *zap.Logger
-	// GetParentLoggerMessage returns the parent logger message.
-	GetParentLoggerMessage() string
-	// GetHostConfigReader returns the host configuration reader.
-	GetHostConfigReader() (HostConfigReader, error)
-	// GetContext returns the context.
-	GetContext() context.Context
+// hostConfig declares the host configuration.
+type hostConfig struct {
+	appData string
 }
 
-// HostConfigReader declares the host configuration reader.
-type HostConfigReader interface {
-	// GetAppData returns the application data.
-	GetAppData() string
+// GetAppData returns the application data.
+func (h *hostConfig) GetAppData() string {
+	return h.appData
 }

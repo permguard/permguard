@@ -112,7 +112,11 @@ func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *azstorage.StorageCon
 	if c.db != nil {
 		return c.db, nil
 	}
-	filePath := ctx.GetAppData()
+	hostCfgReader, err := ctx.GetHostConfigReader()
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: cannot get host config reader")
+	}
+	filePath := hostCfgReader.GetAppData()
 	dbName := c.config.GetDBName()
 	if !strings.HasSuffix(dbName, ".db") {
 		dbName += ".db"
