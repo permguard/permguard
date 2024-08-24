@@ -54,12 +54,12 @@ func NewSQLiteCentralStorageConfig(ctx *azstorage.StorageContext) (*SQLiteCentra
 }
 
 // GetDataFetchMaxPageSize returns the maximum number of items to fetch per request.
-func (c *SQLiteCentralStorageConfig) GetDataFetchMaxPageSize() int {
+func (c *SQLiteCentralStorageConfig) GetDataFetchMaxPageSize() int32 {
 	maxSize, err := c.configReader.GetValue(maxPageSizeKey)
 	if err != nil {
 		return 10000
 	}
-	if intValue, ok := maxSize.(int); ok {
+	if intValue, ok := maxSize.(int32); ok {
 		return intValue
 	}
 	return maxPageSizeDefault
