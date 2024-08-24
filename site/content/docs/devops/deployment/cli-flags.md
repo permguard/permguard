@@ -89,10 +89,6 @@ Irrespective of the chosen distribution, the binary supports the following flags
 
 ---
 
-**--server.aap.http.port int**: *port to be used for exposing the aap http services. (default `8081`).*
-
----
-
 ### server-pap
 
 {{< callout >}} Policy Administration Point. {{< /callout >}}
@@ -105,10 +101,6 @@ Irrespective of the chosen distribution, the binary supports the following flags
 
 ---
 
-**--server.pap.http.port int**: *port to be used for exposing the pap http services. (default `8082`).*
-
----
-
 ### server-pdp
 
 {{< callout >}} Policy Decision Point. {{< /callout >}}
@@ -118,10 +110,6 @@ Irrespective of the chosen distribution, the binary supports the following flags
 ---
 
 **--server.pdp.grpc.port int**: *port to be used for exposing the pdp grpc services. (default `9096`).*
-
----
-
-**--server.pdp.http.port int**: *port to be used for exposing the pdp http services. (default `8086`).*
 
 ---
 

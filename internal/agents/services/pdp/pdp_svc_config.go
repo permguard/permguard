@@ -27,15 +27,15 @@ import (
 )
 
 const (
-	flagServerPDPPrefix = "server.pdp"
-	flagSuffixGrpcPort  = "grpc.port"
-	flagSuffixHTTPPort  = "http.port"
-    flagDataFetchMaxPageSize        = "data.fetch.maxpagesize")
+	flagServerPDPPrefix 		= "server.pdp"
+	flagSuffixGrpcPort  		= "grpc.port"
+    flagDataFetchMaxPageSize    = "data.fetch.maxpagesize")
 
 // PDPServiceConfig holds the configuration for the server.
 type PDPServiceConfig struct {
-	service azservices.ServiceKind
-	port    int
+	service					azservices.ServiceKind
+	grpcPort 				int
+	dataFetchMaxPageSize 	int
 }
 
 // NewPDPServiceConfig creates a new server factory configuration.
@@ -48,23 +48,26 @@ func NewPDPServiceConfig() (*PDPServiceConfig, error) {
 // AddFlags adds flags.
 func (c *PDPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(azconfigs.FlagName(flagServerPDPPrefix, flagSuffixGrpcPort), 9096, "port to be used for exposing the pdp grpc services")
-	flagSet.Int(azconfigs.FlagName(flagServerPDPPrefix, flagSuffixHTTPPort), 8086, "port to be used for exposing the pdp http services")
 	flagSet.Int(azconfigs.FlagName(flagServerPDPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
 	return nil
 }
 
 // InitFromViper initializes the configuration from viper.
 func (c *PDPServiceConfig) InitFromViper(v *viper.Viper) error {
-	c.port = v.GetInt(azconfigs.FlagName(flagServerPDPPrefix, flagSuffixGrpcPort))
-	if !azvalidators.IsValidPort(c.port) {
+	c.grpcPort = v.GetInt(azconfigs.FlagName(flagServerPDPPrefix, flagSuffixGrpcPort))
+	if !azvalidators.IsValidPort(c.grpcPort) {
 		return azservices.ErrServiceInvalidPort
+	}
+	c.dataFetchMaxPageSize = v.GetInt(azconfigs.FlagName(flagServerPDPPrefix, flagDataFetchMaxPageSize))
+	if c.dataFetchMaxPageSize <= 0 {
+		return azservices.ErrServiceInvalidDataFetchPageSize
 	}
 	return nil
 }
 
 // GetPort returns the port.
 func (c *PDPServiceConfig) GetPort() int {
-	return c.port
+	return c.grpcPort
 }
 
 // GetService returns the service kind.
