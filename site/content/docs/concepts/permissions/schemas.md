@@ -23,24 +23,14 @@ In `PermGuard`, multiple repositories can be created, and each of them has a sin
 ## Schema
 A schema serves as a logical representation, organizing resources and actions, and also includes metadata annotations.
 
-```json
-{
-  "schema_id": "46968b2e-21df-4c1d-8606-f772a3f30b70",
-  "account_id": 567269058122,
-  "repository_id": "440e5c38-a403-497a-ac69-861f3789b01f",
-  "repository_name": "1.0",
-  "domains": []
-}
-```
-
 ## Domain
 Additionally, a schema can be further subdivided into domains, offering enhanced granularity in resource management. A domain provides another level of logical representation, particularly advantageous for schemas employing a `Domain-Driven Design` (`DDD`) approach. By structuring schemas into domains, users can streamline development efforts and ensure architectural coherence.
 
 ```json
 {
-  "domain_id": "e41a4244-8bbc-4305-8009-52a1f4bd665e",
-  "name": "renting",
-  "description": "Car renting domain",
+  "domain_id": "0432efb55bc8464b8a22b8b9131cbc7e",
+  "name": "magicpharmacy",
+  "description": "Manage a pharmacy with multiple branches",
   "resources": []
 }
 ```
@@ -62,9 +52,9 @@ In summary, `Resources` in PermGuard provide a structured approach to managing a
 
 ```json
 {
-  "resource_id": "034adbd1-bc3b-40cd-a5f9-6a8e1a8c734e",
-  "name": "car",
-  "description": "Car resource",
+  "resource_id": "3451e4e7ad7c440d89f828ed68747422",
+  "name": "inventory",
+  "description": "Pharmacy inventory",
   "actions": []
 }
 ```
@@ -74,8 +64,8 @@ An **action** is a specific operation that can be performed on a resource. Actio
 
 ```json
 {
-  "action_id": "0f99f79d-33d5-45ae-b650-230863dc1d97",
-  "name": "list-available",
-  "description": "List available cars"
+  "action_id": "8469ba03528d4ea7aab25354dce84c29",
+  "name": "access",
+  "description": "Access inventory"
 }
 ```

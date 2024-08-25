@@ -31,7 +31,7 @@ Each account is identified by a unique `numeric identifier` and it is associated
 
 ```json
 {
-  "account_id": 581616507495,
-  "name": "dev-car-rental"
+  "account_id": 268786704340,
+  "name": "magicfarmacia-dev"
 }
 ```

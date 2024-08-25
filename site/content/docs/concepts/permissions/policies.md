@@ -30,13 +30,13 @@ Policies can be defined using either PermScript or YAML.
 
 ```json
 {
-    "policy_id": "4e72117e-fb2d-46d6-875a-938b2b7108c8",
-    "name": "backoffice-create-car",
+    "policy_id": "b9ccc8554cc645fca5de415f4aa67a36",
+    "name": "access-inventory",
     "actions": [
-        "car:create"
+        "inventory:Access"
     ],
     "resources": [
-        "uur:581616507495:default:car-rental:backoffice:car/*"
+        "uur:581616507495:default:pharmacy:inventory:branch/*"
     ]
 }
 ```

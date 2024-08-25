@@ -29,8 +29,8 @@ To complete the enforcement process, the PEP queries the Policy Decision Point (
   "identity": {
     "uur": "uur:581616507495:permguard:identities:iam:user/mario.rossi"
   },
-  "domain": "renting",
-  "resources": [ "car" ],
-  "actions": [ "car:list" ],
+  "domain": "store",
+  "resources": [ "inventory" ],
+  "actions": [ "inventory:access" ],
 }
 ```

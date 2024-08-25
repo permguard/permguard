@@ -29,12 +29,10 @@ Permissions can be defined using either PermScript or YAML.
 
 ```json
 {
-    "permissions_id": "f2da78df-b162-4b9d-a2cd-9c93c809bc5f",
-    "name": "rental-agent",
+    "permissions_id": "86f92e15c51548478cd0424412d15c76",
+    "name": "invengory-read",
     "policies": [
-        "renting-list-cars",
-        "renting-show-car-detail",
-        "renting-book-car"
+        "access-inventory"
     ]
 }
 ```
