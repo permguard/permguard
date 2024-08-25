@@ -55,26 +55,29 @@ The `permguard authn tenants create` command allows to create a tenant for the m
 {{< tab "terminal" >}}
 
 ```bash
-❯ permguard authn tenants create --account 789251338948 --name permguard
+❯ permguard authn tenants create --account 268786704340 --name matera-branch
 
 ```
+
 output:
+
+```bash
+2e190ee712494838bb54d67e2a0c496a: matera-branch
 ```
- 608d3ec8-7c73-4a25-a46c-de2c1425e290: permguard
 
 {{< /tab >}}
 {{< tab "json" >}}
 
 ```bash
-❯ permguard authn tenants create --account 789251338948 --name permguard --output json
+❯ permguard authn tenants create --account 268786704340 --name matera-branch --output json
 {
-  "tenants": [
+  "tenant": [
     {
-      "tenant_id": "608d3ec8-7c73-4a25-a46c-de2c1425e290",
-      "created_at": "2023-04-01T09:36:11.613499Z",
-      "updated_at": "2023-04-01T09:36:11.613499Z",
-      "account_id": 789251338948,
-      "name": "permguard"
+      "tenant_id": "2e190ee712494838bb54d67e2a0c496a",
+      "created_at": "2024-08-25T14:14:33.794Z",
+      "updated_at": "2024-08-25T14:14:33.794Z",
+      "account_id": 268786704340,
+      "name": "matera-branch"
     }
   ]
 }
@@ -91,34 +94,77 @@ The `permguard authn tenants list` command allows for the retrieval of all tenan
 {{< tab "terminal" >}}
 
 ```bash
-❯ permguard authn tenants list --account 789251338948
+❯ permguard authn tenants list --account 268786704340
 
 ```
+
 output:
+
+```bash
+0f85cbd14e3f462882f0e09d9f64ff40: london-branch
+1fb7c545dce74cb18b2e4896d3e9a96e: leeds-branch
+2e190ee712494838bb54d67e2a0c496a: matera-branch
+51548dac972c4df183b312a3b665e8e2: pisa-branch
+59c3f233d0a0447fb2a977ad9605d12c: bari-branch
+aca65c4dea4d488ab5a52b63b0ba25ef: milan-branch
+ec40fe0ce651404a8cc0e4ab1e386053: birmingham-branch
 ```
- 667e72d0-a1ad-4e31-8d74-394357b44fbe: default
- 608d3ec8-7c73-4a25-a46c-de2c1425e290: permguard
 
 {{< /tab >}}
 {{< tab "json" >}}
 
 ```bash
-❯ permguard authn tenants list --account 789251338948 --output json
+❯ permguard authn tenants list --account 268786704340 --output json
 {
-  "tenants": [
+  "tenant": [
     {
-      "tenant_id": "667e72d0-a1ad-4e31-8d74-394357b44fbe",
-      "created_at": "2023-04-01T08:27:02.380041Z",
-      "updated_at": "2023-04-01T09:20:38.699299Z",
-      "account_id": 789251338948,
-      "name": "default"
+      "tenant_id": "0f85cbd14e3f462882f0e09d9f64ff40",
+      "created_at": "2024-08-25T14:16:43.778Z",
+      "updated_at": "2024-08-25T14:16:43.778Z",
+      "account_id": 268786704340,
+      "name": "london-branch"
     },
     {
-      "tenant_id": "608d3ec8-7c73-4a25-a46c-de2c1425e290",
-      "created_at": "2023-04-01T09:36:11.613499Z",
-      "updated_at": "2023-04-01T09:36:11.613499Z",
-      "account_id": 789251338948,
-      "name": "permguard"
+      "tenant_id": "1fb7c545dce74cb18b2e4896d3e9a96e",
+      "created_at": "2024-08-25T14:16:44.802Z",
+      "updated_at": "2024-08-25T14:16:44.802Z",
+      "account_id": 268786704340,
+      "name": "leeds-branch"
+    },
+    {
+      "tenant_id": "2e190ee712494838bb54d67e2a0c496a",
+      "created_at": "2024-08-25T14:14:33.794Z",
+      "updated_at": "2024-08-25T14:14:33.794Z",
+      "account_id": 268786704340,
+      "name": "matera-branch"
+    },
+    {
+      "tenant_id": "51548dac972c4df183b312a3b665e8e2",
+      "created_at": "2024-08-25T14:16:41.657Z",
+      "updated_at": "2024-08-25T14:16:41.657Z",
+      "account_id": 268786704340,
+      "name": "pisa-branch"
+    },
+    {
+      "tenant_id": "59c3f233d0a0447fb2a977ad9605d12c",
+      "created_at": "2024-08-25T14:16:42.753Z",
+      "updated_at": "2024-08-25T14:16:42.753Z",
+      "account_id": 268786704340,
+      "name": "bari-branch"
+    },
+    {
+      "tenant_id": "aca65c4dea4d488ab5a52b63b0ba25ef",
+      "created_at": "2024-08-25T14:16:40.585Z",
+      "updated_at": "2024-08-25T14:16:40.585Z",
+      "account_id": 268786704340,
+      "name": "milan-branch"
+    },
+    {
+      "tenant_id": "ec40fe0ce651404a8cc0e4ab1e386053",
+      "created_at": "2024-08-25T14:16:45.815Z",
+      "updated_at": "2024-08-25T14:16:45.815Z",
+      "account_id": 268786704340,
+      "name": "birmingham-branch"
     }
   ]
 }
