@@ -55,7 +55,7 @@ The `permguard authz repos create` command allows to create a repository for the
 {{< tab "terminal" >}}
 
 ```bash
-❯ permguard authz repos create --account 268786704340 --name v2.0
+permguard authz repos create --account 268786704340 --name v2.0
 ```
 
 output:
@@ -68,7 +68,12 @@ output:
 {{< tab "json" >}}
 
 ```bash
-❯ permguard authz repos create --account 268786704340 --name v2.0 --output json
+permguard authz repos create --account 268786704340 --name v2.0 --output json
+```
+
+output:
+
+```bash
 {
   "repositories": [
     {
@@ -93,7 +98,7 @@ The `permguard authz repos list` command allows for the retrieval of all reposit
 {{< tab "terminal" >}}
 
 ```bash
-❯ permguard authz repos list --account 268786704340
+permguard authz repos list --account 268786704340
 ```
 
 output:
@@ -110,7 +115,12 @@ d02af7e50a7b462cb496aa6ddeb4275e: v1.0
 {{< tab "json" >}}
 
 ```bash
-❯ permguard authz repos list --account 268786704340 --output json
+permguard authz repos list --account 268786704340 --output json
+```
+
+output:
+
+```bash
 {
   "repository": [
     {
