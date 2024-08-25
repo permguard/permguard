@@ -73,12 +73,13 @@ devaccount=$(echo $output | cut -d ':' -f 1)
 echo "Account ID: $devaccount"
 
 # Execute each of the following commands, but don't exit on error
+go run ./cmd/cli/main.go authn tenants create --name matera-branch --account $devaccount || echo "Failed to create Milan branch"
 go run ./cmd/cli/main.go authn tenants create --name milan-branch --account $devaccount || echo "Failed to create Milan branch"
-go run ./cmd/cli/main.go authn tenants create --name florence-branch --account $devaccount || echo "Failed to create Florence branch"
-go run ./cmd/cli/main.go authn tenants create --name naples-branch --account $devaccount || echo "Failed to create Naples branch"
+go run ./cmd/cli/main.go authn tenants create --name pisa-branch --account $devaccount || echo "Failed to create Florence branch"
+go run ./cmd/cli/main.go authn tenants create --name bari-branch --account $devaccount || echo "Failed to create Naples branch"
 
 go run ./cmd/cli/main.go authn tenants create --name london-branch --account $devaccount || echo "Failed to create London branch"
-go run ./cmd/cli/main.go authn tenants create --name manchester-branch --account $devaccount || echo "Failed to create Manchester branch"
+go run ./cmd/cli/main.go authn tenants create --name leeds-branch --account $devaccount || echo "Failed to create Manchester branch"
 go run ./cmd/cli/main.go authn tenants create --name birmingham-branch --account $devaccount || echo "Failed to create Birmingham branch"
 
 go run ./cmd/cli/main.go authn identitysources create --name google --account $devaccount || echo "Failed to create Google identity source"
