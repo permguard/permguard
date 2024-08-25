@@ -1,5 +1,5 @@
 ---
-title: "Adoption Through Example"
+title: "How it works"
 slug: "How it works"
 description: ""
 summary: ""
@@ -18,7 +18,6 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-
 `PermGuard` is a modern `Authorization Provider` that implements an advanced authorization layer. It delivers dynamic access control by managing user permissions, roles, and policies, ensuring secure and efficient authorization across diverse systems and applications.
 
 ## Infrastructure
@@ -57,45 +56,3 @@ There are two primary use cases for this integration:
 - **Background**: A background process, such as a job or long-running worker, checks if the identity linked to the action has the required permissions. In a distributed system, this identity might be included in the message being processed.
 
 For additional use cases, see [here](/docs/overview/patterns-through-use-cases).
-
-## Integration Use Case: Pharmacy Branch Management
-
-To illustrate the integration process and demonstrate features throughout the documentation, we will use an example of a pharmacy, referred to as `MagicFarmacia`, which operates multiple branches across different cities.
-
-Below is a specific scenario where an identity representing a pharmacy manager requires access to inventory information across all branches.
-
-### Policy and Permissions Definition
-
-The first step is to define a policy and associate it with a role by specifying the required permissions.
-
-```python
-# Policy to access inventory across all branches.
-policy AccessInventory {
-    resources = uur:581616507495:default:pharmacy:inventory:branch/*,
-    actions = ra:inventory:Access
-}
-
-# Defines permissions to read inventory information.
-permission InventoryRead {
-    permit = [AccessInventory],
-    forbid = []
-}
-
-# Defines a role for the branch manager responsible for managing inventory.
-role BranchManager {
-  permissions = [InventoryRead]
-}
-```
-
-### Performing Permission Evaluation
-
-After creating and associating the policy with the role, the next step is to perform the permission evaluation within the application.
-
-```python
-has_permissions = permguard.check("uur:581616507495:permguard:identities:iam:role/branch-manager", "pharmacy/1.0.0", "Access", "inventory")
-
-if has_permissions:
-    print("Role can access inventory")
-else:
-    print("Role cannot access inventory")
-```
