@@ -17,6 +17,8 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -31,7 +33,7 @@ func createCommandForConfig(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "config",
 		Short: "Configure CLI settings",
-		Long:  `This command configure CLI settings.`,
+		Long:  fmt.Sprintf(cliLongTemplate, `This command configures CLI settings.`),
 		RunE:  runECommandForConfig,
 	}
 	command.AddCommand(createCommandForConfigAAPGet(v))

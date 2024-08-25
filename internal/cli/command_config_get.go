@@ -17,6 +17,8 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -49,7 +51,7 @@ func createCommandForConfigAAPGet(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "aap-get-target",
 		Short: "Get the app gRPC target",
-		Long:  `This command gets the aap gRPC target.`,
+		Long:  fmt.Sprintf(cliLongTemplate, `This command gets the aap gRPC target.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForAAPGet(cmd, v)
 		},
@@ -62,7 +64,7 @@ func createCommandForConfigPAPGet(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pap-get-target",
 		Short: "Get the pap gRPC target",
-		Long:  `This command gets the pap gRPC target.`,
+		Long:  fmt.Sprintf(cliLongTemplate, `This command gets the pap gRPC target.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForPAPGet(cmd, v)
 		},

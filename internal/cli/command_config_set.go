@@ -18,6 +18,7 @@ package cli
 
 import (
 	"fmt"
+	"errors"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -67,7 +68,7 @@ func runECommandForPAPSet(cmd *cobra.Command, v *viper.Viper, args []string) err
 		return ErrCommandSilent
 	}
 	if len(args) == 0 {
-		printer.Error(fmt.Errorf(errorMessageInvalidInputs))
+		printer.Error(errors.New(errorMessageInvalidInputs))
 		return ErrCommandSilent
 	}
 	err = viperWriteEndpoint(v, azconfigs.FlagName(flagPrefixPAP, flagSuffixPAPTarget), args[0])
@@ -83,12 +84,12 @@ func createCommandForConfigAAPSet(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "aap-set-target",
 		Short: "Set the app gRPC target",
-		Long: `This command sets the aap gRPC target.
+		Long: fmt.Sprintf(cliLongTemplate, `This command sets the aap gRPC target.
 
 Examples:
 # set the aap gRPC target to localhost:9091
 permguard config aap-set-target localhost:9091
-		`,
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForAAPSet(cmd, v, args)
 		},
@@ -101,12 +102,12 @@ func createCommandForConfigPAPSet(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pap-set-target",
 		Short: "Set the pap gRPC target",
-		Long: `This command sets the pap gRPC target.
+		Long: fmt.Sprintf(cliLongTemplate, `This command sets the pap gRPC target.
 
 Examples:
 # set the pap gRPC target to localhost:9092
 permguard config pap-set-target localhost:9092
-		`,
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForPAPSet(cmd, v, args)
 		},

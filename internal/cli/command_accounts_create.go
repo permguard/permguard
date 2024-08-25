@@ -17,6 +17,8 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -37,12 +39,12 @@ func createCommandForAccountCreate(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create an account",
-		Long: `This command create an account.
+		Long: fmt.Sprintf(cliLongTemplate, `This command creates an account.
 
 Examples:
   # create an account with name mycorporate
   permguard accounts create --name mycorporate
-		`,
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCreateAccount(cmd, v)
 		},

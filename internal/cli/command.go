@@ -54,6 +54,13 @@ const (
 //go:embed "art.txt"
 var asciiArt string
 
+var cliLongTemplate = `The official PermGuard CLI
+Copyright © 2022 Nitro Agility S.r.l.
+
+%s
+
+  Find more information at: https://www.permguard.com/docs/cli/how-to-use/`
+
 var ErrCommandSilent = errors.New("command: silent error")
 
 // runECommand runs the command.

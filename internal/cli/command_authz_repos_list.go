@@ -73,7 +73,7 @@ func createCommandForRepositoryList(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List repositories",
-		Long: `This command lists all the repositories.
+		Long: fmt.Sprintf(cliLongTemplate, `This command lists all the repositories.
 
 Examples:
   # list all repositories for account 301990992055
@@ -82,7 +82,7 @@ Examples:
   permguard authz repos list --account 301990992055 --name repository1
   # list all repositories for account 301990992055 and filter by repository id 377532e1-befe-47cb-a55a-0a789c5ec8fd
   permguard authz repos list --account 301990992055 --repositoryid 377532e1-befe-47cb-a55a-0a789c5ec8fd
-		`,
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListRepositories(cmd, v)
 		},

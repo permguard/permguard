@@ -17,6 +17,8 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -37,12 +39,12 @@ func createCommandForAccountUpdate(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update an account",
-		Long: `This command update an account.
+		Long: fmt.Sprintf(cliLongTemplate, `This command updates an account.
 
 Examples:
   # update the account with the account id 301990992055 and set the name to mycorporate
   permguard accounts update --account 301990992055 --name mycorporate
-		`,
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForUpdateAccount(cmd, v)
 		},

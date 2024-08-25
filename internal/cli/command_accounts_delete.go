@@ -67,12 +67,12 @@ func createCommandForAccountDelete(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete an account",
-		Long: `This command delete an account.
+		Long: fmt.Sprintf(cliLongTemplate, `This command deletes an account.
 
 Examples:
   # delete the account with the account id 301990992055
   permguard accounts delete --account 301990992055
-		`,
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteAccount(cmd, v)
 		},

@@ -73,7 +73,7 @@ func createCommandForIdentitySourceList(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List identity sources",
-		Long: `This command lists all the identity sources.
+		Long: fmt.Sprintf(cliLongTemplate, `This command lists all the identity sources.
 
 Examples:
   # list all identity sources for account 301990992055
@@ -82,7 +82,7 @@ Examples:
   permguard authn identitysources list --account 301990992055 --name permguard
   # list all identity sources for account 301990992055 and filter by identity source id 377532e1-befe-47cb-a55a-0a789c5ec8fd
   permguard authn identitysources list --account 301990992055 --identitysourceid 377532e1-befe-47cb-a55a-0a789c5ec8fd
-		`,
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListIdentitySources(cmd, v)
 		},

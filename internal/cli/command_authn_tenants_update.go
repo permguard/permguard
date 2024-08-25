@@ -17,6 +17,8 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -37,12 +39,12 @@ func createCommandForTenantUpdate(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update a tenant",
-		Long: `This command update a tenant.
+		Long: fmt.Sprintf(cliLongTemplate, `This command updates a tenant.
 
 Examples:
   # update a tenant with name tenant1, id 19159d69-e902-418e-966a-148c4d5169a4 and account 301990992055
   permguard authn tenants update --account 301990992055 --tenantid 19159d69-e902-418e-966a-148c4d5169a4 --name tenant1
-		`,
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForUpdateTenant(cmd, v)
 		},

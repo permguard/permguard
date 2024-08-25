@@ -85,7 +85,7 @@ func createCommandForIdentitySources(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "identitysources",
 		Short: "Manage Identity Sources",
-		Long:  `This command manages identity sources.`,
+		Long:  fmt.Sprintf(cliLongTemplate, `This command manages identity sources.`),
 		RunE:  runECommandForIdentitySources,
 	}
 

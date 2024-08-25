@@ -69,12 +69,12 @@ func createCommandForIdentitySourceDelete(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete an identity source",
-		Long: `This command delete an identity source.
+		Long: fmt.Sprintf(cliLongTemplate, `This command deletes an identity source.
 
 Examples:
   # delete an identity source with id 19159d69-e902-418e-966a-148c4d5169a4 and account 301990992055
   permguard authn identitysources delete --account 301990992055 --identitysourceid 19159d69-e902-418e-966a-148c4d5169a4
-		`,
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteIdentitySource(cmd, v)
 		},

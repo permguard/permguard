@@ -89,7 +89,7 @@ func createCommandForIdentities(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "identities",
 		Short: "Manage Identities",
-		Long:  `This command manages identities.`,
+		Long:  fmt.Sprintf(cliLongTemplate, `This command manages identities.`),
 		RunE:  runECommandForIdentities,
 	}
 
