@@ -22,8 +22,8 @@ import (
 	aztestutils "github.com/permguard/permguard/internal/cli/testutils"
 )
 
-// TestCreateCommandForAccounts tests the createCommandForAccounts function.
-func TestCreateCommandForAccounts(t *testing.T) {
-	outputs := []string{"The official PermGuard CLI", "Copyright © 2022 Nitro Agility S.r.l.", "This command manages accounts."}
-	aztestutils.BaseCommandTest(t, createCommandForAccounts, outputs)
+// TestDeleteCommandForAccountsDelete tests the deleteCommandForAccountsDelete function.
+func TestDeleteCommandForAccountsDelete(t *testing.T) {
+	outputs := []string{"The official PermGuard CLI", "Copyright © 2022 Nitro Agility S.r.l.", "This command deletes an account."}
+	aztestutils.BaseCommandTest(t, createCommandForAccountDelete, outputs)
 }
