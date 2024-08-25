@@ -55,9 +55,12 @@ The `permguard accounts create` command allows to create an account for the inpu
 ```bash
 ❯ permguard accounts create --name magicfarmacia-dev
 ```
+
 output:
-```
+
+```bash
  268786704340: magicfarmacia-dev
+```
 
 {{< /tab >}}
 {{< tab "json" >}}
@@ -89,11 +92,14 @@ The `permguard accounts list` command allows for the retrieval of all accounts.
 ```bash
 ❯ permguard accounts list
 ```
+
 output:
-```
+
+```bash
 268786704340: magicfarmacia-dev
 534434453770: magicfarmacia-uat
 627303999986: magicfarmacia-prod
+```
 
 {{< /tab >}}
 {{< tab "json" >}}

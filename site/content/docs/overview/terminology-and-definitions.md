@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "terminology-and-definitions-7750a77beb8b4965ad0cb30898a100a1"
-weight: 1006
+weight: 1007
 toc: true
 seo:
   title: "" # custom title (optional)

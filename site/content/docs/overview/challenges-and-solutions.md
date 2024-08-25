@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "challenges-and-solutions-fd262b5997389b467f3cf77720aafe70"
-weight: 1002
+weight: 1004
 toc: true
 seo:
   title: "" # custom title (optional)
