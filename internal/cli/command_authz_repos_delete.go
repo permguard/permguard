@@ -69,12 +69,12 @@ func createCommandForRepositoryDelete(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a repository",
-		Long: `This command delete a repository.
+		Long: fmt.Sprintf(cliLongTemplate, `This command deletes a repository.
 
 Examples:
   # delete a repository with id 19159d69-e902-418e-966a-148c4d5169a4 and account 301990992055
   permguard authz repos delete --account 301990992055 --repositoryid 19159d69-e902-418e-966a-148c4d5169a4
-		`,
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteRepository(cmd, v)
 		},

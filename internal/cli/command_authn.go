@@ -17,6 +17,8 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -31,7 +33,7 @@ func createCommandForAuthN(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "authn",
 		Short: "Manage Tenants and Identities",
-		Long:  `This command manage tenants and identities.`,
+		Long:  fmt.Sprintf(cliLongTemplate, `This command manages tenants and identities.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForAuthN(cmd)
 		},

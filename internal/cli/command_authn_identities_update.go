@@ -17,6 +17,8 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -37,12 +39,12 @@ func createCommandForIdentityUpdate(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update an identity",
-		Long: `This command update an identity.
+		Long: fmt.Sprintf(cliLongTemplate, `This command updates an identity.
 
 Examples:
   # update an identity with name identity1, id 19159d69-e902-418e-966a-148c4d5169a4 and account 301990992055
   permguard authn identities update --account 301990992055 --identityid 19159d69-e902-418e-966a-148c4d5169a4 --name identity1
-		`,
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForUpdateIdentity(cmd, v)
 		},

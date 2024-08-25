@@ -85,7 +85,7 @@ func createCommandForRepositories(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "repos",
 		Short: "Manage Repositories",
-		Long:  `This command manages repositories.`,
+		Long:  fmt.Sprintf(cliLongTemplate, `This command manages repositories.`),
 		RunE:  runECommandForRepositories,
 	}
 

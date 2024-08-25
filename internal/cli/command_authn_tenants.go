@@ -85,7 +85,7 @@ func createCommandForTenants(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "tenants",
 		Short: "Manage Tenants",
-		Long:  `This command manages tenants.`,
+		Long:  fmt.Sprintf(cliLongTemplate, `This command manages tenants.`),
 		RunE:  runECommandForTenants,
 	}
 

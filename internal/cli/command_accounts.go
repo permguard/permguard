@@ -78,7 +78,7 @@ func createCommandForAccounts(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "accounts",
 		Short: "Manage Accounts",
-		Long:  `This command manages accounts.`,
+		Long:  fmt.Sprintf(cliLongTemplate, `This command manages accounts.`),
 		RunE:  runECommandForAccounts,
 	}
 

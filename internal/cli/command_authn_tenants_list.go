@@ -73,7 +73,7 @@ func createCommandForTenantList(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List tenants",
-		Long: `This command lists all the tenants.
+		Long: fmt.Sprintf(cliLongTemplate, `This command lists all the tenants.
 
 Examples:
   # list all tenants for account 301990992055
@@ -82,7 +82,7 @@ Examples:
   permguard authn tenants list --account 301990992055 --name tenant1
   # list all tenants for account 301990992055 and filter by tenant id 377532e1-befe-47cb-a55a-0a789c5ec8fd
   permguard authn tenants list --account 301990992055 --tenantid 377532e1-befe-47cb-a55a-0a789c5ec8fd
-		`,
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListTenants(cmd, v)
 		},

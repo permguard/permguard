@@ -17,5 +17,5 @@
 package cli
 
 const (
-	errorMessageInvalidInputs = "Invalid inputs"
+	errorMessageInvalidInputs = "invalid inputs"
 )

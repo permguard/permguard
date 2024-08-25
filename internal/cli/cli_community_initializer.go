@@ -21,10 +21,7 @@ func (s *CommunityCliInitializer) GetCliInfo() azcli.CliInfo {
 		Name:  "Community CLI",
 		Use:   "PermGuard CLI",
 		Short: "The official PermGuard© CLI",
-		Long: `The official PermGuard© CLI
-Copyright © 2022 Nitro Agility S.r.l.
-
-  Find more information at: https://www.permguard.com/docs/cli/how-to-use/`,
+		Long:  cliLongTemplate,
 	}
 }
 

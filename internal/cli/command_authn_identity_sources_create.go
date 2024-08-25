@@ -17,6 +17,8 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -37,12 +39,12 @@ func createCommandForIdentitySourceCreate(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create an identity source",
-		Long: `This command create an identity source.
+		Long: fmt.Sprintf(cliLongTemplate, `This command creates an identity source.
 
 Examples:
   # create an identity source with name permguard and account 301990992055
   permguard authn identitysources create --account 301990992055 --name permguard
-		`,
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCreateIdentitySource(cmd, v)
 		},

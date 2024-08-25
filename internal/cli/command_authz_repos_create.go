@@ -17,6 +17,8 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -37,12 +39,12 @@ func createCommandForRepositoryCreate(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create a repository",
-		Long: `This command create a repository.
+		Long: fmt.Sprintf(cliLongTemplate, `This command creates a repository.
 
 Examples:
   # create a repository with name repository1 and account 301990992055
   permguard authz repos create --account 301990992055 --name repository1
-		`,
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCreateRepository(cmd, v)
 		},

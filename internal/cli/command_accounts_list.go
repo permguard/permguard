@@ -73,7 +73,7 @@ func createCommandForAccountList(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List accounts",
-		Long: `This command lists all the accounts.
+		Long: fmt.Sprintf(cliLongTemplate, `This command lists all the accounts.
 
 Examples:
   # list all accounts
@@ -84,7 +84,7 @@ Examples:
   permguard accounts list --account 301
   # list accounts and filter by account and name
   permguard accounts list --account 301--name dev
-		`,
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListAccounts(cmd, v)
 		},

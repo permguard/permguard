@@ -69,12 +69,12 @@ func createCommandForIdentityDelete(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete an identity",
-		Long: `This command delete an identity.
+		Long: fmt.Sprintf(cliLongTemplate, `This command deletes an identity.
 
 Examples:
   # delete an identity with id 19159d69-e902-418e-966a-148c4d5169a4 and account 301990992055
   permguard authn identities delete --account 301990992055 --identityid 19159d69-e902-418e-966a-148c4d5169a4
-		`,
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteIdentity(cmd, v)
 		},

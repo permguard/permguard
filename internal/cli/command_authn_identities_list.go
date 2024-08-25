@@ -75,7 +75,7 @@ func createCommandForIdentityList(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List identities",
-		Long: `This command lists all the identities.
+		Long: fmt.Sprintf(cliLongTemplate, `This command lists all the identities.
 
 Examples:
   # list all identities for account 301990992055
@@ -84,7 +84,7 @@ Examples:
   permguard authn identities list --account 301990992055 --name identity1
   # list all identities for account 301990992055 and filter by identity id 377532e1-befe-47cb-a55a-0a789c5ec8fd
   permguard authn identities list --account 301990992055 --identityid 377532e1-befe-47cb-a55a-0a789c5ec8fd
-		`,
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListIdentities(cmd, v)
 		},

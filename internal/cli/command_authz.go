@@ -17,6 +17,8 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -30,8 +32,8 @@ func runECommandForAuthZ(cmd *cobra.Command) error {
 func createCommandForAuthZ(v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "authz",
-		Short: "Manage Schemas, Policies, Permissions and Trusted Delegation",
-		Long:  `This command Manage Schemas, Policies, Permissions and Trusted Delegation.`,
+		Short: fmt.Sprintf(cliLongTemplate, "Manage Repositories and Trusted Delegations"),
+		Long:  fmt.Sprintf(cliLongTemplate, `This command enables managament of repositories and trusted delegations.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForAuthZ(cmd)
 		},
