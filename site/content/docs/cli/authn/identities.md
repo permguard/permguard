@@ -61,7 +61,7 @@ The `permguard authn identities create` command allows to create an identity for
 output:
 
 ```bash
- 7e43160f-d4a3-4301-9139-6e2b78b9290b: nicolagallo
+7e43160f-d4a3-4301-9139-6e2b78b9290b: nicolagallo
 ```
 
 {{< /tab >}}
