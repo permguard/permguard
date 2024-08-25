@@ -55,26 +55,28 @@ The `permguard authn identities create` command allows to create an identity for
 {{< tab "terminal" >}}
 
 ```bash
-❯ permguard authn identities create --account 837151783797 --kind user --name nicolagallo --identitysourceid 6d492d4a-8752-405f-a8b3-859b5a219e56
+❯ permguard authn identities create --account 268786704340 --kind user --name nicolagallo --identitysourceid 1da1d9094501425085859c60429163c2
+```
 
-```
 output:
-```
+
+```bash
  7e43160f-d4a3-4301-9139-6e2b78b9290b: nicolagallo
+```
 
 {{< /tab >}}
 {{< tab "json" >}}
 
 ```bash
-❯ permguard authn identities create --account 837151783797 --kind user --name nicolagallo --identitysourceid 6d492d4a-8752-405f-a8b3-859b5a219e56 --output json
+❯ permguard authn identities create --account 268786704340 --kind user --name nicolagallo --identitysourceid 1da1d9094501425085859c60429163c2 --output json
 {
-  "identity": [
+  "identities": [
     {
-      "identity_id": "7e43160f-d4a3-4301-9139-6e2b78b9290b",
-      "created_at": "2023-04-01T16:36:08.568115Z",
-      "updated_at": "2023-04-01T16:36:08.568115Z",
-      "account_id": 837151783797,
-      "identity_source_id": "6d492d4a-8752-405f-a8b3-859b5a219e56",
+      "identity_id": "e151cba136214be98b2d1a02e797db60",
+      "created_at": "2024-08-25T14:40:50.812Z",
+      "updated_at": "2024-08-25T14:40:50.812Z",
+      "account_id": 268786704340,
+      "identity_source_id": "1da1d9094501425085859c60429163c2",
       "identity_type": "user",
       "name": "nicolagallo"
     }
@@ -93,37 +95,120 @@ The `permguard authn identities list` command allows for the retrieval of all id
 {{< tab "terminal" >}}
 
 ```bash
-❯ permguard authn identities list --account 837151783797 --identitysourceid 6d492d4a-8752-405f-a8b3-859b5a219e56
+❯ permguard authn identities list --account 268786704340 --identitysourceid 1da1d9094501425085859c60429163c2
 ```
+
 output:
+
+```bash
+028f40d8ee034c6ea1e6ef853db7b7f5: giuliarossi
+4697f870532046d7b0e6a33efdcffc17: system-administrator
+4c637a422bb3477dad41fdbc44c71ed0: ashleyjohnson
+804ecc6b562242069c7837f63fd1a3b3: branch-manager
+913d1cfc74a249ec9e11a0b89d791010: lucabianchi
+94bebf6b598d48caad8ca90aee9e796e: johndoe
+b0b3dd968a5a4cb19e3871921b1e3519: jamessmith
+e151cba136214be98b2d1a02e797db60: nicolagallo
+ea80f2bdd56c4037837e31bd9243db88: emilybrown
+fdbc2ddfa4c5401eac19bd655efefe5c: marcobianchi
 ```
- 7e43160f-d4a3-4301-9139-6e2b78b9290b: nicolagallo
- ad5ef94c-f996-4242-af90-eda96abb8206: manager
-```
+
 {{< /tab >}}
 {{< tab "json" >}}
 
 ```bash
-❯ permguard authn identities list --account 837151783797 --identitysourceid 6d492d4a-8752-405f-a8b3-859b5a219e56 --output json
+❯ permguard authn identities list --account 268786704340 --identitysourceid
 {
-  "identity": [
+  "identities": [
     {
-      "identity_id": "7e43160f-d4a3-4301-9139-6e2b78b9290b",
-      "created_at": "2023-04-01T16:36:08.568115Z",
-      "updated_at": "2023-04-01T16:36:08.568115Z",
-      "account_id": 837151783797,
-      "identity_source_id": "6d492d4a-8752-405f-a8b3-859b5a219e56",
+      "identity_id": "028f40d8ee034c6ea1e6ef853db7b7f5",
+      "created_at": "2024-08-25T14:44:41.966Z",
+      "updated_at": "2024-08-25T14:44:41.966Z",
+      "account_id": 268786704340,
+      "identity_source_id": "1da1d9094501425085859c60429163c2",
+      "identity_type": "user",
+      "name": "giuliarossi"
+    },
+    {
+      "identity_id": "4697f870532046d7b0e6a33efdcffc17",
+      "created_at": "2024-08-25T14:45:27.123Z",
+      "updated_at": "2024-08-25T14:45:27.123Z",
+      "account_id": 268786704340,
+      "identity_source_id": "1da1d9094501425085859c60429163c2",
+      "identity_type": "role",
+      "name": "system-administrator"
+    },
+    {
+      "identity_id": "4c637a422bb3477dad41fdbc44c71ed0",
+      "created_at": "2024-08-25T14:44:47.597Z",
+      "updated_at": "2024-08-25T14:44:47.597Z",
+      "account_id": 268786704340,
+      "identity_source_id": "1da1d9094501425085859c60429163c2",
+      "identity_type": "user",
+      "name": "ashleyjohnson"
+    },
+    {
+      "identity_id": "804ecc6b562242069c7837f63fd1a3b3",
+      "created_at": "2024-08-25T14:45:28.167Z",
+      "updated_at": "2024-08-25T14:45:28.167Z",
+      "account_id": 268786704340,
+      "identity_source_id": "1da1d9094501425085859c60429163c2",
+      "identity_type": "role",
+      "name": "branch-manager"
+    },
+    {
+      "identity_id": "913d1cfc74a249ec9e11a0b89d791010",
+      "created_at": "2024-08-25T14:44:43.133Z",
+      "updated_at": "2024-08-25T14:44:43.133Z",
+      "account_id": 268786704340,
+      "identity_source_id": "1da1d9094501425085859c60429163c2",
+      "identity_type": "user",
+      "name": "lucabianchi"
+    },
+    {
+      "identity_id": "94bebf6b598d48caad8ca90aee9e796e",
+      "created_at": "2024-08-25T14:44:46.427Z",
+      "updated_at": "2024-08-25T14:44:46.427Z",
+      "account_id": 268786704340,
+      "identity_source_id": "1da1d9094501425085859c60429163c2",
+      "identity_type": "user",
+      "name": "johndoe"
+    },
+    {
+      "identity_id": "b0b3dd968a5a4cb19e3871921b1e3519",
+      "created_at": "2024-08-25T14:44:44.176Z",
+      "updated_at": "2024-08-25T14:44:44.176Z",
+      "account_id": 268786704340,
+      "identity_source_id": "1da1d9094501425085859c60429163c2",
+      "identity_type": "user",
+      "name": "jamessmith"
+    },
+    {
+      "identity_id": "e151cba136214be98b2d1a02e797db60",
+      "created_at": "2024-08-25T14:40:50.812Z",
+      "updated_at": "2024-08-25T14:40:50.812Z",
+      "account_id": 268786704340,
+      "identity_source_id": "1da1d9094501425085859c60429163c2",
       "identity_type": "user",
       "name": "nicolagallo"
     },
     {
-      "identity_id": "ad5ef94c-f996-4242-af90-eda96abb8206",
-      "created_at": "2023-04-01T16:37:16.446177Z",
-      "updated_at": "2023-04-01T16:37:16.446177Z",
-      "account_id": 837151783797,
-      "identity_source_id": "6d492d4a-8752-405f-a8b3-859b5a219e56",
-      "identity_type": "role",
-      "name": "manager"
+      "identity_id": "ea80f2bdd56c4037837e31bd9243db88",
+      "created_at": "2024-08-25T14:44:45.312Z",
+      "updated_at": "2024-08-25T14:44:45.312Z",
+      "account_id": 268786704340,
+      "identity_source_id": "1da1d9094501425085859c60429163c2",
+      "identity_type": "user",
+      "name": "emilybrown"
+    },
+    {
+      "identity_id": "fdbc2ddfa4c5401eac19bd655efefe5c",
+      "created_at": "2024-08-25T14:44:40.925Z",
+      "updated_at": "2024-08-25T14:44:40.925Z",
+      "account_id": 268786704340,
+      "identity_source_id": "1da1d9094501425085859c60429163c2",
+      "identity_type": "user",
+      "name": "marcobianchi"
     }
   ]
 }
