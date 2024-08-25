@@ -55,11 +55,14 @@ The `permguard authz repos create` command allows to create a repository for the
 {{< tab "terminal" >}}
 
 ```bash
-❯ permguard authz repos create --account 268786704340 --name permguard
+❯ permguard authz repos create --account 268786704340 --name v1.0
 ```
+
 output:
+
+```bash
+668f3771eacf4094ba8a80942ea5fd3f: v2.0
 ```
- 608d3ec8-7c73-4a25-a46c-de2c1425e290: permguard
 
 {{< /tab >}}
 {{< tab "json" >}}
@@ -69,11 +72,11 @@ output:
 {
   "repositories": [
     {
-      "repository_id": "608d3ec8-7c73-4a25-a46c-de2c1425e290",
-      "created_at": "2023-04-01T09:36:11.613499Z",
-      "updated_at": "2023-04-01T09:36:11.613499Z",
+      "repository_id": "668f3771eacf4094ba8a80942ea5fd3f",
+      "created_at": "2024-08-25T14:50:38.003Z",
+      "updated_at": "2024-08-25T14:50:38.003Z",
       "account_id": 268786704340,
-      "name": "permguard"
+      "name": "v2.0"
     }
   ]
 }
@@ -92,10 +95,16 @@ The `permguard authz repos list` command allows for the retrieval of all reposit
 ```bash
 ❯ permguard authz repos list --account 268786704340
 ```
+
 output:
+
+```bash
+295433941928473fb692f1a12b6ef660: v1.2
+4fc71b8d934a496d9347ab4a04322460: v1.1
+668f3771eacf4094ba8a80942ea5fd3f: v2.0
+a2b8df4c367940739d872bcbb157155f: v1.3
+d02af7e50a7b462cb496aa6ddeb4275e: v1.0
 ```
- 667e72d0-a1ad-4e31-8d74-394357b44fbe: default
- 608d3ec8-7c73-4a25-a46c-de2c1425e290: permguard
 
 {{< /tab >}}
 {{< tab "json" >}}
@@ -103,20 +112,41 @@ output:
 ```bash
 ❯ permguard authz repos list --account 268786704340 --output json
 {
-  "repositories": [
+  "repository": [
     {
-      "repository_id": "667e72d0-a1ad-4e31-8d74-394357b44fbe",
-      "created_at": "2023-04-01T08:27:02.380041Z",
-      "updated_at": "2023-04-01T09:20:38.699299Z",
+      "repository_id": "295433941928473fb692f1a12b6ef660",
+      "created_at": "2024-08-25T14:50:30.248Z",
+      "updated_at": "2024-08-25T14:50:30.248Z",
       "account_id": 268786704340,
-      "name": "default"
+      "name": "v1.2"
     },
     {
-      "repository_id": "608d3ec8-7c73-4a25-a46c-de2c1425e290",
-      "created_at": "2023-04-01T09:36:11.613499Z",
-      "updated_at": "2023-04-01T09:36:11.613499Z",
+      "repository_id": "4fc71b8d934a496d9347ab4a04322460",
+      "created_at": "2024-08-25T14:50:26.999Z",
+      "updated_at": "2024-08-25T14:50:26.999Z",
       "account_id": 268786704340,
-      "name": "permguard"
+      "name": "v1.1"
+    },
+    {
+      "repository_id": "668f3771eacf4094ba8a80942ea5fd3f",
+      "created_at": "2024-08-25T14:50:38.003Z",
+      "updated_at": "2024-08-25T14:50:38.003Z",
+      "account_id": 268786704340,
+      "name": "v2.0"
+    },
+    {
+      "repository_id": "a2b8df4c367940739d872bcbb157155f",
+      "created_at": "2024-08-25T14:50:33.046Z",
+      "updated_at": "2024-08-25T14:50:33.046Z",
+      "account_id": 268786704340,
+      "name": "v1.3"
+    },
+    {
+      "repository_id": "d02af7e50a7b462cb496aa6ddeb4275e",
+      "created_at": "2024-08-25T14:50:13.705Z",
+      "updated_at": "2024-08-25T14:50:13.705Z",
+      "account_id": 268786704340,
+      "name": "v1.0"
     }
   ]
 }
