@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
 
@@ -35,7 +36,7 @@ func runECommandForCreateRepository(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // createCommandForRepositoryCreate creates a command for managing repositorycreate.
-func createCommandForRepositoryCreate(v *viper.Viper) *cobra.Command {
+func createCommandForRepositoryCreate(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create a repository",

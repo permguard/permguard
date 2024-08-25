@@ -25,6 +25,7 @@ import (
 
 	aziclients "github.com/permguard/permguard/internal/agents/clients"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
 
@@ -81,7 +82,7 @@ func runECommandForTenants(cmd *cobra.Command, args []string) error {
 }
 
 // createCommandForTenants creates a command for managing tenants.
-func createCommandForTenants(v *viper.Viper) *cobra.Command {
+func createCommandForTenants(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "tenants",
 		Short: "Manage Tenants",
@@ -92,9 +93,9 @@ func createCommandForTenants(v *viper.Viper) *cobra.Command {
 	command.PersistentFlags().Int64(flagCommonAccountID, 0, "account id filter")
 	v.BindPFlag(azconfigs.FlagName(commandNameForTenant, flagCommonAccountID), command.PersistentFlags().Lookup(flagCommonAccountID))
 
-	command.AddCommand(createCommandForTenantCreate(v))
-	command.AddCommand(createCommandForTenantUpdate(v))
-	command.AddCommand(createCommandForTenantDelete(v))
-	command.AddCommand(createCommandForTenantList(v))
+	command.AddCommand(createCommandForTenantCreate(deps, v))
+	command.AddCommand(createCommandForTenantUpdate(deps, v))
+	command.AddCommand(createCommandForTenantDelete(deps, v))
+	command.AddCommand(createCommandForTenantList(deps, v))
 	return command
 }

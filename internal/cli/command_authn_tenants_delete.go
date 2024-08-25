@@ -25,6 +25,7 @@ import (
 
 	aziclients "github.com/permguard/permguard/internal/agents/clients"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
 
@@ -65,7 +66,7 @@ func runECommandForDeleteTenant(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // createCommandForTenantDelete creates a command for managing tenantdelete.
-func createCommandForTenantDelete(v *viper.Viper) *cobra.Command {
+func createCommandForTenantDelete(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a tenant",

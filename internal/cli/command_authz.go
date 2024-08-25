@@ -21,6 +21,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
 // runECommandForAuthZ runs the command for managing authz.
@@ -29,7 +31,7 @@ func runECommandForAuthZ(cmd *cobra.Command) error {
 }
 
 // createCommandForAuthZ for managing authz.
-func createCommandForAuthZ(v *viper.Viper) *cobra.Command {
+func createCommandForAuthZ(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "authz",
 		Short: fmt.Sprintf(cliLongTemplate, "Manage Repositories and Trusted Delegations"),
@@ -38,6 +40,6 @@ func createCommandForAuthZ(v *viper.Viper) *cobra.Command {
 			return runECommandForAuthZ(cmd)
 		},
 	}
-	command.AddCommand(createCommandForRepositories(v))
+	command.AddCommand(createCommandForRepositories(deps, v))
 	return command
 }

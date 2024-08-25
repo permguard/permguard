@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/viper"
 
 	aziclients "github.com/permguard/permguard/internal/agents/clients"
+	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
 
@@ -69,7 +70,7 @@ func runECommandForListAccounts(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // createCommandForAccountList creates a command for managing accountlist.
-func createCommandForAccountList(v *viper.Viper) *cobra.Command {
+func createCommandForAccountList(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List accounts",

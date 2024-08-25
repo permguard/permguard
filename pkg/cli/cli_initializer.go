@@ -21,10 +21,14 @@ import (
 	"github.com/spf13/viper"
 )
 
+// CLIDependenciesProvider is the cli dependencies provider.
+type CLIDependenciesProvider interface {
+}
+
 // CliInitializer is the cli initializer.
 type CliInitializer interface {
 	// GetCliInfo returns the infos of the commands.
 	GetCliInfo() CliInfo
 	//  GetCliCommands returns the commands.
-	GetCliCommands(v *viper.Viper) ([]*cobra.Command, error)
+	GetCliCommands(deps CLIDependenciesProvider, v *viper.Viper) ([]*cobra.Command, error)
 }

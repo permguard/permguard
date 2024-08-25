@@ -22,13 +22,16 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+
+	azmocks "github.com/permguard/permguard/internal/cli/testutils/mocks"
 )
 
 // TestCreateCommandForAccounts tests the createCommandForAccounts function.
 func TestCreateCommandForAccounts(t *testing.T) {
 	assert := assert.New(t)
 	v := viper.New()
-	cmd := createCommandForAccounts(v)
+	depsMocks := azmocks.NewCLIDependenciesMock()
+	cmd := createCommandForAccounts(depsMocks, v)
 	assert.NotNil(cmd, "The command should not be nil")
 
 	var buf bytes.Buffer

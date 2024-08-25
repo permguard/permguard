@@ -16,12 +16,16 @@
 
 package cli
 
-// CLIDependenciesManager is the CLI dependencies manager.
-type CLIDependenciesManager interface {
+import (
+	azcli "github.com/permguard/permguard/pkg/cli"
+)
+
+// cliDependencies implements the CLI dependencies.
+type cliDependencies struct {
 
 }
 
-// CLIDependencies implements the CLI dependencies.
-type CLIDependencies struct {
-
+// NewCLIDependenciesProvider creates a new CLIDependenciesProvider.
+func NewCLIDependenciesProvider() (azcli.CLIDependenciesProvider, error) {
+	return &cliDependencies{}, nil
 }

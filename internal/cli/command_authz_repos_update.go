@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
 
@@ -35,7 +36,7 @@ func runECommandForUpdateRepository(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // createCommandForRepositoryUpdate creates a command for managing repositoryupdate.
-func createCommandForRepositoryUpdate(v *viper.Viper) *cobra.Command {
+func createCommandForRepositoryUpdate(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update a repository",

@@ -26,11 +26,11 @@ func (s *CommunityCliInitializer) GetCliInfo() azcli.CliInfo {
 }
 
 // GetCliCommands returns commands.
-func (s *CommunityCliInitializer) GetCliCommands(v *viper.Viper) ([]*cobra.Command, error) {
-	accountsCmd := createCommandForAccounts(v)
-	authnCmd := createCommandForAuthN(v)
-	authzCmd := createCommandForAuthZ(v)
-	configCmd := createCommandForConfig(v)
+func (s *CommunityCliInitializer) GetCliCommands(deps azcli.CLIDependenciesProvider, v *viper.Viper) ([]*cobra.Command, error) {
+	accountsCmd := createCommandForAccounts(deps, v)
+	authnCmd := createCommandForAuthN(deps, v)
+	authzCmd := createCommandForAuthZ(deps, v)
+	configCmd := createCommandForConfig(deps, v)
 	return []*cobra.Command{
 		accountsCmd,
 		authnCmd,

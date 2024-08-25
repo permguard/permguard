@@ -17,13 +17,14 @@
 package cli
 
 import (
-	"fmt"
 	"errors"
+	"fmt"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
 )
@@ -80,7 +81,7 @@ func runECommandForPAPSet(cmd *cobra.Command, v *viper.Viper, args []string) err
 }
 
 // createCommandForConfig for managing config.
-func createCommandForConfigAAPSet(v *viper.Viper) *cobra.Command {
+func createCommandForConfigAAPSet(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "aap-set-target",
 		Short: "Set the app gRPC target",
@@ -98,7 +99,7 @@ permguard config aap-set-target localhost:9091
 }
 
 // createCommandForConfig for managing config.
-func createCommandForConfigPAPSet(v *viper.Viper) *cobra.Command {
+func createCommandForConfigPAPSet(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pap-set-target",
 		Short: "Set the pap gRPC target",

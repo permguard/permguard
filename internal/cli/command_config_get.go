@@ -22,6 +22,8 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
 // runECommandForAAPGet runs the command for getting the aap gRPC target.
@@ -47,7 +49,7 @@ func runECommandForPAPGet(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // createCommandForConfig for managing config.
-func createCommandForConfigAAPGet(v *viper.Viper) *cobra.Command {
+func createCommandForConfigAAPGet(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "aap-get-target",
 		Short: "Get the app gRPC target",
@@ -60,7 +62,7 @@ func createCommandForConfigAAPGet(v *viper.Viper) *cobra.Command {
 }
 
 // createCommandForConfig for managing config.
-func createCommandForConfigPAPGet(v *viper.Viper) *cobra.Command {
+func createCommandForConfigPAPGet(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pap-get-target",
 		Short: "Get the pap gRPC target",

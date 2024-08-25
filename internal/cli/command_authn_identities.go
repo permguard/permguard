@@ -25,6 +25,7 @@ import (
 
 	aziclients "github.com/permguard/permguard/internal/agents/clients"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
 
@@ -85,7 +86,7 @@ func runECommandForIdentities(cmd *cobra.Command, args []string) error {
 }
 
 // createCommandForIdentities creates a command for managing identities.
-func createCommandForIdentities(v *viper.Viper) *cobra.Command {
+func createCommandForIdentities(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "identities",
 		Short: "Manage Identities",
@@ -96,9 +97,9 @@ func createCommandForIdentities(v *viper.Viper) *cobra.Command {
 	command.PersistentFlags().Int64(flagCommonAccountID, 0, "account id filter")
 	v.BindPFlag(azconfigs.FlagName(commandNameForIdentity, flagCommonAccountID), command.PersistentFlags().Lookup(flagCommonAccountID))
 
-	command.AddCommand(createCommandForIdentityCreate(v))
-	command.AddCommand(createCommandForIdentityUpdate(v))
-	command.AddCommand(createCommandForIdentityDelete(v))
-	command.AddCommand(createCommandForIdentityList(v))
+	command.AddCommand(createCommandForIdentityCreate(deps, v))
+	command.AddCommand(createCommandForIdentityUpdate(deps, v))
+	command.AddCommand(createCommandForIdentityDelete(deps, v))
+	command.AddCommand(createCommandForIdentityList(deps, v))
 	return command
 }

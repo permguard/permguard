@@ -25,6 +25,7 @@ import (
 
 	aziclients "github.com/permguard/permguard/internal/agents/clients"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
 
@@ -81,7 +82,7 @@ func runECommandForRepositories(cmd *cobra.Command, args []string) error {
 }
 
 // createCommandForRepositories creates a command for managing repositories.
-func createCommandForRepositories(v *viper.Viper) *cobra.Command {
+func createCommandForRepositories(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "repos",
 		Short: "Manage Repositories",
@@ -92,9 +93,9 @@ func createCommandForRepositories(v *viper.Viper) *cobra.Command {
 	command.PersistentFlags().Int64(flagCommonAccountID, 0, "account id filter")
 	v.BindPFlag(azconfigs.FlagName(commandNameForRepository, flagCommonAccountID), command.PersistentFlags().Lookup(flagCommonAccountID))
 
-	command.AddCommand(createCommandForRepositoryCreate(v))
-	command.AddCommand(createCommandForRepositoryUpdate(v))
-	command.AddCommand(createCommandForRepositoryDelete(v))
-	command.AddCommand(createCommandForRepositoryList(v))
+	command.AddCommand(createCommandForRepositoryCreate(deps, v))
+	command.AddCommand(createCommandForRepositoryUpdate(deps, v))
+	command.AddCommand(createCommandForRepositoryDelete(deps, v))
+	command.AddCommand(createCommandForRepositoryList(deps, v))
 	return command
 }

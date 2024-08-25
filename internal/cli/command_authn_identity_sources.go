@@ -25,6 +25,7 @@ import (
 
 	aziclients "github.com/permguard/permguard/internal/agents/clients"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
 
@@ -81,7 +82,7 @@ func runECommandForIdentitySources(cmd *cobra.Command, args []string) error {
 }
 
 // createCommandForIdentitySources creates a command for managing identity sources.
-func createCommandForIdentitySources(v *viper.Viper) *cobra.Command {
+func createCommandForIdentitySources(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "identitysources",
 		Short: "Manage Identity Sources",
@@ -92,9 +93,9 @@ func createCommandForIdentitySources(v *viper.Viper) *cobra.Command {
 	command.PersistentFlags().Int64(flagCommonAccountID, 0, "account id filter")
 	v.BindPFlag(azconfigs.FlagName(commandNameForIdentitySource, flagCommonAccountID), command.PersistentFlags().Lookup(flagCommonAccountID))
 
-	command.AddCommand(createCommandForIdentitySourceCreate(v))
-	command.AddCommand(createCommandForIdentitySourceUpdate(v))
-	command.AddCommand(createCommandForIdentitySourceDelete(v))
-	command.AddCommand(createCommandForIdentitySourceList(v))
+	command.AddCommand(createCommandForIdentitySourceCreate(deps, v))
+	command.AddCommand(createCommandForIdentitySourceUpdate(deps, v))
+	command.AddCommand(createCommandForIdentitySourceDelete(deps, v))
+	command.AddCommand(createCommandForIdentitySourceList(deps, v))
 	return command
 }
