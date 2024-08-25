@@ -55,7 +55,7 @@ The `permguard authz repos create` command allows to create a repository for the
 {{< tab "terminal" >}}
 
 ```bash
-❯ permguard authz repos create --account 789251338948 --name permguard
+❯ permguard authz repos create --account 268786704340 --name permguard
 ```
 output:
 ```
@@ -65,14 +65,14 @@ output:
 {{< tab "json" >}}
 
 ```bash
-❯ permguard authz repos create --account 789251338948 --name permguard --output json
+❯ permguard authz repos create --account 268786704340 --name permguard --output json
 {
   "repositories": [
     {
       "repository_id": "608d3ec8-7c73-4a25-a46c-de2c1425e290",
       "created_at": "2023-04-01T09:36:11.613499Z",
       "updated_at": "2023-04-01T09:36:11.613499Z",
-      "account_id": 789251338948,
+      "account_id": 268786704340,
       "name": "permguard"
     }
   ]
@@ -90,7 +90,7 @@ The `permguard authz repos list` command allows for the retrieval of all reposit
 {{< tab "terminal" >}}
 
 ```bash
-❯ permguard authz repos list --account 789251338948
+❯ permguard authz repos list --account 268786704340
 ```
 output:
 ```
@@ -101,21 +101,21 @@ output:
 {{< tab "json" >}}
 
 ```bash
-❯ permguard authz repos list --account 789251338948 --output json
+❯ permguard authz repos list --account 268786704340 --output json
 {
   "repositories": [
     {
       "repository_id": "667e72d0-a1ad-4e31-8d74-394357b44fbe",
       "created_at": "2023-04-01T08:27:02.380041Z",
       "updated_at": "2023-04-01T09:20:38.699299Z",
-      "account_id": 789251338948,
+      "account_id": 268786704340,
       "name": "default"
     },
     {
       "repository_id": "608d3ec8-7c73-4a25-a46c-de2c1425e290",
       "created_at": "2023-04-01T09:36:11.613499Z",
       "updated_at": "2023-04-01T09:36:11.613499Z",
-      "account_id": 789251338948,
+      "account_id": 268786704340,
       "name": "permguard"
     }
   ]

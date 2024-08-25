@@ -55,25 +55,28 @@ The `permguard authn identitysources create` command allows to create an identit
 {{< tab "terminal" >}}
 
 ```bash
-❯ permguard authn identitysources create --account 789251338948 --name permguard
+❯ permguard authn identitysources create --account 268786704340 --name google
 ```
+
 output:
+
+```bash
+1da1d9094501425085859c60429163c2: google
 ```
- 8bd19f65-c92d-4fc4-97d7-c5e553e9d5c4: permguard
 
 {{< /tab >}}
 {{< tab "json" >}}
 
 ```bash
-❯ permguard authn identitysources create --account 789251338948 --name permguard --output json
+❯ permguard authn identitysources create --account 268786704340 --name permguard --output json
 {
   "identity_sources": [
     {
-      "identity_source_id": "8bd19f65-c92d-4fc4-97d7-c5e553e9d5c4",
-      "created_at": "2023-04-01T09:48:06.537384Z",
-      "updated_at": "2023-04-01T09:48:06.537384Z",
-      "account_id": 890669113560,
-      "name": "permguard"
+      "identity_source_id": "1da1d9094501425085859c60429163c2",
+      "created_at": "2024-08-25T14:36:08.677Z",
+      "updated_at": "2024-08-25T14:36:08.677Z",
+      "account_id": 268786704340,
+      "name": "google"
     }
   ]
 }
@@ -90,32 +93,36 @@ The `permguard authn identitysources list` command allows for the retrieval of a
 {{< tab "terminal" >}}
 
 ```bash
-❯ permguard authn identitysources list --account 789251338948
+❯ permguard authn identitysources list --account 268786704340
 ```
+
 output:
-```
- 56ed842a-e216-4726-9a80-2794c92a5a98: default
- 8bd19f65-c92d-4fc4-97d7-c5e553e9d5c4: permguard
+
+```bash
+1da1d9094501425085859c60429163c2: google
+82b293c0c4eb4f65a8d6f29adfeb8ca5: facebook
+````
+
 {{< /tab >}}
 {{< tab "json" >}}
 
 ```bash
-❯ permguard authn identitysources list --account 789251338948 --output json
+❯ permguard authn identitysources list --account 268786704340 --output json
 {
   "identity_sources": [
     {
-      "identity_source_id": "56ed842a-e216-4726-9a80-2794c92a5a98",
-      "created_at": "2023-04-01T09:42:40.231028Z",
-      "updated_at": "2023-04-01T09:42:40.231028Z",
-      "account_id": 890669113560,
-      "name": "default"
+      "identity_source_id": "1da1d9094501425085859c60429163c2",
+      "created_at": "2024-08-25T14:36:08.677Z",
+      "updated_at": "2024-08-25T14:36:08.677Z",
+      "account_id": 268786704340,
+      "name": "google"
     },
     {
-      "identity_source_id": "8bd19f65-c92d-4fc4-97d7-c5e553e9d5c4",
-      "created_at": "2023-04-01T09:48:06.537384Z",
-      "updated_at": "2023-04-01T09:48:06.537384Z",
-      "account_id": 890669113560,
-      "name": "permguard"
+      "identity_source_id": "82b293c0c4eb4f65a8d6f29adfeb8ca5",
+      "created_at": "2024-08-25T14:36:23.169Z",
+      "updated_at": "2024-08-25T14:36:23.169Z",
+      "account_id": 268786704340,
+      "name": "facebook"
     }
   ]
 }
