@@ -25,6 +25,7 @@ import (
 
 	aziclients "github.com/permguard/permguard/internal/agents/clients"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
 
@@ -63,7 +64,7 @@ func runECommandForDeleteAccount(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // createCommandForAccountDelete creates a command for managing accountdelete.
-func createCommandForAccountDelete(v *viper.Viper) *cobra.Command {
+func createCommandForAccountDelete(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete an account",

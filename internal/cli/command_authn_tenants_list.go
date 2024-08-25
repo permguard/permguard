@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/viper"
 
 	aziclients "github.com/permguard/permguard/internal/agents/clients"
+	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
 
@@ -69,7 +70,7 @@ func runECommandForListTenants(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // createCommandForTenantList creates a command for managing tenantlist.
-func createCommandForTenantList(v *viper.Viper) *cobra.Command {
+func createCommandForTenantList(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List tenants",

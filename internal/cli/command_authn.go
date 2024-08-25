@@ -21,6 +21,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
 // runECommandForAuthN runs the command for managing authn.
@@ -29,7 +31,7 @@ func runECommandForAuthN(cmd *cobra.Command) error {
 }
 
 // createCommandForAuthN for managing authn.
-func createCommandForAuthN(v *viper.Viper) *cobra.Command {
+func createCommandForAuthN(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "authn",
 		Short: "Manage Tenants and Identities",
@@ -38,8 +40,8 @@ func createCommandForAuthN(v *viper.Viper) *cobra.Command {
 			return runECommandForAuthN(cmd)
 		},
 	}
-	command.AddCommand(createCommandForTenants(v))
-	command.AddCommand(createCommandForIdentitySources(v))
-	command.AddCommand(createCommandForIdentities(v))
+	command.AddCommand(createCommandForTenants(deps, v))
+	command.AddCommand(createCommandForIdentitySources(deps, v))
+	command.AddCommand(createCommandForIdentities(deps, v))
 	return command
 }

@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/viper"
 
 	aziclients "github.com/permguard/permguard/internal/agents/clients"
+	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
 
@@ -71,7 +72,7 @@ func runECommandForListIdentities(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // createCommandForIdentityList creates a command for managing identitylist.
-func createCommandForIdentityList(v *viper.Viper) *cobra.Command {
+func createCommandForIdentityList(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List identities",

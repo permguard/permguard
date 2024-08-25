@@ -25,6 +25,7 @@ import (
 
 	aziclients "github.com/permguard/permguard/internal/agents/clients"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
 
@@ -65,7 +66,7 @@ func runECommandForDeleteIdentitySource(cmd *cobra.Command, v *viper.Viper) erro
 }
 
 // createCommandForIdentitySourceDelete creates a command for managing identity sources delete.
-func createCommandForIdentitySourceDelete(v *viper.Viper) *cobra.Command {
+func createCommandForIdentitySourceDelete(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete an identity source",

@@ -25,11 +25,16 @@ import (
 
 	aziclients "github.com/permguard/permguard/internal/agents/clients"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
 
 // runECommandForUpsertAccount runs the command for creating or updating an account.
-func runECommandForUpsertAccount(cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+func runECommandForUpsertAccount(deps azcli.CLIDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+	if deps == nil {
+		color.Red(errorMessageCLIBug)
+		return ErrCommandSilent
+	}
 	ctx, printer, err := createContextAndPrinter(cmd, v)
 	if err != nil {
 		color.Red(errorMessageInvalidInputs)
@@ -74,7 +79,7 @@ func runECommandForAccounts(cmd *cobra.Command, args []string) error {
 }
 
 // createCommandForAccounts creates a command for managing accounts.
-func createCommandForAccounts(v *viper.Viper) *cobra.Command {
+func createCommandForAccounts(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "accounts",
 		Short: "Manage Accounts",
@@ -85,9 +90,9 @@ func createCommandForAccounts(v *viper.Viper) *cobra.Command {
 	command.PersistentFlags().Int64(flagCommonAccountID, 0, "account id filter")
 	v.BindPFlag(azconfigs.FlagName(commandNameForAccountsList, flagCommonAccountID), command.Flags().Lookup(flagCommonAccountID))
 
-	command.AddCommand(createCommandForAccountCreate(v))
-	command.AddCommand(createCommandForAccountUpdate(v))
-	command.AddCommand(createCommandForAccountDelete(v))
-	command.AddCommand(createCommandForAccountList(v))
+	command.AddCommand(createCommandForAccountCreate(deps, v))
+	command.AddCommand(createCommandForAccountUpdate(deps, v))
+	command.AddCommand(createCommandForAccountDelete(deps, v))
+	command.AddCommand(createCommandForAccountList(deps, v))
 	return command
 }

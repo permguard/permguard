@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
 
@@ -35,7 +36,7 @@ func runECommandForCreateTenant(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // createCommandForTenantCreate creates a command for managing tenantcreate.
-func createCommandForTenantCreate(v *viper.Viper) *cobra.Command {
+func createCommandForTenantCreate(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create a tenant",

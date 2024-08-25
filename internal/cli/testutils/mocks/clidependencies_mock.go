@@ -14,9 +14,19 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package cli
+// Package mocks implements mocks for testing.
+package mocks
 
-const (
-	errorMessageCLIBug = "an issue has been detected with the cli code configuration. please create a github issue with the details."
-	errorMessageInvalidInputs = "invalid inputs"
+import (
+	mock "github.com/stretchr/testify/mock"
 )
+
+// CLIDependenciesMock is a mock type for the CLIDependencies type.
+type CLIDependenciesMock struct {
+	mock.Mock
+}
+
+// NewCLIDependenciesMock creates a new CLIDependenciesMock.
+func NewCLIDependenciesMock() *CLIDependenciesMock {
+	return &CLIDependenciesMock{}
+}

@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
 
@@ -35,7 +36,7 @@ func runECommandForUpdateIdentitySource(cmd *cobra.Command, v *viper.Viper) erro
 }
 
 // createCommandForIdentitySourceUpdate creates a command for managing identity source update.
-func createCommandForIdentitySourceUpdate(v *viper.Viper) *cobra.Command {
+func createCommandForIdentitySourceUpdate(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update an identity source",

@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
 
@@ -30,12 +31,12 @@ const (
 )
 
 // runECommandForCreateAccount runs the command for creating an account.
-func runECommandForCreateAccount(cmd *cobra.Command, v *viper.Viper) error {
-	return runECommandForUpsertAccount(cmd, v, commandNameForAccountsCreate, true)
+func runECommandForCreateAccount(deps azcli.CLIDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	return runECommandForUpsertAccount(deps, cmd, v, commandNameForAccountsCreate, true)
 }
 
 // createCommandForAccountCreate creates a command for managing accountcreate.
-func createCommandForAccountCreate(v *viper.Viper) *cobra.Command {
+func createCommandForAccountCreate(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create an account",
@@ -46,7 +47,7 @@ Examples:
   permguard accounts create --name mycorporate
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForCreateAccount(cmd, v)
+			return runECommandForCreateAccount(deps, cmd, v)
 		},
 	}
 	command.Flags().String(flagCommonName, "", "account name")

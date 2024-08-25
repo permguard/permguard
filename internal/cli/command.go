@@ -83,7 +83,11 @@ func Run(commandsInitializer azcli.CliInitializer) {
 		os.Exit(1)
 	}
 
-	commands, err := commandsInitializer.GetCliCommands(v)
+	depsProvider, err := NewCLIDependenciesProvider()
+	if err != nil {
+		os.Exit(1)
+	}
+	commands, err := commandsInitializer.GetCliCommands(depsProvider, v)
 	if err != nil {
 		os.Exit(1)
 	}
