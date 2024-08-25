@@ -49,7 +49,7 @@ func runECommandForAAPSet(cmd *cobra.Command, v *viper.Viper, args []string) err
 		return ErrCommandSilent
 	}
 	if len(args) == 0 {
-		printer.Error(fmt.Errorf(errorMessageInvalidInputs))
+		printer.Error(errors.New(errorMessageInvalidInputs))
 		return ErrCommandSilent
 	}
 	err = viperWriteEndpoint(v, azconfigs.FlagName(flagPrefixAAP, flagSuffixAAPTarget), args[0])
