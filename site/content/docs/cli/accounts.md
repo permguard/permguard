@@ -53,11 +53,11 @@ The `permguard accounts create` command allows to create an account for the inpu
 {{< tab "terminal" >}}
 
 ```bash
-❯ permguard accounts create --name prod-corporate
+❯ permguard accounts create --name magicfarmacia-dev
 ```
 output:
 ```
- 664601180677: prod-corporate
+ 268786704340: magicfarmacia-dev
 
 {{< /tab >}}
 {{< tab "json" >}}
@@ -67,10 +67,10 @@ output:
 {
   "accounts": [
     {
-      "account_id": 664601180677,
-      "created_at": "2023-08-09T23:26:20.731902Z",
-      "updated_at": "2023-08-09T23:26:20.731902Z",
-      "name": "prod-corporate"
+      "account_id": 268786704340,
+      "created_at": "2024-08-25T14:07:59.634Z",
+      "updated_at": "2024-08-25T14:07:59.634Z",
+      "name": "magicfarmacia-dev"
     }
   ]
 }
@@ -91,9 +91,9 @@ The `permguard accounts list` command allows for the retrieval of all accounts.
 ```
 output:
 ```
- 337648258874: dev-corporate
- 996721273374: uat-corporate
- 664601180677: prod-corporate
+268786704340: magicfarmacia-dev
+534434453770: magicfarmacia-uat
+627303999986: magicfarmacia-prod
 
 {{< /tab >}}
 {{< tab "json" >}}
@@ -103,22 +103,22 @@ output:
 {
   "accounts": [
     {
-      "account_id": 337648258874,
-      "created_at": "2023-08-09T15:18:04.849576Z",
-      "updated_at": "2023-08-09T15:18:04.849576Z",
-      "name": "dev-corporate"
+      "account_id": 268786704340,
+      "created_at": "2024-08-25T14:07:07.04Z",
+      "updated_at": "2024-08-25T14:07:07.04Z",
+      "name": "magicfarmacia-dev"
     },
     {
-      "account_id": 996721273374,
-      "created_at": "2023-08-09T23:26:13.584594Z",
-      "updated_at": "2023-08-09T23:26:13.584594Z",
-      "name": "uat-corporate"
+      "account_id": 534434453770,
+      "created_at": "2024-08-25T14:07:59.634Z",
+      "updated_at": "2024-08-25T14:07:59.634Z",
+      "name": "magicfarmacia-uat"
     },
     {
-      "account_id": 664601180677,
-      "created_at": "2023-08-09T23:26:20.731902Z",
-      "updated_at": "2023-08-09T23:26:20.731902Z",
-      "name": "prod-corporate"
+      "account_id": 627303999986,
+      "created_at": "2024-08-25T14:08:58.619Z",
+      "updated_at": "2024-08-25T14:08:58.619Z",
+      "name": "magicfarmacia-prod"
     }
   ]
 }

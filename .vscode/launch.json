@@ -38,7 +38,7 @@
               "PERMGUARD_SERVER_APPDATA": "./samples/volume",
               "PERMGUARD_LOG_LEVEL": "INFO",
               // "PERMGUARD_SERVER_AAP_ENABLE_DEFAULT_CREATION": "TRUE",
-              "PERMGUARD_SERVER_AAP_DATA_FETCH_MAXSIZE": "100",
+              "PERMGUARD_SERVER_AAP_DATA_FETCH_MAXSIZE": "1000",
           }
       }
   ]
