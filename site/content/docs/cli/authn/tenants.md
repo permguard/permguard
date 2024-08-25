@@ -55,7 +55,7 @@ The `permguard authn tenants create` command allows to create a tenant for the m
 {{< tab "terminal" >}}
 
 ```bash
-❯ permguard authn tenants create --account 268786704340 --name matera-branch
+permguard authn tenants create --account 268786704340 --name matera-branch
 
 ```
 
@@ -69,7 +69,12 @@ output:
 {{< tab "json" >}}
 
 ```bash
-❯ permguard authn tenants create --account 268786704340 --name matera-branch --output json
+permguard authn tenants create --account 268786704340 --name matera-branch --output json
+```
+
+output:
+
+```bash
 {
   "tenant": [
     {
@@ -94,7 +99,7 @@ The `permguard authn tenants list` command allows for the retrieval of all tenan
 {{< tab "terminal" >}}
 
 ```bash
-❯ permguard authn tenants list --account 268786704340
+permguard authn tenants list --account 268786704340
 
 ```
 
@@ -114,7 +119,12 @@ ec40fe0ce651404a8cc0e4ab1e386053: birmingham-branch
 {{< tab "json" >}}
 
 ```bash
-❯ permguard authn tenants list --account 268786704340 --output json
+permguard authn tenants list --account 268786704340 --output json
+```
+
+output:
+
+```bash
 {
   "tenant": [
     {

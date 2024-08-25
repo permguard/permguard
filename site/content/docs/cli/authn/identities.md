@@ -55,7 +55,7 @@ The `permguard authn identities create` command allows to create an identity for
 {{< tab "terminal" >}}
 
 ```bash
-❯ permguard authn identities create --account 268786704340 --kind user --name nicolagallo --identitysourceid 1da1d9094501425085859c60429163c2
+permguard authn identities create --account 268786704340 --kind user --name nicolagallo --identitysourceid 1da1d9094501425085859c60429163c2
 ```
 
 output:
@@ -68,7 +68,12 @@ output:
 {{< tab "json" >}}
 
 ```bash
-❯ permguard authn identities create --account 268786704340 --kind user --name nicolagallo --identitysourceid 1da1d9094501425085859c60429163c2 --output json
+permguard authn identities create --account 268786704340 --kind user --name nicolagallo --identitysourceid 1da1d9094501425085859c60429163c2 --output json
+```
+
+output:
+
+```bash
 {
   "identities": [
     {
@@ -95,7 +100,7 @@ The `permguard authn identities list` command allows for the retrieval of all id
 {{< tab "terminal" >}}
 
 ```bash
-❯ permguard authn identities list --account 268786704340 --identitysourceid 1da1d9094501425085859c60429163c2
+permguard authn identities list --account 268786704340 --identitysourceid 1da1d9094501425085859c60429163c2
 ```
 
 output:
@@ -117,7 +122,12 @@ fdbc2ddfa4c5401eac19bd655efefe5c: marcobianchi
 {{< tab "json" >}}
 
 ```bash
-❯ permguard authn identities list --account 268786704340 --identitysourceid
+permguard authn identities list --account 268786704340 --identitysourceid --output json
+```
+
+output:
+
+```bash
 {
   "identities": [
     {
