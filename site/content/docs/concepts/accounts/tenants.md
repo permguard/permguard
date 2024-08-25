@@ -30,8 +30,8 @@ A tenant is uniquely identified by both a Tenant-ID and a Name, ensuring that th
 
 ```json
 {
-  "tenant_id": "0a275069-ffd0-4af6-8da0-9b64dc05c44b",
-  "account_id": 567269058122,
-  "name": "default"
+  "tenant_id": "2e190ee712494838bb54d67e2a0c496a",
+  "account_id": 268786704340,
+  "name": "matera-branch"
 }
 ```
