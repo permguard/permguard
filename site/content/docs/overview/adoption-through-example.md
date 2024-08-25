@@ -46,7 +46,6 @@ Additionally, the application provides the capability to create and manage users
 
 PermGuard integrates seamlessly with any application, whether deployed on **servers**, **containers**, or in **serverless** environments. Integration is facilitated through gRPC requests to the `Policy Decision Point`, and SDKs are available for various programming languages to ensure smooth implementation.
 
-
 {{< callout context="note" icon="info-circle" >}}
 A Policy Decision Point can be deployed close to the node, such as in a sidecar container. These proximity services synchronize with the remote PermGuard instance, ensuring low latency and high availability. `Permission evaluation` is performed in `approximately 1ms`.
 
