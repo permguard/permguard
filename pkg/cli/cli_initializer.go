@@ -19,16 +19,16 @@ package cli
 import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	azclients "github.com/permguard/permguard/pkg/agents/clients"
 )
 
 // CliDependenciesProvider is the cli dependencies provider.
 type CliDependenciesProvider interface {
-	// CreateContext creates a new context.
-	CreateContext(cmd *cobra.Command, v *viper.Viper) (CliContext, error)
 	// CreatePrinter creates a new printer.
-	CreatePrinter(ctx CliContext, cmd *cobra.Command, v *viper.Viper) (*CliPrinter, error)
-	// CreateContextAndPrinter creates a new context and printer.
-	CreateContextAndPrinter(cmd *cobra.Command, v *viper.Viper) (CliContext, *CliPrinter, error)
+	CreatePrinter(verbose bool, output string) (CliPrinter, error)
+	// CreateContext creates a new context.
+	CreateGrpcAAPClient(aapTarget string) (azclients.GrpcAAPClient, error)
 }
 
 // CliInitializer is the cli initializer.

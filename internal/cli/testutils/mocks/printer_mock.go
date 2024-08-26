@@ -14,5 +14,29 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package clients implements the gRPC clients.
-package clients
+// Package mocks implements mocks for testing.
+package mocks
+
+import (
+	mock "github.com/stretchr/testify/mock"
+)
+
+// PrinterMock is a mock type for the CliDependencies type.
+type PrinterMock struct {
+	mock.Mock
+}
+
+// Print prints the output.
+func (m *PrinterMock) Print(output map[string]any) {
+	m.Called(output)
+}
+
+// Error prints the error.
+func (m *PrinterMock) Error(err error) {
+	m.Called(err)
+}
+
+// NewPrinterMock creates a new PrinterMock.
+func NewPrinterMock() *PrinterMock {
+	return &PrinterMock{}
+}

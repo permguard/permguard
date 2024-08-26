@@ -35,7 +35,7 @@ const (
 
 // runECommandForDeleteIdentitySource runs the command for creating an identity source.
 func runECommandForDeleteIdentitySource(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
+	ctx, printer, err := createContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(errorMessageCliBug)
 		return ErrCommandSilent

@@ -17,15 +17,18 @@
 package cli
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/mock"
 
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
-	azcli "github.com/permguard/permguard/pkg/cli"
 	aztestutils "github.com/permguard/permguard/internal/cli/testutils"
 	azmocks "github.com/permguard/permguard/internal/cli/testutils/mocks"
+	azmodels "github.com/permguard/permguard/pkg/agents/models"
 )
 
 // TestCreateCommandForAccountsCreate tests the createCommandForAccountsCreate function.
@@ -35,19 +38,66 @@ func TestCreateCommandForAccountsCreate(t *testing.T) {
 	aztestutils.BaseCommandTest(t, createCommandForAccountCreate, args, false, outputs)
 }
 
-// TestCliAccountsCreateWithAnError tests the command for creating an account with an error.
-func TestCliAccountsCreateWithAnError(t *testing.T) {
-	args := []string{"accounts", "create", "--name", "mycorporate"}
-	outputs := []string{"Usage"}
+// TestCliAccountsCreateWithError tests the command for creating an account with an error.
+func TestCliAccountsCreateWithError(t *testing.T) {
+	args := []string{"accounts", "create", "--name", "mycorporate", "--output", "terminal"}
+	outputs := []string{""}
 
 	v := viper.New()
-	v.Set(azconfigs.FlagName(flagPrefixPAP, flagSuffixPAPTarget), "localhost:9091")
+	v.Set("output", "terminal")
+	v.Set(azconfigs.FlagName(flagPrefixAAP, flagSuffixAAPTarget), "localhost:9092")
+
 	depsMocks := azmocks.NewCliDependenciesMock()
 	cmd := createCommandForAccountCreate(depsMocks, v)
+	cmd.PersistentFlags().StringP(flagOutput, flagOutputShort, "terminal", "output format")
+	cmd.PersistentFlags().BoolP(flagVerbose, flagVerboseShort, false, "true for verbose output")
 
-	printer, _ := azcli.NewCliPrinter(true, azcli.OutputTerminal)
-	cliCtx, _ := newCliContext(cmd, v)
-	depsMocks.On("CreateContextAndPrinter", mock.Anything, mock.Anything).Return(cliCtx, printer, nil)
+	aapClient := azmocks.NewGrpcAAPClientMock()
+	aapClient.On("CreateAccount", mock.Anything).Return(nil, azerrors.ErrClientParameter)
+
+	printerMock := azmocks.NewPrinterMock()
+	printerMock.On("Error", azerrors.ErrClientParameter).Return()
+
+	depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
+	depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
 
 	aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
+	printerMock.AssertCalled(t, "Error", azerrors.ErrClientParameter)
+
+}
+
+// TestCliAccountsCreateWithSuccess tests the command for creating an account with an error.
+func TestCliAccountsCreateWithSuccess(t *testing.T) {
+	args := []string{"accounts", "create", "--name", "mycorporate", "--output", "terminal"}
+	outputs := []string{""}
+
+	v := viper.New()
+	v.Set("output", "terminal")
+	v.Set(azconfigs.FlagName(flagPrefixAAP, flagSuffixAAPTarget), "localhost:9092")
+
+	depsMocks := azmocks.NewCliDependenciesMock()
+	cmd := createCommandForAccountCreate(depsMocks, v)
+	cmd.PersistentFlags().StringP(flagOutput, flagOutputShort, "terminal", "output format")
+	cmd.PersistentFlags().BoolP(flagVerbose, flagVerboseShort, false, "true for verbose output")
+
+	aapClient := azmocks.NewGrpcAAPClientMock()
+	account := &azmodels.Account{
+		AccountID: 581616507495,
+		Name: "mycorporate",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	aapClient.On("CreateAccount", mock.Anything).Return(account, nil)
+
+	printerMock := azmocks.NewPrinterMock()
+	outputPrinter := map[string]any{ }
+	accountID := fmt.Sprintf("%d", account.AccountID)
+	outputPrinter[accountID] = account.Name
+	printerMock.On("Print", outputPrinter).Return()
+
+	depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
+	depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
+
+	aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
+	printerMock.AssertCalled(t, "Print", outputPrinter)
 }

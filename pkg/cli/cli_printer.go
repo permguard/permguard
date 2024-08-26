@@ -44,25 +44,33 @@ const (
 )
 
 // CliPrinter is the cli printer.
-type CliPrinter struct {
+type CliPrinter interface {
+	// Print prints the output.
+	Print(output map[string]any)
+	// Error prints the error.
+	Error(err error)
+}
+
+// CliPrinterTerminal is the cli printer.
+type CliPrinterTerminal struct {
 	verbose bool
 	output  string
 }
 
-// NewCliPrinter returns a new cli printer.
-func NewCliPrinter(verbose bool, output string) (*CliPrinter, error) {
+// NewCliPrinterTerminal returns a new cli printer.
+func NewCliPrinterTerminal(verbose bool, output string) (*CliPrinterTerminal, error) {
 	out := strings.ToUpper(output)
 	if out != OutputTerminal && out != OutputJSON {
 		return nil, errors.New("cli: invalid output")
 	}
-	return &CliPrinter{
+	return &CliPrinterTerminal{
 		verbose: verbose,
 		output:  strings.ToUpper(output),
 	}, nil
 }
 
 // printJSON prints the output as json.
-func (cp *CliPrinter) printJSON(output map[string]any) {
+func (cp *CliPrinterTerminal) printJSON(output map[string]any) {
 	jsonData, err := json.Marshal(output)
 	if err != nil {
 		return
@@ -71,7 +79,7 @@ func (cp *CliPrinter) printJSON(output map[string]any) {
 }
 
 // printValue prints the value.
-func (cp *CliPrinter) printValue(key string, value interface{}) {
+func (cp *CliPrinterTerminal) printValue(key string, value interface{}) {
 	if value == nil || (reflect.TypeOf(value).Kind() == reflect.String && value.(string) == "") {
 		green := color.New(color.FgGreen)
 		green.Println(key)
@@ -100,7 +108,7 @@ func (cp *CliPrinter) printValue(key string, value interface{}) {
 }
 
 // printTerminal prints the output as terminal text.
-func (cp *CliPrinter) printTerminal(output map[string]any, isError bool) {
+func (cp *CliPrinterTerminal) printTerminal(output map[string]any, isError bool) {
 	keys := make([]string, 0, len(output))
     for k := range output {
         keys = append(keys, k)
@@ -116,7 +124,7 @@ func (cp *CliPrinter) printTerminal(output map[string]any, isError bool) {
 }
 
 // Print prints the output.
-func (cp *CliPrinter) Print(output map[string]any) {
+func (cp *CliPrinterTerminal) Print(output map[string]any) {
 	switch cp.output {
 	case OutputJSON:
 		cp.printJSON(output)
@@ -128,7 +136,7 @@ func (cp *CliPrinter) Print(output map[string]any) {
 }
 
 // extractCodeAndMessage takes an input string and returns the code and the message as separate strings.
-func (cp *CliPrinter) extractCodeAndMessage(input string) (string, string, error) {
+func (cp *CliPrinterTerminal) extractCodeAndMessage(input string) (string, string, error) {
 	codePrefix := "code: "
 	messagePrefix := "message: "
 
@@ -153,7 +161,7 @@ func (cp *CliPrinter) extractCodeAndMessage(input string) (string, string, error
 }
 
 // createOutputWithputError creates the output with the error.
-func (cp *CliPrinter) createOutputWithputError(code string, msg string) (map[string]any) {
+func (cp *CliPrinterTerminal) createOutputWithputError(code string, msg string) (map[string]any) {
 	var output map[string]any
 	errCode := code
 	errMsg := msg
@@ -184,7 +192,7 @@ func (cp *CliPrinter) createOutputWithputError(code string, msg string) (map[str
 }
 
 // createOutputWithError creates the output with the error.
-func (cp *CliPrinter) createOutputWithError(errInputMsg string) (map[string]any) {
+func (cp *CliPrinterTerminal) createOutputWithError(errInputMsg string) (map[string]any) {
 	var output map[string]any
 	code := "00000"
 	if cp.verbose {
@@ -206,7 +214,7 @@ func (cp *CliPrinter) createOutputWithError(errInputMsg string) (map[string]any)
 }
 
 // Error prints the output.
-func (cp *CliPrinter) Error(err error) {
+func (cp *CliPrinterTerminal) Error(err error) {
 	if _, ok := err.(*net.OpError); ok {
 		err = fmt.Errorf("server cannot be reached")
 	}

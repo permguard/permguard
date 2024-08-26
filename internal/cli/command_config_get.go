@@ -28,7 +28,7 @@ import (
 
 // runECommandForAAPGet runs the command for getting the aap gRPC target.
 func runECommandForAAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
+	ctx, printer, err := createContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
@@ -39,7 +39,7 @@ func runECommandForAAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 
 // runECommandForPAPGet runs the command for getting the pap gRPC target.
 func runECommandForPAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
+	ctx, printer, err := createContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
