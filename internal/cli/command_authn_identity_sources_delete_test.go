@@ -18,13 +18,101 @@ package cli
 
 import (
 	"testing"
+	"time"
 
+	"github.com/spf13/viper"
+	"github.com/stretchr/testify/mock"
+
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azconfigs "github.com/permguard/permguard/pkg/configs"
 	aztestutils "github.com/permguard/permguard/internal/cli/testutils"
+	azmocks "github.com/permguard/permguard/internal/cli/testutils/mocks"
+	azmodels "github.com/permguard/permguard/pkg/agents/models"
 )
 
-// TestCreateCommandForIdentitySourceDelete tests the createCommandForIdentitySourceDelete function.
-func TestCreateCommandForIdentitySourceDelete(t *testing.T) {
+// TestDeleteCommandForIdentitySourcesDelete tests the deleteCommandForIdentitySourcesDelete function.
+func TestDeleteCommandForIdentitySourcesDelete(t *testing.T) {
 	args := []string{"-h"}
 	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command deletes an identity source."}
 	aztestutils.BaseCommandTest(t, createCommandForIdentitySourceDelete, args, false, outputs)
+}
+
+// TestCliIdentitySourcesDeleteWithError tests the command for creating a identitysource with an error.
+func TestCliIdentitySourcesDeleteWithError(t *testing.T) {
+	tests := []string {
+		"terminal",
+		"json",
+	}
+	for _, outputType := range tests {
+		args := []string{"identitysources", "delete", "--identitysourceid", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", outputType}
+		outputs := []string{""}
+
+		v := viper.New()
+		v.Set(azconfigs.FlagName(flagPrefixAAP, flagSuffixAAPTarget), "localhost:9092")
+
+		depsMocks := azmocks.NewCliDependenciesMock()
+		cmd := createCommandForIdentitySourceDelete(depsMocks, v)
+		cmd.PersistentFlags().StringP(flagOutput, flagOutputShort, outputType, "output format")
+		cmd.PersistentFlags().BoolP(flagVerbose, flagVerboseShort, false, "true for verbose output")
+
+		aapClient := azmocks.NewGrpcAAPClientMock()
+		aapClient.On("DeleteIdentitySource", mock.Anything, mock.Anything).Return(nil, azerrors.ErrClientParameter)
+
+		printerMock := azmocks.NewPrinterMock()
+		printerMock.On("Error", azerrors.ErrClientParameter).Return()
+
+		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
+		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
+
+		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
+		printerMock.AssertCalled(t, "Error", azerrors.ErrClientParameter)
+	}
+}
+
+// TestCliIdentitySourcesDeleteWithSuccess tests the command for creating a identitysource with an error.
+func TestCliIdentitySourcesDeleteWithSuccess(t *testing.T) {
+	tests := []string {
+		"terminal",
+		"json",
+	}
+	for _, outputType := range tests {
+		args := []string{"identitysources", "delete", "--identitysourceid", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", outputType}
+		outputs := []string{""}
+
+		v := viper.New()
+		v.Set("output", outputType)
+		v.Set(azconfigs.FlagName(flagPrefixAAP, flagSuffixAAPTarget), "localhost:9092")
+
+		depsMocks := azmocks.NewCliDependenciesMock()
+		cmd := createCommandForIdentitySourceDelete(depsMocks, v)
+		cmd.PersistentFlags().StringP(flagOutput, flagOutputShort, outputType, "output format")
+		cmd.PersistentFlags().BoolP(flagVerbose, flagVerboseShort, false, "true for verbose output")
+
+		aapClient := azmocks.NewGrpcAAPClientMock()
+		identitysource := &azmodels.IdentitySource{
+			IdentitySourceID: "c3160a533ab24fbcb1eab7a09fd85f36",
+			AccountID: 581616507495,
+			Name: "materabranch",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		aapClient.On("DeleteIdentitySource", mock.Anything, mock.Anything).Return(identitysource, nil)
+
+		printerMock := azmocks.NewPrinterMock()
+		outputPrinter := map[string]any{ }
+
+		if outputType == "terminal" {
+			identitysourceID := identitysource.IdentitySourceID
+			outputPrinter[identitysourceID] = identitysource.Name
+		} else {
+			outputPrinter["identity_sources"] = []*azmodels.IdentitySource{identitysource}
+		}
+		printerMock.On("Print", outputPrinter).Return()
+
+		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
+		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
+
+		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
+		printerMock.AssertCalled(t, "Print", outputPrinter)
+	}
 }

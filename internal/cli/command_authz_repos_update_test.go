@@ -92,7 +92,7 @@ func TestCliRepositoriesUpdateWithSuccess(t *testing.T) {
 		repository := &azmodels.Repository{
 			RepositoryID: "c3160a533ab24fbcb1eab7a09fd85f36",
 			AccountID: 581616507495,
-			Name: "materabranch",
+			Name: "v1.0",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
