@@ -24,6 +24,7 @@ import (
 
 // TestCreateCommandForAccountList tests the createCommandForAccountList function.
 func TestCreateCommandForAccountList(t *testing.T) {
+	args := []string{"-h"}
 	outputs := []string{"The official PermGuard CLI", "Copyright © 2022 Nitro Agility S.r.l.", "This command lists all the accounts."}
-	aztestutils.BaseCommandTest(t, createCommandForAccountList, outputs)
+	aztestutils.BaseCommandTest(t, createCommandForAccountList, args, outputs)
 }

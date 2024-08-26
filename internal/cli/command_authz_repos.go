@@ -38,7 +38,7 @@ const (
 func runECommandForUpsertRepository(cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
 	ctx, printer, err := createContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageInvalidInputs)
+		color.Red(errorMessageCLIBug)
 		return ErrCommandSilent
 	}
 	papTarget := ctx.GetPAPTarget()
