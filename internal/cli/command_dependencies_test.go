@@ -22,10 +22,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestNewCLIDependenciesProvider tests the NewCLIDependenciesProvider function.
-func TestNewCLIDependenciesProvider(t *testing.T) {
+// TestNewCliDependenciesProvider tests the NewCliDependenciesProvider function.
+func TestNewCliDependenciesProvider(t *testing.T) {
 	assert := assert.New(t)
-	depsProvider, err := NewCLIDependenciesProvider()
+	depsProvider, err := NewCliDependenciesProvider()
 	assert.Nil(err, "err should be nil")
 	assert.NotNil(depsProvider, "depsProvider should not be nil")
 }

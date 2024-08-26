@@ -19,13 +19,19 @@ package cli
 import (
 	"testing"
 
+	"github.com/spf13/viper"
+	"github.com/stretchr/testify/mock"
+
+	azconfigs "github.com/permguard/permguard/pkg/configs"
+	azcli "github.com/permguard/permguard/pkg/cli"
 	aztestutils "github.com/permguard/permguard/internal/cli/testutils"
+	azmocks "github.com/permguard/permguard/internal/cli/testutils/mocks"
 )
 
 // TestCreateCommandForAccountsCreate tests the createCommandForAccountsCreate function.
 func TestCreateCommandForAccountsCreate(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard CLI", "Copyright © 2022 Nitro Agility S.r.l.", "This command creates an account."}
+	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command creates an account."}
 	aztestutils.BaseCommandTest(t, createCommandForAccountCreate, args, false, outputs)
 }
 
@@ -33,5 +39,15 @@ func TestCreateCommandForAccountsCreate(t *testing.T) {
 func TestCliAccountsCreateWithAnError(t *testing.T) {
 	args := []string{"accounts", "create", "--name", "mycorporate"}
 	outputs := []string{"Usage"}
-	aztestutils.BaseCommandTest(t, createCommandForAccountCreate, args, true, outputs)
+
+	v := viper.New()
+	v.Set(azconfigs.FlagName(flagPrefixPAP, flagSuffixPAPTarget), "localhost:9091")
+	depsMocks := azmocks.NewCliDependenciesMock()
+	cmd := createCommandForAccountCreate(depsMocks, v)
+
+	printer, _ := azcli.NewCliPrinter(true, azcli.OutputTerminal)
+	cliCtx, _ := newCliContext(cmd, v)
+	depsMocks.On("CreateContextAndPrinter", mock.Anything, mock.Anything).Return(cliCtx, printer, nil)
+
+	aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
 }

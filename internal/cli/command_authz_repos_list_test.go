@@ -25,6 +25,6 @@ import (
 // TestListCommandForRepositoryList tests the listCommandForRepositoryList function.
 func TestListCommandForRepositoryList(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard CLI", "Copyright © 2022 Nitro Agility S.r.l.", "This command lists all the repositories."}
+	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command lists all the repositories."}
 	aztestutils.BaseCommandTest(t, createCommandForRepositoryList, args, false, outputs)
 }

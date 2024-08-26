@@ -31,12 +31,12 @@ const (
 )
 
 // runECommandForCreateTenant runs the command for creating a tenant.
-func runECommandForCreateTenant(cmd *cobra.Command, v *viper.Viper) error {
-	return runECommandForUpsertTenant(cmd, v, commandNameForTenantsCreate, true)
+func runECommandForCreateTenant(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	return runECommandForUpsertTenant(deps, cmd, v, commandNameForTenantsCreate, true)
 }
 
 // createCommandForTenantCreate creates a command for managing tenantcreate.
-func createCommandForTenantCreate(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForTenantCreate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create a tenant",
@@ -47,7 +47,7 @@ Examples:
   permguard authn tenants create --account 301990992055 --name tenant1
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForCreateTenant(cmd, v)
+			return runECommandForCreateTenant(deps, cmd, v)
 		},
 	}
 	command.Flags().String(flagCommonName, "", "tenant name")

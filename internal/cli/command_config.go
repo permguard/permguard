@@ -31,11 +31,11 @@ func runECommandForConfig(cmd *cobra.Command, args []string) error {
 }
 
 // createCommandForConfig for managing config.
-func createCommandForConfig(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfig(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "config",
-		Short: "Configure CLI settings",
-		Long:  fmt.Sprintf(cliLongTemplate, `This command configures CLI settings.`),
+		Short: "Configure Cli settings",
+		Long:  fmt.Sprintf(cliLongTemplate, `This command configures Cli settings.`),
 		RunE:  runECommandForConfig,
 	}
 	command.AddCommand(createCommandForConfigAAPGet(deps, v))

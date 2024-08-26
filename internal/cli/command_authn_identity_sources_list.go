@@ -33,10 +33,10 @@ const (
 )
 
 // runECommandForListIdentitySources runs the command for creating an identity source.
-func runECommandForListIdentitySources(cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := createContextAndPrinter(cmd, v)
+func runECommandForListIdentitySources(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	aapTarget := ctx.GetAAPTarget()
@@ -70,7 +70,7 @@ func runECommandForListIdentitySources(cmd *cobra.Command, v *viper.Viper) error
 }
 
 // createCommandForIdentitySourceList creates a command for managing identity sources list.
-func createCommandForIdentitySourceList(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForIdentitySourceList(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List identity sources",
@@ -85,7 +85,7 @@ Examples:
   permguard authn identitysources list --account 301990992055 --identitysourceid 377532e1-befe-47cb-a55a-0a789c5ec8fd
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForListIdentitySources(cmd, v)
+			return runECommandForListIdentitySources(deps, cmd, v)
 		},
 	}
 	command.Flags().Int32P(flagCommonPage, flagCommonPageShort, 1, "page number")

@@ -31,12 +31,12 @@ const (
 )
 
 // runECommandForUpdateIdentity runs the command for creating an identity.
-func runECommandForUpdateIdentity(cmd *cobra.Command, v *viper.Viper) error {
-	return runECommandForUpsertIdentity(cmd, v, commandNameForIdentitiesUpdate, false)
+func runECommandForUpdateIdentity(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	return runECommandForUpsertIdentity(deps, cmd, v, commandNameForIdentitiesUpdate, false)
 }
 
 // createCommandForIdentityUpdate creates a command for managing identityupdate.
-func createCommandForIdentityUpdate(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForIdentityUpdate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update an identity",
@@ -47,7 +47,7 @@ Examples:
   permguard authn identities update --account 301990992055 --identityid 19159d69-e902-418e-966a-148c4d5169a4 --name identity1
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForUpdateIdentity(cmd, v)
+			return runECommandForUpdateIdentity(deps, cmd, v)
 		},
 	}
 	command.Flags().String(flagIdentityID, "", "identity id")

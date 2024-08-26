@@ -25,6 +25,6 @@ import (
 // TestCreateCommandForAuthZ tests the createCommandForAuthZ function.
 func TestCreateCommandForAuthZ(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard CLI", "Copyright © 2022 Nitro Agility S.r.l.", "This command enables managament of repositories and trusted delegations."}
+	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command enables managament of repositories and trusted delegations."}
 	aztestutils.BaseCommandTest(t, createCommandForAuthZ, args, false, outputs)
 }

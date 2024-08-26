@@ -33,10 +33,10 @@ const (
 )
 
 // runECommandForListTenants runs the command for creating a tenant.
-func runECommandForListTenants(cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := createContextAndPrinter(cmd, v)
+func runECommandForListTenants(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	aapTarget := ctx.GetAAPTarget()
@@ -70,7 +70,7 @@ func runECommandForListTenants(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // createCommandForTenantList creates a command for managing tenantlist.
-func createCommandForTenantList(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForTenantList(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List tenants",
@@ -85,7 +85,7 @@ Examples:
   permguard authn tenants list --account 301990992055 --tenantid 377532e1-befe-47cb-a55a-0a789c5ec8fd
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForListTenants(cmd, v)
+			return runECommandForListTenants(deps, cmd, v)
 		},
 	}
 	command.Flags().Int32P(flagCommonPage, flagCommonPageShort, 1, "page number")

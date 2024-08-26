@@ -54,7 +54,7 @@ const (
 //go:embed "art.txt"
 var asciiArt string
 
-var cliLongTemplate = `The official PermGuard CLI
+var cliLongTemplate = `The official PermGuard Command Line Interface
 Copyright © 2022 Nitro Agility S.r.l.
 
 %s
@@ -83,7 +83,7 @@ func Run(commandsInitializer azcli.CliInitializer) {
 		os.Exit(1)
 	}
 
-	depsProvider, err := NewCLIDependenciesProvider()
+	depsProvider, err := NewCliDependenciesProvider()
 	if err != nil {
 		os.Exit(1)
 	}

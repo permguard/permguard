@@ -34,10 +34,10 @@ const (
 )
 
 // runECommandForDeleteTenant runs the command for creating a tenant.
-func runECommandForDeleteTenant(cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := createContextAndPrinter(cmd, v)
+func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	aapTarget := ctx.GetAAPTarget()
@@ -66,7 +66,7 @@ func runECommandForDeleteTenant(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // createCommandForTenantDelete creates a command for managing tenantdelete.
-func createCommandForTenantDelete(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForTenantDelete(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a tenant",
@@ -77,7 +77,7 @@ Examples:
   permguard authn tenants delete --account 301990992055 --tenantid 19159d69-e902-418e-966a-148c4d5169a4
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForDeleteTenant(cmd, v)
+			return runECommandForDeleteTenant(deps, cmd, v)
 		},
 	}
 	command.Flags().String(flagTenantID, "", "tenant id")

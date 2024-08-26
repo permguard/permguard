@@ -23,33 +23,20 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
+	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
-// createContextAndPrinter creates a new cli context and printer.
-func createContextAndPrinter(cmd *cobra.Command, v *viper.Viper) (*CliContext, *azcli.CliPrinter, error) {
-	ctx, err := newCliContext(cmd, v)
-	if err != nil {
-		return nil, nil, err
-	}
-	printer, err := azcli.NewCliPrinter(ctx.GetVerbose(), ctx.GetOutput())
-	if err != nil {
-		return nil, nil, err
-	}
-	return ctx, printer, nil
-}
-
-// CliContext is the context for the CLI.
-type CliContext struct {
+// CliCommandContext is the context for the Cli.
+type CliCommandContext struct {
 	v       *viper.Viper
 	verbose bool
 	output  string
 }
 
 // newCliContext creates a new CliContext.
-func newCliContext(cmd *cobra.Command, v *viper.Viper) (*CliContext, error) {
-	ctx := &CliContext{
+func newCliContext(cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, error) {
+	ctx := &CliCommandContext{
 		v: v,
 	}
 	output, err := cmd.Flags().GetString(flagOutput)
@@ -69,38 +56,38 @@ func newCliContext(cmd *cobra.Command, v *viper.Viper) (*CliContext, error) {
 }
 
 // GetViper returns the viper.
-func (c *CliContext) GetViper() *viper.Viper {
+func (c *CliCommandContext) GetViper() *viper.Viper {
 	return c.v
 }
 
 // GetVerbose returns true if the verbose.
-func (c *CliContext) GetVerbose() bool {
+func (c *CliCommandContext) GetVerbose() bool {
 	return c.verbose
 }
 
 // GetOutput returns the output.
-func (c *CliContext) GetOutput() string {
+func (c *CliCommandContext) GetOutput() string {
 	return c.output
 }
 
 // IsTerminalOutput returns true if the output is json.
-func (c *CliContext) IsTerminalOutput() bool {
+func (c *CliCommandContext) IsTerminalOutput() bool {
 	return c.GetOutput() == azcli.OutputTerminal
 }
 
 // IsJSONOutput returns true if the output is json.
-func (c *CliContext) IsJSONOutput() bool {
+func (c *CliCommandContext) IsJSONOutput() bool {
 	return c.GetOutput() == azcli.OutputJSON
 }
 
 // GetAAPTarget returns the aap target.
-func (c *CliContext) GetAAPTarget() string {
+func (c *CliCommandContext) GetAAPTarget() string {
 	target := c.v.Get(azconfigs.FlagName(flagPrefixAAP, flagSuffixAAPTarget))
 	return target.(string)
 }
 
 // GetPAPTarget returns the pap target.
-func (c *CliContext) GetPAPTarget() string {
+func (c *CliCommandContext) GetPAPTarget() string {
 	target := c.v.Get(azconfigs.FlagName(flagPrefixPAP, flagSuffixPAPTarget))
 	return target.(string)
 }

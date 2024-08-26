@@ -43,10 +43,10 @@ func viperWriteEndpoint(v *viper.Viper, key string, value string) error {
 }
 
 // runECommandForAAPSet runs the command for setting the aap gRPC target.
-func runECommandForAAPSet(cmd *cobra.Command, v *viper.Viper, args []string) error {
-	_, printer, err := createContextAndPrinter(cmd, v)
+func runECommandForAAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+	_, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	if len(args) == 0 {
@@ -62,10 +62,10 @@ func runECommandForAAPSet(cmd *cobra.Command, v *viper.Viper, args []string) err
 }
 
 // runECommandForPAPSet runs the command for setting the pap gRPC target.
-func runECommandForPAPSet(cmd *cobra.Command, v *viper.Viper, args []string) error {
-	_, printer, err := createContextAndPrinter(cmd, v)
+func runECommandForPAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+	_, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	if len(args) == 0 {
@@ -81,7 +81,7 @@ func runECommandForPAPSet(cmd *cobra.Command, v *viper.Viper, args []string) err
 }
 
 // createCommandForConfig for managing config.
-func createCommandForConfigAAPSet(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigAAPSet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "aap-set-target",
 		Short: "Set the app gRPC target",
@@ -92,14 +92,14 @@ Examples:
 permguard config aap-set-target localhost:9091
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForAAPSet(cmd, v, args)
+			return runECommandForAAPSet(deps, cmd, v, args)
 		},
 	}
 	return command
 }
 
 // createCommandForConfig for managing config.
-func createCommandForConfigPAPSet(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigPAPSet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pap-set-target",
 		Short: "Set the pap gRPC target",
@@ -110,7 +110,7 @@ Examples:
 permguard config pap-set-target localhost:9092
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForPAPSet(cmd, v, args)
+			return runECommandForPAPSet(deps, cmd, v, args)
 		},
 	}
 	return command

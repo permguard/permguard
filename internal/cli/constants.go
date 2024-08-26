@@ -17,6 +17,6 @@
 package cli
 
 const (
-	errorMessageCLIBug = "an issue has been detected with the cli code configuration. please create a github issue with the details."
+	errorMessageCliBug        = "an issue has been detected with the cli code configuration. please create a github issue with the details."
 	errorMessageInvalidInputs = "invalid inputs"
 )

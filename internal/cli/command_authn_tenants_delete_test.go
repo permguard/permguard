@@ -25,6 +25,6 @@ import (
 // TestCreateCommandForTenantDelete tests the createCommandForTenantDelete function.
 func TestCreateCommandForTenantDelete(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard CLI", "Copyright © 2022 Nitro Agility S.r.l.", "This command deletes a tenant."}
+	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command deletes a tenant."}
 	aztestutils.BaseCommandTest(t, createCommandForTenantDelete, args, false, outputs)
 }

@@ -35,10 +35,10 @@ const (
 )
 
 // runECommandForCreateRepository runs the command for creating a repository.
-func runECommandForUpsertRepository(cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
-	ctx, printer, err := createContextAndPrinter(cmd, v)
+func runECommandForUpsertRepository(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	papTarget := ctx.GetPAPTarget()
@@ -82,7 +82,7 @@ func runECommandForRepositories(cmd *cobra.Command, args []string) error {
 }
 
 // createCommandForRepositories creates a command for managing repositories.
-func createCommandForRepositories(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForRepositories(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "repos",
 		Short: "Manage Repositories",

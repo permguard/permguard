@@ -27,10 +27,10 @@ import (
 )
 
 // runECommandForAAPGet runs the command for getting the aap gRPC target.
-func runECommandForAAPGet(cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := createContextAndPrinter(cmd, v)
+func runECommandForAAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	printer.Print(map[string]any{"aap_target": ctx.GetAAPTarget()})
@@ -38,10 +38,10 @@ func runECommandForAAPGet(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // runECommandForPAPGet runs the command for getting the pap gRPC target.
-func runECommandForPAPGet(cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := createContextAndPrinter(cmd, v)
+func runECommandForPAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	printer.Print(map[string]any{"pap_target": ctx.GetPAPTarget()})
@@ -49,26 +49,26 @@ func runECommandForPAPGet(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // createCommandForConfig for managing config.
-func createCommandForConfigAAPGet(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigAAPGet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "aap-get-target",
 		Short: "Get the app gRPC target",
 		Long:  fmt.Sprintf(cliLongTemplate, `This command gets the aap gRPC target.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForAAPGet(cmd, v)
+			return runECommandForAAPGet(deps, cmd, v)
 		},
 	}
 	return command
 }
 
 // createCommandForConfig for managing config.
-func createCommandForConfigPAPGet(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigPAPGet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pap-get-target",
 		Short: "Get the pap gRPC target",
 		Long:  fmt.Sprintf(cliLongTemplate, `This command gets the pap gRPC target.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForPAPGet(cmd, v)
+			return runECommandForPAPGet(deps, cmd, v)
 		},
 	}
 	return command

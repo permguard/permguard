@@ -21,8 +21,14 @@ import (
 	"github.com/spf13/viper"
 )
 
-// CLIDependenciesProvider is the cli dependencies provider.
-type CLIDependenciesProvider interface {
+// CliDependenciesProvider is the cli dependencies provider.
+type CliDependenciesProvider interface {
+	// CreateContext creates a new context.
+	CreateContext(cmd *cobra.Command, v *viper.Viper) (CliContext, error)
+	// CreatePrinter creates a new printer.
+	CreatePrinter(ctx CliContext, cmd *cobra.Command, v *viper.Viper) (*CliPrinter, error)
+	// CreateContextAndPrinter creates a new context and printer.
+	CreateContextAndPrinter(cmd *cobra.Command, v *viper.Viper) (CliContext, *CliPrinter, error)
 }
 
 // CliInitializer is the cli initializer.
@@ -30,5 +36,5 @@ type CliInitializer interface {
 	// GetCliInfo returns the infos of the commands.
 	GetCliInfo() CliInfo
 	//  GetCliCommands returns the commands.
-	GetCliCommands(deps CLIDependenciesProvider, v *viper.Viper) ([]*cobra.Command, error)
+	GetCliCommands(deps CliDependenciesProvider, v *viper.Viper) ([]*cobra.Command, error)
 }
