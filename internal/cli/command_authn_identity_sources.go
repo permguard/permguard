@@ -29,7 +29,9 @@ import (
 )
 
 const (
+	// commandNameForIdentitySource is the command name for identity source.
 	commandNameForIdentitySource = "identitysource"
+	// flagIdentitySourceID is the flag for identity source id.
 	flagIdentitySourceID         = "identitysourceid"
 )
 

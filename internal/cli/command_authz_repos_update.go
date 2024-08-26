@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	// commandNameForRepositoriesUpdate is the command name for repositories update.
 	commandNameForRepositoriesUpdate = "repositories.update"
 )
 

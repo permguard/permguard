@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	// commandNameForTenantsCreate is the command name for tenants create.
 	commandNameForTenantsCreate = "tenants.create"
 )
 

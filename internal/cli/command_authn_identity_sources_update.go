@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	// commandNameForIdentitySourcesUpdate is the command name for identity sources update.
 	commandNameForIdentitySourcesUpdate = "identitysources.update"
 )
 

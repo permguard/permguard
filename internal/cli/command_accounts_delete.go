@@ -29,6 +29,7 @@ import (
 )
 
 const (
+	// commandNameForAccountsCreate is the command name for accounts create.
 	commandNameForAccountsDelete = "accounts.delete"
 )
 

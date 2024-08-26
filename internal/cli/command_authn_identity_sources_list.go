@@ -28,6 +28,7 @@ import (
 )
 
 const (
+	// commandNameForIdentitySourcesList is the command name for identity sources list.
 	commandNameForIdentitySourcesList = "identitysources.list"
 )
 

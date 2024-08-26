@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	// commandNameForTenantsUpdate is the command name for tenants update.
 	commandNameForTenantsUpdate = "tenants.update"
 )
 

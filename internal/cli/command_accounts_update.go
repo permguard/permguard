@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	// commandNameForAccountsUpdate is the command name for accounts update.
 	commandNameForAccountsUpdate = "accounts.update"
 )
 

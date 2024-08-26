@@ -29,6 +29,7 @@ import (
 )
 
 const (
+	// commandNameForTenant is the command name for tenant.
 	commandNameForTenantsDelete = "tenants.delete"
 )
 

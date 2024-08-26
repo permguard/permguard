@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	// commandNameForIdentitiesCreate is the command name for identities create.
 	commandNameForIdentitiesCreate = "identities.create"
 )
 

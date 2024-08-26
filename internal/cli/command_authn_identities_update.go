@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	// commandNameForIdentitiesUpdate is the command name for identities update.
 	commandNameForIdentitiesUpdate = "identities.update"
 )
 

@@ -29,6 +29,7 @@ import (
 )
 
 const (
+	// commandNameForIdentity is the command name for identity.
 	commandNameForIdentitiesDelete = "identities.delete"
 )
 

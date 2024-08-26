@@ -29,7 +29,9 @@ import (
 )
 
 const (
+	// commandNameForRepository is the command name for repository.
 	commandNameForRepository = "repository"
+	// flagRepositoryID is the flag for repository id.
 	flagRepositoryID         = "repositoryid"
 )
 
