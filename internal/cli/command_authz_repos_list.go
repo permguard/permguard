@@ -23,7 +23,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclients "github.com/permguard/permguard/internal/agents/clients"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
@@ -41,7 +40,7 @@ func runECommandForListRepositories(deps azcli.CliDependenciesProvider, cmd *cob
 		return ErrCommandSilent
 	}
 	papTarget := ctx.GetPAPTarget()
-	client, err := aziclients.NewGrpcPAPClient(papTarget)
+	client, err := deps.CreateGrpcPAPClient(papTarget)
 	if err != nil {
 		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
 		return ErrCommandSilent
