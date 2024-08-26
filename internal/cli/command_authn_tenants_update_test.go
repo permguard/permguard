@@ -26,5 +26,5 @@ import (
 func TestCreateCommandForTenantUpdate(t *testing.T) {
 	args := []string{"-h"}
 	outputs := []string{"The official PermGuard CLI", "Copyright © 2022 Nitro Agility S.r.l.", "This command updates a tenant."}
-	aztestutils.BaseCommandTest(t, createCommandForTenantUpdate, args, outputs)
+	aztestutils.BaseCommandTest(t, createCommandForTenantUpdate, args, false, outputs)
 }

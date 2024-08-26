@@ -26,5 +26,5 @@ import (
 func TestCreateCommandForRepositories(t *testing.T) {
 	args := []string{"-h"}
 	outputs := []string{"The official PermGuard CLI", "Copyright © 2022 Nitro Agility S.r.l.", "This command manages repositories."}
-	aztestutils.BaseCommandTest(t, createCommandForRepositories, args, outputs)
+	aztestutils.BaseCommandTest(t, createCommandForRepositories, args, false, outputs)
 }
