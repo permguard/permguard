@@ -18,13 +18,101 @@ package cli
 
 import (
 	"testing"
+	"time"
 
+	"github.com/spf13/viper"
+	"github.com/stretchr/testify/mock"
+
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azconfigs "github.com/permguard/permguard/pkg/configs"
 	aztestutils "github.com/permguard/permguard/internal/cli/testutils"
+	azmocks "github.com/permguard/permguard/internal/cli/testutils/mocks"
+	azmodels "github.com/permguard/permguard/pkg/agents/models"
 )
 
-// TestDeleteCommandForRepositoryDelete tests the deleteCommandForRepositoryDelete function.
-func TestDeleteCommandForRepositoryDelete(t *testing.T) {
+// TestDeleteCommandForRepositoriesDelete tests the deleteCommandForRepositoriesDelete function.
+func TestDeleteCommandForRepositoriesDelete(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command deletes a repository."}
+	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command deletes a repository"}
 	aztestutils.BaseCommandTest(t, createCommandForRepositoryDelete, args, false, outputs)
+}
+
+// TestCliRepositoriesDeleteWithError tests the command for creating a repository with an error.
+func TestCliRepositoriesDeleteWithError(t *testing.T) {
+	tests := []string {
+		"terminal",
+		"json",
+	}
+	for _, outputType := range tests {
+		args := []string{"repositories", "delete", "--repositoryid", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", outputType}
+		outputs := []string{""}
+
+		v := viper.New()
+		v.Set(azconfigs.FlagName(flagPrefixPAP, flagSuffixPAPTarget), "localhost:9092")
+
+		depsMocks := azmocks.NewCliDependenciesMock()
+		cmd := createCommandForRepositoryDelete(depsMocks, v)
+		cmd.PersistentFlags().StringP(flagOutput, flagOutputShort, outputType, "output format")
+		cmd.PersistentFlags().BoolP(flagVerbose, flagVerboseShort, false, "true for verbose output")
+
+		papClient := azmocks.NewGrpcPAPClientMock()
+		papClient.On("DeleteRepository", mock.Anything, mock.Anything).Return(nil, azerrors.ErrClientParameter)
+
+		printerMock := azmocks.NewPrinterMock()
+		printerMock.On("Error", azerrors.ErrClientParameter).Return()
+
+		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
+		depsMocks.On("CreateGrpcPAPClient", mock.Anything).Return(papClient, nil)
+
+		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
+		printerMock.AssertCalled(t, "Error", azerrors.ErrClientParameter)
+	}
+}
+
+// TestCliRepositoriesDeleteWithSuccess tests the command for creating a repository with an error.
+func TestCliRepositoriesDeleteWithSuccess(t *testing.T) {
+	tests := []string {
+		"terminal",
+		"json",
+	}
+	for _, outputType := range tests {
+		args := []string{"repositories", "delete", "--repositoryid", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", outputType}
+		outputs := []string{""}
+
+		v := viper.New()
+		v.Set("output", outputType)
+		v.Set(azconfigs.FlagName(flagPrefixPAP, flagSuffixPAPTarget), "localhost:9092")
+
+		depsMocks := azmocks.NewCliDependenciesMock()
+		cmd := createCommandForRepositoryDelete(depsMocks, v)
+		cmd.PersistentFlags().StringP(flagOutput, flagOutputShort, outputType, "output format")
+		cmd.PersistentFlags().BoolP(flagVerbose, flagVerboseShort, false, "true for verbose output")
+
+		papClient := azmocks.NewGrpcPAPClientMock()
+		repository := &azmodels.Repository{
+			RepositoryID: "c3160a533ab24fbcb1eab7a09fd85f36",
+			AccountID: 581616507495,
+			Name: "materabranch",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		papClient.On("DeleteRepository", mock.Anything, mock.Anything).Return(repository, nil)
+
+		printerMock := azmocks.NewPrinterMock()
+		outputPrinter := map[string]any{ }
+
+		if outputType == "terminal" {
+			repositoryID := repository.RepositoryID
+			outputPrinter[repositoryID] = repository.Name
+		} else {
+			outputPrinter["repositories"] = []*azmodels.Repository{repository}
+		}
+		printerMock.On("Print", outputPrinter).Return()
+
+		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
+		depsMocks.On("CreateGrpcPAPClient", mock.Anything).Return(papClient, nil)
+
+		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
+		printerMock.AssertCalled(t, "Print", outputPrinter)
+	}
 }

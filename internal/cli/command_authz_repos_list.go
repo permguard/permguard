@@ -29,6 +29,7 @@ import (
 )
 
 const (
+	// commandNameForRepositoriesList is the command name for repositories list.
 	commandNameForRepositoriesList = "repositories.list"
 )
 

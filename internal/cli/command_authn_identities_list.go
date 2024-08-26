@@ -28,6 +28,7 @@ import (
 )
 
 const (
+	// commandNameForIdentitiesList is the command name for identities list.
 	commandNameForIdentitiesList = "identities.list"
 )
 

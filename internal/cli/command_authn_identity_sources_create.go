@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	// commandNameForIdentitySourcesCreate is the command name for identity sources create.
 	commandNameForIdentitySourcesCreate = "identitysources.create"
 )
 

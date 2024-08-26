@@ -29,6 +29,7 @@ import (
 )
 
 const (
+	// commandNameForIdentitySourcesDelete is the command name for identity sources delete.
 	commandNameForIdentitySourcesDelete = "identitysources.delete"
 )
 

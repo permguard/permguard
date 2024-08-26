@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	// commandNameForRepositoriesCreate is the command name for repositories create.
 	commandNameForRepositoriesCreate = "repositories.create"
 )
 

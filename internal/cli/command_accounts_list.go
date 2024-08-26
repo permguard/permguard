@@ -28,6 +28,7 @@ import (
 )
 
 const (
+	// commandNameForAccountsList is the command name for accounts list.
 	commandNameForAccountsList = "accounts.list"
 )
 

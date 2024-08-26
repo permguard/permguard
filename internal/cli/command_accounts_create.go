@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	// commandNameForAccountsCreate is the command name for accounts create.
 	commandNameForAccountsCreate = "accounts.create"
 )
 

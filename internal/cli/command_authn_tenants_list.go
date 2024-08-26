@@ -28,6 +28,7 @@ import (
 )
 
 const (
+	// commandNameForTenantsList is the command name for tenants list.
 	commandNameForTenantsList = "tenants.list"
 )
 
