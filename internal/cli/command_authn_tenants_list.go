@@ -23,7 +23,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclients "github.com/permguard/permguard/internal/agents/clients"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
@@ -40,7 +39,7 @@ func runECommandForListTenants(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 		return ErrCommandSilent
 	}
 	aapTarget := ctx.GetAAPTarget()
-	client, err := aziclients.NewGrpcAAPClient(aapTarget)
+	client, err := deps.CreateGrpcAAPClient(aapTarget)
 	if err != nil {
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return ErrCommandSilent
