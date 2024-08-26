@@ -18,13 +18,112 @@ package cli
 
 import (
 	"testing"
+	"time"
+
+	"github.com/spf13/viper"
+	"github.com/stretchr/testify/mock"
 
 	aztestutils "github.com/permguard/permguard/internal/cli/testutils"
+	azmocks "github.com/permguard/permguard/internal/cli/testutils/mocks"
+	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azconfigs "github.com/permguard/permguard/pkg/configs"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
-// TestCreateCommandForIdentitySourceList tests the createCommandForIdentitySourceList function.
-func TestCreateCommandForIdentitySourceList(t *testing.T) {
+// TestListCommandForIdentitySourcesList tests the listCommandForIdentitySourcesList function.
+func TestListCommandForIdentitySourcesList(t *testing.T) {
 	args := []string{"-h"}
 	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command lists all identity sources."}
 	aztestutils.BaseCommandTest(t, createCommandForIdentitySourceList, args, false, outputs)
+}
+
+// TestCliIdentitySourcesListWithError tests the command for creating an identitysource with an error.
+func TestCliIdentitySourcesListWithError(t *testing.T) {
+	tests := []string{
+		"terminal",
+		"json",
+	}
+	for _, outputType := range tests {
+		args := []string{"identitysources", "list", "--identitysourceid", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", outputType}
+		outputs := []string{""}
+
+		v := viper.New()
+		v.Set(azconfigs.FlagName(flagPrefixAAP, flagSuffixAAPTarget), "localhost:9092")
+
+		depsMocks := azmocks.NewCliDependenciesMock()
+		cmd := createCommandForIdentitySourceList(depsMocks, v)
+		cmd.PersistentFlags().StringP(flagOutput, flagOutputShort, outputType, "output format")
+		cmd.PersistentFlags().BoolP(flagVerbose, flagVerboseShort, false, "true for verbose output")
+
+		aapClient := azmocks.NewGrpcAAPClientMock()
+		aapClient.On("FetchIdentitySourcesBy", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, azerrors.ErrClientParameter)
+
+		printerMock := azmocks.NewPrinterMock()
+		printerMock.On("Error", azerrors.ErrClientParameter).Return()
+
+		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
+		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
+
+		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
+		printerMock.AssertCalled(t, "Error", azerrors.ErrClientParameter)
+	}
+}
+
+// TestCliIdentitySourcesListWithSuccess tests the command for creating an identitysource with an error.
+func TestCliIdentitySourcesListWithSuccess(t *testing.T) {
+	tests := []string{
+		"terminal",
+		"json",
+	}
+	for _, outputType := range tests {
+		args := []string{"identitysources", "list", "--identitysourceid", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", outputType}
+		outputs := []string{""}
+
+		v := viper.New()
+		v.Set("output", outputType)
+		v.Set(azconfigs.FlagName(flagPrefixAAP, flagSuffixAAPTarget), "localhost:9092")
+
+		depsMocks := azmocks.NewCliDependenciesMock()
+		cmd := createCommandForIdentitySourceList(depsMocks, v)
+		cmd.PersistentFlags().StringP(flagOutput, flagOutputShort, outputType, "output format")
+		cmd.PersistentFlags().BoolP(flagVerbose, flagVerboseShort, false, "true for verbose output")
+
+		aapClient := azmocks.NewGrpcAAPClientMock()
+		identitysources := []azmodels.IdentitySource{
+			{
+				IdentitySourceID:  "c3160a533ab24fbcb1eab7a09fd85f36",
+				AccountID: 581616507495,
+				Name:      "materabranch1",
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+			{
+				IdentitySourceID:  "f73d25ae7b1f4f66807c3face0fee0f3",
+				AccountID: 581616507495,
+				Name:      "materabranch2",
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+		}
+		aapClient.On("FetchIdentitySourcesBy", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(identitysources, nil)
+
+		printerMock := azmocks.NewPrinterMock()
+		outputPrinter := map[string]any{}
+
+		if outputType == "terminal" {
+			for _, identitysource := range identitysources {
+				identitysourceID := identitysource.IdentitySourceID
+				outputPrinter[identitysourceID] = identitysource.Name
+			}
+		} else {
+			outputPrinter["identity_sources"] = identitysources
+		}
+		printerMock.On("Print", outputPrinter).Return()
+
+		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
+		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
+
+		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
+		printerMock.AssertCalled(t, "Print", outputPrinter)
+	}
 }
