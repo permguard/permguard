@@ -35,7 +35,7 @@ func createCommandForAuthN(deps azcli.CLIDependenciesProvider, v *viper.Viper) *
 	command := &cobra.Command{
 		Use:   "authn",
 		Short: "Manage Tenants and Identities",
-		Long:  fmt.Sprintf(cliLongTemplate, `This command manages tenants and identities.`),
+		Long:  fmt.Sprintf(cliLongTemplate, `This command enables managament of tenants and identities.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForAuthN(cmd)
 		},
