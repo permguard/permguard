@@ -49,6 +49,16 @@ func (m *CliDependenciesMock) CreateGrpcAAPClient(aapTarget string) (azclients.G
 	return r0, args.Error(1)
 }
 
+// CreateGrpcPAPClient creates a new gRPC PAP client.
+func (m *CliDependenciesMock) CreateGrpcPAPClient(papTarget string) (azclients.GrpcPAPClient, error) {
+	args := m.Called(papTarget)
+	var r0 azclients.GrpcPAPClient
+	if val, ok := args.Get(0).(azclients.GrpcPAPClient); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
+}
+
 // NewCliDependenciesMock creates a new CliDependenciesMock.
 func NewCliDependenciesMock() *CliDependenciesMock {
 	return &CliDependenciesMock{}

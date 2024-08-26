@@ -59,7 +59,7 @@ func runECommandForDeleteRepository(deps azcli.CliDependenciesProvider, cmd *cob
 		repositoryName := repository.Name
 		output[repositoryID] = repositoryName
 	} else if ctx.IsJSONOutput() {
-		output["repository"] = []*azmodels.Repository{repository}
+		output["repositories"] = []*azmodels.Repository{repository}
 	}
 	printer.Print(output)
 	return nil

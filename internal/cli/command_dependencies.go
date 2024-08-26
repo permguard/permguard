@@ -32,9 +32,14 @@ func (c *cliDependencies) CreatePrinter(verbose bool, output string) (azcli.CliP
 	return printer, err
 }
 
-// CreateContext creates a new context.
+// CreateGrpcAAPClient creates a new gRPC client for the AAP service.
 func (c *cliDependencies) CreateGrpcAAPClient(aapTarget string) (azclients.GrpcAAPClient, error) {
 	return aziclients.NewGrpcAAPClient(aapTarget)
+}
+
+// CreateGrpcPAPClient creates a new gRPC client for the PAP service.
+func (c *cliDependencies) CreateGrpcPAPClient(aapTarget string) (azclients.GrpcPAPClient, error) {
+	return aziclients.NewGrpcPAPClient(aapTarget)
 }
 
 // NewCliDependenciesProvider creates a new CliDependenciesProvider.
