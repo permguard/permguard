@@ -39,7 +39,9 @@ func BaseCommandTest(t *testing.T, cmdFunc func(azcli.CliDependenciesProvider, *
 
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
-	cmd.SetArgs(args)
+	if len(args) > 0 {
+		cmd.SetArgs(args)
+	}
 
 	err := cmd.Execute()
 	if hasError {
