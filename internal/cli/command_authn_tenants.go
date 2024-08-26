@@ -69,7 +69,7 @@ func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		tenantName := tenant.Name
 		output[tenantID] = tenantName
 	} else if ctx.IsJSONOutput() {
-		output["tenant"] = []*azmodels.Tenant{tenant}
+		output["tenants"] = []*azmodels.Tenant{tenant}
 	}
 	printer.Print(output)
 	return nil
