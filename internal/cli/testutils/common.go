@@ -29,7 +29,7 @@ import (
 )
 
 // BaseCommandTest tests the command.
-func BaseCommandTest(t *testing.T, cmdFunc func(azcli.CLIDependenciesProvider, *viper.Viper)(*cobra.Command), args []string, outputs []string) () {
+func BaseCommandTest(t *testing.T, cmdFunc func(azcli.CLIDependenciesProvider, *viper.Viper)(*cobra.Command), args []string, hasError bool, outputs []string) () {
 	assert := assert.New(t)
 	v := viper.New()
 	depsMocks := azmocks.NewCLIDependenciesMock()
@@ -41,8 +41,12 @@ func BaseCommandTest(t *testing.T, cmdFunc func(azcli.CLIDependenciesProvider, *
 	cmd.SetArgs(args)
 
 	err := cmd.Execute()
+	if hasError {
+		assert.NotNil(err, "err should not be nil")
+	} else {
+		assert.Nil(err, "err should be nil")
+	}
 
-	assert.NoError(err)
 	output := buf.String()
 	for _, out := range outputs {
 		assert.Contains(output, out)

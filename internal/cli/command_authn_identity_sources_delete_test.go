@@ -26,5 +26,5 @@ import (
 func TestCreateCommandForIdentitySourceDelete(t *testing.T) {
 	args := []string{"-h"}
 	outputs := []string{"The official PermGuard CLI", "Copyright © 2022 Nitro Agility S.r.l.", "This command deletes an identity source."}
-	aztestutils.BaseCommandTest(t, createCommandForIdentitySourceDelete, args, outputs)
+	aztestutils.BaseCommandTest(t, createCommandForIdentitySourceDelete, args, false, outputs)
 }

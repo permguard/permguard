@@ -26,12 +26,12 @@ import (
 func TestCreateCommandForAccountsCreate(t *testing.T) {
 	args := []string{"-h"}
 	outputs := []string{"The official PermGuard CLI", "Copyright © 2022 Nitro Agility S.r.l.", "This command creates an account."}
-	aztestutils.BaseCommandTest(t, createCommandForAccountCreate, args, outputs)
+	aztestutils.BaseCommandTest(t, createCommandForAccountCreate, args, false, outputs)
 }
 
 // TestCliAccountsCreateWithAnError tests the command for creating an account with an error.
 func TestCliAccountsCreateWithAnError(t *testing.T) {
 	args := []string{"accounts", "create", "--name", "mycorporate"}
 	outputs := []string{"Usage"}
-	aztestutils.BaseCommandTest(t, createCommandForAccountCreate, args, outputs)
+	aztestutils.BaseCommandTest(t, createCommandForAccountCreate, args, true, outputs)
 }
