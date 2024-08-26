@@ -28,7 +28,8 @@ import (
 	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
-func BaseCommandTest(t *testing.T, cmdFunc func(azcli.CLIDependenciesProvider, *viper.Viper)(*cobra.Command), outputs []string) () {
+// BaseCommandTest tests the command.
+func BaseCommandTest(t *testing.T, cmdFunc func(azcli.CLIDependenciesProvider, *viper.Viper)(*cobra.Command), args []string, outputs []string) () {
 	assert := assert.New(t)
 	v := viper.New()
 	depsMocks := azmocks.NewCLIDependenciesMock()
@@ -37,7 +38,7 @@ func BaseCommandTest(t *testing.T, cmdFunc func(azcli.CLIDependenciesProvider, *
 
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
-	cmd.SetArgs([]string{"-h"})
+	cmd.SetArgs(args)
 
 	err := cmd.Execute()
 

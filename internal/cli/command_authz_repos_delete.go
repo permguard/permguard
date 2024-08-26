@@ -37,7 +37,7 @@ const (
 func runECommandForDeleteRepository(cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := createContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageInvalidInputs)
+		color.Red(errorMessageCLIBug)
 		return ErrCommandSilent
 	}
 	papTarget := ctx.GetPAPTarget()

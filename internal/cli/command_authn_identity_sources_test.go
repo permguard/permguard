@@ -24,6 +24,7 @@ import (
 
 // TestUpdateCommandForIdentitiesSources tests the updateCommandForIdentitiesSources function.
 func TestUpdateCommandForIdentitiesSources(t *testing.T) {
+	args := []string{"-h"}
 	outputs := []string{"The official PermGuard CLI", "Copyright © 2022 Nitro Agility S.r.l.", "This command manages identity sources."}
-	aztestutils.BaseCommandTest(t, createCommandForIdentitySources, outputs)
+	aztestutils.BaseCommandTest(t, createCommandForIdentitySources, args, outputs)
 }

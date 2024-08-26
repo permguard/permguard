@@ -37,7 +37,7 @@ func runECommandForUpsertAccount(deps azcli.CLIDependenciesProvider, cmd *cobra.
 	}
 	ctx, printer, err := createContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageInvalidInputs)
+		color.Red(errorMessageCLIBug)
 		return ErrCommandSilent
 	}
 	aapTarget := ctx.GetAAPTarget()

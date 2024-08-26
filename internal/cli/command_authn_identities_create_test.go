@@ -24,6 +24,7 @@ import (
 
 // TestCreateCommandForIdentityCreate tests the createCommandForIdentityCreate function.
 func TestCreateCommandForIdentityCreate(t *testing.T) {
+	args := []string{"-h"}
 	outputs := []string{"The official PermGuard CLI", "Copyright © 2022 Nitro Agility S.r.l.", "This command creates an identity."}
-	aztestutils.BaseCommandTest(t, createCommandForIdentityCreate, outputs)
+	aztestutils.BaseCommandTest(t, createCommandForIdentityCreate, args, outputs)
 }

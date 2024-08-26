@@ -24,6 +24,7 @@ import (
 
 // TestCreateCommandForIdentityDelete tests the createCommandForIdentityDelete function.
 func TestCreateCommandForIdentityDelete(t *testing.T) {
+	args := []string{"-h"}
 	outputs := []string{"The official PermGuard CLI", "Copyright © 2022 Nitro Agility S.r.l.", "This command deletes an identity."}
-	aztestutils.BaseCommandTest(t, createCommandForIdentityDelete, outputs)
+	aztestutils.BaseCommandTest(t, createCommandForIdentityDelete, args, outputs)
 }
