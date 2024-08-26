@@ -23,7 +23,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclients "github.com/permguard/permguard/internal/agents/clients"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
@@ -42,7 +41,7 @@ func runECommandForUpsertRepository(deps azcli.CliDependenciesProvider, cmd *cob
 		return ErrCommandSilent
 	}
 	papTarget := ctx.GetPAPTarget()
-	client, err := aziclients.NewGrpcPAPClient(papTarget)
+	client, err := deps.CreateGrpcPAPClient(papTarget)
 	if err != nil {
 		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
 		return ErrCommandSilent
@@ -70,7 +69,7 @@ func runECommandForUpsertRepository(deps azcli.CliDependenciesProvider, cmd *cob
 		repositoryName := repository.Name
 		output[repositoryID] = repositoryName
 	} else if ctx.IsJSONOutput() {
-		output["repository"] = []*azmodels.Repository{repository}
+		output["repositories"] = []*azmodels.Repository{repository}
 	}
 	printer.Print(output)
 	return nil

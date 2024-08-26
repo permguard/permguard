@@ -27,8 +27,10 @@ import (
 type CliDependenciesProvider interface {
 	// CreatePrinter creates a new printer.
 	CreatePrinter(verbose bool, output string) (CliPrinter, error)
-	// CreateContext creates a new context.
+	// CreateGrpcAAPClient creates a new gRPC client for the AAP service.
 	CreateGrpcAAPClient(aapTarget string) (azclients.GrpcAAPClient, error)
+	// CreateGrpcPAPClient creates a new gRPC client for the PAP service.
+	CreateGrpcPAPClient(aapTarget string) (azclients.GrpcPAPClient, error)
 }
 
 // CliInitializer is the cli initializer.
