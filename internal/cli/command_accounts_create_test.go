@@ -40,64 +40,79 @@ func TestCreateCommandForAccountsCreate(t *testing.T) {
 
 // TestCliAccountsCreateWithError tests the command for creating an account with an error.
 func TestCliAccountsCreateWithError(t *testing.T) {
-	args := []string{"accounts", "create", "--name", "mycorporate", "--output", "terminal"}
-	outputs := []string{""}
+	tests := []string {
+		"terminal",
+		"json",
+	}
+	for _, outputType := range tests {
+		args := []string{"accounts", "create", "--name", "mycorporate", "--output", outputType}
+		outputs := []string{""}
 
-	v := viper.New()
-	v.Set("output", "terminal")
-	v.Set(azconfigs.FlagName(flagPrefixAAP, flagSuffixAAPTarget), "localhost:9092")
+		v := viper.New()
+		v.Set(azconfigs.FlagName(flagPrefixAAP, flagSuffixAAPTarget), "localhost:9092")
 
-	depsMocks := azmocks.NewCliDependenciesMock()
-	cmd := createCommandForAccountCreate(depsMocks, v)
-	cmd.PersistentFlags().StringP(flagOutput, flagOutputShort, "terminal", "output format")
-	cmd.PersistentFlags().BoolP(flagVerbose, flagVerboseShort, false, "true for verbose output")
+		depsMocks := azmocks.NewCliDependenciesMock()
+		cmd := createCommandForAccountCreate(depsMocks, v)
+		cmd.PersistentFlags().StringP(flagOutput, flagOutputShort, outputType, "output format")
+		cmd.PersistentFlags().BoolP(flagVerbose, flagVerboseShort, false, "true for verbose output")
 
-	aapClient := azmocks.NewGrpcAAPClientMock()
-	aapClient.On("CreateAccount", mock.Anything).Return(nil, azerrors.ErrClientParameter)
+		aapClient := azmocks.NewGrpcAAPClientMock()
+		aapClient.On("CreateAccount", mock.Anything).Return(nil, azerrors.ErrClientParameter)
 
-	printerMock := azmocks.NewPrinterMock()
-	printerMock.On("Error", azerrors.ErrClientParameter).Return()
+		printerMock := azmocks.NewPrinterMock()
+		printerMock.On("Error", azerrors.ErrClientParameter).Return()
 
-	depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
-	depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
+		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
+		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
 
-	aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
-	printerMock.AssertCalled(t, "Error", azerrors.ErrClientParameter)
-
+		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
+		printerMock.AssertCalled(t, "Error", azerrors.ErrClientParameter)
+	}
 }
 
 // TestCliAccountsCreateWithSuccess tests the command for creating an account with an error.
 func TestCliAccountsCreateWithSuccess(t *testing.T) {
-	args := []string{"accounts", "create", "--name", "mycorporate", "--output", "terminal"}
-	outputs := []string{""}
-
-	v := viper.New()
-	v.Set("output", "terminal")
-	v.Set(azconfigs.FlagName(flagPrefixAAP, flagSuffixAAPTarget), "localhost:9092")
-
-	depsMocks := azmocks.NewCliDependenciesMock()
-	cmd := createCommandForAccountCreate(depsMocks, v)
-	cmd.PersistentFlags().StringP(flagOutput, flagOutputShort, "terminal", "output format")
-	cmd.PersistentFlags().BoolP(flagVerbose, flagVerboseShort, false, "true for verbose output")
-
-	aapClient := azmocks.NewGrpcAAPClientMock()
-	account := &azmodels.Account{
-		AccountID: 581616507495,
-		Name: "mycorporate",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+	tests := []string {
+		"terminal",
+		"json",
 	}
-	aapClient.On("CreateAccount", mock.Anything).Return(account, nil)
+	for _, outputType := range tests {
+		args := []string{"accounts", "create", "--name", "mycorporate", "--output", outputType}
+		outputs := []string{""}
 
-	printerMock := azmocks.NewPrinterMock()
-	outputPrinter := map[string]any{ }
-	accountID := fmt.Sprintf("%d", account.AccountID)
-	outputPrinter[accountID] = account.Name
-	printerMock.On("Print", outputPrinter).Return()
+		v := viper.New()
+		v.Set("output", outputType)
+		v.Set(azconfigs.FlagName(flagPrefixAAP, flagSuffixAAPTarget), "localhost:9092")
 
-	depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
-	depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
+		depsMocks := azmocks.NewCliDependenciesMock()
+		cmd := createCommandForAccountCreate(depsMocks, v)
+		cmd.PersistentFlags().StringP(flagOutput, flagOutputShort, outputType, "output format")
+		cmd.PersistentFlags().BoolP(flagVerbose, flagVerboseShort, false, "true for verbose output")
 
-	aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
-	printerMock.AssertCalled(t, "Print", outputPrinter)
+		aapClient := azmocks.NewGrpcAAPClientMock()
+		account := &azmodels.Account{
+			AccountID: 581616507495,
+			Name: "mycorporate",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		aapClient.On("CreateAccount", mock.Anything).Return(account, nil)
+
+		printerMock := azmocks.NewPrinterMock()
+		outputPrinter := map[string]any{ }
+
+		if outputType == "terminal" {
+			accountID := fmt.Sprintf("%d", account.AccountID)
+			outputPrinter[accountID] = account.Name
+		} else {
+			outputPrinter["accounts"] = []*azmodels.Account{account}
+		}
+		printerMock.On("Print", outputPrinter).Return()
+
+		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
+		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
+
+		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
+		printerMock.AssertCalled(t, "Print", outputPrinter)
+	}
 }
