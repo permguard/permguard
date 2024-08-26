@@ -34,7 +34,7 @@ type AAPService interface {
 	UpdateAccount(account *azmodels.Account) (*azmodels.Account, error)
 	// DeleteAccount deletes an account.
 	DeleteAccount(accountID int64) (*azmodels.Account, error)
-	// FetchAccounts returns all the accounts.
+	// FetchAccounts returns all accounts.
 	FetchAccounts(page int32, pageSize int32, filter map[string]any) ([]azmodels.Account, error)
 
 	// CreateIdentitySource creates a new identity source.
@@ -43,7 +43,7 @@ type AAPService interface {
 	UpdateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error)
 	// DeleteIdentitySource deletes an identity source.
 	DeleteIdentitySource(accountID int64, identitySourceID string) (*azmodels.IdentitySource, error)
-	// FetchIdentitySources returns all the identity sources.
+	// FetchIdentitySources returns all identity sources.
 	FetchIdentitySources(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error)
 
 	// CreateIdentity creates a new identity.
@@ -52,7 +52,7 @@ type AAPService interface {
 	UpdateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error)
 	// DeleteIdentity deletes an identity.
 	DeleteIdentity(accountID int64, identityID string) (*azmodels.Identity, error)
-	// FetchIdentities returns all the identities.
+	// FetchIdentities returns all identities.
 	FetchIdentities(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Identity, error)
 
 	// CreateTenant creates a new tenant.
@@ -61,7 +61,7 @@ type AAPService interface {
 	UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error)
 	// DeleteTenant deletes a tenant.
 	DeleteTenant(accountID int64, tenantID string) (*azmodels.Tenant, error)
-	// FetchTenants returns all the tenants.
+	// FetchTenants returns all tenants.
 	FetchTenants(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Tenant, error)
 }
 
@@ -107,7 +107,7 @@ func (s *V1AAPServer) DeleteAccount(ctx context.Context, accountRequest *Account
 	return MapAgentAccountToGrpcAccountResponse(account)
 }
 
-// FetchAccounts returns all the accounts.
+// FetchAccounts returns all accounts.
 func (s *V1AAPServer) FetchAccounts(accountRequest *AccountFetchRequest, stream grpc.ServerStreamingServer[AccountResponse]) error {
 	fields := map[string]any{}
 	if accountRequest.AccountID != nil {
@@ -166,7 +166,7 @@ func (s *V1AAPServer) DeleteIdentitySource(ctx context.Context, identitySourceRe
 	return MapAgentIdentitySourceToGrpcIdentitySourceResponse(identitySource)
 }
 
-// FetchIdentitySources returns all the identity sources.
+// FetchIdentitySources returns all identity sources.
 func (s *V1AAPServer) FetchIdentitySources(ctx context.Context, identitySourceRequest *IdentitySourceFetchRequest) (*IdentitySourceListResponse, error) {
 	fields := map[string]any{}
 	fields[azmodels.FieldIdentitySourceAccountID] = identitySourceRequest.AccountID
@@ -228,7 +228,7 @@ func (s *V1AAPServer) DeleteIdentity(ctx context.Context, identityRequest *Ident
 	return MapAgentIdentityToGrpcIdentityResponse(identity)
 }
 
-// FetchIdentities returns all the identities.
+// FetchIdentities returns all identities.
 func (s *V1AAPServer) FetchIdentities(ctx context.Context, identityRequest *IdentityFetchRequest) (*IdentityListResponse, error) {
 	fields := map[string]any{}
 	fields[azmodels.FieldIdentityAccountID] = identityRequest.AccountID
@@ -296,7 +296,7 @@ func (s *V1AAPServer) DeleteTenant(ctx context.Context, tenantRequest *TenantDel
 	return MapAgentTenantToGrpcTenantResponse(tenant)
 }
 
-// FetchTenants returns all the tenants.
+// FetchTenants returns all tenants.
 func (s *V1AAPServer) FetchTenants(ctx context.Context, tenantRequest *TenantFetchRequest) (*TenantListResponse, error) {
 	fields := map[string]any{}
 	fields[azmodels.FieldTenantAccountID] = tenantRequest.AccountID

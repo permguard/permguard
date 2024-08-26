@@ -20,7 +20,7 @@ import (
 	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
 )
 
-// Serviceable must be implemented by all the services.
+// Serviceable must be implemented by all services.
 type Serviceable interface {
 	// GetService returns the service kind.
 	GetService() ServiceKind

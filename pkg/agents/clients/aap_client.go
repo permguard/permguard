@@ -42,7 +42,7 @@ type GrpcAAPClient interface {
 	UpdateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error)
 	// DeleteIdentity deletes an identity.
 	DeleteIdentity(accountID int64, identityID string) (*azmodels.Identity, error)
-	// FetchIdentities returns all the identities.
+	// FetchIdentities returns all identities.
 	FetchIdentities(page int32, pageSize int32, accountID int64) ([]azmodels.Identity, error)
 	// FetchIdentitiesByID returns all identities filtering by identity id.
 	FetchIdentitiesByID(page int32, pageSize int32, accountID int64, identityID string) ([]azmodels.Identity, error)
@@ -56,7 +56,7 @@ type GrpcAAPClient interface {
 	UpdateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error)
 	// DeleteIdentitySource deletes an identity source.
 	DeleteIdentitySource(accountID int64, identitySourceID string) (*azmodels.IdentitySource, error)
-	// FetchIdentitySources returns all the identity sources.
+	// FetchIdentitySources returns all identity sources.
 	FetchIdentitySources(page int32, pageSize int32, accountID int64) ([]azmodels.IdentitySource, error)
 	// FetchIdentitySourcesByID returns all identity sources filtering by identity source id.
 	FetchIdentitySourcesByID(page int32, pageSize int32, accountID int64, identitySourceID string) ([]azmodels.IdentitySource, error)
@@ -70,7 +70,7 @@ type GrpcAAPClient interface {
 	UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error)
 	// DeleteTenant deletes a tenant.
 	DeleteTenant(accountID int64, tenantID string) (*azmodels.Tenant, error)
-	// FetchTenants returns all the tenants.
+	// FetchTenants returns all tenants.
 	FetchTenants(page int32, pageSize int32, accountID int64) ([]azmodels.Tenant, error)
 	// FetchTenantsByID returns all tenants filtering by tenant id.
 	FetchTenantsByID(page int32, pageSize int32, accountID int64, tenantID string) ([]azmodels.Tenant, error)

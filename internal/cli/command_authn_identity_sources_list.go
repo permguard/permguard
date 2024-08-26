@@ -73,7 +73,7 @@ func createCommandForIdentitySourceList(deps azcli.CliDependenciesProvider, v *v
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List identity sources",
-		Long: fmt.Sprintf(cliLongTemplate, `This command lists all the identity sources.
+		Long: fmt.Sprintf(cliLongTemplate, `This command lists all identity sources.
 
 Examples:
   # list all identity sources for account 301990992055

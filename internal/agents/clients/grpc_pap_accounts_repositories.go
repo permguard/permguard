@@ -70,7 +70,7 @@ func (c *GrpcPAPClient) DeleteRepository(accountID int64, repositoryID string) (
 	return azapiv1pap.MapGrpcRepositoryResponseToAgentRepository(repository)
 }
 
-// FetchRepositories returns all the repositories.
+// FetchRepositories returns all repositories.
 func (c *GrpcPAPClient) FetchRepositories(page int32, pageSize int32, accountID int64) ([]azmodels.Repository, error) {
 	return c.FetchRepositoriesBy(page, pageSize, accountID, "", "")
 }

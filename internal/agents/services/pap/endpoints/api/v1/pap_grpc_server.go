@@ -78,7 +78,7 @@ func (s V1PAPServer) DeleteRepository(ctx context.Context, repositoryRequest *Re
 	return MapAgentRepositoryToGrpcRepositoryResponse(repository)
 }
 
-// FetchRepositories returns all the repositories.
+// FetchRepositories returns all repositories.
 func (s V1PAPServer) FetchRepositories(ctx context.Context, repositoryRequest *RepositoryFetchRequest) (*RepositoryListResponse, error) {
 	fields := map[string]any{}
 	fields[azmodels.FieldRepositoryAccountID] = repositoryRequest.AccountID

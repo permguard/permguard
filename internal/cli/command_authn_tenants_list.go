@@ -62,7 +62,7 @@ func runECommandForListTenants(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 			output[tenantID] = tenantName
 		}
 	} else if ctx.IsJSONOutput() {
-		output["tenant"] = tenants
+		output["tenants"] = tenants
 	}
 	printer.Print(output)
 	return nil
@@ -73,7 +73,7 @@ func createCommandForTenantList(deps azcli.CliDependenciesProvider, v *viper.Vip
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List tenants",
-		Long: fmt.Sprintf(cliLongTemplate, `This command lists all the tenants.
+		Long: fmt.Sprintf(cliLongTemplate, `This command lists all tenants.
 
 Examples:
   # list all tenants for account 301990992055

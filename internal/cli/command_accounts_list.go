@@ -73,7 +73,7 @@ func createCommandForAccountList(deps azcli.CliDependenciesProvider, v *viper.Vi
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List accounts",
-		Long: fmt.Sprintf(cliLongTemplate, `This command lists all the accounts.
+		Long: fmt.Sprintf(cliLongTemplate, `This command lists all accounts.
 
 Examples:
   # list all accounts

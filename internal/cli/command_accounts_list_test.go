@@ -24,23 +24,23 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/mock"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	azconfigs "github.com/permguard/permguard/pkg/configs"
 	aztestutils "github.com/permguard/permguard/internal/cli/testutils"
 	azmocks "github.com/permguard/permguard/internal/cli/testutils/mocks"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azconfigs "github.com/permguard/permguard/pkg/configs"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
 // TestListCommandForAccountsList tests the listCommandForAccountsList function.
 func TestListCommandForAccountsList(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command lists all the accounts."}
+	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command lists all accounts."}
 	aztestutils.BaseCommandTest(t, createCommandForAccountList, args, false, outputs)
 }
 
 // TestCliAccountsListWithError tests the command for creating an account with an error.
 func TestCliAccountsListWithError(t *testing.T) {
-	tests := []string {
+	tests := []string{
 		"terminal",
 		"json",
 	}
@@ -72,7 +72,7 @@ func TestCliAccountsListWithError(t *testing.T) {
 
 // TestCliAccountsListWithSuccess tests the command for creating an account with an error.
 func TestCliAccountsListWithSuccess(t *testing.T) {
-	tests := []string {
+	tests := []string{
 		"terminal",
 		"json",
 	}
@@ -93,13 +93,13 @@ func TestCliAccountsListWithSuccess(t *testing.T) {
 		accounts := []azmodels.Account{
 			{
 				AccountID: 581616507495,
-				Name: "mycorporate1",
+				Name:      "mycorporate1",
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
 			},
 			{
 				AccountID: 581616507495,
-				Name: "mycorporate2",
+				Name:      "mycorporate2",
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
 			},
@@ -107,7 +107,7 @@ func TestCliAccountsListWithSuccess(t *testing.T) {
 		aapClient.On("FetchAccountsBy", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(accounts, nil)
 
 		printerMock := azmocks.NewPrinterMock()
-		outputPrinter := map[string]any{ }
+		outputPrinter := map[string]any{}
 
 		if outputType == "terminal" {
 			for _, account := range accounts {
