@@ -25,13 +25,13 @@ import (
 // TestCreateCommandForConfigAAPSet tests the createCommandForConfigAAPSet function.
 func TestCreateCommandForConfigAAPSet(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard CLI", "Copyright © 2022 Nitro Agility S.r.l.", "This command sets the aap gRPC target."}
+	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command sets the aap gRPC target."}
 	aztestutils.BaseCommandTest(t, createCommandForConfigAAPSet, args, false, outputs)
 }
 
 // TestCreateCommandForConfigPAPSet tests the createCommandForConfigPAPSet function.
 func TestCreateCommandForConfigPAPSet(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard CLI", "Copyright © 2022 Nitro Agility S.r.l.", "This command sets the pap gRPC target."}
+	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command sets the pap gRPC target."}
 	aztestutils.BaseCommandTest(t, createCommandForConfigPAPSet, args, false, outputs)
 }

@@ -33,10 +33,10 @@ const (
 )
 
 // runECommandForListRepositories runs the command for creating a repository.
-func runECommandForListRepositories(cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := createContextAndPrinter(cmd, v)
+func runECommandForListRepositories(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	papTarget := ctx.GetPAPTarget()
@@ -70,7 +70,7 @@ func runECommandForListRepositories(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // createCommandForRepositoryList creates a command for managing repositorylist.
-func createCommandForRepositoryList(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForRepositoryList(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List repositories",
@@ -85,7 +85,7 @@ Examples:
   permguard authz repos list --account 301990992055 --repositoryid 377532e1-befe-47cb-a55a-0a789c5ec8fd
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForListRepositories(cmd, v)
+			return runECommandForListRepositories(deps, cmd, v)
 		},
 	}
 	command.Flags().Int32P(flagCommonPage, flagCommonPageShort, 1, "page number")

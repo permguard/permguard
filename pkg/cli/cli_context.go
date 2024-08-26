@@ -17,14 +17,22 @@
 package cli
 
 import (
-	"testing"
-
-	aztestutils "github.com/permguard/permguard/internal/cli/testutils"
+	"github.com/spf13/viper"
 )
 
-// TestCreateCommandForRepositories tests the createCommandForRepositories function.
-func TestCreateCommandForRepositories(t *testing.T) {
-	args := []string{"-h"}
-	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command manages repositories."}
-	aztestutils.BaseCommandTest(t, createCommandForRepositories, args, false, outputs)
+type CliContext interface {
+	// GetViper returns the viper.
+	GetViper() *viper.Viper
+	// GetVerbose returns true if the verbose.
+	GetVerbose() bool
+	// GetOutput returns the output.
+	GetOutput() string
+	// IsTerminalOutput returns true if the output is json.
+	IsTerminalOutput() bool
+	// IsJSONOutput returns true if the output is json.
+	IsJSONOutput() bool
+	// GetAAPTarget returns the aap target.
+	GetAAPTarget() string
+	// GetPAPTarget returns the pap target.
+	GetPAPTarget() string
 }

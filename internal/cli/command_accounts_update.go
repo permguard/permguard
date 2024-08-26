@@ -31,12 +31,12 @@ const (
 )
 
 // runECommandForUpdateAccount runs the command for creating an account.
-func runECommandForUpdateAccount(deps azcli.CLIDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForUpdateAccount(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	return runECommandForUpsertAccount(deps, cmd, v, commandNameForAccountsUpdate, false)
 }
 
 // createCommandForAccountUpdate creates a command for managing accountupdate.
-func createCommandForAccountUpdate(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForAccountUpdate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update an account",

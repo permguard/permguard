@@ -34,10 +34,10 @@ const (
 )
 
 // runECommandForDeleteIdentity runs the command for creating an identity.
-func runECommandForDeleteIdentity(cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := createContextAndPrinter(cmd, v)
+func runECommandForDeleteIdentity(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	aapTarget := ctx.GetAAPTarget()
@@ -66,7 +66,7 @@ func runECommandForDeleteIdentity(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // createCommandForIdentityDelete creates a command for managing identitydelete.
-func createCommandForIdentityDelete(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForIdentityDelete(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete an identity",
@@ -77,7 +77,7 @@ Examples:
   permguard authn identities delete --account 301990992055 --identityid 19159d69-e902-418e-966a-148c4d5169a4
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForDeleteIdentity(cmd, v)
+			return runECommandForDeleteIdentity(deps, cmd, v)
 		},
 	}
 	command.Flags().String(flagIdentityID, "", "identity id")

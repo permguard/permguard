@@ -31,12 +31,12 @@ const (
 )
 
 // runECommandForCreateAccount runs the command for creating an account.
-func runECommandForCreateAccount(deps azcli.CLIDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForCreateAccount(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	return runECommandForUpsertAccount(deps, cmd, v, commandNameForAccountsCreate, true)
 }
 
 // createCommandForAccountCreate creates a command for managing accountcreate.
-func createCommandForAccountCreate(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForAccountCreate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create an account",

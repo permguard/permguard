@@ -36,10 +36,10 @@ const (
 )
 
 // runECommandForCreateIdentity runs the command for creating an identity.
-func runECommandForUpsertIdentity(cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
-	ctx, printer, err := createContextAndPrinter(cmd, v)
+func runECommandForUpsertIdentity(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	aapTarget := ctx.GetAAPTarget()
@@ -86,7 +86,7 @@ func runECommandForIdentities(cmd *cobra.Command, args []string) error {
 }
 
 // createCommandForIdentities creates a command for managing identities.
-func createCommandForIdentities(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForIdentities(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "identities",
 		Short: "Manage Identities",

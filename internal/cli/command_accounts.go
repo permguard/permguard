@@ -30,14 +30,14 @@ import (
 )
 
 // runECommandForUpsertAccount runs the command for creating or updating an account.
-func runECommandForUpsertAccount(deps azcli.CLIDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+func runECommandForUpsertAccount(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
 	if deps == nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
-	ctx, printer, err := createContextAndPrinter(cmd, v)
+	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	aapTarget := ctx.GetAAPTarget()
@@ -79,7 +79,7 @@ func runECommandForAccounts(cmd *cobra.Command, args []string) error {
 }
 
 // createCommandForAccounts creates a command for managing accounts.
-func createCommandForAccounts(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForAccounts(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "accounts",
 		Short: "Manage Accounts",

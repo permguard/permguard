@@ -25,6 +25,6 @@ import (
 // TestUpdateCommandForRepositoryUpdate tests the updateCommandForRepositoryUpdate function.
 func TestUpdateCommandForRepositoryUpdate(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard CLI", "Copyright © 2022 Nitro Agility S.r.l.", "This command updates a repository."}
+	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command updates a repository."}
 	aztestutils.BaseCommandTest(t, createCommandForRepositoryUpdate, args, false, outputs)
 }

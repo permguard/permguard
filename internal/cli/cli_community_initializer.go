@@ -18,15 +18,15 @@ func NewCommunityCliInitializer() (*CommunityCliInitializer, error) {
 // GetCliInfo returns the infos of the cli.
 func (s *CommunityCliInitializer) GetCliInfo() azcli.CliInfo {
 	return azcli.CliInfo{
-		Name:  "Community CLI",
-		Use:   "PermGuard CLI",
-		Short: "The official PermGuard© CLI",
+		Name:  "Community Cli",
+		Use:   "PermGuard Cli",
+		Short: "The official PermGuard© Cli",
 		Long:  cliLongTemplate,
 	}
 }
 
 // GetCliCommands returns commands.
-func (s *CommunityCliInitializer) GetCliCommands(deps azcli.CLIDependenciesProvider, v *viper.Viper) ([]*cobra.Command, error) {
+func (s *CommunityCliInitializer) GetCliCommands(deps azcli.CliDependenciesProvider, v *viper.Viper) ([]*cobra.Command, error) {
 	accountsCmd := createCommandForAccounts(deps, v)
 	authnCmd := createCommandForAuthN(deps, v)
 	authzCmd := createCommandForAuthZ(deps, v)

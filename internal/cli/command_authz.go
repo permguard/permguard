@@ -31,7 +31,7 @@ func runECommandForAuthZ(cmd *cobra.Command) error {
 }
 
 // createCommandForAuthZ for managing authz.
-func createCommandForAuthZ(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForAuthZ(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "authz",
 		Short: fmt.Sprintf(cliLongTemplate, "Manage Repositories and Trusted Delegations"),

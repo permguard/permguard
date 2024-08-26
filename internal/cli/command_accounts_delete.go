@@ -34,10 +34,10 @@ const (
 )
 
 // runECommandForDeleteAccount runs the command for creating an account.
-func runECommandForDeleteAccount(cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := createContextAndPrinter(cmd, v)
+func runECommandForDeleteAccount(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	aapTarget := ctx.GetAAPTarget()
@@ -64,7 +64,7 @@ func runECommandForDeleteAccount(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // createCommandForAccountDelete creates a command for managing accountdelete.
-func createCommandForAccountDelete(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForAccountDelete(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete an account",
@@ -75,7 +75,7 @@ Examples:
   permguard accounts delete --account 301990992055
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForDeleteAccount(cmd, v)
+			return runECommandForDeleteAccount(deps, cmd, v)
 		},
 	}
 	command.Flags().Int64(flagCommonAccountID, 0, "account id")

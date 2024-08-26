@@ -33,10 +33,10 @@ const (
 )
 
 // runECommandForListIdentities runs the command for creating an identity.
-func runECommandForListIdentities(cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := createContextAndPrinter(cmd, v)
+func runECommandForListIdentities(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	aapTarget := ctx.GetAAPTarget()
@@ -72,7 +72,7 @@ func runECommandForListIdentities(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // createCommandForIdentityList creates a command for managing identitylist.
-func createCommandForIdentityList(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForIdentityList(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List identities",
@@ -87,7 +87,7 @@ Examples:
   permguard authn identities list --account 301990992055 --identityid 377532e1-befe-47cb-a55a-0a789c5ec8fd
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForListIdentities(cmd, v)
+			return runECommandForListIdentities(deps, cmd, v)
 		},
 	}
 	command.Flags().Int32P(flagCommonPage, flagCommonPageShort, 1, "page number")

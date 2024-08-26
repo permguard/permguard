@@ -35,10 +35,10 @@ const (
 )
 
 // runECommandForCreateIdentitySource runs the command for creating an identity source.
-func runECommandForUpsertIdentitySource(cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
-	ctx, printer, err := createContextAndPrinter(cmd, v)
+func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	aapTarget := ctx.GetAAPTarget()
@@ -82,7 +82,7 @@ func runECommandForIdentitySources(cmd *cobra.Command, args []string) error {
 }
 
 // createCommandForIdentitySources creates a command for managing identity sources.
-func createCommandForIdentitySources(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForIdentitySources(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "identitysources",
 		Short: "Manage Identity Sources",

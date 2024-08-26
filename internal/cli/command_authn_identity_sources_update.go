@@ -31,12 +31,12 @@ const (
 )
 
 // runECommandForUpdateIdentitySource runs the command for creating an identity source.
-func runECommandForUpdateIdentitySource(cmd *cobra.Command, v *viper.Viper) error {
-	return runECommandForUpsertIdentitySource(cmd, v, commandNameForIdentitySourcesUpdate, false)
+func runECommandForUpdateIdentitySource(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	return runECommandForUpsertIdentitySource(deps, cmd, v, commandNameForIdentitySourcesUpdate, false)
 }
 
 // createCommandForIdentitySourceUpdate creates a command for managing identity source update.
-func createCommandForIdentitySourceUpdate(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForIdentitySourceUpdate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update an identity source",
@@ -47,7 +47,7 @@ Examples:
   permguard authn identitysources update --account 301990992055 --identitysourceid 19159d69-e902-418e-966a-148c4d5169a4 --name permguard
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForUpdateIdentitySource(cmd, v)
+			return runECommandForUpdateIdentitySource(deps, cmd, v)
 		},
 	}
 	command.Flags().String(flagIdentitySourceID, "", "identity source id")

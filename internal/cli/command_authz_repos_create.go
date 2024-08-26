@@ -31,12 +31,12 @@ const (
 )
 
 // runECommandForCreateRepository runs the command for creating a repository.
-func runECommandForCreateRepository(cmd *cobra.Command, v *viper.Viper) error {
-	return runECommandForUpsertRepository(cmd, v, commandNameForRepositoriesCreate, true)
+func runECommandForCreateRepository(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	return runECommandForUpsertRepository(deps, cmd, v, commandNameForRepositoriesCreate, true)
 }
 
 // createCommandForRepositoryCreate creates a command for managing repositorycreate.
-func createCommandForRepositoryCreate(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForRepositoryCreate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create a repository",
@@ -47,7 +47,7 @@ Examples:
   permguard authz repos create --account 301990992055 --name repository1
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForCreateRepository(cmd, v)
+			return runECommandForCreateRepository(deps, cmd, v)
 		},
 	}
 	command.Flags().String(flagCommonName, "", "repository name")

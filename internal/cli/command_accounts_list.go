@@ -33,10 +33,10 @@ const (
 )
 
 // runECommandForListAccounts runs the command for creating an account.
-func runECommandForListAccounts(cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := createContextAndPrinter(cmd, v)
+func runECommandForListAccounts(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	aapTarget := ctx.GetAAPTarget()
@@ -70,7 +70,7 @@ func runECommandForListAccounts(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // createCommandForAccountList creates a command for managing accountlist.
-func createCommandForAccountList(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForAccountList(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List accounts",
@@ -87,7 +87,7 @@ Examples:
   permguard accounts list --account 301--name dev
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForListAccounts(cmd, v)
+			return runECommandForListAccounts(deps, cmd, v)
 		},
 	}
 	command.Flags().Int32P(flagCommonPage, flagCommonPageShort, 1, "page number")

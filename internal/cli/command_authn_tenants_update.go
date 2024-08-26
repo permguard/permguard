@@ -31,12 +31,12 @@ const (
 )
 
 // runECommandForUpdateTenant runs the command for creating a tenant.
-func runECommandForUpdateTenant(cmd *cobra.Command, v *viper.Viper) error {
-	return runECommandForUpsertTenant(cmd, v, commandNameForTenantsUpdate, false)
+func runECommandForUpdateTenant(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	return runECommandForUpsertTenant(deps, cmd, v, commandNameForTenantsUpdate, false)
 }
 
 // createCommandForTenantUpdate creates a command for managing tenantupdate.
-func createCommandForTenantUpdate(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForTenantUpdate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update a tenant",
@@ -47,7 +47,7 @@ Examples:
   permguard authn tenants update --account 301990992055 --tenantid 19159d69-e902-418e-966a-148c4d5169a4 --name tenant1
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForUpdateTenant(cmd, v)
+			return runECommandForUpdateTenant(deps, cmd, v)
 		},
 	}
 	command.Flags().String(flagTenantID, "", "tenant id")

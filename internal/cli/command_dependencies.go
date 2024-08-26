@@ -17,15 +17,48 @@
 package cli
 
 import (
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+
 	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
-// cliDependencies implements the CLI dependencies.
+// cliDependencies implements the Cli dependencies.
 type cliDependencies struct {
-
 }
 
-// NewCLIDependenciesProvider creates a new CLIDependenciesProvider.
-func NewCLIDependenciesProvider() (azcli.CLIDependenciesProvider, error) {
+// CreateContext creates a new context.
+func (c *cliDependencies) CreateContext(cmd *cobra.Command, v *viper.Viper) (azcli.CliContext, error) {
+	ctx, err := newCliContext(cmd, v)
+	if err != nil {
+		return nil, err
+	}
+	return ctx, nil
+}
+
+// CreatePrinter creates a new printer.
+func (c *cliDependencies) CreatePrinter(ctx azcli.CliContext, cmd *cobra.Command, v *viper.Viper) (*azcli.CliPrinter, error) {
+	printer, err := azcli.NewCliPrinter(ctx.GetVerbose(), ctx.GetOutput())
+	if err != nil {
+		return nil, err
+	}
+	return printer, nil
+}
+
+// CreateContextAndPrinter creates a new context and printer.
+func (c *cliDependencies) CreateContextAndPrinter(cmd *cobra.Command, v *viper.Viper) (azcli.CliContext, *azcli.CliPrinter, error) {
+	ctx, err := c.CreateContext(cmd, v)
+	if err != nil {
+		return nil, nil, err
+	}
+	printer, err := c.CreatePrinter(ctx, cmd, v)
+	if err != nil {
+		return nil, nil, err
+	}
+	return ctx, printer, nil
+}
+
+// NewCliDependenciesProvider creates a new CliDependenciesProvider.
+func NewCliDependenciesProvider() (azcli.CliDependenciesProvider, error) {
 	return &cliDependencies{}, nil
 }

@@ -35,10 +35,10 @@ const (
 )
 
 // runECommandForCreateTenant runs the command for creating a tenant.
-func runECommandForUpsertTenant(cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
-	ctx, printer, err := createContextAndPrinter(cmd, v)
+func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	aapTarget := ctx.GetAAPTarget()
@@ -82,7 +82,7 @@ func runECommandForTenants(cmd *cobra.Command, args []string) error {
 }
 
 // createCommandForTenants creates a command for managing tenants.
-func createCommandForTenants(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForTenants(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "tenants",
 		Short: "Manage Tenants",

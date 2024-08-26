@@ -31,12 +31,12 @@ const (
 )
 
 // runECommandForCreateIdentity runs the command for creating an identity.
-func runECommandForCreateIdentity(cmd *cobra.Command, v *viper.Viper) error {
-	return runECommandForUpsertIdentity(cmd, v, commandNameForIdentitiesCreate, true)
+func runECommandForCreateIdentity(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	return runECommandForUpsertIdentity(deps, cmd, v, commandNameForIdentitiesCreate, true)
 }
 
 // createCommandForIdentityCreate creates a command for managing identitycreate.
-func createCommandForIdentityCreate(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForIdentityCreate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create an identity",
@@ -47,7 +47,7 @@ Examples:
   permguard authn identities create --account 301990992055 --name identity1
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForCreateIdentity(cmd, v)
+			return runECommandForCreateIdentity(deps, cmd, v)
 		},
 	}
 	command.Flags().String(flagIdentitySourceID, "", "identity source id")

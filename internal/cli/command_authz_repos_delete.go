@@ -34,10 +34,10 @@ const (
 )
 
 // runECommandForDeleteRepository runs the command for creating a repository.
-func runECommandForDeleteRepository(cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := createContextAndPrinter(cmd, v)
+func runECommandForDeleteRepository(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	papTarget := ctx.GetPAPTarget()
@@ -66,7 +66,7 @@ func runECommandForDeleteRepository(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 // createCommandForRepositoryDelete creates a command for managing repositorydelete.
-func createCommandForRepositoryDelete(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForRepositoryDelete(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a repository",
@@ -77,7 +77,7 @@ Examples:
   permguard authz repos delete --account 301990992055 --repositoryid 19159d69-e902-418e-966a-148c4d5169a4
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForDeleteRepository(cmd, v)
+			return runECommandForDeleteRepository(deps, cmd, v)
 		},
 	}
 	command.Flags().String(flagRepositoryID, "", "repository id")

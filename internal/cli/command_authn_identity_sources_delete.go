@@ -34,10 +34,10 @@ const (
 )
 
 // runECommandForDeleteIdentitySource runs the command for creating an identity source.
-func runECommandForDeleteIdentitySource(cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := createContextAndPrinter(cmd, v)
+func runECommandForDeleteIdentitySource(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := deps.CreateContextAndPrinter(cmd, v)
 	if err != nil {
-		color.Red(errorMessageCLIBug)
+		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
 	}
 	aapTarget := ctx.GetAAPTarget()
@@ -66,7 +66,7 @@ func runECommandForDeleteIdentitySource(cmd *cobra.Command, v *viper.Viper) erro
 }
 
 // createCommandForIdentitySourceDelete creates a command for managing identity sources delete.
-func createCommandForIdentitySourceDelete(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForIdentitySourceDelete(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete an identity source",
@@ -77,7 +77,7 @@ Examples:
   permguard authn identitysources delete --account 301990992055 --identitysourceid 19159d69-e902-418e-966a-148c4d5169a4
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForDeleteIdentitySource(cmd, v)
+			return runECommandForDeleteIdentitySource(deps, cmd, v)
 		},
 	}
 	command.Flags().String(flagIdentitySourceID, "", "identity source id")

@@ -31,12 +31,12 @@ const (
 )
 
 // runECommandForUpdateRepository runs the command for creating a repository.
-func runECommandForUpdateRepository(cmd *cobra.Command, v *viper.Viper) error {
-	return runECommandForUpsertRepository(cmd, v, commandNameForRepositoriesUpdate, false)
+func runECommandForUpdateRepository(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	return runECommandForUpsertRepository(deps, cmd, v, commandNameForRepositoriesUpdate, false)
 }
 
 // createCommandForRepositoryUpdate creates a command for managing repositoryupdate.
-func createCommandForRepositoryUpdate(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForRepositoryUpdate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update a repository",
@@ -47,7 +47,7 @@ Examples:
   permguard authz repos update --account 301990992055 --repositoryid 19159d69-e902-418e-966a-148c4d5169a4 --name repository1
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForUpdateRepository(cmd, v)
+			return runECommandForUpdateRepository(deps, cmd, v)
 		},
 	}
 	command.Flags().String(flagRepositoryID, "", "repository id")

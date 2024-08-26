@@ -31,7 +31,7 @@ func runECommandForAuthN(cmd *cobra.Command) error {
 }
 
 // createCommandForAuthN for managing authn.
-func createCommandForAuthN(deps azcli.CLIDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForAuthN(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "authn",
 		Short: "Manage Tenants and Identities",
