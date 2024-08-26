@@ -44,7 +44,7 @@ func viperWriteEndpoint(v *viper.Viper, key string, value string) error {
 
 // runECommandForAAPSet runs the command for setting the aap gRPC target.
 func runECommandForAAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
-	_, printer, err := deps.CreateContextAndPrinter(cmd, v)
+	_, printer, err := createContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(errorMessageCliBug)
 		return ErrCommandSilent
@@ -63,7 +63,7 @@ func runECommandForAAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 
 // runECommandForPAPSet runs the command for setting the pap gRPC target.
 func runECommandForPAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
-	_, printer, err := deps.CreateContextAndPrinter(cmd, v)
+	_, printer, err := createContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(errorMessageCliBug)
 		return ErrCommandSilent

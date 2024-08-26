@@ -23,9 +23,31 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azconfigs "github.com/permguard/permguard/pkg/configs"
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
+
+// createContext creates a new cli context.
+func createContext(cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, error) {
+	ctx, err := newCliContext(cmd, v)
+	if err != nil {
+		return nil, err
+	}
+	return ctx, nil
+}
+
+// createContextAndPrinter creates a new cli context and printer.
+func createContextAndPrinter(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, azcli.CliPrinter, error) {
+	ctx, err := newCliContext(cmd, v)
+	if err != nil {
+		return nil, nil, err
+	}
+	printer, err := deps.CreatePrinter(ctx.GetVerbose(), ctx.GetOutput())
+	if err != nil {
+		return nil, nil, err
+	}
+	return ctx, printer, nil
+}
 
 // CliCommandContext is the context for the Cli.
 type CliCommandContext struct {

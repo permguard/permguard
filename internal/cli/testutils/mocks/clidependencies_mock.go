@@ -18,10 +18,9 @@
 package mocks
 
 import (
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	mock "github.com/stretchr/testify/mock"
 
+	azclients "github.com/permguard/permguard/pkg/agents/clients"
 	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
@@ -30,38 +29,24 @@ type CliDependenciesMock struct {
 	mock.Mock
 }
 
-// CreateContext creates a new context.
-func (m *CliDependenciesMock) CreateContext(cmd *cobra.Command, v *viper.Viper) (azcli.CliContext, error) {
-	args := m.Called(cmd, v)
-	var r0 azcli.CliContext
-	if val, ok := args.Get(0).(azcli.CliContext); ok {
-		r0 = val
-	}
-	return r0, args.Error(1)
-}
-
 // CreatePrinter creates a new printer.
-func (m *CliDependenciesMock) CreatePrinter(ctx azcli.CliContext, cmd *cobra.Command, v *viper.Viper) (*azcli.CliPrinter, error) {
-	args := m.Called(ctx, cmd, v)
-	var r0 *azcli.CliPrinter
-	if val, ok := args.Get(0).(*azcli.CliPrinter); ok {
+func (m *CliDependenciesMock) CreatePrinter(verbose bool, output string) (azcli.CliPrinter, error) {
+	args := m.Called(verbose, output)
+	var r0 azcli.CliPrinter
+	if val, ok := args.Get(0).(azcli.CliPrinter); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
-// CreateContextAndPrinter creates a new context and printer.
-func (m *CliDependenciesMock)  CreateContextAndPrinter(cmd *cobra.Command, v *viper.Viper) (azcli.CliContext, *azcli.CliPrinter, error) {
-	args := m.Called(cmd, v)
-	var r0 azcli.CliContext
-	if val1, ok := args.Get(0).(azcli.CliContext); ok {
-		r0 = val1
+// CreateGrpcAAPClient creates a new gRPC AAP client.
+func (m *CliDependenciesMock) CreateGrpcAAPClient(aapTarget string) (azclients.GrpcAAPClient, error) {
+	args := m.Called(aapTarget)
+	var r0 azclients.GrpcAAPClient
+	if val, ok := args.Get(0).(azclients.GrpcAAPClient); ok {
+		r0 = val
 	}
-	var r1 *azcli.CliPrinter
-	if val2, ok := args.Get(0).(*azcli.CliPrinter); ok {
-		r1 = val2
-	}
-	return r0, r1, args.Error(2)
+	return r0, args.Error(1)
 }
 
 // NewCliDependenciesMock creates a new CliDependenciesMock.

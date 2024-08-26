@@ -73,6 +73,9 @@ func BaseCommandWithParamsTest(t *testing.T, v *viper.Viper, cmd *cobra.Command,
 
 	output := buf.String()
 	for _, out := range outputs {
+		if out == "" {
+			continue
+		}
 		assert.Contains(output, out)
 	}
 }
