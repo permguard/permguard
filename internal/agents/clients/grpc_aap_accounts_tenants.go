@@ -70,7 +70,7 @@ func (c *GrpcAAPClient) DeleteTenant(accountID int64, tenantID string) (*azmodel
 	return azapiv1aap.MapGrpcTenantResponseToAgentTenant(tenant)
 }
 
-// FetchTenants returns all the tenants.
+// FetchTenants returns all tenants.
 func (c *GrpcAAPClient) FetchTenants(page int32, pageSize int32, accountID int64) ([]azmodels.Tenant, error) {
 	return c.FetchTenantsBy(page, pageSize, accountID, "", "")
 }

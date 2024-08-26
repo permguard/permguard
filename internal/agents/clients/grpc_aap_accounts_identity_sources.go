@@ -70,7 +70,7 @@ func (c *GrpcAAPClient) DeleteIdentitySource(accountID int64, identitySourceID s
 	return azapiv1aap.MapGrpcIdentitySourceResponseToAgentIdentitySource(identitySource)
 }
 
-// FetchIdentitySources returns all the identity sources.
+// FetchIdentitySources returns all identity sources.
 func (c *GrpcAAPClient) FetchIdentitySources(page int32, pageSize int32, accountID int64) ([]azmodels.IdentitySource, error) {
 	return c.FetchIdentitySourcesBy(page, pageSize, accountID, "", "")
 }

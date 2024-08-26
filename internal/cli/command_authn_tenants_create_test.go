@@ -44,7 +44,7 @@ func TestCliTenantsCreateWithError(t *testing.T) {
 		"json",
 	}
 	for _, outputType := range tests {
-		args := []string{"tenants", "create", "--name", "mycorporate", "--output", outputType}
+		args := []string{"tenants", "create", "--name", "materabranch", "--output", outputType}
 		outputs := []string{""}
 
 		v := viper.New()
@@ -76,7 +76,7 @@ func TestCliTenantsCreateWithSuccess(t *testing.T) {
 		"json",
 	}
 	for _, outputType := range tests {
-		args := []string{"tenants", "create", "--name", "mycorporate", "--output", outputType}
+		args := []string{"tenants", "create", "--name", "materabranch", "--output", outputType}
 		outputs := []string{""}
 
 		v := viper.New()
@@ -92,7 +92,7 @@ func TestCliTenantsCreateWithSuccess(t *testing.T) {
 		tenant := &azmodels.Tenant{
 			TenantID: "c3160a533ab24fbcb1eab7a09fd85f36",
 			AccountID: 581616507495,
-			Name: "mycorporate",
+			Name: "materabranch",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}

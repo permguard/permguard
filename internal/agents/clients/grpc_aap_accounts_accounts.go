@@ -70,7 +70,7 @@ func (c *GrpcAAPClient) DeleteAccount(accountID int64) (*azmodels.Account, error
 	return azapiv1aap.MapGrpcAccountResponseToAgentAccount(account)
 }
 
-// FetchAccounts returns all the accounts.
+// FetchAccounts returns all accounts.
 func (c *GrpcAAPClient) FetchAccounts(page int32, pageSize int32) ([]azmodels.Account, error) {
 	return c.FetchAccountsBy(page, pageSize, 0, "")
 }

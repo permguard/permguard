@@ -92,7 +92,7 @@ func TestCliTenantsDeleteWithSuccess(t *testing.T) {
 		tenant := &azmodels.Tenant{
 			TenantID: "c3160a533ab24fbcb1eab7a09fd85f36",
 			AccountID: 581616507495,
-			Name: "mycorporate",
+			Name: "materabranch",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}

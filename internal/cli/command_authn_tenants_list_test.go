@@ -18,13 +18,112 @@ package cli
 
 import (
 	"testing"
+	"time"
+
+	"github.com/spf13/viper"
+	"github.com/stretchr/testify/mock"
 
 	aztestutils "github.com/permguard/permguard/internal/cli/testutils"
+	azmocks "github.com/permguard/permguard/internal/cli/testutils/mocks"
+	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azconfigs "github.com/permguard/permguard/pkg/configs"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
-// TestCreateCommandForTenantList tests the createCommandForTenantList function.
-func TestCreateCommandForTenantList(t *testing.T) {
+// TestListCommandForTenantsList tests the listCommandForTenantsList function.
+func TestListCommandForTenantsList(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command lists all the tenants."}
+	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command lists all tenants."}
 	aztestutils.BaseCommandTest(t, createCommandForTenantList, args, false, outputs)
+}
+
+// TestCliTenantsListWithError tests the command for creating an tenant with an error.
+func TestCliTenantsListWithError(t *testing.T) {
+	tests := []string{
+		"terminal",
+		"json",
+	}
+	for _, outputType := range tests {
+		args := []string{"tenants", "list", "--tenantid", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", outputType}
+		outputs := []string{""}
+
+		v := viper.New()
+		v.Set(azconfigs.FlagName(flagPrefixAAP, flagSuffixAAPTarget), "localhost:9092")
+
+		depsMocks := azmocks.NewCliDependenciesMock()
+		cmd := createCommandForTenantList(depsMocks, v)
+		cmd.PersistentFlags().StringP(flagOutput, flagOutputShort, outputType, "output format")
+		cmd.PersistentFlags().BoolP(flagVerbose, flagVerboseShort, false, "true for verbose output")
+
+		aapClient := azmocks.NewGrpcAAPClientMock()
+		aapClient.On("FetchTenantsBy", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, azerrors.ErrClientParameter)
+
+		printerMock := azmocks.NewPrinterMock()
+		printerMock.On("Error", azerrors.ErrClientParameter).Return()
+
+		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
+		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
+
+		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
+		printerMock.AssertCalled(t, "Error", azerrors.ErrClientParameter)
+	}
+}
+
+// TestCliTenantsListWithSuccess tests the command for creating an tenant with an error.
+func TestCliTenantsListWithSuccess(t *testing.T) {
+	tests := []string{
+		"terminal",
+		"json",
+	}
+	for _, outputType := range tests {
+		args := []string{"tenants", "list", "--tenantid", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", outputType}
+		outputs := []string{""}
+
+		v := viper.New()
+		v.Set("output", outputType)
+		v.Set(azconfigs.FlagName(flagPrefixAAP, flagSuffixAAPTarget), "localhost:9092")
+
+		depsMocks := azmocks.NewCliDependenciesMock()
+		cmd := createCommandForTenantList(depsMocks, v)
+		cmd.PersistentFlags().StringP(flagOutput, flagOutputShort, outputType, "output format")
+		cmd.PersistentFlags().BoolP(flagVerbose, flagVerboseShort, false, "true for verbose output")
+
+		aapClient := azmocks.NewGrpcAAPClientMock()
+		tenants := []azmodels.Tenant{
+			{
+				TenantID:  "c3160a533ab24fbcb1eab7a09fd85f36",
+				AccountID: 581616507495,
+				Name:      "materabranch1",
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+			{
+				TenantID:  "f73d25ae7b1f4f66807c3face0fee0f3",
+				AccountID: 581616507495,
+				Name:      "materabranch2",
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+		}
+		aapClient.On("FetchTenantsBy", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tenants, nil)
+
+		printerMock := azmocks.NewPrinterMock()
+		outputPrinter := map[string]any{}
+
+		if outputType == "terminal" {
+			for _, tenant := range tenants {
+				tenantID := tenant.TenantID
+				outputPrinter[tenantID] = tenant.Name
+			}
+		} else {
+			outputPrinter["tenants"] = tenants
+		}
+		printerMock.On("Print", outputPrinter).Return()
+
+		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
+		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
+
+		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
+		printerMock.AssertCalled(t, "Print", outputPrinter)
+	}
 }
