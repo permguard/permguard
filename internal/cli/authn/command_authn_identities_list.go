@@ -83,7 +83,7 @@ Examples:
   # list all identities and output the result in json format
   permguard authn identities list --account 268786704340 --output json
   # list all identities and apply filter by name
-  permguard authn identities list --account 268786704340 --name identity1
+  permguard authn identities list --account 268786704340 --name branch
   # list all identities and apply filter by identity source id
   permguard authn identities list --account 268786704340 --identityid 1da1d9094501425085859c60429163c2
 		`),

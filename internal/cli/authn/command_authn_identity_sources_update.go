@@ -43,8 +43,8 @@ func createCommandForIdentitySourceUpdate(deps azcli.CliDependenciesProvider, v 
 		Long: aziclicommon.BuildCliLongTemplate(`This command updates an identity source.
 
 Examples:
-  # update an identity source and output the result in json format.
-  permguard authn identitysources update --account 301990992055 --identitysourceid1da1d9094501425085859c60429163c2 --name permguard
+  # update an identity source and output the result in json format
+  permguard authn identitysources update --account 301990992055 --identitysourceid1da1d9094501425085859c60429163c2 --name google --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForUpdateIdentitySource(deps, cmd, v)

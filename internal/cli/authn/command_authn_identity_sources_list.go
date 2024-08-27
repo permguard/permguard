@@ -81,7 +81,7 @@ Examples:
   # list all identity sources and output in json format
   permguard authn identitysources list --account 268786704340 --output json
   # list all identity sources and filter by name
-  permguard authn identitysources list --account 268786704340 --name permguard
+  permguard authn identitysources list --account 268786704340 --name google
   # list all identity sources and filter by identity source id
   permguard authn identitysources list --account 268786704340 --identitysourceid 1da1d9094501425085859c60429163c2
 		`),

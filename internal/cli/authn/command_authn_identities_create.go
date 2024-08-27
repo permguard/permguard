@@ -43,9 +43,9 @@ func createCommandForIdentityCreate(deps azcli.CliDependenciesProvider, v *viper
 		Long: aziclicommon.BuildCliLongTemplate(`This command creates an identity.
 
 Examples:
-  # create an user identity and output the result in json format.
+  # create an user identity and output the result in json format
   permguard authn identities create --account 268786704340 --kind user --name nicolagallo --identitysourceid 1da1d9094501425085859c60429163c2 --output json
-  # create a role identity and output the result in json format.
+  # create a role identity and output the result in json format
   permguard authn identities create --account 268786704340 --kind role --name branch-manager --identitysourceid 1da1d9094501425085859c60429163c2 --output json
 
 		`),

@@ -26,7 +26,7 @@ func (s *CommunityCliInitializer) GetCliInfo() azcli.CliInfo {
 		Name:  "Community Command Line Interface",
 		Use:   "PermGuard Command Line Interface",
 		Short: "The official PermGuard© Cli",
-		Long:  azclicommon.BuildCliLongTemplate("PermGuard an Open Source Multi-Account and Multi-Tenant Authorization Provider"),
+		Long:  azclicommon.BuildCliLongTemplate("PermGuard is an Open Source Multi-Account and Multi-Tenant Authorization Provider."),
 	}
 }
 
