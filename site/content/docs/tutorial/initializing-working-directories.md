@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-`PermGuard` provides a Command Line Interface (CLI) for managing authentication metadata (AuthN) and authorization metadata and configurations (AuthZ) for applications.
+PermGuard provides a Command Line Interface (CLI) for managing authentication metadata (AuthN) and authorization metadata and configurations (AuthZ) for applications.
 
 Authentication is handled exclusively through the CLI, while authorization is managed via both the CLI and the Policy Language.
 
@@ -31,7 +31,7 @@ There are three primary methods to create a working directory and associate it w
 - Clone an existing repo into a working directory
 - Fork an existing repo into a working direct.
 
-## Working Directory Contents
+## Working directory contents
 
 A `PermGuard` working directory contains the following files:
 
@@ -40,7 +40,7 @@ A `PermGuard` working directory contains the following files:
 
 ## Initialize a new working directory
 
-When starting a new project, the first step is to create an account.
+When starting a new project, the first step is to create an account:
 
 ```bash
 ❯ permguard accounts create --name magicfarmacia-dev
@@ -56,7 +56,7 @@ When starting a new project, the first step is to create an account.
 }
 ```
 
-Next, create a repo.
+Next, create a repo:
 
 ```bash
 ❯ permguard repositories create --name magicfarmacia-v0.0 --account-id 268786704340
@@ -73,45 +73,27 @@ Next, create a repo.
 }
 ```
 
-Finally, initialize the working directory and associate it with a PermGuard `remote` server.
+Finally, initialize the working directory and associate it with a PermGuard `remote` server:
 
 ```bash
 ❯ permguard init
 ❯ permguard remote add 268786704340/magicfarmacia-v0.0
 ```
 
-If the PermGuard endpoints differ from those configured globally by the CLI, the endpoints can be specified directly.
-
-```bash
-❯ permguard remote add 268786704340/magicfarmacia-v0.0 --aap-target localhost:9091 --pap-target localhost:9092
-```
-
 ## Clone an existing repo
 
 There are advanced cases where a PermGuard repo has already been created and it is required to recovery the configuration files to a local working directory.
 
-In this case, it is just necessary to clone the PermGuard repo.
+In this case, it is just necessary to clone the PermGuard repo:
 
 ```bash
 ❯ permguard clone 268786704340/magicfarmacia-v0.0
 ```
 
-If the PermGuard endpoints differ from those configured globally by the CLI, the endpoints can be specified directly.
-
-```bash
-❯ permguard clone 268786704340/magicfarmacia-v0.0 --aap-target localhost:9091 --pap-target localhost:9092
-```
-
 ## Fork an existing repo
 
-A `fork` is a copy of a repository. Forking a repository allows for experimentation with changes without impacting the original. This feature is particularly useful in complex enterprise scenarios that require multiple versions of the repository, such as microservices architectures.
+A `fork` is a copy of a repository. Forking a repository allows for experimentation with changes without impacting the original. This feature is particularly useful in complex enterprise scenarios that require multiple versions of the repository, such as microservices architectures:
 
 ```bash
 ❯ permguard fork 268786704340/magicfarmacia-v0.0 268786704340/magicfarmacia-v0.1
-```
-
-If the PermGuard endpoints differ from those configured globally by the CLI, the endpoints can be specified directly.
-
-```bash
-❯ permguard fork 268786704340/magicfarmacia-v0.0 268786704340/magicfarmacia-v0.1 --aap-target localhost:9091 --pap-target localhost:9092
 ```
