@@ -78,12 +78,12 @@ func createCommandForRepositoryList(deps azcli.CliDependenciesProvider, v *viper
 		Long: aziclicommon.BuildCliLongTemplate(`This command lists all repositories.
 
 Examples:
-  # list all repositories for account 301990992055
-  permguard authz repos list --account 301990992055
-  # list all repositories for account 301990992055 and filter by name repository1
-  permguard authz repos list --account 301990992055 --name repository1
-  # list all repositories for account 301990992055 and filter by repository id 377532e1-befe-47cb-a55a-0a789c5ec8fd
-  permguard authz repos list --account 301990992055 --repositoryid 377532e1-befe-47cb-a55a-0a789c5ec8fd
+  # list all repositories and output in json format
+  permguard authz repos list --account 268786704340 --output json
+  # list all repositories filtered by name
+  permguard authz repos list --account 268786704340 --name v1
+  # list all repositories filtered by repository id
+  permguard authz repos list --account 268786704340 --repositoryid 668f3771eacf4094ba8a80942ea5fd3f
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListRepositories(deps, cmd, v)

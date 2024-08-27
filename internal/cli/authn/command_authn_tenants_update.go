@@ -43,8 +43,8 @@ func createCommandForTenantUpdate(deps azcli.CliDependenciesProvider, v *viper.V
 		Long: aziclicommon.BuildCliLongTemplate(`This command updates a tenant.
 
 Examples:
-  # update a tenant with name tenant1, id 19159d69-e902-418e-966a-148c4d5169a4 and account 301990992055
-  permguard authn tenants update --account 301990992055 --tenantid 19159d69-e902-418e-966a-148c4d5169a4 --name tenant1
+  # update a tenant and output the result in json format.
+  permguard authn tenants update --account 268786704340 --tenantid 2e190ee712494838bb54d67e2a0c496a --name atera-branch
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForUpdateTenant(deps, cmd, v)

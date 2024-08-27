@@ -74,8 +74,8 @@ func createCommandForTenantDelete(deps azcli.CliDependenciesProvider, v *viper.V
 		Long: aziclicommon.BuildCliLongTemplate(`This command deletes a tenant.
 
 Examples:
-  # delete a tenant with id 19159d69-e902-418e-966a-148c4d5169a4 and account 301990992055
-  permguard authn tenants delete --account 301990992055 --tenantid 19159d69-e902-418e-966a-148c4d5169a4
+  # delete a tenant and output the result in json format
+  permguard authn tenants delete --account 268786704340 --tenantid 2e190ee712494838bb54d67e2a0c496a
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteTenant(deps, cmd, v)

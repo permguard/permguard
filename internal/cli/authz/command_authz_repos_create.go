@@ -43,8 +43,8 @@ func createCommandForRepositoryCreate(deps azcli.CliDependenciesProvider, v *vip
 		Long: aziclicommon.BuildCliLongTemplate(`This command creates a repository.
 
 Examples:
-  # create a repository with name repository1 and account 301990992055
-  permguard authz repos create --account 301990992055 --name repository1
+  # create a repository and output the result in json format.
+  permguard authz repos create --account 268786704340 --name v2.0 --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCreateRepository(deps, cmd, v)

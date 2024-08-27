@@ -43,7 +43,7 @@ func createCommandForAccountCreate(deps azcli.CliDependenciesProvider, v *viper.
 		Long: aziclicommon.BuildCliLongTemplate(`This command creates an account.
 
 Examples:
-  # create an account and output the result in JSON format.
+  # create an account and output the result in json format.
   permguard accounts create --name magicfarmacia-dev --output json`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCreateAccount(deps, cmd, v)
