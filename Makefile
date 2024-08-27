@@ -40,6 +40,7 @@ init-dependency:
 	go get -u gorm.io/driver/sqlite
 	go get -u github.com/mattn/go-sqlite3
 	go get -u moul.io/zapgorm2
+	go get -u github.com/permguard/permguard-authz-model
 
 mod:
 	go mod download
