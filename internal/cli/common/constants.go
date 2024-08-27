@@ -47,7 +47,6 @@ const (
 // CliLongTemplate is the long template for the cli.
 var CliLongTemplate = `The official PermGuard Command Line Interface
 Copyright © 2022 Nitro Agility S.r.l.
-
 %s
 
 	Find more information at: https://www.permguard.com/docs/cli/how-to-use/`
