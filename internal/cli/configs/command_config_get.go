@@ -17,8 +17,6 @@
 package configs
 
 import (
-	"fmt"
-
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -54,7 +52,7 @@ func createCommandForConfigAAPGet(deps azcli.CliDependenciesProvider, v *viper.V
 	command := &cobra.Command{
 		Use:   "aap-get-target",
 		Short: "Get the app gRPC target",
-		Long:  fmt.Sprintf(aziclicommon.CliLongTemplate, `This command gets the aap gRPC target.`),
+		Long:  aziclicommon.BuildCliLongTemplate(`This command gets the aap gRPC target.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForAAPGet(deps, cmd, v)
 		},
@@ -67,7 +65,7 @@ func createCommandForConfigPAPGet(deps azcli.CliDependenciesProvider, v *viper.V
 	command := &cobra.Command{
 		Use:   "pap-get-target",
 		Short: "Get the pap gRPC target",
-		Long:  fmt.Sprintf(aziclicommon.CliLongTemplate, `This command gets the pap gRPC target.`),
+		Long:  aziclicommon.BuildCliLongTemplate(`This command gets the pap gRPC target.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForPAPGet(deps, cmd, v)
 		},

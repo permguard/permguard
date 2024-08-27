@@ -17,14 +17,12 @@
 package accounts
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 )
 
 const (
@@ -42,12 +40,11 @@ func createCommandForAccountCreate(deps azcli.CliDependenciesProvider, v *viper.
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create an account",
-		Long: fmt.Sprintf(aziclicommon.CliLongTemplate, `This command creates an account.
+		Long: aziclicommon.BuildCliLongTemplate(`This command creates an account.
 
 Examples:
   # create an account with name mycorporate
-  permguard accounts create --name mycorporate
-		`),
+  permguard accounts create --name mycorporate`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCreateAccount(deps, cmd, v)
 		},

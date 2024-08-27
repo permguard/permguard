@@ -17,8 +17,6 @@
 package authz
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -36,7 +34,7 @@ func CreateCommandForAuthZ(deps azcli.CliDependenciesProvider, v *viper.Viper) *
 	command := &cobra.Command{
 		Use:   "authz",
 		Short: "Manage Repositories and Trusted Delegations",
-		Long:  fmt.Sprintf(aziclicommon.CliLongTemplate, `This command enables managament of repositories and trusted delegations.`),
+		Long:  aziclicommon.BuildCliLongTemplate(`This command enables managament of repositories and trusted delegations.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForAuthZ(cmd)
 		},

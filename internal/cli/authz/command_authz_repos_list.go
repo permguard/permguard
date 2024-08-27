@@ -75,7 +75,7 @@ func createCommandForRepositoryList(deps azcli.CliDependenciesProvider, v *viper
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List repositories",
-		Long: fmt.Sprintf(aziclicommon.CliLongTemplate, `This command lists all repositories.
+		Long: aziclicommon.BuildCliLongTemplate(`This command lists all repositories.
 
 Examples:
   # list all repositories for account 301990992055

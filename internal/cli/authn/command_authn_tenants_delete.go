@@ -71,7 +71,7 @@ func createCommandForTenantDelete(deps azcli.CliDependenciesProvider, v *viper.V
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a tenant",
-		Long: fmt.Sprintf(aziclicommon.CliLongTemplate, `This command deletes a tenant.
+		Long: aziclicommon.BuildCliLongTemplate(`This command deletes a tenant.
 
 Examples:
   # delete a tenant with id 19159d69-e902-418e-966a-148c4d5169a4 and account 301990992055

@@ -93,7 +93,7 @@ func createCommandForIdentities(deps azcli.CliDependenciesProvider, v *viper.Vip
 	command := &cobra.Command{
 		Use:   "identities",
 		Short: "Manage Identities",
-		Long:  fmt.Sprintf(aziclicommon.CliLongTemplate, `This command manages identities.`),
+		Long:  aziclicommon.BuildCliLongTemplate(`This command manages identities.`),
 		RunE:  runECommandForIdentities,
 	}
 

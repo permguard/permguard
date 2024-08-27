@@ -86,7 +86,7 @@ func createCommandForConfigAAPSet(deps azcli.CliDependenciesProvider, v *viper.V
 	command := &cobra.Command{
 		Use:   "aap-set-target",
 		Short: "Set the app gRPC target",
-		Long: fmt.Sprintf(aziclicommon.CliLongTemplate, `This command sets the aap gRPC target.
+		Long: aziclicommon.BuildCliLongTemplate(`This command sets the aap gRPC target.
 
 Examples:
 # set the aap gRPC target to localhost:9091
@@ -104,7 +104,7 @@ func createCommandForConfigPAPSet(deps azcli.CliDependenciesProvider, v *viper.V
 	command := &cobra.Command{
 		Use:   "pap-set-target",
 		Short: "Set the pap gRPC target",
-		Long: fmt.Sprintf(aziclicommon.CliLongTemplate, `This command sets the pap gRPC target.
+		Long: aziclicommon.BuildCliLongTemplate(`This command sets the pap gRPC target.
 
 Examples:
 # set the pap gRPC target to localhost:9092
