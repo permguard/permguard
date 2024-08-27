@@ -5,6 +5,11 @@ import (
 	"github.com/spf13/viper"
 
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azicliconfigs "github.com/permguard/permguard/internal/cli/configs"
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliaccounts "github.com/permguard/permguard/internal/cli/accounts"
+	azicliauthn "github.com/permguard/permguard/internal/cli/authn"
+	azicliauthz "github.com/permguard/permguard/internal/cli/authz"
 )
 
 // CommunityCliInitializer  is the community cli initializer.
@@ -21,16 +26,16 @@ func (s *CommunityCliInitializer) GetCliInfo() azcli.CliInfo {
 		Name:  "Community Cli",
 		Use:   "PermGuard Cli",
 		Short: "The official PermGuard© Cli",
-		Long:  cliLongTemplate,
+		Long:  aziclicommon.CliLongTemplate,
 	}
 }
 
 // GetCliCommands returns commands.
 func (s *CommunityCliInitializer) GetCliCommands(deps azcli.CliDependenciesProvider, v *viper.Viper) ([]*cobra.Command, error) {
-	accountsCmd := createCommandForAccounts(deps, v)
-	authnCmd := createCommandForAuthN(deps, v)
-	authzCmd := createCommandForAuthZ(deps, v)
-	configCmd := createCommandForConfig(deps, v)
+	accountsCmd := azicliaccounts.CreateCommandForAccounts(deps, v)
+	authnCmd := azicliauthn.CreateCommandForAuthN(deps, v)
+	authzCmd := azicliauthz.CreateCommandForAuthZ(deps, v)
+	configCmd := azicliconfigs.CreateCommandForConfig(deps, v)
 	return []*cobra.Command{
 		accountsCmd,
 		authnCmd,

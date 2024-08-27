@@ -17,7 +17,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
@@ -26,42 +25,13 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
 
-const (
-	flagOutput              = "output"
-	flagOutputShort         = "o"
-	flagVerbose             = "verbose"
-	flagVerboseShort        = "v"
-	flagCommonPage          = "page"
-	flagCommonPageShort     = "p"
-	flagCommonPageSize      = "size"
-	flagCommonPageSizeShort = "s"
-	flagCommonAccountID     = "account"
-	flagCommonName          = "name"
-	flagCommonEmail         = "email"
-	flagCommonDescription   = "description"
-	flagCommonFile          = "file"
-	flagCommonFileShort     = "f"
-	flagPrefixAAP           = "aap"
-	flagSuffixAAPTarget     = "target"
-	flagPrefixPAP           = "pap"
-	flagSuffixPAPTarget     = "target"
-)
-
 //go:embed "art.txt"
 var asciiArt string
-
-var cliLongTemplate = `The official PermGuard Command Line Interface
-Copyright © 2022 Nitro Agility S.r.l.
-
-%s
-
-  Find more information at: https://www.permguard.com/docs/cli/how-to-use/`
-
-var ErrCommandSilent = errors.New("command: silent error")
 
 // runECommand runs the command.
 func runECommand(cmdInfo azcli.CliInfo, cmd *cobra.Command) error {
@@ -75,15 +45,15 @@ func runECommand(cmdInfo azcli.CliInfo, cmd *cobra.Command) error {
 func Run(commandsInitializer azcli.CliInitializer) {
 	// Create the command.
 	v, err := azconfigs.NewViperFromConfig(func(v *viper.Viper) error {
-		v.SetDefault(azconfigs.FlagName(flagPrefixAAP, flagSuffixAAPTarget), "localhost:9091")
-		v.SetDefault(azconfigs.FlagName(flagPrefixPAP, flagSuffixPAPTarget), "localhost:9092")
+		v.SetDefault(azconfigs.FlagName(aziclicommon.FlagPrefixAAP, aziclicommon.FlagSuffixAAPTarget), "localhost:9091")
+		v.SetDefault(azconfigs.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget), "localhost:9092")
 		return v.WriteConfig()
 	})
 	if err != nil {
 		os.Exit(1)
 	}
 
-	depsProvider, err := NewCliDependenciesProvider()
+	depsProvider, err := aziclicommon.NewCliDependenciesProvider()
 	if err != nil {
 		os.Exit(1)
 	}
@@ -104,8 +74,8 @@ func Run(commandsInitializer azcli.CliInitializer) {
 		},
 	}
 
-	command.PersistentFlags().StringP(flagOutput, flagOutputShort, "terminal", "output format")
-	command.PersistentFlags().BoolP(flagVerbose, flagVerboseShort, false, "true for verbose output")
+	command.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, "terminal", "output format")
+	command.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
 
 	// Add sub commands.
 	for _, subCommand := range commands {
@@ -114,7 +84,7 @@ func Run(commandsInitializer azcli.CliInitializer) {
 
 	// Execute the command.
 	if err := command.Execute(); err != nil {
-		if err != ErrCommandSilent {
+		if err != aziclicommon.ErrCommandSilent {
 			// TODO: fix error message
 			fmt.Fprintln(os.Stderr, err)
 		}
