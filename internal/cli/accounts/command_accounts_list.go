@@ -80,7 +80,7 @@ func createCommandForAccountList(deps azcli.CliDependenciesProvider, v *viper.Vi
 Examples:
   # list all accounts
   permguard accounts list
-  # list all accounts with pagination
+  # list all accounts for page 1 and page size 100
   permguard accounts list --page 1 --size 100
   # list accounts and filter by account
   permguard accounts list --account 301

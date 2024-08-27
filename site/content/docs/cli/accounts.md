@@ -66,7 +66,7 @@ output:
 {{< tab "json" >}}
 
 ```bash
-permguard accounts create --name prod-corporate --output json
+permguard accounts create --name magicfarmacia-dev --output json
 ```
 
 output:
