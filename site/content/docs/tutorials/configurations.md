@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-This guide will help you quickly set up a workspace in `PermGuard`, connect to a repository, and publish your code.
+This guide will help you quickly set up a workspace in `PermGuard` to manage your code.
 
 ## Account and  Repository creation
 
