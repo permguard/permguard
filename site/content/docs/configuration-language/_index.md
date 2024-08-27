@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "policy-language-40bf06d43a262aaf34e2236702b03c09"
-weight: 4000
+weight: 3000
 toc: true
 seo:
   title: "" # custom title (optional)

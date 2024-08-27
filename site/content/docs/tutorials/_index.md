@@ -1,15 +1,15 @@
 ---
-title: "Tutorials"
-slug: "Tutorials"
+title: "Tutorial"
+slug: "Tutorial"
 description: ""
 summary: ""
-date: 2023-08-15T15:12:20+01:00
-lastmod: 2023-08-15T15:12:20+01:00
-draft: true
+date: 2023-08-01T00:27:20+01:00
+lastmod: 2023-08-01T00:27:20+01:00
+draft: false
 menu:
   docs:
     parent: ""
-    identifier: "tutorials-2b7cc464fae240dba285ab6e1b999142"
+    identifier: "tutorial-7b0fcc45084c4789aabe2416dee30fef"
 weight: 3000
 toc: true
 seo:
