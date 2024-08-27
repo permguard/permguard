@@ -1,7 +1,7 @@
 {
   "name": "permguard",
   "version": "0.0.0",
-  "description": "PermGuard an Open Source Multi-Account and Multi-Tenant Authorization Provider.",
+  "description": "PermGuard is an Open Source Multi-Account and Multi-Tenant Authorization Provider.",
   "author": "Nitro Agility S.r.l.",
   "license": "Apache-2.0",
   "scripts": {
