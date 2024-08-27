@@ -43,8 +43,8 @@ func createCommandForTenantCreate(deps azcli.CliDependenciesProvider, v *viper.V
 		Long: aziclicommon.BuildCliLongTemplate(`This command creates a tenant.
 
 Examples:
-  # create a tenant with name tenant1 and account 301990992055
-  permguard authn tenants create --account 301990992055 --name tenant1
+  # create a tenant and output the result in json format.
+  permguard authn tenants create --account 268786704340 --name matera-branch --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCreateTenant(deps, cmd, v)

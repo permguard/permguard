@@ -80,12 +80,12 @@ func createCommandForIdentityList(deps azcli.CliDependenciesProvider, v *viper.V
 		Long: aziclicommon.BuildCliLongTemplate(`This command lists all identities.
 
 Examples:
-  # list all identities for account 301990992055
-  permguard authn identities list --account 301990992055
-  # list all identities for account 301990992055 and filter by name identity1
-  permguard authn identities list --account 301990992055 --name identity1
-  # list all identities for account 301990992055 and filter by identity id 377532e1-befe-47cb-a55a-0a789c5ec8fd
-  permguard authn identities list --account 301990992055 --identityid 377532e1-befe-47cb-a55a-0a789c5ec8fd
+  # list all identities and output the result in json format
+  permguard authn identities list --account 268786704340 --output json
+  # list all identities and apply filter by name
+  permguard authn identities list --account 268786704340 --name identity1
+  # list all identities and apply filter by identity source id
+  permguard authn identities list --account 268786704340 --identityid 1da1d9094501425085859c60429163c2
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListIdentities(deps, cmd, v)

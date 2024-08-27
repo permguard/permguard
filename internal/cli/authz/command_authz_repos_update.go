@@ -43,8 +43,8 @@ func createCommandForRepositoryUpdate(deps azcli.CliDependenciesProvider, v *vip
 		Long: aziclicommon.BuildCliLongTemplate(`This command updates a repository.
 
 Examples:
-  # update a repository with name repository1, id 19159d69-e902-418e-966a-148c4d5169a4 and account 301990992055
-  permguard authz repos update --account 301990992055 --repositoryid 19159d69-e902-418e-966a-148c4d5169a4 --name repository1
+  # update a repository and output the result in json format.
+  permguard authz repos update --account 268786704340 --repositoryid 668f3771eacf4094ba8a80942ea5fd3f --name v1.1 --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForUpdateRepository(deps, cmd, v)

@@ -68,7 +68,7 @@ output:
 {{< tab "json" >}}
 
 ```bash
-permguard authn identitysources create --account 268786704340 --name permguard --output json
+permguard authn identitysources create --account 268786704340 --name google --output json
 ```
 
 output:

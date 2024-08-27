@@ -78,12 +78,12 @@ func createCommandForTenantList(deps azcli.CliDependenciesProvider, v *viper.Vip
 		Long: aziclicommon.BuildCliLongTemplate(`This command lists all tenants.
 
 Examples:
-  # list all tenants for account 301990992055
-  permguard authn tenants list --account 301990992055
-  # list all tenants for account 301990992055 and filter by name tenant1
-  permguard authn tenants list --account 301990992055 --name tenant1
-  # list all tenants for account 301990992055 and filter by tenant id 377532e1-befe-47cb-a55a-0a789c5ec8fd
-  permguard authn tenants list --account 301990992055 --tenantid 377532e1-befe-47cb-a55a-0a789c5ec8fd
+  # list all tenants amd output in json format
+  permguard authn tenants list --account 268786704340
+  # lista all tenants and filter by name
+  permguard authn tenants list --account 268786704340 --name matera
+  # list all tenants and filter by tenant id
+  permguard authn tenants list --account 268786704340 --tenantid 2e190ee712494838bb54d67e2a0c496a
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListTenants(deps, cmd, v)

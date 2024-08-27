@@ -74,8 +74,8 @@ func createCommandForIdentityDelete(deps azcli.CliDependenciesProvider, v *viper
 		Long: aziclicommon.BuildCliLongTemplate(`This command deletes an identity.
 
 Examples:
-  # delete an identity with id 19159d69-e902-418e-966a-148c4d5169a4 and account 301990992055
-  permguard authn identities delete --account 301990992055 --identityid 19159d69-e902-418e-966a-148c4d5169a4
+  # delete an identity and output the result in JSON format.
+  permguard authn identities delete --account 268786704340 --identityid 1da1d9094501425085859c60429163c2 --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteIdentity(deps, cmd, v)

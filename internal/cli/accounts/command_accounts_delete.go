@@ -72,7 +72,7 @@ func createCommandForAccountDelete(deps azcli.CliDependenciesProvider, v *viper.
 		Long: aziclicommon.BuildCliLongTemplate(`This command deletes an account.
 
 Examples:
-  # delete the account with id 268786704340 and output the result in JSON format.
+  # delete an account and output the result in json format
   permguard accounts delete --account 268786704340 --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {

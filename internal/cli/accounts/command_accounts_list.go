@@ -78,8 +78,8 @@ func createCommandForAccountList(deps azcli.CliDependenciesProvider, v *viper.Vi
 		Long: aziclicommon.BuildCliLongTemplate(`This command lists all accounts.
 
 Examples:
-  # list all accounts
-  permguard accounts list
+  # list all accounts and output the result in json format
+  permguard accounts list --output json
   # list all accounts for page 1 and page size 100
   permguard accounts list --page 1 --size 100
   # list accounts and filter by account
