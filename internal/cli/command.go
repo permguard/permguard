@@ -36,7 +36,7 @@ var asciiArt string
 // runECommand runs the command.
 func runECommand(cmdInfo azcli.CliInfo, cmd *cobra.Command) error {
 	fmt.Println(asciiArt)
-	fmt.Printf("PermGuard %s - Copyright © 2022 Nitro Agility S.r.l.\n", cmdInfo.Name)
+	fmt.Printf("PermGuard %s \n", cmdInfo.Name)
 	fmt.Println("")
 	return cmd.Help()
 }

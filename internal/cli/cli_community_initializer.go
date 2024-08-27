@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -10,6 +11,7 @@ import (
 	azicliauthz "github.com/permguard/permguard/internal/cli/authz"
 	azicliconfigs "github.com/permguard/permguard/internal/cli/configs"
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azclicommon "github.com/permguard/permguard/internal/cli/common"
 )
 
 // CommunityCliInitializer  is the community cli initializer.
@@ -22,13 +24,11 @@ func NewCommunityCliInitializer() (*CommunityCliInitializer, error) {
 
 // GetCliInfo returns the infos of the cli.
 func (s *CommunityCliInitializer) GetCliInfo() azcli.CliInfo {
-	var cliInitalizerBanner = `
-	Find more information at: https://www.permguard.com/docs/cli/how-to-use/`
 	return azcli.CliInfo{
 		Name:  "Community Command Line Interface",
 		Use:   "PermGuard Command Line Interface",
 		Short: "The official PermGuard© Cli",
-		Long:  cliInitalizerBanner,
+		Long:  fmt.Sprintf(azclicommon.CliLongTemplate, ``),
 	}
 }
 
