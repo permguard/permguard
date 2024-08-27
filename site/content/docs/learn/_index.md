@@ -1,6 +1,6 @@
 ---
-title: "Tutorial"
-slug: "Tutorial"
+title: "Learn"
+slug: "Learn"
 description: ""
 summary: ""
 date: 2023-08-01T00:27:20+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "tutorial-7b0fcc45084c4789aabe2416dee30fef"
+    identifier: "learn-7b0fcc45084c4789aabe2416dee30fef"
 weight: 3000
 toc: true
 seo:
