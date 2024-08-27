@@ -35,7 +35,7 @@ func runECommandForAuthZ(cmd *cobra.Command) error {
 func CreateCommandForAuthZ(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "authz",
-		Short: fmt.Sprintf(aziclicommon.CliLongTemplate, "Manage Repositories and Trusted Delegations"),
+		Short: "Manage Repositories and Trusted Delegations",
 		Long:  fmt.Sprintf(aziclicommon.CliLongTemplate, `This command enables managament of repositories and trusted delegations.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForAuthZ(cmd)

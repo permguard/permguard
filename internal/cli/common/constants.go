@@ -50,7 +50,7 @@ Copyright © 2022 Nitro Agility S.r.l.
 
 %s
 
-  Find more information at: https://www.permguard.com/docs/cli/how-to-use/`
+	Find more information at: https://www.permguard.com/docs/cli/how-to-use/`
 
 // ErrCommandSilent is an error that is used to indicate that the command should not print an error message.
 var ErrCommandSilent = errors.New("command: silent error")
