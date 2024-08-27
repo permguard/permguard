@@ -20,8 +20,6 @@ import (
 	"fmt"
 	"os"
 
-	_ "embed"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -30,14 +28,8 @@ import (
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 )
 
-//go:embed "art.txt"
-var asciiArt string
-
 // runECommand runs the command.
 func runECommand(cmdInfo azcli.CliInfo, cmd *cobra.Command) error {
-	fmt.Println(asciiArt)
-	fmt.Printf("PermGuard %s \n", cmdInfo.Name)
-	fmt.Println("")
 	return cmd.Help()
 }
 

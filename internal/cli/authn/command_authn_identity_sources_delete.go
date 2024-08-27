@@ -71,7 +71,7 @@ func createCommandForIdentitySourceDelete(deps azcli.CliDependenciesProvider, v 
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete an identity source",
-		Long: fmt.Sprintf(aziclicommon.CliLongTemplate, `This command deletes an identity source.
+		Long: aziclicommon.BuildCliLongTemplate(`This command deletes an identity source.
 
 Examples:
   # delete an identity source with id 19159d69-e902-418e-966a-148c4d5169a4 and account 301990992055

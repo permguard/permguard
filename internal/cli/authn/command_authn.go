@@ -17,8 +17,6 @@
 package authn
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -36,7 +34,7 @@ func CreateCommandForAuthN(deps azcli.CliDependenciesProvider, v *viper.Viper) *
 	command := &cobra.Command{
 		Use:   "authn",
 		Short: "Manage Tenants and Identities",
-		Long:  fmt.Sprintf(aziclicommon.CliLongTemplate, `This command enables managament of tenants and identities.`),
+		Long:  aziclicommon.BuildCliLongTemplate(`This command enables managament of tenants and identities.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForAuthN(cmd)
 		},

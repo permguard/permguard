@@ -71,7 +71,7 @@ func createCommandForRepositoryDelete(deps azcli.CliDependenciesProvider, v *vip
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a repository",
-		Long: fmt.Sprintf(aziclicommon.CliLongTemplate, `This command deletes a repository.
+		Long: aziclicommon.BuildCliLongTemplate(`This command deletes a repository.
 
 Examples:
   # delete a repository with id 19159d69-e902-418e-966a-148c4d5169a4 and account 301990992055

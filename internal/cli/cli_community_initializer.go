@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -28,7 +26,7 @@ func (s *CommunityCliInitializer) GetCliInfo() azcli.CliInfo {
 		Name:  "Community Command Line Interface",
 		Use:   "PermGuard Command Line Interface",
 		Short: "The official PermGuard© Cli",
-		Long:  fmt.Sprintf(azclicommon.CliLongTemplate, ``),
+		Long:  azclicommon.BuildCliLongTemplate(""),
 	}
 }
 

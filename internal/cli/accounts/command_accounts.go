@@ -83,7 +83,7 @@ func CreateCommandForAccounts(deps azcli.CliDependenciesProvider, v *viper.Viper
 	command := &cobra.Command{
 		Use:   "accounts",
 		Short: "Manage Accounts",
-		Long:  fmt.Sprintf(aziclicommon.CliLongTemplate, `This command manages accounts.`),
+		Long:  aziclicommon.BuildCliLongTemplate(`This command manages accounts.`),
 		RunE:  runECommandForAccounts,
 	}
 

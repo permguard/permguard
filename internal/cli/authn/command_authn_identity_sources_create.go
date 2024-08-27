@@ -17,14 +17,12 @@
 package authn
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 )
 
 const (
@@ -42,7 +40,7 @@ func createCommandForIdentitySourceCreate(deps azcli.CliDependenciesProvider, v 
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create an identity source",
-		Long: fmt.Sprintf(aziclicommon.CliLongTemplate, `This command creates an identity source.
+		Long: aziclicommon.BuildCliLongTemplate(`This command creates an identity source.
 
 Examples:
   # create an identity source with name permguard and account 301990992055

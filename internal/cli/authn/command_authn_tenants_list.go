@@ -75,7 +75,7 @@ func createCommandForTenantList(deps azcli.CliDependenciesProvider, v *viper.Vip
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List tenants",
-		Long: fmt.Sprintf(aziclicommon.CliLongTemplate, `This command lists all tenants.
+		Long: aziclicommon.BuildCliLongTemplate(`This command lists all tenants.
 
 Examples:
   # list all tenants for account 301990992055

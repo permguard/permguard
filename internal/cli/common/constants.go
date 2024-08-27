@@ -16,7 +16,12 @@
 
 package common
 
-import "errors"
+import (
+	"fmt"
+	"errors"
+
+	_ "embed"
+)
 
 const (
 	ErrorMessageCliBug        = "an issue has been detected with the cli code configuration. please create a github issue with the details."
@@ -44,12 +49,34 @@ const (
 	FlagSuffixPAPTarget     = "target"
 )
 
-// CliLongTemplate is the long template for the cli.
-var CliLongTemplate = `The official PermGuard Command Line Interface
-Copyright © 2022 Nitro Agility S.r.l.
-%s
+//go:embed "art.txt"
+var asciiArt string
 
-	Find more information at: https://www.permguard.com/docs/cli/how-to-use/`
+// CliLongTemplateHead is the head of the long template for the cli.
+var CliLongTemplateHead = `
+%s
+The official PermGuard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.`
+
+// CliLongTemplateBody is the body of the long template for the cli.
+var CliLongTemplateBody = ` %s
+
+%s
+`
+
+// CliLongTemplateFooter is the footer of the long template for the cli.
+var CliLongTemplateFooter = `%s
+	Find more information at: https://www.permguard.com/docs/cli/how-to-use/
+	`
+
+// BuildCliLongTemplate builds the long template for the cli.
+func BuildCliLongTemplate(content string) string {
+	template := fmt.Sprintf(CliLongTemplateHead, asciiArt)
+	if len(content) >= 0 {
+		template = fmt.Sprintf(CliLongTemplateBody, template, content)
+	}
+	template = fmt.Sprintf(CliLongTemplateFooter, template)
+	return template
+}
 
 // ErrCommandSilent is an error that is used to indicate that the command should not print an error message.
 var ErrCommandSilent = errors.New("command: silent error")

@@ -88,7 +88,7 @@ func createCommandForIdentitySources(deps azcli.CliDependenciesProvider, v *vipe
 	command := &cobra.Command{
 		Use:   "identitysources",
 		Short: "Manage Identity Sources",
-		Long:  fmt.Sprintf(aziclicommon.CliLongTemplate, `This command manages identity sources.`),
+		Long:  aziclicommon.BuildCliLongTemplate(`This command manages identity sources.`),
 		RunE:  runECommandForIdentitySources,
 	}
 

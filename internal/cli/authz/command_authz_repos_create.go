@@ -17,14 +17,12 @@
 package authz
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 )
 
 const (
@@ -42,7 +40,7 @@ func createCommandForRepositoryCreate(deps azcli.CliDependenciesProvider, v *vip
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create a repository",
-		Long: fmt.Sprintf(aziclicommon.CliLongTemplate, `This command creates a repository.
+		Long: aziclicommon.BuildCliLongTemplate(`This command creates a repository.
 
 Examples:
   # create a repository with name repository1 and account 301990992055

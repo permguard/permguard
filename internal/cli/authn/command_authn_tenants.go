@@ -88,7 +88,7 @@ func createCommandForTenants(deps azcli.CliDependenciesProvider, v *viper.Viper)
 	command := &cobra.Command{
 		Use:   "tenants",
 		Short: "Manage Tenants",
-		Long:  fmt.Sprintf(aziclicommon.CliLongTemplate, `This command manages tenants.`),
+		Long:  aziclicommon.BuildCliLongTemplate(`This command manages tenants.`),
 		RunE:  runECommandForTenants,
 	}
 

@@ -23,10 +23,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 )
 
 const (
@@ -69,7 +69,7 @@ func createCommandForAccountDelete(deps azcli.CliDependenciesProvider, v *viper.
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete an account",
-		Long: fmt.Sprintf(aziclicommon.CliLongTemplate, `This command deletes an account.
+		Long: aziclicommon.BuildCliLongTemplate(`This command deletes an account.
 
 Examples:
   # delete the account with the account id 301990992055

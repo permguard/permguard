@@ -77,7 +77,7 @@ func createCommandForIdentityList(deps azcli.CliDependenciesProvider, v *viper.V
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List identities",
-		Long: fmt.Sprintf(aziclicommon.CliLongTemplate, `This command lists all identities.
+		Long: aziclicommon.BuildCliLongTemplate(`This command lists all identities.
 
 Examples:
   # list all identities for account 301990992055

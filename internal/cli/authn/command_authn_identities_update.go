@@ -17,8 +17,6 @@
 package authn
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -42,7 +40,7 @@ func createCommandForIdentityUpdate(deps azcli.CliDependenciesProvider, v *viper
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update an identity",
-		Long: fmt.Sprintf(aziclicommon.CliLongTemplate, `This command updates an identity.
+		Long: aziclicommon.BuildCliLongTemplate(`This command updates an identity.
 
 Examples:
   # update an identity with name identity1, id 19159d69-e902-418e-966a-148c4d5169a4 and account 301990992055

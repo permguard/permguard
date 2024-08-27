@@ -88,7 +88,7 @@ func createCommandForRepositories(deps azcli.CliDependenciesProvider, v *viper.V
 	command := &cobra.Command{
 		Use:   "repos",
 		Short: "Manage Repositories",
-		Long:  fmt.Sprintf(aziclicommon.CliLongTemplate, `This command manages repositories.`),
+		Long:  aziclicommon.BuildCliLongTemplate(`This command manages repositories.`),
 		RunE:  runECommandForRepositories,
 	}
 

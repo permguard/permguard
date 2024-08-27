@@ -17,8 +17,6 @@
 package accounts
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -42,7 +40,7 @@ func createCommandForAccountUpdate(deps azcli.CliDependenciesProvider, v *viper.
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update an account",
-		Long: fmt.Sprintf(aziclicommon.CliLongTemplate, `This command updates an account.
+		Long: aziclicommon.BuildCliLongTemplate(`This command updates an account.
 
 Examples:
   # update the account with the account id 301990992055 and set the name to mycorporate

@@ -17,8 +17,6 @@
 package authz
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -42,7 +40,7 @@ func createCommandForRepositoryUpdate(deps azcli.CliDependenciesProvider, v *vip
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update a repository",
-		Long: fmt.Sprintf(aziclicommon.CliLongTemplate, `This command updates a repository.
+		Long: aziclicommon.BuildCliLongTemplate(`This command updates a repository.
 
 Examples:
   # update a repository with name repository1, id 19159d69-e902-418e-966a-148c4d5169a4 and account 301990992055

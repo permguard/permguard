@@ -17,8 +17,6 @@
 package configs
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -36,7 +34,7 @@ func CreateCommandForConfig(deps azcli.CliDependenciesProvider, v *viper.Viper) 
 	command := &cobra.Command{
 		Use:   "config",
 		Short: "Configure Cli settings",
-		Long:  fmt.Sprintf(aziclicommon.CliLongTemplate, `This command configures Cli settings.`),
+		Long:  aziclicommon.BuildCliLongTemplate(`This command configures Cli settings.`),
 		RunE:  runECommandForConfig,
 	}
 	command.AddCommand(createCommandForConfigAAPGet(deps, v))
