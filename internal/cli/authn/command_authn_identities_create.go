@@ -43,8 +43,11 @@ func createCommandForIdentityCreate(deps azcli.CliDependenciesProvider, v *viper
 		Long: aziclicommon.BuildCliLongTemplate(`This command creates an identity.
 
 Examples:
-  # create an identity with name identity1 and account 301990992055
-  permguard authn identities create --account 301990992055 --name identity1
+  # create an idenity of user kind with the name nicolagallo and output the result in JSON format.
+  permguard authn identities create --account 268786704340 --kind user --name nicolagallo --identitysourceid 1da1d9094501425085859c60429163c2 --output json
+  # create an idenity of user kind with the name branch-manager and output the result in JSON format.
+  permguard authn identities create --account 268786704340 --kind role --name branch-manager --identitysourceid 1da1d9094501425085859c60429163c2 --output json
+
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCreateIdentity(deps, cmd, v)

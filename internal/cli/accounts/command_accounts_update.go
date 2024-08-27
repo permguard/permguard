@@ -43,8 +43,8 @@ func createCommandForAccountUpdate(deps azcli.CliDependenciesProvider, v *viper.
 		Long: aziclicommon.BuildCliLongTemplate(`This command updates an account.
 
 Examples:
-  # update the account with the account id 301990992055 and set the name to mycorporate
-  permguard accounts update --account 301990992055 --name mycorporate
+  # update the account with the account id 268786704340 and set the name to magicfarmacia-dev and output the result in JSON format.
+  permguard accounts update --account 268786704340 --name magicfarmacia-dev --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForUpdateAccount(deps, cmd, v)
