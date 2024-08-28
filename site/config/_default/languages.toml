@@ -11,7 +11,7 @@
     homeAccountTitle = 'Accounts'
     homeAccountBody = 'Create and configure an <code>Account</code>.'
     homeIdentitiesTitle = "Identities"
-    homeIdentitiesBody = "Create identity sources and populate them with <code>Users</code> using available SDKs. Then, define <code>Roles</code> and <code>Trusted Delegations</code>."
+    homeIdentitiesBody = "Create identity sources and populate them with <code>Users</code> using available SDKs. Then, define <code>Roles</code>."
     homeSchemaTitle = 'Schemas'
     homeSchemaBody = 'Create schemas and configure <code>Domains</code>, <code>Resources</code> and <code>Actions</code>.'
     homePolicyTitle = 'Policies'

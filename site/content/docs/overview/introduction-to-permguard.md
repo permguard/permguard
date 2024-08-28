@@ -37,8 +37,6 @@ Through the chosen approach, it is possible to specify who or what can access re
 {{< inline-svg src="images/overview/permguard-flow.svg" width="100%" height="100%" class="svg-inline-custom svg-lightmode" >}}
 {{< inline-svg src="images/overview/permguard-flow.svg" width="100%" height="100%" style="background-color:#ffffff; border: 0px solid #d53ec6;"  class="svg-inline-custom svg-darkmode" >}}
 
-Moreover it is possible to define **trusted delegation**, enabling a user to delegate their permissions to another user. This delegation can be restricted for a certain period of time, and it is also possible to narrow down the permissions window by restricting the granted policies.
-
 {{< callout context="note" icon="info-circle" >}}
 It's important to note that PermGuard supports tenancy, enabling each account to have multiple isolated tenants, and each tenant can, in turn, have multiple isolated
 resources.
@@ -47,7 +45,7 @@ resources.
 To enforce the access control process, the application can integrate one of the available **SDKs** or manually integrate the native **APIs**.
 
 {{< callout context="tip" icon="rocket" >}}
-PermScript language is designed to define policies, specifying actions that can be performed on specific resources. Additionally it is possible to specify identities, permissions associated with identities and trusted delegations.
+PermScript language is designed to define policies, specifying actions that can be performed on specific resources. Additionally it is possible to specify identities, permissions associated with identities.
 {{< /callout >}}
 
 <div style="text-align: center">

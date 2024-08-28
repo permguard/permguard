@@ -37,7 +37,7 @@ Usage:
 Available Commands:
   accounts    Manage Accounts
   authn       Manage Tenants, Identity Sources and Identities
-  authz       Manage Repositories and Trusted Delegations
+  authz       Manage Repositories
   completion  Generate the autocompletion script for the specified shell
   config      Configure CLI settings
   help        Help about any command
