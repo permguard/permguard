@@ -36,8 +36,8 @@ Here is an example policy for managing inventory:
 ```yaml
 name: manage-inventory
 actions:
-  - inventory:Access
-  - inventory:Manage
+  - inventory:access
+  - inventory:manage
 resources:
   - uur:581616507495:default:pharmacy:inventory:branch/*
 ```

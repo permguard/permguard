@@ -32,7 +32,7 @@ Policies can be defined using either PermScript or YAML.
 {
     "name": "access-inventory",
     "actions": [
-        "inventory:Access"
+        "inventory:access"
     ],
     "resources": [
         "uur:581616507495:default:pharmacy:inventory:branch/*"
