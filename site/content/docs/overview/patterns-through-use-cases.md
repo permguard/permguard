@@ -91,17 +91,3 @@ It is possible to publish a signed event and subsequently validate the event and
 signedMessage = permguard.sign(jwt.sub, message)
 publish(signedMessage)
 ```
-
-## Use Case: Identity Delegation
-
-Another common use case involves scenarios where a user needs to temporarily delegate their identity to another user.
-
-By leveraging the `PermGuard`, users can indeed implement this by granting the necessary permissions to the delegated identity.
-This allows actions to be performed on behalf of the user. However, it's important to note that the auditing process would track the operation as being executed by another user.
-
-```python
-ajwt = permguard.create_token(jwt.sub, delegated_uur, { "delegation": true })
-make_call_to_service(ajwt)
-```
-
-Despite this, it still leads to a clean and secure solution.
