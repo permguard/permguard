@@ -51,6 +51,10 @@ A permission is composed of three main elements: name, permit, and forbid.
 - `permit`: This section lists the names of valid policies that the permission explicitly allows. Each entry in the permit section must reference an existing policy that defines the specific actions and resources that are permitted under this permission. It’s crucial to ensure that only valid and correctly defined policies are included here.
 - `forbid`: This section lists the names of valid policies that are explicitly prohibited by this permission. Even if these policies might be permitted by other permissions, they will be overridden and denied by the forbid list. This ensures that certain actions or access are strictly restricted according to the requirements.
 
+{{< callout context="caution" icon="alert-triangle" >}}
+The `forbid` section takes precedence over `permit`. This means that if a policy is listed in both permit and forbid, the actions allowed by the permit will be overridden and denied by the forbid. Therefore, any permissions granted in permit are effectively canceled if they are also specified in forbid.
+{{< /callout >}}
+
 Below is the JSON schema used to validate the permission:
 
 ```json
