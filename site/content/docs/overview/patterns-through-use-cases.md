@@ -60,7 +60,7 @@ With this approach the previous drawbacks are mitigated:
 - **Code Duplication**: This problem is fixed as the application does not need to implement any logic to evaluate the permissions, as the policies evaluation is delegated to `PermGuard`.
 
 ```python
-has_permissions = permguard.check(jwt.sub, "car-rental/1.0.0", "ListCars", "car")
+has_permissions = permguard.check(jwt.sub, "car-rental/1.0.0", "listcars", "car")
 
 if has_permissions:
     print("Role can list cars")
