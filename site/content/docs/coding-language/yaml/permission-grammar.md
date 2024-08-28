@@ -27,10 +27,10 @@ Permissions can be created in YAML files within the root of the working director
 .
 ├── .permguard
 ├── schema.yml
-├── staff-permissions.yml
-├── staff-policies.yml
-├── inventory-permissions.yml
-├── inventory-policies.yml
+├── staff_permissions.yml
+├── staff_policies.yml
+├── inventory_permissions.yml
+├── inventory_policies.yml
 ```
 
 Here is an example permission for read-only access to inventory:

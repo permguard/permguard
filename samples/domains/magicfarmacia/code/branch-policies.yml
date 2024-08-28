@@ -6,7 +6,7 @@ actions:
   - order:manage
   - order:assignroles
 resources:
-  - uur::$tenant:pharmacy-branch:order/*
+  - uur:::pharmacy-branch:order/*
 
 ---
 # Audit Pharmacy Branch Staff: This policy covers tenant specific operations related to the auditing of staff within a pharmacy branch.
@@ -14,7 +14,7 @@ name: audit-branch-staff
 actions:
   - order:view
 resources:
-  - uur::$tenant:pharmacy-branch:order/*
+  - uur:::pharmacy-branch:order/*
 
 ---
 # Manage Pharmacy Branch Inventory: This policy covers tenant specific operations related to the management of inventory within a pharmacy branch.
@@ -24,7 +24,7 @@ actions:
   - order:manage
   - order:assignroles
 resources:
-  - uur::$tenant:pharmacy-branch:order/*
+  - uur:::pharmacy-branch:order/*
 
 ---
 # View Pharmacy Branch Inventory: This policy covers tenant specific operations related to accessing the inventory of a pharmacy branch.
@@ -32,7 +32,7 @@ name: view-branch-inventory
 actions:
   - order:view
 resources:
-  - uur::$tenant:pharmacy-branch:order/*
+  - uur:::pharmacy-branch:order/*
 
 ---
 # Audit Pharmacy Branch Inventory: This policy covers tenant specific operations related to the auditing of a pharmacy branch's inventory.
@@ -40,7 +40,7 @@ name: audit-branch-inventory
 actions:
   - order:view
 resources:
-  - uur::$tenant:pharmacy-branch:order/*
+  - uur:::pharmacy-branch:order/*
 
 ---
 # Manage Pharmacy Branch Orders: This policy covers tenant specific operations related to the management of orders within a pharmacy branch.
@@ -50,7 +50,7 @@ actions:
   - order:manage
   - order:assignroles
 resources:
-  - uur::$tenant:pharmacy-branch:order/*
+  - uur:::pharmacy-branch:order/*
 
 ---
 # Audit Pharmacy Branch Orders: This policy covers tenant specific operations related to auditing the orders of a pharmacy branch.
@@ -58,7 +58,7 @@ name: audit-branch-orders
 actions:
   - order:view
 resources:
-  - uur::$tenant:pharmacy-branch:order/*
+  - uur:::pharmacy-branch:order/*
 
 ---
 # Audit Pharmacy Branch Financials: This policy covers tenant specific operations related to auditing the financials of a pharmacy branch.
@@ -66,6 +66,6 @@ name: audit-branch-financials
 actions:
   - order:view
 resources:
-  - uur::$tenant:pharmacy-branch:order/*
+  - uur:::pharmacy-branch:order/*
 
 
