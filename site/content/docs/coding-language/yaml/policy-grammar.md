@@ -39,7 +39,7 @@ actions:
   - inventory:access
   - inventory:manage
 resources:
-  - uur:581616507495:default:pharmacy:inventory:branch/*
+  - uur::*:pharmacy-branch:inventory:branch/*
 ```
 
 ## Rules of Composition
