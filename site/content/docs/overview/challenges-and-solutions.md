@@ -66,5 +66,5 @@ However, this approach presents several drawbacks:
 - **Security Risks**: This challenge is fixed as having a central point for managing the authorization layer enables the tracking of permissions for each identity across different applications.
 
 {{< callout context="note" icon="info-circle" >}}
-`PermGuard` further enhances the concept of the authorization layer by allowing the creation of multiple types of identities, including Users and Roles. Moreover, it implements features to delegate permissions to another identity.
+`PermGuard` further enhances the concept of the authorization layer by allowing the creation of multiple types of identities, including Users and Roles.
 {{< /callout >}}
