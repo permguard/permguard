@@ -1,16 +1,16 @@
 ---
-title: "Kubernetes"
-slug: "Kubernetes"
+title: "Running the Server"
+slug: "Running the Server"
 description: ""
 summary: ""
-date: 2023-08-01T00:28:52+01:00
-lastmod: 2023-08-01T00:28:52+01:00
-draft: true
+date: 2023-08-01T00:27:20+01:00
+lastmod: 2023-08-01T00:27:20+01:00
+draft: false
 menu:
   docs:
     parent: ""
-    identifier: "kubernetes-d9a8a0f8b18bf7093c96d264c2c9262a"
-weight: 7007
+    identifier: "running-the-server-aed2943821e4ff1fd325f6230d12c750"
+weight: 7000
 toc: true
 seo:
   title: "" # custom title (optional)
