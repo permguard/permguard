@@ -99,6 +99,8 @@ func TestValidateName(t *testing.T) {
 		{"account", "nome", false},
 		{"account", "nome-valido", false},
 		{"account", "nome-Non-Valido", true},
+		{"account", "permguard", false},
+		{"account", "permguardpippo", false},
 		{"", "nome-valido", false},
 	}
 	for _, tc := range testCases {

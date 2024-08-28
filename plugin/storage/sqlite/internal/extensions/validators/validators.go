@@ -78,7 +78,11 @@ func ValidateIdentityUserName(entity string, name string) error {
 
 // ValidateName validates a name.
 func ValidateName(entity string, name string) error {
-	if name != strings.ToLower(name) {
+	sanitized := strings.ToLower(strings.TrimSpace(name))
+	if strings.HasPrefix(name, "permguard") {
+		return fmt.Errorf("storage: %s name %s is not valid. It cannot have 'permguard' as a prefix. %w", entity, name, azerrors.ErrClientName)
+	}
+	if name != sanitized {
 		return fmt.Errorf("storage: %s name %s is not valid. It must be in lower case. %w", entity, name, azerrors.ErrClientName)
 	}
 	vName := struct {
