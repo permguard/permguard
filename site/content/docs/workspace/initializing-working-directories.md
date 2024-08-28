@@ -27,7 +27,7 @@ The authorization process follows a code-first approach, and when dealing with S
 
 There are three primary methods to create a working directory and associate it with a PermGuard repo:
 
-- Initialize a new working directory
+- Initialize a new repo in a working directory
 - Clone an existing repo into a working directory
 - Fork an existing repo into a working direct.
 
@@ -38,7 +38,7 @@ A `PermGuard` working directory contains the following files:
 - Configuration files in either `YAML` or `PermScript` format.
 - A hidden `.permguard` directory which PermGuard uses to store metadata and intermediate files that are automatically managed by PermGuard and should not be modified manually. This directory should be added to the `.gitignore` file to prevent it from being committed to the source code repo.
 
-## Initialize a new working directory
+## Initialize a new repo
 
 When starting a new project, the first step is to create an account:
 
