@@ -3,13 +3,13 @@ import {
 }
 
 # Policy to list all cars.
-policy ListCars {
+policy listcars {
     resources = uur:581616507495:default:car-rental:renting:car/*,
-    actions = ra:car:ListCars
+    actions = ra:car:listcars
 }
 
 # Policy to list all available cars.
-policy ListAvailableCars extends ListCars {
+policy ListAvailableCars extends listcars {
     condition = base.condition
         and ctx.Data["CARS"].Status = "AVAILABLE"
 }
@@ -28,7 +28,7 @@ permission ManageMyReservation {
 
 # Defines permissions to read all cars.
 permission CarReadAll {
-    permit = [ ListCars ],
+    permit = [ listcars ],
     forbid = []
 }
 
