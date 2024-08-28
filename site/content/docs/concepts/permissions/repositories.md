@@ -25,8 +25,6 @@ A Repository serves as logical representations, facilitating `authz` organizatio
 
 ```json
 {
-  "repository_id": "668f3771eacf4094ba8a80942ea5fd3f",
-  "account_id": 268786704340,
   "name": "v2.0"
 }
 ```

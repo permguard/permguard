@@ -30,7 +30,6 @@ Policies can be defined using either PermScript or YAML.
 
 ```json
 {
-    "policy_id": "b9ccc8554cc645fca5de415f4aa67a36",
     "name": "access-inventory",
     "actions": [
         "inventory:Access"

@@ -29,10 +29,10 @@ Permissions can be defined using either PermScript or YAML.
 
 ```json
 {
-    "permissions_id": "86f92e15c51548478cd0424412d15c76",
-    "name": "invengory-read",
-    "policies": [
+    "name": "inventory-read",
+    "permit": [
         "access-inventory"
-    ]
+    ],
+    "forbid": []
 }
 ```

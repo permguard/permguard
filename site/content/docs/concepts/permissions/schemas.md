@@ -28,7 +28,6 @@ Additionally, a schema can be further subdivided into domains, offering enhanced
 
 ```json
 {
-  "domain_id": "0432efb55bc8464b8a22b8b9131cbc7e",
   "name": "magicpharmacy",
   "description": "Manage a pharmacy with multiple branches",
   "resources": []
@@ -52,7 +51,6 @@ In summary, `Resources` in PermGuard provide a structured approach to managing a
 
 ```json
 {
-  "resource_id": "3451e4e7ad7c440d89f828ed68747422",
   "name": "inventory",
   "description": "Pharmacy inventory",
   "actions": []
@@ -64,7 +62,6 @@ An **action** is a specific operation that can be performed on a resource. Actio
 
 ```json
 {
-  "action_id": "8469ba03528d4ea7aab25354dce84c29",
   "name": "access",
   "description": "Access inventory"
 }

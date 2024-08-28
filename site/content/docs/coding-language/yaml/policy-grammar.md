@@ -19,3 +19,11 @@ seo:
   noindex: false # false (default) or true
 ---
 
+```yaml
+name: manage-inventory
+actions:
+  - inventory:Access
+  - inventory:Manage
+resources:
+  - uur:581616507495:default:pharmacy:inventory:branch/*
+```
