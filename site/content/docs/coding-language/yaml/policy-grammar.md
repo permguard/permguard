@@ -77,6 +77,7 @@ Below is the JSON schema used to validate the policy:
       }
     }
   },
-  "required": ["name", "actions", "resources"]
+  "required": ["name", "actions", "resources"],
+  "additionalProperties": false
 }
 ```
