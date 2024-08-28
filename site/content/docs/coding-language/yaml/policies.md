@@ -1,5 +1,5 @@
 ---
-title: "Configuration Languages"
+title: "Policies"
 slug: "Configuration Languages"
 description: ""
 summary: ""
@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "configuration-languages-eff035101e394ce3a1f33767ce0b2613"
-weight: 4001
+weight: 4101
 toc: true
 seo:
   title: "" # custom title (optional)
@@ -19,8 +19,3 @@ seo:
   noindex: false # false (default) or true
 ---
 
-`PermGuard` supports both YAML and PermScript configuration languages for defining policies and permissions.
-
-{{< callout context="caution" icon="alert-triangle" >}}
-`PermScript` currently is under development and not yet available for use.
-{{< /callout >}}
