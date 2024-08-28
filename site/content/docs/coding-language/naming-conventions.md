@@ -34,11 +34,15 @@ There are only two exceptions:
 
 The `UUR` is a unique identifier used to specify resources within policies and enforcement points. The format includes five placeholders as follows:
 
-- `{account}`: The account associated with the resource.
+- `{account}`: The account associated with the resource. This field can be left blank, in which case it will default to the current account.
 - `{tenant}`: The tenant within which the resource resides.
 - `{domain}`: The domain or functional area of the resource.
 - `{resource}`: The specific resource being identified.
 - `{resource-filter}`: An optional filter to further narrow down the resource (e.g., specific IDs or categories).
+
+{{< callout context="caution" icon="alert-triangle" >}}
+The `account` placeholder should be left blank in most cases. This placeholder has been implemented to accommodate future features that will support account federation.
+{{< /callout >}}
 
 This structure allows precise identification and management of resources in a multi-tenant, multi-domain environment.
 

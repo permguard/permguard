@@ -1,10 +1,6 @@
-import {
-	renting "581616507495/renting-company/renting/v1.0"
-}
-
 # Policy to list all cars.
 policy listcars {
-    resources = uur:581616507495:default:car-rental:renting:car/*,
+    resources = uur::$tenant:car-rental:car/*,
     actions = ra:car:listcars
 }
 
