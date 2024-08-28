@@ -183,6 +183,7 @@ Below is the JSON schema used to validate the schema:
       }
     }
   },
-  "required": ["domains"]
+  "required": ["domains"],
+  "additionalProperties": false
 }
 ```
