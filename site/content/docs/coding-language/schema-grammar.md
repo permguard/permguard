@@ -33,9 +33,7 @@ The schema is defined in a YAML file named `schema.yml` and is stored in the wor
 It is important to note that a schema is evaluated to verify the correctness of the policies only if strict evaluation is required.
 {{< /callout >}}
 
-
 Below is a sample schema:
-
 
 ```yaml
 domains:
