@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "cli-flags-85030aefbc53456496023ea81b6941f9"
-weight: 7006
+weight: 6006
 toc: true
 seo:
   title: "" # custom title (optional)

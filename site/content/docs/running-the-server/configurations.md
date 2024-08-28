@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "configurations-51e885211e99e6d718992b041375f958"
-weight: 7001
+weight: 6001
 toc: true
 seo:
   title: "" # custom title (optional)
