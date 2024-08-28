@@ -30,20 +30,20 @@ The first step is to define a policy and associate it with a role by specifying 
 
 ```python
 # Policy to access inventory across all branches.
-policy AccessInventory {
+policy accessinventory {
     resources = uur:581616507495:default:pharmacy:inventory:branch/*,
-    actions = ra:inventory:Access
+    actions = ra:inventory:access
 }
 
 # Defines permissions to read inventory information.
-permission InventoryRead {
-    permit = [AccessInventory],
+permission inventoryread {
+    permit = [accessinventory],
     forbid = []
 }
 
 # Defines a role for the branch manager responsible for managing inventory.
-role BranchManager {
-  permissions = [InventoryRead]
+role branchmanager {
+  permissions = [inventoryread]
 }
 ```
 
@@ -52,7 +52,7 @@ role BranchManager {
 After creating and associating the policy with the role, the next step is to perform the permission evaluation within the application.
 
 ```python
-has_permissions = permguard.check("uur:581616507495:permguard:identities:iam:role/branch-manager", "pharmacy/1.0.0", "Access", "inventory")
+has_permissions = permguard.check("uur:581616507495:permguard:identities:iam:role/branch-manager", "pharmacy/1.0.0", "access", "inventory")
 
 if has_permissions:
     print("Role can access inventory")
