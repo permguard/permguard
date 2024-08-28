@@ -48,24 +48,30 @@ Below is an example of a UUR that identifies an inventory item with the ID `b51c
 uur:581616507495:matera-branch:pharmacy-branch:inventory/b51cbd37503f4a4eaec9d2f33419d523
 ```
 
-Each placeholder can either be an exact value or use the wildcard pattern `*` to match multiple values.
+Each placeholder can either be an exact value or use the wildcard pattern `*` to match multiple values:
 
 ```plaintext
 uur:581616507495:matera-branch:pharmacy-*:inventory/*
 ```
 
-Additionally, for the `{tenant}` placeholder, you can use the dynamic value $tenant, which associates the tenant at runtime based on the execution context.
+Additionally, for the `{tenant}` placeholder, you can use the dynamic value $tenant, which associates the tenant at runtime based on the execution context:
 
 ```plaintext
 uur:$account:$tenant:pharmacy-*:inventory/*
 ```
 
-It is also possible to leave the `{account}` and `{tenant}` placeholders blank, in which case they will default to the current account (`$account`) and tenant (`$tenant`), respectively.
+It is also possible to leave the `{account}` and `{tenant}` placeholders blank, in which case they will default to the current account (`$account`) and tenant (`$tenant`), respectively:
 
 ```plaintext
 uur:::pharmacy-*:inventory/*
 ```
 
 {{< callout context="caution" icon="alert-triangle" >}}
-Wildcard and dynamic value patterns are not permitted when referencing a resource in an enforcement point. Only exact values are allowed.
+Wildcard and dynamic value patterns are not permitted when referencing a resource in an enforcement point; only exact values are allowed.
 {{< /callout >}}
+
+It is important to note that for resources related to identities, the exact account identifier must be used, and permguard must be specified as the tenant:
+
+```plaintext
+uur:581616507495:permguard:authn:identity/branch-manager
+```
