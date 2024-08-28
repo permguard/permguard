@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-A schema is a structured representation that defines how domains, resources, and actions are organized. This schema is used to model the application authorization framework and serves as the foundation for setting up and enforcing policies across the target application. Below is an explanation of each element and the rules for composing a schema.
+A schema is a structured representation that defines how domains, resources, and actions are organized. This schema is used to model the application authorization model and serves as the foundation for setting up and enforcing policies across the target application. Below is an explanation of each element and the rules for composing a schema.
 
 {{< callout context="note" icon="info-circle">}}
 It is important to note that a schema is evaluated to verify the correctness of the policies only if strict evaluation is required.
