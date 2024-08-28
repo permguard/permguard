@@ -1,16 +1,16 @@
 ---
-title: "Deployment"
-slug: "Deployment"
+title: "Workspace"
+slug: "Workspace"
 description: ""
 summary: ""
-date: 2023-08-15T20:59:48+01:00
-lastmod: 2023-08-15T20:59:48+01:00
+date: 2023-08-01T00:27:20+01:00
+lastmod: 2023-08-01T00:27:20+01:00
 draft: false
 menu:
   docs:
     parent: ""
-    identifier: "deployment-566dfebc05d29fa09eedfc3595f4fc07"
-weight: 7005
+    identifier: "workspace-7b0fcc45084c4789aabe2416dee30fef"
+weight: 3000
 toc: true
 seo:
   title: "" # custom title (optional)
