@@ -28,7 +28,7 @@ Authorization is a complex aspect that should not be implemented separately in e
 
 ## Level of Authorizations
 
-There are serval level of authroization that can be implemented, essentially they can be summaries as followting:
+There are serval level of authorization that can be implemented, essentially they can be summaries as followting:
 
 - Level 1: Application and API Access
 - Level 2: Functional Access
