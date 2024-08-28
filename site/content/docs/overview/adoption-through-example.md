@@ -31,7 +31,7 @@ The first step is to define a policy and associate it with a role by specifying 
 ```python
 # Policy to access inventory across all branches.
 policy accessinventory {
-    resources = uur:581616507495:*:pharmacy-branch:inventory/*,
+    resources = uur::*:pharmacy-branch:inventory/*,
     actions = ra:inventory:access
 }
 
