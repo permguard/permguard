@@ -65,7 +65,6 @@ if [ $? -ne 0 ]; then
     echo "Error creating account"
     exit 1
 fi
-
 # Extract the account ID
 devaccount=$(echo $output | cut -d ':' -f 1)
 
@@ -82,8 +81,22 @@ go run ./cmd/cli/main.go authn tenants create --name london-branch --account $de
 go run ./cmd/cli/main.go authn tenants create --name leeds-branch --account $devaccount || echo "Failed to create Manchester branch"
 go run ./cmd/cli/main.go authn tenants create --name birmingham-branch --account $devaccount || echo "Failed to create Birmingham branch"
 
-go run ./cmd/cli/main.go authn identitysources create --name google --account $devaccount || echo "Failed to create Google identity source"
+# Capture the output from identity source creation
+output=$(go run ./cmd/cli/main.go authn identitysources create --name google --account $devaccount || echo "Failed to create Google identity source")
+if [ $? -ne 0 ]; then
+    echo "Error creating the identity source"
+    exit 1
+fi
+# Extract the account ID
+devidsource=$(echo $output | cut -d ':' -f 1)
+
 go run ./cmd/cli/main.go authn identitysources create --name facebook --account $devaccount || echo "Failed to create Facebook identity source"
+
+go run ./cmd/cli/main.go authn identities create --account $devaccount --kind role --name platform-administrator --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --account $devaccount --kind role --name branch-manager --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --account $devaccount --kind role --name inventory-manager --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --account $devaccount --kind role --name pharmacist --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --account $devaccount --kind role --name customer --identitysourceid $devidsource
 
 go run ./cmd/cli/main.go authz repos create --name v0.1 --account $devaccount || echo "Failed to create v0.1 repository"
 

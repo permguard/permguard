@@ -1,0 +1,7 @@
+---
+# Pharmacy Branch Management: This policy covers operations related to the management of pharmacy branch activities.
+name: pharmacy-branch-management
+actions:
+  - pharmacy-branch:*
+resources:
+  - uur::*:platform:pharmacy-branch/*

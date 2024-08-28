@@ -1,0 +1,45 @@
+domains:
+  - name: platform
+    description: Platform-level operations
+    resources:
+      - name: pharmacy-branch
+        actions:
+          - name: create
+            description: Create new pharmacy branch
+          - name: update
+            description: Update existing pharmacy branch
+          - name: delete
+            description: Delete pharmacy branch
+  - name: pharmacy-branch
+    description: Pharmacy branch-level operations
+    resources:
+      - name: staff
+        actions:
+          - name: view
+            description: view staff details
+          - name: manage
+            description: Manage staff details
+          - name: assign_roles
+            description: Assign roles to staff members
+      - name: inventory
+        actions:
+          - name: view
+            description: View inventory items
+          - name: manage
+            description: Manage inventory, including stock levels and product details
+          - name: order
+            description: Order new stock for the pharmacy
+      - name: orders
+        actions:
+          - name: view
+            description: View customer orders
+          - name: manage
+            description: Manage customer orders
+          - name: orders
+            description: Place a new order for a customer
+      - name: reports
+        actions:
+          - name: view-financial
+            description: View financial reports for the pharmacy
+          - name: view-operational
+            description: View operational reports for the pharmacy

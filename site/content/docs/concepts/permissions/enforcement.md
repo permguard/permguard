@@ -27,10 +27,13 @@ To complete the enforcement process, the PEP queries the Policy Decision Point (
 ```json
 {
   "identity": {
-    "uur": "uur:581616507495:permguard:identities:iam:user/mario.rossi"
+    "principal": "uur:581616507495::authn:identity/nicola.gallo"
   },
-  "domain": "store",
-  "resources": [ "inventory" ],
-  "actions": [ "inventory:access" ],
+  "actions": [
+    "pharmacy-branch:inventory:access"
+  ],
+  "context": {
+    "tenant": ["matera-branch", "pisa-branch"]
+  }
 }
 ```
