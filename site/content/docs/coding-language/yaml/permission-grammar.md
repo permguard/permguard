@@ -39,7 +39,7 @@ Here is an example permission for read-only access to inventory:
 name: inventory-read
 permit:
   - access-inventory
-fobid:
+forbid:
   - manage-inventory
 ```
 
