@@ -1,6 +1,6 @@
 ---
-title: "Authroization Provider"
-slug: "Authorizatin Provider"
+title: "Authorization Provider"
+slug: "Authorization Provider"
 description: ""
 summary: ""
 date: 2023-08-15T14:47:57+01:00
