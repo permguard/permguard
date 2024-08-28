@@ -1,6 +1,6 @@
 ---
-title: "Policies"
-slug: "Configuration Languages"
+title: "Policy Grammar"
+slug: "Policy Grammar"
 description: ""
 summary: ""
 date: 2023-08-21T22:44:39+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "configuration-languages-eff035101e394ce3a1f33767ce0b2613"
+    identifier: "policy-grammar-6f7551118a914e7392a1acd29b1ef521"
 weight: 4101
 toc: true
 seo:
