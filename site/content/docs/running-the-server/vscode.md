@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "vscode-c62f90ee681660e051b5880075c5e2fc"
-weight: 7003
+weight: 6003
 toc: true
 seo:
   title: "" # custom title (optional)

@@ -9,7 +9,7 @@ menu:
   docs:
     parent: ""
     identifier: "tenants-c8cedcba-38bd-4afb-9fbb-e3ce1d23c8bb"
-weight: 6101
+weight: 5101
 toc: true
 seo:
   title: "" # custom title (optional)

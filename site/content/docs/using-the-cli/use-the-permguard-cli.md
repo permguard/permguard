@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "use-the-permguard-cli-10802952ca15ef122a11e4287ee6f8ee"
-weight: 6001
+weight: 5001
 toc: true
 seo:
   title: "" # custom title (optional)

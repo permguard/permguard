@@ -9,7 +9,7 @@ menu:
   docs:
     parent: ""
     identifier: "accounts-cc889e190a223318e9616ef4e73dea17"
-weight: 6002
+weight: 5002
 toc: true
 seo:
   title: "" # custom title (optional)
