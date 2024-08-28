@@ -35,7 +35,7 @@ Policies can be defined using either PermScript or YAML.
         "inventory:access"
     ],
     "resources": [
-        "uur::$tenant:pharmacy-branch:inventory:branch/*"
+        "uur:::pharmacy-branch:inventory:branch/*"
     ]
 }
 ```

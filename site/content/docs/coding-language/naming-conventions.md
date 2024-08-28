@@ -40,10 +40,6 @@ The `UUR` is a unique identifier used to specify resources within policies and e
 - `{resource}`: The specific resource being identified.
 - `{resource-filter}`: An optional filter to further narrow down the resource (e.g., specific IDs or categories).
 
-{{< callout context="caution" icon="alert-triangle" >}}
-The `account` placeholder should be left blank in most cases. This placeholder has been implemented to accommodate future features that will support account federation.
-{{< /callout >}}
-
 This structure allows precise identification and management of resources in a multi-tenant, multi-domain environment.
 
 Below is an example of a UUR that identifies an inventory item with the ID `b51cbd37503f4a4eaec9d2f33419d523` in the domain `pharmacy-branch`, which belongs to the tenant `matera-branch` under the account `581616507495`:
@@ -55,15 +51,21 @@ uur:581616507495:matera-branch:pharmacy-branch:inventory/b51cbd37503f4a4eaec9d2f
 Each placeholder can either be an exact value or use the wildcard pattern `*` to match multiple values.
 
 ```plaintext
-uur:581616507495:*-branch:pharmacy-*:inventory/*
+uur:581616507495:matera-branch:pharmacy-*:inventory/*
+```
+
+Additionally, for the `{tenant}` placeholder, you can use the dynamic value $tenant, which associates the tenant at runtime based on the execution context.
+
+```plaintext
+uur:$account:$tenant:pharmacy-*:inventory/*
+```
+
+It is also possible to leave the `{account}` and `{tenant}` placeholders blank, in which case they will default to the current account (`$account`) and tenant (`$tenant`), respectively.
+
+```plaintext
+uur:::pharmacy-*:inventory/*
 ```
 
 {{< callout context="caution" icon="alert-triangle" >}}
 Wildcard and dynamic value patterns are not permitted when referencing a resource in an enforcement point. Only exact values are allowed.
 {{< /callout >}}
-
-Additionally, for the `{tenant}` placeholder, you can use the dynamic value $tenant, which associates the tenant at runtime based on the execution context.
-
-```plaintext
-uur:581616507495:$tenant:pharmacy-*:inventory/*
-```

@@ -27,8 +27,8 @@ Policies can be created in yaml files within the root of the working directory.
 .
 ├── .permguard
 ├── schema.yml
-├── staff-policies.yml
-├── inventory-policies.yml
+├── staff_policies.yml
+├── inventory_policies.yml
 ```
 
 Here is an example policy for managing inventory:
@@ -39,7 +39,7 @@ actions:
   - inventory:access
   - inventory:manage
 resources:
-  - uur::*:pharmacy-branch:inventory:branch/*
+  - uur:::pharmacy-branch:inventory/*
 ```
 
 ## Rules of Composition
