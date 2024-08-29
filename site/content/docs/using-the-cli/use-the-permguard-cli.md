@@ -25,22 +25,40 @@ The CLI allows to manage accounts, identities, tenants, repositories, schemas, d
 To view a list of commands available in the current PermGuard version, users can run the `permguard` command without any additional arguments.
 
 ```txt
-The Official PermGuard CLI
-Copyright (c) 2022 Nitro Agility S.r.l.
+  ____                      ____                     _
+ |  _ \ ___ _ __ _ __ ___  / ___|_   _  __ _ _ __ __| |
+ | |_) / _ \ '__| '_ ` _ \| |  _| | | |/ _` | '__/ _` |
+ |  __/  __/ |  | | | | | | |_| | |_| | (_| | | | (_| |
+ |_|   \___|_|  |_| |_| |_|\____|\__,_|\__,_|_|  \__,_|
 
-  Find more information at: https://www.permguard.com/docs/cli/how-to-use/
+The official PermGuard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
+
+PermGuard is an Open Source Multi-Account and Multi-Tenant Authorization Provider.
+
+        Find more information at: https://www.permguard.com/docs/cli/how-to-use/
 
 Usage:
-  PermGuard CLI [flags]
+  PermGuard Command Line Interface [flags]
   PermGuard [command]
 
 Available Commands:
   accounts    Manage Accounts
-  authn       Manage Tenants, Identity Sources and Identities
+  apply       Apply the plan to the remote repo
+  authn       Manage Tenants and Identities
   authz       Manage Repositories
+  clone       Clone an existing repo from a remote into the working directory
   completion  Generate the autocompletion script for the specified shell
-  config      Configure CLI settings
+  config      Configure Cli settings
+  destroy     Destroy objects in the remote repo
+  diff        Calculate the difference between the working directory and a remote repo
+  fetch       Fetch the latest state changes of an existing repository
+  fork        Fork an existing repo from a remote into a new remote repo and clone it into the working directory
   help        Help about any command
+  init        Initialize a new repository in the working directory
+  merge       Merge changes from a remote repo into the working directory
+  plan        Plan the difference between the working directory and a remote repo to be applied
+  remote      Manage the set of repos ("remotes") whose PermGuard servers you track
+  validate    Validate files in the working directory
 
 Flags:
   -h, --help            help for PermGuard

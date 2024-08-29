@@ -7,6 +7,7 @@ import (
 	azicliaccounts "github.com/permguard/permguard/internal/cli/accounts"
 	azicliauthn "github.com/permguard/permguard/internal/cli/authn"
 	azicliauthz "github.com/permguard/permguard/internal/cli/authz"
+	azicliwks "github.com/permguard/permguard/internal/cli/workspace"
 	azicliconfigs "github.com/permguard/permguard/internal/cli/configs"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azclicommon "github.com/permguard/permguard/internal/cli/common"
@@ -36,10 +37,11 @@ func (s *CommunityCliInitializer) GetCliCommands(deps azcli.CliDependenciesProvi
 	authnCmd := azicliauthn.CreateCommandForAuthN(deps, v)
 	authzCmd := azicliauthz.CreateCommandForAuthZ(deps, v)
 	configCmd := azicliconfigs.CreateCommandForConfig(deps, v)
-	return []*cobra.Command{
+	wksCmds := azicliwks.CreateCommandsForWorkspace(deps, v)
+	return append([]*cobra.Command{
 		accountsCmd,
 		authnCmd,
 		authzCmd,
 		configCmd,
-	}, nil
+	}, wksCmds...), nil
 }

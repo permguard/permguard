@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// package configs provides the cobra commands for the configs commands.
+// Package configs provides the cobra commands for the configs commands.
 package configs

@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// package accounts provides the cobra commands for the accounts commands.
+// Package accounts provides the cobra commands for the accounts commands.
 package accounts
