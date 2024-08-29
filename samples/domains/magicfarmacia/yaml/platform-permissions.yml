@@ -1,5 +1,5 @@
 ---
-# Platform Pharmacy Branches Administration: This policy covers operations related to the administration of pharmacy branches on the platform.
+# Platform Pharmacy Branches Administration: This permission covers operations related to the administration of pharmacy branches on the platform.
 name: administer-platform-branches
 permit:
   - pharmacy-branch-management
