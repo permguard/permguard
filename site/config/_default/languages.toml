@@ -9,15 +9,15 @@
     alertText = '<a class="alert-link stretched-link fw-normal" href="/blog/example-post/">Doks version 1.0 just shipped!</a>'
     homeDescription = '<b>PermGuard</b> implements the authorization layer, allowing the application’s authorization logic to be <b>separated</b> from the core <b>application code</b>. The application can enforce permissions from anywhere, including <code>VMs</code>, <code>Containers</code>, and <code>Serverless.</code>'
     homeAccountTitle = 'Accounts'
-    homeAccountBody = 'Create and configure an <code>Account</code>.'
+    homeAccountBody = 'Create and configure an <code>Account</code>, optionally including its <code>Tenants</code>.'
     homeIdentitiesTitle = "Identities"
-    homeIdentitiesBody = "Create identity sources and populate them with <code>Users</code> using available SDKs. Then, define <code>Roles</code>."
-    homeSchemaTitle = 'Schemas'
-    homeSchemaBody = 'Create schemas and configure <code>Domains</code>, <code>Resources</code> and <code>Actions</code>.'
+    homeIdentitiesBody = "Create an identity source and populate it with <code>Users</code> and <code>Roles</code> using available SDKs."
+    homeSchemaTitle = 'Repositories'
+    homeSchemaBody = 'Create a <code>Repository</code> and configure its <code>Schema</code> (domains, resources and actions).'
     homePolicyTitle = 'Policies'
-    homePolicyBody = 'Code <code>Policies</code> to permit or deny actions on specific resources.'
+    homePolicyBody = 'Configure <code>Policies</code> to define what can be permitted or forbidden.'
     homePermissionsTitle = "Permissions"
-    homePermissionsBody = "Assign <code>Permissions</code> to identities (Users and Roles) by associating policies with them."
+    homePermissionsBody = "Configure <code>Permissions</code> on policies and assign them to identities (users and roles)."
     homeEnforceTitle = 'Enforce'
-    homeEnforceBody = 'Enforce permissions within the application using the available SDKs.'
+    homeEnforceBody = 'Enforce the permissions in the application using available SDKs.'
     docsIntroduction = 'Get Started'
