@@ -49,7 +49,7 @@ By default, apply performs a `fresh plan` right before applying changes. However
 
 ## Destroy
 
-The `destroy` command destroys all objects managed by the current working directory.
+The `destroy` command destroys all in the remote server.
 
 It uses state data to identify and determine which real-world objects correspond to the managed resources.
 
