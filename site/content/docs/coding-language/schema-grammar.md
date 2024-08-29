@@ -23,6 +23,8 @@ A schema is a structured representation that defines how domains, resources, and
 
 The schema is defined in a YAML file named `schema.yml` and is stored in the root of the working directory.
 
+Below a sample directory structure which includes the schema file:
+
 ```plaintext
 .
 ├── .permguard
