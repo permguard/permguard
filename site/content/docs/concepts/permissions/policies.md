@@ -20,6 +20,10 @@ seo:
 ---
 In `PermGuard`, multiple repositories can be created, and each of them can have multiple **policies**.
 
+{{< callout context="note" icon="info-circle" >}}
+In the context of the [MagicFarmacia sample](/docs/overview/adoption-through-example#integration-use-case-pharmacy-branch-management), the policy `view-branch-inventory` would be used to control view access to the inventory of a pharmacy branch.
+{{< /callout >}}
+
 ## Policy
 
 A policy serves as a logical representation of what can be permitted or forbidden in an authorization model.
@@ -30,12 +34,12 @@ Policies can be defined using either PermScript or YAML.
 
 ```json
 {
-    "name": "access-inventory",
-    "actions": [
-        "inventory:access"
-    ],
-    "resources": [
-        "uur:::pharmacy-branch:inventory:branch/*"
-    ]
+  "name": "view-branch-inventory",
+  "actions": [
+    "inventory:view"
+  ],
+  "resources": [
+    "uur:::pharmacy-branch:inventory/*"
+  ]
 }
 ```
