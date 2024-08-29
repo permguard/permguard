@@ -20,6 +20,10 @@ seo:
 ---
 In `PermGuard`, multiple accounts can be created, and each of them can have multiple **repositories**. This provides a structured method for managing the `authz` components such as schemas, policies and permissions.
 
+{{< callout context="note" icon="info-circle" >}}
+In the context of the [MagicFarmacia sample](/docs/overview/adoption-through-example#integration-use-case-pharmacy-branch-management), the system operates within a microservice architecture where multiple versions of the software must exist simultaneously, which is a critical consideration. Each version is represented by a repository, such as `v1.0`, `v2.0`, and so on.
+{{< /callout >}}
+
 ## Repository
 A Repository serves as logical representations, facilitating `authz` organization.
 
