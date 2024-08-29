@@ -23,6 +23,8 @@ When creating a permission, it’s essential to follow the proper structure and 
 
 Permissions can be created in YAML files within the root of the working directory.
 
+Below is a sample directory structure that includes schema, policies, and permissions files:
+
 ```plaintext
 .
 ├── .permguard

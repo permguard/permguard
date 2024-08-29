@@ -23,6 +23,8 @@ When creating a policy, it’s essential to follow the proper structure and nami
 
 Policies can be created in yaml files within the root of the working directory.
 
+Below is a sample directory structure that includes the schema file and sample policy files:
+
 ```plaintext
 .
 ├── .permguard
