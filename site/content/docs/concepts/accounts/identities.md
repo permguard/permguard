@@ -21,6 +21,12 @@ seo:
 
 An `identity` is an unique entity that represents either an **user** or a **role**.
 
+{{< callout context="note" icon="info-circle" >}}
+In the context of the [MagicFarmacia sample](/docs/overview/adoption-through-example#integration-use-case-pharmacy-branch-management), there would be multiple users and roles representing the various branches and positions within the pharmacy, such as the `pharmacist` role.
+
+Moreover, in the example, there are two sample identity sources: one for `Google` and one for `Facebook`.
+{{< /callout >}}
+
 Identities are linked to identity sources.
 
 ```json
@@ -40,6 +46,8 @@ A `Principal` is an human user or workload with granted permissions that authent
 ## User
 
 An `User` is an identity representing a single person or FID (Function Identifier) that has specific permissions.
+
+The name of the can be either a valid PermgGuard name or an email address.
 
 ```json
 {

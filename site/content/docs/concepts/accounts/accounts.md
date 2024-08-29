@@ -27,7 +27,13 @@ It is recommended to utilize a distinct account for each environment, such as de
 
 It is important to note that the `PermGuard` does not include an authentication layer. It is the responsibility of the adopter to either implement or integrate the authentication layer at the application level.
 
-Each account is identified by a unique `numeric identifier` and it is associated to an unique `name`.
+{{< callout context="note" icon="info-circle" >}}
+In the context of the [MagicFarmacia sample](/docs/overview/adoption-through-example#integration-use-case-pharmacy-branch-management), the `magicfarmacia-dev` account represents the development environment, while the `magicfarmacia-prod` account represents the production environment.
+
+This approach follows best practices to ensure the isolation of resources and permissions between environments. Beyond the per-environment account setup, a company might also decide to further segment by having separate accounts for each application or a shared account for multiple applications.
+{{< /callout >}}
+
+Each account is identified by a unique `name`.
 
 ```json
 {
