@@ -36,7 +36,7 @@ There are three methods to create a working directory and associate it with a Pe
 A `PermGuard` working directory contains the following files:
 
 - Configuration files in either `YAML` or `PermScript` format.
-- A hidden `.permguard` directory which PermGuard uses to store metadata and intermediate files that are automatically managed by PermGuard and should not be modified manually. This directory should be added to the `.gitignore` file to prevent it from being committed to the source code repo.
+- A hidden `.permguard` directory which PermGuard uses to store metadata and intermediate files that are automatically managed by PermGuard and should not be modified manually. This directory should be added to the `.gitignore` file to prevent it from being committed to the source code version control.
 
 ## Initialize a new repo
 
