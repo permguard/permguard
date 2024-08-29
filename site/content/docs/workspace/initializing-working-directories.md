@@ -25,7 +25,7 @@ Authentication is handled exclusively through the CLI, while authorization is ma
 
 The authorization process follows a code-first approach, and when dealing with Schemas, Policies, and Permissions, the CLI should be executed from a working directory that contains configuration files written in either YAML or PermScript.
 
-There are three primary methods to create a working directory and associate it with a PermGuard repo:
+There are three methods to create a working directory and associate it with a PermGuard repo:
 
 - Initialize a new repo in a working directory
 - Clone an existing repo into a working directory
