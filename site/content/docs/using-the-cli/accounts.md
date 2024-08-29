@@ -37,6 +37,8 @@ Flags:
 
 Global Flags:
   -o, --output string   output format (default "terminal")
+  -v, --verbose          true for verbose output
+  -w, --workdir string   workdir (default ".")
 
 Use "PermGuard accounts [command] --help" for more information about a command.
 ```

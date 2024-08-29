@@ -66,6 +66,7 @@ func Run(commandsInitializer azcli.CliInitializer) {
 		},
 	}
 
+	command.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "workdir")
 	command.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, "terminal", "output format")
 	command.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
 

@@ -25,9 +25,10 @@ import (
 
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
+	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
 )
 
-// aziclicommon.CreateContextAndPrinter creates a new cli context and printer.
+// CreateContextAndPrinter creates a new cli context and printer.
 func CreateContextAndPrinter(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, azcli.CliPrinter, error) {
 	ctx, err := newCliContext(cmd, v)
 	if err != nil {
@@ -43,6 +44,7 @@ func CreateContextAndPrinter(deps azcli.CliDependenciesProvider, cmd *cobra.Comm
 // CliCommandContext is the context for the Cli.
 type CliCommandContext struct {
 	v       *viper.Viper
+	workDir string
 	verbose bool
 	output  string
 }
@@ -52,6 +54,14 @@ func newCliContext(cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, erro
 	ctx := &CliCommandContext{
 		v: v,
 	}
+	workDir, err := cmd.Flags().GetString(FlagWorkingDirectory)
+	if err != nil {
+		return nil, err
+	}
+	if !azvalidators.IsValidPath(workDir) {
+		return nil, errors.New("cli: invalid work directory")
+	}
+	ctx.workDir = workDir
 	output, err := cmd.Flags().GetString(FlagOutput)
 	if err != nil {
 		return nil, err
@@ -91,6 +101,11 @@ func (c *CliCommandContext) IsTerminalOutput() bool {
 // IsJSONOutput returns true if the output is json.
 func (c *CliCommandContext) IsJSONOutput() bool {
 	return c.GetOutput() == azcli.OutputJSON
+}
+
+// GetWorkDir returns the work directory.
+func (c *CliCommandContext) GetWorkDir() string {
+	return c.workDir
 }
 
 // GetAAPTarget returns the aap target.
