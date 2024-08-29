@@ -75,3 +75,24 @@ It is important to note that for resources related to identities, the exact acco
 ```plaintext
 uur:581616507495:permguard:authn:identity/pharmacist
 ```
+
+## AR (Action Resource)
+
+The AR is an action resource structured identifier used to specify actions that can be performed on resources within policies and enforcement points. The format includes two placeholders as follows:
+
+- `{resource}`: The specific resource on which the action is performed.
+- `{action}`: The specific action to be performed on the resource (e.g., read, write, delete).
+
+This structure enables precise specification and control of actions on resources, allowing for fine-grained policy enforcement in complex environments.
+
+Below is an example of an AR that identifies a read action on an inventory in the context of the pharmacy-branch domain:
+
+```plaintext
+ra:inventory:view
+```
+
+Each placeholder can either be an exact value or use the wildcard pattern `*` to match multiple values:
+
+```plaintext
+ra:inv*:*
+```
