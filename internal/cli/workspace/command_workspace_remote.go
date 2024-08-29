@@ -17,7 +17,6 @@
 package workspace
 
 import (
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -31,16 +30,8 @@ const (
 )
 
 // runECommandForRemoteWorkspace runs the command for creating an workspace.
-func runECommandForRemoteWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	_, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
-	if err != nil {
-		color.Red(aziclicommon.ErrorMessageCliBug)
-		return aziclicommon.ErrCommandSilent
-	}
-	output := map[string]any{}
-	output["workspace"] = "remote"
-	printer.Print(output)
-	return nil
+func runECommandForRemoteWorkspace(cmd *cobra.Command, args []string) error {
+	return cmd.Help()
 }
 
 // CreateCommandForWorkspaceRemote creates a command for remoteializing a working directory.
@@ -48,14 +39,11 @@ func CreateCommandForWorkspaceRemote(deps azcli.CliDependenciesProvider, v *vipe
 	command := &cobra.Command{
 		Use:   "remote",
 		Short: `Manage the set of repos ("remotes") whose PermGuard servers you track`,
-		Long: aziclicommon.BuildCliLongTemplate(`This command manages the set of repos ("remotes") whose PermGuard servers you track..
-
-Examples:
-  # add a new remote
-  permguard remote add dev 268786704340/magicfarmacia-v0.0 `),
+		Long: aziclicommon.BuildCliLongTemplate(`This command manages the set of repos ("remotes") whose PermGuard servers you track.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForRemoteWorkspace(deps, cmd, v)
+			return runECommandForRemoteWorkspace(cmd, args)
 		},
 	}
+	command.AddCommand(CreateCommandForWorkspaceRemoteAdd(deps, v))
 	return command
 }

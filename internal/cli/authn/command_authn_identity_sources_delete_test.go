@@ -23,12 +23,12 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/mock"
 
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	aztestutils "github.com/permguard/permguard/internal/cli/testutils"
 	azmocks "github.com/permguard/permguard/internal/cli/testutils/mocks"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 )
 
 // TestDeleteCommandForIdentitySourcesDelete tests the deleteCommandForIdentitySourcesDelete function.
@@ -53,6 +53,7 @@ func TestCliIdentitySourcesDeleteWithError(t *testing.T) {
 
 		depsMocks := azmocks.NewCliDependenciesMock()
 		cmd := createCommandForIdentitySourceDelete(depsMocks, v)
+		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
 
@@ -86,6 +87,7 @@ func TestCliIdentitySourcesDeleteWithSuccess(t *testing.T) {
 
 		depsMocks := azmocks.NewCliDependenciesMock()
 		cmd := createCommandForIdentitySourceDelete(depsMocks, v)
+		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
 
