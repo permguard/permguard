@@ -51,6 +51,7 @@ func TestCliConfigGetAAPTarget(t *testing.T) {
 
 		depsMocks := azmocks.NewCliDependenciesMock()
 		cmd := createCommandForConfigAAPGet(depsMocks, v)
+		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
 
@@ -94,6 +95,7 @@ func TestCliConfigGetPAPTarget(t *testing.T) {
 
 		depsMocks := azmocks.NewCliDependenciesMock()
 		cmd := createCommandForConfigPAPGet(depsMocks, v)
+		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
 
