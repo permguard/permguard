@@ -73,5 +73,5 @@ Wildcard and dynamic value patterns are not permitted when referencing a resourc
 It is important to note that for resources related to identities, the exact account identifier must be used, and permguard must be specified as the tenant:
 
 ```plaintext
-uur:581616507495:permguard:authn:identity/branch-manager
+uur:581616507495:permguard:authn:identity/pharmacist
 ```
