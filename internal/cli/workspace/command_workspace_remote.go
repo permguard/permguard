@@ -45,5 +45,7 @@ func CreateCommandForWorkspaceRemote(deps azcli.CliDependenciesProvider, v *vipe
 		},
 	}
 	command.AddCommand(CreateCommandForWorkspaceRemoteAdd(deps, v))
+	command.AddCommand(CreateCommandForWorkspaceRemoteRemove(deps, v))
+	command.AddCommand(CreateCommandForWorkspaceRemoteSetdefault(deps, v))
 	return command
 }
