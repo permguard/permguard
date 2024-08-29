@@ -1,5 +1,5 @@
 ---
-# Pharmacy Branch Auditor: This policy covers operations related to auditing the activities of the pharmacy branch.
+# Pharmacy Branch Auditor: This permission covers operations related to auditing the activities of the pharmacy branch.
 name: branch-auditor
 permit:
   - audit-branch-staff
@@ -8,14 +8,14 @@ permit:
 forbid:
 
 ---
-# Pharmacy Branch Financial Auditor: This policy covers operations related to the financial auditing of the pharmacy branch.
+# Pharmacy Branch Financial Auditor: This permission covers operations related to the financial auditing of the pharmacy branch.
 name: branch-financial-auditor
 permit:
   - audit-branch-financial
 forbid:
 
 ---
-# Pharmacy Branch Pharmacist: This policy covers operations related to the activities of the pharmacist within a pharmacy branch.
+# Pharmacy Branch Pharmacist: This permission covers operations related to the activities of the pharmacist within a pharmacy branch.
 name: branch-pharmacist
 permit:
   - view-branch-inventory
