@@ -29,21 +29,40 @@ Below is a specific scenario where an identity representing a pharmacy manager r
 The first step is to define a policy and associate it with a role by specifying the required permissions.
 
 ```python
-# Policy to access inventory across all branches.
-policy accessinventory {
-    resources = uur::*:pharmacy-branch:inventory/*,
-    actions = ra:inventory:access
+# This is a base policy to abstract the pharmacy branch.
+policy BranchOrder {
+  resources = uur:::pharmacy-branch:order/*
+  condition = base.condition
+      and $tenant in ctx.Data["TENANTS"]
 }
 
-# Defines permissions to read inventory information.
-permission inventoryread {
-    permit = [accessinventory],
-    forbid = []
+#  This policy covers tenant-specific operations related to the management of orders within a pharmacy branch.
+policy ManageBranchOrder extends BranchOrder {
+  actions = ra:order:*
 }
 
-# Defines a role for the branch manager responsible for managing inventory.
-role branchmanager {
-  permissions = [inventoryread]
+# This policy covers tenant-specific operations related to the auditing of orders within a pharmacy branch.
+policy AuditBranchOrder extends BranchOrder {
+  actions = ra:order:view
+}
+
+#  This policy covers tenant-specific operations related to the management of inventory within a pharmacy branch.
+policy ViewBranchInventory {
+  resources = uur:::pharmacy-branch:inventory/*
+  actions = ra:inventory:view
+  condition = base.condition
+    and $tenant in ctx.Data["TENANTS"]
+}
+
+# This permission covers operations related to the activities of the pharmacist within a pharmacy branch.
+permission BranchPharmacist {
+  permit = [ ViewBranchInventory, ManageBranchOrders ],
+  forbid = []
+}
+
+# Pharmacist role definition.
+role Pharmacist {
+  permissions = [ BranchPharmacist ]
 }
 ```
 
@@ -52,10 +71,10 @@ role branchmanager {
 After creating and associating the policy with the role, the next step is to perform the permission evaluation within the application.
 
 ```python
-has_permissions = permguard.check("uur:581616507495:permguard:authn:identity/branch-manager", "magicfarmacia-v0.0", "inventory", "access")
+has_permissions = permguard.check("uur:581616507495:permguard:authn:identity/pharmacist", "magicfarmacia-v0.0", "inventory", "view")
 
 if has_permissions:
-    print("Role can access inventory")
+    print("Role can view inventory")
 else:
-    print("Role cannot access inventory")
+    print("Role cannot view inventory")
 ```
