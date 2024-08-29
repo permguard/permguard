@@ -28,7 +28,7 @@ Additionally, a schema can be further subdivided into domains, offering enhanced
 
 ```json
 {
-  "name": "magicpharmacy",
+  "name": "magicfarmacia",
   "description": "Manage a pharmacy with multiple branches",
   "resources": []
 }
