@@ -17,6 +17,8 @@
 package workspace
 
 import (
+	"fmt"
+
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -32,13 +34,14 @@ const (
 
 // runECommandForInitWorkspace runs the command for creating an workspace.
 func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	_, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(aziclicommon.ErrorMessageCliBug)
 		return aziclicommon.ErrCommandSilent
 	}
+	ctx.GetAAPTarget()
 	output := map[string]any{}
-	output["workspace"] = "init"
+	output["workspace"] = fmt.Sprintf("init work directory %s", ctx.GetWorkDir())
 	printer.Print(output)
 	return nil
 }

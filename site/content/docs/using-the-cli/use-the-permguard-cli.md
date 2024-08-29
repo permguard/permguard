@@ -35,7 +35,7 @@ The official PermGuard Command Line Interface - Copyright © 2022 Nitro Agility 
 
 PermGuard is an Open Source Multi-Account and Multi-Tenant Authorization Provider.
 
-        Find more information at: https://www.permguard.com/docs/cli/how-to-use/
+	Find more information at: https://www.permguard.com/docs/cli/how-to-use/
 
 Usage:
   PermGuard Command Line Interface [flags]
@@ -61,9 +61,10 @@ Available Commands:
   validate    Validate files in the working directory
 
 Flags:
-  -h, --help            help for PermGuard
-  -o, --output string   output format (default "terminal")
-  -v, --verbose         true for verbose output
+  -h, --help             help for PermGuard
+  -o, --output string    output format (default "terminal")
+  -v, --verbose          true for verbose output
+  -w, --workdir string   workdir (default ".")
 
 Use "PermGuard [command] --help" for more information about a command.
 ```
