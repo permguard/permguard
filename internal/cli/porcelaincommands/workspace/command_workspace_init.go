@@ -17,8 +17,6 @@
 package workspace
 
 import (
-	"fmt"
-
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -40,10 +38,14 @@ func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 		color.Red(aziclicommon.ErrorMessageCliBug)
 		return aziclicommon.ErrCommandSilent
 	}
-	intMng := aziclimanager.NewInternalManager(ctx, printer)
-	intMng.InitWorkspace()
+	intMng := aziclimanager.NewInternalManager(ctx)
+	ops, err := intMng.InitWorkspace()
+	if err != nil {
+		printer.Error(err)
+		return aziclicommon.ErrCommandSilent
+	}
 	output := map[string]any{}
-	output["workspace"] = fmt.Sprintf("init work directory %s", ctx.GetWorkDir())
+	output["operation"] = ops
 	printer.Print(output)
 	return nil
 }

@@ -22,7 +22,6 @@ import (
 	"path/filepath"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
 const (
@@ -38,14 +37,12 @@ const (
 // InternalManager implements the internal manager to manage the .permguard directory.
 type InternalManager struct {
 	ctx     *aziclicommon.CliCommandContext
-	printer azcli.CliPrinter
 }
 
 // NewInternalManager creates a new internal manager.
-func NewInternalManager(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter) *InternalManager {
+func NewInternalManager(ctx *aziclicommon.CliCommandContext) *InternalManager {
 	return &InternalManager{
 		ctx:     ctx,
-		printer: printer,
 	}
 }
 
@@ -86,14 +83,19 @@ func (*InternalManager) createDir(dir string) error {
 }
 
 // InitWorkspace the workspace.
-func (m *InternalManager) InitWorkspace() error {
+func (m *InternalManager) InitWorkspace() (string, error) {
 	hdnDir := filepath.Join(m.ctx.GetWorkDir(), hiddenDir)
 	hdnLogsDir := filepath.Join(hdnDir, hiddenLogsDir)
 	hdnObjectsDir := filepath.Join(hdnDir, hiddenObjectsDir)
 	hdnPlansDir:= filepath.Join(hdnDir, hiddenPlansDir)
 	hdnRefsDir:= filepath.Join(hdnDir, hiddenRefsDir)
+
+	firstInit := true
+	err := m.createDir(hdnDir)
+	if err != nil {
+		firstInit = false
+	}
 	dirs := []string{
-		hdnDir,
 		hdnLogsDir,
 		hdnObjectsDir,
 		hdnPlansDir,
@@ -102,22 +104,26 @@ func (m *InternalManager) InitWorkspace() error {
 	for _, dir := range dirs {
 		err := m.createDir(dir)
 		if err != nil {
-			return err
+			return "", err
 		}
 	}
 	hdConfigFile := filepath.Join(hdnDir, hiddenConfigFile)
 	hdHeadFile := filepath.Join(hdnDir, hiddenHeadFile)
-	print(hdConfigFile)
 	files := []string{
 		hdConfigFile,
 		hdHeadFile,
 	}
 	for _, file := range files {
-		m.printer.Print(map[string]any{"file": file})
 		err := m.createFileIfNotExists(file)
 		if err != nil {
-			return err
+			return "", err
 		}
 	}
-	return nil
+	var output string
+	if firstInit {
+		output = fmt.Sprintf("Initialized empty panicermGuard repository in %s", hdnDir)
+	} else {
+		output = fmt.Sprintf("Reinitialized existing permGuard repository in %s", hdnDir)
+	}
+	return output, nil
 }
