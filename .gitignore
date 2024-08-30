@@ -203,7 +203,7 @@ $RECYCLE.BIN/
 
 # End of https://www.toptal.com/developers/gitignore/api/osx,linux,windows,go,visualstudiocode,intellij+all
 
-# Start Custom
+# Custom
 
 bin
 dist
@@ -218,4 +218,8 @@ permguard
 *.db
 **/samples/volume/*
 !**/samples/volume/.keep
-# End Custom
+# End of Custom
+
+## PermGuard
+.permguard
+## End of PermGuard
