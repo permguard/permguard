@@ -1,6 +1,6 @@
 ---
-title: "Performing Provisioning"
-slug: "Performing Provisioning"
+title: "Plan and Apply"
+slug: "Plan and Apply"
 description: ""
 summary: ""
 date: 2023-08-01T00:56:12+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "performing-provisioning-0d5bdf90ebf04870a66f30f93d8ca1af"
+    identifier: "plan-apply-0d5bdf90ebf04870a66f30f93d8ca1af"
 weight: 3014
 toc: true
 seo:
