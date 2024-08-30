@@ -20,7 +20,7 @@ seo:
 ---
 
 `PermGuard` offers a robust Command-line Interface (CLI) designed for the administration.
-The CLI allows to manage accounts, identities, tenants, repositories, schemas, domains, resources, and policies.
+The CLI allows to Manage remote server Accounts, identities, tenants, repositories, schemas, domains, resources, and policies.
 
 To view a list of commands available in the current PermGuard version, users can run the `permguard` command without any additional arguments.
 
@@ -42,10 +42,10 @@ Usage:
   PermGuard [command]
 
 Available Commands:
-  accounts    Manage Accounts
+  accounts    Manage remote server Accounts
   apply       Apply the plan to the remote repo
-  authn       Manage Tenants and Identities
-  authz       Manage Repositories
+  authn       Manage remote serrver Tenants and Identities
+  authz       Manage remote server Repositories
   clone       Clone an existing repo from a remote into the working directory
   completion  Generate the autocompletion script for the specified shell
   config      Configure Cli settings

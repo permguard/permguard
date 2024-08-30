@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `Accounts` commands, it is possible to manage accounts.
+Using the `Accounts` commands, it is possible to Manage remote server Accounts.
 
 ```text
 This command manages accounts.

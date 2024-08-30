@@ -28,6 +28,7 @@ func CreateCommandsForWorkspace(deps azcli.CliDependenciesProvider, v *viper.Vip
 	commands := []*cobra.Command{
 		CreateCommandForWorkspaceInit(deps, v),
 		CreateCommandForWorkspaceRemote(deps, v),
+		CreateCommandForWorkspaceRepo(deps, v),
 		CreateCommandForWorkspaceClone(deps, v),
 		CreateCommandForWorkspaceValidate(deps, v),
 		CreateCommandForWorkspaceFetch(deps, v),
