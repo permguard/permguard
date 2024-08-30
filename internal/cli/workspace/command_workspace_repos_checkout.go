@@ -52,7 +52,7 @@ func CreateCommandForWorkspaceRepoCheckout(deps azcli.CliDependenciesProvider, v
 
 Examples:
   # checkout a new repo
-  permguard repos checkout dev 268786704340/magicfarmacia-v0.0 `),
+  ❯ permguard repo checkout dev/268786704340/magicfarmacia-v0.0 `),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForRepoCheckoutWorkspace(deps, cmd, v)
 		},

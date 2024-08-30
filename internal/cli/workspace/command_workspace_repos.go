@@ -37,9 +37,9 @@ func runECommandForRepoWorkspace(cmd *cobra.Command, args []string) error {
 // CreateCommandForWorkspaceRepo creates a command for repoializing a working directory.
 func CreateCommandForWorkspaceRepo(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "repos",
-		Short: `Manage the local repositories ("repos") whose PermGuard servers you track`,
-		Long: aziclicommon.BuildCliLongTemplate(`This command manages the local repositories ("repos") whose PermGuard servers you track.`),
+		Use:   "repo",
+		Short: `Manage the local repository ("repo")`,
+		Long:  aziclicommon.BuildCliLongTemplate(`This command manages the local repositories ("repos").`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForRepoWorkspace(cmd, args)
 		},
