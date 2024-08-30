@@ -19,28 +19,23 @@ package configs;
 import (
 	_ "gopkg.in/ini.v1"
 )
-
-// CoreConfig represents the [core] section in the INI file
-type CoreConfig struct {
-	ClientVersion string `ini:"clientversion"`
+type Config struct {
+	Core          CoreConfig `ini:"core"`
+	Remotes       map[string]RemoteConfig
+	Repositories  map[string]RepositoryConfig
 }
 
-// RemoteConfig represents a [remote "dev"] or [remote "prod"] section in the INI file
+type CoreConfig struct {
+	ClientVersion string `ini:"client_version"`
+}
+
 type RemoteConfig struct {
 	URL string `ini:"url"`
 	AAP int    `ini:"aap"`
 	PAP int    `ini:"pap"`
 }
 
-// RepositoryConfig represents the [repository "..."] sections in the INI file
 type RepositoryConfig struct {
 	Remote string `ini:"remote"`
 	Ref    string `ini:"ref"`
-}
-
-// Config represents the entire configuration structure
-type Config struct {
-	Core        CoreConfig                   `ini:"core"`
-	Remotes     map[string]*RemoteConfig     `ini:"-"`
-	Repositories map[string]*RepositoryConfig `ini:"-"`
 }

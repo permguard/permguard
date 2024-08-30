@@ -45,7 +45,7 @@ func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}
-	output["operation"] = ops
+	output["done"] = ops
 	printer.Print(output)
 	return nil
 }

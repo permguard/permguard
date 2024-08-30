@@ -21,9 +21,10 @@ import (
 	"os"
 	"path/filepath"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	aziclimanagercfg "github.com/permguard/permguard/internal/cli/internalmanager/configs"
 	"gopkg.in/ini.v1"
+
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	aziclimanagercfg "github.com/permguard/permguard/internal/cli/internalsmanager/configs"
 )
 
 const (
@@ -52,7 +53,9 @@ func NewInternalManager(ctx *aziclicommon.CliCommandContext) *InternalManager {
 func (*InternalManager) saveConfig(path string) error {
 	// Crea un esempio di configurazione
 	config := aziclimanagercfg.Config{
-		ClientVersion: "0.0",
+		Core: aziclimanagercfg.CoreConfig{
+			ClientVersion: "0.0.1",
+		},
 		Remotes: map[string]aziclimanagercfg.RemoteConfig{
 			"dev": {
 				URL: "dev.example.com",
@@ -81,10 +84,11 @@ func (*InternalManager) saveConfig(path string) error {
 		},
 	}
 	cfg := ini.Empty()
-	err := cfg.Section("core").ReflectFrom(&config)
-	if err != nil {
-		return fmt.Errorf("failed to map core section: %v", err)
-	}
+	var err error
+	// err := cfg.Section("core").ReflectFrom(&config)
+	// if err != nil {
+	// 	return fmt.Errorf("failed to map core section: %v", err)
+	// }
 	for name, remote := range config.Remotes {
 		sectionName := "remote " + name
 		err := cfg.Section(sectionName).ReflectFrom(&remote)
@@ -103,6 +107,18 @@ func (*InternalManager) saveConfig(path string) error {
 	if err != nil {
 		return fmt.Errorf("failed to save to file: %v", err)
 	}
+	inidata, err := ini.Load(path)
+	if err != nil {
+	   fmt.Printf("Fail to read file: %v", err)
+	}
+	var config2 aziclimanagercfg.Config
+	err = inidata.MapTo(&config2)
+	if err != nil {
+	   fmt.Printf("Fail to map file: %v", err)
+	   os.Exit(1)
+	 }
+	val := config2.Core.ClientVersion
+	print(val)
 	return nil
 }
 
@@ -162,10 +178,10 @@ func (m *InternalManager) InitWorkspace() (string, error) {
 		hdnRefsDir,
 	}
 	for _, dir := range dirs {
-		err := m.createDir(dir)
-		if err != nil {
-			return "", err
-		}
+		m.createDir(dir)
+		// if err != nil {
+		// 	return "", err
+		// }
 	}
 	hdConfigFile := filepath.Join(hdnDir, hiddenConfigFile)
 	hdHeadFile := filepath.Join(hdnDir, hiddenHeadFile)
