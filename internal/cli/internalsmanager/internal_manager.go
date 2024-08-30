@@ -22,6 +22,8 @@ import (
 	"path/filepath"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	aziclimanagercfg "github.com/permguard/permguard/internal/cli/internalmanager/configs"
+	"gopkg.in/ini.v1"
 )
 
 const (
@@ -44,6 +46,64 @@ func NewInternalManager(ctx *aziclicommon.CliCommandContext) *InternalManager {
 	return &InternalManager{
 		ctx:     ctx,
 	}
+}
+
+// saveConfig saves the configuration to a file.
+func (*InternalManager) saveConfig(path string) error {
+	// Crea un esempio di configurazione
+	config := aziclimanagercfg.Config{
+		ClientVersion: "0.0",
+		Remotes: map[string]aziclimanagercfg.RemoteConfig{
+			"dev": {
+				URL: "dev.example.com",
+				AAP: 9091,
+				PAP: 9092,
+			},
+			"prod": {
+				URL: "prod.example.com",
+				AAP: 9091,
+				PAP: 9092,
+			},
+		},
+		Repositories: map[string]aziclimanagercfg.RepositoryConfig{
+			"dev/268786704340/magicfarmacia-v0.0": {
+				Remote: "dev",
+				Ref:    "284efd59b6d7482066f3e658e0957ec9e5f653ff",
+			},
+			"dev/534434453770/magicfarmacia-v0.0": {
+				Remote: "dev",
+				Ref:    "0905b08482050cb152b7c5b345ee2687b8f9bda9",
+			},
+			"prod/534434453770/magicfarmacia-v0.0": {
+				Remote: "prod",
+				Ref:    "0e1f711b0c1bcfa87cf4f423354f886b6ff0f3ea",
+			},
+		},
+	}
+	cfg := ini.Empty()
+	err := cfg.Section("core").ReflectFrom(&config)
+	if err != nil {
+		return fmt.Errorf("failed to map core section: %v", err)
+	}
+	for name, remote := range config.Remotes {
+		sectionName := "remote " + name
+		err := cfg.Section(sectionName).ReflectFrom(&remote)
+		if err != nil {
+			return fmt.Errorf("failed to map remote section %s: %v", sectionName, err)
+		}
+	}
+	for name, repo := range config.Repositories {
+		sectionName := "repository " + name
+		err := cfg.Section(sectionName).ReflectFrom(&repo)
+		if err != nil {
+			return fmt.Errorf("failed to map repository section %s: %v", sectionName, err)
+		}
+	}
+	err = cfg.SaveTo(path)
+	if err != nil {
+		return fmt.Errorf("failed to save to file: %v", err)
+	}
+	return nil
 }
 
 // createFileIfNotExists creates a file if it does not exist.
@@ -118,6 +178,10 @@ func (m *InternalManager) InitWorkspace() (string, error) {
 		if err != nil {
 			return "", err
 		}
+	}
+	err = m.saveConfig(hdConfigFile)
+	if err != nil {
+		return "", err
 	}
 	var output string
 	if firstInit {
