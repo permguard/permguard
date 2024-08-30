@@ -42,10 +42,10 @@ Usage:
   PermGuard [command]
 
 Available Commands:
-  accounts    Manage Accounts on the remote server
+  accounts    Manage accounts on the remote server
   apply       Apply the plan to the remote repo
-  authn       Manage Tenants and Identities on the remote server
-  authz       Manage Repositories on the remote server
+  authn       Manage tenants and identities on the remote server
+  authz       Manage repositories on the remote server
   clone       Clone an existing repo from a remote into the working directory
   completion  Generate the autocompletion script for the specified shell
   config      Configure the command line settings
@@ -55,7 +55,7 @@ Available Commands:
   help        Help about any command
   init        Initialize a new repository in the working directory
   plan        Plan the difference between the working directory and a remote repo to be applied
-  remote      Manage the set of repos ("remotes") whose remote servers you track
+  remote      Manage the set of remote servers you track
   repo        Manage the local repo
   validate    Validate source code in the working directory
 
