@@ -51,11 +51,3 @@ The `diff` command first performs a `fetch` to retrieve the latest state from th
 ```bash
 ❯ permguard diff
 ```
-
-## Merge
-
-The `merge` command fetches the configurations from the remote server and merges them into the working directory. This command is useful for synchronizing the configurations between the local and remote environments.
-
-```bash
-❯ permguard merge
-```
