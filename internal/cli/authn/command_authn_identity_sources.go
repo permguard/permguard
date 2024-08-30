@@ -87,7 +87,7 @@ func runECommandForIdentitySources(cmd *cobra.Command, args []string) error {
 func createCommandForIdentitySources(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "identitysources",
-		Short: "Manage  remote Identity Sources",
+		Short: "Manage remote identity sources",
 		Long:  aziclicommon.BuildCliLongTemplate(`This command manages remote identity sources.`),
 		RunE:  runECommandForIdentitySources,
 	}

@@ -51,8 +51,8 @@ func runECommandForPAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 func createCommandForConfigAAPGet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "aap-get-target",
-		Short: "Get the app gRPC target",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command gets the aap gRPC target.`),
+		Short: "Get the app grpc target",
+		Long:  aziclicommon.BuildCliLongTemplate(`This command gets the aap grpc target.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForAAPGet(deps, cmd, v)
 		},
@@ -64,8 +64,8 @@ func createCommandForConfigAAPGet(deps azcli.CliDependenciesProvider, v *viper.V
 func createCommandForConfigPAPGet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pap-get-target",
-		Short: "Get the pap gRPC target",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command gets the pap gRPC target.`),
+		Short: "Get the pap grpc target",
+		Long:  aziclicommon.BuildCliLongTemplate(`This command gets the pap grpc target.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForPAPGet(deps, cmd, v)
 		},

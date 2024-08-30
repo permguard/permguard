@@ -85,8 +85,8 @@ func runECommandForPAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 func createCommandForConfigAAPSet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "aap-set-target",
-		Short: "Set the app gRPC target",
-		Long: aziclicommon.BuildCliLongTemplate(`This command sets the aap gRPC target.
+		Short: "Set the app grpc target",
+		Long: aziclicommon.BuildCliLongTemplate(`This command sets the aap grpc target.
 
 Examples:
 # set the aap gRPC target to localhost:9091
@@ -103,8 +103,8 @@ permguard config aap-set-target localhost:9091
 func createCommandForConfigPAPSet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pap-set-target",
-		Short: "Set the pap gRPC target",
-		Long: aziclicommon.BuildCliLongTemplate(`This command sets the pap gRPC target.
+		Short: "Set the pap grpc target",
+		Long: aziclicommon.BuildCliLongTemplate(`This command sets the pap grpc target.
 
 Examples:
 # set the pap gRPC target to localhost:9092
