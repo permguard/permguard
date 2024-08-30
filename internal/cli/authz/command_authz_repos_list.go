@@ -74,8 +74,8 @@ func runECommandForListRepositories(deps azcli.CliDependenciesProvider, cmd *cob
 func createCommandForRepositoryList(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
-		Short: "List repositories",
-		Long: aziclicommon.BuildCliLongTemplate(`This command lists all repositories.
+		Short: "List remote repositories",
+		Long: aziclicommon.BuildCliLongTemplate(`This command lists all remote repositories.
 
 Examples:
   # list all repositories and output in json format

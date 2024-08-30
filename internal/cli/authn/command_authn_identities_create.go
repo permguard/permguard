@@ -39,8 +39,8 @@ func runECommandForCreateIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 func createCommandForIdentityCreate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
-		Short: "Create an identity",
-		Long: aziclicommon.BuildCliLongTemplate(`This command creates an identity.
+		Short: "Create a remote identity",
+		Long: aziclicommon.BuildCliLongTemplate(`This command creates a remote identity.
 
 Examples:
   # create an user identity and output the result in json format

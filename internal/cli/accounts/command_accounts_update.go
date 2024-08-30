@@ -39,8 +39,8 @@ func runECommandForUpdateAccount(deps azcli.CliDependenciesProvider, cmd *cobra.
 func createCommandForAccountUpdate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
-		Short: "Update an account",
-		Long: aziclicommon.BuildCliLongTemplate(`This command updates an account.
+		Short: "Update a remote account",
+		Long: aziclicommon.BuildCliLongTemplate(`This command updates a remote account.
 
 Examples:
   # update an account and output the result in json format

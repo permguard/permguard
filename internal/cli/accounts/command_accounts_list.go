@@ -74,8 +74,8 @@ func runECommandForListAccounts(deps azcli.CliDependenciesProvider, cmd *cobra.C
 func createCommandForAccountList(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
-		Short: "List accounts",
-		Long: aziclicommon.BuildCliLongTemplate(`This command lists all accounts.
+		Short: "List remote accounts",
+		Long: aziclicommon.BuildCliLongTemplate(`This command lists all remote accounts.
 
 Examples:
   # list all accounts and output the result in json format

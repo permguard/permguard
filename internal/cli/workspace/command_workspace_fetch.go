@@ -47,8 +47,8 @@ func runECommandForFetchWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra
 func CreateCommandForWorkspaceFetch(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "fetch",
-		Short: "Fetch the latest state changes of an existing repository",
-		Long: aziclicommon.BuildCliLongTemplate(`This command fetches the latest state changes of an existing repository.
+		Short: "Fetch the latest state changes from the remote repo",
+		Long: aziclicommon.BuildCliLongTemplate(`This command fetches the latest state changes from the remote repo.
 
 Examples:
   # Fetch the latest state changes of the default remote repo

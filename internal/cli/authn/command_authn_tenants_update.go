@@ -39,8 +39,8 @@ func runECommandForUpdateTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 func createCommandForTenantUpdate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
-		Short: "Update a tenant",
-		Long: aziclicommon.BuildCliLongTemplate(`This command updates a tenant.
+		Short: "Update a remote tenant",
+		Long: aziclicommon.BuildCliLongTemplate(`This command updates a remote tenant.
 
 Examples:
   # update a tenant and output the result in json format

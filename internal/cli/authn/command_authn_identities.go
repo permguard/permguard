@@ -92,8 +92,8 @@ func runECommandForIdentities(cmd *cobra.Command, args []string) error {
 func createCommandForIdentities(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "identities",
-		Short: "Manage Identities",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages identities.`),
+		Short: "Manage remote Identities",
+		Long:  aziclicommon.BuildCliLongTemplate(`This command manages remote identities.`),
 		RunE:  runECommandForIdentities,
 	}
 

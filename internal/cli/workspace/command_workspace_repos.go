@@ -38,8 +38,8 @@ func runECommandForRepoWorkspace(cmd *cobra.Command, args []string) error {
 func CreateCommandForWorkspaceRepo(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "repo",
-		Short: `Manage the local repository ("repo")`,
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages the local repositories ("repos").`),
+		Short: `Manage the local repo`,
+		Long:  aziclicommon.BuildCliLongTemplate(`This command manages the local repo.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForRepoWorkspace(cmd, args)
 		},

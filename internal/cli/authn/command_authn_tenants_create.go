@@ -39,8 +39,8 @@ func runECommandForCreateTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 func createCommandForTenantCreate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
-		Short: "Create a tenant",
-		Long: aziclicommon.BuildCliLongTemplate(`This command creates a tenant.
+		Short: "Create a remote tenant",
+		Long: aziclicommon.BuildCliLongTemplate(`This command creates a remote tenant.
 
 Examples:
   # create a tenant and output the result in json format

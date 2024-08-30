@@ -74,8 +74,8 @@ func runECommandForListIdentitySources(deps azcli.CliDependenciesProvider, cmd *
 func createCommandForIdentitySourceList(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
-		Short: "List identity sources",
-		Long: aziclicommon.BuildCliLongTemplate(`This command lists all identity sources.
+		Short: "List remote identity sources",
+		Long: aziclicommon.BuildCliLongTemplate(`This command lists all remote identity sources.
 
 Examples:
   # list all identity sources and output in json format

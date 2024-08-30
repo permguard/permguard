@@ -74,8 +74,8 @@ func runECommandForListTenants(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 func createCommandForTenantList(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
-		Short: "List tenants",
-		Long: aziclicommon.BuildCliLongTemplate(`This command lists all tenants.
+		Short: "List remote tenants",
+		Long: aziclicommon.BuildCliLongTemplate(`This command lists all remote tenants.
 
 Examples:
   # list all tenants amd output in json format

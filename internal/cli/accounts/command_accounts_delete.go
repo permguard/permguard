@@ -68,8 +68,8 @@ func runECommandForDeleteAccount(deps azcli.CliDependenciesProvider, cmd *cobra.
 func createCommandForAccountDelete(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
-		Short: "Delete an account",
-		Long: aziclicommon.BuildCliLongTemplate(`This command deletes an account.
+		Short: "Delete a remote account",
+		Long: aziclicommon.BuildCliLongTemplate(`This command deletes a remote account.
 
 Examples:
   # delete an account and output the result in json format

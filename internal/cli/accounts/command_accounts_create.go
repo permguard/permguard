@@ -39,8 +39,8 @@ func runECommandForCreateAccount(deps azcli.CliDependenciesProvider, cmd *cobra.
 func createCommandForAccountCreate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
-		Short: "Create an account",
-		Long: aziclicommon.BuildCliLongTemplate(`This command creates an account.
+		Short: "Create a remote account",
+		Long: aziclicommon.BuildCliLongTemplate(`This command creates a remote account.
 
 Examples:
   # create an account and output the result in json format
