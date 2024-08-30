@@ -217,5 +217,5 @@ permguard
 .env.local
 *.db
 **/samples/volume
-!**/samples/volume/keep
+!**/samples/volume/.keep
 # End Custom
