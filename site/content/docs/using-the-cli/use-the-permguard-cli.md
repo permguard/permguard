@@ -52,12 +52,12 @@ Available Commands:
   destroy     Destroy objects in the remote repo
   diff        Calculate the difference between the working directory and a remote repo
   fetch       Fetch the latest state changes of an existing repository
-  fork        Fork an existing repo from a remote into a new remote repo and clone it into the working directory
   help        Help about any command
   init        Initialize a new repository in the working directory
   merge       Merge changes from a remote repo into the working directory
   plan        Plan the difference between the working directory and a remote repo to be applied
   remote      Manage the set of repos ("remotes") whose PermGuard servers you track
+  repo        Manage the local repository ("repo")
   validate    Validate files in the working directory
 
 Flags:
