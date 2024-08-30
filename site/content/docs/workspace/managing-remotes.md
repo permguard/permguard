@@ -36,17 +36,3 @@ and it can be removed using the remote command:
 ```bash
 ❯ permguard remote remove dev
 ```
-
-In this command, the first parameter is the name of the remote, and the second parameter is the repository identifier, which follows the notation `<account-id>/<repository-name>`. If no remote name is specified, it defaults to `origin`.
-
-If the PermGuard endpoints differ from those configured globally in the CLI, they can be explicitly defined:
-
-```bash
-❯ permguard remote add dev 268786704340/magicfarmacia-v0.0 --aap-target localhost:9091 --pap-target localhost:9092
-```
-
-To avoid specifying the remote server each time, it is possible to set the default remote server, which is associated with `origin` by default:
-
-```bash
-❯ permguard remote set-default dev
-```
