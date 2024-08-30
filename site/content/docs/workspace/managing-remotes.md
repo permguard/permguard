@@ -19,16 +19,22 @@ seo:
   noindex: false # false (default) or true
 ---
 
-PermGuard can be installed in any environment, with the capability to deploy multiple instances of the PermGuard server.
+PermGuard can be installed in any environment, offering the flexibility to deploy multiple instances of the PermGuard server.
 
-A common practice is to deploy a dedicated PermGuard server for each environment, such as development, staging, and production.
+A recommended approach is to deploy a dedicated PermGuard server for each environment, such as development, staging, and production. This separation ensures isolated and secure management of permissions tailored to each stage of your deployment pipeline.
 
-When executing provisioning and pull operations, it is essential to specify the correct remote server in the command.
+When managing one or more servers, and provisioning to any of them, it is essential to properly configure the available remote connections. This configuration enables seamless communication and coordination between the various PermGuard instances.
 
 A remote can be added using the remote command:
 
 ```bash
-❯ permguard remote add dev 268786704340/magicfarmacia-v0.0
+❯ permguard remote add dev server.permguard.com
+```
+
+and it can be removed using the remote command:
+
+```bash
+❯ permguard remote remove dev
 ```
 
 In this command, the first parameter is the name of the remote, and the second parameter is the repository identifier, which follows the notation `<account-id>/<repository-name>`. If no remote name is specified, it defaults to `origin`.

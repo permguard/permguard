@@ -77,7 +77,8 @@ Finally, initialize the working directory and associate it with a PermGuard `rem
 
 ```bash
 ❯ permguard init
-❯ permguard remote add 268786704340/magicfarmacia-v0.0
+❯ permguard remote add dev server.permguard.com
+❯ permguard checkout dev/268786704340/magicfarmacia-v0.0
 ```
 
 ## Clone an existing repo
@@ -87,13 +88,5 @@ There are advanced cases where a PermGuard repo has already been created and it 
 In this case, it is just necessary to clone the PermGuard repo:
 
 ```bash
-❯ permguard clone 268786704340/magicfarmacia-v0.0
-```
-
-## Fork an existing repo
-
-A `fork` is a copy of a repository. Forking a repository allows for experimentation with changes without impacting the original. This feature is particularly useful in complex enterprise scenarios that require multiple versions of the repository, such as microservices architectures:
-
-```bash
-❯ permguard fork 268786704340/magicfarmacia-v0.0 268786704340/magicfarmacia-v0.1
+❯ permguard clone permguard@server.permguard.com/268786704340/magicfarmacia-v0.0
 ```
