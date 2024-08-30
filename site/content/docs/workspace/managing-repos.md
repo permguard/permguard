@@ -1,6 +1,6 @@
 ---
-title: "Managing Repositories"
-slug: "Managing Repositories"
+title: "Managing Repos"
+slug: "Managing Repos"
 description: ""
 summary: ""
 date: 2023-08-01T00:56:12+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "managing-repositories-d3549b0cb1634fccb8215520ca652849"
+    identifier: "managing-repos-877e4c04952b438fb838d3ceff1aedff"
 weight: 3012
 toc: true
 seo:
@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-PermGuard supports multiple repositories for each remote, providing flexible management for both coding and provisioning tasks. When making changes, it is crucial to specify the remote where these changes will be pushed.
+PermGuard supports multiple repos for each remote, providing flexible management for both coding and provisioning tasks. When making changes, it is crucial to specify the remote where these changes will be pushed.
 
 To ensure that changes are provisioned correctly, you must first check out the appropriate repository. This repository will then serve as the target for provisioning and deploying the updates.
 
