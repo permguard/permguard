@@ -70,8 +70,8 @@ func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 func createCommandForTenantDelete(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
-		Short: "Delete a tenant",
-		Long: aziclicommon.BuildCliLongTemplate(`This command deletes a tenant.
+		Short: "Delete a remote tenant",
+		Long: aziclicommon.BuildCliLongTemplate(`This command deletes a remote tenant.
 
 Examples:
   # delete a tenant and output the result in json format

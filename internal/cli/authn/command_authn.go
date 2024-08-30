@@ -33,8 +33,8 @@ func runECommandForAuthN(cmd *cobra.Command) error {
 func CreateCommandForAuthN(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "authn",
-		Short: "Manage remote serrver Tenants and Identities",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command enables managament of the remote tenants and identities.`),
+		Short: "Manage Tenants and Identities on the remote server",
+		Long:  aziclicommon.BuildCliLongTemplate(`This command enables managament of Tenants and Identities on the remote server.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForAuthN(cmd)
 		},

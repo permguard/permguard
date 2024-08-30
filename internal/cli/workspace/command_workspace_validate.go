@@ -47,11 +47,11 @@ func runECommandForValidateWorkspace(deps azcli.CliDependenciesProvider, cmd *co
 func CreateCommandForWorkspaceValidate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "validate",
-		Short: "Validate files in the working directory",
-		Long: aziclicommon.BuildCliLongTemplate(`This command validates files in the working directory-
+		Short: "Validate source code in the working directory",
+		Long: aziclicommon.BuildCliLongTemplate(`This command validates souce code in the working directory.
 
 Examples:
-  # validate files in the working directory",
+  # Validate source code in the working directory",
   permguard validate`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForValidateWorkspace(deps, cmd, v)

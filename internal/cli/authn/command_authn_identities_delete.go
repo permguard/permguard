@@ -70,8 +70,8 @@ func runECommandForDeleteIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 func createCommandForIdentityDelete(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
-		Short: "Delete an identity",
-		Long: aziclicommon.BuildCliLongTemplate(`This command deletes an identity.
+		Short: "Delete a remote identity",
+		Long: aziclicommon.BuildCliLongTemplate(`This command deletes a remote identity.
 
 Examples:
   # delete an identity and output the result in json format

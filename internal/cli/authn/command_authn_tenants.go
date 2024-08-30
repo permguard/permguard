@@ -87,8 +87,8 @@ func runECommandForTenants(cmd *cobra.Command, args []string) error {
 func createCommandForTenants(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "tenants",
-		Short: "Manage Tenants",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages tenants.`),
+		Short: "Manage remote Tenants",
+		Long:  aziclicommon.BuildCliLongTemplate(`This command manages remote tenants.`),
 		RunE:  runECommandForTenants,
 	}
 

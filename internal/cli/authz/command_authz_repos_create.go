@@ -39,8 +39,8 @@ func runECommandForCreateRepository(deps azcli.CliDependenciesProvider, cmd *cob
 func createCommandForRepositoryCreate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
-		Short: "Create a repository",
-		Long: aziclicommon.BuildCliLongTemplate(`This command creates a repository.
+		Short: "Create a remote repository",
+		Long: aziclicommon.BuildCliLongTemplate(`This command creates a remote repository.
 
 Examples:
   # create a repository and output the result in json format

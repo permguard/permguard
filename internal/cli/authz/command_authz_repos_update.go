@@ -39,8 +39,8 @@ func runECommandForUpdateRepository(deps azcli.CliDependenciesProvider, cmd *cob
 func createCommandForRepositoryUpdate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
-		Short: "Update a repository",
-		Long: aziclicommon.BuildCliLongTemplate(`This command updates a repository.
+		Short: "Update a remote repository",
+		Long: aziclicommon.BuildCliLongTemplate(`This command updates a remote repository.
 
 Examples:
   # update a repository and output the result in json format

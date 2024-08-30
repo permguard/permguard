@@ -87,8 +87,8 @@ func runECommandForRepositories(cmd *cobra.Command, args []string) error {
 func createCommandForRepositories(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "repos",
-		Short: "Manage remote server Repositories",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages repositories.`),
+		Short: "Manage Repositories on the remote server",
+		Long:  aziclicommon.BuildCliLongTemplate(`This command manages repositories on the remote server.`),
 		RunE:  runECommandForRepositories,
 	}
 

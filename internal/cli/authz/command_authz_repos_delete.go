@@ -70,8 +70,8 @@ func runECommandForDeleteRepository(deps azcli.CliDependenciesProvider, cmd *cob
 func createCommandForRepositoryDelete(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
-		Short: "Delete a repository",
-		Long: aziclicommon.BuildCliLongTemplate(`This command deletes a repository.
+		Short: "Delete a remote repository",
+		Long: aziclicommon.BuildCliLongTemplate(`This command deletes a remote repository.
 
 Examples:
   # delete a repository and output the result in json format

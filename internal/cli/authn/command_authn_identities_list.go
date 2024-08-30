@@ -76,8 +76,8 @@ func runECommandForListIdentities(deps azcli.CliDependenciesProvider, cmd *cobra
 func createCommandForIdentityList(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
-		Short: "List identities",
-		Long: aziclicommon.BuildCliLongTemplate(`This command lists all identities.
+		Short: "List remote identities",
+		Long: aziclicommon.BuildCliLongTemplate(`This command lists all remote identities.
 
 Examples:
   # list all identities and output the result in json format

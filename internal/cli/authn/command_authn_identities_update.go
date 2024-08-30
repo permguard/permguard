@@ -39,8 +39,8 @@ func runECommandForUpdateIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 func createCommandForIdentityUpdate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
-		Short: "Update an identity",
-		Long: aziclicommon.BuildCliLongTemplate(`This command updates an identity.
+		Short: "Update a remote identity",
+		Long: aziclicommon.BuildCliLongTemplate(`This command updates a remote identity.
 
 Examples:
   # update and identity and output the result in json format

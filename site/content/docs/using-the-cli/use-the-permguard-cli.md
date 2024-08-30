@@ -20,7 +20,7 @@ seo:
 ---
 
 `PermGuard` offers a robust Command-line Interface (CLI) designed for the administration.
-The CLI allows to Manage remote server Accounts, identities, tenants, repositories, schemas, domains, resources, and policies.
+The CLI allows to Manage Accounts on the remote server, identities, tenants, repositories, schemas, domains, resources, and policies.
 
 To view a list of commands available in the current PermGuard version, users can run the `permguard` command without any additional arguments.
 
@@ -42,23 +42,22 @@ Usage:
   PermGuard [command]
 
 Available Commands:
-  accounts    Manage remote server Accounts
+  accounts    Manage Accounts on the remote server
   apply       Apply the plan to the remote repo
-  authn       Manage remote serrver Tenants and Identities
-  authz       Manage remote server Repositories
+  authn       Manage Tenants and Identities on the remote server
+  authz       Manage Repositories on the remote server
   clone       Clone an existing repo from a remote into the working directory
   completion  Generate the autocompletion script for the specified shell
-  config      Configure Cli settings
+  config      Configure the command line settings
   destroy     Destroy objects in the remote repo
   diff        Calculate the difference between the working directory and a remote repo
-  fetch       Fetch the latest state changes of an existing repository
+  fetch       Fetch the latest state changes from the remote repo
   help        Help about any command
   init        Initialize a new repository in the working directory
-  merge       Merge changes from a remote repo into the working directory
   plan        Plan the difference between the working directory and a remote repo to be applied
-  remote      Manage the set of repos ("remotes") whose PermGuard servers you track
-  repo        Manage the local repository ("repo")
-  validate    Validate files in the working directory
+  remote      Manage the set of repos ("remotes") whose remote servers you track
+  repo        Manage the local repo
+  validate    Validate source code in the working directory
 
 Flags:
   -h, --help             help for PermGuard

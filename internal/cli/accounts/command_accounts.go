@@ -82,8 +82,8 @@ func runECommandForAccounts(cmd *cobra.Command, args []string) error {
 func CreateCommandForAccounts(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "accounts",
-		Short: "Manage remote server Accounts",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages remote server accounts.`),
+		Short: "Manage Accounts on the remote server",
+		Long:  aziclicommon.BuildCliLongTemplate(`This command manages accounts on the remote server.`),
 		RunE:  runECommandForAccounts,
 	}
 
