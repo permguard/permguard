@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `Repositories` commands, it is possible to manage repositories.
+Using the `Repositories` commands, it is possible to Manage remote server Repositories.
 
 ```text
 This command manages repositories.

@@ -26,35 +26,35 @@ import (
 )
 
 const (
-	// commandNameForWorkspacesRemoteSetdefault is the command name for workspaces remotesetdefault.
-	commandNameForWorkspacesRemoteSetdefault = "workspaces.remote.setdefault"
+	// commandNameForWorkspacesRepoCheckout is the command name for workspaces repocheckout.
+	commandNameForWorkspacesRepoCheckout = "workspaces.repo.checkout"
 )
 
-// runECommandForRemoteSetdefaultWorkspace runs the command for creating an workspace.
-func runECommandForRemoteSetdefaultWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+// runECommandForRepoCheckoutWorkspace runs the command for creating an workspace.
+func runECommandForRepoCheckoutWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	_, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(aziclicommon.ErrorMessageCliBug)
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}
-	output["workspace"] = "remote-setdefault"
+	output["workspace"] = "repos-checkout"
 	printer.Print(output)
 	return nil
 }
 
-// CreateCommandForWorkspaceRemoteSetdefault creates a command for remotesetdefaultializing a working directory.
-func CreateCommandForWorkspaceRemoteSetdefault(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+// CreateCommandForWorkspaceRepoCheckout creates a command for repocheckoutializing a working directory.
+func CreateCommandForWorkspaceRepoCheckout(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "set-default",
-		Short: `Set a remote as default`,
-		Long: aziclicommon.BuildCliLongTemplate(`This command sets a remote as default.
+		Use:   "checkout",
+		Short: `Checkout a repo`,
+		Long: aziclicommon.BuildCliLongTemplate(`This command checkouts a repo.
 
 Examples:
-  # Set the dev remote as default
-  permguard remote set-default dev`),
+  # checkout a new repo
+  permguard repos checkout dev 268786704340/magicfarmacia-v0.0 `),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForRemoteSetdefaultWorkspace(deps, cmd, v)
+			return runECommandForRepoCheckoutWorkspace(deps, cmd, v)
 		},
 	}
 	return command

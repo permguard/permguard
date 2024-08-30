@@ -33,8 +33,8 @@ func runECommandForAuthZ(cmd *cobra.Command) error {
 func CreateCommandForAuthZ(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "authz",
-		Short: "Manage Repositories",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command enables managament of repositories.`),
+		Short: "Manage remote server Repositories",
+		Long:  aziclicommon.BuildCliLongTemplate(`This command enables managament of remote server repositories.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForAuthZ(cmd)
 		},

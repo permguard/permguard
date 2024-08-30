@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package authn
+package workspace
 
 import (
 	"github.com/spf13/cobra"
@@ -24,23 +24,26 @@ import (
 	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
-// runECommandForAuthN runs the command for managing authn.
-func runECommandForAuthN(cmd *cobra.Command) error {
+const (
+	// commandNameForWorkspacesRepo is the command name for workspaces repo.
+	commandNameForWorkspacesRepo = "workspaces.repo"
+)
+
+// runECommandForRepoWorkspace runs the command for creating an workspace.
+func runECommandForRepoWorkspace(cmd *cobra.Command, args []string) error {
 	return cmd.Help()
 }
 
-// CreateCommandForAuthN for managing authn.
-func CreateCommandForAuthN(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+// CreateCommandForWorkspaceRepo creates a command for repoializing a working directory.
+func CreateCommandForWorkspaceRepo(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "authn",
-		Short: "Manage remote serrver Tenants and Identities",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command enables managament of the remote tenants and identities.`),
+		Use:   "repos",
+		Short: `Manage the local repositories ("repos") whose PermGuard servers you track`,
+		Long: aziclicommon.BuildCliLongTemplate(`This command manages the local repositories ("repos") whose PermGuard servers you track.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForAuthN(cmd)
+			return runECommandForRepoWorkspace(cmd, args)
 		},
 	}
-	command.AddCommand(createCommandForTenants(deps, v))
-	command.AddCommand(createCommandForIdentitySources(deps, v))
-	command.AddCommand(createCommandForIdentities(deps, v))
+	command.AddCommand(CreateCommandForWorkspaceRepoCheckout(deps, v))
 	return command
 }
