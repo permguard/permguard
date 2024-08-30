@@ -20,12 +20,12 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azicliaccounts "github.com/permguard/permguard/internal/cli/commands/accounts"
-	azicliauthn "github.com/permguard/permguard/internal/cli/commands/authn"
-	azicliauthz "github.com/permguard/permguard/internal/cli/commands/authz"
-	azclicommon "github.com/permguard/permguard/internal/cli/commands/common"
-	azicliconfigs "github.com/permguard/permguard/internal/cli/commands/configs"
-	azicliwks "github.com/permguard/permguard/internal/cli/commands/workspace"
+	azclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliaccounts "github.com/permguard/permguard/internal/cli/porcelaincommands/accounts"
+	azicliauthn "github.com/permguard/permguard/internal/cli/porcelaincommands/authn"
+	azicliauthz "github.com/permguard/permguard/internal/cli/porcelaincommands/authz"
+	azicliconfigs "github.com/permguard/permguard/internal/cli/porcelaincommands/configs"
+	azicliwks "github.com/permguard/permguard/internal/cli/porcelaincommands/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
