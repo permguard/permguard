@@ -29,7 +29,6 @@ func CreateCommandsForWorkspace(deps azcli.CliDependenciesProvider, v *viper.Vip
 		CreateCommandForWorkspaceInit(deps, v),
 		CreateCommandForWorkspaceRemote(deps, v),
 		CreateCommandForWorkspaceClone(deps, v),
-		CreateCommandForWorkspaceFork(deps, v),
 		CreateCommandForWorkspaceValidate(deps, v),
 		CreateCommandForWorkspaceFetch(deps, v),
 		CreateCommandForWorkspaceDiff(deps, v),
