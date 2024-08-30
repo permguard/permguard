@@ -1,6 +1,6 @@
 ---
-title: "Coding Configurations"
-slug: "Coding Configurations"
+title: "Coding"
+slug: "Coding"
 description: ""
 summary: ""
 date: 2023-08-01T00:56:12+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "coding-configurations-eafd5d5a5b66442799398819043d8e48"
+    identifier: "coding-200a3b6d4f294f75969f5159b3147f63"
 weight: 3013
 toc: true
 seo:
