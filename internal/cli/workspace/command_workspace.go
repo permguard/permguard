@@ -33,7 +33,6 @@ func CreateCommandsForWorkspace(deps azcli.CliDependenciesProvider, v *viper.Vip
 		CreateCommandForWorkspaceValidate(deps, v),
 		CreateCommandForWorkspaceFetch(deps, v),
 		CreateCommandForWorkspaceDiff(deps, v),
-		CreateCommandForWorkspaceMerge(deps, v),
 		CreateCommandForWorkspacePlan(deps, v),
 		CreateCommandForWorkspaceApply(deps, v),
 		CreateCommandForWorkspaceDestroy(deps, v),
