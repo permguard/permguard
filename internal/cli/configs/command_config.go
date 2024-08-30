@@ -34,7 +34,7 @@ func CreateCommandForConfig(deps azcli.CliDependenciesProvider, v *viper.Viper) 
 	command := &cobra.Command{
 		Use:   "config",
 		Short: "Configure the command line settings",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command configures Cli settings.`),
+		Long:  aziclicommon.BuildCliLongTemplate(`This command configures the command line settings.`),
 		RunE:  runECommandForConfig,
 	}
 	command.AddCommand(createCommandForConfigAAPGet(deps, v))

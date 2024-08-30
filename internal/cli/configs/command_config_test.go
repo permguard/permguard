@@ -25,6 +25,6 @@ import (
 // TestCreateCommandForConfig tests the CreateCommandForConfig function.
 func TestCreateCommandForConfig(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command configures Cli settings."}
+	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command configures the command line settings."}
 	aztestutils.BaseCommandTest(t, CreateCommandForConfig, args, false, outputs)
 }

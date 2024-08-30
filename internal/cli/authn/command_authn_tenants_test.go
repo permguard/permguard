@@ -25,6 +25,6 @@ import (
 // TestCreateCommandForTenants tests the createCommandForTenants function.
 func TestCreateCommandForTenants(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command manages tenants."}
+	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command manages remote tenants."}
 	aztestutils.BaseCommandTest(t, createCommandForTenants, args, false, outputs)
 }
