@@ -24,8 +24,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
+	azvalidators "github.com/permguard/permguard/pkg/authz/validators"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	azivalidators "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/validators"
 )
 
 const (
@@ -64,22 +64,22 @@ func (r *Repo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*I
 	if identity == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity data is missing or malformed (%s).", LogIdentityEntry(identity)))
 	}
-	if err := azivalidators.ValidateAccountID("identity", identity.AccountID); err != nil {
+	if err := azvalidators.ValidateAccountID("identity", identity.AccountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentityInvalidAccountID, identity.AccountID))
 	}
-	if !isCreate && azivalidators.ValidateUUID("identity", identity.IdentityID) != nil {
+	if !isCreate && azvalidators.ValidateUUID("identity", identity.IdentityID) != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (%s).", LogIdentityEntry(identity)))
 	}
-	if isCreate && azivalidators.ValidateUUID("identity", identity.IdentitySourceID) != nil {
+	if isCreate && azvalidators.ValidateUUID("identity", identity.IdentitySourceID) != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (%s).", LogIdentityEntry(identity)))
 	}
 	if identity.Kind == identitiesMap["user"] {
-		if err := azivalidators.ValidateIdentityUserName("identity", identity.Name); err != nil {
+		if err := azvalidators.ValidateIdentityUserName("identity", identity.Name); err != nil {
 			errorMessage := "storage: invalid client input - identity name is not valid (%s)."
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogIdentityEntry(identity)))
 		}
 	} else {
-		if err := azivalidators.ValidateName("identity", identity.Name); err != nil {
+		if err := azvalidators.ValidateName("identity", identity.Name); err != nil {
 			errorMessage := "storage: invalid client input - identity name is not valid (%s)."
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogIdentityEntry(identity)))
 		}
@@ -125,10 +125,10 @@ func (r *Repo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*I
 
 // DeleteIdentity deletes an identity.
 func (r *Repo) DeleteIdentity(tx *sql.Tx, accountID int64, identityID string) (*Identity, error) {
-	if err := azivalidators.ValidateAccountID("identity", accountID); err != nil {
+	if err := azvalidators.ValidateAccountID("identity", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentityInvalidAccountID, accountID))
 	}
-	if err := azivalidators.ValidateUUID("identity", identityID); err != nil {
+	if err := azvalidators.ValidateUUID("identity", identityID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (id: %s).", identityID))
 	}
 	var dbIdentity Identity
@@ -160,7 +160,7 @@ func (r *Repo) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, accountI
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
 	}
-	if err := azivalidators.ValidateAccountID("identity", accountID); err != nil {
+	if err := azvalidators.ValidateAccountID("identity", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageIdentityInvalidAccountID, accountID))
 	}
 
@@ -175,7 +175,7 @@ func (r *Repo) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, accountI
 
 	if filterID != nil {
 		identityID := *filterID
-		if err := azivalidators.ValidateUUID("identity", identityID); err != nil {
+		if err := azvalidators.ValidateUUID("identity", identityID); err != nil {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - identity id is not valid (id: %s).", identityID))
 		}
 		conditions = append(conditions, "identity_id = ?")
@@ -184,7 +184,7 @@ func (r *Repo) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, accountI
 
 	if filterName != nil {
 		identityName := *filterName
-		if err := azivalidators.ValidateIdentityUserName("identity", identityName); err != nil {
+		if err := azvalidators.ValidateIdentityUserName("identity", identityName); err != nil {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - identity name is not valid (name: %s).", identityName))
 		}
 		identityName = "%" + identityName + "%"
