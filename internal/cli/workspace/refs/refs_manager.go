@@ -60,12 +60,11 @@ func (m *RefsManager) getHeadFile() string {
 }
 
 // saveConfig saves the configuration file.
-func (m *RefsManager) saveConfig(override bool, cfg *Config) error {
+func (m *RefsManager) saveConfig(fileName string, override bool, cfg interface{}) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
 	}
-	fileName := m.getHeadFile()
 	if override {
 		_, err = m.persMgr.WriteFile(true, fileName, data, 0644)
 	} else {
@@ -96,19 +95,25 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 	refIDStr := fmt.Sprintf("%s/%d/%s", remote, accountID, repo)
 	refID := azcrypto.ComputeStringSHA1(refIDStr)
 	refPath := filepath.Join(hiddenRefsDir, refID)
-	_, err := m.persMgr.CreateFileIfNotExists(true, refPath)
+	refCfg := RefsConfig{
+		Object: RefsObjectConfig{
+			Commit: refHead,
+		},
+	}
+	err := m.saveConfig(refPath, true, &refCfg)
 	if err != nil {
 		return nil, err
 	}
-	config := Config{
-		Head: HeadConfig{
+	headCfg := HeadConfig{
+		Head: HeadRefsConfig{
 			Remote:    remote,
 			AccountID: accountID,
 			Repo:      repo,
 			Ref:       refID,
 		},
 	}
-	err = m.saveConfig(true, &config)
+	headFile := m.getHeadFile()
+	err = m.saveConfig(headFile, true, &headCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -118,10 +123,10 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 	} else {
 		remotes := []interface{}{}
 		remoteObj := map[string]any{
-			"remote":    	config.Head.Remote,
-			"accountid": 	config.Head.AccountID,
-			"repo":      	config.Head.Repo,
-			"ref":			config.Head.Ref,
+			"remote":    headCfg.Head.Remote,
+			"accountid": headCfg.Head.AccountID,
+			"repo":      headCfg.Head.Repo,
+			"ref":       headCfg.Head.Ref,
 		}
 		remotes = append(remotes, remoteObj)
 		output = out(nil, "head", remotes, nil)

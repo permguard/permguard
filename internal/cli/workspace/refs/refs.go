@@ -16,15 +16,25 @@
 
 package refs
 
-// Config represents the configuration for the head.
-type Config struct {
-	Head HeadConfig `toml:"head"`
-}
-
 // HeadConfig represents the configuration for the head.
 type HeadConfig struct {
+	Head HeadRefsConfig `toml:"refs"`
+}
+
+// HeadRefsConfig represents the configuration for the head.
+type HeadRefsConfig struct {
 	Remote    string `toml:"remote"`
 	AccountID int64  `toml:"accountid"`
 	Repo      string `toml:"repo"`
 	Ref       string `toml:"ref"`
+}
+
+// RefsConfig represents the configuration for the refs.
+type RefsConfig struct {
+	Object RefsObjectConfig `toml:"object"`
+}
+
+// RefsObjectConfig represents the configuration for the objects.
+type RefsObjectConfig struct {
+	Commit    string `toml:"commit"`
 }
