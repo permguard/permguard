@@ -18,12 +18,15 @@ package config
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/pelletier/go-toml"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
+)
+
+const (
+	hiddenConfigFile = "config"
 )
 
 // ConfigManager implements the internal manager for the config file.
@@ -40,8 +43,13 @@ func NewConfigManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwksper
 	}
 }
 
-// CreateConfig creates a new configuration file.
-func (c *ConfigManager) CreateConfig(filePath string) error {
+// getConfigFile
+func (c *ConfigManager) getConfigFile() string {
+	return hiddenConfigFile
+}
+
+// Initialize initializes the config resources.
+func (c *ConfigManager) Initialize() error {
 	config := Config{
 		Core: CoreConfig{
 			ClientVersion: c.ctx.GetClientVersion(),
@@ -53,9 +61,10 @@ func (c *ConfigManager) CreateConfig(filePath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %v", err)
 	}
-	err = os.WriteFile(filePath, data, 0644)
+	fileName := c.getConfigFile()
+	err = c.persMgr.WriteFile(true, fileName, data, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to write config file %s: %v", filePath, err)
+		return fmt.Errorf("failed to write config file %s: %v", fileName, err)
 	}
 	return nil
 }

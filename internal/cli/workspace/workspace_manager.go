@@ -18,118 +18,80 @@ package workspace
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
+	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
+	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
+	azicliwksobjs "github.com/permguard/permguard/internal/cli/workspace/objects"
+	azicliwksplans "github.com/permguard/permguard/internal/cli/workspace/plans"
 )
 
 const (
 	hiddenDir        	= ".permguard"
-	hiddenLogsDir    	= "logs"
-	hiddenObjectsDir 	= "objects"
-	hiddenPlansDir   	= "plans"
-	hiddenRefsDir    	= "refs"
-	hiddenConfigFile 	= "config"
-	hiddenHeadFile		= "HEAD"
 )
 
 // WorkspaceManager implements the internal manager to manage the .permguard directory.
 type WorkspaceManager struct {
 	ctx     *aziclicommon.CliCommandContext
+	homeDir string
+	persMgr *azicliwkspers.PersistenceManager
 	cfgMgr	*azicliwkscfg.ConfigManager
+	logsMgr *azicliwkslogs.LogsManager
+	rfsMgr  *azicliwksrefs.RefsManager
+	objsMgr *azicliwksobjs.ObjectsManager
+	plansMgr *azicliwksplans.PlansManager
 }
 
 // NewInternalManager creates a new internal manager.
 func NewInternalManager(ctx *aziclicommon.CliCommandContext) *WorkspaceManager {
-	persMgr := azicliwkspers.NewPersistenceManager(ctx)
+	hdnDir := filepath.Join(ctx.GetWorkDir(), hiddenDir)
+	persMgr := azicliwkspers.NewPersistenceManager(hdnDir, ctx)
 	return &WorkspaceManager{
+		homeDir: hdnDir,
 		ctx:     ctx,
+		persMgr: persMgr,
 		cfgMgr: azicliwkscfg.NewConfigManager(ctx, persMgr),
+		logsMgr: azicliwkslogs.NewLogsManager(ctx, persMgr),
+		rfsMgr:  azicliwksrefs.NewRefsManager(ctx, persMgr),
+		objsMgr: azicliwksobjs.NewObjectsManager(ctx, persMgr),
+		plansMgr: azicliwksplans.NewPlansManager(ctx, persMgr),
 	}
 }
 
-// createFileIfNotExists creates a file if it does not exist.
-func (*WorkspaceManager) createFileIfNotExists(filePath string) error {
-    if _, err := os.Stat(filePath); err == nil {
-        return fmt.Errorf("file %s already exists", filePath)
-    } else if os.IsNotExist(err) {
-        dir := filepath.Dir(filePath)
-        err := os.MkdirAll(dir, 0755)
-        if err != nil {
-            return fmt.Errorf("failed to create directory %s: %v", dir, err)
-        }
-        file, err := os.Create(filePath)
-        if err != nil {
-            return fmt.Errorf("failed to create file %s: %v", filePath, err)
-        }
-        defer file.Close()
-    } else {
-        return fmt.Errorf("failed to stat file %s: %v", filePath, err)
-    }
-    return nil
-}
-
-// createDir creates a directory.
-func (*WorkspaceManager) createDir(dir string) error {
-	if _, err := os.Stat(dir); err == nil {
-		return fmt.Errorf("directory %s already exists", dir)
-	} else if os.IsNotExist(err) {
-		err := os.MkdirAll(dir, 0755)
-		if err != nil {
-			return fmt.Errorf("failed to create directory %s: %v", dir, err)
-		}
-	} else {
-		return fmt.Errorf("failed to stat directory %s: %v", dir, err)
-	}
-	return nil
+// GetHomeDir returns the home directory.
+func (m *WorkspaceManager) GetHomeDir() string {
+	return m.homeDir
 }
 
 // InitWorkspace the workspace.
 func (m *WorkspaceManager) InitWorkspace() (string, error) {
-	hdnDir := filepath.Join(m.ctx.GetWorkDir(), hiddenDir)
-	hdnLogsDir := filepath.Join(hdnDir, hiddenLogsDir)
-	hdnObjectsDir := filepath.Join(hdnDir, hiddenObjectsDir)
-	hdnPlansDir:= filepath.Join(hdnDir, hiddenPlansDir)
-	hdnRefsDir:= filepath.Join(hdnDir, hiddenRefsDir)
-
 	firstInit := true
-	err := m.createDir(hdnDir)
+	homeDir := m.GetHomeDir()
+	err := m.persMgr.CreateDir(false, homeDir)
 	if err != nil {
 		firstInit = false
 	}
-	dirs := []string{
-		hdnLogsDir,
-		hdnObjectsDir,
-		hdnPlansDir,
-		hdnRefsDir,
+	initializers := []func() error{
+		m.cfgMgr.Initialize,
+		m.logsMgr.Iniitalize,
+		m.rfsMgr.Iniitalize,
+		m.objsMgr.Iniitalize,
+		m.plansMgr.Iniitalize,
 	}
-	for _, dir := range dirs {
-		m.createDir(dir)
-		// if err != nil {
-		// 	return "", err
-		// }
-	}
-	hdConfigFile := filepath.Join(hdnDir, hiddenConfigFile)
-	hdHeadFile := filepath.Join(hdnDir, hiddenHeadFile)
-	files := []string{
-		hdConfigFile,
-		hdHeadFile,
-	}
-	for _, file := range files {
-		err := m.createFileIfNotExists(file)
+	for _, initializer := range initializers {
+		err := initializer()
 		if err != nil {
 			return "", err
 		}
 	}
-	m.cfgMgr.CreateConfig(hdConfigFile)
 	var output string
 	if firstInit {
-		output = fmt.Sprintf("Initialized empty panicermGuard repository in %s", hdnDir)
+		output = fmt.Sprintf("Initialized empty panicermGuard repository in %s", homeDir)
 	} else {
-		output = fmt.Sprintf("Reinitialized existing permGuard repository in %s", hdnDir)
+		output = fmt.Sprintf("Reinitialized existing permGuard repository in %s", homeDir)
 	}
 	return output, nil
 }
