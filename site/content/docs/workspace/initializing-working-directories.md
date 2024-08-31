@@ -78,7 +78,7 @@ Finally, initialize the working directory and associate it with a PermGuard `rem
 ```bash
 ❯ permguard init
 ❯ permguard remote add dev server.permguard.com
-❯ permguard repo checkout dev/268786704340/magicfarmacia-v0.0
+❯ permguard checkout dev/268786704340/magicfarmacia-v0.0
 ```
 
 ## Clone an existing repo

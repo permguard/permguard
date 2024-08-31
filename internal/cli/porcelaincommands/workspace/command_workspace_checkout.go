@@ -26,35 +26,35 @@ import (
 )
 
 const (
-	// commandNameForWorkspacesRepoCheckout is the command name for workspaces repocheckout.
-	commandNameForWorkspacesRepoCheckout = "workspaces.repo.checkout"
+	// commandNameForWorkspacesCheckout is the command name for workspaces checkout.
+	commandNameForWorkspacesCheckout = "workspaces.checkout"
 )
 
-// runECommandForRepoCheckoutWorkspace runs the command for creating an workspace.
-func runECommandForRepoCheckoutWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+// runECommandForCheckoutWorkspace runs the command for creating an workspace.
+func runECommandForCheckoutWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	_, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(aziclicommon.ErrorMessageCliBug)
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}
-	output["workspace"] = "repos-checkout"
+	output["workspace"] = "checkout"
 	printer.Print(output)
 	return nil
 }
 
-// CreateCommandForWorkspaceRepoCheckout creates a command for repocheckoutializing a working directory.
-func CreateCommandForWorkspaceRepoCheckout(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+// CreateCommandForWorkspaceCheckout creates a command for checkoutializing a working directory.
+func CreateCommandForWorkspaceCheckout(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "checkout",
 		Short: `Checkout a repo`,
 		Long: aziclicommon.BuildCliLongTemplate(`This command checkouts a repo.
 
 Examples:
-  # checkout a new repo
-  ❯ permguard repo checkout dev/268786704340/magicfarmacia-v0.0 `),
+  # checkout a a repo
+  ❯ permguard checkout dev/268786704340/magicfarmacia-v0.0 `),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForRepoCheckoutWorkspace(deps, cmd, v)
+			return runECommandForCheckoutWorkspace(deps, cmd, v)
 		},
 	}
 	return command

@@ -35,7 +35,7 @@ The official PermGuard Command Line Interface - Copyright © 2022 Nitro Agility 
 
 PermGuard is an Open Source Multi-Account and Multi-Tenant Authorization Provider.
 
-  Find more information at: https://www.permguard.com/docs/cli/how-to-use/
+	Find more information at: https://www.permguard.com/docs/cli/how-to-use/
 
 Usage:
   PermGuard Command Line Interface [flags]
@@ -46,6 +46,7 @@ Available Commands:
   apply       Apply the plan to the remote repo
   authn       Manage tenants and identities on the remote server
   authz       Manage repositories on the remote server
+  checkout    Checkout a repo
   clone       Clone an existing repo from a remote into the working directory
   completion  Generate the autocompletion script for the specified shell
   config      Configure the command line settings

@@ -44,6 +44,5 @@ func CreateCommandForWorkspaceRepo(deps azcli.CliDependenciesProvider, v *viper.
 			return runECommandForRepoWorkspace(cmd, args)
 		},
 	}
-	command.AddCommand(CreateCommandForWorkspaceRepoCheckout(deps, v))
 	return command
 }
