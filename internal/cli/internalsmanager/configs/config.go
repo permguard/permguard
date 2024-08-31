@@ -17,25 +17,25 @@
 package configs;
 
 import (
-	_ "gopkg.in/ini.v1"
+	_ "github.com/pelletier/go-toml"
 )
 type Config struct {
-	Core          CoreConfig `ini:"core"`
-	Remotes       map[string]RemoteConfig
-	Repositories  map[string]RepositoryConfig
+	Core          CoreConfig `toml:"core"`
+	Remotes       map[string]RemoteConfig `toml:"remote"`
 }
 
 type CoreConfig struct {
-	ClientVersion string `ini:"client_version"`
+	ClientVersion string `toml:"client_version"`
 }
 
 type RemoteConfig struct {
-	URL string `ini:"url"`
-	AAP int    `ini:"aap"`
-	PAP int    `ini:"pap"`
+	URL string `toml:"url"`
+	AAP int    `toml:"aap"`
+	PAP int    `toml:"pap"`
+	Repositories  map[string]RepositoryConfig `toml:"repository"`
 }
 
 type RepositoryConfig struct {
-	Remote string `ini:"remote"`
-	Ref    string `ini:"ref"`
+	Remote string `toml:"remote"`
+	Ref    string `toml:"ref"`
 }

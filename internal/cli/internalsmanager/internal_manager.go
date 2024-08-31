@@ -18,10 +18,11 @@ package internalmanager
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
-	"gopkg.in/ini.v1"
+	"github.com/pelletier/go-toml"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	aziclimanagercfg "github.com/permguard/permguard/internal/cli/internalsmanager/configs"
@@ -61,64 +62,57 @@ func (*InternalManager) saveConfig(path string) error {
 				URL: "dev.example.com",
 				AAP: 9091,
 				PAP: 9092,
+				Repositories: map[string]aziclimanagercfg.RepositoryConfig{
+					"dev/268786704340/magicfarmacia-v0.0": {
+						Remote: "dev",
+						Ref:    "284efd59b6d7482066f3e658e0957ec9e5f653ff",
+					},
+					"dev/534434453770/magicfarmacia-v0.0": {
+						Remote: "dev",
+						Ref:    "0905b08482050cb152b7c5b345ee2687b8f9bda9",
+					},
+				},
 			},
 			"prod": {
 				URL: "prod.example.com",
 				AAP: 9091,
 				PAP: 9092,
-			},
-		},
-		Repositories: map[string]aziclimanagercfg.RepositoryConfig{
-			"dev/268786704340/magicfarmacia-v0.0": {
-				Remote: "dev",
-				Ref:    "284efd59b6d7482066f3e658e0957ec9e5f653ff",
-			},
-			"dev/534434453770/magicfarmacia-v0.0": {
-				Remote: "dev",
-				Ref:    "0905b08482050cb152b7c5b345ee2687b8f9bda9",
-			},
-			"prod/534434453770/magicfarmacia-v0.0": {
-				Remote: "prod",
-				Ref:    "0e1f711b0c1bcfa87cf4f423354f886b6ff0f3ea",
+				Repositories: map[string]aziclimanagercfg.RepositoryConfig{
+					"prod/534434453770/magicfarmacia-v0.0": {
+						Remote: "prod",
+						Ref:    "0e1f711b0c1bcfa87cf4f423354f886b6ff0f3ea",
+					},
+				},
 			},
 		},
 	}
-	cfg := ini.Empty()
-	var err error
-	// err := cfg.Section("core").ReflectFrom(&config)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to map core section: %v", err)
-	// }
-	for name, remote := range config.Remotes {
-		sectionName := "remote " + name
-		err := cfg.Section(sectionName).ReflectFrom(&remote)
-		if err != nil {
-			return fmt.Errorf("failed to map remote section %s: %v", sectionName, err)
-		}
-	}
-	for name, repo := range config.Repositories {
-		sectionName := "repository " + name
-		err := cfg.Section(sectionName).ReflectFrom(&repo)
-		if err != nil {
-			return fmt.Errorf("failed to map repository section %s: %v", sectionName, err)
-		}
-	}
-	err = cfg.SaveTo(path)
+	data, err := toml.Marshal(config)
 	if err != nil {
-		return fmt.Errorf("failed to save to file: %v", err)
+		return fmt.Errorf("failed to marshal config: %v", err)
 	}
-	inidata, err := ini.Load(path)
+	err = os.WriteFile(path, data, 0644)
 	if err != nil {
-	   fmt.Printf("Fail to read file: %v", err)
+		return fmt.Errorf("failed to write config file %s: %v", path, err)
 	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("failed to open file %s: %v", path, err)
+	}
+	defer file.Close()
+
 	var config2 aziclimanagercfg.Config
-	err = inidata.MapTo(&config2)
+
+	b, err := io.ReadAll(file)
 	if err != nil {
-	   fmt.Printf("Fail to map file: %v", err)
-	   os.Exit(1)
-	 }
-	val := config2.Core.ClientVersion
-	print(val)
+		return fmt.Errorf("failed to read file %s: %v", path, err)
+	}
+
+	err = toml.Unmarshal(b, &config2)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal file %s: %v", path, err)
+	}
+	print(config2.Core.ClientVersion)
 	return nil
 }
 
