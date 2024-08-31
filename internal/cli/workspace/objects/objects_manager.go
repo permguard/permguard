@@ -44,8 +44,8 @@ func (c *ObjectsManager) GetObjectsDir() string {
 	return hiddenObjectsDir
 }
 
-// Iniitalize the objects resources.
-func (c *ObjectsManager) Iniitalize() error {
+// Initalize the objects resources.
+func (c *ObjectsManager) Initalize() error {
 	_, err := c.persMgr.CreateDirIfNotExists(true, c.GetObjectsDir())
 	return err
 }

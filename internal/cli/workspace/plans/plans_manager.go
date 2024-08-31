@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	hiddenPlansDir	= "plans"
+	hiddenPlansDir = "plans"
 )
 
 // PlansManager implements the internal manager for the plans file.
@@ -44,8 +44,8 @@ func (c *PlansManager) GetPlansDir() string {
 	return hiddenPlansDir
 }
 
-// Iniitalize the plans resources.
-func (c *PlansManager) Iniitalize() error {
+// Initalize the plans resources.
+func (c *PlansManager) Initalize() error {
 	_, err := c.persMgr.CreateDirIfNotExists(true, c.GetPlansDir())
 	return err
 }
