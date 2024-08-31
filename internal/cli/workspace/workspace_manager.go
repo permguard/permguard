@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
@@ -66,6 +67,12 @@ func (m *WorkspaceManager) GetHomeDir() string {
 	return m.homeDir
 }
 
+// IsValidHomeDir checks if the home directory is valid.
+func (m *WorkspaceManager) isValidHomeDir() bool {
+	isValid, _ := m.persMgr.CheckFileIfExists(true, "")
+	return isValid
+}
+
 // InitWorkspace the workspace.
 func (m *WorkspaceManager) InitWorkspace(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	var output map[string]any
@@ -101,14 +108,24 @@ func (m *WorkspaceManager) InitWorkspace(out func(map[string]any, string, any, e
 
 // AddRemote adds a remote.
 func (m *WorkspaceManager) AddRemote(remote string, server string, aap int, pap int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	if !m.isValidHomeDir(){
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.GetHomeDir()))
+	}
 	return m.cfgMgr.AddRemote(remote, server, aap, pap, out)
 }
 
 // RemoveRemote removes a remote.
 func (m *WorkspaceManager) RemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	if !m.isValidHomeDir(){
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.GetHomeDir()))
+	}
 	return m.cfgMgr.RemoveRemote(remote, out)
 }
 
+// ListRemotes lists the remotes.
 func (m *WorkspaceManager) ListRemotes(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	if !m.isValidHomeDir(){
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.GetHomeDir()))
+	}
 	return m.cfgMgr.ListRemotes(out)
 }

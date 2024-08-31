@@ -21,9 +21,9 @@ import (
 
 	"github.com/pelletier/go-toml"
 
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
 const (
@@ -128,7 +128,7 @@ func (c *ConfigManager) ListRemotes(out func(map[string]any, string, any, error)
 	if err != nil {
 		return nil, err
 	}
-	remotes := []string{}
+	remotes := []any{}
 	for remote := range cfg.Remotes {
 		remotes = append(remotes, remote)
 	}
