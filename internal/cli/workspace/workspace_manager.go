@@ -159,7 +159,8 @@ func (m *WorkspaceManager) AddRemote(remote string, server string, aap int, pap 
 	}
 	defer fileLock.Unlock()
 
-	return m.cfgMgr.AddRemote(remote, server, aap, pap, out)
+	output := map[string]any{}
+	return m.cfgMgr.AddRemote(remote, server, aap, pap, output, out)
 }
 
 // RemoveRemote removes a remote.
@@ -175,7 +176,8 @@ func (m *WorkspaceManager) RemoveRemote(remote string, out func(map[string]any, 
 	}
 	defer fileLock.Unlock()
 
-	return m.cfgMgr.RemoveRemote(remote, out)
+	output := map[string]any{}
+	return m.cfgMgr.RemoveRemote(remote, output, out)
 }
 
 // ListRemotes lists the remotes.
@@ -191,7 +193,8 @@ func (m *WorkspaceManager) ListRemotes(out func(map[string]any, string, any, err
 	}
 	defer fileLock.Unlock()
 
-	return m.cfgMgr.ListRemotes(out)
+	output := map[string]any{}
+	return m.cfgMgr.ListRemotes(output, out)
 }
 
 // CheckoutRepo checks out a repository.
@@ -225,7 +228,8 @@ func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, st
 	if err != nil || srvAccounts == nil || len(srvAccounts) == 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: account %d does not exist", accountID))
 	}
-	output, err := m.rfsMgr.CheckoutHead(remoteName, accountID, repoName, srvAccounts[0].RefsHead, out)
+	output := map[string]any{}
+	output, err = m.rfsMgr.CheckoutHead(remoteName, accountID, repoName, srvAccounts[0].RefsHead, output, out)
 	if err != nil {
 		return nil, err
 	}
