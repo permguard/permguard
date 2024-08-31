@@ -21,6 +21,8 @@ import (
 	"path/filepath"
 
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azcryptp "github.com/permguard/permguard/pkg/extensions/crypto"
+	aziclients "github.com/permguard/permguard/internal/agents/clients"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
 	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
@@ -147,10 +149,23 @@ func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, st
 	if !m.isValidHomeDir(){
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.GetHomeDir()))
 	}
-	remote, accountID, repoName, err := azicliwksvals.SanitizeRepo(repo)
+	remoteName, accountID, _, err := azicliwksvals.SanitizeRepo(repo)
 	if err != nil {
 		return nil, err
 	}
-	output := out(nil, "checkout", fmt.Sprintf("%s %d %s", remote, accountID, repoName), nil)
+	cfgRemote, err := m.cfgMgr.GetRemote(remoteName)
+	if err != nil {
+		return nil, err
+	}
+	appServer := fmt.Sprintf("%s:%d", cfgRemote.Server, cfgRemote.AAP)
+	aapClient, err := aziclients.NewGrpcAAPClient(appServer)
+	if err != nil {
+		return nil, err
+	}
+	srvAccounts, err := aapClient.FetchAccountsByID(1, 1, accountID)
+	if err != nil || srvAccounts == nil || len(srvAccounts) == 0 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: account %d does not exist", accountID))
+	}
+	output := out(nil, "checkout", fmt.Sprintf("%s %s %s", appServer, srvAccounts[0].RefsHead, azcryptp.ComputeStringSHA1(repo)), nil)
 	return output, nil
 }

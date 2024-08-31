@@ -32,9 +32,9 @@ func SanitizeRepo(repo string) (string, int64, string, error) {
 	if len(items) < 3 {
 		return "", 0, "", azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo %s", repo))
 	}
-	remote, err := SanitizeRemote(items[0])
+	remoteName, err := SanitizeRemote(items[0])
 	if err != nil {
-		return "", 0, "", azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid remote %s", remote))
+		return "", 0, "", azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid remote %s", remoteName))
 	}
 	accountIDStr := items[1]
 	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
@@ -50,5 +50,5 @@ func SanitizeRepo(repo string) (string, int64, string, error) {
 	if err != nil {
 		return "", 0, "", azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo name %s", repoName))
 	}
-	return remote, accountID, repoName, nil
+	return remoteName, accountID, repoName, nil
 }
