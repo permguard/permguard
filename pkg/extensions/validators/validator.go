@@ -23,6 +23,13 @@ import (
 	"github.com/google/uuid"
 )
 
+// isSimpleName is a custom validator for simple name.
+func isSimpleName(fl validator.FieldLevel) bool {
+	pattern := `^[a-z][a-z0-9]*[a-z0-9]$`
+	regex := regexp.MustCompile(pattern)
+	return regex.MatchString(fl.Field().String())
+}
+
 // isName is a custom validator for name.
 func isName(fl validator.FieldLevel) bool {
 	pattern := `^[a-z][a-z0-9\-\._]*[a-z0-9]$`
@@ -43,6 +50,7 @@ func ValidateInstance(s any) (bool, error) {
 	}
 	validate := validator.New()
 	validate.RegisterValidation("isuuid", isUUID)
+	validate.RegisterValidation("simplename", isSimpleName)
 	validate.RegisterValidation("name", isName)
 	err := validate.Struct(s)
 	if err != nil {

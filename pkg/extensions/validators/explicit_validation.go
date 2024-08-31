@@ -30,6 +30,19 @@ func IsValidPort(port int) bool {
 	return port >= 1 && port <= 65535
 }
 
+// IsValidHostname checks if the given hostnameis valid.
+func IsValidHostname(hostnamePath string) bool {
+	if hostnamePath == "" {
+		return false
+	}
+	vHostnamePath := struct {
+		HostnamePath string `validate:"required,hostname"`
+	}{HostnamePath: hostnamePath}
+	isValid, err := ValidateInstance(vHostnamePath)
+	return isValid && err == nil
+}
+
+
 // IsValidHostnamePort checks if the given hostname port is valid.
 func IsValidHostnamePort(hostnamePath string) bool {
 	if hostnamePath == "" {
@@ -39,5 +52,14 @@ func IsValidHostnamePort(hostnamePath string) bool {
 		HostnamePath string `validate:"required,hostname_port"`
 	}{HostnamePath: hostnamePath}
 	isValid, err := ValidateInstance(vHostnamePath)
+	return isValid && err == nil
+}
+
+// ValidateSimpleName validates a simple name.
+func ValidateSimpleName(name string) bool {
+	vName := struct {
+		Name string `validate:"required,simplename"`
+	}{Name: name}
+	isValid, err := ValidateInstance(vName)
 	return isValid && err == nil
 }

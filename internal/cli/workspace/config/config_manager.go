@@ -18,12 +18,14 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/pelletier/go-toml"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
 )
 
 const (
@@ -88,6 +90,19 @@ func (c *ConfigManager) Initialize() error {
 
 // AddRemote adds a remote.
 func (c *ConfigManager) AddRemote(remote string, server string, aap int, pap int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	remote = strings.ToLower(remote)
+	if !azvalidators.ValidateSimpleName(remote) {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid remote name %s", remote))
+	}
+	if !azvalidators.IsValidHostname(server) {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid server %s", server))
+	}
+	if !azvalidators.IsValidPort(aap) {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid aap port %d", aap))
+	}
+	if !azvalidators.IsValidPort(pap) {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid pap port %d", pap))
+	}
 	cfg, err := c.readConfig()
 	if err != nil {
 		return nil, err
@@ -109,6 +124,10 @@ func (c *ConfigManager) AddRemote(remote string, server string, aap int, pap int
 
 // RemoveRemote removes a remote.
 func (c *ConfigManager) RemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	remote = strings.ToLower(remote)
+	if !azvalidators.ValidateSimpleName(remote) {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid remote name %s", remote))
+	}
 	cfg, err := c.readConfig()
 	if err != nil {
 		return nil, err
