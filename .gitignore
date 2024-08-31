@@ -217,6 +217,7 @@ permguard
 .env.local
 *.db
 **/samples/volume/*
+!**/samples/volume/.gitignore
 !**/samples/volume/.keep
 # End of Custom
 
