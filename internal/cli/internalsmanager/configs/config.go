@@ -22,6 +22,7 @@ import (
 type Config struct {
 	Core          CoreConfig `toml:"core"`
 	Remotes       map[string]RemoteConfig `toml:"remote"`
+	Repositories  map[string]RepositoryConfig `toml:"repository"`
 }
 
 type CoreConfig struct {
@@ -32,7 +33,6 @@ type RemoteConfig struct {
 	URL string `toml:"url"`
 	AAP int    `toml:"aap"`
 	PAP int    `toml:"pap"`
-	Repositories  map[string]RepositoryConfig `toml:"repository"`
 }
 
 type RepositoryConfig struct {
