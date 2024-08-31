@@ -79,6 +79,19 @@ seo:
 | 05112      | storage: unique constraint violation             |
 | 05120      | storage: entity not found in storage             |
 
+## 08xxx: Command Line Interface Errors
+
+| Error Code | Description                                      |
+|------------|--------------------------------------------------|
+| 08000      | cli: generic error                               |
+
+## 081xx: Command Line Interface File System Errors
+| Error Code | Description                                      |
+|------------|--------------------------------------------------|
+| 08100      | cli: file system error                           |
+| 08101      | cli: operation on directory failed               |
+| 08102      | cli: operation on file failed                    |
+
 ## 09xxx Plugin errors
 
 | Error Code | Description                       |

@@ -52,11 +52,12 @@ func (c *RefsManager) GetHeadFile() string {
 
 // Iniitalize the refs resources.
 func (c *RefsManager) Iniitalize() error {
-	err := c.persMgr.CreateDir(true, c.GetRefsDir())
+	_, err := c.persMgr.CreateDirIfNotExists(true, c.GetRefsDir())
 	if err != nil {
 		return err
 	}
-	err = c.persMgr.CreateFileIfNotExists(true, c.GetHeadFile())
+	headFile := c.GetHeadFile()
+	_, err = c.persMgr.CreateFileIfNotExists(true, headFile)
 	if err != nil {
 		return err
 	}

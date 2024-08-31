@@ -46,5 +46,6 @@ func (c *LogsManager) GetLogsDir() string {
 
 // Iniitalize the logs resources.
 func (c *LogsManager) Iniitalize() error {
-	return c.persMgr.CreateDir(true, c.GetLogsDir())
+	_, err := c.persMgr.CreateDirIfNotExists(true, c.GetLogsDir())
+	return err
 }

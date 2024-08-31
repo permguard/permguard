@@ -62,7 +62,7 @@ func (c *ConfigManager) Initialize() error {
 		return fmt.Errorf("failed to marshal config: %v", err)
 	}
 	fileName := c.getConfigFile()
-	err = c.persMgr.WriteFile(true, fileName, data, 0644)
+	_, err = c.persMgr.WriteFileIfNotExists(true, fileName, data, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write config file %s: %v", fileName, err)
 	}
