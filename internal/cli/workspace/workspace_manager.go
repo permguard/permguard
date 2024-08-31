@@ -229,5 +229,9 @@ func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, st
 	if err != nil {
 		return nil, err
 	}
+	output, err = m.cfgMgr.AddRepo(remoteName, accountID, repoName, output, out)
+	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
+		return nil, err
+	}
 	return output, nil
 }

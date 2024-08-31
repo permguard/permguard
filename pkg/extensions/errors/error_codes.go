@@ -56,6 +56,8 @@ var errorCodes = map[string]string{
 	"08001": "cli: invalid arguments",
 	"08002": "cli: invalid input",
 	"08003": "cli: not a permguard workspace directory",
+	"08004": "cli: record already exists",
+	"08005": "cli: record not found",
 
 	// 081xx: Command Line Interface File System Errors
 	"08100": "cli: file system error",
@@ -110,6 +112,8 @@ var (
 	ErrCliArguments				error = NewSystemError("08001")
 	ErrCliInput					error = NewSystemError("08002")
 	ErrCliWorkspaceDir			error = NewSystemError("08003")
+	ErrCliRecordExists			error = NewSystemError("08004")
+	ErrCliRecordNotFound		error = NewSystemError("08005")
 	ErrCliFileSystem 			error = NewSystemError("08100")
 	ErrCliDirectoryOperation	error = NewSystemError("08101")
 	ErrCliFileOperation			error = NewSystemError("08102")
