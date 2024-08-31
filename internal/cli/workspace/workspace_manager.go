@@ -22,6 +22,7 @@ import (
 
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
 	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
 	azicliwksobjs "github.com/permguard/permguard/internal/cli/workspace/objects"
@@ -139,4 +140,17 @@ func (m *WorkspaceManager) ListRemotes(out func(map[string]any, string, any, err
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.GetHomeDir()))
 	}
 	return m.cfgMgr.ListRemotes(out)
+}
+
+// CheckoutRepo checks out a repository.
+func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	if !m.isValidHomeDir(){
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.GetHomeDir()))
+	}
+	remote, accountID, repoName, err := azicliwksvals.SanitizeRepo(repo)
+	if err != nil {
+		return nil, err
+	}
+	output := out(nil, "checkout", fmt.Sprintf("%s %d %s", remote, accountID, repoName), nil)
+	return output, nil
 }

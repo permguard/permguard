@@ -18,14 +18,14 @@ package config
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/pelletier/go-toml"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
+	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
+	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
 
 const (
@@ -88,11 +88,28 @@ func (c *ConfigManager) Initialize() error {
 	return c.saveConfig(false, &config)
 }
 
+// GetRemote gets a remote.
+func (c *ConfigManager) GetRemote(remote string) (*RemoteConfig, error) {
+	remote, err := azicliwksvals.SanitizeRemote(remote)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := c.readConfig()
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := cfg.Remotes[remote]; !ok {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: remote %s does not exist", remote))
+	}
+	cfgRemote := cfg.Remotes[remote]
+	return &cfgRemote, nil
+}
+
 // AddRemote adds a remote.
 func (c *ConfigManager) AddRemote(remote string, server string, aap int, pap int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	remote = strings.ToLower(remote)
-	if !azvalidators.ValidateSimpleName(remote) {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid remote name %s", remote))
+	remote, err := azicliwksvals.SanitizeRemote(remote)
+	if err != nil {
+		return nil, err
 	}
 	if !azvalidators.IsValidHostname(server) {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid server %s", server))
@@ -138,9 +155,9 @@ func (c *ConfigManager) AddRemote(remote string, server string, aap int, pap int
 
 // RemoveRemote removes a remote.
 func (c *ConfigManager) RemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	remote = strings.ToLower(remote)
-	if !azvalidators.ValidateSimpleName(remote) {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid remote name %s", remote))
+	remote, err := azicliwksvals.SanitizeRemote(remote)
+	if err != nil {
+		return nil, err
 	}
 	cfg, err := c.readConfig()
 	if err != nil {
