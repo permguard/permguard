@@ -26,7 +26,7 @@ type HeadRefsConfig struct {
 	Remote    string `toml:"remote"`
 	AccountID int64  `toml:"accountid"`
 	Repo      string `toml:"repo"`
-	Ref       string `toml:"ref"`
+	Refs      string `toml:"refs"`
 }
 
 // RefsConfig represents the configuration for the refs.
