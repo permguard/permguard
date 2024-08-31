@@ -27,6 +27,7 @@ type Account struct {
 	CreatedAt time.Time `db:"created_at"`
 	UpdatedAt time.Time `db:"updated_at"`
 	Name      string    `db:"name"`
+	RefsHead  string    `db:"refs_head"`
 }
 
 // LogAccountEntry returns a string representation of the account.
@@ -39,11 +40,11 @@ func LogAccountEntry(account *Account) string {
 
 // IdentitySource is the model for the identity_source table.
 type IdentitySource struct {
-	IdentitySourceID 	string 		`db:"identity_source_id"`
-	CreatedAt 			time.Time	`db:"created_at"`
-	UpdatedAt 			time.Time 	`db:"updated_at"`
-	AccountID 			int64     	`db:"account_id"`
-	Name      			string		`db:"name"`
+	IdentitySourceID string    `db:"identity_source_id"`
+	CreatedAt        time.Time `db:"created_at"`
+	UpdatedAt        time.Time `db:"updated_at"`
+	AccountID        int64     `db:"account_id"`
+	Name             string    `db:"name"`
 }
 
 // LogIdentitySourceEntry  returns a string representation of the identity source.
@@ -56,13 +57,13 @@ func LogIdentitySourceEntry(identitySource *IdentitySource) string {
 
 // Identity is the model for the identity table.
 type Identity struct {
-	IdentityID 			string 	  `db:"identity_id"`
-	CreatedAt 			time.Time `db:"created_at"`
-	UpdatedAt 			time.Time `db:"updated_at"`
-	AccountID 			int64 	  `db:"account_id"`
-	IdentitySourceID 	string 	  `db:"identity_source_id"`
-	Kind 				int16     `db:"kind"`
-	Name      			string    `db:"name"`
+	IdentityID       string    `db:"identity_id"`
+	CreatedAt        time.Time `db:"created_at"`
+	UpdatedAt        time.Time `db:"updated_at"`
+	AccountID        int64     `db:"account_id"`
+	IdentitySourceID string    `db:"identity_source_id"`
+	Kind             int16     `db:"kind"`
+	Name             string    `db:"name"`
 }
 
 // LogIdentityEntry returns a string representation of the identity.
@@ -75,7 +76,7 @@ func LogIdentityEntry(identity *Identity) string {
 
 // Tenant is the model for the tenant table.
 type Tenant struct {
-	TenantID  string 	`db:"tenant_id"`
+	TenantID  string    `db:"tenant_id"`
 	CreatedAt time.Time `db:"created_at"`
 	UpdatedAt time.Time `db:"updated_at"`
 	AccountID int64     `db:"account_id"`
@@ -92,11 +93,11 @@ func LogTenantEntry(tenant *Tenant) string {
 
 // Repository is the model for the schema table.
 type Repository struct {
-	RepositoryID string 	`db:"repository_id"`
-	CreatedAt 	 time.Time  `db:"created_at"`
-	UpdatedAt 	 time.Time  `db:"updated_at"`
-	AccountID 	 int64      `db:"account_id"`
-	Name		 string     `db:"name"`
+	RepositoryID string    `db:"repository_id"`
+	CreatedAt    time.Time `db:"created_at"`
+	UpdatedAt    time.Time `db:"updated_at"`
+	AccountID    int64     `db:"account_id"`
+	Name         string    `db:"name"`
 }
 
 // LogRepositoryEntry returns a string representation of the repository.
