@@ -100,11 +100,11 @@ func (m *WorkspaceManager) InitWorkspace(out func(map[string]any, string, string
 }
 
 // AddRemote adds a remote.
-func (m *WorkspaceManager) AddRemote(remote string, aap int, pap, int, out func(map[string]any, string, string, error) map[string]any) (map[string]any, error) {
+func (m *WorkspaceManager) AddRemote(remote string, aap int, pap int, out func(map[string]any, string, string, error) map[string]any) (map[string]any, error) {
 	return nil, nil
 }
 
 // RemoveRemote removes a remote.
-func (m *WorkspaceManager) RemoveRemote(remote string, aap int, pap, int, out func(map[string]any, string, string, error) map[string]any) (map[string]any, error) {
+func (m *WorkspaceManager) RemoveRemote(remote string, out func(map[string]any, string, string, error) map[string]any) (map[string]any, error) {
 	return nil, nil
 }

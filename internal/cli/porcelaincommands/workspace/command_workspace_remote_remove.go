@@ -21,6 +21,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
@@ -32,15 +33,19 @@ const (
 )
 
 // runECommandForRemoteRemoveWorkspace runs the command for creating an workspace.
-func runECommandForRemoteRemoveWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForRemoteRemoveWorkspace(args []string, deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(aziclicommon.ErrorMessageCliBug)
 		return aziclicommon.ErrCommandSilent
 	}
+	if len(args) != 2 {
+		printer.Error(azerrors.ErrCliGeneric)
+		return aziclicommon.ErrCommandSilent
+	}
 	wksMgr := azicliwksmanager.NewInternalManager(ctx)
-
-	output, err := wksMgr.InitWorkspace(outFunc(ctx, printer))
+	remote := args[1]
+	output, err := wksMgr.RemoveRemote(remote, outFunc(ctx, printer))
 	if err != nil {
 		printer.Error(err)
 		return aziclicommon.ErrCommandSilent
@@ -62,7 +67,7 @@ Examples:
   # remove a remote
   permguard remote remove dev`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForRemoteRemoveWorkspace(deps, cmd, v)
+			return runECommandForRemoteRemoveWorkspace(args, deps, cmd, v)
 		},
 	}
 	return command
