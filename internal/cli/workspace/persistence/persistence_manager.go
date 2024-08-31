@@ -61,17 +61,17 @@ func (p *PersistenceManager) CreateFileIfNotExists(relative bool, name string) (
         dir := filepath.Dir(name)
         err := os.MkdirAll(dir, 0755)
         if err != nil {
-			return false, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("failed to create directory %s: %v", dir, err))
+			return false, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("cli: failed to create directory %s", dir))
         }
         file, err := os.Create(name)
         if err != nil {
-            return false, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("failed to create file %s: %v", name, err))
+            return false, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to create file %s", name))
         }
         defer file.Close()
     } else if os.IsExist(err) {
 		return false, nil
 	} else {
-		return false, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("failed to stat directory %s: %v", name, err))
+		return false, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("cli: failed to stat directory %s", name))
     }
     return true, nil
 }
@@ -86,10 +86,10 @@ func (p *PersistenceManager) CreateDirIfNotExists(relative bool, name string) (b
 	} else if os.IsNotExist(err) {
 		err := os.MkdirAll(name, 0755)
 		if err != nil {
-			return false, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("failed to create directory %s: %v", name, err))
+			return false, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("cli: failed to create directory %s", name))
 		}
 	} else {
-		return false, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("failed to stat directory %s: %v", name, err))
+		return false, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("cli: failed to stat directory %s", name))
 	}
 	return true, nil
 }
@@ -106,7 +106,7 @@ func (p *PersistenceManager) WriteFileIfNotExists(relative bool, name string, da
 	} else if os.IsNotExist(err) {
 		return p.WriteFile(false, name, data, perm)
 	} else {
-		return false, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("failed to stat directory %s: %v", name, err))
+		return false, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("cli: failed to stat directory %s", name))
 	}
 }
 
@@ -117,7 +117,7 @@ func (p *PersistenceManager) WriteFile(relative bool, name string, data []byte, 
 	}
 	err := os.WriteFile(name, data, 0644)
 	if err != nil {
-		return false, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("failed to write file %s: %v", name, err))
+		return false, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write file %s", name))
 	}
 	return true, nil
 }

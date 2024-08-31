@@ -21,6 +21,7 @@ import (
 
 	"github.com/pelletier/go-toml"
 
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
@@ -59,12 +60,12 @@ func (c *ConfigManager) Initialize() error {
 	}
 	data, err := toml.Marshal(config)
 	if err != nil {
-		return fmt.Errorf("failed to marshal config: %v", err)
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
 	}
 	fileName := c.getConfigFile()
 	_, err = c.persMgr.WriteFileIfNotExists(true, fileName, data, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to write config file %s: %v", fileName, err)
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", fileName))
 	}
 	return nil
 }
