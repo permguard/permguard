@@ -24,7 +24,9 @@ import (
 	"github.com/spf13/viper"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
 const (
@@ -33,15 +35,26 @@ const (
 )
 
 // runECommandForCheckoutWorkspace runs the command for creating an workspace.
-func runECommandForCheckoutWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	_, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	output := map[string]any{}
-	output["workspace"] = "checkout"
-	printer.Print(output)
+	if len(args) < 1 {
+		printer.Error(azerrors.ErrCliArguments)
+		return aziclicommon.ErrCommandSilent
+	}
+	wksMgr := azicliwksmanager.NewInternalManager(ctx)
+	repo := args[0]
+	output, err := wksMgr.CheckoutRepo(repo, outFunc(ctx, printer))
+	if err != nil {
+		printer.Error(err)
+		return aziclicommon.ErrCommandSilent
+	}
+	if ctx.IsJSONOutput() {
+		printer.Print(output)
+	}
 	return nil
 }
 
@@ -56,7 +69,7 @@ Examples:
   # checkout a a repo
   ❯ permguard checkout dev/268786704340/magicfarmacia-v0.0 `),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForCheckoutWorkspace(deps, cmd, v)
+			return runECommandForCheckoutWorkspace(args, deps, cmd, v)
 		},
 	}
 	return command
