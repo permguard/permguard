@@ -29,6 +29,7 @@ import (
 )
 
 const (
+	// hiddenConfigFile represents the hidden configuration file.
 	hiddenConfigFile = "config"
 )
 
