@@ -23,7 +23,7 @@ type Config struct {
 }
 
 type CoreConfig struct {
-	ClientVersion string `toml:"client_version"`
+	ClientVersion string `toml:"client-version"`
 }
 
 type RemoteConfig struct {
