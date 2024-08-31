@@ -36,9 +36,11 @@ func TestValidateAccountID(t *testing.T) {
 		{"account", -15000, true},
 		{"account", -1, true},
 		{"account", 0, true},
-		{"account", 1, false},
-		{"account", 15000, false},
-		{"", 15000, false},
+		{"account", 1, true},
+		{"account", 99999999999, true},
+		{"account", 100000000000, false},
+		{"account", 999999999999, false},
+		{"account", 9999999999990, true},
 	}
 	for _, tc := range testCases {
 		result := ValidateAccountID(tc.entity, int64(tc.accountID))

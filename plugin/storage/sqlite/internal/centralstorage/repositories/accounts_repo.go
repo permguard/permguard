@@ -26,8 +26,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
+	azvalidators "github.com/permguard/permguard/pkg/authz/validators"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	azivalidators "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/validators"
 )
 
 // GenerateAccountID generates a random account id.
@@ -45,10 +45,10 @@ func (r *Repo) UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Acco
 	if account == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account data is missing or malformed (%s).", LogAccountEntry(account)))
 	}
-	if !isCreate && azivalidators.ValidateAccountID("account", account.AccountID) != nil {
+	if !isCreate && azvalidators.ValidateAccountID("account", account.AccountID) != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (%s).", LogAccountEntry(account)))
 	}
-	if err := azivalidators.ValidateName("account", account.Name); err != nil {
+	if err := azvalidators.ValidateName("account", account.Name); err != nil {
 		errorMessage := "storage: invalid client input - account name is not valid (%s)."
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogAccountEntry(account)))
 	}
@@ -86,7 +86,7 @@ func (r *Repo) UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Acco
 
 // DeleteAccount deletes an account.
 func (r *Repo) DeleteAccount(tx *sql.Tx, accountID int64) (*Account, error) {
-	if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
+	if err := azvalidators.ValidateAccountID("account", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (id: %d).", accountID))
 	}
 
@@ -124,7 +124,7 @@ func (r *Repo) FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *
 
 	if filterID != nil {
 		accountID := *filterID
-		if err := azivalidators.ValidateAccountID("account", accountID); err != nil {
+		if err := azvalidators.ValidateAccountID("account", accountID); err != nil {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - account id is not valid (id: %d).", accountID))
 		}
 		conditions = append(conditions, "account_id = ?")
@@ -133,7 +133,7 @@ func (r *Repo) FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *
 
 	if filterName != nil {
 		accountName := *filterName
-		if err := azivalidators.ValidateName("account", accountName); err != nil {
+		if err := azvalidators.ValidateName("account", accountName); err != nil {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - account name is not valid (name: %s).", accountName))
 		}
 		accountName = "%" + accountName + "%"

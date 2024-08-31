@@ -24,8 +24,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
+	azvalidators "github.com/permguard/permguard/pkg/authz/validators"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	azivalidators "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/validators"
 )
 
 const (
@@ -38,13 +38,13 @@ func (r *Repo) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Repositor
 	if repository == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository data is missing or malformed (%s).", LogRepositoryEntry(repository)))
 	}
-	if err := azivalidators.ValidateAccountID("repository", repository.AccountID); err != nil {
+	if err := azvalidators.ValidateAccountID("repository", repository.AccountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidAccountID, repository.AccountID))
 	}
-	if !isCreate && azivalidators.ValidateUUID("repository", repository.RepositoryID) != nil {
+	if !isCreate && azvalidators.ValidateUUID("repository", repository.RepositoryID) != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (%s).", LogRepositoryEntry(repository)))
 	}
-	if err := azivalidators.ValidateName("repository", repository.Name); err != nil {
+	if err := azvalidators.ValidateName("repository", repository.Name); err != nil {
 		errorMessage := "storage: invalid client input - repository name is not valid (%s)."
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogRepositoryEntry(repository)))
 	}
@@ -85,10 +85,10 @@ func (r *Repo) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Repositor
 
 // DeleteRepository deletes a repository.
 func (r *Repo) DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string) (*Repository, error) {
-	if err := azivalidators.ValidateAccountID("repository", accountID); err != nil {
+	if err := azvalidators.ValidateAccountID("repository", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidAccountID, accountID))
 	}
-	if err := azivalidators.ValidateUUID("repository", repositoryID); err != nil {
+	if err := azvalidators.ValidateUUID("repository", repositoryID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (id: %s).", repositoryID))
 	}
 
@@ -119,7 +119,7 @@ func (r *Repo) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, accoun
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
 	}
-	if err := azivalidators.ValidateAccountID("repository", accountID); err != nil {
+	if err := azvalidators.ValidateAccountID("repository", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageRepositoryInvalidAccountID, accountID))
 	}
 
@@ -134,7 +134,7 @@ func (r *Repo) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, accoun
 
 	if filterID != nil {
 		repositoryID := *filterID
-		if err := azivalidators.ValidateUUID("repository", repositoryID); err != nil {
+		if err := azvalidators.ValidateUUID("repository", repositoryID); err != nil {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - repository id is not valid (id: %s).", repositoryID))
 		}
 		conditions = append(conditions, "repository_id = ?")
@@ -143,7 +143,7 @@ func (r *Repo) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, accoun
 
 	if filterName != nil {
 		repositoryName := *filterName
-		if err := azivalidators.ValidateName("repository", repositoryName); err != nil {
+		if err := azvalidators.ValidateName("repository", repositoryName); err != nil {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - repository name is not valid (name: %s).", repositoryName))
 		}
 		repositoryName = "%" + repositoryName + "%"

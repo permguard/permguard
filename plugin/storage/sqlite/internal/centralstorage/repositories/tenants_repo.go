@@ -24,8 +24,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
+	azvalidators "github.com/permguard/permguard/pkg/authz/validators"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	azivalidators "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/validators"
 )
 
 const (
@@ -38,13 +38,13 @@ func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant,
 	if tenant == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant data is missing or malformed (%s).", LogTenantEntry(tenant)))
 	}
-	if err := azivalidators.ValidateAccountID("tenant", tenant.AccountID); err != nil {
+	if err := azvalidators.ValidateAccountID("tenant", tenant.AccountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidAccountID, tenant.AccountID))
 	}
-	if !isCreate && azivalidators.ValidateUUID("tenant", tenant.TenantID) != nil {
+	if !isCreate && azvalidators.ValidateUUID("tenant", tenant.TenantID) != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (%s).", LogTenantEntry(tenant)))
 	}
-	if err := azivalidators.ValidateName("tenant", tenant.Name); err != nil {
+	if err := azvalidators.ValidateName("tenant", tenant.Name); err != nil {
 		errorMessage := "storage: invalid client input - tenant name is not valid (%s)."
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogTenantEntry(tenant)))
 	}
@@ -85,10 +85,10 @@ func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant,
 
 // DeleteTenant deletes an tenant.
 func (r *Repo) DeleteTenant(tx *sql.Tx, accountID int64, tenantID string) (*Tenant, error) {
-	if err := azivalidators.ValidateAccountID("tenant", accountID); err != nil {
+	if err := azvalidators.ValidateAccountID("tenant", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidAccountID, accountID))
 	}
-	if err := azivalidators.ValidateUUID("tenant", tenantID); err != nil {
+	if err := azvalidators.ValidateUUID("tenant", tenantID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (id: %s).", tenantID))
 	}
 
@@ -119,7 +119,7 @@ func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID i
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
 	}
-	if err := azivalidators.ValidateAccountID("tenant", accountID); err != nil {
+	if err := azvalidators.ValidateAccountID("tenant", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageTenantInvalidAccountID, accountID))
 	}
 
@@ -134,7 +134,7 @@ func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID i
 
 	if filterID != nil {
 		tenantID := *filterID
-		if err := azivalidators.ValidateUUID("tenant", tenantID); err != nil {
+		if err := azvalidators.ValidateUUID("tenant", tenantID); err != nil {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - tenant id is not valid (id: %s).", tenantID))
 		}
 		conditions = append(conditions, "tenant_id = ?")
@@ -143,7 +143,7 @@ func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID i
 
 	if filterName != nil {
 		tenantName := *filterName
-		if err := azivalidators.ValidateName("tenant", tenantName); err != nil {
+		if err := azvalidators.ValidateName("tenant", tenantName); err != nil {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - tenant name is not valid (name: %s).", tenantName))
 		}
 		tenantName = "%" + tenantName + "%"

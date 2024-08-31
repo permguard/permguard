@@ -24,8 +24,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
+	azvalidators "github.com/permguard/permguard/pkg/authz/validators"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	azivalidators "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/validators"
 )
 
 const (
@@ -38,13 +38,13 @@ func (r *Repo) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *I
 	if identitySource == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source data is missing or malformed (%s).", LogIdentitySourceEntry(identitySource)))
 	}
-	if err := azivalidators.ValidateAccountID("identitySource", identitySource.AccountID); err != nil {
+	if err := azvalidators.ValidateAccountID("identitySource", identitySource.AccountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentitySourceInvalidAccountID, identitySource.AccountID))
 	}
-	if !isCreate && azivalidators.ValidateUUID("identitySource", identitySource.IdentitySourceID) != nil {
+	if !isCreate && azvalidators.ValidateUUID("identitySource", identitySource.IdentitySourceID) != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source id is not valid (%s).", LogIdentitySourceEntry(identitySource)))
 	}
-	if err := azivalidators.ValidateName("identitySource", identitySource.Name); err != nil {
+	if err := azvalidators.ValidateName("identitySource", identitySource.Name); err != nil {
 		errorMessage := "storage: invalid client input - dentity source name is not valid (%s)."
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogIdentitySourceEntry(identitySource)))
 	}
@@ -85,10 +85,10 @@ func (r *Repo) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *I
 
 // DeleteIdentitySource deletes an identity source.
 func (r *Repo) DeleteIdentitySource(tx *sql.Tx, accountID int64, identitySourceID string) (*IdentitySource, error) {
-	if err := azivalidators.ValidateAccountID("identitySource", accountID); err != nil {
+	if err := azvalidators.ValidateAccountID("identitySource", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentitySourceInvalidAccountID, accountID))
 	}
-	if err := azivalidators.ValidateUUID("identitySource", identitySourceID); err != nil {
+	if err := azvalidators.ValidateUUID("identitySource", identitySourceID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source id is not valid (id: %s).", identitySourceID))
 	}
 
@@ -119,7 +119,7 @@ func (r *Repo) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, acc
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
 	}
-	if err := azivalidators.ValidateAccountID("identitySource", accountID); err != nil {
+	if err := azvalidators.ValidateAccountID("identitySource", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageIdentitySourceInvalidAccountID, accountID))
 	}
 
@@ -134,7 +134,7 @@ func (r *Repo) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, acc
 
 	if filterID != nil {
 		identitySourceID := *filterID
-		if err := azivalidators.ValidateUUID("identitySource", identitySourceID); err != nil {
+		if err := azvalidators.ValidateUUID("identitySource", identitySourceID); err != nil {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - identity source id is not valid (id: %s).", identitySourceID))
 		}
 		conditions = append(conditions, "identity_source_id = ?")
@@ -143,7 +143,7 @@ func (r *Repo) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, acc
 
 	if filterName != nil {
 		identitySourceName := *filterName
-		if err := azivalidators.ValidateName("identitySource", identitySourceName); err != nil {
+		if err := azvalidators.ValidateName("identitySource", identitySourceName); err != nil {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - identity source name is not valid (name: %s).", identitySourceName))
 		}
 		identitySourceName = "%" + identitySourceName + "%"
