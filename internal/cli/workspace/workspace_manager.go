@@ -20,21 +20,23 @@ import (
 	"fmt"
 	"path/filepath"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	azcryptp "github.com/permguard/permguard/pkg/extensions/crypto"
+	"github.com/gofrs/flock"
 	aziclients "github.com/permguard/permguard/internal/agents/clients"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
 	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
 	azicliwksobjs "github.com/permguard/permguard/internal/cli/workspace/objects"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azicliwksplans "github.com/permguard/permguard/internal/cli/workspace/plans"
 	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
+	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
+	azcryptp "github.com/permguard/permguard/pkg/extensions/crypto"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
 const (
-	hiddenDir = ".permguard"
+	hiddenDir 		= ".permguard"
+	hiddenLockFile 	= "permguard.lock"
 )
 
 // WorkspaceManager implements the internal manager to manage the .permguard directory.
@@ -70,6 +72,11 @@ func (m *WorkspaceManager) GetHomeDir() string {
 	return m.homeDir
 }
 
+// GetLockFile returns the lock file.
+func (m *WorkspaceManager) GetLockFile() string {
+	return filepath.Join(m.GetHomeDir(), hiddenLockFile)
+}
+
 // IsValidHomeDir checks if the home directory is valid.
 func (m *WorkspaceManager) isValidHomeDir() bool {
 	isValid, _ := m.persMgr.CheckFileIfExists(true, "")
@@ -84,6 +91,16 @@ func (m *WorkspaceManager) InitWorkspace(out func(map[string]any, string, any, e
 	if err != nil {
 		return nil, err
 	}
+
+	lockFile := m.GetLockFile()
+	m.persMgr.CreateFileIfNotExists(true, lockFile)
+	fileLock := flock.New(lockFile)
+	lock , err := fileLock.TryLock()
+	if !lock || err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: could not acquire the lock, another process is using it %s", m.GetLockFile()))
+	}
+	defer fileLock.Unlock()
+
 	if !res {
 		firstInit = false
 	}
@@ -125,6 +142,14 @@ func (m *WorkspaceManager) AddRemote(remote string, server string, aap int, pap 
 	if !m.isValidHomeDir(){
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.GetHomeDir()))
 	}
+
+	fileLock := flock.New(m.GetLockFile())
+	lock , err := fileLock.TryLock()
+	if !lock || err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: could not acquire the lock, another process is using it %s", m.GetLockFile()))
+	}
+	defer fileLock.Unlock()
+
 	return m.cfgMgr.AddRemote(remote, server, aap, pap, out)
 }
 
@@ -133,6 +158,14 @@ func (m *WorkspaceManager) RemoveRemote(remote string, out func(map[string]any, 
 	if !m.isValidHomeDir(){
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.GetHomeDir()))
 	}
+
+	fileLock := flock.New(m.GetLockFile())
+	lock , err := fileLock.TryLock()
+	if !lock || err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: could not acquire the lock, another process is using it %s", m.GetLockFile()))
+	}
+	defer fileLock.Unlock()
+
 	return m.cfgMgr.RemoveRemote(remote, out)
 }
 
@@ -141,6 +174,14 @@ func (m *WorkspaceManager) ListRemotes(out func(map[string]any, string, any, err
 	if !m.isValidHomeDir(){
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.GetHomeDir()))
 	}
+
+	fileLock := flock.New(m.GetLockFile())
+	lock , err := fileLock.TryLock()
+	if !lock || err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: could not acquire the lock, another process is using it %s", m.GetLockFile()))
+	}
+	defer fileLock.Unlock()
+
 	return m.cfgMgr.ListRemotes(out)
 }
 
@@ -149,10 +190,19 @@ func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, st
 	if !m.isValidHomeDir(){
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.GetHomeDir()))
 	}
+
 	remoteName, accountID, _, err := azicliwksvals.SanitizeRepo(repo)
 	if err != nil {
 		return nil, err
 	}
+
+	fileLock := flock.New(m.GetLockFile())
+	lock , err := fileLock.TryLock()
+	if !lock || err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: could not acquire the lock, another process is using it %s", m.GetLockFile()))
+	}
+	defer fileLock.Unlock()
+
 	cfgRemote, err := m.cfgMgr.GetRemote(remoteName)
 	if err != nil {
 		return nil, err
@@ -169,3 +219,4 @@ func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, st
 	output := out(nil, "checkout", fmt.Sprintf("%s %s %s", appServer, srvAccounts[0].RefsHead, azcryptp.ComputeStringSHA1(repo)), nil)
 	return output, nil
 }
+
