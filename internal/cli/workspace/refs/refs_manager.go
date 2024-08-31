@@ -96,7 +96,7 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 	refID := azcrypto.ComputeStringSHA1(refIDStr)
 	refPath := filepath.Join(hiddenRefsDir, refID)
 	refCfg := RefsConfig{
-		Object: RefsObjectConfig{
+		Objects: RefsObjectsConfig{
 			Commit: refHead,
 		},
 	}
