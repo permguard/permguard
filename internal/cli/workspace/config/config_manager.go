@@ -107,18 +107,18 @@ func (m *ConfigManager) GetRemote(remote string) (*RemoteConfig, error) {
 }
 
 // AddRemote adds a remote.
-func (m *ConfigManager) AddRemote(remote string, server string, aap int, pap int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *ConfigManager) AddRemote(remote string, server string, aap int, pap int, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	remote, err := azicliwksvals.SanitizeRemote(remote)
 	if err != nil {
-		return nil, err
+		return output, err
 	}
 	cfg, err := m.readConfig()
 	if err != nil {
-		return nil, err
+		return output, err
 	}
 	for rmt := range cfg.Remotes {
 		if remote == rmt {
-			return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: remote %s already exists", remote))
+			return output, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: remote %s already exists", remote))
 		}
 	}
 	cfgRemote := RemoteConfig{
@@ -128,7 +128,6 @@ func (m *ConfigManager) AddRemote(remote string, server string, aap int, pap int
 	}
 	cfg.Remotes[remote] = cfgRemote
 	m.saveConfig(true, cfg)
-	var output map[string]any
 	if m.ctx.IsTerminalOutput() {
 		output = out(nil, "remotes", cfgRemote, nil)
 	} else {
@@ -140,25 +139,24 @@ func (m *ConfigManager) AddRemote(remote string, server string, aap int, pap int
 			"pap":    cfgRemote.PAP,
 		}
 		remotes = append(remotes, remoteObj)
-		output = out(nil, "remotes", remotes, nil)
+		output = out(output, "remotes", remotes, nil)
 	}
 	return output, nil
 }
 
 // RemoveRemote removes a remote.
-func (m *ConfigManager) RemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *ConfigManager) RemoveRemote(remote string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	remote, err := azicliwksvals.SanitizeRemote(remote)
 	if err != nil {
-		return nil, err
+		return output, err
 	}
 	cfg, err := m.readConfig()
 	if err != nil {
-		return nil, err
+		return output, err
 	}
 	if _, ok := cfg.Remotes[remote]; !ok {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", remote))
+		return output, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", remote))
 	}
-	var output map[string]any
 	cfgRemote := cfg.Remotes[remote]
 	if m.ctx.IsTerminalOutput() {
 		output = out(nil, "remotes", cfgRemote, nil)
@@ -171,7 +169,7 @@ func (m *ConfigManager) RemoveRemote(remote string, out func(map[string]any, str
 			"pap":    cfgRemote.PAP,
 		}
 		remotes = append(remotes, remoteObj)
-		output = out(nil, "remotes", remotes, nil)
+		output = out(output, "remotes", remotes, nil)
 	}
 	delete(cfg.Remotes, remote)
 	m.saveConfig(true, cfg)
@@ -179,12 +177,11 @@ func (m *ConfigManager) RemoveRemote(remote string, out func(map[string]any, str
 }
 
 // ListRemotes lists the remotes.
-func (m *ConfigManager) ListRemotes(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *ConfigManager) ListRemotes(output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	cfg, err := m.readConfig()
 	if err != nil {
-		return nil, err
+		return output, err
 	}
-	var output map[string]any
 	if m.ctx.IsTerminalOutput() {
 		remotes := []string{}
 		for cfgRemote := range cfg.Remotes {
@@ -202,7 +199,7 @@ func (m *ConfigManager) ListRemotes(out func(map[string]any, string, any, error)
 			}
 			remotes = append(remotes, remoteObj)
 		}
-		output = out(nil, "remotes", remotes, nil)
+		output = out(output, "remotes", remotes, nil)
 	}
 	return output, nil
 }
@@ -213,21 +210,26 @@ func (m *ConfigManager) AddRepo(remote string, accountID int64, repo string, out
 	refID := azcrypto.ComputeStringSHA1(refIDStr)
 	cfg, err := m.readConfig()
 	if err != nil {
-		return nil, err
+		return output, err
 	}
+	var cfgRepo RepositoryConfig
+	exists := false
 	for repo := range cfg.Repositories {
 		if refIDStr == repo {
-			return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: remote %s already exists", remote))
+			cfgRepo = cfg.Repositories[repo]
+			exists = true
 		}
 	}
-	cfgRepo := RepositoryConfig{
-		Remote: remote,
-		Refs:   refID,
+	if exists {
+		cfgRepo = RepositoryConfig{
+			Remote: remote,
+			Refs:   refID,
+		}
+		cfg.Repositories[refIDStr] = cfgRepo
+		m.saveConfig(true, cfg)
 	}
-	cfg.Repositories[refIDStr] = cfgRepo
-	m.saveConfig(true, cfg)
 	if m.ctx.IsTerminalOutput() {
-		output = out(output, "repos", cfgRepo.Refs, nil)
+		output = out(nil, "repos", refIDStr, nil)
 	} else {
 		remotes := []interface{}{}
 		remoteObj := map[string]any{

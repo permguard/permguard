@@ -91,7 +91,7 @@ func (m *RefsManager) Initalize() error {
 }
 
 // CheckoutHead checks out the head.
-func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, refHead string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, refHead string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	refIDStr := fmt.Sprintf("%s/%d/%s", remote, accountID, repo)
 	refID := azcrypto.ComputeStringSHA1(refIDStr)
 	refPath := filepath.Join(hiddenRefsDir, refID)
@@ -117,9 +117,8 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 	if err != nil {
 		return nil, err
 	}
-	var output map[string]any
 	if m.ctx.IsTerminalOutput() {
-		output = out(nil, "head", refIDStr, nil)
+		output = out(nil, "head", refID, nil)
 	} else {
 		remotes := []interface{}{}
 		remoteObj := map[string]any{
@@ -129,7 +128,7 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 			"ref":       headCfg.Head.Ref,
 		}
 		remotes = append(remotes, remoteObj)
-		output = out(nil, "head", remotes, nil)
+		output = out(output, "head", remotes, nil)
 	}
 	return output, nil
 }
