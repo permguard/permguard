@@ -45,7 +45,20 @@ func (c *RefsManager) GetRefsDir() string {
 	return hiddenRefsDir
 }
 
+// GetHeadFile returns the head file.
+func (c *RefsManager) GetHeadFile() string {
+	return hiddenHeadFile
+}
+
 // Iniitalize the refs resources.
 func (c *RefsManager) Iniitalize() error {
-	return c.persMgr.CreateDir(true, c.GetRefsDir())
+	err := c.persMgr.CreateDir(true, c.GetRefsDir())
+	if err != nil {
+		return err
+	}
+	err = c.persMgr.CreateFileIfNotExists(true, c.GetHeadFile())
+	if err != nil {
+		return err
+	}
+	return nil
 }
