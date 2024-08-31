@@ -35,8 +35,8 @@ import (
 )
 
 const (
-	hiddenDir 		= ".permguard"
-	hiddenLockFile 	= "permguard.lock"
+	hiddenDir      = ".permguard"
+	hiddenLockFile = "permguard.lock"
 )
 
 // WorkspaceManager implements the internal manager to manage the .permguard directory.
@@ -95,7 +95,7 @@ func (m *WorkspaceManager) InitWorkspace(out func(map[string]any, string, any, e
 	lockFile := m.GetLockFile()
 	m.persMgr.CreateFileIfNotExists(true, lockFile)
 	fileLock := flock.New(lockFile)
-	lock , err := fileLock.TryLock()
+	lock, err := fileLock.TryLock()
 	if !lock || err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: could not acquire the lock, another process is using it %s", m.GetLockFile()))
 	}
@@ -106,10 +106,10 @@ func (m *WorkspaceManager) InitWorkspace(out func(map[string]any, string, any, e
 	}
 	initializers := []func() error{
 		m.cfgMgr.Initialize,
-		m.logsMgr.Iniitalize,
-		m.rfsMgr.Iniitalize,
-		m.objsMgr.Iniitalize,
-		m.plansMgr.Iniitalize,
+		m.logsMgr.Initalize,
+		m.rfsMgr.Initalize,
+		m.objsMgr.Initalize,
+		m.plansMgr.Initalize,
 	}
 	for _, initializer := range initializers {
 		err := initializer()
@@ -139,12 +139,12 @@ func (m *WorkspaceManager) InitWorkspace(out func(map[string]any, string, any, e
 
 // AddRemote adds a remote.
 func (m *WorkspaceManager) AddRemote(remote string, server string, aap int, pap int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	if !m.isValidHomeDir(){
+	if !m.isValidHomeDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.GetHomeDir()))
 	}
 
 	fileLock := flock.New(m.GetLockFile())
-	lock , err := fileLock.TryLock()
+	lock, err := fileLock.TryLock()
 	if !lock || err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: could not acquire the lock, another process is using it %s", m.GetLockFile()))
 	}
@@ -155,12 +155,12 @@ func (m *WorkspaceManager) AddRemote(remote string, server string, aap int, pap 
 
 // RemoveRemote removes a remote.
 func (m *WorkspaceManager) RemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	if !m.isValidHomeDir(){
+	if !m.isValidHomeDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.GetHomeDir()))
 	}
 
 	fileLock := flock.New(m.GetLockFile())
-	lock , err := fileLock.TryLock()
+	lock, err := fileLock.TryLock()
 	if !lock || err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: could not acquire the lock, another process is using it %s", m.GetLockFile()))
 	}
@@ -171,12 +171,12 @@ func (m *WorkspaceManager) RemoveRemote(remote string, out func(map[string]any, 
 
 // ListRemotes lists the remotes.
 func (m *WorkspaceManager) ListRemotes(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	if !m.isValidHomeDir(){
+	if !m.isValidHomeDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.GetHomeDir()))
 	}
 
 	fileLock := flock.New(m.GetLockFile())
-	lock , err := fileLock.TryLock()
+	lock, err := fileLock.TryLock()
 	if !lock || err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: could not acquire the lock, another process is using it %s", m.GetLockFile()))
 	}
@@ -187,7 +187,7 @@ func (m *WorkspaceManager) ListRemotes(out func(map[string]any, string, any, err
 
 // CheckoutRepo checks out a repository.
 func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	if !m.isValidHomeDir(){
+	if !m.isValidHomeDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.GetHomeDir()))
 	}
 
@@ -197,7 +197,7 @@ func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, st
 	}
 
 	fileLock := flock.New(m.GetLockFile())
-	lock , err := fileLock.TryLock()
+	lock, err := fileLock.TryLock()
 	if !lock || err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: could not acquire the lock, another process is using it %s", m.GetLockFile()))
 	}
@@ -219,4 +219,3 @@ func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, st
 	output := out(nil, "checkout", fmt.Sprintf("%s %s %s", appServer, srvAccounts[0].RefsHead, azcryptp.ComputeStringSHA1(repo)), nil)
 	return output, nil
 }
-

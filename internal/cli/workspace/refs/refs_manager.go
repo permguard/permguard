@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	hiddenRefsDir	= "refs"
-	hiddenHeadFile	= "HEAD"
+	hiddenRefsDir  = "refs"
+	hiddenHeadFile = "HEAD"
 )
 
 // RefsManager implements the internal manager for the refs file.
@@ -50,8 +50,8 @@ func (c *RefsManager) GetHeadFile() string {
 	return hiddenHeadFile
 }
 
-// Iniitalize the refs resources.
-func (c *RefsManager) Iniitalize() error {
+// Initalize the refs resources.
+func (c *RefsManager) Initalize() error {
 	_, err := c.persMgr.CreateDirIfNotExists(true, c.GetRefsDir())
 	if err != nil {
 		return err
