@@ -19,6 +19,7 @@ CREATE TABLE accounts (
     account_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     created_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
     updated_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
+	refs_head  TEXT NOT NULL DEFAULT '00000000000000000000000000000000',
     name TEXT NOT NULL UNIQUE
 );
 
@@ -33,7 +34,7 @@ BEGIN
     INSERT INTO change_streams (change_entity, change_type, change_entity_id, account_id, payload)
 		VALUES ('ACCOUNT', 'INSERT', NEW.account_id, NEW.account_id,
 				'{"account_id": ' || NEW.account_id || ', "created_at": "' || NEW.created_at ||
-				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name || '"}');
+				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name || ', "refs_head": "' || NEW.refs_head || '""}');
 END;
 -- +goose StatementEnd
 
@@ -47,7 +48,7 @@ BEGIN
     INSERT INTO change_streams (change_entity, change_type, change_entity_id, account_id, payload)
 		VALUES ('ACCOUNT', 'INSERT', NEW.account_id, NEW.account_id,
 				'{"account_id": ' || NEW.account_id || ', "created_at": "' || NEW.created_at ||
-				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name || '"}');
+				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name || ', "refs_head": "' || NEW.refs_head || '""}');
 END;
 -- +goose StatementEnd
 
@@ -60,7 +61,7 @@ BEGIN
     INSERT INTO change_streams (change_entity, change_type, change_entity_id, account_id, payload)
 		VALUES ('ACCOUNT', 'DELETE', OLD.account_id, OLD.account_id,
 				'{"account_id": ' || OLD.account_id || ', "created_at": "' || OLD.created_at ||
-				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name || '"}');
+				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name || ', "refs_head": "' || OLD.refs_head || '""}');
 END;
 -- +goose StatementEnd
 
