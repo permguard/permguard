@@ -109,7 +109,7 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 			Remote:    remote,
 			AccountID: accountID,
 			Repo:      repo,
-			Ref:       refID,
+			Refs:      refID,
 		},
 	}
 	headFile := m.getHeadFile()
@@ -125,7 +125,7 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 			"remote":    headCfg.Head.Remote,
 			"accountid": headCfg.Head.AccountID,
 			"repo":      headCfg.Head.Repo,
-			"ref":       headCfg.Head.Ref,
+			"refs":      headCfg.Head.Refs,
 		}
 		remotes = append(remotes, remoteObj)
 		output = out(output, "head", remotes, nil)

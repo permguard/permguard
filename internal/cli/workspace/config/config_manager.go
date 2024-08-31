@@ -139,7 +139,7 @@ func (m *ConfigManager) AddRemote(remote string, server string, aap int, pap int
 			"pap":    cfgRemote.PAP,
 		}
 		remotes = append(remotes, remoteObj)
-		output = out(output, "remotes", remotes, nil)
+		output = out(output, "remote", remotes, nil)
 	}
 	return output, nil
 }
@@ -159,7 +159,7 @@ func (m *ConfigManager) RemoveRemote(remote string, output map[string]any, out f
 	}
 	cfgRemote := cfg.Remotes[remote]
 	if m.ctx.IsTerminalOutput() {
-		output = out(nil, "remotes", cfgRemote, nil)
+		output = out(nil, "remote", cfgRemote, nil)
 	} else {
 		remotes := []interface{}{}
 		remoteObj := map[string]any{
@@ -229,7 +229,7 @@ func (m *ConfigManager) AddRepo(remote string, accountID int64, repo string, out
 		m.saveConfig(true, cfg)
 	}
 	if m.ctx.IsTerminalOutput() {
-		output = out(nil, "repos", refIDStr, nil)
+		output = out(nil, "repo", refIDStr, nil)
 	} else {
 		remotes := []interface{}{}
 		remoteObj := map[string]any{
