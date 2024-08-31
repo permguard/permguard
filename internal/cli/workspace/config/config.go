@@ -14,5 +14,25 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package internalmanager implements the internal manager.
-package internalmanager;
+package config;
+
+type Config struct {
+	Core          CoreConfig `toml:"core"`
+	Remotes       map[string]RemoteConfig `toml:"remote"`
+	Repositories  map[string]RepositoryConfig `toml:"repository"`
+}
+
+type CoreConfig struct {
+	ClientVersion string `toml:"client_version"`
+}
+
+type RemoteConfig struct {
+	URL string `toml:"url"`
+	AAP int    `toml:"aap"`
+	PAP int    `toml:"pap"`
+}
+
+type RepositoryConfig struct {
+	Remote string `toml:"remote"`
+	Ref    string `toml:"ref"`
+}

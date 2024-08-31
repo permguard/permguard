@@ -78,6 +78,11 @@ func newCliContext(cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, erro
 	return ctx, nil
 }
 
+// GetClientVersion returns the client version.
+func (c *CliCommandContext) GetClientVersion() string {
+	return "0.0.1"
+}
+
 // GetViper returns the viper.
 func (c *CliCommandContext) GetViper() *viper.Viper {
 	return c.v

@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package configs implements the interanl configs.
-package configs;
+// Package workspace provides the internal manager to manage the .permguard directory.
+package workspace;
