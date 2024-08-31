@@ -14,13 +14,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package config;
+package config
 
 // Config represents the configuration for the workspace.
 type Config struct {
-	Core          CoreConfig `toml:"core"`
-	Remotes       map[string]RemoteConfig `toml:"remote"`
-	Repositories  map[string]RepositoryConfig `toml:"repository"`
+	Core         CoreConfig                  `toml:"core"`
+	Remotes      map[string]RemoteConfig     `toml:"remote"`
+	Repositories map[string]RepositoryConfig `toml:"repository"`
 }
 
 // CoreConfig represents the configuration for the core.
@@ -30,13 +30,13 @@ type CoreConfig struct {
 
 // RemoteConfig represents the configuration for the remote.
 type RemoteConfig struct {
-	Server string 	`toml:"server"`
-	AAP int   		`toml:"aap"`
-	PAP int    		`toml:"pap"`
+	Server string `toml:"server"`
+	AAP    int    `toml:"aap"`
+	PAP    int    `toml:"pap"`
 }
 
 // RepositoryConfig represents the configuration for the repository.
 type RepositoryConfig struct {
 	Remote string `toml:"remote"`
-	Ref    string `toml:"ref"`
+	Refs   string `toml:"refs"`
 }

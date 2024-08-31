@@ -21,10 +21,11 @@ import (
 
 	"github.com/pelletier/go-toml"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
+	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
+	azcrypto "github.com/permguard/permguard/pkg/extensions/crypto"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
 const (
@@ -47,28 +48,28 @@ func NewConfigManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwksper
 }
 
 // getConfigFile
-func (c *ConfigManager) getConfigFile() string {
+func (m *ConfigManager) getConfigFile() string {
 	return hiddenConfigFile
 }
 
 // readConfig reads the configuration file.
-func (c *ConfigManager) readConfig() (*Config, error) {
+func (m *ConfigManager) readConfig() (*Config, error) {
 	var config Config
-	err := c.persMgr.ReadTOMLFile(true, c.getConfigFile(), &config)
+	err := m.persMgr.ReadTOMLFile(true, m.getConfigFile(), &config)
 	return &config, err
 }
 
 // saveConfig saves the configuration file.
-func (c *ConfigManager) saveConfig(override bool, cfg *Config) error {
+func (m *ConfigManager) saveConfig(override bool, cfg *Config) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
 	}
-	fileName := c.getConfigFile()
+	fileName := m.getConfigFile()
 	if override {
-		_, err = c.persMgr.WriteFile(true, fileName, data, 0644)
+		_, err = m.persMgr.WriteFile(true, fileName, data, 0644)
 	} else {
-		_, err = c.persMgr.WriteFileIfNotExists(true, fileName, data, 0644)
+		_, err = m.persMgr.WriteFileIfNotExists(true, fileName, data, 0644)
 	}
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", fileName))
@@ -77,47 +78,47 @@ func (c *ConfigManager) saveConfig(override bool, cfg *Config) error {
 }
 
 // Initialize initializes the config resources.
-func (c *ConfigManager) Initialize() error {
+func (m *ConfigManager) Initialize() error {
 	config := Config{
 		Core: CoreConfig{
-			ClientVersion: c.ctx.GetClientVersion(),
+			ClientVersion: m.ctx.GetClientVersion(),
 		},
 		Remotes:      map[string]RemoteConfig{},
 		Repositories: map[string]RepositoryConfig{},
 	}
-	return c.saveConfig(false, &config)
+	return m.saveConfig(false, &config)
 }
 
 // GetRemote gets a remote.
-func (c *ConfigManager) GetRemote(remote string) (*RemoteConfig, error) {
+func (m *ConfigManager) GetRemote(remote string) (*RemoteConfig, error) {
 	remote, err := azicliwksvals.SanitizeRemote(remote)
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := c.readConfig()
+	cfg, err := m.readConfig()
 	if err != nil {
 		return nil, err
 	}
 	if _, ok := cfg.Remotes[remote]; !ok {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: remote %s does not exist", remote))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", remote))
 	}
 	cfgRemote := cfg.Remotes[remote]
 	return &cfgRemote, nil
 }
 
 // AddRemote adds a remote.
-func (c *ConfigManager) AddRemote(remote string, server string, aap int, pap int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *ConfigManager) AddRemote(remote string, server string, aap int, pap int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	remote, err := azicliwksvals.SanitizeRemote(remote)
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := c.readConfig()
+	cfg, err := m.readConfig()
 	if err != nil {
 		return nil, err
 	}
 	for rmt := range cfg.Remotes {
 		if remote == rmt {
-			return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: remote %s already exists", remote))
+			return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: remote %s already exists", remote))
 		}
 	}
 	cfgRemote := RemoteConfig{
@@ -126,9 +127,9 @@ func (c *ConfigManager) AddRemote(remote string, server string, aap int, pap int
 		PAP:    pap,
 	}
 	cfg.Remotes[remote] = cfgRemote
-	c.saveConfig(true, cfg)
+	m.saveConfig(true, cfg)
 	var output map[string]any
-	if c.ctx.IsTerminalOutput() {
+	if m.ctx.IsTerminalOutput() {
 		output = out(nil, "remotes", cfgRemote, nil)
 	} else {
 		remotes := []interface{}{}
@@ -145,21 +146,21 @@ func (c *ConfigManager) AddRemote(remote string, server string, aap int, pap int
 }
 
 // RemoveRemote removes a remote.
-func (c *ConfigManager) RemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *ConfigManager) RemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	remote, err := azicliwksvals.SanitizeRemote(remote)
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := c.readConfig()
+	cfg, err := m.readConfig()
 	if err != nil {
 		return nil, err
 	}
 	if _, ok := cfg.Remotes[remote]; !ok {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: remote %s does not exist", remote))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", remote))
 	}
 	var output map[string]any
 	cfgRemote := cfg.Remotes[remote]
-	if c.ctx.IsTerminalOutput() {
+	if m.ctx.IsTerminalOutput() {
 		output = out(nil, "remotes", cfgRemote, nil)
 	} else {
 		remotes := []interface{}{}
@@ -173,18 +174,18 @@ func (c *ConfigManager) RemoveRemote(remote string, out func(map[string]any, str
 		output = out(nil, "remotes", remotes, nil)
 	}
 	delete(cfg.Remotes, remote)
-	c.saveConfig(true, cfg)
+	m.saveConfig(true, cfg)
 	return output, nil
 }
 
 // ListRemotes lists the remotes.
-func (c *ConfigManager) ListRemotes(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	cfg, err := c.readConfig()
+func (m *ConfigManager) ListRemotes(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	cfg, err := m.readConfig()
 	if err != nil {
 		return nil, err
 	}
 	var output map[string]any
-	if c.ctx.IsTerminalOutput() {
+	if m.ctx.IsTerminalOutput() {
 		remotes := []string{}
 		for cfgRemote := range cfg.Remotes {
 			remotes = append(remotes, cfgRemote)
@@ -202,6 +203,39 @@ func (c *ConfigManager) ListRemotes(out func(map[string]any, string, any, error)
 			remotes = append(remotes, remoteObj)
 		}
 		output = out(nil, "remotes", remotes, nil)
+	}
+	return output, nil
+}
+
+// AddRepo adds a repo.
+func (m *ConfigManager) AddRepo(remote string, accountID int64, repo string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	refIDStr := fmt.Sprintf("%s/%d/%s", remote, accountID, repo)
+	refID := azcrypto.ComputeStringSHA1(refIDStr)
+	cfg, err := m.readConfig()
+	if err != nil {
+		return nil, err
+	}
+	for repo := range cfg.Repositories {
+		if refIDStr == repo {
+			return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: remote %s already exists", remote))
+		}
+	}
+	cfgRepo := RepositoryConfig{
+		Remote: remote,
+		Refs:   refID,
+	}
+	cfg.Repositories[refIDStr] = cfgRepo
+	m.saveConfig(true, cfg)
+	if m.ctx.IsTerminalOutput() {
+		output = out(output, "repos", cfgRepo.Refs, nil)
+	} else {
+		remotes := []interface{}{}
+		remoteObj := map[string]any{
+			"remote": remote,
+			"refs":   cfgRepo.Refs,
+		}
+		remotes = append(remotes, remoteObj)
+		output = out(output, "repos", remotes, nil)
 	}
 	return output, nil
 }
