@@ -17,6 +17,8 @@
 package workspace
 
 import (
+	"strings"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -25,8 +27,11 @@ import (
 )
 
 // outFunc is the function to output the result.
-var outFunc = func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter) (func(map[string]any, string, string, error) map[string]any) {
-	return func(out map[string]any, key string, value string, err error) (map[string]any) {
+var outFunc = func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter) func(map[string]any, string, any, error) map[string]any {
+	return func(out map[string]any, key string, value any, err error) map[string]any {
+		if ctx.IsJSONOutput() {
+			key = strings.ReplaceAll(key, "-", "_")
+		}
 		if out == nil {
 			out = make(map[string]any)
 		}
