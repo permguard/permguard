@@ -17,6 +17,8 @@
 package configs
 
 import (
+	"fmt"
+
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -29,7 +31,7 @@ import (
 func runECommandForAAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
-		color.Red(aziclicommon.ErrorMessageCliBug)
+		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
 	printer.Print(map[string]any{"aap_target": ctx.GetAAPTarget()})
@@ -40,7 +42,7 @@ func runECommandForAAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 func runECommandForPAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
-		color.Red(aziclicommon.ErrorMessageCliBug)
+		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
 	printer.Print(map[string]any{"pap_target": ctx.GetPAPTarget()})

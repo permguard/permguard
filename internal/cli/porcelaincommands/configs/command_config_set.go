@@ -47,7 +47,7 @@ func viperWriteEndpoint(v *viper.Viper, key string, value string) error {
 func runECommandForAAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
 	_, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
-		color.Red(aziclicommon.ErrorMessageCliBug)
+		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
 	if len(args) == 0 {
@@ -66,7 +66,7 @@ func runECommandForAAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 func runECommandForPAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
 	_, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
-		color.Red(aziclicommon.ErrorMessageCliBug)
+		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
 	if len(args) == 0 {
