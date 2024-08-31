@@ -23,7 +23,6 @@ import (
 
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
 	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
@@ -111,15 +110,6 @@ func (c *ConfigManager) AddRemote(remote string, server string, aap int, pap int
 	remote, err := azicliwksvals.SanitizeRemote(remote)
 	if err != nil {
 		return nil, err
-	}
-	if !azvalidators.IsValidHostname(server) {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid server %s", server))
-	}
-	if !azvalidators.IsValidPort(aap) {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid aap port %d", aap))
-	}
-	if !azvalidators.IsValidPort(pap) {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid pap port %d", pap))
 	}
 	cfg, err := c.readConfig()
 	if err != nil {
