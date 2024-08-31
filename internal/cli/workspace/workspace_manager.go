@@ -23,6 +23,7 @@ import (
 	"github.com/gofrs/flock"
 	aziclients "github.com/permguard/permguard/internal/agents/clients"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
 	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
 	azicliwksobjs "github.com/permguard/permguard/internal/cli/workspace/objects"
@@ -140,6 +141,15 @@ func (m *WorkspaceManager) InitWorkspace(out func(map[string]any, string, any, e
 func (m *WorkspaceManager) AddRemote(remote string, server string, aap int, pap int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isValidHomeDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.GetHomeDir()))
+	}
+	if !azvalidators.IsValidHostname(server) {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid server %s", server))
+	}
+	if !azvalidators.IsValidPort(aap) {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid aap port %d", aap))
+	}
+	if !azvalidators.IsValidPort(pap) {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid pap port %d", pap))
 	}
 
 	fileLock := flock.New(m.GetLockFile())
