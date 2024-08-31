@@ -20,8 +20,29 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 )
+
+// outFunc is the function to output the result.
+var outFunc = func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter) (func(map[string]any, string, string, error) map[string]any) {
+	return func(out map[string]any, key string, value string, err error) (map[string]any) {
+		if out == nil {
+			out = make(map[string]any)
+		}
+		if key != "" {
+			out[key] = value
+		}
+		if ctx.IsTerminalOutput() {
+			if err != nil {
+				printer.Error(err)
+			} else {
+				printer.Print(out)
+			}
+		}
+		return out
+	}
+}
 
 // CreateCommandsForWorkspace creates the workspace commands.
 func CreateCommandsForWorkspace(deps azcli.CliDependenciesProvider, v *viper.Viper) []*cobra.Command {

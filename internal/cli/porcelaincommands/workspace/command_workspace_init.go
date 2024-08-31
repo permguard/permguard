@@ -39,18 +39,15 @@ func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 		return aziclicommon.ErrCommandSilent
 	}
 	wksMgr := azicliwksmanager.NewInternalManager(ctx)
-	ops, err := wksMgr.InitWorkspace()
+
+	output, err := wksMgr.InitWorkspace(outFunc(ctx, printer))
 	if err != nil {
 		printer.Error(err)
 		return aziclicommon.ErrCommandSilent
 	}
-	output := map[string]any{}
-	if ctx.IsTerminalOutput() {
-		output["done"] = ops
-	} else {
-		output["operation"] = ops
+	if ctx.IsJSONOutput() {
+		printer.Print(output)
 	}
-	printer.Print(output)
 	return nil
 }
 
