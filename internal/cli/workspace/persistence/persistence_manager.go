@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 )
 
@@ -38,52 +39,85 @@ func NewPersistenceManager(rootDir string, ctx *aziclicommon.CliCommandContext) 
 	}
 }
 
-// CreateFileIfNotExists creates a file if it does not exist.
-func (p *PersistenceManager) CreateFileIfNotExists(relative bool, name string) error {
-	if relative {
-		name = filepath.Join(p.rootDir, name)
-	}
-    if _, err := os.Stat(name); err == nil {
-        return fmt.Errorf("file %s already exists", name)
-    } else if os.IsNotExist(err) {
-        dir := filepath.Dir(name)
-        err := os.MkdirAll(dir, 0755)
-        if err != nil {
-            return fmt.Errorf("failed to create directory %s: %v", dir, err)
-        }
-        file, err := os.Create(name)
-        if err != nil {
-            return fmt.Errorf("failed to create file %s: %v", name, err)
-        }
-        defer file.Close()
-    } else {
-        return fmt.Errorf("failed to stat file %s: %v", name, err)
-    }
-    return nil
-}
-
-// CreateDir creates a directory.
-func (p *PersistenceManager) CreateDir(relative bool, name string) error {
+// CheckFileIfExists checks if a file exists.
+func (p *PersistenceManager) CheckFileIfExists(relative bool, name string) (bool, error) {
 	if relative {
 		name = filepath.Join(p.rootDir, name)
 	}
 	if _, err := os.Stat(name); err == nil {
-		return fmt.Errorf("directory %s already exists", name)
-	} else if os.IsNotExist(err) {
-		err := os.MkdirAll(name, 0755)
-		if err != nil {
-			return fmt.Errorf("failed to create directory %s: %v", name, err)
-		}
-	} else {
-		return fmt.Errorf("failed to stat directory %s: %v", name, err)
+        return false, nil
 	}
-	return nil
+	return true, nil
 }
 
-// WriteFile writes a file.
-func (p *PersistenceManager) WriteFile(relative bool, name string, data []byte, perm os.FileMode) error {
+// CreateFileIfNotExists creates a file if it does not exist.
+func (p *PersistenceManager) CreateFileIfNotExists(relative bool, name string) (bool, error) {
 	if relative {
 		name = filepath.Join(p.rootDir, name)
 	}
-	return os.WriteFile(name, data, 0644)
+    if _, err := os.Stat(name); err == nil {
+        return false, nil
+    } else if os.IsNotExist(err) {
+        dir := filepath.Dir(name)
+        err := os.MkdirAll(dir, 0755)
+        if err != nil {
+			return false, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("failed to create directory %s: %v", dir, err))
+        }
+        file, err := os.Create(name)
+        if err != nil {
+            return false, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("failed to create file %s: %v", name, err))
+        }
+        defer file.Close()
+    } else if os.IsExist(err) {
+		return false, nil
+	} else {
+		return false, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("failed to stat directory %s: %v", name, err))
+    }
+    return true, nil
+}
+
+// CreateDirIfNotExists creates a directory if it does not exist.
+func (p *PersistenceManager) CreateDirIfNotExists(relative bool, name string) (bool, error) {
+	if relative {
+		name = filepath.Join(p.rootDir, name)
+	}
+	if _, err := os.Stat(name); err == nil {
+		return false, nil
+	} else if os.IsNotExist(err) {
+		err := os.MkdirAll(name, 0755)
+		if err != nil {
+			return false, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("failed to create directory %s: %v", name, err))
+		}
+	} else {
+		return false, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("failed to stat directory %s: %v", name, err))
+	}
+	return true, nil
+}
+
+// WriteFileIfNotExists writes a file if it does not exist.
+func (p *PersistenceManager) WriteFileIfNotExists(relative bool, name string, data []byte, perm os.FileMode) (bool, error) {
+	if relative {
+		name = filepath.Join(p.rootDir, name)
+	}
+    if _, err := os.Stat(name); err == nil {
+        return false, nil
+	} else if os.IsExist(err) {
+		return false, nil
+	} else if os.IsNotExist(err) {
+		return p.WriteFile(false, name, data, perm)
+	} else {
+		return false, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("failed to stat directory %s: %v", name, err))
+	}
+}
+
+// WriteFile writes a file.
+func (p *PersistenceManager) WriteFile(relative bool, name string, data []byte, perm os.FileMode) (bool, error)  {
+	if relative {
+		name = filepath.Join(p.rootDir, name)
+	}
+	err := os.WriteFile(name, data, 0644)
+	if err != nil {
+		return false, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("failed to write file %s: %v", name, err))
+	}
+	return true, nil
 }

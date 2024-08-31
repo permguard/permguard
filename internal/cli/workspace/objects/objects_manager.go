@@ -46,5 +46,6 @@ func (c *ObjectsManager) GetObjectsDir() string {
 
 // Iniitalize the objects resources.
 func (c *ObjectsManager) Iniitalize() error {
-	return c.persMgr.CreateDir(true, c.GetObjectsDir())
+	_, err := c.persMgr.CreateDirIfNotExists(true, c.GetObjectsDir())
+	return err
 }

@@ -42,7 +42,7 @@ var errorCodes = map[string]string{
 	// 05xxx: Server Errors
 	"05000": "server: generic error",
 	"05001": "server: infrastructure error",
-	
+
 	// 051xx: Storage Errors
 	"05100": "stroage: generic error",
 	"05101": "storage: entity mapping error",
@@ -50,6 +50,14 @@ var errorCodes = map[string]string{
 	"05111": "stroage: foreign key constraint violation",
 	"05112": "stroage: unique constraint violation",
 	"05120": "stroage: entity not found in storage",
+
+	// 08xxx: Command Line Interface Errors
+	"08000": "cli: generic error",
+
+	// 081xx: Command Line Interface File System Errors
+	"08100": "cli: file system error",
+	"08101": "cli: operation on directory failed",
+	"08102": "cli: operation on file failed",
 
 	// 09xxx: Plugin Errors
 	"09000": "plugin: generic error",
@@ -78,15 +86,13 @@ var (
 	// 01xxx configuration errors.
 	ErrConfigurationGeneric error = NewSystemError("01000")
 	// 04xxx client errors.
-	ErrClientGeneric error = NewSystemError("04000")
-	// 041xx client parameters errors.
+	ErrClientGeneric 	error = NewSystemError("04000")
 	ErrClientParameter  error = NewSystemError("04100")
 	ErrClientPagination error = NewSystemError("04101")
-	// 041xx client entity errors.
-	ErrClientEntity error = NewSystemError("04110")
-	ErrClientID     error = NewSystemError("04111")
-	ErrClientUUID   error = NewSystemError("04112")
-	ErrClientName   error = NewSystemError("04113")
+	ErrClientEntity 	error = NewSystemError("04110")
+	ErrClientID     	error = NewSystemError("04111")
+	ErrClientUUID   	error = NewSystemError("04112")
+	ErrClientName   	error = NewSystemError("04113")
 	// 05xxx server errors.
 	ErrServerGeneric       			error = NewSystemError("05000")
 	ErrServerInfrastructure			error = NewSystemError("05001")
@@ -96,6 +102,11 @@ var (
 	ErrStorageConstraintForeignKey	error = NewSystemError("05111")
 	ErrStorageConstraintUnique 		error = NewSystemError("05112")
 	ErrStorageNotFound         		error = NewSystemError("05120")
+	// 08xxx: Command Line Interface Errors
+	ErrCliGeneric 				error = NewSystemError("08000")
+	ErrCliFileSystem 			error = NewSystemError("08100")
+	ErrCliDirectoryOperation	error = NewSystemError("08101")
+	ErrCliFileOperation			error = NewSystemError("08102")
 	// 09xxx plugin errors.
 	ErrPluginGeneric error = NewSystemError("09000")
 )

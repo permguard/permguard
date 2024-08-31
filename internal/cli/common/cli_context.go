@@ -17,7 +17,7 @@
 package common
 
 import (
-	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -25,6 +25,7 @@ import (
 
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
 )
 
@@ -59,7 +60,7 @@ func newCliContext(cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, erro
 		return nil, err
 	}
 	if !azvalidators.IsValidPath(workDir) {
-		return nil, errors.New("cli: invalid work directory")
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("cli: %s is an invalid work directory", workDir))
 	}
 	ctx.workDir = workDir
 	output, err := cmd.Flags().GetString(FlagOutput)
@@ -68,7 +69,7 @@ func newCliContext(cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, erro
 	}
 	ctx.output = strings.ToUpper(strings.TrimSpace(output))
 	if ctx.output != azcli.OutputTerminal && ctx.output != azcli.OutputJSON {
-		return nil, errors.New("cli: invalid output")
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("cli: %s is an invalid output", output))
 	}
 	verbose, err := cmd.Flags().GetBool(FlagVerbose)
 	if err != nil {

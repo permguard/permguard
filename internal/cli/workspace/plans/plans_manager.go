@@ -46,5 +46,6 @@ func (c *PlansManager) GetPlansDir() string {
 
 // Iniitalize the plans resources.
 func (c *PlansManager) Iniitalize() error {
-	return c.persMgr.CreateDir(true, c.GetPlansDir())
+	_, err := c.persMgr.CreateDirIfNotExists(true, c.GetPlansDir())
+	return err
 }

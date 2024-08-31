@@ -22,26 +22,26 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
-	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
-	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
 	azicliwksobjs "github.com/permguard/permguard/internal/cli/workspace/objects"
+	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azicliwksplans "github.com/permguard/permguard/internal/cli/workspace/plans"
+	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
 )
 
 const (
-	hiddenDir        	= ".permguard"
+	hiddenDir = ".permguard"
 )
 
 // WorkspaceManager implements the internal manager to manage the .permguard directory.
 type WorkspaceManager struct {
-	ctx     *aziclicommon.CliCommandContext
-	homeDir string
-	persMgr *azicliwkspers.PersistenceManager
-	cfgMgr	*azicliwkscfg.ConfigManager
-	logsMgr *azicliwkslogs.LogsManager
-	rfsMgr  *azicliwksrefs.RefsManager
-	objsMgr *azicliwksobjs.ObjectsManager
+	ctx      *aziclicommon.CliCommandContext
+	homeDir  string
+	persMgr  *azicliwkspers.PersistenceManager
+	cfgMgr   *azicliwkscfg.ConfigManager
+	logsMgr  *azicliwkslogs.LogsManager
+	rfsMgr   *azicliwksrefs.RefsManager
+	objsMgr  *azicliwksobjs.ObjectsManager
 	plansMgr *azicliwksplans.PlansManager
 }
 
@@ -50,13 +50,13 @@ func NewInternalManager(ctx *aziclicommon.CliCommandContext) *WorkspaceManager {
 	hdnDir := filepath.Join(ctx.GetWorkDir(), hiddenDir)
 	persMgr := azicliwkspers.NewPersistenceManager(hdnDir, ctx)
 	return &WorkspaceManager{
-		homeDir: hdnDir,
-		ctx:     ctx,
-		persMgr: persMgr,
-		cfgMgr: azicliwkscfg.NewConfigManager(ctx, persMgr),
-		logsMgr: azicliwkslogs.NewLogsManager(ctx, persMgr),
-		rfsMgr:  azicliwksrefs.NewRefsManager(ctx, persMgr),
-		objsMgr: azicliwksobjs.NewObjectsManager(ctx, persMgr),
+		homeDir:  hdnDir,
+		ctx:      ctx,
+		persMgr:  persMgr,
+		cfgMgr:   azicliwkscfg.NewConfigManager(ctx, persMgr),
+		logsMgr:  azicliwkslogs.NewLogsManager(ctx, persMgr),
+		rfsMgr:   azicliwksrefs.NewRefsManager(ctx, persMgr),
+		objsMgr:  azicliwksobjs.NewObjectsManager(ctx, persMgr),
 		plansMgr: azicliwksplans.NewPlansManager(ctx, persMgr),
 	}
 }
@@ -70,8 +70,11 @@ func (m *WorkspaceManager) GetHomeDir() string {
 func (m *WorkspaceManager) InitWorkspace() (string, error) {
 	firstInit := true
 	homeDir := m.GetHomeDir()
-	err := m.persMgr.CreateDir(false, homeDir)
+	res, err := m.persMgr.CreateDirIfNotExists(false, homeDir)
 	if err != nil {
+		return "", err
+	}
+	if !res {
 		firstInit = false
 	}
 	initializers := []func() error{
@@ -89,7 +92,7 @@ func (m *WorkspaceManager) InitWorkspace() (string, error) {
 	}
 	var output string
 	if firstInit {
-		output = fmt.Sprintf("Initialized empty panicermGuard repository in %s", homeDir)
+		output = fmt.Sprintf("Initialized empty PermGuard repository in %s", homeDir)
 	} else {
 		output = fmt.Sprintf("Reinitialized existing permGuard repository in %s", homeDir)
 	}
