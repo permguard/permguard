@@ -112,13 +112,27 @@ func (c *ConfigManager) AddRemote(remote string, server string, aap int, pap int
 			return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: remote %s already exists", remote))
 		}
 	}
-	cfg.Remotes[remote] = RemoteConfig{
+	cfgRemote := RemoteConfig{
 		Server: server,
 		AAP:    aap,
 		PAP:    pap,
 	}
+	cfg.Remotes[remote] = cfgRemote
 	c.saveConfig(true, cfg)
-	output := out(nil, "remote-add", fmt.Sprintf("Added remote %s", remote), nil)
+	var output map[string]any
+	if c.ctx.IsTerminalOutput() {
+		output = out(nil, "remotes", cfgRemote, nil)
+	} else {
+		remotes := []interface{}{}
+		remoteObj := map[string]any{
+			"remote": remote,
+			"server": cfgRemote.Server,
+			"aap":    cfgRemote.AAP,
+			"pap":    cfgRemote.PAP,
+		}
+		remotes = append(remotes, remoteObj)
+		output = out(nil, "remotes", remotes, nil)
+	}
 	return output, nil
 }
 
@@ -135,9 +149,23 @@ func (c *ConfigManager) RemoveRemote(remote string, out func(map[string]any, str
 	if _, ok := cfg.Remotes[remote]; !ok {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: remote %s does not exist", remote))
 	}
+	var output map[string]any
+	cfgRemote := cfg.Remotes[remote]
+	if c.ctx.IsTerminalOutput() {
+		output = out(nil, "remotes", cfgRemote, nil)
+	} else {
+		remotes := []interface{}{}
+		remoteObj := map[string]any{
+			"remote": remote,
+			"server": cfgRemote.Server,
+			"aap":    cfgRemote.AAP,
+			"pap":    cfgRemote.PAP,
+		}
+		remotes = append(remotes, remoteObj)
+		output = out(nil, "remotes", remotes, nil)
+	}
 	delete(cfg.Remotes, remote)
 	c.saveConfig(true, cfg)
-	output := out(nil, "remote-remove", fmt.Sprintf("Removed remote %s", remote), nil)
 	return output, nil
 }
 
@@ -150,20 +178,20 @@ func (c *ConfigManager) ListRemotes(out func(map[string]any, string, any, error)
 	var output map[string]any
 	if c.ctx.IsTerminalOutput() {
 		remotes := []string{}
-		for remote := range cfg.Remotes {
-			remotes = append(remotes, remote)
+		for cfgRemote := range cfg.Remotes {
+			remotes = append(remotes, cfgRemote)
 		}
 		output = out(nil, "remotes", remotes, nil)
 	} else {
-		remotes := map[string]any{}
-		for remote := range cfg.Remotes {
+		remotes := []interface{}{}
+		for cfgRemote := range cfg.Remotes {
 			remoteObj := map[string]any{
-				"remote": remote,
-				"server": cfg.Remotes[remote].Server,
-				"aap":    cfg.Remotes[remote].AAP,
-				"pap":    cfg.Remotes[remote].PAP,
+				"remote": cfgRemote,
+				"server": cfg.Remotes[cfgRemote].Server,
+				"aap":    cfg.Remotes[cfgRemote].AAP,
+				"pap":    cfg.Remotes[cfgRemote].PAP,
 			}
-			remotes[remote] = remoteObj
+			remotes = append(remotes, remoteObj)
 		}
 		output = out(nil, "remotes", remotes, nil)
 	}
