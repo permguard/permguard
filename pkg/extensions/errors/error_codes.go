@@ -53,6 +53,7 @@ var errorCodes = map[string]string{
 
 	// 08xxx: Command Line Interface Errors
 	"08000": "cli: generic error",
+	"08001": "cli: invalid arguments",
 
 	// 081xx: Command Line Interface File System Errors
 	"08100": "cli: file system error",
@@ -104,6 +105,7 @@ var (
 	ErrStorageNotFound         		error = NewSystemError("05120")
 	// 08xxx: Command Line Interface Errors
 	ErrCliGeneric 				error = NewSystemError("08000")
+	ErrCliArguments				error = NewSystemError("08001")
 	ErrCliFileSystem 			error = NewSystemError("08100")
 	ErrCliDirectoryOperation	error = NewSystemError("08101")
 	ErrCliFileOperation			error = NewSystemError("08102")

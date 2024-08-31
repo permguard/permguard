@@ -21,7 +21,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
@@ -31,15 +33,27 @@ const (
 )
 
 // runECommandForRemoteAddWorkspace runs the command for creating an workspace.
-func runECommandForRemoteAddWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	_, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForRemoteAddWorkspace(args []string, deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(aziclicommon.ErrorMessageCliBug)
 		return aziclicommon.ErrCommandSilent
 	}
-	output := map[string]any{}
-	output["workspace"] = "remote-add"
-	printer.Print(output)
+	if len(args) != 2 {
+		printer.Error(azerrors.ErrCliGeneric)
+		return aziclicommon.ErrCommandSilent
+	}
+
+	wksMgr := azicliwksmanager.NewInternalManager(ctx)
+
+	output, err := wksMgr.AddRemote(outFunc(ctx, printer))
+	if err != nil {
+		printer.Error(err)
+		return aziclicommon.ErrCommandSilent
+	}
+	if ctx.IsJSONOutput() {
+		printer.Print(output)
+	}
 	return nil
 }
 
@@ -54,7 +68,7 @@ Examples:
   # add a new remote
   permguard remote add dev 268786704340/magicfarmacia-v0.0 `),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForRemoteAddWorkspace(deps, cmd, v)
+			return runECommandForRemoteAddWorkspace(args, deps, cmd, v)
 		},
 	}
 	return command

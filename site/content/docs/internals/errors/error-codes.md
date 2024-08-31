@@ -84,6 +84,7 @@ seo:
 | Error Code | Description                                      |
 |------------|--------------------------------------------------|
 | 08000      | cli: generic error                               |
+| 08001      | "cli: invalid arguments                          |
 
 ## 081xx: Command Line Interface File System Errors
 | Error Code | Description                                      |
