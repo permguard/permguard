@@ -31,10 +31,10 @@ type HeadRefsConfig struct {
 
 // RefsConfig represents the configuration for the refs.
 type RefsConfig struct {
-	Object RefsObjectConfig `toml:"object"`
+	Objects RefsObjectsConfig `toml:"objects"`
 }
 
-// RefsObjectConfig represents the configuration for the objects.
-type RefsObjectConfig struct {
-	Commit    string `toml:"commit"`
+// RefsObjectsConfig represents the configuration for the objects.
+type RefsObjectsConfig struct {
+	Commit string `toml:"commit"`
 }
