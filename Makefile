@@ -41,6 +41,7 @@ init-dependency:
 	go get -u github.com/mattn/go-sqlite3
 	go get -u moul.io/zapgorm2
 	go get -u github.com/pelletier/go-toml
+	go get -u github.com/gofrs/flock
 	go get -u github.com/permguard/permguard-authz
 
 mod:
