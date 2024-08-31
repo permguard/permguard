@@ -128,7 +128,7 @@ func (c *ConfigManager) ListRemotes(out func(map[string]any, string, any, error)
 	if err != nil {
 		return nil, err
 	}
-	remotes := []any{}
+	remotes := []string{}
 	for remote := range cfg.Remotes {
 		remotes = append(remotes, remote)
 	}
