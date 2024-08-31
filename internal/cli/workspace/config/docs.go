@@ -14,28 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package configs;
-
-import (
-	_ "github.com/pelletier/go-toml"
-)
-type Config struct {
-	Core          CoreConfig `toml:"core"`
-	Remotes       map[string]RemoteConfig `toml:"remote"`
-	Repositories  map[string]RepositoryConfig `toml:"repository"`
-}
-
-type CoreConfig struct {
-	ClientVersion string `toml:"client_version"`
-}
-
-type RemoteConfig struct {
-	URL string `toml:"url"`
-	AAP int    `toml:"aap"`
-	PAP int    `toml:"pap"`
-}
-
-type RepositoryConfig struct {
-	Remote string `toml:"remote"`
-	Ref    string `toml:"ref"`
-}
+// Package config manage the config file for the workspace.
+package config;

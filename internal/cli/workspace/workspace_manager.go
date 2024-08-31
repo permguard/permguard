@@ -14,18 +14,16 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package internalmanager
+package workspace
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 
-	"github.com/pelletier/go-toml"
-
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	aziclimanagercfg "github.com/permguard/permguard/internal/cli/internalsmanager/configs"
+	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
+	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
 
 const (
@@ -38,84 +36,23 @@ const (
 	hiddenHeadFile		= "HEAD"
 )
 
-// InternalManager implements the internal manager to manage the .permguard directory.
-type InternalManager struct {
+// WorkspaceManager implements the internal manager to manage the .permguard directory.
+type WorkspaceManager struct {
 	ctx     *aziclicommon.CliCommandContext
+	cfgMgr	*azicliwkscfg.ConfigManager
 }
 
 // NewInternalManager creates a new internal manager.
-func NewInternalManager(ctx *aziclicommon.CliCommandContext) *InternalManager {
-	return &InternalManager{
+func NewInternalManager(ctx *aziclicommon.CliCommandContext) *WorkspaceManager {
+	persMgr := azicliwkspers.NewPersistenceManager(ctx)
+	return &WorkspaceManager{
 		ctx:     ctx,
+		cfgMgr: azicliwkscfg.NewConfigManager(ctx, persMgr),
 	}
-}
-
-// saveConfig saves the configuration to a file.
-func (*InternalManager) saveConfig(path string) error {
-	// Crea un esempio di configurazione
-	config := aziclimanagercfg.Config{
-		Core: aziclimanagercfg.CoreConfig{
-			ClientVersion: "0.0.1",
-		},
-		Remotes: map[string]aziclimanagercfg.RemoteConfig{
-			"dev": {
-				URL: "dev.example.com",
-				AAP: 9091,
-				PAP: 9092,
-			},
-			"prod": {
-				URL: "prod.example.com",
-				AAP: 9091,
-				PAP: 9092,
-			},
-		},
-		Repositories: map[string]aziclimanagercfg.RepositoryConfig{
-			"dev/268786704340/magicfarmacia-v0.0": {
-				Remote: "dev",
-				Ref:    "284efd59b6d7482066f3e658e0957ec9e5f653ff",
-			},
-			"dev/534434453770/magicfarmacia-v0.0": {
-				Remote: "dev",
-				Ref:    "0905b08482050cb152b7c5b345ee2687b8f9bda9",
-			},
-			"prod/534434453770/magicfarmacia-v0.0": {
-				Remote: "prod",
-				Ref:    "0e1f711b0c1bcfa87cf4f423354f886b6ff0f3ea",
-			},
-		},
-	}
-	data, err := toml.Marshal(config)
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %v", err)
-	}
-	err = os.WriteFile(path, data, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to write config file %s: %v", path, err)
-	}
-
-	file, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("failed to open file %s: %v", path, err)
-	}
-	defer file.Close()
-
-	var config2 aziclimanagercfg.Config
-
-	b, err := io.ReadAll(file)
-	if err != nil {
-		return fmt.Errorf("failed to read file %s: %v", path, err)
-	}
-
-	err = toml.Unmarshal(b, &config2)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal file %s: %v", path, err)
-	}
-	print(config2.Core.ClientVersion)
-	return nil
 }
 
 // createFileIfNotExists creates a file if it does not exist.
-func (*InternalManager) createFileIfNotExists(filePath string) error {
+func (*WorkspaceManager) createFileIfNotExists(filePath string) error {
     if _, err := os.Stat(filePath); err == nil {
         return fmt.Errorf("file %s already exists", filePath)
     } else if os.IsNotExist(err) {
@@ -136,7 +73,7 @@ func (*InternalManager) createFileIfNotExists(filePath string) error {
 }
 
 // createDir creates a directory.
-func (*InternalManager) createDir(dir string) error {
+func (*WorkspaceManager) createDir(dir string) error {
 	if _, err := os.Stat(dir); err == nil {
 		return fmt.Errorf("directory %s already exists", dir)
 	} else if os.IsNotExist(err) {
@@ -151,7 +88,7 @@ func (*InternalManager) createDir(dir string) error {
 }
 
 // InitWorkspace the workspace.
-func (m *InternalManager) InitWorkspace() (string, error) {
+func (m *WorkspaceManager) InitWorkspace() (string, error) {
 	hdnDir := filepath.Join(m.ctx.GetWorkDir(), hiddenDir)
 	hdnLogsDir := filepath.Join(hdnDir, hiddenLogsDir)
 	hdnObjectsDir := filepath.Join(hdnDir, hiddenObjectsDir)
@@ -187,10 +124,7 @@ func (m *InternalManager) InitWorkspace() (string, error) {
 			return "", err
 		}
 	}
-	err = m.saveConfig(hdConfigFile)
-	if err != nil {
-		return "", err
-	}
+	m.cfgMgr.CreateConfig(hdConfigFile)
 	var output string
 	if firstInit {
 		output = fmt.Sprintf("Initialized empty panicermGuard repository in %s", hdnDir)

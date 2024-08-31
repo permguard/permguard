@@ -22,7 +22,7 @@ import (
 	"github.com/spf13/viper"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	aziclimanager "github.com/permguard/permguard/internal/cli/internalsmanager"
+	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
@@ -38,8 +38,8 @@ func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 		color.Red(aziclicommon.ErrorMessageCliBug)
 		return aziclicommon.ErrCommandSilent
 	}
-	intMng := aziclimanager.NewInternalManager(ctx)
-	ops, err := intMng.InitWorkspace()
+	wksMgr := azicliwksmanager.NewInternalManager(ctx)
+	ops, err := wksMgr.InitWorkspace()
 	if err != nil {
 		printer.Error(err)
 		return aziclicommon.ErrCommandSilent
