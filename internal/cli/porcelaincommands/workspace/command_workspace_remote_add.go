@@ -23,6 +23,7 @@ import (
 
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azconfigs "github.com/permguard/permguard/pkg/configs"
 	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
 )
@@ -30,6 +31,9 @@ import (
 const (
 	// commandNameForWorkspacesRemoteAdd is the command name for workspaces remoteadd.
 	commandNameForWorkspacesRemoteAdd = "workspaces.remote.add"
+
+	flagAAP	= "aap"
+	flagPAP= "pap"
 )
 
 // runECommandForRemoteAddWorkspace runs the command for creating an workspace.
@@ -46,7 +50,9 @@ func runECommandForRemoteAddWorkspace(args []string, deps azcli.CliDependenciesP
 	wksMgr := azicliwksmanager.NewInternalManager(ctx)
 	remote := args[0]
 	server := args[1]
-	output, err := wksMgr.AddRemote(remote, server, 9091, 9092, outFunc(ctx, printer))
+	aapPort := v.GetInt(azconfigs.FlagName(commandNameForWorkspacesRemoteAdd, flagAAP))
+	papPort := v.GetInt(azconfigs.FlagName(commandNameForWorkspacesRemoteAdd, flagPAP))
+	output, err := wksMgr.AddRemote(remote, server, aapPort, papPort, outFunc(ctx, printer))
 	if err != nil {
 		printer.Error(err)
 		return aziclicommon.ErrCommandSilent
@@ -71,5 +77,10 @@ Examples:
 			return runECommandForRemoteAddWorkspace(args, deps, cmd, v)
 		},
 	}
+
+	command.Flags().Int(flagAAP, 9091, "aap port")
+	v.BindPFlag(azconfigs.FlagName(commandNameForWorkspacesRemoteAdd, flagAAP), command.Flags().Lookup(flagAAP))
+	command.Flags().Int(flagPAP, 9092, "pap port")
+	v.BindPFlag(azconfigs.FlagName(commandNameForWorkspacesRemoteAdd, flagPAP), command.Flags().Lookup(flagPAP))
 	return command
 }

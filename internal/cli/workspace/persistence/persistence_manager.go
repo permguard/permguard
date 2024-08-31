@@ -48,7 +48,9 @@ func (p *PersistenceManager) CheckFileIfExists(relative bool, name string) (bool
 		name = filepath.Join(p.rootDir, name)
 	}
 	if _, err := os.Stat(name); err == nil {
-        return false, nil
+        return true, nil
+	} else if os.IsNotExist(err) {
+		return false, nil
 	}
 	return true, nil
 }
@@ -144,4 +146,23 @@ func (p *PersistenceManager) ReadTOMLFile(relative bool, name string, v interfac
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to unmarshal file %s", name))
 	}
 	return nil
+}
+
+// IsInsideDir checks if a directory is inside another directory.
+func (p *PersistenceManager) IsInsideDir(name string) (bool, error) {
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return false, azerrors.WrapSystemError(azerrors.ErrCliFileSystem, "cli: failed to get current working directory")
+	}
+	for {
+		if filepath.Base(currentDir) == name {
+			return true, nil
+		}
+		parentDir := filepath.Dir(currentDir)
+		if parentDir == currentDir {
+			break
+		}
+		currentDir = parentDir
+	}
+	return false, nil
 }
