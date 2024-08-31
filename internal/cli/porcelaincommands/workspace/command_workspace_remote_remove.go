@@ -17,14 +17,16 @@
 package workspace
 
 import (
+	"fmt"
+
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
 const (
@@ -36,7 +38,7 @@ const (
 func runECommandForRemoteRemoveWorkspace(args []string, deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
-		color.Red(aziclicommon.ErrorMessageCliBug)
+		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
 	if len(args) < 1 {

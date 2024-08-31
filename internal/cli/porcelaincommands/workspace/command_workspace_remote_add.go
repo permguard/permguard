@@ -17,30 +17,32 @@
 package workspace
 
 import (
+	"fmt"
+
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azconfigs "github.com/permguard/permguard/pkg/configs"
 	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azconfigs "github.com/permguard/permguard/pkg/configs"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
 const (
 	// commandNameForWorkspacesRemoteAdd is the command name for workspaces remoteadd.
 	commandNameForWorkspacesRemoteAdd = "workspaces.remote.add"
 
-	flagAAP	= "aap"
-	flagPAP= "pap"
+	flagAAP = "aap"
+	flagPAP = "pap"
 )
 
 // runECommandForRemoteAddWorkspace runs the command for creating an workspace.
 func runECommandForRemoteAddWorkspace(args []string, deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
-		color.Red(aziclicommon.ErrorMessageCliBug)
+		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
 	if len(args) < 2 {

@@ -40,7 +40,7 @@ const (
 func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
-		color.Red(aziclicommon.ErrorMessageCliBug)
+		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
 	aapTarget := ctx.GetAAPTarget()
