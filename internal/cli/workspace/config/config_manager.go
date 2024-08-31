@@ -147,10 +147,25 @@ func (c *ConfigManager) ListRemotes(out func(map[string]any, string, any, error)
 	if err != nil {
 		return nil, err
 	}
-	remotes := []string{}
-	for remote := range cfg.Remotes {
-		remotes = append(remotes, remote)
+	var output map[string]any
+	if c.ctx.IsTerminalOutput() {
+		remotes := []string{}
+		for remote := range cfg.Remotes {
+			remotes = append(remotes, remote)
+		}
+		output = out(nil, "remotes", remotes, nil)
+	} else {
+		remotes := map[string]any{}
+		for remote := range cfg.Remotes {
+			remoteObj := map[string]any{
+				"remote": remote,
+				"server": cfg.Remotes[remote].Server,
+				"aap":    cfg.Remotes[remote].AAP,
+				"pap":    cfg.Remotes[remote].PAP,
+			}
+			remotes[remote] = remoteObj
+		}
+		output = out(nil, "remotes", remotes, nil)
 	}
-	output := out(nil, "remote-list", remotes, nil)
 	return output, nil
 }
