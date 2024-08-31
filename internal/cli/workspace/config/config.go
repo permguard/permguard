@@ -27,9 +27,9 @@ type CoreConfig struct {
 }
 
 type RemoteConfig struct {
-	URL string `toml:"url"`
-	AAP int    `toml:"aap"`
-	PAP int    `toml:"pap"`
+	Server string 	`toml:"server"`
+	AAP int   		`toml:"aap"`
+	PAP int    		`toml:"pap"`
 }
 
 type RepositoryConfig struct {

@@ -18,11 +18,14 @@ package persistence
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	"github.com/pelletier/go-toml"
+
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
 // PersistenceManager implements the internal manager for the persistence file.
@@ -120,4 +123,25 @@ func (p *PersistenceManager) WriteFile(relative bool, name string, data []byte, 
 		return false, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write file %s", name))
 	}
 	return true, nil
+}
+
+// ReadTOMLFile reads a TOML file.
+func (p *PersistenceManager) ReadTOMLFile(relative bool, name string, v interface{}) (error) {
+	if relative {
+		name = filepath.Join(p.rootDir, name)
+	}
+	file, err := os.Open(name)
+	if err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to open file %s", name))
+	}
+	defer file.Close()
+	b, err := io.ReadAll(file)
+	if err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to open file %s", name))
+	}
+	err = toml.Unmarshal(b, v)
+	if err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to unmarshal file %s", name))
+	}
+	return nil
 }

@@ -45,8 +45,33 @@ func NewConfigManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwksper
 }
 
 // getConfigFile
-func (c *ConfigManager) getConfigFile() string {
+func (c *ConfigManager)  getConfigFile() string {
 	return hiddenConfigFile
+}
+
+// readConfig reads the configuration file.
+func (c *ConfigManager) readConfig() (*Config, error) {
+	var config Config
+	err := c.persMgr.ReadTOMLFile(true, c.getConfigFile(), &config)
+	return &config, err
+}
+
+// saveConfig saves the configuration file.
+func (c *ConfigManager) saveConfig(override bool, cfg *Config) (error) {
+	data, err := toml.Marshal(cfg)
+	if err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
+	}
+	fileName := c.getConfigFile()
+	if override {
+		_, err = c.persMgr.WriteFile(true, fileName, data, 0644)
+	} else {
+		_, err = c.persMgr.WriteFileIfNotExists(true, fileName, data, 0644)
+	}
+	if err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", fileName))
+	}
+	return nil
 }
 
 // Initialize initializes the config resources.
@@ -58,14 +83,29 @@ func (c *ConfigManager) Initialize() error {
 		Remotes: map[string]RemoteConfig{},
 		Repositories: map[string]RepositoryConfig{},
 	}
-	data, err := toml.Marshal(config)
+	return c.saveConfig(false, &config)
+}
+
+// AddRemote adds a remote.
+func (c *ConfigManager) AddRemote(remote string, server string, aap int, pap int, out func(map[string]any, string, string, error) map[string]any) error {
+	cfg, err := c.readConfig()
 	if err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
+		return err
 	}
-	fileName := c.getConfigFile()
-	_, err = c.persMgr.WriteFileIfNotExists(true, fileName, data, 0644)
-	if err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", fileName))
+	for rmt := range cfg.Remotes {
+		if remote == rmt {
+			return azerrors.WrapSystemError(azerrors.ErrCliArguments, fmt.Sprintf("cli: remote %s already exists", remote))
+		}
 	}
+	cfg.Remotes[remote] = RemoteConfig{
+		Server: server,
+		AAP:	aap,
+		PAP:	pap,
+	}
+	return c.saveConfig(true, cfg)
+}
+
+// RemoveRemote removes a remote.
+func (c *ConfigManager) RemoveRemote(remote string, out func(map[string]any, string, string, error) map[string]any) error {
 	return nil
 }
