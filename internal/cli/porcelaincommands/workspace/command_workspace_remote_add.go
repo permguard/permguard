@@ -39,13 +39,14 @@ func runECommandForRemoteAddWorkspace(args []string, deps azcli.CliDependenciesP
 		color.Red(aziclicommon.ErrorMessageCliBug)
 		return aziclicommon.ErrCommandSilent
 	}
-	if len(args) != 2 {
-		printer.Error(azerrors.ErrCliGeneric)
+	if len(args) < 2 {
+		printer.Error(azerrors.ErrCliArguments)
 		return aziclicommon.ErrCommandSilent
 	}
 	wksMgr := azicliwksmanager.NewInternalManager(ctx)
-	remote := args[1]
-	output, err := wksMgr.AddRemote(remote, 9091, 9092, outFunc(ctx, printer))
+	remote := args[0]
+	server := args[1]
+	output, err := wksMgr.AddRemote(remote, server, 9091, 9092, outFunc(ctx, printer))
 	if err != nil {
 		printer.Error(err)
 		return aziclicommon.ErrCommandSilent
