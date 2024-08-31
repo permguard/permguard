@@ -21,9 +21,9 @@ import (
 
 	"github.com/pelletier/go-toml"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
 const (
@@ -45,7 +45,7 @@ func NewConfigManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwksper
 }
 
 // getConfigFile
-func (c *ConfigManager)  getConfigFile() string {
+func (c *ConfigManager) getConfigFile() string {
 	return hiddenConfigFile
 }
 
@@ -57,7 +57,7 @@ func (c *ConfigManager) readConfig() (*Config, error) {
 }
 
 // saveConfig saves the configuration file.
-func (c *ConfigManager) saveConfig(override bool, cfg *Config) (error) {
+func (c *ConfigManager) saveConfig(override bool, cfg *Config) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
@@ -80,32 +80,58 @@ func (c *ConfigManager) Initialize() error {
 		Core: CoreConfig{
 			ClientVersion: c.ctx.GetClientVersion(),
 		},
-		Remotes: map[string]RemoteConfig{},
+		Remotes:      map[string]RemoteConfig{},
 		Repositories: map[string]RepositoryConfig{},
 	}
 	return c.saveConfig(false, &config)
 }
 
 // AddRemote adds a remote.
-func (c *ConfigManager) AddRemote(remote string, server string, aap int, pap int, out func(map[string]any, string, string, error) map[string]any) error {
+func (c *ConfigManager) AddRemote(remote string, server string, aap int, pap int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	cfg, err := c.readConfig()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for rmt := range cfg.Remotes {
 		if remote == rmt {
-			return azerrors.WrapSystemError(azerrors.ErrCliArguments, fmt.Sprintf("cli: remote %s already exists", remote))
+			return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: remote %s already exists", remote))
 		}
 	}
 	cfg.Remotes[remote] = RemoteConfig{
 		Server: server,
-		AAP:	aap,
-		PAP:	pap,
+		AAP:    aap,
+		PAP:    pap,
 	}
-	return c.saveConfig(true, cfg)
+	c.saveConfig(true, cfg)
+	output := out(nil, "remote-add", fmt.Sprintf("Added remote %s", remote), nil)
+	return output, nil
 }
 
 // RemoveRemote removes a remote.
-func (c *ConfigManager) RemoveRemote(remote string, out func(map[string]any, string, string, error) map[string]any) error {
-	return nil
+func (c *ConfigManager) RemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	cfg, err := c.readConfig()
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := cfg.Remotes[remote]; !ok {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: remote %s does not exist", remote))
+	}
+	delete(cfg.Remotes, remote)
+	c.saveConfig(true, cfg)
+	output := out(nil, "remote-remove", fmt.Sprintf("Removed remote %s", remote), nil)
+	return output, nil
+}
+
+// ListRemotes lists the remotes.
+func (c *ConfigManager) ListRemotes(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	cfg, err := c.readConfig()
+	if err != nil {
+		return nil, err
+	}
+	remotes := []string{}
+	for remote := range cfg.Remotes {
+		remotes = append(remotes, remote)
+	}
+	output := out(nil, "remote-list", remotes, nil)
+	return output, nil
 }

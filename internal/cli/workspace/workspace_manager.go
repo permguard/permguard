@@ -67,7 +67,7 @@ func (m *WorkspaceManager) GetHomeDir() string {
 }
 
 // InitWorkspace the workspace.
-func (m *WorkspaceManager) InitWorkspace(out func(map[string]any, string, string, error) map[string]any) (map[string]any, error) {
+func (m *WorkspaceManager) InitWorkspace(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	var output map[string]any
 	firstInit := true
 	homeDir := m.GetHomeDir()
@@ -100,21 +100,15 @@ func (m *WorkspaceManager) InitWorkspace(out func(map[string]any, string, string
 }
 
 // AddRemote adds a remote.
-func (m *WorkspaceManager) AddRemote(remote string, server string, aap int, pap int, out func(map[string]any, string, string, error) map[string]any) (map[string]any, error) {
-	err := m.cfgMgr.AddRemote(remote, server, aap, pap, out)
-	if err != nil {
-		return nil, err
-	}
-	output := out(nil, "remote-add", fmt.Sprintf("Added remote %s", remote), nil)
-	return output, nil
+func (m *WorkspaceManager) AddRemote(remote string, server string, aap int, pap int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	return m.cfgMgr.AddRemote(remote, server, aap, pap, out)
 }
 
 // RemoveRemote removes a remote.
-func (m *WorkspaceManager) RemoveRemote(remote string, out func(map[string]any, string, string, error) map[string]any) (map[string]any, error) {
-	err := m.cfgMgr.RemoveRemote(remote, out)
-	if err != nil {
-		return nil, err
-	}
-	output := out(nil, "remote-remove", fmt.Sprintf("Removed remote %s", remote), nil)
-	return output, nil
+func (m *WorkspaceManager) RemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	return m.cfgMgr.RemoveRemote(remote, out)
+}
+
+func (m *WorkspaceManager) ListRemotes(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	return m.cfgMgr.ListRemotes(out)
 }

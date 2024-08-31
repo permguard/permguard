@@ -17,10 +17,12 @@
 package workspace
 
 import (
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
@@ -30,8 +32,22 @@ const (
 )
 
 // runECommandForRemoteWorkspace runs the command for creating an workspace.
-func runECommandForRemoteWorkspace(cmd *cobra.Command, args []string) error {
-	return cmd.Help()
+func runECommandForRemoteWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+	if err != nil {
+		color.Red(aziclicommon.ErrorMessageCliBug)
+		return aziclicommon.ErrCommandSilent
+	}
+	wksMgr := azicliwksmanager.NewInternalManager(ctx)
+	output, err := wksMgr.ListRemotes(outFunc(ctx, printer))
+	if err != nil {
+		printer.Error(err)
+		return aziclicommon.ErrCommandSilent
+	}
+	if ctx.IsJSONOutput() {
+		printer.Print(output)
+	}
+	return nil
 }
 
 // CreateCommandForWorkspaceRemote creates a command for remoteializing a working directory.
@@ -41,7 +57,7 @@ func CreateCommandForWorkspaceRemote(deps azcli.CliDependenciesProvider, v *vipe
 		Short: `Manage the set of remote servers you track`,
 		Long:  aziclicommon.BuildCliLongTemplate(`This command manages the set of remote servers you track.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForRemoteWorkspace(cmd, args)
+			return runECommandForRemoteWorkspace(deps, cmd, v)
 		},
 	}
 	command.AddCommand(CreateCommandForWorkspaceRemoteAdd(deps, v))
