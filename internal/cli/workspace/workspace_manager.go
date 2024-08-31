@@ -75,7 +75,6 @@ func (m *WorkspaceManager) isValidHomeDir() bool {
 
 // InitWorkspace the workspace.
 func (m *WorkspaceManager) InitWorkspace(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	var output map[string]any
 	firstInit := true
 	homeDir := m.GetHomeDir()
 	res, err := m.persMgr.CreateDirIfNotExists(false, homeDir)
@@ -98,10 +97,22 @@ func (m *WorkspaceManager) InitWorkspace(out func(map[string]any, string, any, e
 			return nil, err
 		}
 	}
-	if firstInit {
-		output = out(nil, "init", fmt.Sprintf("Initialized empty PermGuard repository in %s", homeDir), nil)
+	var msg string
+	var output map[string]any
+	if m.ctx.IsTerminalOutput() {
+		if firstInit {
+			msg = fmt.Sprintf("Initialized empty PermGuard repository in %s", homeDir)
+		} else {
+			msg = fmt.Sprintf("Reinitialized existing PermGuard repository in %s", homeDir)
+		}
+		output = out(nil, "init", msg, nil)
 	} else {
-		output = out(nil, "init", fmt.Sprintf("Reinitialized existing PermGuard repository in %s", homeDir), nil)
+		remotes := []interface{}{}
+		remoteObj := map[string]any{
+			"cwd": m.GetHomeDir(),
+		}
+		remotes = append(remotes, remoteObj)
+		output = out(nil, "workspaces", remotes, nil)
 	}
 	return output, nil
 }
