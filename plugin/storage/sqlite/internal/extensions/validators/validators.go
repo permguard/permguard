@@ -33,7 +33,7 @@ func ValidateAccountID(entity string, accountID int64) error {
 		return fmt.Errorf("storage: %s name %d is not valid. %w", entity, vAccountID.AccountID, azerrors.ErrClientID)
 	}
 	min := int64(100000000000)
-	max := int64(900000000000)
+	max := int64(999999999999)
 	if accountID < min || accountID > max {
 		return fmt.Errorf("storage: %s name %d is not valid. It must be between %d and %d. %w", entity, accountID, min, max, azerrors.ErrClientID)
 	}
