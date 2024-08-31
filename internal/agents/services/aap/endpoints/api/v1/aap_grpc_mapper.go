@@ -38,6 +38,7 @@ func MapGrpcAccountResponseToAgentAccount(account *AccountResponse) (*azmodels.A
 		CreatedAt: account.CreatedAt.AsTime(),
 		UpdatedAt: account.UpdatedAt.AsTime(),
 		Name:      account.Name,
+		RefsHead:  account.RefsHead,
 	}, nil
 }
 
@@ -48,6 +49,7 @@ func MapAgentAccountToGrpcAccountResponse(account *azmodels.Account) (*AccountRe
 		CreatedAt: timestamppb.New(account.CreatedAt),
 		UpdatedAt: timestamppb.New(account.UpdatedAt),
 		Name:      account.Name,
+		RefsHead:  account.RefsHead,
 	}, nil
 }
 

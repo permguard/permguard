@@ -42,6 +42,7 @@ type Account struct {
 	CreatedAt time.Time `json:"created_at" validate:"required"`
 	UpdatedAt time.Time `json:"updated_at" validate:"required"`
 	Name      string    `json:"name" validate:"required,name"`
+	RefsHead  string    `json:"refs_head"`
 }
 
 // Tenant is the tenant.
@@ -68,7 +69,7 @@ type Identity struct {
 	CreatedAt        time.Time `json:"created_at" validate:"required"`
 	UpdatedAt        time.Time `json:"updated_at" validate:"required"`
 	AccountID        int64     `json:"account_id" validate:"required,gt=0"`
-	IdentitySourceID string	   `json:"identity_source_id" validate:"required,isuuid"`
+	IdentitySourceID string    `json:"identity_source_id" validate:"required,isuuid"`
 	Kind             string    `json:"identity_type" validate:"required,oneof='user' 'role'"`
 	Name             string    `json:"name" validate:"required"`
 }
