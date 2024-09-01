@@ -63,6 +63,7 @@ var errorCodes = map[string]string{
 	"08100": "cli: file system error",
 	"08101": "cli: operation on directory failed",
 	"08102": "cli: operation on file failed",
+	"08110": "cli: workspace operation failed",
 
 	// 09xxx: Plugin Errors
 	"09000": "plugin: generic error",
@@ -117,6 +118,7 @@ var (
 	ErrCliFileSystem 			error = NewSystemError("08100")
 	ErrCliDirectoryOperation	error = NewSystemError("08101")
 	ErrCliFileOperation			error = NewSystemError("08102")
+	ErrCliWorkspace				error = NewSystemError("08110")
 	// 09xxx plugin errors.
 	ErrPluginGeneric error = NewSystemError("09000")
 )
