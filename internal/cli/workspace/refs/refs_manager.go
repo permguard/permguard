@@ -90,6 +90,22 @@ func (m *RefsManager) Initalize() error {
 	return nil
 }
 
+// readConfig reads the configuration file.
+func (m *RefsManager) readHeadConfig() (*HeadConfig, error) {
+	var config HeadConfig
+	err := m.persMgr.ReadTOMLFile(true, m.getHeadFile(), &config)
+	return &config, err
+}
+
+// GetCurrentHead gets the current head.
+func (m *RefsManager) GetCurrentHead() (string, int64, string, string, error) {
+	cfgHead, err := m.readHeadConfig()
+	if err != nil {
+		return "", 0, "", "", err
+	}
+	return cfgHead.Head.Remote, cfgHead.Head.AccountID, cfgHead.Head.Repo, cfgHead.Head.Refs, nil
+}
+
 // CheckoutHead checks out the head.
 func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, refHead string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	refIDStr := fmt.Sprintf("%s/%d/%s", remote, accountID, repo)
