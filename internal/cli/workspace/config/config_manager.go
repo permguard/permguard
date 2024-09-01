@@ -220,7 +220,7 @@ func (m *ConfigManager) AddRepo(remote string, accountID int64, repo string, out
 			exists = true
 		}
 	}
-	if exists {
+	if !exists {
 		cfgRepo = RepositoryConfig{
 			Remote: remote,
 			Refs:   refID,

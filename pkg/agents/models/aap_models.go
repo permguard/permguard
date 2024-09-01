@@ -42,7 +42,6 @@ type Account struct {
 	CreatedAt time.Time `json:"created_at" validate:"required"`
 	UpdatedAt time.Time `json:"updated_at" validate:"required"`
 	Name      string    `json:"name" validate:"required,name"`
-	RefsHead  string    `json:"refs_head"`
 }
 
 // Tenant is the tenant.

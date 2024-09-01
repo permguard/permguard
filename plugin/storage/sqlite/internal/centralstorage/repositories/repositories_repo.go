@@ -70,12 +70,13 @@ func (r *Repo) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Repositor
 	}
 
 	var dbRepository Repository
-	err = tx.QueryRow("SELECT account_id, repository_id, created_at, updated_at, name FROM repositories WHERE account_id = ? and repository_id = ?", accountID, repositoryID).Scan(
+	err = tx.QueryRow("SELECT account_id, repository_id, created_at, updated_at, name, refs FROM repositories WHERE account_id = ? and repository_id = ?", accountID, repositoryID).Scan(
 		&dbRepository.AccountID,
 		&dbRepository.RepositoryID,
 		&dbRepository.CreatedAt,
 		&dbRepository.UpdatedAt,
 		&dbRepository.Name,
+		&dbRepository.Refs,
 	)
 	if err != nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve repository - operation 'retrieve-created-repository' encountered an issue (%s).", LogRepositoryEntry(repository)), err)
@@ -93,12 +94,13 @@ func (r *Repo) DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string
 	}
 
 	var dbRepository Repository
-	err := tx.QueryRow("SELECT account_id, repository_id, created_at, updated_at, name FROM repositories WHERE account_id = ? and repository_id = ?", accountID, repositoryID).Scan(
+	err := tx.QueryRow("SELECT account_id, repository_id, created_at, updated_at, name, refs FROM repositories WHERE account_id = ? and repository_id = ?", accountID, repositoryID).Scan(
 		&dbRepository.AccountID,
 		&dbRepository.RepositoryID,
 		&dbRepository.CreatedAt,
 		&dbRepository.UpdatedAt,
 		&dbRepository.Name,
+		&dbRepository.Refs,
 	)
 	if err != nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - repository id is not valid (id: %s).", repositoryID), err)

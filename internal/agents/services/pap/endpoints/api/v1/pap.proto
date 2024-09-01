@@ -60,6 +60,7 @@ message RepositoryResponse {
     google.protobuf.Timestamp CreatedAt = 3;
     google.protobuf.Timestamp UpdatedAt = 4;
     string Name = 5;
+	string Refs = 6;
 }
 
 // RepositoryList is a list of Repositories

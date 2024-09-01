@@ -29,5 +29,6 @@ func mapRepositoryToAgentRepository(repository *azirepos.Repository) (*azmodels.
 		UpdatedAt: repository.UpdatedAt,
 		AccountID: repository.AccountID,
 		Name:      repository.Name,
+		Refs:      repository.Refs,
 	}, nil
 }
