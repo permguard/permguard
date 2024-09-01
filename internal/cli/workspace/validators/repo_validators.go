@@ -33,37 +33,36 @@ type RepoInfo struct {
 }
 
 // SanitizeRepo sanitizes the repo name.
-func SanitizeRepo(repo string) (RepoInfo, error) {
-    var result RepoInfo
+func SanitizeRepo(repo string) (*RepoInfo, error) {
+    result := &RepoInfo{}
     repo = strings.ToLower(repo)
     items := strings.Split(repo, "/")
     if len(items) < 3 {
-        return result, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo %s", repo))
+        return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo %s", repo))
     }
 
     remoteName, err := SanitizeRemote(items[0])
     if err != nil {
-        return result, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid remote %s", remoteName))
+        return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid remote %s", remoteName))
     }
     result.Remote = remoteName
 
     accountIDStr := items[1]
     accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
     if err != nil {
-        return result, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
+        return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
     }
     err = azvalidators.ValidateAccountID("repo", accountID)
     if err != nil {
-        return result, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
+        return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
     }
     result.AccountID = accountID
 
     repoName := items[2]
     err = azvalidators.ValidateName("repo", repoName)
     if err != nil {
-        return result, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo name %s", repoName))
+        return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo name %s", repoName))
     }
     result.Repo = repoName
-
     return result, nil
 }

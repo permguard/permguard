@@ -35,6 +35,14 @@ const (
 	hiddenHeadFile = "HEAD"
 )
 
+// HeadInfo represents the head information.
+type HeadInfo struct {
+    Remote string
+	AccountID int64
+	Repo string
+	RefID string
+}
+
 // RefsManager implements the internal manager for the refs file.
 type RefsManager struct {
 	ctx     *aziclicommon.CliCommandContext
@@ -60,18 +68,18 @@ func (m *RefsManager) getHeadFile() string {
 }
 
 // saveConfig saves the configuration file.
-func (m *RefsManager) saveConfig(fileName string, override bool, cfg interface{}) error {
+func (m *RefsManager) saveConfig(name string, override bool, cfg interface{}) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
 	}
 	if override {
-		_, err = m.persMgr.WriteFile(true, fileName, data, 0644)
+		_, err = m.persMgr.WriteFile(true, name, data, 0644)
 	} else {
-		_, err = m.persMgr.WriteFileIfNotExists(true, fileName, data, 0644)
+		_, err = m.persMgr.WriteFileIfNotExists(true, name, data, 0644)
 	}
 	if err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", fileName))
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", name))
 	}
 	return nil
 }
@@ -115,30 +123,35 @@ func (m *RefsManager) CalculateRefID(remote string, accountID int64, repo string
 }
 
 // GetCurrentHead gets the current head.
-func (m *RefsManager) GetCurrentHead() (string, int64, string, string, error) {
+func (m *RefsManager) GetCurrentHead() (*HeadInfo, error) {
 	cfgHead, err := m.readHeadConfig()
 	if err != nil {
-		return "", 0, "", "", err
+		return nil, err
 	}
-	return cfgHead.Head.Remote, cfgHead.Head.AccountID, cfgHead.Head.Repo, cfgHead.Head.RefID, nil
+	return &HeadInfo{
+		Remote: cfgHead.Head.Remote,
+		AccountID: cfgHead.Head.AccountID,
+		Repo: cfgHead.Head.Repo,
+		RefID: cfgHead.Head.RefID,
+	}, nil
 }
 
 // GetCurrentHeadRef gets the current head ref.
 func (m *RefsManager) GetCurrentHeadRef() (string, error) {
-	remote, accountID, repo, _, err := m.GetCurrentHead()
+	headInfo, err := m.GetCurrentHead()
 	if err != nil {
 		return "", err
 	}
-	return m.GetRef(remote, accountID, repo)
+	return m.GetRef(headInfo.Remote, headInfo.AccountID, headInfo.Repo)
 }
 
 // CalculateCurrentHeadRefID gets the current head ref ID.
 func (m *RefsManager) CalculateCurrentHeadRefID() (string, error) {
-	remote, accountID, repo, _, err := m.GetCurrentHead()
+	headInfo, err := m.GetCurrentHead()
 	if err != nil {
 		return "", err
 	}
-	return m.CalculateRefID(remote, accountID, repo)
+	return m.CalculateRefID(headInfo.Remote, headInfo.AccountID, headInfo.Repo)
 }
 
 // createAndGetHeadRefFile creates and gets the head ref file.
