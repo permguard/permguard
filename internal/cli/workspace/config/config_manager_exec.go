@@ -190,7 +190,7 @@ func (m *ConfigManager) ExecAddRepo(remote string, accountID int64, repo string,
 }
 
 // ExecListRepos lists the repos.
-func (m *ConfigManager) ExecListRepos(refRepo string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *ConfigManager) ExecListRepos(activeRepoURI string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -201,7 +201,7 @@ func (m *ConfigManager) ExecListRepos(refRepo string, output map[string]any, out
 	if m.ctx.IsTerminalOutput() {
 		repos := []string{}
 		for cfgRepo := range cfg.Repositories {
-			isActive := refRepo == cfgRepo
+			isActive := activeRepoURI == cfgRepo
 			cfgRepoTxt := cfgRepo
 			if isActive {
 				cfgRepoTxt = fmt.Sprintf("*%s", cfgRepo)
@@ -214,7 +214,7 @@ func (m *ConfigManager) ExecListRepos(refRepo string, output map[string]any, out
 	} else {
 		repos := []interface{}{}
 		for cfgRepo := range cfg.Repositories {
-			isActive := refRepo == cfgRepo
+			isActive := activeRepoURI == cfgRepo
 			repoObj := map[string]any{
 				"remote": cfg.Repositories[cfgRepo].Remote,
 				"repo":   cfgRepo,
