@@ -17,6 +17,11 @@
 package logs
 
 import (
+	"fmt"
+	"time"
+
+	"path/filepath"
+
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
@@ -48,4 +53,21 @@ func (c *LogsManager) GetLogsDir() string {
 func (c *LogsManager) Initalize() error {
 	_, err := c.persMgr.CreateDirIfNotExists(true, c.GetLogsDir())
 	return err
+}
+
+// Log an entry
+func (c *LogsManager) Log(remote string, ref string, origin string, target string, action string) (bool, error) {
+	logDir := filepath.Join(c.GetLogsDir(), remote)
+	_, err := c.persMgr.CreateDirIfNotExists(true, logDir)
+	if err != nil {
+		return false, err
+	}
+	logFile := filepath.Join(logDir, ref)
+	_, err = c.persMgr.CreateFileIfNotExists(true, logFile)
+	if err != nil {
+		return false, err
+	}
+	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+	logLine := fmt.Sprintf("%s %s %s %s", origin, target, timestamp, action)
+	return c.persMgr.AppndToFile(true, logFile, []byte(logLine))
 }

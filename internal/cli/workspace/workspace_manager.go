@@ -22,6 +22,7 @@ import (
 
 	"github.com/gofrs/flock"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azcrypto "github.com/permguard/permguard/pkg/extensions/crypto"
 	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
 	azicliwksremote "github.com/permguard/permguard/internal/cli/workspace/remote"
 	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
@@ -241,6 +242,9 @@ func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, st
 	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
 		return nil, err
 	}
+	refs := fmt.Sprintf("%s/%d/%s", remoteName, accountID, repoName)
+	refID := azcrypto.ComputeStringSHA1(refs)
+	m.logsMgr.Log(remoteName, refID, srvRepo.Refs, srvRepo.Refs, fmt.Sprintf("checkout: %s", repo))
 	return output, nil
 }
 
