@@ -17,10 +17,14 @@
 package workspace
 
 import (
+	"fmt"
+
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
@@ -30,8 +34,22 @@ const (
 )
 
 // runECommandForRepoWorkspace runs the command for creating an workspace.
-func runECommandForRepoWorkspace(cmd *cobra.Command, args []string) error {
-	return cmd.Help()
+func runECommandForRepoWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return aziclicommon.ErrCommandSilent
+	}
+	wksMgr := azicliwksmanager.NewInternalManager(ctx)
+	output, err := wksMgr.ListRepos(outFunc(ctx, printer))
+	if err != nil {
+		printer.Error(err)
+		return aziclicommon.ErrCommandSilent
+	}
+	if ctx.IsJSONOutput() {
+		printer.Print(output)
+	}
+	return nil
 }
 
 // CreateCommandForWorkspaceRepo creates a command for repoializing a working directory.
@@ -41,7 +59,7 @@ func CreateCommandForWorkspaceRepo(deps azcli.CliDependenciesProvider, v *viper.
 		Short: `Manage the local repo`,
 		Long:  aziclicommon.BuildCliLongTemplate(`This command manages the local repo.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForRepoWorkspace(cmd, args)
+			return runECommandForRepoWorkspace(deps, cmd, v)
 		},
 	}
 	return command

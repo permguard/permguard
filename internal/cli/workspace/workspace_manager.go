@@ -243,3 +243,26 @@ func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, st
 	}
 	return output, nil
 }
+
+// ListRepos lists the repos.
+func (m *WorkspaceManager) ListRepos(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	if !m.isValidHomeDir() {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
+	}
+
+	fileLock := flock.New(m.getLockFile())
+	lock, err := fileLock.TryLock()
+	if !lock || err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: could not acquire the lock, another process is using it %s", m.getLockFile()))
+	}
+	defer fileLock.Unlock()
+
+	remote, accountID, repo, _, errr := m.rfsMgr.GetCurrentHead()
+	if errr != nil {
+		return nil, errr
+	}
+	refRepo := fmt.Sprintf("%s/%d/%s", remote, accountID, repo)
+
+	output := map[string]any{}
+	return m.cfgMgr.ListRepos(refRepo, output, out)
+}
