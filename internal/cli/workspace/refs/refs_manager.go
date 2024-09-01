@@ -199,7 +199,7 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 		return "", "", nil, err
 	}
 	if m.ctx.IsTerminalOutput() {
-		output = out(nil, "head", fmt.Sprintf("refs/%s", refPath), nil)
+		output = out(nil, "head", refPath, nil)
 	} else {
 		remotes := []interface{}{}
 		remoteObj := map[string]any{
