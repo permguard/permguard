@@ -62,7 +62,7 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 	m.saveConfig(true, cfg)
 	if m.ctx.IsTerminalOutput() {
 		if m.ctx.IsVerbose() {
-			output = out(nil, "remotes", cfgRemote, nil)
+			output = out(nil, "remote", remote, nil)
 		}
 	} else {
 		remotes := []interface{}{}
@@ -73,7 +73,7 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 			"pap":    cfgRemote.PAPPort,
 		}
 		remotes = append(remotes, remoteObj)
-		output = out(output, "remote", remotes, nil)
+		output = out(output, "remotes", remotes, nil)
 	}
 	return output, nil
 }
