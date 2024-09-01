@@ -80,7 +80,7 @@ func (m *WorkspaceManager) InitWorkspace(out func(map[string]any, string, any, e
 	}
 	initializers := []func() error{
 		m.logsMgr.Initalize,
-		m.cfgMgr.Initialize,
+		m.cfgMgr.ExecInitialize,
 		m.rfsMgr.Initalize,
 		m.objsMgr.Initalize,
 		m.plansMgr.Initalize,
@@ -132,7 +132,7 @@ func (m *WorkspaceManager) AddRemote(remote string, server string, aapPort int, 
 	}
 	defer fileLock.Unlock()
 
-	return m.cfgMgr.AddRemote(remote, server, aapPort, papPort, nil, out)
+	return m.cfgMgr.ExecAddRemote(remote, server, aapPort, papPort, nil, out)
 }
 
 // RemoveRemote removes a remote.
@@ -154,7 +154,7 @@ func (m *WorkspaceManager) RemoveRemote(remote string, out func(map[string]any, 
 	if headRemote == remote {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, fmt.Sprintf("cli: cannot remove the remote used by the currently checked out account %s", remote))
 	}
-	return m.cfgMgr.RemoveRemote(remote, nil, out)
+	return m.cfgMgr.ExecRemoveRemote(remote, nil, out)
 }
 
 // ListRemotes lists the remotes.
@@ -169,7 +169,7 @@ func (m *WorkspaceManager) ListRemotes(out func(map[string]any, string, any, err
 	}
 	defer fileLock.Unlock()
 
-	return m.cfgMgr.ListRemotes(nil, out)
+	return m.cfgMgr.ExecListRemotes(nil, out)
 }
 
 // CheckoutRepo checks out a repository.
@@ -201,7 +201,7 @@ func (m *WorkspaceManager) CheckoutRepo(repoURI string, out func(map[string]any,
 	if err != nil {
 		return nil, err
 	}
-	output, err = m.cfgMgr.AddRepo(remote, accountID, repo, ref, refID, output, out)
+	output, err = m.cfgMgr.ExecAddRepo(remote, accountID, repo, ref, refID, output, out)
 	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
 		return nil, err
 	}
@@ -225,5 +225,5 @@ func (m *WorkspaceManager) ListRepos(out func(map[string]any, string, any, error
 	if err != nil {
 		return nil, err
 	}
-	return m.cfgMgr.ListRepos(refID, nil, out)
+	return m.cfgMgr.ExecListRepos(refID, nil, out)
 }
