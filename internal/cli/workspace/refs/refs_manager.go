@@ -134,7 +134,7 @@ func (m *RefsManager) GetCurrentHead() (string, int64, string, string, error) {
 	if err != nil {
 		return "", 0, "", "", err
 	}
-	return cfgHead.Head.Remote, cfgHead.Head.AccountID, cfgHead.Head.Repo, cfgHead.Head.Refs, nil
+	return cfgHead.Head.Remote, cfgHead.Head.AccountID, cfgHead.Head.Repo, cfgHead.Head.RefID, nil
 }
 
 // GetCurrentHeadRef gets the current head ref.
@@ -176,7 +176,7 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 			Remote:    remote,
 			AccountID: accountID,
 			Repo:      repo,
-			Refs:      refID,
+			RefID:     refID,
 		},
 	}
 	headFile := m.getHeadFile()
@@ -192,7 +192,7 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 			"remote":    headCfg.Head.Remote,
 			"accountid": headCfg.Head.AccountID,
 			"repo":      headCfg.Head.Repo,
-			"refs":      headCfg.Head.Refs,
+			"refs":      headCfg.Head.RefID,
 		}
 		remotes = append(remotes, remoteObj)
 		output = out(output, "head", remotes, nil)

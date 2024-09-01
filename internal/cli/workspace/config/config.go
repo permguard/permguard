@@ -30,13 +30,13 @@ type CoreConfig struct {
 
 // RemoteConfig represents the configuration for the remote.
 type RemoteConfig struct {
-	Server string `toml:"server"`
-	AAP    int    `toml:"aap"`
-	PAP    int    `toml:"pap"`
+	Server  string `toml:"server"`
+	AAPPort int    `toml:"aapport"`
+	PAPPort int    `toml:"papport"`
 }
 
 // RepositoryConfig represents the configuration for the repository.
 type RepositoryConfig struct {
 	Remote string `toml:"remote"`
-	Refs   string `toml:"refs"`
+	RefID  string `toml:"refid"`
 }
