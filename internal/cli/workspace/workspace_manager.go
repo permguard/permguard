@@ -22,17 +22,16 @@ import (
 
 	"github.com/gofrs/flock"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcrypto "github.com/permguard/permguard/pkg/extensions/crypto"
-	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
-	azicliwksremote "github.com/permguard/permguard/internal/cli/workspace/remote"
 	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
 	azicliwksobjs "github.com/permguard/permguard/internal/cli/workspace/objects"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azicliwksplans "github.com/permguard/permguard/internal/cli/workspace/plans"
 	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
+	azicliwksremote "github.com/permguard/permguard/internal/cli/workspace/remote"
 	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
 )
 
 const (
@@ -42,15 +41,15 @@ const (
 
 // WorkspaceManager implements the internal manager to manage the .permguard directory.
 type WorkspaceManager struct {
-	ctx      	*aziclicommon.CliCommandContext
-	homeDir  	string
-	persMgr  	*azicliwkspers.PersistenceManager
-	remoteMgr 	*azicliwksremote.RemoteManager
-	cfgMgr   	*azicliwkscfg.ConfigManager
-	logsMgr  	*azicliwkslogs.LogsManager
-	rfsMgr   	*azicliwksrefs.RefsManager
-	objsMgr  	*azicliwksobjs.ObjectsManager
-	plansMgr 	*azicliwksplans.PlansManager
+	ctx       *aziclicommon.CliCommandContext
+	homeDir   string
+	persMgr   *azicliwkspers.PersistenceManager
+	remoteMgr *azicliwksremote.RemoteManager
+	cfgMgr    *azicliwkscfg.ConfigManager
+	logsMgr   *azicliwkslogs.LogsManager
+	rfsMgr    *azicliwksrefs.RefsManager
+	objsMgr   *azicliwksobjs.ObjectsManager
+	plansMgr  *azicliwksplans.PlansManager
 }
 
 // NewInternalManager creates a new internal manager.
@@ -63,7 +62,7 @@ func NewInternalManager(ctx *aziclicommon.CliCommandContext) *WorkspaceManager {
 		persMgr:   persMgr,
 		remoteMgr: azicliwksremote.NewRemoteManager(ctx),
 		cfgMgr:    azicliwkscfg.NewConfigManager(ctx, persMgr),
-		logsMgr:  azicliwkslogs.NewLogsManager(ctx, persMgr),
+		logsMgr:   azicliwkslogs.NewLogsManager(ctx, persMgr),
 		rfsMgr:    azicliwksrefs.NewRefsManager(ctx, persMgr),
 		objsMgr:   azicliwksobjs.NewObjectsManager(ctx, persMgr),
 		plansMgr:  azicliwksplans.NewPlansManager(ctx, persMgr),
@@ -242,8 +241,10 @@ func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, st
 	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
 		return nil, err
 	}
-	refs := fmt.Sprintf("%s/%d/%s", remoteName, accountID, repoName)
-	refID := azcrypto.ComputeStringSHA1(refs)
+	refID, err := m.rfsMgr.CalculateRefID(remoteName, accountID, repoName)
+	if err != nil {
+		return nil, err
+	}
 	m.logsMgr.Log(remoteName, refID, srvRepo.Refs, srvRepo.Refs, fmt.Sprintf("checkout: %s", repo))
 	return output, nil
 }
@@ -261,12 +262,10 @@ func (m *WorkspaceManager) ListRepos(out func(map[string]any, string, any, error
 	}
 	defer fileLock.Unlock()
 
-	remote, accountID, repo, _, errr := m.rfsMgr.GetCurrentHead()
-	if errr != nil {
-		return nil, errr
+	refID, err := m.rfsMgr.CalculateCurrentHeadRefID()
+	if err != nil {
+		return nil, err
 	}
-	refRepo := fmt.Sprintf("%s/%d/%s", remote, accountID, repo)
-
 	output := map[string]any{}
-	return m.cfgMgr.ListRepos(refRepo, output, out)
+	return m.cfgMgr.ListRepos(refID, output, out)
 }

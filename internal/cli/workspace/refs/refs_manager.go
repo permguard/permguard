@@ -97,8 +97,8 @@ func (m *RefsManager) readHeadConfig() (*HeadConfig, error) {
 	return &config, err
 }
 
-// GetRef gets the ref.
-func (m *RefsManager) GetRef(base string, remote string, accountID int64, repo string) (string, error) {
+// GetRefWithBase gets the ref with base.
+func (m *RefsManager) GetRefWithBase(base string, remote string, accountID int64, repo string) (string, error) {
 	var ref string
 	if base != "" {
 		ref = fmt.Sprintf("%s/%s/%d/%s", base, remote, accountID, repo)
@@ -108,14 +108,24 @@ func (m *RefsManager) GetRef(base string, remote string, accountID int64, repo s
 	return ref, nil
 }
 
-// CalculateRefID calculate the ref ID
-func (m *RefsManager) CalculateRefID(base string, remote string, accountID int64, repo string) (string, error) {
-	ref, err := m.GetRef(base, remote, accountID, repo)
+// GetRef gets the ref.
+func (m *RefsManager) GetRef(remote string, accountID int64, repo string) (string, error) {
+	return m.GetRefWithBase("", remote, accountID, repo)
+}
+
+// CalculateRefIDWithBase calculate the ref ID with base
+func (m *RefsManager) CalculateRefIDWithBase(base string, remote string, accountID int64, repo string) (string, error) {
+	ref, err := m.GetRefWithBase(base, remote, accountID, repo)
 	if err != nil {
 		return "", err
 	}
 	refID := azcrypto.ComputeStringSHA1(ref)
 	return refID, nil
+}
+
+// CalculateRefID calculate the ref ID
+func (m *RefsManager) CalculateRefID(remote string, accountID int64, repo string) (string, error) {
+	return m.CalculateRefIDWithBase("", remote, accountID, repo)
 }
 
 // GetCurrentHead gets the current head.
@@ -127,17 +137,28 @@ func (m *RefsManager) GetCurrentHead() (string, int64, string, string, error) {
 	return cfgHead.Head.Remote, cfgHead.Head.AccountID, cfgHead.Head.Repo, cfgHead.Head.Refs, nil
 }
 
+// CalculateCurrentHeadRefID gets the current head ref ID.
+func (m *RefsManager) CalculateCurrentHeadRefID() (string, error) {
+	remote, accountID, repo, _, err := m.GetCurrentHead()
+	if err != nil {
+		return "", err
+	}
+	return m.CalculateRefID(remote, accountID, repo)
+}
+
 // CheckoutHead checks out the head.
 func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, refHead string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	refIDStr := fmt.Sprintf("%s/%d/%s", remote, accountID, repo)
-	refID := azcrypto.ComputeStringSHA1(refIDStr)
+	refID, err := m.CalculateRefID(remote, accountID, repo)
+	if err != nil {
+		return nil, err
+	}
 	refPath := filepath.Join(hiddenRefsDir, refID)
 	refCfg := RefsConfig{
 		Objects: RefsObjectsConfig{
 			Commit: refHead,
 		},
 	}
-	err := m.saveConfig(refPath, true, &refCfg)
+	err = m.saveConfig(refPath, true, &refCfg)
 	if err != nil {
 		return nil, err
 	}
