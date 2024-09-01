@@ -39,13 +39,13 @@ func NewObjectsManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspe
 	}
 }
 
-// GetObjectsDir returns the objects directory.
-func (c *ObjectsManager) GetObjectsDir() string {
+// getObjectsDir returns the objects directory.
+func (c *ObjectsManager) getObjectsDir() string {
 	return hiddenObjectsDir
 }
 
 // Initalize the objects resources.
 func (c *ObjectsManager) Initalize() error {
-	_, err := c.persMgr.CreateDirIfNotExists(true, c.GetObjectsDir())
+	_, err := c.persMgr.CreateDirIfNotExists(true, c.getObjectsDir())
 	return err
 }

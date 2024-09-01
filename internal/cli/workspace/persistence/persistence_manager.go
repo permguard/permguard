@@ -31,7 +31,7 @@ import (
 // PersistenceManager implements the internal manager for the persistence file.
 type PersistenceManager struct {
 	rootDir string
-	ctx	*aziclicommon.CliCommandContext
+	ctx     *aziclicommon.CliCommandContext
 }
 
 // NewPersistenceManager creates a new persistenceuration manager.
@@ -48,7 +48,7 @@ func (p *PersistenceManager) CheckFileIfExists(relative bool, name string) (bool
 		name = filepath.Join(p.rootDir, name)
 	}
 	if _, err := os.Stat(name); err == nil {
-        return true, nil
+		return true, nil
 	} else if os.IsNotExist(err) {
 		return false, nil
 	}
@@ -60,25 +60,25 @@ func (p *PersistenceManager) CreateFileIfNotExists(relative bool, name string) (
 	if relative {
 		name = filepath.Join(p.rootDir, name)
 	}
-    if _, err := os.Stat(name); err == nil {
-        return false, nil
-    } else if os.IsNotExist(err) {
-        dir := filepath.Dir(name)
-        err := os.MkdirAll(dir, 0755)
-        if err != nil {
+	if _, err := os.Stat(name); err == nil {
+		return false, nil
+	} else if os.IsNotExist(err) {
+		dir := filepath.Dir(name)
+		err := os.MkdirAll(dir, 0755)
+		if err != nil {
 			return false, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("cli: failed to create directory %s", dir))
-        }
-        file, err := os.Create(name)
-        if err != nil {
-            return false, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to create file %s", name))
-        }
-        defer file.Close()
-    } else if os.IsExist(err) {
+		}
+		file, err := os.Create(name)
+		if err != nil {
+			return false, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to create file %s", name))
+		}
+		defer file.Close()
+	} else if os.IsExist(err) {
 		return false, nil
 	} else {
 		return false, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("cli: failed to stat directory %s", name))
-    }
-    return true, nil
+	}
+	return true, nil
 }
 
 // CreateDirIfNotExists creates a directory if it does not exist.
@@ -104,8 +104,8 @@ func (p *PersistenceManager) WriteFileIfNotExists(relative bool, name string, da
 	if relative {
 		name = filepath.Join(p.rootDir, name)
 	}
-    if _, err := os.Stat(name); err == nil {
-        return false, nil
+	if _, err := os.Stat(name); err == nil {
+		return false, nil
 	} else if os.IsExist(err) {
 		return false, nil
 	} else if os.IsNotExist(err) {
@@ -116,7 +116,7 @@ func (p *PersistenceManager) WriteFileIfNotExists(relative bool, name string, da
 }
 
 // WriteFile writes a file.
-func (p *PersistenceManager) WriteFile(relative bool, name string, data []byte, perm os.FileMode) (bool, error)  {
+func (p *PersistenceManager) WriteFile(relative bool, name string, data []byte, perm os.FileMode) (bool, error) {
 	if relative {
 		name = filepath.Join(p.rootDir, name)
 	}
@@ -127,8 +127,8 @@ func (p *PersistenceManager) WriteFile(relative bool, name string, data []byte, 
 	return true, nil
 }
 
-// AppndToFile appends to a file.
-func (p *PersistenceManager) AppndToFile(relative bool, name string, data []byte) (bool, error)  {
+// AppendToFile appends to a file.
+func (p *PersistenceManager) AppendToFile(relative bool, name string, data []byte) (bool, error) {
 	if relative {
 		name = filepath.Join(p.rootDir, name)
 	}
@@ -144,7 +144,7 @@ func (p *PersistenceManager) AppndToFile(relative bool, name string, data []byte
 }
 
 // ReadTOMLFile reads a TOML file.
-func (p *PersistenceManager) ReadTOMLFile(relative bool, name string, v interface{}) (error) {
+func (p *PersistenceManager) ReadTOMLFile(relative bool, name string, v interface{}) error {
 	if relative {
 		name = filepath.Join(p.rootDir, name)
 	}
