@@ -187,7 +187,9 @@ func (m *ConfigManager) ListRemotes(output map[string]any, out func(map[string]a
 		for cfgRemote := range cfg.Remotes {
 			remotes = append(remotes, cfgRemote)
 		}
-		output = out(nil, "remotes", remotes, nil)
+		if len(remotes) > 0 {
+			output = out(nil, "remotes", remotes, nil)
+		}
 	} else {
 		remotes := []interface{}{}
 		for cfgRemote := range cfg.Remotes {
@@ -258,7 +260,9 @@ func (m *ConfigManager) ListRepos(refRepo string, output map[string]any, out fun
 			}
 			repos = append(repos, cfgRepoTxt)
 		}
-		output = out(nil, "repos", repos, nil)
+		if len(repos) > 0 {
+			output = out(nil, "repos", repos, nil)
+		}
 	} else {
 		repos := []interface{}{}
 		for cfgRepo := range cfg.Repositories {
