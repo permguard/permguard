@@ -24,7 +24,6 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
-	azcrypto "github.com/permguard/permguard/pkg/extensions/crypto"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 

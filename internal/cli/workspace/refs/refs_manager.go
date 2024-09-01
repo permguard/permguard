@@ -137,6 +137,15 @@ func (m *RefsManager) GetCurrentHead() (string, int64, string, string, error) {
 	return cfgHead.Head.Remote, cfgHead.Head.AccountID, cfgHead.Head.Repo, cfgHead.Head.Refs, nil
 }
 
+// GetCurrentHeadRef gets the current head ref.
+func (m *RefsManager) GetCurrentHeadRef() (string, error) {
+	remote, accountID, repo, _, err := m.GetCurrentHead()
+	if err != nil {
+		return "", err
+	}
+	return m.GetRef(remote, accountID, repo)
+}
+
 // CalculateCurrentHeadRefID gets the current head ref ID.
 func (m *RefsManager) CalculateCurrentHeadRefID() (string, error) {
 	remote, accountID, repo, _, err := m.GetCurrentHead()
@@ -147,20 +156,20 @@ func (m *RefsManager) CalculateCurrentHeadRefID() (string, error) {
 }
 
 // CheckoutHead checks out the head.
-func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, refHead string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, commit string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (string, string, map[string]any, error) {
 	refID, err := m.CalculateRefID(remote, accountID, repo)
 	if err != nil {
-		return nil, err
+		return "", "", nil, err
 	}
 	refPath := filepath.Join(hiddenRefsDir, refID)
 	refCfg := RefsConfig{
 		Objects: RefsObjectsConfig{
-			Commit: refHead,
+			Commit: commit,
 		},
 	}
 	err = m.saveConfig(refPath, true, &refCfg)
 	if err != nil {
-		return nil, err
+		return "", "", nil, err
 	}
 	headCfg := HeadConfig{
 		Head: HeadRefsConfig{
@@ -173,7 +182,7 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 	headFile := m.getHeadFile()
 	err = m.saveConfig(headFile, true, &headCfg)
 	if err != nil {
-		return nil, err
+		return "", "", nil, err
 	}
 	if m.ctx.IsTerminalOutput() {
 		output = out(nil, "head", fmt.Sprintf("refs/%s", refID), nil)
@@ -188,5 +197,13 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 		remotes = append(remotes, remoteObj)
 		output = out(output, "head", remotes, nil)
 	}
-	return output, nil
+	ref, err := m.GetCurrentHeadRef()
+	if err != nil {
+		return "", "", nil, err
+	}
+	refID, err = m.CalculateCurrentHeadRefID()
+	if err != nil {
+		return "", "", nil, err
+	}
+	return ref, refID, output, nil
 }
