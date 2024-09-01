@@ -43,9 +43,3 @@ func NewPlansManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers
 func (c *PlansManager) getPlansDir() string {
 	return hiddenPlansDir
 }
-
-// Initalize the plans resources.
-func (c *PlansManager) Initalize() error {
-	_, err := c.persMgr.CreateDirIfNotExists(true, c.getPlansDir())
-	return err
-}

@@ -17,7 +17,10 @@
 package workspace
 
 import (
+	"fmt"
 	"path/filepath"
+
+	"github.com/gofrs/flock"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
@@ -27,11 +30,14 @@ import (
 	azicliwksplans "github.com/permguard/permguard/internal/cli/workspace/plans"
 	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
 	azicliwksremote "github.com/permguard/permguard/internal/cli/workspace/remote"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
 const (
 	// hiddenDir represents the permguard's hidden directory.
 	hiddenDir = ".permguard"
+	// hiddenLockFile represents the permguard's lock file.
+	hiddenLockFile = "permguard.lock"
 )
 
 // WorkspaceManager implements the internal manager to manage the .permguard directory.
@@ -62,4 +68,32 @@ func NewInternalManager(ctx *aziclicommon.CliCommandContext) *WorkspaceManager {
 		objsMgr:  azicliwksobjs.NewObjectsManager(ctx, persMgr),
 		plansMgr: azicliwksplans.NewPlansManager(ctx, persMgr),
 	}
+}
+
+// getHomeDir returns the home directory.
+func (m *WorkspaceManager) getHomeDir() string {
+	return m.homeDir
+}
+
+// getLockFile returns the lock file.
+func (m *WorkspaceManager) getLockFile() string {
+	return filepath.Join(m.getHomeDir(), hiddenLockFile)
+}
+
+// isWorkspaceDir checks if the directory is a workspace directory.
+func (m *WorkspaceManager) isWorkspaceDir() bool {
+	isValid, _ := m.persMgr.CheckFileIfExists(true, "")
+	return isValid
+}
+
+// tryLock tries to lock the workspace.
+func (m *WorkspaceManager) tryLock() (*flock.Flock, error) {
+	lockFile := m.getLockFile()
+	m.persMgr.CreateFileIfNotExists(true, lockFile)
+	fileLock := flock.New(lockFile)
+	lock, err := fileLock.TryLock()
+	if !lock || err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: could not acquire the lock, another process is using it %s", m.getLockFile()))
+	}
+	return fileLock, nil
 }

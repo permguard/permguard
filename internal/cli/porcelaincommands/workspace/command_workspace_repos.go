@@ -41,7 +41,7 @@ func runECommandForRepoWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 		return aziclicommon.ErrCommandSilent
 	}
 	wksMgr := azicliwksmanager.NewInternalManager(ctx)
-	output, err := wksMgr.ListRepos(outFunc(ctx, printer))
+	output, err := wksMgr.ExecListRepos(outFunc(ctx, printer))
 	if err != nil {
 		printer.Error(err)
 		return aziclicommon.ErrCommandSilent

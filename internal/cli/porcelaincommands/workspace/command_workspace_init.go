@@ -42,7 +42,7 @@ func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 	}
 	wksMgr := azicliwksmanager.NewInternalManager(ctx)
 
-	output, err := wksMgr.InitWorkspace(outFunc(ctx, printer))
+	output, err := wksMgr.ExecInitWorkspace(outFunc(ctx, printer))
 	if err != nil {
 		printer.Error(err)
 		return aziclicommon.ErrCommandSilent
