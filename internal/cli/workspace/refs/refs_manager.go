@@ -155,13 +155,27 @@ func (m *RefsManager) CalculateCurrentHeadRefID() (string, error) {
 	return m.CalculateRefID(remote, accountID, repo)
 }
 
+// createAndGetHeadRefFile creates and gets the head ref file.
+func (m *RefsManager) createAndGetHeadRefFile(remote string, refID string) (string, error) {
+	refDir := filepath.Join(hiddenRefsDir, remote)
+	_, err := m.persMgr.CreateDirIfNotExists(true, refDir)
+	if err != nil {
+		return "", err
+	}
+	refPath := filepath.Join(refDir, refID)
+	return refPath, err
+}
+
 // CheckoutHead checks out the head.
 func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, commit string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (string, string, map[string]any, error) {
 	refID, err := m.CalculateRefID(remote, accountID, repo)
 	if err != nil {
 		return "", "", nil, err
 	}
-	refPath := filepath.Join(hiddenRefsDir, refID)
+	refPath, err := m.createAndGetHeadRefFile(remote, refID)
+	if err != nil {
+		return "", "", nil, err
+	}
 	refCfg := RefsConfig{
 		Objects: RefsObjectsConfig{
 			Commit: commit,
@@ -185,7 +199,7 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 		return "", "", nil, err
 	}
 	if m.ctx.IsTerminalOutput() {
-		output = out(nil, "head", fmt.Sprintf("refs/%s", refID), nil)
+		output = out(nil, "head", fmt.Sprintf("refs/%s", refPath), nil)
 	} else {
 		remotes := []interface{}{}
 		remoteObj := map[string]any{

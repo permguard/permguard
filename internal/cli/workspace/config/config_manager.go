@@ -224,7 +224,7 @@ func (m *ConfigManager) AddRepo(remote string, accountID int64, repo string, ref
 			Remote: remote,
 			RefID:  refID,
 		}
-		cfg.Repositories[refID] = cfgRepo
+		cfg.Repositories[ref] = cfgRepo
 		m.saveConfig(true, cfg)
 	}
 	if m.ctx.IsTerminalOutput() {
