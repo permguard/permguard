@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	// hiddenLogsDir represents the hidden logs directory.
 	hiddenLogsDir = "logs"
 )
 
@@ -44,20 +45,20 @@ func NewLogsManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.
 	}
 }
 
-// GetLogsDir returns the logs directory.
-func (c *LogsManager) GetLogsDir() string {
+// getLogsDir returns the logs directory.
+func (c *LogsManager) getLogsDir() string {
 	return hiddenLogsDir
 }
 
 // Initalize the logs resources.
 func (c *LogsManager) Initalize() error {
-	_, err := c.persMgr.CreateDirIfNotExists(true, c.GetLogsDir())
+	_, err := c.persMgr.CreateDirIfNotExists(true, c.getLogsDir())
 	return err
 }
 
 // Log an entry
 func (c *LogsManager) Log(remote string, ref string, origin string, target string, action string) (bool, error) {
-	logDir := filepath.Join(c.GetLogsDir(), remote)
+	logDir := filepath.Join(c.getLogsDir(), remote)
 	_, err := c.persMgr.CreateDirIfNotExists(true, logDir)
 	if err != nil {
 		return false, err
@@ -67,7 +68,7 @@ func (c *LogsManager) Log(remote string, ref string, origin string, target strin
 	if err != nil {
 		return false, err
 	}
-	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+	timestamp := time.Now().UTC().Format("2006-01-02 15:04:05.000Z")
 	logLine := fmt.Sprintf("%s %s %s %s", origin, target, timestamp, action)
 	return c.persMgr.AppndToFile(true, logFile, []byte(logLine))
 }
