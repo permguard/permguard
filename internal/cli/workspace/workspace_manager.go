@@ -228,7 +228,7 @@ func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, st
 	if err != nil {
 		return nil, err
 	}
-	srvRepo, err := m.remoteMgr.GetServerRemoteRepo(accountID, repoName, cfgRemote.Server, cfgRemote.AAP, cfgRemote.PAP)
+	srvRepo, err := m.remoteMgr.GetServerRemoteRepo(accountID, repoName, cfgRemote.Server, cfgRemote.AAPPort, cfgRemote.PAPPort)
 	if err != nil {
 		return nil, err
 	}

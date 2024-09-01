@@ -121,9 +121,9 @@ func (m *ConfigManager) AddRemote(remote string, server string, aap int, pap int
 		}
 	}
 	cfgRemote := RemoteConfig{
-		Server: server,
-		AAP:    aap,
-		PAP:    pap,
+		Server:  server,
+		AAPPort: aap,
+		PAPPort: pap,
 	}
 	cfg.Remotes[remote] = cfgRemote
 	m.saveConfig(true, cfg)
@@ -134,8 +134,8 @@ func (m *ConfigManager) AddRemote(remote string, server string, aap int, pap int
 		remoteObj := map[string]any{
 			"remote": remote,
 			"server": cfgRemote.Server,
-			"aap":    cfgRemote.AAP,
-			"pap":    cfgRemote.PAP,
+			"aap":    cfgRemote.AAPPort,
+			"pap":    cfgRemote.PAPPort,
 		}
 		remotes = append(remotes, remoteObj)
 		output = out(output, "remote", remotes, nil)
@@ -164,8 +164,8 @@ func (m *ConfigManager) RemoveRemote(remote string, output map[string]any, out f
 		remoteObj := map[string]any{
 			"remote": remote,
 			"server": cfgRemote.Server,
-			"aap":    cfgRemote.AAP,
-			"pap":    cfgRemote.PAP,
+			"aap":    cfgRemote.AAPPort,
+			"pap":    cfgRemote.PAPPort,
 		}
 		remotes = append(remotes, remoteObj)
 		output = out(output, "remotes", remotes, nil)
@@ -195,8 +195,8 @@ func (m *ConfigManager) ListRemotes(output map[string]any, out func(map[string]a
 			remoteObj := map[string]any{
 				"remote": cfgRemote,
 				"server": cfg.Remotes[cfgRemote].Server,
-				"aap":    cfg.Remotes[cfgRemote].AAP,
-				"pap":    cfg.Remotes[cfgRemote].PAP,
+				"aap":    cfg.Remotes[cfgRemote].AAPPort,
+				"pap":    cfg.Remotes[cfgRemote].PAPPort,
 			}
 			remotes = append(remotes, remoteObj)
 		}
@@ -222,7 +222,7 @@ func (m *ConfigManager) AddRepo(remote string, accountID int64, repo string, ref
 	if !exists {
 		cfgRepo = RepositoryConfig{
 			Remote: remote,
-			Refs:   refID,
+			RefID:  refID,
 		}
 		cfg.Repositories[refID] = cfgRepo
 		m.saveConfig(true, cfg)
@@ -233,7 +233,7 @@ func (m *ConfigManager) AddRepo(remote string, accountID int64, repo string, ref
 		remotes := []interface{}{}
 		remoteObj := map[string]any{
 			"remote": remote,
-			"refs":   cfgRepo.Refs,
+			"refs":   cfgRepo.RefID,
 		}
 		remotes = append(remotes, remoteObj)
 		output = out(output, "repos", remotes, nil)
@@ -265,9 +265,9 @@ func (m *ConfigManager) ListRepos(refRepo string, output map[string]any, out fun
 		for cfgRepo := range cfg.Repositories {
 			isActive := refRepo == cfgRepo
 			repoObj := map[string]any{
-				"remote":  cfg.Repositories[cfgRepo].Remote,
-				"repo": cfgRepo,
-				"refs": cfg.Repositories[cfgRepo].Refs,
+				"remote": cfg.Repositories[cfgRepo].Remote,
+				"repo":   cfgRepo,
+				"refs":   cfg.Repositories[cfgRepo].RefID,
 				"active": isActive,
 			}
 			repos = append(repos, repoObj)
