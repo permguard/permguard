@@ -178,7 +178,7 @@ func (m *WorkspaceManager) CheckoutRepo(repoURI string, out func(map[string]any,
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
 	}
 
-	remote, accountID, repo, err := azicliwksvals.SanitizeRepo(repoURI)
+	repoInfo, err := azicliwksvals.SanitizeRepo(repoURI)
 	if err != nil {
 		return nil, err
 	}
@@ -189,23 +189,23 @@ func (m *WorkspaceManager) CheckoutRepo(repoURI string, out func(map[string]any,
 	}
 	defer fileLock.Unlock()
 
-	cfgRemote, err := m.cfgMgr.GetRemote(remote)
+	cfgRemote, err := m.cfgMgr.GetRemote(repoInfo.Remote)
 	if err != nil {
 		return nil, err
 	}
-	srvRepo, err := m.rmtMgr.GetServerRemoteRepo(accountID, repo, cfgRemote.Server, cfgRemote.AAPPort, cfgRemote.PAPPort)
+	srvRepo, err := m.rmtMgr.GetServerRemoteRepo(repoInfo.AccountID, repoInfo.Repo, cfgRemote.Server, cfgRemote.AAPPort, cfgRemote.PAPPort)
 	if err != nil {
 		return nil, err
 	}
-	ref, refID, output, err := m.rfsMgr.CheckoutHead(remote, accountID, repo, srvRepo.Refs, nil, out)
+	ref, refID, output, err := m.rfsMgr.CheckoutHead(repoInfo.Remote, repoInfo.AccountID, repoInfo.Repo, srvRepo.Refs, nil, out)
 	if err != nil {
 		return nil, err
 	}
-	output, err = m.cfgMgr.ExecAddRepo(remote, accountID, repo, ref, refID, output, out)
+	output, err = m.cfgMgr.ExecAddRepo(repoInfo.Remote, repoInfo.AccountID, repoInfo.Repo, ref, refID, output, out)
 	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
 		return nil, err
 	}
-	m.logsMgr.Log(remote, refID, srvRepo.Refs, srvRepo.Refs, fmt.Sprintf("checkout: %s", repoURI))
+	m.logsMgr.Log(repoInfo.Remote, refID, srvRepo.Refs, srvRepo.Refs, fmt.Sprintf("checkout: %s", repoURI))
 	return output, nil
 }
 

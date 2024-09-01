@@ -25,30 +25,45 @@ import (
 	azvalidators "github.com/permguard/permguard/pkg/authz/validators"
 )
 
+// RepoInfo contains the repo information.
+type RepoInfo struct {
+    Remote string
+    AccountID  int64
+    Repo   string
+}
+
 // SanitizeRepo sanitizes the repo name.
-func SanitizeRepo(repo string) (string, int64, string, error) {
-	repo = strings.ToLower(repo)
-	items := strings.Split(repo, "/")
-	if len(items) < 3 {
-		return "", 0, "", azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo %s", repo))
-	}
-	remoteName, err := SanitizeRemote(items[0])
-	if err != nil {
-		return "", 0, "", azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid remote %s", remoteName))
-	}
-	accountIDStr := items[1]
-	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
-	if err != nil {
-		return "", 0, "", azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
-	}
-	err = azvalidators.ValidateAccountID("repo", accountID)
-	if err != nil {
-		return "", 0, "", azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
-	}
-	repoName := items[2]
-	err = azvalidators.ValidateName("repo", repoName)
-	if err != nil {
-		return "", 0, "", azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo name %s", repoName))
-	}
-	return remoteName, accountID, repoName, nil
+func SanitizeRepo(repo string) (RepoInfo, error) {
+    var result RepoInfo
+    repo = strings.ToLower(repo)
+    items := strings.Split(repo, "/")
+    if len(items) < 3 {
+        return result, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo %s", repo))
+    }
+
+    remoteName, err := SanitizeRemote(items[0])
+    if err != nil {
+        return result, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid remote %s", remoteName))
+    }
+    result.Remote = remoteName
+
+    accountIDStr := items[1]
+    accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
+    if err != nil {
+        return result, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
+    }
+    err = azvalidators.ValidateAccountID("repo", accountID)
+    if err != nil {
+        return result, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
+    }
+    result.AccountID = accountID
+
+    repoName := items[2]
+    err = azvalidators.ValidateName("repo", repoName)
+    if err != nil {
+        return result, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo name %s", repoName))
+    }
+    result.Repo = repoName
+
+    return result, nil
 }
