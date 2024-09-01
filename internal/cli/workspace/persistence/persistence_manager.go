@@ -127,6 +127,22 @@ func (p *PersistenceManager) WriteFile(relative bool, name string, data []byte, 
 	return true, nil
 }
 
+// AppndToFile appends to a file.
+func (p *PersistenceManager) AppndToFile(relative bool, name string, data []byte) (bool, error)  {
+	if relative {
+		name = filepath.Join(p.rootDir, name)
+	}
+	file, err := os.OpenFile(name, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return false, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write file %s", name))
+	}
+	defer file.Close()
+	if _, err := file.WriteString(string(data)); err != nil {
+		return false, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write file %s", name))
+	}
+	return true, nil
+}
+
 // ReadTOMLFile reads a TOML file.
 func (p *PersistenceManager) ReadTOMLFile(relative bool, name string, v interface{}) (error) {
 	if relative {
