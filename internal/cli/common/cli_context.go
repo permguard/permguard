@@ -35,7 +35,7 @@ func CreateContextAndPrinter(deps azcli.CliDependenciesProvider, cmd *cobra.Comm
 	if err != nil {
 		return nil, nil, err
 	}
-	printer, err := deps.CreatePrinter(ctx.GetVerbose(), ctx.GetOutput())
+	printer, err := deps.CreatePrinter(ctx.IsVerbose(), ctx.GetOutput())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -89,8 +89,8 @@ func (c *CliCommandContext) GetViper() *viper.Viper {
 	return c.v
 }
 
-// GetVerbose returns true if the verbose.
-func (c *CliCommandContext) GetVerbose() bool {
+// IsVerbose returns true if verbosity is enabled.
+func (c *CliCommandContext) IsVerbose() bool {
 	return c.verbose
 }
 
