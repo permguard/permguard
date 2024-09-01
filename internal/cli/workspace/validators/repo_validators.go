@@ -21,48 +21,57 @@ import (
 	"strconv"
 	"strings"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azvalidators "github.com/permguard/permguard/pkg/authz/validators"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
 // RepoInfo contains the repo information.
 type RepoInfo struct {
-    Remote string
-    AccountID  int64
-    Repo   string
+	Remote    string
+	AccountID int64
+	Repo      string
 }
 
-// SanitizeRepo sanitizes the repo name.
-func SanitizeRepo(repo string) (*RepoInfo, error) {
-    result := &RepoInfo{}
-    repo = strings.ToLower(repo)
-    items := strings.Split(repo, "/")
-    if len(items) < 3 {
-        return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo %s", repo))
-    }
+// SanitizeRepo sanitizes the remote name.
+func SanitizeRepo(repoURI string) (string, error) {
+	repoURI = strings.ToLower(repoURI)
+	if _, err := ExtractFromRepoURI(repoURI); err != nil {
+		return "", err
+	}
+	return repoURI, nil
+}
 
-    remoteName, err := SanitizeRemote(items[0])
-    if err != nil {
-        return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid remote %s", remoteName))
-    }
-    result.Remote = remoteName
+// ExtractFromRepoURI sanitizes the repo name.
+func ExtractFromRepoURI(repoURI string) (*RepoInfo, error) {
+	result := &RepoInfo{}
+	repoURI = strings.ToLower(repoURI)
+	items := strings.Split(repoURI, "/")
+	if len(items) < 3 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo %s", repoURI))
+	}
 
-    accountIDStr := items[1]
-    accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
-    if err != nil {
-        return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
-    }
-    err = azvalidators.ValidateAccountID("repo", accountID)
-    if err != nil {
-        return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
-    }
-    result.AccountID = accountID
+	remoteName, err := SanitizeRemote(items[0])
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid remote %s", remoteName))
+	}
+	result.Remote = remoteName
 
-    repoName := items[2]
-    err = azvalidators.ValidateName("repo", repoName)
-    if err != nil {
-        return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo name %s", repoName))
-    }
-    result.Repo = repoName
-    return result, nil
+	accountIDStr := items[1]
+	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
+	}
+	err = azvalidators.ValidateAccountID("repo", accountID)
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
+	}
+	result.AccountID = accountID
+
+	repoName := items[2]
+	err = azvalidators.ValidateName("repo", repoName)
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo name %s", repoName))
+	}
+	result.Repo = repoName
+	return result, nil
 }
