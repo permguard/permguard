@@ -97,6 +97,27 @@ func (m *RefsManager) readHeadConfig() (*HeadConfig, error) {
 	return &config, err
 }
 
+// GetRef gets the ref.
+func (m *RefsManager) GetRef(base string, remote string, accountID int64, repo string) (string, error) {
+	var ref string
+	if base != "" {
+		ref = fmt.Sprintf("%s/%s/%d/%s", base, remote, accountID, repo)
+	} else {
+		ref = fmt.Sprintf("%s/%d/%s", remote, accountID, repo)
+	}
+	return ref, nil
+}
+
+// CalculateRefID calculate the ref ID
+func (m *RefsManager) CalculateRefID(base string, remote string, accountID int64, repo string) (string, error) {
+	ref, err := m.GetRef(base, remote, accountID, repo)
+	if err != nil {
+		return "", err
+	}
+	refID := azcrypto.ComputeStringSHA1(ref)
+	return refID, nil
+}
+
 // GetCurrentHead gets the current head.
 func (m *RefsManager) GetCurrentHead() (string, int64, string, string, error) {
 	cfgHead, err := m.readHeadConfig()
