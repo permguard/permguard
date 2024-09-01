@@ -241,3 +241,37 @@ func (m *ConfigManager) AddRepo(remote string, accountID int64, repo string, out
 	}
 	return output, nil
 }
+
+// ListRepos lists the repos.
+func (m *ConfigManager) ListRepos(refRepo string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	cfg, err := m.readConfig()
+	if err != nil {
+		return output, err
+	}
+	if m.ctx.IsTerminalOutput() {
+		repos := []string{}
+		for cfgRepo := range cfg.Repositories {
+			isActive := refRepo == cfgRepo
+			cfgRepoTxt := cfgRepo
+			if isActive {
+				cfgRepoTxt = fmt.Sprintf("*%s", cfgRepo)
+			}
+			repos = append(repos, cfgRepoTxt)
+		}
+		output = out(nil, "repos", repos, nil)
+	} else {
+		repos := []interface{}{}
+		for cfgRepo := range cfg.Repositories {
+			isActive := refRepo == cfgRepo
+			repoObj := map[string]any{
+				"remote":  cfg.Repositories[cfgRepo].Remote,
+				"repo": cfgRepo,
+				"refs": cfg.Repositories[cfgRepo].Refs,
+				"active": isActive,
+			}
+			repos = append(repos, repoObj)
+		}
+		output = out(output, "repos", repos, nil)
+	}
+	return output, nil
+}
