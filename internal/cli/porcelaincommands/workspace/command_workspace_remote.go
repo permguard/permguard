@@ -41,7 +41,7 @@ func runECommandForRemoteWorkspace(deps azcli.CliDependenciesProvider, cmd *cobr
 		return aziclicommon.ErrCommandSilent
 	}
 	wksMgr := azicliwksmanager.NewInternalManager(ctx)
-	output, err := wksMgr.ListRemotes(outFunc(ctx, printer))
+	output, err := wksMgr.ExecListRemotes(outFunc(ctx, printer))
 	if err != nil {
 		printer.Error(err)
 		return aziclicommon.ErrCommandSilent

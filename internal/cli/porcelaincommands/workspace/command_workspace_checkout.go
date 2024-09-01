@@ -47,7 +47,7 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 	}
 	wksMgr := azicliwksmanager.NewInternalManager(ctx)
 	repo := args[0]
-	output, err := wksMgr.CheckoutRepo(repo, outFunc(ctx, printer))
+	output, err := wksMgr.ExecCheckoutRepo(repo, outFunc(ctx, printer))
 	if err != nil {
 		printer.Error(err)
 		return aziclicommon.ErrCommandSilent

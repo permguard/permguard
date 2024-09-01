@@ -50,8 +50,8 @@ func (c *LogsManager) getLogsDir() string {
 	return hiddenLogsDir
 }
 
-// Initalize the logs resources.
-func (c *LogsManager) Initalize() error {
+// ExecInitalize the logs resources.
+func (c *LogsManager) ExecInitalize() error {
 	_, err := c.persMgr.CreateDirIfNotExists(true, c.getLogsDir())
 	return err
 }

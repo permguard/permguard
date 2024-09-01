@@ -47,7 +47,7 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps azcli.CliDependenci
 	}
 	wksMgr := azicliwksmanager.NewInternalManager(ctx)
 	remote := args[0]
-	output, err := wksMgr.RemoveRemote(remote, outFunc(ctx, printer))
+	output, err := wksMgr.ExecRemoveRemote(remote, outFunc(ctx, printer))
 	if err != nil {
 		printer.Error(err)
 		return aziclicommon.ErrCommandSilent

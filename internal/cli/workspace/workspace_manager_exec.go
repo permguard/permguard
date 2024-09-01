@@ -18,50 +18,14 @@ package workspace
 
 import (
 	"fmt"
-	"path/filepath"
-
-	"github.com/gofrs/flock"
 
 	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
 )
 
-const (
-	// hiddenLockFile represents the permguard's lock file.
-	hiddenLockFile = "permguard.lock"
-)
-
-// getHomeDir returns the home directory.
-func (m *WorkspaceManager) getHomeDir() string {
-	return m.homeDir
-}
-
-// getLockFile returns the lock file.
-func (m *WorkspaceManager) getLockFile() string {
-	return filepath.Join(m.getHomeDir(), hiddenLockFile)
-}
-
-// isWorkspaceDir checks if the directory is a workspace directory.
-func (m *WorkspaceManager) isWorkspaceDir() bool {
-	isValid, _ := m.persMgr.CheckFileIfExists(true, "")
-	return isValid
-}
-
-// tryLock tries to lock the workspace.
-func (m *WorkspaceManager) tryLock() (*flock.Flock, error) {
-	lockFile := m.getLockFile()
-	m.persMgr.CreateFileIfNotExists(true, lockFile)
-	fileLock := flock.New(lockFile)
-	lock, err := fileLock.TryLock()
-	if !lock || err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: could not acquire the lock, another process is using it %s", m.getLockFile()))
-	}
-	return fileLock, nil
-}
-
-// InitWorkspace the workspace.
-func (m *WorkspaceManager) InitWorkspace(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+// ExecInitWorkspace the workspace.
+func (m *WorkspaceManager) ExecInitWorkspace(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	homeDir := m.getHomeDir()
 	res, err := m.persMgr.CreateDirIfNotExists(false, homeDir)
 	if err != nil {
@@ -79,11 +43,11 @@ func (m *WorkspaceManager) InitWorkspace(out func(map[string]any, string, any, e
 		firstInit = false
 	}
 	initializers := []func() error{
-		m.logsMgr.Initalize,
+		m.logsMgr.ExecInitalize,
 		m.cfgMgr.ExecInitialize,
-		m.rfsMgr.Initalize,
-		m.objsMgr.Initalize,
-		m.plansMgr.Initalize,
+		m.rfsMgr.ExecInitalize,
+		m.objsMgr.ExecInitalize,
+		m.plansMgr.ExecInitalize,
 	}
 	for _, initializer := range initializers {
 		err := initializer()
@@ -111,8 +75,8 @@ func (m *WorkspaceManager) InitWorkspace(out func(map[string]any, string, any, e
 	return output, nil
 }
 
-// AddRemote adds a remote.
-func (m *WorkspaceManager) AddRemote(remote string, server string, aapPort int, papPort int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+// ExecAddRemote adds a remote.
+func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort int, papPort int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
 	}
@@ -135,8 +99,8 @@ func (m *WorkspaceManager) AddRemote(remote string, server string, aapPort int, 
 	return m.cfgMgr.ExecAddRemote(remote, server, aapPort, papPort, nil, out)
 }
 
-// RemoveRemote removes a remote.
-func (m *WorkspaceManager) RemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+// ExecRemoveRemote removes a remote.
+func (m *WorkspaceManager) ExecRemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
 	}
@@ -157,8 +121,8 @@ func (m *WorkspaceManager) RemoveRemote(remote string, out func(map[string]any, 
 	return m.cfgMgr.ExecRemoveRemote(remote, nil, out)
 }
 
-// ListRemotes lists the remotes.
-func (m *WorkspaceManager) ListRemotes(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+// ExecListRemotes lists the remotes.
+func (m *WorkspaceManager) ExecListRemotes(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
 	}
@@ -172,8 +136,8 @@ func (m *WorkspaceManager) ListRemotes(out func(map[string]any, string, any, err
 	return m.cfgMgr.ExecListRemotes(nil, out)
 }
 
-// CheckoutRepo checks out a repository.
-func (m *WorkspaceManager) CheckoutRepo(repoURI string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+// ExecCheckoutRepo checks out a repository.
+func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
 	}
@@ -209,8 +173,8 @@ func (m *WorkspaceManager) CheckoutRepo(repoURI string, out func(map[string]any,
 	return output, nil
 }
 
-// ListRepos lists the repos.
-func (m *WorkspaceManager) ListRepos(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+// ExecListRepos lists the repos.
+func (m *WorkspaceManager) ExecListRepos(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
 	}
