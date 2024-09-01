@@ -207,9 +207,7 @@ func (m *ConfigManager) ListRemotes(output map[string]any, out func(map[string]a
 }
 
 // AddRepo adds a repo.
-func (m *ConfigManager) AddRepo(remote string, accountID int64, repo string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	refIDStr := fmt.Sprintf("%s/%d/%s", remote, accountID, repo)
-	refID := azcrypto.ComputeStringSHA1(refIDStr)
+func (m *ConfigManager) AddRepo(remote string, accountID int64, repo string, ref string, refID string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	cfg, err := m.readConfig()
 	if err != nil {
 		return output, err
@@ -217,7 +215,7 @@ func (m *ConfigManager) AddRepo(remote string, accountID int64, repo string, out
 	var cfgRepo RepositoryConfig
 	exists := false
 	for repo := range cfg.Repositories {
-		if refIDStr == repo {
+		if ref == repo {
 			cfgRepo = cfg.Repositories[repo]
 			exists = true
 		}
@@ -227,11 +225,11 @@ func (m *ConfigManager) AddRepo(remote string, accountID int64, repo string, out
 			Remote: remote,
 			Refs:   refID,
 		}
-		cfg.Repositories[refIDStr] = cfgRepo
+		cfg.Repositories[refID] = cfgRepo
 		m.saveConfig(true, cfg)
 	}
 	if m.ctx.IsTerminalOutput() {
-		output = out(nil, "repo", refIDStr, nil)
+		output = out(nil, "repo", refID, nil)
 	} else {
 		remotes := []interface{}{}
 		remoteObj := map[string]any{
