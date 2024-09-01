@@ -1,0 +1,230 @@
+// Copyright 2024 Nitro Agility S.r.l.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package workspace
+
+import (
+	"fmt"
+	"path/filepath"
+
+	"github.com/gofrs/flock"
+
+	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
+	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
+)
+
+const (
+	// hiddenLockFile represents the permguard's lock file.
+	hiddenLockFile = "permguard.lock"
+)
+
+// getHomeDir returns the home directory.
+func (m *WorkspaceManager) getHomeDir() string {
+	return m.homeDir
+}
+
+// getLockFile returns the lock file.
+func (m *WorkspaceManager) getLockFile() string {
+	return filepath.Join(m.getHomeDir(), hiddenLockFile)
+}
+
+// isWorkspaceDir checks if the directory is a workspace directory.
+func (m *WorkspaceManager) isWorkspaceDir() bool {
+	isValid, _ := m.persMgr.CheckFileIfExists(true, "")
+	return isValid
+}
+
+// tryLock tries to lock the workspace.
+func (m *WorkspaceManager) tryLock() (*flock.Flock, error) {
+	lockFile := m.getLockFile()
+	m.persMgr.CreateFileIfNotExists(true, lockFile)
+	fileLock := flock.New(lockFile)
+	lock, err := fileLock.TryLock()
+	if !lock || err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: could not acquire the lock, another process is using it %s", m.getLockFile()))
+	}
+	return fileLock, nil
+}
+
+// InitWorkspace the workspace.
+func (m *WorkspaceManager) InitWorkspace(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	homeDir := m.getHomeDir()
+	res, err := m.persMgr.CreateDirIfNotExists(false, homeDir)
+	if err != nil {
+		return nil, err
+	}
+
+	fileLock, err := m.tryLock()
+	if err != nil {
+		return nil, err
+	}
+	defer fileLock.Unlock()
+
+	firstInit := true
+	if !res {
+		firstInit = false
+	}
+	initializers := []func() error{
+		m.logsMgr.Initalize,
+		m.cfgMgr.Initialize,
+		m.rfsMgr.Initalize,
+		m.objsMgr.Initalize,
+		m.plansMgr.Initalize,
+	}
+	for _, initializer := range initializers {
+		err := initializer()
+		if err != nil {
+			return nil, err
+		}
+	}
+	var msg string
+	var output map[string]any
+	if m.ctx.IsTerminalOutput() {
+		if firstInit {
+			msg = fmt.Sprintf("Initialized empty PermGuard repository in %s", homeDir)
+		} else {
+			msg = fmt.Sprintf("Reinitialized existing PermGuard repository in %s", homeDir)
+		}
+		output = out(nil, "init", msg, nil)
+	} else {
+		remotes := []interface{}{}
+		remoteObj := map[string]any{
+			"cwd": m.getHomeDir(),
+		}
+		remotes = append(remotes, remoteObj)
+		output = out(nil, "workspaces", remotes, nil)
+	}
+	return output, nil
+}
+
+// AddRemote adds a remote.
+func (m *WorkspaceManager) AddRemote(remote string, server string, aapPort int, papPort int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	if !m.isWorkspaceDir() {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
+	}
+	if !azvalidators.IsValidHostname(server) {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid server %s", server))
+	}
+	if !azvalidators.IsValidPort(aapPort) {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid aap port %d", aapPort))
+	}
+	if !azvalidators.IsValidPort(papPort) {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid pap port %d", papPort))
+	}
+
+	fileLock, err := m.tryLock()
+	if err != nil {
+		return nil, err
+	}
+	defer fileLock.Unlock()
+
+	return m.cfgMgr.AddRemote(remote, server, aapPort, papPort, nil, out)
+}
+
+// RemoveRemote removes a remote.
+func (m *WorkspaceManager) RemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	if !m.isWorkspaceDir() {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
+	}
+
+	fileLock, err := m.tryLock()
+	if err != nil {
+		return nil, err
+	}
+	defer fileLock.Unlock()
+
+	headRemote, _, _, _, err := m.rfsMgr.GetCurrentHead()
+	if err != nil {
+		return nil, err
+	}
+	if headRemote == remote {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, fmt.Sprintf("cli: cannot remove the remote used by the currently checked out account %s", remote))
+	}
+
+	return m.cfgMgr.RemoveRemote(remote, nil, out)
+}
+
+// ListRemotes lists the remotes.
+func (m *WorkspaceManager) ListRemotes(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	if !m.isWorkspaceDir() {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
+	}
+
+	fileLock, err := m.tryLock()
+	if err != nil {
+		return nil, err
+	}
+	defer fileLock.Unlock()
+
+	return m.cfgMgr.ListRemotes(nil, out)
+}
+
+// CheckoutRepo checks out a repository.
+func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	if !m.isWorkspaceDir() {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
+	}
+
+	remoteName, accountID, repoName, err := azicliwksvals.SanitizeRepo(repo)
+	if err != nil {
+		return nil, err
+	}
+
+	fileLock, err := m.tryLock()
+	if err != nil {
+		return nil, err
+	}
+	defer fileLock.Unlock()
+
+	cfgRemote, err := m.cfgMgr.GetRemote(remoteName)
+	if err != nil {
+		return nil, err
+	}
+	srvRepo, err := m.rmtMgr.GetServerRemoteRepo(accountID, repoName, cfgRemote.Server, cfgRemote.AAPPort, cfgRemote.PAPPort)
+	if err != nil {
+		return nil, err
+	}
+	ref, refID, output, err := m.rfsMgr.CheckoutHead(remoteName, accountID, repoName, srvRepo.Refs, nil, out)
+	if err != nil {
+		return nil, err
+	}
+	output, err = m.cfgMgr.AddRepo(remoteName, accountID, repoName, ref, refID, output, out)
+	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
+		return nil, err
+	}
+	m.logsMgr.Log(remoteName, refID, srvRepo.Refs, srvRepo.Refs, fmt.Sprintf("checkout: %s", repo))
+	return output, nil
+}
+
+// ListRepos lists the repos.
+func (m *WorkspaceManager) ListRepos(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	if !m.isWorkspaceDir() {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
+	}
+
+	fileLock, err := m.tryLock()
+	if err != nil {
+		return nil, err
+	}
+	defer fileLock.Unlock()
+
+	refID, err := m.rfsMgr.CalculateCurrentHeadRefID()
+	if err != nil {
+		return nil, err
+	}
+	return m.cfgMgr.ListRepos(refID, nil, out)
+}

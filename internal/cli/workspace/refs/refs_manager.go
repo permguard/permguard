@@ -168,6 +168,9 @@ func (m *RefsManager) createAndGetHeadRefFile(remote string, refID string) (stri
 
 // CheckoutHead checks out the head.
 func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, commit string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (string, string, map[string]any, error) {
+	if output == nil {
+		output = map[string]any{}
+	}
 	refID, err := m.CalculateRefID(remote, accountID, repo)
 	if err != nil {
 		return "", "", nil, err

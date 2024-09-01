@@ -107,6 +107,9 @@ func (m *ConfigManager) GetRemote(remote string) (*RemoteConfig, error) {
 
 // AddRemote adds a remote.
 func (m *ConfigManager) AddRemote(remote string, server string, aap int, pap int, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	if output == nil {
+		output = map[string]any{}
+	}
 	remote, err := azicliwksvals.SanitizeRemote(remote)
 	if err != nil {
 		return output, err
@@ -145,6 +148,9 @@ func (m *ConfigManager) AddRemote(remote string, server string, aap int, pap int
 
 // RemoveRemote removes a remote.
 func (m *ConfigManager) RemoveRemote(remote string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	if output == nil {
+		output = map[string]any{}
+	}
 	remote, err := azicliwksvals.SanitizeRemote(remote)
 	if err != nil {
 		return output, err
@@ -177,6 +183,9 @@ func (m *ConfigManager) RemoveRemote(remote string, output map[string]any, out f
 
 // ListRemotes lists the remotes.
 func (m *ConfigManager) ListRemotes(output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	if output == nil {
+		output = map[string]any{}
+	}
 	cfg, err := m.readConfig()
 	if err != nil {
 		return output, err
@@ -207,6 +216,9 @@ func (m *ConfigManager) ListRemotes(output map[string]any, out func(map[string]a
 
 // AddRepo adds a repo.
 func (m *ConfigManager) AddRepo(remote string, accountID int64, repo string, ref string, refID string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	if output == nil {
+		output = map[string]any{}
+	}
 	cfg, err := m.readConfig()
 	if err != nil {
 		return output, err
@@ -243,6 +255,9 @@ func (m *ConfigManager) AddRepo(remote string, accountID int64, repo string, ref
 
 // ListRepos lists the repos.
 func (m *ConfigManager) ListRepos(refRepo string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	if output == nil {
+		output = map[string]any{}
+	}
 	cfg, err := m.readConfig()
 	if err != nil {
 		return output, err

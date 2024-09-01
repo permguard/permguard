@@ -29,7 +29,7 @@ import (
 )
 
 // runECommand runs the command.
-func runECommand(cmdInfo azcli.CliInfo, cmd *cobra.Command) error {
+func runECommand(cmd *cobra.Command) error {
 	return cmd.Help()
 }
 
@@ -62,7 +62,7 @@ func Run(commandsInitializer azcli.CliInitializer) {
 		Short:         cmdInfo.Short,
 		Long:          cmdInfo.Long,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommand(cmdInfo, cmd)
+			return runECommand(cmd)
 		},
 	}
 
