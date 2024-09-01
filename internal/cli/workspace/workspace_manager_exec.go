@@ -142,7 +142,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
 	}
 
-	repoInfo, err := azicliwksvals.SanitizeRepo(repoURI)
+	repoInfo, err := azicliwksvals.ExtractFromRepoURI(repoURI)
 	if err != nil {
 		return nil, err
 	}
@@ -152,6 +152,11 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 		return nil, err
 	}
 	defer fileLock.Unlock()
+
+	repo, _ := m.cfgMgr.GetRepo(repoURI)
+	if repo != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: repo %s already exists", repoURI))
+	}
 
 	cfgRemote, err := m.cfgMgr.GetRemote(repoInfo.Remote)
 	if err != nil {

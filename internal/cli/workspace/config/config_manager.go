@@ -92,3 +92,20 @@ func (m *ConfigManager) GetRemote(remote string) (*RemoteConfig, error) {
 	cfgRemote := cfg.Remotes[remote]
 	return &cfgRemote, nil
 }
+
+// GetRepo gets a repo.
+func (m *ConfigManager) GetRepo(repoURI string) (*RepositoryConfig, error) {
+	repoURI, err := azicliwksvals.SanitizeRepo(repoURI)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := m.readConfig()
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := cfg.Repositories[repoURI]; !ok {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: repo %s does not exist", repoURI))
+	}
+	cfgRepo := cfg.Repositories[repoURI]
+	return &cfgRepo, nil
+}
