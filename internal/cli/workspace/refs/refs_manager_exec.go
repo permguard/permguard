@@ -66,14 +66,16 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 		return "", "", nil, err
 	}
 	if m.ctx.IsTerminalOutput() {
-		output = out(nil, "head", refPath, nil)
+		if m.ctx.IsVerbose() {
+			output = out(nil, "head", refPath, nil)
+		}
 	} else {
 		remotes := []interface{}{}
 		remoteObj := map[string]any{
 			"remote":    headCfg.Head.Remote,
 			"accountid": headCfg.Head.AccountID,
 			"repo":      headCfg.Head.Repo,
-			"refs":      headCfg.Head.RefID,
+			"refid":      headCfg.Head.RefID,
 		}
 		remotes = append(remotes, remoteObj)
 		output = out(output, "head", remotes, nil)
