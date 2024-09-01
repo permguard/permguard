@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package remote
+package remoteserver
 
 import (
 	"fmt"
@@ -26,20 +26,20 @@ import (
 )
 
 
-// RemoteManager implements the internal manager for the remote file.
-type RemoteManager struct {
+// RemoteServerManager implements the internal manager for the remote file.
+type RemoteServerManager struct {
 	ctx     *aziclicommon.CliCommandContext
 }
 
-// NewRemoteManager creates a new remoteuration manager.
-func NewRemoteManager(ctx *aziclicommon.CliCommandContext) *RemoteManager {
-	return &RemoteManager{
+// NewRemoteServerManager creates a new remoteuration manager.
+func NewRemoteServerManager(ctx *aziclicommon.CliCommandContext) *RemoteServerManager {
+	return &RemoteServerManager{
 		ctx:     ctx,
 	}
 }
 
 // GetServerRemoteRepo gets the remote repo from the server.
-func (m *RemoteManager) GetServerRemoteRepo(accountID int64, repo string, server string, aapPort int, papPort int) (*azmodels.Repository, error) {
+func (m *RemoteServerManager) GetServerRemoteRepo(accountID int64, repo string, server string, aapPort int, papPort int) (*azmodels.Repository, error) {
 	appServer := fmt.Sprintf("%s:%d", server, aapPort)
 	aapClient, err := aziclients.NewGrpcAAPClient(appServer)
 	if err != nil {

@@ -29,7 +29,7 @@ import (
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azicliwksplans "github.com/permguard/permguard/internal/cli/workspace/plans"
 	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
-	azicliwksremote "github.com/permguard/permguard/internal/cli/workspace/remote"
+	azicliwksremotesrv "github.com/permguard/permguard/internal/cli/workspace/remoteserver"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
@@ -42,15 +42,15 @@ const (
 
 // WorkspaceManager implements the internal manager to manage the .permguard directory.
 type WorkspaceManager struct {
-	ctx      *aziclicommon.CliCommandContext
-	homeDir  string
-	persMgr  *azicliwkspers.PersistenceManager
-	rmtMgr   *azicliwksremote.RemoteManager
-	cfgMgr   *azicliwkscfg.ConfigManager
-	logsMgr  *azicliwkslogs.LogsManager
-	rfsMgr   *azicliwksrefs.RefsManager
-	objsMgr  *azicliwksobjs.ObjectsManager
-	plansMgr *azicliwksplans.PlansManager
+	ctx       *aziclicommon.CliCommandContext
+	homeDir   string
+	persMgr   *azicliwkspers.PersistenceManager
+	rmSrvtMgr *azicliwksremotesrv.RemoteServerManager
+	cfgMgr    *azicliwkscfg.ConfigManager
+	logsMgr   *azicliwkslogs.LogsManager
+	rfsMgr    *azicliwksrefs.RefsManager
+	objsMgr   *azicliwksobjs.ObjectsManager
+	plansMgr  *azicliwksplans.PlansManager
 }
 
 // NewInternalManager creates a new internal manager.
@@ -58,15 +58,15 @@ func NewInternalManager(ctx *aziclicommon.CliCommandContext) *WorkspaceManager {
 	hdnDir := filepath.Join(ctx.GetWorkDir(), hiddenDir)
 	persMgr := azicliwkspers.NewPersistenceManager(hdnDir, ctx)
 	return &WorkspaceManager{
-		homeDir:  hdnDir,
-		ctx:      ctx,
-		persMgr:  persMgr,
-		rmtMgr:   azicliwksremote.NewRemoteManager(ctx),
-		cfgMgr:   azicliwkscfg.NewConfigManager(ctx, persMgr),
-		logsMgr:  azicliwkslogs.NewLogsManager(ctx, persMgr),
-		rfsMgr:   azicliwksrefs.NewRefsManager(ctx, persMgr),
-		objsMgr:  azicliwksobjs.NewObjectsManager(ctx, persMgr),
-		plansMgr: azicliwksplans.NewPlansManager(ctx, persMgr),
+		homeDir:   hdnDir,
+		ctx:       ctx,
+		persMgr:   persMgr,
+		rmSrvtMgr: azicliwksremotesrv.NewRemoteServerManager(ctx),
+		cfgMgr:    azicliwkscfg.NewConfigManager(ctx, persMgr),
+		logsMgr:   azicliwkslogs.NewLogsManager(ctx, persMgr),
+		rfsMgr:    azicliwksrefs.NewRefsManager(ctx, persMgr),
+		objsMgr:   azicliwksobjs.NewObjectsManager(ctx, persMgr),
+		plansMgr:  azicliwksplans.NewPlansManager(ctx, persMgr),
 	}
 }
 

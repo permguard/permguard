@@ -157,7 +157,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 	if err != nil {
 		return nil, err
 	}
-	srvRepo, err := m.rmtMgr.GetServerRemoteRepo(repoInfo.AccountID, repoInfo.Repo, cfgRemote.Server, cfgRemote.AAPPort, cfgRemote.PAPPort)
+	srvRepo, err := m.rmSrvtMgr.GetServerRemoteRepo(repoInfo.AccountID, repoInfo.Repo, cfgRemote.Server, cfgRemote.AAPPort, cfgRemote.PAPPort)
 	if err != nil {
 		return nil, err
 	}
