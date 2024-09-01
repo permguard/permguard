@@ -84,7 +84,11 @@ seo:
 | Error Code | Description                                      |
 |------------|--------------------------------------------------|
 | 08000      | cli: generic error                               |
-| 08001      | "cli: invalid arguments                          |
+| 08001      | cli: invalid arguments                           |
+| 08002      | cli: invalid input                               |
+| 08003      | cli: not a permguard workspace directory         |
+| 08004      | cli: record already exists                       |
+| 08005      | cli: record not found                            |
 
 ## 081xx: Command Line Interface File System Errors
 | Error Code | Description                                      |
@@ -92,6 +96,7 @@ seo:
 | 08100      | cli: file system error                           |
 | 08101      | cli: operation on directory failed               |
 | 08102      | cli: operation on file failed                    |
+| 08110      | cli: workspace operation failed                  |
 
 ## 09xxx Plugin errors
 
