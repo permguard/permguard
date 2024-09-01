@@ -233,16 +233,12 @@ func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, st
 		return nil, err
 	}
 	output := map[string]any{}
-	output, err = m.rfsMgr.CheckoutHead(remoteName, accountID, repoName, srvRepo.Refs, output, out)
+	ref, refID, output, err := m.rfsMgr.CheckoutHead(remoteName, accountID, repoName, srvRepo.Refs, output, out)
 	if err != nil {
 		return nil, err
 	}
-	output, err = m.cfgMgr.AddRepo(remoteName, accountID, repoName, output, out)
+	output, err = m.cfgMgr.AddRepo(remoteName, accountID, repoName, ref, refID, output, out)
 	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
-		return nil, err
-	}
-	refID, err := m.rfsMgr.CalculateRefID(remoteName, accountID, repoName)
-	if err != nil {
 		return nil, err
 	}
 	m.logsMgr.Log(remoteName, refID, srvRepo.Refs, srvRepo.Refs, fmt.Sprintf("checkout: %s", repo))
