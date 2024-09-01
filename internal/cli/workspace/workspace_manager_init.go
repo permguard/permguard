@@ -154,7 +154,6 @@ func (m *WorkspaceManager) RemoveRemote(remote string, out func(map[string]any, 
 	if headRemote == remote {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, fmt.Sprintf("cli: cannot remove the remote used by the currently checked out account %s", remote))
 	}
-
 	return m.cfgMgr.RemoveRemote(remote, nil, out)
 }
 
@@ -174,12 +173,12 @@ func (m *WorkspaceManager) ListRemotes(out func(map[string]any, string, any, err
 }
 
 // CheckoutRepo checks out a repository.
-func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *WorkspaceManager) CheckoutRepo(repoURI string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
 	}
 
-	remoteName, accountID, repoName, err := azicliwksvals.SanitizeRepo(repo)
+	remote, accountID, repo, err := azicliwksvals.SanitizeRepo(repoURI)
 	if err != nil {
 		return nil, err
 	}
@@ -190,23 +189,23 @@ func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, st
 	}
 	defer fileLock.Unlock()
 
-	cfgRemote, err := m.cfgMgr.GetRemote(remoteName)
+	cfgRemote, err := m.cfgMgr.GetRemote(remote)
 	if err != nil {
 		return nil, err
 	}
-	srvRepo, err := m.rmtMgr.GetServerRemoteRepo(accountID, repoName, cfgRemote.Server, cfgRemote.AAPPort, cfgRemote.PAPPort)
+	srvRepo, err := m.rmtMgr.GetServerRemoteRepo(accountID, repo, cfgRemote.Server, cfgRemote.AAPPort, cfgRemote.PAPPort)
 	if err != nil {
 		return nil, err
 	}
-	ref, refID, output, err := m.rfsMgr.CheckoutHead(remoteName, accountID, repoName, srvRepo.Refs, nil, out)
+	ref, refID, output, err := m.rfsMgr.CheckoutHead(remote, accountID, repo, srvRepo.Refs, nil, out)
 	if err != nil {
 		return nil, err
 	}
-	output, err = m.cfgMgr.AddRepo(remoteName, accountID, repoName, ref, refID, output, out)
+	output, err = m.cfgMgr.AddRepo(remote, accountID, repo, ref, refID, output, out)
 	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
 		return nil, err
 	}
-	m.logsMgr.Log(remoteName, refID, srvRepo.Refs, srvRepo.Refs, fmt.Sprintf("checkout: %s", repo))
+	m.logsMgr.Log(remote, refID, srvRepo.Refs, srvRepo.Refs, fmt.Sprintf("checkout: %s", repoURI))
 	return output, nil
 }
 
