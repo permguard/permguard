@@ -55,7 +55,6 @@ message AccountResponse {
     google.protobuf.Timestamp CreatedAt = 2;
     google.protobuf.Timestamp UpdatedAt = 3;
     string Name = 4;
-	string RefsHead = 5;
 }
 
 // Tenants

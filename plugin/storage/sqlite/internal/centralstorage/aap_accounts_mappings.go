@@ -28,6 +28,5 @@ func mapAccountToAgentAccount(account *azirepos.Account) (*azmodels.Account, err
 		CreatedAt: account.CreatedAt,
 		UpdatedAt: account.UpdatedAt,
 		Name:      account.Name,
-		RefsHead:  account.RefsHead,
 	}, nil
 }

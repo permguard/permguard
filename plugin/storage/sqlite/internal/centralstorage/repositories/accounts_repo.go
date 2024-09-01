@@ -72,12 +72,11 @@ func (r *Repo) UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Acco
 	}
 
 	var dbAccount Account
-	err = tx.QueryRow("SELECT account_id, created_at, updated_at, name, refs_head FROM accounts WHERE account_id = ?", accountID).Scan(
+	err = tx.QueryRow("SELECT account_id, created_at, updated_at, name FROM accounts WHERE account_id = ?", accountID).Scan(
 		&dbAccount.AccountID,
 		&dbAccount.CreatedAt,
 		&dbAccount.UpdatedAt,
 		&dbAccount.Name,
-		&dbAccount.RefsHead,
 	)
 	if err != nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve account - operation 'retrieve-created-account' encountered an issue (%s).", LogAccountEntry(account)), err)
@@ -92,12 +91,11 @@ func (r *Repo) DeleteAccount(tx *sql.Tx, accountID int64) (*Account, error) {
 	}
 
 	var dbAccount Account
-	err := tx.QueryRow("SELECT account_id, created_at, updated_at, name, refs_head FROM accounts WHERE account_id = ?", accountID).Scan(
+	err := tx.QueryRow("SELECT account_id, created_at, updated_at, name FROM accounts WHERE account_id = ?", accountID).Scan(
 		&dbAccount.AccountID,
 		&dbAccount.CreatedAt,
 		&dbAccount.UpdatedAt,
 		&dbAccount.Name,
-		&dbAccount.RefsHead,
 	)
 	if err != nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - account id is not valid (id: %d).", accountID), err)

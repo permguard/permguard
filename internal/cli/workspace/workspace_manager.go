@@ -23,6 +23,7 @@ import (
 	"github.com/gofrs/flock"
 	aziclients "github.com/permguard/permguard/internal/agents/clients"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
 	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
@@ -197,6 +198,29 @@ func (m *WorkspaceManager) ListRemotes(out func(map[string]any, string, any, err
 	return m.cfgMgr.ListRemotes(output, out)
 }
 
+// fetchRemoteRepo fetches a remote repository.
+func (m *WorkspaceManager) fetchRemoteRepo(accountID int64, repo string, server string, aapPort int, papPort int) (*azmodels.Repository, error) {
+	appServer := fmt.Sprintf("%s:%d", server, aapPort)
+	aapClient, err := aziclients.NewGrpcAAPClient(appServer)
+	if err != nil {
+		return nil, err
+	}
+	pppServer := fmt.Sprintf("%s:%d", server, papPort)
+	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
+	if err != nil {
+		return nil, err
+	}
+	srvAccounts, err := aapClient.FetchAccountsByID(1, 1, accountID)
+	if err != nil || srvAccounts == nil || len(srvAccounts) == 0 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: account %d does not exist", accountID))
+	}
+	srvRepo, err := papClient.FetchRepositoriesByName(1, 1, accountID, repo)
+	if err != nil || srvRepo == nil || len(srvRepo) == 0 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: repo %s does not exist", repo))
+	}
+	return &srvRepo[0], nil
+}
+
 // CheckoutRepo checks out a repository.
 func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isValidHomeDir() {
@@ -214,22 +238,16 @@ func (m *WorkspaceManager) CheckoutRepo(repo string, out func(map[string]any, st
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: could not acquire the lock, another process is using it %s", m.GetLockFile()))
 	}
 	defer fileLock.Unlock()
-
 	cfgRemote, err := m.cfgMgr.GetRemote(remoteName)
 	if err != nil {
 		return nil, err
 	}
-	appServer := fmt.Sprintf("%s:%d", cfgRemote.Server, cfgRemote.AAP)
-	aapClient, err := aziclients.NewGrpcAAPClient(appServer)
+	srvRepo, err := m.fetchRemoteRepo(accountID, repoName, cfgRemote.Server, cfgRemote.AAP, cfgRemote.PAP)
 	if err != nil {
 		return nil, err
 	}
-	srvAccounts, err := aapClient.FetchAccountsByID(1, 1, accountID)
-	if err != nil || srvAccounts == nil || len(srvAccounts) == 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: account %d does not exist", accountID))
-	}
 	output := map[string]any{}
-	output, err = m.rfsMgr.CheckoutHead(remoteName, accountID, repoName, srvAccounts[0].RefsHead, output, out)
+	output, err = m.rfsMgr.CheckoutHead(remoteName, accountID, repoName, srvRepo.Refs, output, out)
 	if err != nil {
 		return nil, err
 	}

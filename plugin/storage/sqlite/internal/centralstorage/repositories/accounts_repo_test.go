@@ -38,7 +38,6 @@ func registerAccountForUpsertMocking(isCreate bool) (*Account, string, *sqlmock.
 		Name:      "rent-a-car",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		RefsHead: "0000000000000000000000000000000000000000",
 	}
 	var sql string
 	if isCreate {
@@ -46,8 +45,8 @@ func registerAccountForUpsertMocking(isCreate bool) (*Account, string, *sqlmock.
 	} else {
 		sql = `UPDATE accounts SET name = \? WHERE account_id = \?`
 	}
-	sqlRows := sqlmock.NewRows([]string{"account_id", "created_at", "updated_at", "name", "refs_head"}).
-		AddRow(account.AccountID, account.CreatedAt, account.UpdatedAt, account.Name, account.RefsHead)
+	sqlRows := sqlmock.NewRows([]string{"account_id", "created_at", "updated_at", "name"}).
+		AddRow(account.AccountID, account.CreatedAt, account.UpdatedAt, account.Name)
 	return account, sql, sqlRows
 }
 
@@ -58,12 +57,11 @@ func registerAccountForDeleteMocking() (string, *Account, *sqlmock.Rows, string)
 		Name:      "rent-a-car",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		RefsHead: "0000000000000000000000000000000000000000",
 	}
-	var sqlSelect = `SELECT account_id, created_at, updated_at, name, refs_head FROM accounts WHERE account_id = \?`
+	var sqlSelect = `SELECT account_id, created_at, updated_at, name FROM accounts WHERE account_id = \?`
 	var sqlDelete = `DELETE FROM accounts WHERE account_id = \?`
-	sqlRows := sqlmock.NewRows([]string{"account_id", "created_at", "updated_at", "name", "refs_head"}).
-		AddRow(account.AccountID, account.CreatedAt, account.UpdatedAt, account.Name, account.RefsHead)
+	sqlRows := sqlmock.NewRows([]string{"account_id", "created_at", "updated_at", "name"}).
+		AddRow(account.AccountID, account.CreatedAt, account.UpdatedAt, account.Name)
 	return sqlSelect, account, sqlRows, sqlDelete
 }
 
@@ -75,12 +73,11 @@ func registerAccountForFetchMocking() (string, []Account, *sqlmock.Rows) {
 			Name:      "rent-a-car",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
-			RefsHead: "0000000000000000000000000000000000000000",
 		},
 	}
 	var sqlSelect = "SELECT * FROM accounts WHERE account_id = ? AND name LIKE ? ORDER BY account_id ASC LIMIT ? OFFSET ?"
-	sqlRows := sqlmock.NewRows([]string{"account_id", "created_at", "updated_at", "name", "refs_head"}).
-		AddRow(accounts[0].AccountID, accounts[0].CreatedAt, accounts[0].UpdatedAt, accounts[0].Name, accounts[0].RefsHead)
+	sqlRows := sqlmock.NewRows([]string{"account_id", "created_at", "updated_at", "name"}).
+		AddRow(accounts[0].AccountID, accounts[0].CreatedAt, accounts[0].UpdatedAt, accounts[0].Name)
 	return sqlSelect, accounts, sqlRows
 }
 
@@ -170,7 +167,7 @@ func TestRepoUpsertAccountWithSuccess(t *testing.T) {
 				WillReturnResult(sqlmock.NewResult(1, 1))
 		}
 
-		sqlDBMock.ExpectQuery(`SELECT account_id, created_at, updated_at, name, refs_head FROM accounts WHERE account_id = \?`).
+		sqlDBMock.ExpectQuery(`SELECT account_id, created_at, updated_at, name FROM accounts WHERE account_id = \?`).
 			WithArgs(sqlmock.AnyArg()).
 			WillReturnRows(sqlAccountRows)
 
