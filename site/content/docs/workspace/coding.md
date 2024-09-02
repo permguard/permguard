@@ -32,7 +32,7 @@ To enhance coding efficiency and comfort, PermGuard provides several key command
 The `validate` command checks the configurations in the working directory for syntax errors and ensures that they are valid. This command is useful for identifying issues before applying changes to the server.
 
 ```bash
-❯ permguard validate
+ permguard validate
 ```
 
 ## Pull
@@ -40,7 +40,7 @@ The `validate` command checks the configurations in the working directory for sy
 The `pull` command fetches the state from the remote PermGuard server and stores it locally and finally build a remote state.
 
 ```bash
-❯ permguard pull
+ permguard pull
 ```
 
 ## Diff
@@ -48,5 +48,5 @@ The `pull` command fetches the state from the remote PermGuard server and stores
 The `diff` command first performs a `fetch` to retrieve the latest state from the remote server, and then calculates the differences between the working directory and the remote server.
 
 ```bash
-❯ permguard diff
+ permguard diff
 ```
