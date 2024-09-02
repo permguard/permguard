@@ -49,11 +49,11 @@ func runECommandForDiffWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 func CreateCommandForWorkspaceDiff(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "diff",
-		Short: "Calculate the difference between the working directory and a remote repo",
-		Long: aziclicommon.BuildCliLongTemplate(`This command calculates the difference between the working directory and a remote repo.
+		Short: "Compare the local state with the remote state to identify differences",
+		Long: aziclicommon.BuildCliLongTemplate(`This command compares the local state with the remote state to identify differences.
 
 Examples:
-  # calculate the difference between the working directory and a remote default repo
+  # compare the local state with the remote state to identify differences
   permguard diff`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDiffWorkspace(deps, cmd, v)

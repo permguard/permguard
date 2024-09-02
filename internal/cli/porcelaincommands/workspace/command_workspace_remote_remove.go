@@ -62,11 +62,11 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps azcli.CliDependenci
 func CreateCommandForWorkspaceRemoteRemove(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "remove",
-		Short: `Remove a remote`,
-		Long: aziclicommon.BuildCliLongTemplate(`This command removes a remote.
+		Short: `Remove a remote repository from the configuration`,
+		Long: aziclicommon.BuildCliLongTemplate(`This command removes a remote repository from the configuration.
 
 Examples:
-  # remove a remote
+  # remove a remote repository from the configuration
   permguard remote remove dev`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForRemoteRemoveWorkspace(args, deps, cmd, v)

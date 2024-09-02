@@ -62,11 +62,11 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 func CreateCommandForWorkspaceCheckout(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "checkout",
-		Short: `Checkout a repo`,
-		Long: aziclicommon.BuildCliLongTemplate(`This command checkouts a repo.
+		Short: `Check out the contents of a remote repo to the local working directory`,
+		Long: aziclicommon.BuildCliLongTemplate(`This command checks out the contents of a remote repo to the local working directory.
 
 Examples:
-  # checkout a a repo
+  # check out the contents of a remote repo to the local working directory
   ❯ permguard checkout dev/268786704340/magicfarmacia-v0.0 `),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCheckoutWorkspace(args, deps, cmd, v)
