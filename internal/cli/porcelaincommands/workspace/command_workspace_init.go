@@ -57,11 +57,11 @@ func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 func CreateCommandForWorkspaceInit(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "init",
-		Short: "Initialize a new repository in the working directory",
-		Long: aziclicommon.BuildCliLongTemplate(`This command initializes a new repository in the working directory.
+		Short: "Initialize a new repo in the working directory",
+		Long: aziclicommon.BuildCliLongTemplate(`This command initializes a new repo in the working directory.
 
 Examples:
-  # initialize a new repository in the working directory
+  # initialize a new repo in the working directory
   permguard init`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForInitWorkspace(deps, cmd, v)

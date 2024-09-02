@@ -49,11 +49,11 @@ func runECommandForDestroyWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 func CreateCommandForWorkspaceDestroy(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "destroy",
-		Short: "Destroy locally managed objects from the remote repository",
-		Long: aziclicommon.BuildCliLongTemplate(`This command destroies locally managed objects from the remote repository.
+		Short: "Destroy locally managed objects from the remote repo",
+		Long: aziclicommon.BuildCliLongTemplate(`This command destroies locally managed objects from the remote repo.
 
 Examples:
-  # destroy locally managed objects from the remote repository
+  # destroy locally managed objects from the remote repo
   permguard destroy`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDestroyWorkspace(deps, cmd, v)
