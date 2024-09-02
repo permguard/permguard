@@ -22,8 +22,8 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
-// ExecRefresh scans source files in the current directory and synchronizes the local state,
-func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+// ExecPlan geberates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
+func (m *WorkspaceManager) ExecPlan(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
 	}
@@ -39,8 +39,8 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	return nil, nil
 }
 
-// ExecValidate validates the local state against the remote state.
-func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+// ExecApply applies the plan to the remote repo
+func (m *WorkspaceManager) ExecApply(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
 	}
@@ -56,8 +56,8 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	return nil, nil
 }
 
-// ExecDiff compares the local state with the remote state to identify differences.
-func (m *WorkspaceManager) ExecDiff(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+// ExecDestroy destroies locally managed objects from the remote repo
+func (m *WorkspaceManager) ExecDestroy(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
 	}

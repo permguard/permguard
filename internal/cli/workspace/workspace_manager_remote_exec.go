@@ -21,69 +21,7 @@ import (
 
 	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
 )
-
-// ExecAddRemote adds a remote.
-func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort int, papPort int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
-	}
-	if !azvalidators.IsValidHostname(server) {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid server %s", server))
-	}
-	if !azvalidators.IsValidPort(aapPort) {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid aap port %d", aapPort))
-	}
-	if !azvalidators.IsValidPort(papPort) {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid pap port %d", papPort))
-	}
-
-	fileLock, err := m.tryLock()
-	if err != nil {
-		return nil, err
-	}
-	defer fileLock.Unlock()
-
-	return m.cfgMgr.ExecAddRemote(remote, server, aapPort, papPort, nil, out)
-}
-
-// ExecRemoveRemote removes a remote.
-func (m *WorkspaceManager) ExecRemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
-	}
-
-	fileLock, err := m.tryLock()
-	if err != nil {
-		return nil, err
-	}
-	defer fileLock.Unlock()
-
-	headInfo, err := m.rfsMgr.GetCurrentHead()
-	if err != nil {
-		return nil, err
-	}
-	if headInfo.Remote == remote {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, fmt.Sprintf("cli: cannot remove the remote used by the currently checked out account %s", remote))
-	}
-	return m.cfgMgr.ExecRemoveRemote(remote, nil, out)
-}
-
-// ExecListRemotes lists the remotes.
-func (m *WorkspaceManager) ExecListRemotes(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
-	}
-
-	fileLock, err := m.tryLock()
-	if err != nil {
-		return nil, err
-	}
-	defer fileLock.Unlock()
-
-	return m.cfgMgr.ExecListRemotes(nil, out)
-}
 
 // ExecCheckoutRepo checks out a repository.
 func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
@@ -127,8 +65,8 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 	return output, nil
 }
 
-// ExecListRepos lists the repos.
-func (m *WorkspaceManager) ExecListRepos(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+// ExecPull fetches the latest changes from the remote repo and constructs the remote state.
+func (m *WorkspaceManager) ExecPull(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
 	}
@@ -139,20 +77,7 @@ func (m *WorkspaceManager) ExecListRepos(out func(map[string]any, string, any, e
 	}
 	defer fileLock.Unlock()
 
-	refID, err := m.rfsMgr.CalculateCurrentHeadRefID()
-	if err != nil {
-		return nil, err
-	}
-	return m.cfgMgr.ExecListRepos(refID, nil, out)
-}
-
-// ExecPull fetches the latest changes from the remote repo and constructs the remote state.
-func (m *WorkspaceManager) ExecPull(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	fileLock, err := m.tryLock()
-	if err != nil {
-		return nil, err
-	}
-	defer fileLock.Unlock()
+	// TODO: Implement this method
 
 	return nil, nil
 }
