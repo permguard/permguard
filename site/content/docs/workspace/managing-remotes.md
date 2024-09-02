@@ -28,17 +28,17 @@ When managing one or more servers, and provisioning to any of them, it is essent
 A remote can be added using the remote command:
 
 ```bash
-❯ permguard remote add dev server.permguard.com
+ permguard remote add dev server.permguard.com
 ```
 
 and it can be removed using the remote command:
 
 ```bash
-❯ permguard remote remove dev
+ permguard remote remove dev
 ```
 
 If the PermGuard server ports differ from the default values (`aap`:`9091` and `pap`:`9092`), you can specify the custom port numbers using the `--aap` and `--pap` flag:
 
 ```bash
-❯ permguard remote add dev server.permguard.com --aap 9095 --pap 9096
+ permguard remote add dev server.permguard.com --aap 9095 --pap 9096
 ```

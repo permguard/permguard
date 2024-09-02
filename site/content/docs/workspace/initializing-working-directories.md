@@ -43,7 +43,7 @@ A `PermGuard` working directory contains the following files:
 When starting a new project, the first step is to create an account:
 
 ```bash
-❯ permguard accounts create --name magicfarmacia-dev
+ permguard accounts create --name magicfarmacia-dev
 {
   "accounts": [
     {
@@ -59,7 +59,7 @@ When starting a new project, the first step is to create an account:
 Next, create a repo:
 
 ```bash
-❯ permguard repositories create --name magicfarmacia-v0.0 --account-id 268786704340
+ permguard repositories create --name magicfarmacia-v0.0 --account-id 268786704340
 {
   "repositories": [
     {
@@ -76,9 +76,9 @@ Next, create a repo:
 Finally, initialize the working directory and associate it with a PermGuard `remote` server:
 
 ```bash
-❯ permguard init
-❯ permguard remote add dev server.permguard.com
-❯ permguard checkout dev/268786704340/magicfarmacia-v0.0
+ permguard init
+ permguard remote add dev server.permguard.com
+ permguard checkout dev/268786704340/magicfarmacia-v0.0
 ```
 
 ## Clone an existing repo
@@ -88,5 +88,5 @@ There are advanced cases where a PermGuard repo has already been created and it 
 In this case, it is just necessary to clone the PermGuard repo:
 
 ```bash
-❯ permguard clone permguard@server.permguard.com/268786704340/magicfarmacia-v0.0
+ permguard clone permguard@server.permguard.com/268786704340/magicfarmacia-v0.0
 ```

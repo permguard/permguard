@@ -34,7 +34,7 @@ Essentially, this command compares the current state of the working directory wi
 This command does not apply any changes to the server; it only displays the necessary changes required to achieve the desired state.
 
 ```bash
-❯ permguard plan
+ permguard plan
 ```
 
 ## Apply
@@ -44,7 +44,7 @@ The `apply` command performs a plan, similar to the `plan` command, but it also 
 By default, apply performs a `fresh plan` right before applying changes. However, it is possible to apply an existing plan by providing the state file.
 
 ```bash
-❯ permguard apply
+ permguard apply
 ```
 
 ## Destroy
@@ -54,5 +54,5 @@ The `destroy` command destroys all in the remote server.
 It uses state data to identify and determine which real-world objects correspond to the managed resources.
 
 ```bash
-❯ permguard destroy
+ permguard destroy
 ```
