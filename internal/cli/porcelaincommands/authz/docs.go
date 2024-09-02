@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package authn provides the cobra commands for the authn commands.
+// Package authz provides the cobra commands for the authz commands.
 package authz
