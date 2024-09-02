@@ -35,7 +35,7 @@ The official PermGuard Command Line Interface - Copyright © 2022 Nitro Agility 
 
 PermGuard is an Open Source Multi-Account and Multi-Tenant Authorization Provider.
 
-  Find more information at: https://www.permguard.com/docs/cli/how-to-use/
+	Find more information at: https://www.permguard.com/docs/cli/how-to-use/
 
 Usage:
   PermGuard Command Line Interface [flags]
@@ -46,19 +46,20 @@ Available Commands:
   apply       Apply the plan to the remote repo
   authn       Manage tenants and identities on the remote server
   authz       Manage repositories on the remote server
-  checkout    Checkout a repo
-  clone       Clone an existing repo from a remote into the working directory
+  checkout    Check out the contents of a remote repo to the local working directory
+  clone       Clone a remote repo to the local working directory
   completion  Generate the autocompletion script for the specified shell
   config      Configure the command line settings
-  destroy     Destroy objects in the remote repo
-  diff        Calculate the difference between the working directory and a remote repo
+  destroy     Destroy locally managed objects from the remote repository
+  diff        Compare the local state with the remote state to identify differences
   help        Help about any command
   init        Initialize a new repository in the working directory
-  plan        Plan the difference between the working directory and a remote repo to be applied
-  pull        Feteches the latest changes from the server and build a remote state
-  remote      Manage the set of remote servers you track
-  repo        Manage the local repo
-  validate    Validate source code in the working directory
+  plan        Generate a plan of changes to apply to the remote repository based on the differences between the local and remote states
+  pull        Fetch the latest changes from the remote repository and constructs the remote state.
+  refresh     Scan source files in the current directory and synchronizes the local state
+  remote      Manage remote repositories for tracking and interaction
+  repo        Manage repo settings and operations
+  validate    Validate the local state for consistency and correctness
 
 Flags:
   -h, --help             help for PermGuard
