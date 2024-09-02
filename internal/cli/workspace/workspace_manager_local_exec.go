@@ -16,12 +16,13 @@
 
 package workspace
 
-// blobifyLocal scans source files and creates a blob for each object.
-func (m *WorkspaceManager) blobifyLocal () (error)  {
-	return nil
-}
+// ExecBlobify scans source files in the current directory and synchronizes the local state,
+func (m *WorkspaceManager) ExecBlobify(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	fileLock, err := m.tryLock()
+	if err != nil {
+		return nil, err
+	}
+	defer fileLock.Unlock()
 
-// buildLocalState builds the local state.
-func (m *WorkspaceManager) buildLocalState () (error)  {
-	return nil
+	return nil, nil
 }
