@@ -24,9 +24,8 @@ PermGuard adopts a code-first approach to managing schemas, policies and permiss
 To enhance coding efficiency and comfort, PermGuard provides several key commands:
 
 - `validate`: Validates the configurations in the working directory
-- `fetch`: Fetches the remote state from the remote server
+- `pull`: Fetches the remote changes and build a remote state
 - `diff`: Calculate and output the differences between the working directory and the remote server
-- `merge`: Merges the remote configurations into the working directory.
 
 ## Validate
 
@@ -36,12 +35,12 @@ The `validate` command checks the configurations in the working directory for sy
 ❯ permguard validate
 ```
 
-## Fetch
+## Pull
 
-The `fetch` command retrieves the state from the remote PermGuard server and stores it locally. This is necessary to perform merges and provisioning operations.
+The `pull` command fetches the state from the remote PermGuard server and stores it locally and finally build a remote state.
 
 ```bash
-❯ permguard fetch
+❯ permguard pull
 ```
 
 ## Diff

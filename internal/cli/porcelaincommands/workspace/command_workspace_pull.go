@@ -28,35 +28,35 @@ import (
 )
 
 const (
-	// commandNameForWorkspacesFetch is the command name for workspaces fetch.
-	commandNameForWorkspacesFetch = "workspaces.fetch"
+	// commandNameForWorkspacesPull is the command name for workspaces pull.
+	commandNameForWorkspacesPull = "workspaces.pull"
 )
 
-// runECommandForFetchWorkspace runs the command for creating an workspace.
-func runECommandForFetchWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+// runECommandForPullWorkspace runs the command for creating an workspace.
+func runECommandForPullWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	_, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}
-	output["workspace"] = "fetch"
+	output["workspace"] = "pull"
 	printer.Print(output)
 	return nil
 }
 
-// CreateCommandForWorkspaceFetch creates a command for fetchializing a working directory.
-func CreateCommandForWorkspaceFetch(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+// CreateCommandForWorkspacePull creates a command for pullializing a working directory.
+func CreateCommandForWorkspacePull(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "fetch",
-		Short: "Fetch the latest state changes from the remote repo",
-		Long: aziclicommon.BuildCliLongTemplate(`This command fetches the latest state changes from the remote repo.
+		Use:   "pull",
+		Short: "Feteches the latest changes from the server and build a remote state",
+		Long: aziclicommon.BuildCliLongTemplate(`This command feteches the latest changes from the server and build a remote state.
 
 Examples:
-  # Fetch the latest state changes of the default remote repo
-  permguard fetch`),
+  # Pull the latest state changes of the default remote repo
+  permguard pull`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForFetchWorkspace(deps, cmd, v)
+			return runECommandForPullWorkspace(deps, cmd, v)
 		},
 	}
 	return command
