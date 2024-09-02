@@ -56,8 +56,8 @@ func runECommandForRemoteWorkspace(deps azcli.CliDependenciesProvider, cmd *cobr
 func CreateCommandForWorkspaceRemote(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "remote",
-		Short: `Manage the set of remote servers you track`,
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages the set of remote servers you track.`),
+		Short: `Manage remote repositories for tracking and interaction`,
+		Long:  aziclicommon.BuildCliLongTemplate(`This command manages remote repositories for tracking and interaction`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForRemoteWorkspace(deps, cmd, v)
 		},

@@ -69,11 +69,11 @@ func runECommandForRemoteAddWorkspace(args []string, deps azcli.CliDependenciesP
 func CreateCommandForWorkspaceRemoteAdd(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "add",
-		Short: `Add a remote`,
-		Long: aziclicommon.BuildCliLongTemplate(`This command adds a remote.
+		Short: `add a new remote repository to track and interact with`,
+		Long: aziclicommon.BuildCliLongTemplate(`This command adds a new remote repository to track and interact with.
 
 Examples:
-  # add a new remote
+  # add a new remote repository to track and interact with
   permguard remote add dev 268786704340/magicfarmacia-v0.0 `),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForRemoteAddWorkspace(args, deps, cmd, v)

@@ -28,35 +28,35 @@ import (
 )
 
 const (
-	// commandNameForWorkspacesApply is the command name for workspaces apply.
-	commandNameForWorkspacesApply = "workspaces.apply"
+	// commandNameForWorkspacesRefresh is the command name for workspaces refresh.
+	commandNameForWorkspacesRefresh = "workspaces.refresh"
 )
 
-// runECommandForApplyWorkspace runs the command for creating an workspace.
-func runECommandForApplyWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+// runECommandForRefreshWorkspace runs the command for creating an workspace.
+func runECommandForRefreshWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	_, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}
-	output["workspace"] = "apply"
+	output["workspace"] = "refresh"
 	printer.Print(output)
 	return nil
 }
 
-// CreateCommandForWorkspaceApply creates a command for applyializing a working directory.
-func CreateCommandForWorkspaceApply(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+// CreateCommandForWorkspaceRefresh creates a command for refreshializing a working directory.
+func CreateCommandForWorkspaceRefresh(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "apply",
-		Short: "Apply the plan to the remote repo",
-		Long: aziclicommon.BuildCliLongTemplate(`This command applies the plan to the remote repo.
+		Use:   "refresh",
+		Short: "Scan source files in the current directory and synchronizes the local state",
+		Long: aziclicommon.BuildCliLongTemplate(`This command scans source files in the current directory and synchronizes the local state.
 
 Examples:
-  # apply the plan to the remote repo
-  permguard apply`),
+  # scan source files in the current directory and synchronizes the local state
+  permguard refresh`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForApplyWorkspace(deps, cmd, v)
+			return runECommandForRefreshWorkspace(deps, cmd, v)
 		},
 	}
 	return command
