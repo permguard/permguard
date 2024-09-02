@@ -50,12 +50,6 @@ func (c *LogsManager) getLogsDir() string {
 	return hiddenLogsDir
 }
 
-// ExecInitalize the logs resources.
-func (c *LogsManager) ExecInitalize() error {
-	_, err := c.persMgr.CreateDirIfNotExists(true, c.getLogsDir())
-	return err
-}
-
 // Log an entry
 func (c *LogsManager) Log(remote string, ref string, origin string, target string, action string) (bool, error) {
 	logDir := filepath.Join(c.getLogsDir(), remote)
