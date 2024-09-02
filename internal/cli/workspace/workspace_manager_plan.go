@@ -16,14 +16,8 @@
 
 package workspace
 
-// fetchRemote fetches the latest changes from the remote repo.
-func (m *WorkspaceManager) fetchRemote () (error)  {
-	// TODO: Implement this method
-	return nil
-}
-
-// Build build the remote state.
-func (m *WorkspaceManager) buildRemoteState () (error)  {
+// plan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
+func (m *WorkspaceManager) plan () (error)  {
 	// TODO: Implement this method
 	return nil
 }
