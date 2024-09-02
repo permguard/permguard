@@ -92,7 +92,7 @@ output:
 {{< /tab >}}
 {{< /tabs >}}
 
-## Fetch Repository
+## Get All Repository
 
 The `permguard authz repos list` command allows for the retrieval of all repositories.
 

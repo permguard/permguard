@@ -35,7 +35,7 @@ The official PermGuard Command Line Interface - Copyright © 2022 Nitro Agility 
 
 PermGuard is an Open Source Multi-Account and Multi-Tenant Authorization Provider.
 
-	Find more information at: https://www.permguard.com/docs/cli/how-to-use/
+  Find more information at: https://www.permguard.com/docs/cli/how-to-use/
 
 Usage:
   PermGuard Command Line Interface [flags]
@@ -52,10 +52,10 @@ Available Commands:
   config      Configure the command line settings
   destroy     Destroy objects in the remote repo
   diff        Calculate the difference between the working directory and a remote repo
-  fetch       Fetch the latest state changes from the remote repo
   help        Help about any command
   init        Initialize a new repository in the working directory
   plan        Plan the difference between the working directory and a remote repo to be applied
+  pull        Feteches the latest changes from the server and build a remote state
   remote      Manage the set of remote servers you track
   repo        Manage the local repo
   validate    Validate source code in the working directory

@@ -92,7 +92,7 @@ output:
 {{< /tab >}}
 {{< /tabs >}}
 
-## Fetch IdentitySource
+## Get All IdentitySource
 
 The `permguard authn identitysources list` command allows for the retrieval of all identity sources.
 
