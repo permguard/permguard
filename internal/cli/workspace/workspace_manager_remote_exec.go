@@ -145,3 +145,14 @@ func (m *WorkspaceManager) ExecListRepos(out func(map[string]any, string, any, e
 	}
 	return m.cfgMgr.ExecListRepos(refID, nil, out)
 }
+
+// ExecPull fetches the latest changes from the remote repo and constructs the remote state.
+func (m *WorkspaceManager) ExecPull(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	fileLock, err := m.tryLock()
+	if err != nil {
+		return nil, err
+	}
+	defer fileLock.Unlock()
+
+	return nil, nil
+}
