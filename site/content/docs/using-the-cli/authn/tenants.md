@@ -17,48 +17,32 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-   ____                      ____                     _
-  |  _ \ ___ _ __ _ __ ___  / ___|_   _  __ _ _ __ __| |
-  | |_) / _ \ '__| '_ ` _ \| |  _| | | |/ _` | '__/ _` |
-  |  __/  __/ |  | | | | | | |_| | |_| | (_| | | | (_| |
-  |_|   \___|_|  |_| |_| |_|\____|\__,_|\__,_|_|  \__,_|
+Using the `Tenants` commands, it is possible to manage tenants.
 
-The official PermGuard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
-
-PermGuard is an Open Source Multi-Account and Multi-Tenant Authorization Provider.
-
-  Find more information at: https://www.permguard.com/docs/cli/how-to-use/
+```text
+This command manages tenants.
 
 Usage:
-  PermGuard Command Line Interface [flags]
-  PermGuard [command]
+  PermGuard authn tenants [flags]
+  PermGuard authn tenants [command]
 
 Available Commands:
-  accounts    Manage accounts on the remote server
-  apply       Apply the plan to the remote repo
-  authn       Manage tenants and identities on the remote server
-  authz       Manage repositories on the remote server
-  checkout    Checkout a repo
-  clone       Clone an existing repo from a remote into the working directory
-  completion  Generate the autocompletion script for the specified shell
-  config      Configure the command line settings
-  destroy     Destroy objects in the remote repo
-  diff        Calculate the difference between the working directory and a remote repo
-  help        Help about any command
-  init        Initialize a new repository in the working directory
-  plan        Plan the difference between the working directory and a remote repo to be applied
-  pull        Feteches the latest changes from the server and build a remote state
-  remote      Manage the set of remote servers you track
-  repo        Manage the local repo
-  validate    Validate source code in the working directory
+  create      Create a tenant
+  delete      Delete a tenant
+  list        List tenants
+  update      Update a tenant
 
 Flags:
-  -h, --help             help for PermGuard
-  -o, --output string    output format (default "terminal")
+      --account int   account id filter
+  -h, --help          help for tenants
+
+Global Flags:
+  -o, --output string   output format (default "terminal")
   -v, --verbose          true for verbose output
   -w, --workdir string   workdir (default ".")
+  -v, --verbose         true for verbose output
 
-Use "PermGuard [command] --help" for more information about a command.
+Use "PermGuard authn tenants [command] --help" for more information about a command.
 ```
 
 {{< callout context="caution" icon="alert-triangle" >}}
@@ -109,7 +93,7 @@ output:
 {{< /tab >}}
 {{< /tabs >}}
 
-## Fetch Tenant
+## Get All Tenant
 
 The `permguard authn tenants list` command allows for the retrieval of all tenants.
 

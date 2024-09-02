@@ -94,7 +94,7 @@ output:
 {{< /tab >}}
 {{< /tabs >}}
 
-## Fetch Identity
+## Get All Identity
 
 The `permguard authn identities list` command allows for the retrieval of all identity.
 
