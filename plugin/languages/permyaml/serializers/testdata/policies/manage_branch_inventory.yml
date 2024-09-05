@@ -1,0 +1,8 @@
+# Manage Pharmacy Branch Inventory: This policy covers tenant specific operations related to the management of inventory within a pharmacy branch.
+name: manage-branch-inventory
+actions:
+  - inventory:access
+  - inventory:manage
+  - inventory:assignroles
+resources:
+  - uur:::pharmacy-branch:inventory/*

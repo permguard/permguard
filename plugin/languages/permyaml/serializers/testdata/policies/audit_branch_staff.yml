@@ -1,0 +1,6 @@
+# Audit Pharmacy Branch Staff: This policy covers tenant specific operations related to the auditing of staff within a pharmacy branch.
+name: audit-branch-staff
+actions:
+  - staff:view
+resources:
+  - uur:::pharmacy-branch:staff/*
