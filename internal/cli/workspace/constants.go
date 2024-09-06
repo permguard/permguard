@@ -17,5 +17,6 @@
 package workspace
 
 const (
+	// ErrMessageCliWorkspaceDirectory is the error message for a non-permguard workspace directory.
 	ErrMessageCliWorkspaceDirectory = "cli: %s is not a permguard workspace directory"
 )
