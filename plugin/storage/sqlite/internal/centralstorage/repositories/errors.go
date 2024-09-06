@@ -22,7 +22,7 @@ import (
 
 	"github.com/mattn/go-sqlite3"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -53,7 +53,7 @@ func WrapSqlite3ErrorWithParams(msg string, err error, params map[string]string)
 	switch sqliteErr.Code {
 	case sqlite3.ErrConstraint:
 		if errors.As(err, &sqliteErr) {
-			if (sqliteErr.ExtendedCode == sqlite3.ErrConstraintForeignKey){
+			if sqliteErr.ExtendedCode == sqlite3.ErrConstraintForeignKey {
 				foreignKey := readErroMapParam(WrapSqlite3ParamForeignKey, params)
 				if foreignKey != "" {
 					return azerrors.WrapSystemError(azerrors.ErrStorageConstraintForeignKey, fmt.Sprintf("storage: %s validation failed: the provided account id does not exist - %s", foreignKey, msg))

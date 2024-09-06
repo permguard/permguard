@@ -30,7 +30,7 @@ import (
 	azicliwksplans "github.com/permguard/permguard/internal/cli/workspace/plans"
 	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
 	azicliwksremotesrv "github.com/permguard/permguard/internal/cli/workspace/remoteserver"
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (

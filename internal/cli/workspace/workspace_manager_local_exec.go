@@ -19,7 +19,7 @@ package workspace
 import (
 	"fmt"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ExecRefresh scans source files in the current directory and synchronizes the local state,

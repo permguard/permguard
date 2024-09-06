@@ -27,7 +27,7 @@ import (
 
 	"github.com/mattn/go-sqlite3"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
 )
 
@@ -39,7 +39,7 @@ func registerRepositoryForUpsertMocking(isCreate bool) (*Repository, string, *sq
 		Name:         "rent-a-car",
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
-		Refs: "0000000000000000000000000000000000000000",
+		Refs:         "0000000000000000000000000000000000000000",
 	}
 	var sql string
 	if isCreate {
@@ -60,7 +60,7 @@ func registerRepositoryForDeleteMocking() (string, *Repository, *sqlmock.Rows, s
 		Name:         "rent-a-car",
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
-		Refs: "0000000000000000000000000000000000000000",
+		Refs:         "0000000000000000000000000000000000000000",
 	}
 	var sqlSelect = `SELECT account_id, repository_id, created_at, updated_at, name, refs FROM repositories WHERE account_id = \? and repository_id = \?`
 	var sqlDelete = `DELETE FROM repositories WHERE account_id = \? and repository_id = \?`
@@ -78,7 +78,7 @@ func registerRepositoryForFetchMocking() (string, []Repository, *sqlmock.Rows) {
 			Name:         "rent-a-car",
 			CreatedAt:    time.Now(),
 			UpdatedAt:    time.Now(),
-			Refs: "0000000000000000000000000000000000000000",
+			Refs:         "0000000000000000000000000000000000000000",
 		},
 	}
 	var sqlSelect = "SELECT * FROM repositories WHERE account_id = ? AND repository_id = ? AND name LIKE ? ORDER BY repository_id ASC LIMIT ? OFFSET ?"

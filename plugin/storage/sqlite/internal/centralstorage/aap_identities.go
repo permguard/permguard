@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
@@ -46,10 +46,10 @@ func (s SQLiteCentralStorageAAP) CreateIdentity(identity *azmodels.Identity) (*a
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity kind %s is not valid.", identity.Kind))
 	}
 	dbInIdentity := &azirepos.Identity{
-		AccountID: 			identity.AccountID,
-		IdentitySourceID: 	identity.IdentitySourceID,
-		Kind:				kind,
-		Name:     			identity.Name,
+		AccountID:        identity.AccountID,
+		IdentitySourceID: identity.IdentitySourceID,
+		Kind:             kind,
+		Name:             identity.Name,
 	}
 	dbOutIdentity, err := s.sqlRepo.UpsertIdentity(tx, true, dbInIdentity)
 	if err != nil {
@@ -80,11 +80,11 @@ func (s SQLiteCentralStorageAAP) UpdateIdentity(identity *azmodels.Identity) (*a
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity kind %s is not valid.", identity.Kind))
 	}
 	dbInIdentity := &azirepos.Identity{
-		IdentityID: 		identity.IdentityID,
-		AccountID:  		identity.AccountID,
-		IdentitySourceID: 	identity.IdentitySourceID,
-		Kind: 				kind,
-		Name:       		identity.Name,
+		IdentityID:       identity.IdentityID,
+		AccountID:        identity.AccountID,
+		IdentitySourceID: identity.IdentitySourceID,
+		Kind:             kind,
+		Name:             identity.Name,
 	}
 	dbOutIdentity, err := s.sqlRepo.UpsertIdentity(tx, false, dbInIdentity)
 	if err != nil {

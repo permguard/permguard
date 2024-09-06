@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"strings"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azvalidators "github.com/permguard/permguard-authz/pkg/extensions/validators"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ValidateAccountID validates an account ID.

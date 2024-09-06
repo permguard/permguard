@@ -23,13 +23,12 @@ import (
 	"github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
-
 
 func TestWrapSqlite3Error(t *testing.T) {
 	tests := map[string]struct {
-		ErrorIn error
+		ErrorIn  error
 		ErrorOut error
 	}{
 		"here a sample error 1": {
@@ -37,19 +36,19 @@ func TestWrapSqlite3Error(t *testing.T) {
 			azerrors.WrapSystemError(azerrors.ErrStorageConstraintUnique, "storage: constraint failed - here a sample error 1"),
 		},
 		"here a sample error 2": {
-			sqlite3.Error{Code: sqlite3.ErrConstraint },
+			sqlite3.Error{Code: sqlite3.ErrConstraint},
 			azerrors.WrapSystemError(azerrors.ErrStorageConstraintUnique, "storage: constraint failed - here a sample error 2"),
 		},
 		"here a sample error 3": {
-			sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique },
+			sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique},
 			azerrors.WrapSystemError(azerrors.ErrStorageConstraintUnique, "storage: unique constraint failed - here a sample error 3"),
 		},
 		"here a sample error 4": {
-			sqlite3.Error{Code: sqlite3.ErrNotFound },
+			sqlite3.Error{Code: sqlite3.ErrNotFound},
 			azerrors.WrapSystemError(azerrors.ErrStorageNotFound, "storage: record not found - here a sample error 4"),
 		},
 		"here a sample error 5": {
-			sqlite3.Error{Code: sqlite3.ErrAuth },
+			sqlite3.Error{Code: sqlite3.ErrAuth},
 			azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: generic error (here a sample error 5)"),
 		},
 	}

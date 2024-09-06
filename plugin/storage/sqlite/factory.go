@@ -16,14 +16,13 @@
 
 package sqlite
 
-
 import (
 	"flag"
 
 	"github.com/spf13/viper"
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azicentralstorage "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )

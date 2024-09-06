@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	azvalidators "github.com/permguard/permguard-authz/pkg/extensions/validators"
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ExecInitWorkspace initializes the workspace.

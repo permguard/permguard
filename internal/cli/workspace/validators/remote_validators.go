@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	azvalidators "github.com/permguard/permguard-authz/pkg/extensions/validators"
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // SanitizeRemote sanitizes the remote name.

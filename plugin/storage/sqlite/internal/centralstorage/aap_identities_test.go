@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 

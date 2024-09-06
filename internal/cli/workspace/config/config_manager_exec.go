@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ExecInitialize initializes the config resources.
