@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"strings"
 
-	azvalidators "github.com/permguard/permguard/pkg/authz/validators"
+	azvalidators "github.com/permguard/permguard/pkg/agents/storage/validators"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
