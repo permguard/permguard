@@ -162,7 +162,7 @@ func RegisterV1PAPServiceServer(s grpc.ServiceRegistrar, srv V1PAPServiceServer)
 	s.RegisterService(&V1PAPService_ServiceDesc, srv)
 }
 
-func _V1PAPService_CreateRepository_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _V1PAPService_CreateRepository_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
 	in := new(RepositoryCreateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -174,13 +174,13 @@ func _V1PAPService_CreateRepository_Handler(srv interface{}, ctx context.Context
 		Server:     srv,
 		FullMethod: V1PAPService_CreateRepository_FullMethodName,
 	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+	handler := func(ctx context.Context, req any) (any, error) {
 		return srv.(V1PAPServiceServer).CreateRepository(ctx, req.(*RepositoryCreateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1PAPService_UpdateRepository_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _V1PAPService_UpdateRepository_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
 	in := new(RepositoryUpdateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -192,13 +192,13 @@ func _V1PAPService_UpdateRepository_Handler(srv interface{}, ctx context.Context
 		Server:     srv,
 		FullMethod: V1PAPService_UpdateRepository_FullMethodName,
 	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+	handler := func(ctx context.Context, req any) (any, error) {
 		return srv.(V1PAPServiceServer).UpdateRepository(ctx, req.(*RepositoryUpdateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1PAPService_DeleteRepository_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _V1PAPService_DeleteRepository_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
 	in := new(RepositoryDeleteRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -210,13 +210,13 @@ func _V1PAPService_DeleteRepository_Handler(srv interface{}, ctx context.Context
 		Server:     srv,
 		FullMethod: V1PAPService_DeleteRepository_FullMethodName,
 	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+	handler := func(ctx context.Context, req any) (any, error) {
 		return srv.(V1PAPServiceServer).DeleteRepository(ctx, req.(*RepositoryDeleteRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1PAPService_FetchRepositories_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _V1PAPService_FetchRepositories_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
 	in := new(RepositoryFetchRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -228,7 +228,7 @@ func _V1PAPService_FetchRepositories_Handler(srv interface{}, ctx context.Contex
 		Server:     srv,
 		FullMethod: V1PAPService_FetchRepositories_FullMethodName,
 	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+	handler := func(ctx context.Context, req any) (any, error) {
 		return srv.(V1PAPServiceServer).FetchRepositories(ctx, req.(*RepositoryFetchRequest))
 	}
 	return interceptor(ctx, in, info, handler)

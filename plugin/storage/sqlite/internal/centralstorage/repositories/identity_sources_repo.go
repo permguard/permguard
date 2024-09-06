@@ -127,7 +127,7 @@ func (r *Repo) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, acc
 
 	baseQuery := "SELECT * FROM identity_sources"
 	var conditions []string
-	var args []interface{}
+	var args []any
 
 	conditions = append(conditions, "account_id = ?")
 	args = append(args, accountID)

@@ -299,7 +299,7 @@ func TestFetchRepositoryWithErrors(t *testing.T) {
 	{ // Test with invalid repository id
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLitePAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outRepositories, err := storage.FetchRepositories(1, 100, 232956849236, map[string]interface{}{azmodels.FieldRepositoryRepositoryID: 232956849236})
+		outRepositories, err := storage.FetchRepositories(1, 100, 232956849236, map[string]any{azmodels.FieldRepositoryRepositoryID: 232956849236})
 		assert.Nil(outRepositories, "repositories should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -307,7 +307,7 @@ func TestFetchRepositoryWithErrors(t *testing.T) {
 	{ // Test with invalid repository name
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLitePAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outRepositories, err := storage.FetchRepositories(1, 100, 232956849236, map[string]interface{}{azmodels.FieldRepositoryName: 2})
+		outRepositories, err := storage.FetchRepositories(1, 100, 232956849236, map[string]any{azmodels.FieldRepositoryName: 2})
 		assert.Nil(outRepositories, "repositories should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -348,7 +348,7 @@ func TestFetchRepositoryWithSuccess(t *testing.T) {
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLRepo.On("FetchRepositories", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutRepositories, nil)
 
-	outRepositories, err := storage.FetchRepositories(1, 100, 232956849236, map[string]interface{}{azmodels.FieldRepositoryRepositoryID: azirepos.GenerateUUID(), azmodels.FieldRepositoryName: "rent-a-car2"})
+	outRepositories, err := storage.FetchRepositories(1, 100, 232956849236, map[string]any{azmodels.FieldRepositoryRepositoryID: azirepos.GenerateUUID(), azmodels.FieldRepositoryName: "rent-a-car2"})
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outRepositories, "repositories should not be nil")
 	assert.Equal(len(outRepositories), len(dbOutRepositories), "repositories and dbRepositories should have the same length")

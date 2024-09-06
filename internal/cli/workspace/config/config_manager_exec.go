@@ -65,7 +65,7 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 			output = out(nil, "remote", remote, nil)
 		}
 	} else {
-		remotes := []interface{}{}
+		remotes := []any{}
 		remoteObj := map[string]any{
 			"remote": remote,
 			"server": cfgRemote.Server,
@@ -100,7 +100,7 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 			output = out(nil, "remote", cfgRemote, nil)
 		}
 	} else {
-		remotes := []interface{}{}
+		remotes := []any{}
 		remoteObj := map[string]any{
 			"remote": remote,
 			"server": cfgRemote.Server,
@@ -133,7 +133,7 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out func(map[stri
 			output = out(nil, "remotes", remotes, nil)
 		}
 	} else {
-		remotes := []interface{}{}
+		remotes := []any{}
 		for cfgRemote := range cfg.Remotes {
 			remoteObj := map[string]any{
 				"remote": cfgRemote,
@@ -178,7 +178,7 @@ func (m *ConfigManager) ExecAddRepo(remote string, accountID int64, repo string,
 			output = out(nil, "repo", refID, nil)
 		}
 	} else {
-		remotes := []interface{}{}
+		remotes := []any{}
 		remoteObj := map[string]any{
 			"remote": remote,
 			"refs":   cfgRepo.RefID,
@@ -212,7 +212,7 @@ func (m *ConfigManager) ExecListRepos(activeRepoURI string, output map[string]an
 			output = out(nil, "repos", repos, nil)
 		}
 	} else {
-		repos := []interface{}{}
+		repos := []any{}
 		for cfgRepo := range cfg.Repositories {
 			isActive := activeRepoURI == cfgRepo
 			repoObj := map[string]any{

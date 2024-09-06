@@ -38,14 +38,14 @@ const (
 // AAPServiceConfig holds the configuration for the server.
 type AAPServiceConfig struct {
 	serviceKind azservices.ServiceKind
-	config      map[string]interface{}
+	config      map[string]any
 }
 
 // NewAAPServiceConfig creates a new server factory configuration.
 func NewAAPServiceConfig() (*AAPServiceConfig, error) {
 	return &AAPServiceConfig{
 		serviceKind: azservices.ServiceAAP,
-		config:      map[string]interface{}{},
+		config:      map[string]any{},
 	}, nil
 }
 
@@ -81,7 +81,7 @@ func (c *AAPServiceConfig) InitFromViper(v *viper.Viper) error {
 }
 
 // GetConfigData returns the configuration data.
-func (c *AAPServiceConfig) GetConfigData() map[string]interface{} {
+func (c *AAPServiceConfig) GetConfigData() map[string]any {
 	return azcopier.CopyMap(c.config)
 }
 

@@ -313,7 +313,7 @@ func TestFetchIdentityWithErrors(t *testing.T) {
 	{ // Test with invalid identity id
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]interface{}{azmodels.FieldIdentityIdentityID: 232956849236})
+		outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]any{azmodels.FieldIdentityIdentityID: 232956849236})
 		assert.Nil(outIdentities, "identities should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -321,7 +321,7 @@ func TestFetchIdentityWithErrors(t *testing.T) {
 	{ // Test with invalid identity name
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]interface{}{azmodels.FieldIdentityName: 2})
+		outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]any{azmodels.FieldIdentityName: 2})
 		assert.Nil(outIdentities, "identities should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -366,7 +366,7 @@ func TestFetchIdentityWithSuccess(t *testing.T) {
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLRepo.On("FetchIdentities", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutIdentities, nil)
 
-	outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]interface{}{azmodels.FieldIdentityIdentityID: azirepos.GenerateUUID(), azmodels.FieldIdentityName: "rent-a-car2"})
+	outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]any{azmodels.FieldIdentityIdentityID: azirepos.GenerateUUID(), azmodels.FieldIdentityName: "rent-a-car2"})
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outIdentities, "identities should not be nil")
 	assert.Equal(len(outIdentities), len(dbOutIdentities), "identities and dbIdentities should have the same length")

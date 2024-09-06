@@ -78,14 +78,14 @@ func (cp *CliPrinterTerminal) printJSON(output map[string]any) {
 }
 
 // printValue prints the value.
-func (cp *CliPrinterTerminal) printValue(key string, value interface{}) {
+func (cp *CliPrinterTerminal) printValue(key string, value any) {
 	if value == nil || (reflect.TypeOf(value).Kind() == reflect.String && value.(string) == "") {
 		green := color.New(color.FgGreen)
 		green.Println(key)
 		return
 	}
 	switch v := value.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		green := color.New(color.FgGreen)
 		green.Println(key + ":")
 		for k, val := range v {

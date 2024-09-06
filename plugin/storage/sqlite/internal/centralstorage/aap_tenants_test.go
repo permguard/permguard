@@ -299,7 +299,7 @@ func TestFetchTenantWithErrors(t *testing.T) {
 	{ // Test with invalid tenant id
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]interface{}{azmodels.FieldTenantTenantID: 232956849236})
+		outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]any{azmodels.FieldTenantTenantID: 232956849236})
 		assert.Nil(outTenants, "tenants should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -307,7 +307,7 @@ func TestFetchTenantWithErrors(t *testing.T) {
 	{ // Test with invalid tenant name
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]interface{}{azmodels.FieldTenantName: 2})
+		outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]any{azmodels.FieldTenantName: 2})
 		assert.Nil(outTenants, "tenants should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -348,7 +348,7 @@ func TestFetchTenantWithSuccess(t *testing.T) {
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLRepo.On("FetchTenants", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutTenants, nil)
 
-	outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]interface{}{azmodels.FieldTenantTenantID: azirepos.GenerateUUID(), azmodels.FieldTenantName: "rent-a-car2"})
+	outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]any{azmodels.FieldTenantTenantID: azirepos.GenerateUUID(), azmodels.FieldTenantName: "rent-a-car2"})
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outTenants, "tenants should not be nil")
 	assert.Equal(len(outTenants), len(dbOutTenants), "tenants and dbTenants should have the same length")

@@ -127,7 +127,7 @@ func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID i
 
 	baseQuery := "SELECT * FROM tenants"
 	var conditions []string
-	var args []interface{}
+	var args []any
 
 	conditions = append(conditions, "account_id = ?")
 	args = append(args, accountID)
