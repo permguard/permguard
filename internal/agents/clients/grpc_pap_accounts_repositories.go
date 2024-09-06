@@ -18,8 +18,8 @@ package clients
 
 import (
 	"context"
-	"errors"
 
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azapiv1pap "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 )
@@ -40,7 +40,7 @@ func (c *GrpcPAPClient) CreateRepository(accountID int64, name string) (*azmodel
 // UpdateRepository updates an repository.
 func (c *GrpcPAPClient) UpdateRepository(repository *azmodels.Repository) (*azmodels.Repository, error) {
 	if repository == nil {
-		return nil, errors.New("client: invalid repository instance")
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientGeneric, "client: invalid repository instance.")
 	}
 	client, err := c.createGRPCClient()
 	if err != nil {

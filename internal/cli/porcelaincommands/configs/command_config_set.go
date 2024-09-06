@@ -17,13 +17,13 @@
 package configs
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azvalidators "github.com/permguard/permguard-core/pkg/extensions/validators"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
@@ -51,7 +51,7 @@ func runECommandForAAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 		return aziclicommon.ErrCommandSilent
 	}
 	if len(args) == 0 {
-		printer.Error(errors.New(aziclicommon.ErrorMessageInvalidInputs))
+		printer.Error(azerrors.WrapSystemError(azerrors.ErrCliGeneric, "core: invalid input."))
 		return aziclicommon.ErrCommandSilent
 	}
 	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixAAP, aziclicommon.FlagSuffixAAPTarget), args[0])
@@ -70,7 +70,7 @@ func runECommandForPAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 		return aziclicommon.ErrCommandSilent
 	}
 	if len(args) == 0 {
-		printer.Error(errors.New(aziclicommon.ErrorMessageInvalidInputs))
+		printer.Error(azerrors.WrapSystemError(azerrors.ErrCliGeneric, "core: invalid input."))
 		return aziclicommon.ErrCommandSilent
 	}
 	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget), args[0])

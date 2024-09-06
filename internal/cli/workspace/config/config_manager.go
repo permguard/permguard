@@ -62,7 +62,7 @@ func (m *ConfigManager) readConfig() (*Config, error) {
 func (m *ConfigManager) saveConfig(override bool, cfg *Config) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config.")
 	}
 	fileName := m.getConfigFile()
 	if override {
@@ -71,7 +71,7 @@ func (m *ConfigManager) saveConfig(override bool, cfg *Config) error {
 		_, err = m.persMgr.WriteFileIfNotExists(true, fileName, data, 0644)
 	}
 	if err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", fileName))
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s.", fileName))
 	}
 	return nil
 }
@@ -87,7 +87,7 @@ func (m *ConfigManager) GetRemote(remote string) (*RemoteConfig, error) {
 		return nil, err
 	}
 	if _, ok := cfg.Remotes[remote]; !ok {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", remote))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist.", remote))
 	}
 	cfgRemote := cfg.Remotes[remote]
 	return &cfgRemote, nil
@@ -104,7 +104,7 @@ func (m *ConfigManager) GetRepo(repoURI string) (*RepositoryConfig, error) {
 		return nil, err
 	}
 	if _, ok := cfg.Repositories[repoURI]; !ok {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: repo %s does not exist", repoURI))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: repo %s does not exist.", repoURI))
 	}
 	cfgRepo := cfg.Repositories[repoURI]
 	return &cfgRepo, nil

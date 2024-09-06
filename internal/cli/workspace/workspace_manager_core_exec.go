@@ -77,16 +77,16 @@ func (m *WorkspaceManager) ExecInitWorkspace(out func(map[string]any, string, an
 // ExecAddRemote adds a remote.
 func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort int, papPort int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory.", m.getHomeDir()))
 	}
 	if !azvalidators.IsValidHostname(server) {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid server %s", server))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid server %s.", server))
 	}
 	if !azvalidators.IsValidPort(aapPort) {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid aap port %d", aapPort))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid aap port %d.", aapPort))
 	}
 	if !azvalidators.IsValidPort(papPort) {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid pap port %d", papPort))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid pap port %d.", papPort))
 	}
 
 	fileLock, err := m.tryLock()
@@ -101,7 +101,7 @@ func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort i
 // ExecRemoveRemote removes a remote.
 func (m *WorkspaceManager) ExecRemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory.", m.getHomeDir()))
 	}
 
 	fileLock, err := m.tryLock()
@@ -115,7 +115,7 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out func(map[string]a
 		return nil, err
 	}
 	if headInfo.Remote == remote {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, fmt.Sprintf("cli: cannot remove the remote used by the currently checked out account %s", remote))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, fmt.Sprintf("cli: cannot remove the remote used by the currently checked out account %s.", remote))
 	}
 	return m.cfgMgr.ExecRemoveRemote(remote, nil, out)
 }
@@ -123,7 +123,7 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out func(map[string]a
 // ExecListRemotes lists the remotes.
 func (m *WorkspaceManager) ExecListRemotes(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory.", m.getHomeDir()))
 	}
 
 	fileLock, err := m.tryLock()
@@ -138,7 +138,7 @@ func (m *WorkspaceManager) ExecListRemotes(out func(map[string]any, string, any,
 // ExecListRepos lists the repos.
 func (m *WorkspaceManager) ExecListRepos(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory.", m.getHomeDir()))
 	}
 
 	fileLock, err := m.tryLock()

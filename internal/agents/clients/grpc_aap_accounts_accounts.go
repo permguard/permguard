@@ -18,9 +18,9 @@ package clients
 
 import (
 	"context"
-	"errors"
 	"io"
 
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azapiv1aap "github.com/permguard/permguard/internal/agents/services/aap/endpoints/api/v1"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 )
@@ -41,7 +41,7 @@ func (c *GrpcAAPClient) CreateAccount(name string) (*azmodels.Account, error) {
 // UpdateAccount updates an account.
 func (c *GrpcAAPClient) UpdateAccount(account *azmodels.Account) (*azmodels.Account, error) {
 	if account == nil {
-		return nil, errors.New("client: invalid account instance")
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientGeneric, "client: invalid account instance.")
 	}
 	client, err := c.createGRPCClient()
 	if err != nil {

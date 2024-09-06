@@ -23,6 +23,8 @@ import (
 
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -60,7 +62,7 @@ func InitFromViperForCommon(v *viper.Viper) (bool, string, error) {
 	debug := v.GetBool(flagDebug)
 	logLevel := strings.ToUpper(v.GetString(flagLogLevel))
 	if !slices.Contains(configValueLogLevels, strings.ToUpper(logLevel)) {
-		return false, "", ErrConfigInvalidLogLevel
+		return false, "", azerrors.WrapSystemError(azerrors.ErrCliGeneric, "core: invalid log level")
 	}
 	return debug, logLevel, nil
 }

@@ -17,11 +17,10 @@
 package clients
 
 import (
-	"errors"
-
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azapiv1aap "github.com/permguard/permguard/internal/agents/services/aap/endpoints/api/v1"
 )
 
@@ -33,7 +32,7 @@ type GrpcAAPClient struct {
 // NewGrpcAAPClient creates a new gRPC client for the AAP service.
 func NewGrpcAAPClient(target string) (*GrpcAAPClient, error) {
 	if target == "" {
-		return nil, errors.New("client: target is required")
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientGeneric, "client: target is required.")
 	}
 	return &GrpcAAPClient{
 		target: target,

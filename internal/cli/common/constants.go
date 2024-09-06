@@ -18,14 +18,10 @@ package common
 
 import (
 	"fmt"
-	"errors"
 
 	_ "embed"
-)
 
-const (
-	ErrorMessageCliBug        = "an issue has been detected with the cli code configuration. please create a github issue with the details."
-	ErrorMessageInvalidInputs = "invalid inputs"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -81,4 +77,4 @@ func BuildCliLongTemplate(content string) string {
 }
 
 // ErrCommandSilent is an error that is used to indicate that the command should not print an error message.
-var ErrCommandSilent = errors.New("command: silent error")
+var ErrCommandSilent = azerrors.WrapSystemError(azerrors.ErrCliGeneric, "core: silent error.")

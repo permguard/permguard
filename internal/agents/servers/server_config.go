@@ -21,6 +21,7 @@ import (
 
 	"github.com/spf13/viper"
 
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azcopier "github.com/permguard/permguard-core/pkg/extensions/copier"
 	azvalidators "github.com/permguard/permguard-core/pkg/extensions/validators"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
@@ -137,7 +138,7 @@ func (c *ServerConfig) InitFromViper(v *viper.Viper) error {
 	c.logLevel = logLevel
 	c.appData = v.GetString(azoptions.FlagName(flagPrefixServer, flagSuffixAppData))
 	if !azvalidators.IsValidPath(c.appData) {
-		return azservices.ErrServiceInvalidAppData
+		return azerrors.WrapSystemError(azerrors.ErrCliArguments, "core: invalid app data directory.")
 	}
 	for _, fcty := range c.storagesFactories {
 		config, err := fcty.GetFactoryConfig()

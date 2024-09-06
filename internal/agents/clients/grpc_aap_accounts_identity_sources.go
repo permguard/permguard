@@ -18,8 +18,8 @@ package clients
 
 import (
 	"context"
-	"errors"
 
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azapiv1aap "github.com/permguard/permguard/internal/agents/services/aap/endpoints/api/v1"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 )
@@ -40,7 +40,7 @@ func (c *GrpcAAPClient) CreateIdentitySource(accountID int64, name string) (*azm
 // UpdateIdentitySource updates an identity source.
 func (c *GrpcAAPClient) UpdateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error) {
 	if identitySource == nil {
-		return nil, errors.New("client: invalid identity source instance")
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientGeneric, "client: invalid identity source instance.")
 	}
 	client, err := c.createGRPCClient()
 	if err != nil {

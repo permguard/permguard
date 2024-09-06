@@ -13,7 +13,7 @@ func main() {
 	// Run the cli
 	initializer, err := azicli.NewCommunityCliInitializer()
 	if err != nil {
-		panic(fmt.Sprintf("cli: error creating cli: %s", err.Error()))
+		panic(fmt.Sprintf("cli: error creating cli: %s.", err.Error()))
 	}
 	azicli.Run(initializer)
 }
