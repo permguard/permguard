@@ -81,6 +81,13 @@ tasks:
     cmds:
       - make teste2e
     silent: true
+  # Depedencies
+  dep-core:
+    desc: get abstraction core dependency
+    cmd: 'go get -u github.com/permguard/permguard-core@{{.CLI_ARGS}}'
+  dep-lang:
+    desc: get abstraction languange dependency
+    cmd: 'go get -u github.com/permguard/permguard-abs-language@{{.CLI_ARGS}}'
   # Up and Down tasks
   up:
     cmds:
