@@ -37,14 +37,14 @@ const (
 // PDPServiceConfig holds the configuration for the server.
 type PDPServiceConfig struct {
 	service azservices.ServiceKind
-	config  map[string]interface{}
+	config  map[string]any
 }
 
 // NewPDPServiceConfig creates a new server factory configuration.
 func NewPDPServiceConfig() (*PDPServiceConfig, error) {
 	return &PDPServiceConfig{
 		service: azservices.ServicePDP,
-		config:  map[string]interface{}{},
+		config:  map[string]any{},
 	}, nil
 }
 
@@ -75,7 +75,7 @@ func (c *PDPServiceConfig) InitFromViper(v *viper.Viper) error {
 }
 
 // GetConfigData returns the configuration data.
-func (c *PDPServiceConfig) GetConfigData() map[string]interface{} {
+func (c *PDPServiceConfig) GetConfigData() map[string]any {
 	return azcopier.CopyMap(c.config)
 }
 

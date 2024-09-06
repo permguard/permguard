@@ -45,5 +45,5 @@ type HostConfigReader interface {
 // ServiceConfigReader declares the service configuration reader.
 type ServiceConfigReader interface {
 	// GetValue returns the value for the given key.
-	GetValue(key string) (interface{}, error)
+	GetValue(key string) (any, error)
 }

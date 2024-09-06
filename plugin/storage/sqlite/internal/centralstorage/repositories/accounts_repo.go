@@ -120,7 +120,7 @@ func (r *Repo) FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *
 
 	baseQuery := "SELECT * FROM accounts"
 	var conditions []string
-	var args []interface{}
+	var args []any
 
 	if filterID != nil {
 		accountID := *filterID

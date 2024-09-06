@@ -317,7 +317,7 @@ func TestFetchAccountWithErrors(t *testing.T) {
 	{ // Test with invalid account id
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outAccounts, err := storage.FetchAccounts(1, 100, map[string]interface{}{azmodels.FieldAccountAccountID: "not valid"})
+		outAccounts, err := storage.FetchAccounts(1, 100, map[string]any{azmodels.FieldAccountAccountID: "not valid"})
 		assert.Nil(outAccounts, "accounts should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -325,7 +325,7 @@ func TestFetchAccountWithErrors(t *testing.T) {
 	{ // Test with invalid account name
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outAccounts, err := storage.FetchAccounts(1, 100, map[string]interface{}{azmodels.FieldAccountName: 2})
+		outAccounts, err := storage.FetchAccounts(1, 100, map[string]any{azmodels.FieldAccountName: 2})
 		assert.Nil(outAccounts, "accounts should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -364,7 +364,7 @@ func TestFetchAccountWithSuccess(t *testing.T) {
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLRepo.On("FetchAccounts", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutAccounts, nil)
 
-	outAccounts, err := storage.FetchAccounts(1, 100, map[string]interface{}{azmodels.FieldAccountAccountID: int64(506074038324), azmodels.FieldAccountName: "rent-a-car2"})
+	outAccounts, err := storage.FetchAccounts(1, 100, map[string]any{azmodels.FieldAccountAccountID: int64(506074038324), azmodels.FieldAccountName: "rent-a-car2"})
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outAccounts, "accounts should not be nil")
 	assert.Equal(len(dbOutAccounts), len(outAccounts), "accounts  and dbAccounts should have the same length")

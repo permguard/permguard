@@ -70,12 +70,12 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 			output = out(nil, "head", refPath, nil)
 		}
 	} else {
-		remotes := []interface{}{}
+		remotes := []any{}
 		remoteObj := map[string]any{
 			"remote":    headCfg.Head.Remote,
 			"accountid": headCfg.Head.AccountID,
 			"repo":      headCfg.Head.Repo,
-			"refid":      headCfg.Head.RefID,
+			"refid":     headCfg.Head.RefID,
 		}
 		remotes = append(remotes, remoteObj)
 		output = out(output, "head", remotes, nil)

@@ -20,11 +20,11 @@ import "fmt"
 
 // ServiceConfiguration declares the service configuration.
 type ServiceConfiguration struct {
-	data map[string]interface{}
+	data map[string]any
 }
 
 // NewServiceConfiguration creates a new service configuration.
-func NewServiceConfiguration(data map[string]interface{}) (*ServiceConfiguration, error) {
+func NewServiceConfiguration(data map[string]any) (*ServiceConfiguration, error) {
 	if data == nil {
 		return nil, fmt.Errorf("service: data is nil")
 	}
@@ -34,7 +34,7 @@ func NewServiceConfiguration(data map[string]interface{}) (*ServiceConfiguration
 }
 
 // GetValue returns the value for the given key.
-func (h *ServiceConfiguration) GetValue(key string) (interface{}, error) {
+func (h *ServiceConfiguration) GetValue(key string) (any, error) {
 	value, exists := h.data[key]
 	if !exists {
 		return nil, fmt.Errorf("service: key %s not found in configuration", key)

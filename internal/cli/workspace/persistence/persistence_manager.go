@@ -87,7 +87,7 @@ func (p *PersistenceManager) AppendToFile(relative bool, name string, data []byt
 }
 
 // ReadTOMLFile reads a TOML file.
-func (p *PersistenceManager) ReadTOMLFile(relative bool, name string, v interface{}) error {
+func (p *PersistenceManager) ReadTOMLFile(relative bool, name string, v any) error {
 	if relative {
 		name = filepath.Join(p.rootDir, name)
 	}

@@ -64,7 +64,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(out func(map[string]any, string, an
 		}
 		output = out(nil, "init", msg, nil)
 	} else {
-		remotes := []interface{}{}
+		remotes := []any{}
 		remoteObj := map[string]any{
 			"cwd": m.getHomeDir(),
 		}

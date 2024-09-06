@@ -37,14 +37,14 @@ const (
 // PAPServiceConfig holds the configuration for the server.
 type PAPServiceConfig struct {
 	service azservices.ServiceKind
-	config  map[string]interface{}
+	config  map[string]any
 }
 
 // NewPAPServiceConfig creates a new server factory configuration.
 func NewPAPServiceConfig() (*PAPServiceConfig, error) {
 	return &PAPServiceConfig{
 		service: azservices.ServicePAP,
-		config:  map[string]interface{}{},
+		config:  map[string]any{},
 	}, nil
 }
 
@@ -75,7 +75,7 @@ func (c *PAPServiceConfig) InitFromViper(v *viper.Viper) error {
 }
 
 // GetConfigData returns the configuration data.
-func (c *PAPServiceConfig) GetConfigData() map[string]interface{} {
+func (c *PAPServiceConfig) GetConfigData() map[string]any {
 	return azcopier.CopyMap(c.config)
 }
 

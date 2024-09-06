@@ -68,7 +68,7 @@ func (m *RefsManager) getHeadFile() string {
 }
 
 // saveConfig saves the configuration file.
-func (m *RefsManager) saveConfig(name string, override bool, cfg interface{}) error {
+func (m *RefsManager) saveConfig(name string, override bool, cfg any) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")

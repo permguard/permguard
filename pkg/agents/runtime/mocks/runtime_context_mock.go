@@ -21,8 +21,8 @@ import (
 
 	"go.uber.org/zap"
 
-	mock "github.com/stretchr/testify/mock"
 	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
+	mock "github.com/stretchr/testify/mock"
 )
 
 // RuntimeContextMock is a mock type for the RuntimeContext type.
@@ -107,11 +107,11 @@ func (h *mockHostConfig) GetAppData() string {
 
 // mockServiceConfig is a mock type for the ServiceConfigReader type.
 type mockServiceConfig struct {
-	values map[string]interface{}
+	values map[string]any
 }
 
 // GetValue returns the value for the given key.
-func (s *mockServiceConfig) GetValue(key string) (interface{}, error) {
+func (s *mockServiceConfig) GetValue(key string) (any, error) {
 	if v, ok := s.values[key]; ok {
 		return v, nil
 	}
@@ -119,21 +119,21 @@ func (s *mockServiceConfig) GetValue(key string) (interface{}, error) {
 }
 
 // NewRuntimeContextMock creates a new RuntimeContextMock.
-func NewRuntimeContextMock(hostCfgReader interface{}, svcCfgReader interface{}) *RuntimeContextMock {
+func NewRuntimeContextMock(hostCfgReader any, svcCfgReader any) *RuntimeContextMock {
 	ctx := &RuntimeContextMock{}
 	ctx.On("GetLogger").Return(zap.NewNop())
 	ctx.On("GetParentLoggerMessage").Return("")
 	ctx.On("GetContext").Return(context.Background())
 	if hostCfgReader == nil {
-		hostCfgReader = &mockHostConfig{ appData: "." }
+		hostCfgReader = &mockHostConfig{appData: "."}
 	}
 	ctx.On("GetHostConfigReader").Return(hostCfgReader, nil)
 	if svcCfgReader == nil {
-		serviceMap := map[string]interface{}{
+		serviceMap := map[string]any{
 			"enable.default.creation": true,
-			"data.fetch.maxpagesize": 10000,
+			"data.fetch.maxpagesize":  10000,
 		}
-		svcCfgReader = &mockServiceConfig{ values: serviceMap}
+		svcCfgReader = &mockServiceConfig{values: serviceMap}
 	}
 	ctx.On("GetServiceConfigReader").Return(svcCfgReader, nil)
 	return ctx

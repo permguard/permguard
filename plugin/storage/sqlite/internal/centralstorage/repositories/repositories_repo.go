@@ -129,7 +129,7 @@ func (r *Repo) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, accoun
 
 	baseQuery := "SELECT * FROM repositories"
 	var conditions []string
-	var args []interface{}
+	var args []any
 
 	conditions = append(conditions, "account_id = ?")
 	args = append(args, accountID)
