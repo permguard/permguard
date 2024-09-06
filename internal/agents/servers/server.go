@@ -29,7 +29,7 @@ import (
 	aziservices "github.com/permguard/permguard/internal/agents/services"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azconfigs "github.com/permguard/permguard/pkg/cli/configs"
+	azconfigs "github.com/permguard/permguard/pkg/cli/options"
 )
 
 // Server represents the applicative server.

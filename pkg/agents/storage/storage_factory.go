@@ -17,7 +17,7 @@
 package storage
 
 import (
-	azconfigs "github.com/permguard/permguard/pkg/cli/configs"
+	azconfigs "github.com/permguard/permguard/pkg/cli/options"
 )
 
 // StorageFactoryConfig is the storage factory config.
