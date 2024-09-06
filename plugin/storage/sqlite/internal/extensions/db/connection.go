@@ -30,7 +30,7 @@ import (
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azconfigs "github.com/permguard/permguard/pkg/cli/configs"
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (

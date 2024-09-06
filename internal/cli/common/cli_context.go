@@ -26,7 +26,7 @@ import (
 	azvalidators "github.com/permguard/permguard-authz/pkg/extensions/validators"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/cli/configs"
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // CreateContextAndPrinter creates a new cli context and printer.

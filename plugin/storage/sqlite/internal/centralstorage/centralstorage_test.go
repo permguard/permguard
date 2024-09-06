@@ -26,7 +26,7 @@ import (
 
 	azrtmmocks "github.com/permguard/permguard/pkg/agents/runtime/mocks"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/testutils/mocks"
 )
 

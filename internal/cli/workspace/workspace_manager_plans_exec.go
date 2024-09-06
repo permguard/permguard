@@ -19,7 +19,7 @@ package workspace
 import (
 	"fmt"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ExecPlan geberates a plan of changes to apply to the remote repo based on the differences between the local and remote states.

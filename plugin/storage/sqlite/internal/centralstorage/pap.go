@@ -18,7 +18,7 @@ package centralstorage
 
 import (
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
@@ -29,7 +29,7 @@ type SQLiteCentralStoragePAP struct {
 	sqliteConnector azidb.SQLiteConnector
 	sqlRepo         SqliteRepo
 	sqlExec         SqliteExecutor
-	config 			*SQLiteCentralStorageConfig
+	config          *SQLiteCentralStorageConfig
 }
 
 // newSQLitePAPCentralStorage creates a new SQLitePAPCentralStorage.
@@ -48,10 +48,10 @@ func newSQLitePAPCentralStorage(storageContext *azstorage.StorageContext, sqlite
 		return nil, err
 	}
 	return &SQLiteCentralStoragePAP{
-		ctx:             	storageContext,
-		sqliteConnector: 	sqliteConnector,
-		sqlRepo:         	repo,
-		sqlExec:         	sqlExec,
-		config:				config,
+		ctx:             storageContext,
+		sqliteConnector: sqliteConnector,
+		sqlRepo:         repo,
+		sqlExec:         sqlExec,
+		config:          config,
 	}, nil
 }

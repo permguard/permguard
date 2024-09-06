@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	azvalidators "github.com/permguard/permguard/pkg/agents/storage/validators"
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // RepoInfo contains the repo information.

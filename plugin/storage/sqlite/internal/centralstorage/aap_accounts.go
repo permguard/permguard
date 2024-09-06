@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
@@ -69,7 +69,7 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 		tx.Rollback()
 		return nil, err
 	}
- 	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(); err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapAccountToAgentAccount(dbOutAccount)

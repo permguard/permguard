@@ -24,8 +24,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
@@ -272,7 +272,7 @@ func TestDeleteTenantWithSuccess(t *testing.T) {
 func TestFetchTenantWithErrors(t *testing.T) {
 	assert := assert.New(t)
 
-	{	// Test with invalid page
+	{ // Test with invalid page
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, _, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(nil, azerrors.ErrServerGeneric)
 		outTenants, err := storage.FetchTenants(1, 100, 232956849236, nil)
@@ -280,7 +280,7 @@ func TestFetchTenantWithErrors(t *testing.T) {
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrServerGeneric, err), "error should be errservergeneric")
 	}
 
-	{	// Test with invalid page
+	{ // Test with invalid page
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outTenants, err := storage.FetchTenants(0, 100, 232956849236, nil)
@@ -288,7 +288,7 @@ func TestFetchTenantWithErrors(t *testing.T) {
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
-	{	// Test with invalid page size
+	{ // Test with invalid page size
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outTenants, err := storage.FetchTenants(1, 0, 232956849236, nil)
@@ -296,7 +296,7 @@ func TestFetchTenantWithErrors(t *testing.T) {
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
-	{	// Test with invalid tenant id
+	{ // Test with invalid tenant id
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]interface{}{azmodels.FieldTenantTenantID: 232956849236})
@@ -304,18 +304,18 @@ func TestFetchTenantWithErrors(t *testing.T) {
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
-	{	// Test with invalid tenant name
+	{ // Test with invalid tenant name
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]interface{}{azmodels.FieldTenantName: 2 })
+		outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]interface{}{azmodels.FieldTenantName: 2})
 		assert.Nil(outTenants, "tenants should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
-	{	// Test with server error
+	{ // Test with server error
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		mockSQLRepo.On("FetchTenants",mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, azerrors.ErrServerGeneric)
+		mockSQLRepo.On("FetchTenants", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, azerrors.ErrServerGeneric)
 		outTenants, err := storage.FetchTenants(1, 100, 232956849236, nil)
 		assert.Nil(outTenants, "tenants should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrServerGeneric, err), "error should be errservergeneric")

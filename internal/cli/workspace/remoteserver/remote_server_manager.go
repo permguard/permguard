@@ -20,21 +20,20 @@ import (
 	"fmt"
 
 	aziclients "github.com/permguard/permguard/internal/agents/clients"
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
-
 
 // RemoteServerManager implements the internal manager for the remote file.
 type RemoteServerManager struct {
-	ctx     *aziclicommon.CliCommandContext
+	ctx *aziclicommon.CliCommandContext
 }
 
 // NewRemoteServerManager creates a new remoteuration manager.
 func NewRemoteServerManager(ctx *aziclicommon.CliCommandContext) *RemoteServerManager {
 	return &RemoteServerManager{
-		ctx:     ctx,
+		ctx: ctx,
 	}
 }
 

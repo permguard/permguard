@@ -28,7 +28,7 @@ import (
 	"github.com/fatih/color"
 	"google.golang.org/grpc/status"
 
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -110,17 +110,17 @@ func (cp *CliPrinterTerminal) printValue(key string, value interface{}) {
 // printTerminal prints the output as terminal text.
 func (cp *CliPrinterTerminal) printTerminal(output map[string]any, isError bool) {
 	keys := make([]string, 0, len(output))
-    for k := range output {
-        keys = append(keys, k)
-    }
+	for k := range output {
+		keys = append(keys, k)
+	}
 	sort.Strings(keys)
-    for _, k := range keys {
+	for _, k := range keys {
 		if isError {
 			color.Red("%s: %s\n", k, output[k])
 		} else {
 			cp.printValue(k, output[k])
 		}
-    }
+	}
 }
 
 // Print prints the output.
@@ -161,7 +161,7 @@ func (cp *CliPrinterTerminal) extractCodeAndMessage(input string) (string, strin
 }
 
 // createOutputWithputError creates the output with the error.
-func (cp *CliPrinterTerminal) createOutputWithputError(code string, msg string) (map[string]any) {
+func (cp *CliPrinterTerminal) createOutputWithputError(code string, msg string) map[string]any {
 	var output map[string]any
 	errCode := code
 	errMsg := msg
@@ -192,7 +192,7 @@ func (cp *CliPrinterTerminal) createOutputWithputError(code string, msg string) 
 }
 
 // createOutputWithError creates the output with the error.
-func (cp *CliPrinterTerminal) createOutputWithError(errInputMsg string) (map[string]any) {
+func (cp *CliPrinterTerminal) createOutputWithError(errInputMsg string) map[string]any {
 	var output map[string]any
 	code := "00000"
 	if cp.verbose {

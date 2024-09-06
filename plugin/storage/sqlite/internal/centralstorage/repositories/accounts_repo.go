@@ -27,7 +27,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	azvalidators "github.com/permguard/permguard/pkg/agents/storage/validators"
-	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // GenerateAccountID generates a random account id.
