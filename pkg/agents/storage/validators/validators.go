@@ -35,7 +35,7 @@ func ValidateAccountID(entity string, accountID int64) error {
 	min := int64(100000000000)
 	max := int64(999999999999)
 	if accountID < min || accountID > max {
-		return fmt.Errorf("storage: %s name %d is not valid. It must be between %d and %d. %w", entity, accountID, min, max, azerrors.ErrClientID)
+		return fmt.Errorf("storage: %s name %d is not valid. it must be between %d and %d. %w", entity, accountID, min, max, azerrors.ErrClientID)
 	}
 	return nil
 }
@@ -85,10 +85,10 @@ func ValidateIdentityUserName(entity string, name string) error {
 func ValidateName(entity string, name string) error {
 	sanitized := strings.ToLower(strings.TrimSpace(name))
 	if strings.HasPrefix(name, "permguard") {
-		return fmt.Errorf("storage: %s name %s is not valid. It cannot have 'permguard' as a prefix. %w", entity, name, azerrors.ErrClientName)
+		return fmt.Errorf("storage: %s name %s is not valid. it cannot have 'permguard' as a prefix. %w", entity, name, azerrors.ErrClientName)
 	}
 	if name != sanitized {
-		return fmt.Errorf("storage: %s name %s is not valid. It must be in lower case. %w", entity, name, azerrors.ErrClientName)
+		return fmt.Errorf("storage: %s name %s is not valid. it must be in lower case. %w", entity, name, azerrors.ErrClientName)
 	}
 	vName := struct {
 		Name string `validate:"required,name"`
