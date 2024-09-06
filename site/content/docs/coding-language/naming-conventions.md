@@ -48,7 +48,7 @@ Below is an example of a UUR that identifies an inventory item with the ID `b51c
 uur:581616507495:matera-branch:pharmacy-branch:inventory/b51cbd37503f4a4eaec9d2f33419d523
 ```
 
-Each placeholder, except the `account` placeholder, can either be an exact value or use the wildcard pattern `*` to match multiple values.
+Each placeholder, except the `{account}` placeholder, can either be an exact value or use the wildcard pattern `*` to match multiple values.
 
 ```plaintext
 uur:581616507495:matera-branch:pharmacy-*:inventory/*
