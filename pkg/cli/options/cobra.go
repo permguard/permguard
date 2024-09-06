@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package configs
+package options
 
 import (
 	"flag"

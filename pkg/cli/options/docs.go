@@ -14,8 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package configs
-
-import "errors"
-
-var ErrConfigInvalidLogLevel = errors.New("config: invalid log level")
+// Package options implements the cli package options
+package options

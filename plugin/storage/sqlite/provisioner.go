@@ -28,7 +28,7 @@ import (
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 
-	azconfigs "github.com/permguard/permguard/pkg/cli/configs"
+	azconfigs "github.com/permguard/permguard/pkg/cli/options"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 

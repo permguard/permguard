@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package configs
+package options
 
 import (
 	"flag"
@@ -25,7 +25,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azfiles "github.com/permguard/permguard/pkg/core/files"
+	azfiles "github.com/permguard/permguard-core/pkg/extensions/files"
 )
 
 // configureViper configures the viper.
@@ -50,7 +50,8 @@ func NewViperFromConfig(onCreation func(*viper.Viper) error) (*viper.Viper, erro
 	}
 	configPath := filepath.Join(homeDir, ".permguard")
 	configName := "config"
-	created, err := azfiles.CreateFileIfNotExists(configPath, configName)
+	config := filepath.Join(configPath, configName+".toml")
+	created, err := azfiles.CreateFileIfNotExists(config)
 	if err != nil {
 		return nil, err
 	}

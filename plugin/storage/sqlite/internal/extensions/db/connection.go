@@ -29,7 +29,7 @@ import (
 	"go.uber.org/zap"
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azconfigs "github.com/permguard/permguard/pkg/cli/configs"
+	azconfigs "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 

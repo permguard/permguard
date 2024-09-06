@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azconfigs "github.com/permguard/permguard/pkg/cli/configs"
+	azconfigs "github.com/permguard/permguard/pkg/cli/options"
 	azprovisioners "github.com/permguard/permguard/pkg/provisioners/storage"
 )
 
