@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package controllers implement the service controllers.
+// Package controllers implements the service controllers.
 package controllers

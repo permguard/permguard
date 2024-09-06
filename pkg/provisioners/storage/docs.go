@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package storage implement storage provisioners.
+// Package storage implements storage provisioners.
 package storage

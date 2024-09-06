@@ -26,7 +26,7 @@ import (
 // ExecCheckoutRepo checks out a repository.
 func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeDir()))
 	}
 
 	repoInfo, err := azicliwksvals.ExtractFromRepoURI(repoURI)
@@ -68,7 +68,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 // ExecPull fetches the latest changes from the remote repo and constructs the remote state.
 func (m *WorkspaceManager) ExecPull(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeDir()))
 	}
 
 	fileLock, err := m.tryLock()
