@@ -24,7 +24,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
-	azvalidators "github.com/permguard/permguard/pkg/authz/validators"
+	azvalidators "github.com/permguard/permguard/pkg/agents/storage/validators"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
