@@ -25,7 +25,7 @@ import (
 // ExecPlan geberates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
 func (m *WorkspaceManager) ExecPlan(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory.", m.getHomeDir()))
 	}
 
 	fileLock, err := m.tryLock()
@@ -42,7 +42,7 @@ func (m *WorkspaceManager) ExecPlan(out func(map[string]any, string, any, error)
 // ExecApply applies the plan to the remote repo
 func (m *WorkspaceManager) ExecApply(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory.", m.getHomeDir()))
 	}
 
 	fileLock, err := m.tryLock()
@@ -59,7 +59,7 @@ func (m *WorkspaceManager) ExecApply(out func(map[string]any, string, any, error
 // ExecDestroy destroies locally managed objects from the remote repo
 func (m *WorkspaceManager) ExecDestroy(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory.", m.getHomeDir()))
 	}
 
 	fileLock, err := m.tryLock()

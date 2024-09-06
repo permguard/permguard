@@ -18,8 +18,8 @@ package clients
 
 import (
 	"context"
-	"errors"
 
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azapiv1aap "github.com/permguard/permguard/internal/agents/services/aap/endpoints/api/v1"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 )
@@ -40,7 +40,7 @@ func (c *GrpcAAPClient) CreateTenant(accountID int64, name string) (*azmodels.Te
 // UpdateTenant updates a tenant.
 func (c *GrpcAAPClient) UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error) {
 	if tenant == nil {
-		return nil, errors.New("client: invalid tenant instance")
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientGeneric, "client: invalid tenant instance.")
 	}
 	client, err := c.createGRPCClient()
 	if err != nil {

@@ -47,30 +47,30 @@ func ExtractFromRepoURI(repoURI string) (*RepoInfo, error) {
 	repoURI = strings.ToLower(repoURI)
 	items := strings.Split(repoURI, "/")
 	if len(items) < 3 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo %s", repoURI))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo %s.", repoURI))
 	}
 
 	remoteName, err := SanitizeRemote(items[0])
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid remote %s", remoteName))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid remote %s.", remoteName))
 	}
 	result.Remote = remoteName
 
 	accountIDStr := items[1]
 	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s.", accountIDStr))
 	}
 	err = azvalidators.ValidateAccountID("repo", accountID)
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s.", accountIDStr))
 	}
 	result.AccountID = accountID
 
 	repoName := items[2]
 	err = azvalidators.ValidateName("repo", repoName)
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo name %s", repoName))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo name %s.", repoName))
 	}
 	result.Repo = repoName
 	return result, nil

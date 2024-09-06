@@ -18,10 +18,10 @@ package services
 
 import (
 	"context"
-	"errors"
 
 	"go.uber.org/zap"
 
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 )
@@ -68,7 +68,7 @@ type Service struct {
 func newService(serviceCfg *ServiceConfig, hostContext *azservices.HostContext) (*Service, error) {
 	svcCfgReader, err := serviceCfg.serviceable.GetServiceConfigReader()
 	if err != nil {
-		return nil, errors.New("service: cannot get service config reader")
+		return nil, azerrors.WrapSystemError(azerrors.ErrConfigurationGeneric, "config: cannot get service config reader")
 	}
 	serviceCtx, err := azservices.NewServiceContext(hostContext, serviceCfg.serviceable.GetService(), svcCfgReader)
 	if err != nil {
