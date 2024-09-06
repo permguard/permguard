@@ -24,7 +24,7 @@ import (
 	azcopier "github.com/permguard/permguard-authz/pkg/extensions/copier"
 	azvalidators "github.com/permguard/permguard-authz/pkg/extensions/validators"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azconfigs "github.com/permguard/permguard/pkg/configs"
+	azconfigs "github.com/permguard/permguard/pkg/cli/configs"
 )
 
 const (

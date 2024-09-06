@@ -17,7 +17,7 @@
 package services
 
 import (
-	azconfigs "github.com/permguard/permguard/pkg/configs"
+	azconfigs "github.com/permguard/permguard/pkg/cli/configs"
 )
 
 // ServiceFactoryConfig is the service factory config.

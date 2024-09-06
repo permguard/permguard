@@ -28,7 +28,7 @@ import (
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 
-	azconfigs "github.com/permguard/permguard/pkg/configs"
+	azconfigs "github.com/permguard/permguard/pkg/cli/configs"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
@@ -105,10 +105,10 @@ func (p *SQLiteStorageProvisioner) InitFromViper(v *viper.Viper) error {
 func (p *SQLiteStorageProvisioner) setup() (*sql.DB, error) {
 	filePath := p.filePath
 	dbName := p.config.GetDBName()
-    if !strings.HasSuffix(dbName, ".db") {
-        dbName += ".db"
-    }
-    dbPath := filepath.Join(filePath, dbName)
+	if !strings.HasSuffix(dbName, ".db") {
+		dbName += ".db"
+	}
+	dbPath := filepath.Join(filePath, dbName)
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, err

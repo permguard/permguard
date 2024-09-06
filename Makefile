@@ -39,7 +39,9 @@ init-dependency:
 	go get -u moul.io/zapgorm2
 	go get -u github.com/pelletier/go-toml
 	go get -u github.com/gofrs/flock
-	go get -u github.com/permguard/permguard-authz
+	go get -u github.com/permguard/permguard-core
+	go get -u github.com/permguard/permguard-abs-storage
+	go get -u github.com/permguard/permguard-abs-language
 
 mod:
 	go mod download

@@ -17,7 +17,7 @@
 package storage
 
 import (
-	azconfigs "github.com/permguard/permguard/pkg/configs"
+	azconfigs "github.com/permguard/permguard/pkg/cli/configs"
 )
 
 // StorageProvisionerInfo declares the storage provisioner information.
