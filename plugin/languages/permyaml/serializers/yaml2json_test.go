@@ -53,7 +53,7 @@ func TestJSONUnmarshaling(t *testing.T) {
 				jsonData1, err := y2j.SerializeYAML2JSON(data)
 				assert.Nil(err, "error converting YAML to JSON")
 				assert.NotNil(jsonData1, "JSON data is nil")
-				json1Sha := azcrypto.ComputeSHA1(jsonData1)
+				json1Sha := azcrypto.ComputeSHA256(jsonData1)
 
 				// Second iteration: JSON to YAML
 				yamlData2, err := y2j.SerializeJSON2YAML(jsonData1)
@@ -62,7 +62,7 @@ func TestJSONUnmarshaling(t *testing.T) {
 				jsonData2, err := y2j.SerializeYAML2JSON(yamlData2)
 				assert.Nil(err, "error converting YAML to JSON")
 				assert.NotNil(jsonData2, "JSON data is nil")
-				json2Sha := azcrypto.ComputeSHA1(jsonData2)
+				json2Sha := azcrypto.ComputeSHA256(jsonData2)
 
 				assert.Equal(json1Sha, json2Sha, "SHA1 hashes are different")
 			})
