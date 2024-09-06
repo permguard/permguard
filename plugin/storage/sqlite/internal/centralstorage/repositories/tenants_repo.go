@@ -30,22 +30,22 @@ import (
 
 const (
 	// errorMessageTenantInvalidAccountID is the error message tenant invalid account id.
-	errorMessageTenantInvalidAccountID = "storage: invalid client input - account id is not valid (id: %d)."
+	errorMessageTenantInvalidAccountID = "storage: invalid client input - account id is not valid (id: %d)"
 )
 
 // UpsertTenant creates or updates an tenant.
 func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant, error) {
 	if tenant == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant data is missing or malformed (%s).", LogTenantEntry(tenant)))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant data is missing or malformed (%s)", LogTenantEntry(tenant)))
 	}
 	if err := azvalidators.ValidateAccountID("tenant", tenant.AccountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidAccountID, tenant.AccountID))
 	}
 	if !isCreate && azvalidators.ValidateUUID("tenant", tenant.TenantID) != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (%s).", LogTenantEntry(tenant)))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (%s)", LogTenantEntry(tenant)))
 	}
 	if err := azvalidators.ValidateName("tenant", tenant.Name); err != nil {
-		errorMessage := "storage: invalid client input - tenant name is not valid (%s)."
+		errorMessage := "storage: invalid client input - tenant name is not valid (%s)"
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogTenantEntry(tenant)))
 	}
 
@@ -66,7 +66,7 @@ func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant,
 			action = "create"
 		}
 		params := map[string]string{WrapSqlite3ParamForeignKey: "account id"}
-		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s tenant - operation '%s-tenant' encountered an issue (%s).", action, action, LogTenantEntry(tenant)), err, params)
+		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s tenant - operation '%s-tenant' encountered an issue (%s)", action, action, LogTenantEntry(tenant)), err, params)
 	}
 
 	var dbTenant Tenant
@@ -78,7 +78,7 @@ func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant,
 		&dbTenant.Name,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve tenant - operation 'retrieve-created-tenant' encountered an issue (%s).", LogTenantEntry(tenant)), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve tenant - operation 'retrieve-created-tenant' encountered an issue (%s)", LogTenantEntry(tenant)), err)
 	}
 	return &dbTenant, nil
 }
@@ -89,7 +89,7 @@ func (r *Repo) DeleteTenant(tx *sql.Tx, accountID int64, tenantID string) (*Tena
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidAccountID, accountID))
 	}
 	if err := azvalidators.ValidateUUID("tenant", tenantID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (id: %s).", tenantID))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (id: %s)", tenantID))
 	}
 
 	var dbTenant Tenant
@@ -101,15 +101,15 @@ func (r *Repo) DeleteTenant(tx *sql.Tx, accountID int64, tenantID string) (*Tena
 		&dbTenant.Name,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - tenant id is not valid (id: %s).", tenantID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - tenant id is not valid (id: %s)", tenantID), err)
 	}
 	res, err := tx.Exec("DELETE FROM tenants WHERE account_id = ? and tenant_id = ?", accountID, tenantID)
 	if err != nil || res == nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete tenant - operation 'delete-tenant' encountered an issue (id: %s).", tenantID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete tenant - operation 'delete-tenant' encountered an issue (id: %s)", tenantID), err)
 	}
 	rows, err := res.RowsAffected()
 	if err != nil || rows != 1 {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete tenant - operation 'delete-tenant' could not find the tenant (id: %s).", tenantID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete tenant - operation 'delete-tenant' could not find the tenant (id: %s)", tenantID), err)
 	}
 	return &dbTenant, nil
 }
@@ -117,7 +117,7 @@ func (r *Repo) DeleteTenant(tx *sql.Tx, accountID int64, tenantID string) (*Tena
 // FetchTenants retrieves tenants.
 func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]Tenant, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	if err := azvalidators.ValidateAccountID("tenant", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageTenantInvalidAccountID, accountID))
@@ -135,7 +135,7 @@ func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID i
 	if filterID != nil {
 		tenantID := *filterID
 		if err := azvalidators.ValidateUUID("tenant", tenantID); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - tenant id is not valid (id: %s).", tenantID))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - tenant id is not valid (id: %s)", tenantID))
 		}
 		conditions = append(conditions, "tenant_id = ?")
 		args = append(args, tenantID)
@@ -144,7 +144,7 @@ func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID i
 	if filterName != nil {
 		tenantName := *filterName
 		if err := azvalidators.ValidateName("tenant", tenantName); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - tenant name is not valid (name: %s).", tenantName))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - tenant name is not valid (name: %s)", tenantName))
 		}
 		tenantName = "%" + tenantName + "%"
 		conditions = append(conditions, "name LIKE ?")
@@ -165,7 +165,7 @@ func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID i
 
 	err := db.Select(&dbTenants, baseQuery, args...)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve tenants - operation 'retrieve-tenants' encountered an issue with parameters %v.", args), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve tenants - operation 'retrieve-tenants' encountered an issue with parameters %v", args), err)
 	}
 
 	return dbTenants, nil

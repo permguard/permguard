@@ -27,7 +27,7 @@ import (
 // CreateAccount creates a new account.
 func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmodels.Account, error) {
 	if account == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - account is nil.")
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - account is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -78,7 +78,7 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 // UpdateAccount updates an account.
 func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmodels.Account, error) {
 	if account == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - account is nil.")
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - account is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -127,7 +127,7 @@ func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Accou
 // FetchAccounts returns all accounts.
 func (s SQLiteCentralStorageAAP) FetchAccounts(page int32, pageSize int32, fields map[string]any) ([]azmodels.Account, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -137,7 +137,7 @@ func (s SQLiteCentralStorageAAP) FetchAccounts(page int32, pageSize int32, field
 	if _, ok := fields[azmodels.FieldAccountAccountID]; ok {
 		accountID, ok := fields[azmodels.FieldAccountAccountID].(int64)
 		if !ok {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (account id: %d).", accountID))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (account id: %d)", accountID))
 		}
 		filterID = &accountID
 	}
@@ -145,7 +145,7 @@ func (s SQLiteCentralStorageAAP) FetchAccounts(page int32, pageSize int32, field
 	if _, ok := fields[azmodels.FieldAccountName]; ok {
 		accountName, ok := fields[azmodels.FieldAccountName].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account name is not valid (account name: %s).", accountName))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account name is not valid (account name: %s)", accountName))
 		}
 		filterName = &accountName
 	}
@@ -157,7 +157,7 @@ func (s SQLiteCentralStorageAAP) FetchAccounts(page int32, pageSize int32, field
 	for i, a := range dbAccounts {
 		account, err := mapAccountToAgentAccount(&a)
 		if err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert account entity (%s).", azirepos.LogAccountEntry(&a)))
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert account entity (%s)", azirepos.LogAccountEntry(&a)))
 		}
 		accounts[i] = *account
 	}

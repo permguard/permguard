@@ -60,7 +60,7 @@ func newCliContext(cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, erro
 		return nil, err
 	}
 	if !azvalidators.IsValidPath(workDir) {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("cli: %s is an invalid work directory.", workDir))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("cli: %s is an invalid work directory", workDir))
 	}
 	ctx.workDir = workDir
 	output, err := cmd.Flags().GetString(FlagOutput)
@@ -69,7 +69,7 @@ func newCliContext(cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, erro
 	}
 	ctx.output = strings.ToUpper(strings.TrimSpace(output))
 	if ctx.output != azcli.OutputTerminal && ctx.output != azcli.OutputJSON {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("cli: %s is an invalid output.", output))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("cli: %s is an invalid output", output))
 	}
 	verbose, err := cmd.Flags().GetBool(FlagVerbose)
 	if err != nil {

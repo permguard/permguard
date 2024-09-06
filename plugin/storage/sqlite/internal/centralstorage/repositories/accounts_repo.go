@@ -43,13 +43,13 @@ func GenerateAccountID() int64 {
 // UpsertAccount creates or updates an account.
 func (r *Repo) UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Account, error) {
 	if account == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account data is missing or malformed (%s).", LogAccountEntry(account)))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account data is missing or malformed (%s)", LogAccountEntry(account)))
 	}
 	if !isCreate && azvalidators.ValidateAccountID("account", account.AccountID) != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (%s).", LogAccountEntry(account)))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (%s)", LogAccountEntry(account)))
 	}
 	if err := azvalidators.ValidateName("account", account.Name); err != nil {
-		errorMessage := "storage: invalid client input - account name is not valid (%s)."
+		errorMessage := "storage: invalid client input - account name is not valid (%s)"
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogAccountEntry(account)))
 	}
 
@@ -68,7 +68,7 @@ func (r *Repo) UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Acco
 		if isCreate {
 			action = "create"
 		}
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to %s account - operation '%s-account' encountered an issue (%s).", action, action, LogAccountEntry(account)), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to %s account - operation '%s-account' encountered an issue (%s)", action, action, LogAccountEntry(account)), err)
 	}
 
 	var dbAccount Account
@@ -79,7 +79,7 @@ func (r *Repo) UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Acco
 		&dbAccount.Name,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve account - operation 'retrieve-created-account' encountered an issue (%s).", LogAccountEntry(account)), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve account - operation 'retrieve-created-account' encountered an issue (%s)", LogAccountEntry(account)), err)
 	}
 	return &dbAccount, nil
 }
@@ -87,7 +87,7 @@ func (r *Repo) UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Acco
 // DeleteAccount deletes an account.
 func (r *Repo) DeleteAccount(tx *sql.Tx, accountID int64) (*Account, error) {
 	if err := azvalidators.ValidateAccountID("account", accountID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (id: %d).", accountID))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (id: %d)", accountID))
 	}
 
 	var dbAccount Account
@@ -98,15 +98,15 @@ func (r *Repo) DeleteAccount(tx *sql.Tx, accountID int64) (*Account, error) {
 		&dbAccount.Name,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - account id is not valid (id: %d).", accountID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - account id is not valid (id: %d)", accountID), err)
 	}
 	res, err := tx.Exec("DELETE FROM accounts WHERE account_id = ?", accountID)
 	if err != nil || res == nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete account - operation 'delete-account' encountered an issue (id: %d).", accountID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete account - operation 'delete-account' encountered an issue (id: %d)", accountID), err)
 	}
 	rows, err := res.RowsAffected()
 	if err != nil || rows != 1 {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete account - operation 'delete-account' encountered an issue (id: %d).", accountID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete account - operation 'delete-account' encountered an issue (id: %d)", accountID), err)
 	}
 	return &dbAccount, nil
 }
@@ -114,7 +114,7 @@ func (r *Repo) DeleteAccount(tx *sql.Tx, accountID int64) (*Account, error) {
 // FetchAccounts retrieves accounts.
 func (r *Repo) FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]Account, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	var dbAccounts []Account
 
@@ -125,7 +125,7 @@ func (r *Repo) FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *
 	if filterID != nil {
 		accountID := *filterID
 		if err := azvalidators.ValidateAccountID("account", accountID); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - account id is not valid (id: %d).", accountID))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - account id is not valid (id: %d)", accountID))
 		}
 		conditions = append(conditions, "account_id = ?")
 		args = append(args, accountID)
@@ -134,7 +134,7 @@ func (r *Repo) FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *
 	if filterName != nil {
 		accountName := *filterName
 		if err := azvalidators.ValidateName("account", accountName); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - account name is not valid (name: %s).", accountName))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - account name is not valid (name: %s)", accountName))
 		}
 		accountName = "%" + accountName + "%"
 		conditions = append(conditions, "name LIKE ?")
@@ -155,7 +155,7 @@ func (r *Repo) FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *
 
 	err := db.Select(&dbAccounts, baseQuery, args...)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve accounts - operation 'retrieve-accounts' encountered an issue with parameters %v.", args), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve accounts - operation 'retrieve-accounts' encountered an issue with parameters %v", args), err)
 	}
 
 	return dbAccounts, nil

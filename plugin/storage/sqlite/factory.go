@@ -63,7 +63,7 @@ type SQLiteStorageFactory struct {
 // NewSQLiteStorageFactory creates a new server factory configuration.
 func NewSQLiteStorageFactory(storageFctyCfg *SQLiteStorageFactoryConfig) (*SQLiteStorageFactory, error) {
 	if storageFctyCfg == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrConfigurationGeneric, "storage: storage factory configuration cannot be nil.")
+		return nil, azerrors.WrapSystemError(azerrors.ErrConfigurationGeneric, "storage: storage factory configuration cannot be nil")
 	}
 	connection, err := azidb.NewSQLiteConnection(storageFctyCfg.config)
 	if err != nil {
@@ -82,5 +82,5 @@ func (f *SQLiteStorageFactory) CreateCentralStorage(storageContext *azstorage.St
 
 // CreateProximityStorage returns the proximity storage.
 func (f *SQLiteStorageFactory) CreateProximityStorage(storageContext *azstorage.StorageContext) (azstorage.ProximityStorage, error) {
-	return nil, azerrors.WrapSystemError(azerrors.ErrNotImplemented, "storage: proximity storage not implemented by the sqlite plugin.")
+	return nil, azerrors.WrapSystemError(azerrors.ErrNotImplemented, "storage: proximity storage not implemented by the sqlite plugin")
 }

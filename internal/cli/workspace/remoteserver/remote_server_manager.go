@@ -51,11 +51,11 @@ func (m *RemoteServerManager) GetServerRemoteRepo(accountID int64, repo string, 
 	}
 	srvAccounts, err := aapClient.FetchAccountsByID(1, 1, accountID)
 	if err != nil || srvAccounts == nil || len(srvAccounts) == 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: account %d does not exist.", accountID))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: account %d does not exist", accountID))
 	}
 	srvRepo, err := papClient.FetchRepositoriesByName(1, 1, accountID, repo)
 	if err != nil || srvRepo == nil || len(srvRepo) == 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: repo %s does not exist.", repo))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: repo %s does not exist", repo))
 	}
 	return &srvRepo[0], nil
 }

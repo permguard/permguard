@@ -31,7 +31,7 @@ const (
 // CreateTenant creates a new tenant.
 func (s SQLiteCentralStorageAAP) CreateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error) {
 	if tenant == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - tenant is nil.")
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - tenant is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -59,7 +59,7 @@ func (s SQLiteCentralStorageAAP) CreateTenant(tenant *azmodels.Tenant) (*azmodel
 // UpdateTenant updates a tenant.
 func (s SQLiteCentralStorageAAP) UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error) {
 	if tenant == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - tenant is nil.")
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - tenant is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -109,7 +109,7 @@ func (s SQLiteCentralStorageAAP) DeleteTenant(accountID int64, tenantID string) 
 // FetchTenants returns all tenants.
 func (s SQLiteCentralStorageAAP) FetchTenants(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Tenant, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -119,7 +119,7 @@ func (s SQLiteCentralStorageAAP) FetchTenants(page int32, pageSize int32, accoun
 	if _, ok := fields[azmodels.FieldTenantTenantID]; ok {
 		tenantID, ok := fields[azmodels.FieldTenantTenantID].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (tenant id: %s).", tenantID))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (tenant id: %s)", tenantID))
 		}
 		filterID = &tenantID
 	}
@@ -127,7 +127,7 @@ func (s SQLiteCentralStorageAAP) FetchTenants(page int32, pageSize int32, accoun
 	if _, ok := fields[azmodels.FieldTenantName]; ok {
 		tenantName, ok := fields[azmodels.FieldTenantName].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant name is not valid (tenant name: %s).", tenantName))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant name is not valid (tenant name: %s)", tenantName))
 		}
 		filterName = &tenantName
 	}
@@ -139,7 +139,7 @@ func (s SQLiteCentralStorageAAP) FetchTenants(page int32, pageSize int32, accoun
 	for i, a := range dbTenants {
 		tenant, err := mapTenantToAgentTenant(&a)
 		if err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert tenant entity (%s).", azirepos.LogTenantEntry(&a)))
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert tenant entity (%s)", azirepos.LogTenantEntry(&a)))
 		}
 		tenants[i] = *tenant
 	}

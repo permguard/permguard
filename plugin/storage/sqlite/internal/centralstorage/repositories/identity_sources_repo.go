@@ -30,22 +30,22 @@ import (
 
 const (
 	// errorMessageIdentitySourceInvalidAccountID is the error message identity source invalid account id.
-	errorMessageIdentitySourceInvalidAccountID = "storage: invalid client input - account id is not valid (id: %d)."
+	errorMessageIdentitySourceInvalidAccountID = "storage: invalid client input - account id is not valid (id: %d)"
 )
 
 // UpsertIdentitySource creates or updates an identity source.
 func (r *Repo) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *IdentitySource) (*IdentitySource, error) {
 	if identitySource == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source data is missing or malformed (%s).", LogIdentitySourceEntry(identitySource)))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source data is missing or malformed (%s)", LogIdentitySourceEntry(identitySource)))
 	}
 	if err := azvalidators.ValidateAccountID("identitySource", identitySource.AccountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentitySourceInvalidAccountID, identitySource.AccountID))
 	}
 	if !isCreate && azvalidators.ValidateUUID("identitySource", identitySource.IdentitySourceID) != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source id is not valid (%s).", LogIdentitySourceEntry(identitySource)))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source id is not valid (%s)", LogIdentitySourceEntry(identitySource)))
 	}
 	if err := azvalidators.ValidateName("identitySource", identitySource.Name); err != nil {
-		errorMessage := "storage: invalid client input - dentity source name is not valid (%s)."
+		errorMessage := "storage: invalid client input - dentity source name is not valid (%s)"
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogIdentitySourceEntry(identitySource)))
 	}
 
@@ -66,7 +66,7 @@ func (r *Repo) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *I
 			action = "create"
 		}
 		params := map[string]string{WrapSqlite3ParamForeignKey: "account id"}
-		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s identity source - operation '%s-identity-source' encountered an issue (%s).", action, action, LogIdentitySourceEntry(identitySource)), err, params)
+		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s identity source - operation '%s-identity-source' encountered an issue (%s)", action, action, LogIdentitySourceEntry(identitySource)), err, params)
 	}
 
 	var dbIdentitySource IdentitySource
@@ -78,7 +78,7 @@ func (r *Repo) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *I
 		&dbIdentitySource.Name,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve identity source - operation 'retrieve-created-identity-source' encountered an issue (%s).", LogIdentitySourceEntry(identitySource)), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve identity source - operation 'retrieve-created-identity-source' encountered an issue (%s)", LogIdentitySourceEntry(identitySource)), err)
 	}
 	return &dbIdentitySource, nil
 }
@@ -89,7 +89,7 @@ func (r *Repo) DeleteIdentitySource(tx *sql.Tx, accountID int64, identitySourceI
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentitySourceInvalidAccountID, accountID))
 	}
 	if err := azvalidators.ValidateUUID("identitySource", identitySourceID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source id is not valid (id: %s).", identitySourceID))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source id is not valid (id: %s)", identitySourceID))
 	}
 
 	var dbIdentitySource IdentitySource
@@ -101,15 +101,15 @@ func (r *Repo) DeleteIdentitySource(tx *sql.Tx, accountID int64, identitySourceI
 		&dbIdentitySource.Name,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - identity source id is not valid (id: %s).", identitySourceID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - identity source id is not valid (id: %s)", identitySourceID), err)
 	}
 	res, err := tx.Exec("DELETE FROM identity_sources WHERE account_id = ? and identity_source_id = ?", accountID, identitySourceID)
 	if err != nil || res == nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete identity source - operation 'delete-identity-source' encountered an issue (id: %s).", identitySourceID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete identity source - operation 'delete-identity-source' encountered an issue (id: %s)", identitySourceID), err)
 	}
 	rows, err := res.RowsAffected()
 	if err != nil || rows != 1 {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete identity source - operation 'delete-identity-source' could not find the identity source (id: %s).", identitySourceID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete identity source - operation 'delete-identity-source' could not find the identity source (id: %s)", identitySourceID), err)
 	}
 	return &dbIdentitySource, nil
 }
@@ -117,7 +117,7 @@ func (r *Repo) DeleteIdentitySource(tx *sql.Tx, accountID int64, identitySourceI
 // FetchIdentitySources retrieves identity sources.
 func (r *Repo) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]IdentitySource, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	if err := azvalidators.ValidateAccountID("identitySource", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageIdentitySourceInvalidAccountID, accountID))
@@ -135,7 +135,7 @@ func (r *Repo) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, acc
 	if filterID != nil {
 		identitySourceID := *filterID
 		if err := azvalidators.ValidateUUID("identitySource", identitySourceID); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - identity source id is not valid (id: %s).", identitySourceID))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - identity source id is not valid (id: %s)", identitySourceID))
 		}
 		conditions = append(conditions, "identity_source_id = ?")
 		args = append(args, identitySourceID)
@@ -144,7 +144,7 @@ func (r *Repo) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, acc
 	if filterName != nil {
 		identitySourceName := *filterName
 		if err := azvalidators.ValidateName("identitySource", identitySourceName); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - identity source name is not valid (name: %s).", identitySourceName))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - identity source name is not valid (name: %s)", identitySourceName))
 		}
 		identitySourceName = "%" + identitySourceName + "%"
 		conditions = append(conditions, "name LIKE ?")
@@ -165,7 +165,7 @@ func (r *Repo) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, acc
 
 	err := db.Select(&dbIdentitySources, baseQuery, args...)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve identity sources - operation 'retrieve-identity-sources' encountered an issue with parameters %v.", args), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve identity sources - operation 'retrieve-identity-sources' encountered an issue with parameters %v", args), err)
 	}
 
 	return dbIdentitySources, nil
