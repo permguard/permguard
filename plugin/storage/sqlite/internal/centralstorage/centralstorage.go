@@ -18,6 +18,7 @@ package centralstorage
 
 import (
 	"database/sql"
+
 	"github.com/jmoiron/sqlx"
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
@@ -60,7 +61,6 @@ type SqliteRepo interface {
 	DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string) (*azirepos.Repository, error)
 	// FetchRepositories fetches repositories.
 	FetchRepositories(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.Repository, error)
-
 }
 
 // SqliteExecutor is the interface for executing sqlite commands.
@@ -78,7 +78,7 @@ func (s SqliteExec) Connect(ctx *azstorage.StorageContext, sqliteConnector azidb
 	logger := ctx.GetLogger()
 	db, err := sqliteConnector.Connect(logger, ctx)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error("cannot connect to sqlite.", err)
+		return nil, azirepos.WrapSqlite3Error("cannot connect to sqlite", err)
 	}
 	return db, nil
 }
@@ -92,8 +92,8 @@ type SQLiteCentralStorage struct {
 // NewSQLiteCentralStorage creates a new sqlite central storage.
 func NewSQLiteCentralStorage(storageContext *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector) (*SQLiteCentralStorage, error) {
 	return &SQLiteCentralStorage{
-		ctx:             	storageContext,
-		sqliteConnector: 	sqliteConnector,
+		ctx:             storageContext,
+		sqliteConnector: sqliteConnector,
 	}, nil
 }
 

@@ -30,22 +30,22 @@ import (
 
 const (
 	// errorMessageRepositoryInvalidAccountID is the error message repository invalid account id.
-	errorMessageRepositoryInvalidAccountID = "storage: invalid client input - account id is not valid (id: %d)."
+	errorMessageRepositoryInvalidAccountID = "storage: invalid client input - account id is not valid (id: %d)"
 )
 
 // UpsertRepository creates or updates a repository.
 func (r *Repo) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Repository) (*Repository, error) {
 	if repository == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository data is missing or malformed (%s).", LogRepositoryEntry(repository)))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository data is missing or malformed (%s)", LogRepositoryEntry(repository)))
 	}
 	if err := azvalidators.ValidateAccountID("repository", repository.AccountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidAccountID, repository.AccountID))
 	}
 	if !isCreate && azvalidators.ValidateUUID("repository", repository.RepositoryID) != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (%s).", LogRepositoryEntry(repository)))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (%s)", LogRepositoryEntry(repository)))
 	}
 	if err := azvalidators.ValidateName("repository", repository.Name); err != nil {
-		errorMessage := "storage: invalid client input - repository name is not valid (%s)."
+		errorMessage := "storage: invalid client input - repository name is not valid (%s)"
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogRepositoryEntry(repository)))
 	}
 
@@ -66,7 +66,7 @@ func (r *Repo) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Repositor
 			action = "create"
 		}
 		params := map[string]string{WrapSqlite3ParamForeignKey: "account id"}
-		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s repository - operation '%s-repository' encountered an issue (%s).", action, action, LogRepositoryEntry(repository)), err, params)
+		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s repository - operation '%s-repository' encountered an issue (%s)", action, action, LogRepositoryEntry(repository)), err, params)
 	}
 
 	var dbRepository Repository
@@ -79,7 +79,7 @@ func (r *Repo) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Repositor
 		&dbRepository.Refs,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve repository - operation 'retrieve-created-repository' encountered an issue (%s).", LogRepositoryEntry(repository)), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve repository - operation 'retrieve-created-repository' encountered an issue (%s)", LogRepositoryEntry(repository)), err)
 	}
 	return &dbRepository, nil
 }
@@ -90,7 +90,7 @@ func (r *Repo) DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidAccountID, accountID))
 	}
 	if err := azvalidators.ValidateUUID("repository", repositoryID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (id: %s).", repositoryID))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (id: %s)", repositoryID))
 	}
 
 	var dbRepository Repository
@@ -103,15 +103,15 @@ func (r *Repo) DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string
 		&dbRepository.Refs,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - repository id is not valid (id: %s).", repositoryID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - repository id is not valid (id: %s)", repositoryID), err)
 	}
 	res, err := tx.Exec("DELETE FROM repositories WHERE account_id = ? and repository_id = ?", accountID, repositoryID)
 	if err != nil || res == nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete repository - operation 'delete-repository' encountered an issue (id: %s).", repositoryID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete repository - operation 'delete-repository' encountered an issue (id: %s)", repositoryID), err)
 	}
 	rows, err := res.RowsAffected()
 	if err != nil || rows != 1 {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete repository - operation 'delete-repository' could not find the repository (id: %s).", repositoryID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete repository - operation 'delete-repository' could not find the repository (id: %s)", repositoryID), err)
 	}
 	return &dbRepository, nil
 }
@@ -119,7 +119,7 @@ func (r *Repo) DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string
 // FetchRepositories retrieves repositories.
 func (r *Repo) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]Repository, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	if err := azvalidators.ValidateAccountID("repository", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageRepositoryInvalidAccountID, accountID))
@@ -137,7 +137,7 @@ func (r *Repo) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, accoun
 	if filterID != nil {
 		repositoryID := *filterID
 		if err := azvalidators.ValidateUUID("repository", repositoryID); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - repository id is not valid (id: %s).", repositoryID))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - repository id is not valid (id: %s)", repositoryID))
 		}
 		conditions = append(conditions, "repository_id = ?")
 		args = append(args, repositoryID)
@@ -146,7 +146,7 @@ func (r *Repo) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, accoun
 	if filterName != nil {
 		repositoryName := *filterName
 		if err := azvalidators.ValidateName("repository", repositoryName); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - repository name is not valid (name: %s).", repositoryName))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - repository name is not valid (name: %s)", repositoryName))
 		}
 		repositoryName = "%" + repositoryName + "%"
 		conditions = append(conditions, "name LIKE ?")
@@ -167,7 +167,7 @@ func (r *Repo) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, accoun
 
 	err := db.Select(&dbRepositories, baseQuery, args...)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve repositories - operation 'retrieve-repositories' encountered an issue with parameters %v.", args), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve repositories - operation 'retrieve-repositories' encountered an issue with parameters %v", args), err)
 	}
 
 	return dbRepositories, nil

@@ -32,7 +32,7 @@ import (
 // runECommandForUpsertAccount runs the command for creating or updating an account.
 func runECommandForUpsertAccount(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
 	if deps == nil {
-		color.Red("cli: an issue has been detected with the cli code configuration. please create a github issue with the details.")
+		color.Red("cli: an issue has been detected with the cli code configuration. please create a github issue with the details")
 		return aziclicommon.ErrCommandSilent
 	}
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)

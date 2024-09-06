@@ -71,7 +71,7 @@ func (m *RefsManager) getHeadFile() string {
 func (m *RefsManager) saveConfig(name string, override bool, cfg interface{}) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config.")
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
 	}
 	if override {
 		_, err = m.persMgr.WriteFile(true, name, data, 0644)
@@ -79,7 +79,7 @@ func (m *RefsManager) saveConfig(name string, override bool, cfg interface{}) er
 		_, err = m.persMgr.WriteFileIfNotExists(true, name, data, 0644)
 	}
 	if err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s.", name))
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", name))
 	}
 	return nil
 }

@@ -30,7 +30,7 @@ import (
 
 const (
 	// errorMessageIdentityInvalidAccountID is the error message identity invalid account id.
-	errorMessageIdentityInvalidAccountID = "storage: invalid client input - account id is not valid (id: %d)."
+	errorMessageIdentityInvalidAccountID = "storage: invalid client input - account id is not valid (id: %d)"
 )
 
 // identitiesMap is a map of identity kinds to IDs.
@@ -44,7 +44,7 @@ func ConvertIdentityKindToID(kind string) (int16, error) {
 	cKey := strings.ToLower(kind)
 	value, ok := identitiesMap[cKey]
 	if !ok {
-		return 0, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity kind %s is not valid.", kind))
+		return 0, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity kind %s is not valid", kind))
 	}
 	return value, nil
 }
@@ -62,25 +62,25 @@ func ConvertIdentityKindToString(id int16) (string, error) {
 // UpsertIdentity creates or updates an identity.
 func (r *Repo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*Identity, error) {
 	if identity == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity data is missing or malformed (%s).", LogIdentityEntry(identity)))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity data is missing or malformed (%s)", LogIdentityEntry(identity)))
 	}
 	if err := azvalidators.ValidateAccountID("identity", identity.AccountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentityInvalidAccountID, identity.AccountID))
 	}
 	if !isCreate && azvalidators.ValidateUUID("identity", identity.IdentityID) != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (%s).", LogIdentityEntry(identity)))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (%s)", LogIdentityEntry(identity)))
 	}
 	if isCreate && azvalidators.ValidateUUID("identity", identity.IdentitySourceID) != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (%s).", LogIdentityEntry(identity)))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (%s)", LogIdentityEntry(identity)))
 	}
 	if identity.Kind == identitiesMap["user"] {
 		if err := azvalidators.ValidateIdentityUserName("identity", identity.Name); err != nil {
-			errorMessage := "storage: invalid client input - identity name is not valid (%s)."
+			errorMessage := "storage: invalid client input - identity name is not valid (%s)"
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogIdentityEntry(identity)))
 		}
 	} else {
 		if err := azvalidators.ValidateName("identity", identity.Name); err != nil {
-			errorMessage := "storage: invalid client input - identity name is not valid (%s)."
+			errorMessage := "storage: invalid client input - identity name is not valid (%s)"
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogIdentityEntry(identity)))
 		}
 	}
@@ -104,7 +104,7 @@ func (r *Repo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*I
 			action = "create"
 		}
 		params := map[string]string{WrapSqlite3ParamForeignKey: "account id"}
-		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s identity - operation '%s-identity' encountered an issue (%s).", action, action, LogIdentityEntry(identity)), err, params)
+		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s identity - operation '%s-identity' encountered an issue (%s)", action, action, LogIdentityEntry(identity)), err, params)
 	}
 
 	var dbIdentity Identity
@@ -118,7 +118,7 @@ func (r *Repo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*I
 		&dbIdentity.Name,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve identity - operation 'retrieve-created-identity' encountered an issue (%s).", LogIdentityEntry(identity)), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve identity - operation 'retrieve-created-identity' encountered an issue (%s)", LogIdentityEntry(identity)), err)
 	}
 	return &dbIdentity, nil
 }
@@ -129,7 +129,7 @@ func (r *Repo) DeleteIdentity(tx *sql.Tx, accountID int64, identityID string) (*
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentityInvalidAccountID, accountID))
 	}
 	if err := azvalidators.ValidateUUID("identity", identityID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (id: %s).", identityID))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (id: %s)", identityID))
 	}
 	var dbIdentity Identity
 	err := tx.QueryRow("SELECT account_id, identity_id, created_at, updated_at, identity_source_id, kind, name FROM identities WHERE account_id = ? and identity_id = ?", accountID, identityID).Scan(
@@ -142,15 +142,15 @@ func (r *Repo) DeleteIdentity(tx *sql.Tx, accountID int64, identityID string) (*
 		&dbIdentity.Name,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - identity id is not valid (id: %s).", identityID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - identity id is not valid (id: %s)", identityID), err)
 	}
 	res, err := tx.Exec("DELETE FROM identities WHERE account_id = ? and identity_id = ?", accountID, identityID)
 	if err != nil || res == nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete identity - operation 'delete-identity' encountered an issue (id: %s).", identityID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete identity - operation 'delete-identity' encountered an issue (id: %s)", identityID), err)
 	}
 	rows, err := res.RowsAffected()
 	if err != nil || rows != 1 {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete identity - operation 'delete-identity' could not find the identity (id: %s).", identityID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete identity - operation 'delete-identity' could not find the identity (id: %s)", identityID), err)
 	}
 	return &dbIdentity, nil
 }
@@ -158,7 +158,7 @@ func (r *Repo) DeleteIdentity(tx *sql.Tx, accountID int64, identityID string) (*
 // FetchIdentities retrieves identities.
 func (r *Repo) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]Identity, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	if err := azvalidators.ValidateAccountID("identity", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageIdentityInvalidAccountID, accountID))
@@ -176,7 +176,7 @@ func (r *Repo) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, accountI
 	if filterID != nil {
 		identityID := *filterID
 		if err := azvalidators.ValidateUUID("identity", identityID); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - identity id is not valid (id: %s).", identityID))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - identity id is not valid (id: %s)", identityID))
 		}
 		conditions = append(conditions, "identity_id = ?")
 		args = append(args, identityID)
@@ -185,7 +185,7 @@ func (r *Repo) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, accountI
 	if filterName != nil {
 		identityName := *filterName
 		if err := azvalidators.ValidateIdentityUserName("identity", identityName); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - identity name is not valid (name: %s).", identityName))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - identity name is not valid (name: %s)", identityName))
 		}
 		identityName = "%" + identityName + "%"
 		conditions = append(conditions, "name LIKE ?")
@@ -206,7 +206,7 @@ func (r *Repo) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, accountI
 
 	err := db.Select(&dbIdentities, baseQuery, args...)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve identities - operation 'retrieve-identities' encountered an issue with parameters %v.", args), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve identities - operation 'retrieve-identities' encountered an issue with parameters %v", args), err)
 	}
 
 	return dbIdentities, nil

@@ -25,26 +25,26 @@ import (
 )
 
 const (
-	FlagWorkingDirectory    	= "workdir"
-	FlagWorkingDirectoryShort 	= "w"
-	FlagOutput              	= "output"
-	FlagOutputShort         	= "o"
-	FlagVerbose             	= "verbose"
-	FlagVerboseShort        	= "v"
-	FlagCommonPage          	= "page"
-	FlagCommonPageShort     	= "p"
-	FlagCommonPageSize      	= "size"
-	FlagCommonPageSizeShort 	= "s"
-	FlagCommonAccountID     	= "account"
-	FlagCommonName          	= "name"
-	FlagCommonEmail         	= "email"
-	FlagCommonDescription   	= "description"
-	FlagCommonFile          	= "file"
-	FlagCommonFileShort     	= "f"
-	FlagPrefixAAP           	= "aap"
-	FlagSuffixAAPTarget     	= "target"
-	FlagPrefixPAP           	= "pap"
-	FlagSuffixPAPTarget     	= "target"
+	FlagWorkingDirectory      = "workdir"
+	FlagWorkingDirectoryShort = "w"
+	FlagOutput                = "output"
+	FlagOutputShort           = "o"
+	FlagVerbose               = "verbose"
+	FlagVerboseShort          = "v"
+	FlagCommonPage            = "page"
+	FlagCommonPageShort       = "p"
+	FlagCommonPageSize        = "size"
+	FlagCommonPageSizeShort   = "s"
+	FlagCommonAccountID       = "account"
+	FlagCommonName            = "name"
+	FlagCommonEmail           = "email"
+	FlagCommonDescription     = "description"
+	FlagCommonFile            = "file"
+	FlagCommonFileShort       = "f"
+	FlagPrefixAAP             = "aap"
+	FlagSuffixAAPTarget       = "target"
+	FlagPrefixPAP             = "pap"
+	FlagSuffixPAPTarget       = "target"
 )
 
 //go:embed "art.txt"
@@ -77,4 +77,4 @@ func BuildCliLongTemplate(content string) string {
 }
 
 // ErrCommandSilent is an error that is used to indicate that the command should not print an error message.
-var ErrCommandSilent = azerrors.WrapSystemError(azerrors.ErrCliGeneric, "core: silent error.")
+var ErrCommandSilent = azerrors.WrapSystemError(azerrors.ErrCliGeneric, "core: silent error")

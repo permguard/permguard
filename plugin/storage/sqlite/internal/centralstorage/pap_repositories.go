@@ -31,7 +31,7 @@ const (
 // CreateRepository creates a new repository.
 func (s SQLiteCentralStoragePAP) CreateRepository(repository *azmodels.Repository) (*azmodels.Repository, error) {
 	if repository == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - repository is nil.")
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - repository is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -59,7 +59,7 @@ func (s SQLiteCentralStoragePAP) CreateRepository(repository *azmodels.Repositor
 // UpdateRepository updates a repository.
 func (s SQLiteCentralStoragePAP) UpdateRepository(repository *azmodels.Repository) (*azmodels.Repository, error) {
 	if repository == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - repository is nil.")
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - repository is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -109,7 +109,7 @@ func (s SQLiteCentralStoragePAP) DeleteRepository(accountID int64, repositoryID 
 // FetchRepositories returns all repositories.
 func (s SQLiteCentralStoragePAP) FetchRepositories(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Repository, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid.", page, pageSize))
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -119,7 +119,7 @@ func (s SQLiteCentralStoragePAP) FetchRepositories(page int32, pageSize int32, a
 	if _, ok := fields[azmodels.FieldRepositoryRepositoryID]; ok {
 		repositoryID, ok := fields[azmodels.FieldRepositoryRepositoryID].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (repository id: %s).", repositoryID))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (repository id: %s)", repositoryID))
 		}
 		filterID = &repositoryID
 	}
@@ -127,7 +127,7 @@ func (s SQLiteCentralStoragePAP) FetchRepositories(page int32, pageSize int32, a
 	if _, ok := fields[azmodels.FieldRepositoryName]; ok {
 		repositoryName, ok := fields[azmodels.FieldRepositoryName].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository name is not valid (repository name: %s).", repositoryName))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository name is not valid (repository name: %s)", repositoryName))
 		}
 		filterName = &repositoryName
 	}
@@ -139,7 +139,7 @@ func (s SQLiteCentralStoragePAP) FetchRepositories(page int32, pageSize int32, a
 	for i, a := range dbRepositories {
 		repository, err := mapRepositoryToAgentRepository(&a)
 		if err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert repository entity (%s).", azirepos.LogRepositoryEntry(&a)))
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert repository entity (%s)", azirepos.LogRepositoryEntry(&a)))
 		}
 		repositories[i] = *repository
 	}
