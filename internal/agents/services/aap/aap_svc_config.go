@@ -21,10 +21,10 @@ import (
 
 	"github.com/spf13/viper"
 
-	azcopier "github.com/permguard/permguard/pkg/extensions/copier"
+	azcopier "github.com/permguard/permguard-authz/pkg/extensions/copier"
+	azvalidators "github.com/permguard/permguard-authz/pkg/extensions/validators"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
-	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
 )
 
 const (
@@ -36,15 +36,15 @@ const (
 
 // AAPServiceConfig holds the configuration for the server.
 type AAPServiceConfig struct {
-	serviceKind	azservices.ServiceKind
-	config		map[string]interface{}
+	serviceKind azservices.ServiceKind
+	config      map[string]interface{}
 }
 
 // NewAAPServiceConfig creates a new server factory configuration.
 func NewAAPServiceConfig() (*AAPServiceConfig, error) {
 	return &AAPServiceConfig{
 		serviceKind: azservices.ServiceAAP,
-		config: map[string]interface{}{},
+		config:      map[string]interface{}{},
 	}, nil
 }
 

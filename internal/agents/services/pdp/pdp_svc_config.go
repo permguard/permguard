@@ -21,28 +21,29 @@ import (
 
 	"github.com/spf13/viper"
 
-	azcopier "github.com/permguard/permguard/pkg/extensions/copier"
+	azcopier "github.com/permguard/permguard-authz/pkg/extensions/copier"
+	azvalidators "github.com/permguard/permguard-authz/pkg/extensions/validators"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
-	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
 )
 
 const (
-	flagServerPDPPrefix 		= "server.pdp"
-	flagSuffixGrpcPort  		= "grpc.port"
-    flagDataFetchMaxPageSize    = "data.fetch.maxpagesize")
+	flagServerPDPPrefix      = "server.pdp"
+	flagSuffixGrpcPort       = "grpc.port"
+	flagDataFetchMaxPageSize = "data.fetch.maxpagesize"
+)
 
 // PDPServiceConfig holds the configuration for the server.
 type PDPServiceConfig struct {
-	service	azservices.ServiceKind
-	config	map[string]interface{}
+	service azservices.ServiceKind
+	config  map[string]interface{}
 }
 
 // NewPDPServiceConfig creates a new server factory configuration.
 func NewPDPServiceConfig() (*PDPServiceConfig, error) {
 	return &PDPServiceConfig{
 		service: azservices.ServicePDP,
-		config: map[string]interface{}{},
+		config:  map[string]interface{}{},
 	}, nil
 }
 

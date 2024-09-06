@@ -21,11 +21,11 @@ import (
 
 	"github.com/spf13/viper"
 
+	azcopier "github.com/permguard/permguard-authz/pkg/extensions/copier"
+	azvalidators "github.com/permguard/permguard-authz/pkg/extensions/validators"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
-	azcopier "github.com/permguard/permguard/pkg/extensions/copier"
-	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
 )
 
 const (

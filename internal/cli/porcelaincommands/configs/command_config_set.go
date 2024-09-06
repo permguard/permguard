@@ -24,10 +24,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	azvalidators "github.com/permguard/permguard-authz/pkg/extensions/validators"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
-	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
 )
 
 // viperWriteEndpoint writes the setting to the viper configuration.

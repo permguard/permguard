@@ -21,9 +21,9 @@ import (
 
 	"go.uber.org/zap"
 
+	azcopier "github.com/permguard/permguard-authz/pkg/extensions/copier"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azcopier "github.com/permguard/permguard/pkg/extensions/copier"
 )
 
 // HostConfig represents the host configuration.

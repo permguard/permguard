@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
+	azvalidators "github.com/permguard/permguard-authz/pkg/extensions/validators"
 )
 
 // ValidateAccountID validates an account ID.
