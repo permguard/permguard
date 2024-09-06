@@ -26,7 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 // runECommandForUpsertAccount runs the command for creating or updating an account.
@@ -46,12 +46,12 @@ func runECommandForUpsertAccount(deps azcli.CliDependenciesProvider, cmd *cobra.
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	name := v.GetString(azconfigs.FlagName(flagPrefix, aziclicommon.FlagCommonName))
+	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
 	var account *azmodels.Account
 	if isCreate {
 		account, err = client.CreateAccount(name)
 	} else {
-		accountID := v.GetInt64(azconfigs.FlagName(flagPrefix, aziclicommon.FlagCommonAccountID))
+		accountID := v.GetInt64(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonAccountID))
 		inputAccount := &azmodels.Account{
 			AccountID: accountID,
 			Name:      name,
@@ -88,7 +88,7 @@ func CreateCommandForAccounts(deps azcli.CliDependenciesProvider, v *viper.Viper
 	}
 
 	command.PersistentFlags().Int64(aziclicommon.FlagCommonAccountID, 0, "account id filter")
-	v.BindPFlag(azconfigs.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonAccountID), command.Flags().Lookup(aziclicommon.FlagCommonAccountID))
+	v.BindPFlag(azoptions.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonAccountID), command.Flags().Lookup(aziclicommon.FlagCommonAccountID))
 
 	command.AddCommand(createCommandForAccountCreate(deps, v))
 	command.AddCommand(createCommandForAccountUpdate(deps, v))

@@ -26,7 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -49,8 +49,8 @@ func runECommandForUpsertRepository(deps azcli.CliDependenciesProvider, cmd *cob
 		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	accountID := v.GetInt64(azconfigs.FlagName(commandNameForRepository, aziclicommon.FlagCommonAccountID))
-	name := v.GetString(azconfigs.FlagName(flagPrefix, aziclicommon.FlagCommonName))
+	accountID := v.GetInt64(azoptions.FlagName(commandNameForRepository, aziclicommon.FlagCommonAccountID))
+	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
 	repository := &azmodels.Repository{
 		AccountID: accountID,
 		Name:      name,
@@ -58,7 +58,7 @@ func runECommandForUpsertRepository(deps azcli.CliDependenciesProvider, cmd *cob
 	if isCreate {
 		repository, err = client.CreateRepository(accountID, name)
 	} else {
-		repositoryID := v.GetString(azconfigs.FlagName(flagPrefix, flagRepositoryID))
+		repositoryID := v.GetString(azoptions.FlagName(flagPrefix, flagRepositoryID))
 		repository.RepositoryID = repositoryID
 		repository, err = client.UpdateRepository(repository)
 	}
@@ -93,7 +93,7 @@ func createCommandForRepositories(deps azcli.CliDependenciesProvider, v *viper.V
 	}
 
 	command.PersistentFlags().Int64(aziclicommon.FlagCommonAccountID, 0, "account id filter")
-	v.BindPFlag(azconfigs.FlagName(commandNameForRepository, aziclicommon.FlagCommonAccountID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonAccountID))
+	v.BindPFlag(azoptions.FlagName(commandNameForRepository, aziclicommon.FlagCommonAccountID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonAccountID))
 
 	command.AddCommand(createCommandForRepositoryCreate(deps, v))
 	command.AddCommand(createCommandForRepositoryUpdate(deps, v))

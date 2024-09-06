@@ -22,7 +22,7 @@ import (
 
 	"github.com/pelletier/go-toml"
 
-	azcrypto "github.com/permguard/permguard-authz/pkg/extensions/crypto"
+	azcrypto "github.com/permguard/permguard-core/pkg/extensions/crypto"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"

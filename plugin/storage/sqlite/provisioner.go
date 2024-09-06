@@ -28,7 +28,7 @@ import (
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
@@ -65,7 +65,7 @@ func NewSQLiteStorageProvisioner() (*SQLiteStorageProvisioner, error) {
 
 // AddFlags adds flags.
 func (p *SQLiteStorageProvisioner) AddFlags(flagSet *flag.FlagSet) error {
-	err := azconfigs.AddFlagsForCommon(flagSet)
+	err := azoptions.AddFlagsForCommon(flagSet)
 	if err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func (p *SQLiteStorageProvisioner) AddFlags(flagSet *flag.FlagSet) error {
 
 // InitFromViper initializes the configuration from viper.
 func (p *SQLiteStorageProvisioner) InitFromViper(v *viper.Viper) error {
-	debug, logLevel, err := azconfigs.InitFromViperForCommon(v)
+	debug, logLevel, err := azoptions.InitFromViperForCommon(v)
 	if err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func (p *SQLiteStorageProvisioner) InitFromViper(v *viper.Viper) error {
 	if err != nil {
 		return err
 	}
-	p.logger, err = azconfigs.NewLogger(p.debug, p.logLevel)
+	p.logger, err = azoptions.NewLogger(p.debug, p.logLevel)
 	if err != nil {
 		return err
 	}

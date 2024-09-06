@@ -32,7 +32,7 @@ import (
 	azservers "github.com/permguard/permguard/pkg/agents/servers"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -48,13 +48,13 @@ var asciiArt string
 
 // addFlagsForCentralStorage adds the flags for the central storage.
 func addFlagsForCentralStorage(flagSet *flag.FlagSet) error {
-	flagSet.String(azconfigs.FlagName(flagPrefixDataStorage, flagSuffixDataStorageCentral), flagValDefDataStorageCentral, "data storage type to be used for central data")
+	flagSet.String(azoptions.FlagName(flagPrefixDataStorage, flagSuffixDataStorageCentral), flagValDefDataStorageCentral, "data storage type to be used for central data")
 	return nil
 }
 
 // addFlagsForProximityStorage adds the flags for the proximity storage.
 func addFlagsForProximityStorage(flagSet *flag.FlagSet) error {
-	flagSet.String(azconfigs.FlagName(flagPrefixDataStorage, flagSuffixDataStorageProximity), flagValDefDataStorageProximity, "data storage type to be used for proximity data")
+	flagSet.String(azoptions.FlagName(flagPrefixDataStorage, flagSuffixDataStorageProximity), flagValDefDataStorageProximity, "data storage type to be used for proximity data")
 	return nil
 }
 
@@ -64,28 +64,28 @@ func addFlagsForServerInitalizer(serverInitializer azservers.ServerInitializer, 
 	msgErroOnAddFlags := "Bootstrapper cannot add flags %s\n"
 
 	if serverInitializer.HasCentralStorage() {
-		err = azconfigs.AddCobraFlags(command, v, addFlagsForCentralStorage)
+		err = azoptions.AddCobraFlags(command, v, addFlagsForCentralStorage)
 		if err != nil {
 			fmt.Printf(msgErroOnAddFlags, err.Error())
 			os.Exit(1)
 		}
 	}
 	if serverInitializer.HasProximityStorage() {
-		err = azconfigs.AddCobraFlags(command, v, addFlagsForProximityStorage)
+		err = azoptions.AddCobraFlags(command, v, addFlagsForProximityStorage)
 		if err != nil {
 			fmt.Printf(msgErroOnAddFlags, err.Error())
 			os.Exit(1)
 		}
 	}
 
-	err = azconfigs.AddCobraFlags(command, v, serverFactoryCfg.AddFlags)
+	err = azoptions.AddCobraFlags(command, v, serverFactoryCfg.AddFlags)
 	if err != nil {
 		fmt.Printf(msgErroOnAddFlags, err.Error())
 		os.Exit(1)
 	}
 
 	if len(funcs) == 0 {
-		err := azconfigs.AddCobraFlags(command, v, funcs...)
+		err := azoptions.AddCobraFlags(command, v, funcs...)
 		if err != nil {
 			fmt.Printf(msgErroOnAddFlags, err.Error())
 			os.Exit(1)
@@ -148,7 +148,7 @@ func Run(serverInitializer azservers.ServerInitializer, startup func(*zap.Logger
 		os.Exit(1)
 	}
 
-	v, err := azconfigs.NewViper()
+	v, err := azoptions.NewViper()
 	if err != nil {
 		fmt.Printf("Bootstrapper cannot create viper %s\n", err.Error())
 		os.Exit(1)
@@ -157,14 +157,14 @@ func Run(serverInitializer azservers.ServerInitializer, startup func(*zap.Logger
 	centralStorageEngine := azstorage.StorageNone
 	proximityStorageEngine := azstorage.StorageNone
 	if serverInitializer.HasCentralStorage() {
-		centralStorageEngine, err = azstorage.NewStorageKindFromString(stringFromArgs("--", azconfigs.FlagName(flagPrefixDataStorage, flagSuffixDataStorageCentral), flagValDefDataStorageCentral, os.Args, v))
+		centralStorageEngine, err = azstorage.NewStorageKindFromString(stringFromArgs("--", azoptions.FlagName(flagPrefixDataStorage, flagSuffixDataStorageCentral), flagValDefDataStorageCentral, os.Args, v))
 		if err != nil {
 			fmt.Printf("Bootstrapper cannot parse the central storage engine %s\n", err.Error())
 			os.Exit(1)
 		}
 	}
 	if serverInitializer.HasProximityStorage() {
-		proximityStorageEngine, err = azstorage.NewStorageKindFromString(stringFromArgs("--", azconfigs.FlagName(flagPrefixDataStorage, flagSuffixDataStorageProximity), flagValDefDataStorageProximity, os.Args, v))
+		proximityStorageEngine, err = azstorage.NewStorageKindFromString(stringFromArgs("--", azoptions.FlagName(flagPrefixDataStorage, flagSuffixDataStorageProximity), flagValDefDataStorageProximity, os.Args, v))
 		if err != nil {
 			fmt.Printf("Bootstrapper cannot parse the proximity storage engine %s\n", err.Error())
 			os.Exit(1)

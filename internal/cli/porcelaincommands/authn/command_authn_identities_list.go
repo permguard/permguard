@@ -25,7 +25,7 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -46,13 +46,13 @@ func runECommandForListIdentities(deps azcli.CliDependenciesProvider, cmd *cobra
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	page := v.GetInt32(azconfigs.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonPage))
-	pageSize := v.GetInt32(azconfigs.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonPageSize))
-	accountID := v.GetInt64(azconfigs.FlagName(commandNameForIdentity, aziclicommon.FlagCommonAccountID))
-	identitySourceID := v.GetString(azconfigs.FlagName(commandNameForIdentitiesList, flagIdentitySourceID))
-	identityID := v.GetString(azconfigs.FlagName(commandNameForIdentitiesList, flagIdentityID))
-	kind := v.GetString(azconfigs.FlagName(commandNameForIdentitiesList, flagIdentityKind))
-	name := v.GetString(azconfigs.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonName))
+	page := v.GetInt32(azoptions.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonPage))
+	pageSize := v.GetInt32(azoptions.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonPageSize))
+	accountID := v.GetInt64(azoptions.FlagName(commandNameForIdentity, aziclicommon.FlagCommonAccountID))
+	identitySourceID := v.GetString(azoptions.FlagName(commandNameForIdentitiesList, flagIdentitySourceID))
+	identityID := v.GetString(azoptions.FlagName(commandNameForIdentitiesList, flagIdentityID))
+	kind := v.GetString(azoptions.FlagName(commandNameForIdentitiesList, flagIdentityKind))
+	name := v.GetString(azoptions.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonName))
 	identities, err := client.FetchIdentitiesBy(page, pageSize, accountID, identitySourceID, identityID, kind, name)
 	if err != nil {
 		printer.Error(err)
@@ -92,16 +92,16 @@ Examples:
 		},
 	}
 	command.Flags().Int32P(aziclicommon.FlagCommonPage, aziclicommon.FlagCommonPageShort, 1, "page number")
-	v.BindPFlag(azconfigs.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonPage), command.Flags().Lookup(aziclicommon.FlagCommonPage))
+	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonPage), command.Flags().Lookup(aziclicommon.FlagCommonPage))
 	command.Flags().Int32P(aziclicommon.FlagCommonPageSize, aziclicommon.FlagCommonPageSizeShort, 1000, "page size")
-	v.BindPFlag(azconfigs.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonPageSize), command.Flags().Lookup(aziclicommon.FlagCommonPageSize))
+	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonPageSize), command.Flags().Lookup(aziclicommon.FlagCommonPageSize))
 	command.Flags().String(flagIdentitySourceID, "", "identity source id filter")
-	v.BindPFlag(azconfigs.FlagName(commandNameForIdentitiesList, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
+	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesList, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
 	command.Flags().String(flagIdentityKind, "", "identity kind filer")
-	v.BindPFlag(azconfigs.FlagName(commandNameForIdentitiesList, flagIdentityKind), command.Flags().Lookup(flagIdentityKind))
+	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesList, flagIdentityKind), command.Flags().Lookup(flagIdentityKind))
 	command.Flags().String(flagIdentityID, "", "identity id filter")
-	v.BindPFlag(azconfigs.FlagName(commandNameForIdentitiesList, flagIdentityID), command.Flags().Lookup(flagIdentityID))
+	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesList, flagIdentityID), command.Flags().Lookup(flagIdentityID))
 	command.Flags().String(aziclicommon.FlagCommonName, "", "identity name filter")
-	v.BindPFlag(azconfigs.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

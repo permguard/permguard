@@ -25,7 +25,7 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -47,10 +47,10 @@ func runECommandForListAccounts(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		return aziclicommon.ErrCommandSilent
 	}
 
-	page := v.GetInt32(azconfigs.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonPage))
-	pageSize := v.GetInt32(azconfigs.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonPageSize))
-	accountID := v.GetInt64(azconfigs.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonAccountID))
-	name := v.GetString(azconfigs.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonName))
+	page := v.GetInt32(azoptions.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonPage))
+	pageSize := v.GetInt32(azoptions.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonPageSize))
+	accountID := v.GetInt64(azoptions.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonAccountID))
+	name := v.GetString(azoptions.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonName))
 
 	accounts, err := client.FetchAccountsBy(page, pageSize, accountID, name)
 	if err != nil {
@@ -92,12 +92,12 @@ Examples:
 		},
 	}
 	command.Flags().Int32P(aziclicommon.FlagCommonPage, aziclicommon.FlagCommonPageShort, 1, "page number")
-	v.BindPFlag(azconfigs.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonPage), command.Flags().Lookup(aziclicommon.FlagCommonPage))
+	v.BindPFlag(azoptions.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonPage), command.Flags().Lookup(aziclicommon.FlagCommonPage))
 	command.Flags().Int32P(aziclicommon.FlagCommonPageSize, aziclicommon.FlagCommonPageSizeShort, 1000, "page size")
-	v.BindPFlag(azconfigs.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonPageSize), command.Flags().Lookup(aziclicommon.FlagCommonPageSize))
+	v.BindPFlag(azoptions.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonPageSize), command.Flags().Lookup(aziclicommon.FlagCommonPageSize))
 	command.Flags().Int64(aziclicommon.FlagCommonAccountID, 0, "account id filter")
-	v.BindPFlag(azconfigs.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonAccountID), command.Flags().Lookup(aziclicommon.FlagCommonAccountID))
+	v.BindPFlag(azoptions.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonAccountID), command.Flags().Lookup(aziclicommon.FlagCommonAccountID))
 	command.Flags().String(aziclicommon.FlagCommonName, "", "account name filter")
-	v.BindPFlag(azconfigs.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	v.BindPFlag(azoptions.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

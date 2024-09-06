@@ -29,7 +29,7 @@ import (
 	"go.uber.org/zap"
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -53,13 +53,13 @@ func NewSQLiteConnectionConfig() (*SQLiteConnectionConfig, error) {
 
 // AddFlags adds flags.
 func (c *SQLiteConnectionConfig) AddFlags(flagSet *flag.FlagSet) error {
-	flagSet.String(azconfigs.FlagName(flagPrefixEndingSQLite, flagSuffixDBName), "permguard", "sqlite database name")
+	flagSet.String(azoptions.FlagName(flagPrefixEndingSQLite, flagSuffixDBName), "permguard", "sqlite database name")
 	return nil
 }
 
 // InitFromViper initializes the configuration from viper.
 func (c *SQLiteConnectionConfig) InitFromViper(v *viper.Viper) error {
-	c.dbName = strings.ToLower(v.GetString(azconfigs.FlagName(flagPrefixEndingSQLite, flagSuffixDBName)))
+	c.dbName = strings.ToLower(v.GetString(azoptions.FlagName(flagPrefixEndingSQLite, flagSuffixDBName)))
 	return nil
 }
 

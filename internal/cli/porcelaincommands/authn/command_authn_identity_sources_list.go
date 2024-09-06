@@ -25,7 +25,7 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -46,11 +46,11 @@ func runECommandForListIdentitySources(deps azcli.CliDependenciesProvider, cmd *
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	page := v.GetInt32(azconfigs.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonPage))
-	pageSize := v.GetInt32(azconfigs.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonPageSize))
-	accountID := v.GetInt64(azconfigs.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonAccountID))
-	identitySourceID := v.GetString(azconfigs.FlagName(commandNameForIdentitySourcesList, flagIdentitySourceID))
-	name := v.GetString(azconfigs.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonName))
+	page := v.GetInt32(azoptions.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonPage))
+	pageSize := v.GetInt32(azoptions.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonPageSize))
+	accountID := v.GetInt64(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonAccountID))
+	identitySourceID := v.GetString(azoptions.FlagName(commandNameForIdentitySourcesList, flagIdentitySourceID))
+	name := v.GetString(azoptions.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonName))
 	identitySources, err := client.FetchIdentitySourcesBy(page, pageSize, accountID, identitySourceID, name)
 	if err != nil {
 		printer.Error(err)
@@ -90,12 +90,12 @@ Examples:
 		},
 	}
 	command.Flags().Int32P(aziclicommon.FlagCommonPage, aziclicommon.FlagCommonPageShort, 1, "page number")
-	v.BindPFlag(azconfigs.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonPage), command.Flags().Lookup(aziclicommon.FlagCommonPage))
+	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonPage), command.Flags().Lookup(aziclicommon.FlagCommonPage))
 	command.Flags().Int32P(aziclicommon.FlagCommonPageSize, aziclicommon.FlagCommonPageSizeShort, 1000, "page size")
-	v.BindPFlag(azconfigs.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonPageSize), command.Flags().Lookup(aziclicommon.FlagCommonPageSize))
+	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonPageSize), command.Flags().Lookup(aziclicommon.FlagCommonPageSize))
 	command.Flags().String(flagIdentitySourceID, "", "identity source id filter")
-	v.BindPFlag(azconfigs.FlagName(commandNameForIdentitySourcesList, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
+	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySourcesList, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
 	command.Flags().String(aziclicommon.FlagCommonName, "", "identity source name filter")
-	v.BindPFlag(azconfigs.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

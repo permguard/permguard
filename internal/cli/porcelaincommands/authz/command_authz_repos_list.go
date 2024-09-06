@@ -25,7 +25,7 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -46,11 +46,11 @@ func runECommandForListRepositories(deps azcli.CliDependenciesProvider, cmd *cob
 		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	page := v.GetInt32(azconfigs.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonPage))
-	pageSize := v.GetInt32(azconfigs.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonPageSize))
-	accountID := v.GetInt64(azconfigs.FlagName(commandNameForRepository, aziclicommon.FlagCommonAccountID))
-	repositoryID := v.GetString(azconfigs.FlagName(commandNameForRepositoriesList, flagRepositoryID))
-	name := v.GetString(azconfigs.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonName))
+	page := v.GetInt32(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonPage))
+	pageSize := v.GetInt32(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonPageSize))
+	accountID := v.GetInt64(azoptions.FlagName(commandNameForRepository, aziclicommon.FlagCommonAccountID))
+	repositoryID := v.GetString(azoptions.FlagName(commandNameForRepositoriesList, flagRepositoryID))
+	name := v.GetString(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonName))
 	repositories, err := client.FetchRepositoriesBy(page, pageSize, accountID, repositoryID, name)
 	if err != nil {
 		printer.Error(err)
@@ -90,12 +90,12 @@ Examples:
 		},
 	}
 	command.Flags().Int32P(aziclicommon.FlagCommonPage, aziclicommon.FlagCommonPageShort, 1, "page number")
-	v.BindPFlag(azconfigs.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonPage), command.Flags().Lookup(aziclicommon.FlagCommonPage))
+	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonPage), command.Flags().Lookup(aziclicommon.FlagCommonPage))
 	command.Flags().Int32P(aziclicommon.FlagCommonPageSize, aziclicommon.FlagCommonPageSizeShort, 1000, "page size")
-	v.BindPFlag(azconfigs.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonPageSize), command.Flags().Lookup(aziclicommon.FlagCommonPageSize))
+	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonPageSize), command.Flags().Lookup(aziclicommon.FlagCommonPageSize))
 	command.Flags().String(flagRepositoryID, "", "repository id filter")
-	v.BindPFlag(azconfigs.FlagName(commandNameForRepositoriesList, flagRepositoryID), command.Flags().Lookup(flagRepositoryID))
+	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesList, flagRepositoryID), command.Flags().Lookup(flagRepositoryID))
 	command.Flags().String(aziclicommon.FlagCommonName, "", "repository name filter")
-	v.BindPFlag(azconfigs.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

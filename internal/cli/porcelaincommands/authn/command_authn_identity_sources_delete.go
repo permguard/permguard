@@ -26,7 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -47,8 +47,8 @@ func runECommandForDeleteIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	accountID := v.GetInt64(azconfigs.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonAccountID))
-	identitySourceID := v.GetString(azconfigs.FlagName(commandNameForIdentitySourcesDelete, flagIdentitySourceID))
+	accountID := v.GetInt64(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonAccountID))
+	identitySourceID := v.GetString(azoptions.FlagName(commandNameForIdentitySourcesDelete, flagIdentitySourceID))
 	identitySource, err := client.DeleteIdentitySource(accountID, identitySourceID)
 	if err != nil {
 		printer.Error(err)
@@ -82,6 +82,6 @@ Examples:
 		},
 	}
 	command.Flags().String(flagIdentitySourceID, "", "identity source id")
-	v.BindPFlag(azconfigs.FlagName(commandNameForIdentitySourcesDelete, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
+	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySourcesDelete, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
 	return command
 }

@@ -17,12 +17,12 @@
 package services
 
 import (
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 // ServiceFactoryConfig is the service factory config.
 type ServiceFactoryConfig interface {
-	azconfigs.Configurable
+	azoptions.Configurable
 }
 
 // ServiceFactory is the service factory.

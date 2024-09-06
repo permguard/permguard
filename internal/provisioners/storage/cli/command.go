@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 	azprovisioners "github.com/permguard/permguard/pkg/provisioners/storage"
 )
 
@@ -46,7 +46,7 @@ func Run(provisionerInitializer azprovisioners.StorageProvisionerInitializer) {
 	}
 
 	// Create the command.
-	v, err := azconfigs.NewViper()
+	v, err := azoptions.NewViper()
 	if err != nil {
 		fmt.Printf("Storage provisioner cannot create viper %s\n", err.Error())
 		os.Exit(1)
@@ -68,7 +68,7 @@ func Run(provisionerInitializer azprovisioners.StorageProvisionerInitializer) {
 		},
 	}
 
-	err = azconfigs.AddCobraFlags(command, v, storageProvisioner.AddFlags)
+	err = azoptions.AddCobraFlags(command, v, storageProvisioner.AddFlags)
 	if err != nil {
 		fmt.Printf("Storage provisioner cannot add flags %s\n", err.Error())
 		os.Exit(1)

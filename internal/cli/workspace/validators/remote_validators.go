@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	azvalidators "github.com/permguard/permguard-authz/pkg/extensions/validators"
+	azvalidators "github.com/permguard/permguard-core/pkg/extensions/validators"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 

@@ -22,7 +22,7 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -51,6 +51,6 @@ Examples:
 		},
 	}
 	command.Flags().String(aziclicommon.FlagCommonName, "", "tenant name")
-	v.BindPFlag(azconfigs.FlagName(commandNameForTenantsCreate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	v.BindPFlag(azoptions.FlagName(commandNameForTenantsCreate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

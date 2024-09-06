@@ -26,7 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -52,8 +52,8 @@ func runECommandForRemoteAddWorkspace(args []string, deps azcli.CliDependenciesP
 	wksMgr := azicliwksmanager.NewInternalManager(ctx)
 	remote := args[0]
 	server := args[1]
-	aapPort := v.GetInt(azconfigs.FlagName(commandNameForWorkspacesRemoteAdd, flagAAP))
-	papPort := v.GetInt(azconfigs.FlagName(commandNameForWorkspacesRemoteAdd, flagPAP))
+	aapPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesRemoteAdd, flagAAP))
+	papPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesRemoteAdd, flagPAP))
 	output, err := wksMgr.ExecAddRemote(remote, server, aapPort, papPort, outFunc(ctx, printer))
 	if err != nil {
 		printer.Error(err)
@@ -81,8 +81,8 @@ Examples:
 	}
 
 	command.Flags().Int(flagAAP, 9091, "aap port")
-	v.BindPFlag(azconfigs.FlagName(commandNameForWorkspacesRemoteAdd, flagAAP), command.Flags().Lookup(flagAAP))
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesRemoteAdd, flagAAP), command.Flags().Lookup(flagAAP))
 	command.Flags().Int(flagPAP, 9092, "pap port")
-	v.BindPFlag(azconfigs.FlagName(commandNameForWorkspacesRemoteAdd, flagPAP), command.Flags().Lookup(flagPAP))
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesRemoteAdd, flagPAP), command.Flags().Lookup(flagPAP))
 	return command
 }

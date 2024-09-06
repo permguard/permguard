@@ -26,7 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -49,8 +49,8 @@ func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	accountID := v.GetInt64(azconfigs.FlagName(commandNameForTenant, aziclicommon.FlagCommonAccountID))
-	name := v.GetString(azconfigs.FlagName(flagPrefix, aziclicommon.FlagCommonName))
+	accountID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonAccountID))
+	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
 	tenant := &azmodels.Tenant{
 		AccountID: accountID,
 		Name:      name,
@@ -58,7 +58,7 @@ func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	if isCreate {
 		tenant, err = client.CreateTenant(accountID, name)
 	} else {
-		tenantID := v.GetString(azconfigs.FlagName(flagPrefix, flagTenantID))
+		tenantID := v.GetString(azoptions.FlagName(flagPrefix, flagTenantID))
 		tenant.TenantID = tenantID
 		tenant, err = client.UpdateTenant(tenant)
 	}
@@ -93,7 +93,7 @@ func createCommandForTenants(deps azcli.CliDependenciesProvider, v *viper.Viper)
 	}
 
 	command.PersistentFlags().Int64(aziclicommon.FlagCommonAccountID, 0, "account id filter")
-	v.BindPFlag(azconfigs.FlagName(commandNameForTenant, aziclicommon.FlagCommonAccountID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonAccountID))
+	v.BindPFlag(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonAccountID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonAccountID))
 
 	command.AddCommand(createCommandForTenantCreate(deps, v))
 	command.AddCommand(createCommandForTenantUpdate(deps, v))

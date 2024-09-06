@@ -24,10 +24,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azvalidators "github.com/permguard/permguard-authz/pkg/extensions/validators"
+	azvalidators "github.com/permguard/permguard-core/pkg/extensions/validators"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 // viperWriteEndpoint writes the setting to the viper configuration.
@@ -54,7 +54,7 @@ func runECommandForAAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 		printer.Error(errors.New(aziclicommon.ErrorMessageInvalidInputs))
 		return aziclicommon.ErrCommandSilent
 	}
-	err = viperWriteEndpoint(v, azconfigs.FlagName(aziclicommon.FlagPrefixAAP, aziclicommon.FlagSuffixAAPTarget), args[0])
+	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixAAP, aziclicommon.FlagSuffixAAPTarget), args[0])
 	if err != nil {
 		printer.Error(err)
 		return aziclicommon.ErrCommandSilent
@@ -73,7 +73,7 @@ func runECommandForPAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 		printer.Error(errors.New(aziclicommon.ErrorMessageInvalidInputs))
 		return aziclicommon.ErrCommandSilent
 	}
-	err = viperWriteEndpoint(v, azconfigs.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget), args[0])
+	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget), args[0])
 	if err != nil {
 		printer.Error(err)
 		return aziclicommon.ErrCommandSilent
