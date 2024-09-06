@@ -113,7 +113,7 @@ func (m *RefsManager) CalculateRefIDWithBase(base string, remote string, account
 	if err != nil {
 		return "", err
 	}
-	refID := azcrypto.ComputeStringSHA1(ref)
+	refID := azcrypto.ComputeStringSHA256(ref)
 	return refID, nil
 }
 
