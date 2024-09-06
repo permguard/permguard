@@ -25,7 +25,7 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 // runECommand runs the command.
@@ -36,9 +36,9 @@ func runECommand(cmd *cobra.Command) error {
 // Run the provisionier.
 func Run(commandsInitializer azcli.CliInitializer) {
 	// Create the command.
-	v, err := azconfigs.NewViperFromConfig(func(v *viper.Viper) error {
-		v.SetDefault(azconfigs.FlagName(aziclicommon.FlagPrefixAAP, aziclicommon.FlagSuffixAAPTarget), "localhost:9091")
-		v.SetDefault(azconfigs.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget), "localhost:9092")
+	v, err := azoptions.NewViperFromConfig(func(v *viper.Viper) error {
+		v.SetDefault(azoptions.FlagName(aziclicommon.FlagPrefixAAP, aziclicommon.FlagSuffixAAPTarget), "localhost:9091")
+		v.SetDefault(azoptions.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget), "localhost:9092")
 		return v.WriteConfig()
 	})
 	if err != nil {

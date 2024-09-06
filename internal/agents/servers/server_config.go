@@ -21,11 +21,11 @@ import (
 
 	"github.com/spf13/viper"
 
-	azcopier "github.com/permguard/permguard-authz/pkg/extensions/copier"
-	azvalidators "github.com/permguard/permguard-authz/pkg/extensions/validators"
+	azcopier "github.com/permguard/permguard-core/pkg/extensions/copier"
+	azvalidators "github.com/permguard/permguard-core/pkg/extensions/validators"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -105,11 +105,11 @@ func (c *ServerConfig) GetAppData() string {
 
 // AddFlags adds flags.
 func (c *ServerConfig) AddFlags(flagSet *flag.FlagSet) error {
-	err := azconfigs.AddFlagsForCommon(flagSet)
+	err := azoptions.AddFlagsForCommon(flagSet)
 	if err != nil {
 		return err
 	}
-	flagSet.String(azconfigs.FlagName(flagPrefixServer, flagSuffixAppData), "./", "directory to be used as application data")
+	flagSet.String(azoptions.FlagName(flagPrefixServer, flagSuffixAppData), "./", "directory to be used as application data")
 	for _, fcty := range c.storagesFactories {
 		config, _ := fcty.GetFactoryConfig()
 		err = config.AddFlags(flagSet)
@@ -129,13 +129,13 @@ func (c *ServerConfig) AddFlags(flagSet *flag.FlagSet) error {
 
 // InitFromViper initializes the configuration from viper.
 func (c *ServerConfig) InitFromViper(v *viper.Viper) error {
-	debug, logLevel, err := azconfigs.InitFromViperForCommon(v)
+	debug, logLevel, err := azoptions.InitFromViperForCommon(v)
 	if err != nil {
 		return err
 	}
 	c.debug = debug
 	c.logLevel = logLevel
-	c.appData = v.GetString(azconfigs.FlagName(flagPrefixServer, flagSuffixAppData))
+	c.appData = v.GetString(azoptions.FlagName(flagPrefixServer, flagSuffixAppData))
 	if !azvalidators.IsValidPath(c.appData) {
 		return azservices.ErrServiceInvalidAppData
 	}

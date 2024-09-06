@@ -23,9 +23,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azvalidators "github.com/permguard/permguard-authz/pkg/extensions/validators"
+	azvalidators "github.com/permguard/permguard-core/pkg/extensions/validators"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -116,12 +116,12 @@ func (c *CliCommandContext) GetWorkDir() string {
 
 // GetAAPTarget returns the aap target.
 func (c *CliCommandContext) GetAAPTarget() string {
-	target := c.v.Get(azconfigs.FlagName(FlagPrefixAAP, FlagSuffixAAPTarget))
+	target := c.v.Get(azoptions.FlagName(FlagPrefixAAP, FlagSuffixAAPTarget))
 	return target.(string)
 }
 
 // GetPAPTarget returns the pap target.
 func (c *CliCommandContext) GetPAPTarget() string {
-	target := c.v.Get(azconfigs.FlagName(FlagPrefixPAP, FlagSuffixPAPTarget))
+	target := c.v.Get(azoptions.FlagName(FlagPrefixPAP, FlagSuffixPAPTarget))
 	return target.(string)
 }

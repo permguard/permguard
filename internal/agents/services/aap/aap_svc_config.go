@@ -21,10 +21,10 @@ import (
 
 	"github.com/spf13/viper"
 
-	azcopier "github.com/permguard/permguard-authz/pkg/extensions/copier"
-	azvalidators "github.com/permguard/permguard-authz/pkg/extensions/validators"
+	azcopier "github.com/permguard/permguard-core/pkg/extensions/copier"
+	azvalidators "github.com/permguard/permguard-core/pkg/extensions/validators"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -50,30 +50,30 @@ func NewAAPServiceConfig() (*AAPServiceConfig, error) {
 
 // AddFlags adds flags.
 func (c *AAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
-	flagSet.Int(azconfigs.FlagName(flagServerAAPPrefix, flagSuffixGrpcPort), 9091, "port to be used for exposing the aap grpc services")
-	flagSet.Int(azconfigs.FlagName(flagServerAAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
-	flagSet.Bool(azconfigs.FlagName(flagServerAAPPrefix, flagEnableDefaultCreation), false, "the creation of default entities (e.g., tenants, identity sources) during data creation")
+	flagSet.Int(azoptions.FlagName(flagServerAAPPrefix, flagSuffixGrpcPort), 9091, "port to be used for exposing the aap grpc services")
+	flagSet.Int(azoptions.FlagName(flagServerAAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
+	flagSet.Bool(azoptions.FlagName(flagServerAAPPrefix, flagEnableDefaultCreation), false, "the creation of default entities (e.g., tenants, identity sources) during data creation")
 	return nil
 }
 
 // InitFromViper initializes the configuration from viper.
 func (c *AAPServiceConfig) InitFromViper(v *viper.Viper) error {
 	// retrieve the grpc port
-	flagName := azconfigs.FlagName(flagServerAAPPrefix, flagSuffixGrpcPort)
+	flagName := azoptions.FlagName(flagServerAAPPrefix, flagSuffixGrpcPort)
 	grpcPort := v.GetInt(flagName)
 	if !azvalidators.IsValidPort(grpcPort) {
 		return azservices.ErrServiceInvalidPort
 	}
 	c.config[flagSuffixGrpcPort] = grpcPort
 	// retrieve the data fetch max page size
-	flagName = azconfigs.FlagName(flagServerAAPPrefix, flagDataFetchMaxPageSize)
+	flagName = azoptions.FlagName(flagServerAAPPrefix, flagDataFetchMaxPageSize)
 	dataFetchMaxPageSize := v.GetInt(flagName)
 	if dataFetchMaxPageSize <= 0 {
 		return azservices.ErrServiceInvalidDataFetchPageSize
 	}
 	c.config[flagDataFetchMaxPageSize] = dataFetchMaxPageSize
 	// retrieve the enable default creation
-	flagName = azconfigs.FlagName(flagServerAAPPrefix, flagEnableDefaultCreation)
+	flagName = azoptions.FlagName(flagServerAAPPrefix, flagEnableDefaultCreation)
 	enableDefaultCreation := v.GetBool(flagName)
 	c.config[flagEnableDefaultCreation] = enableDefaultCreation
 	return nil

@@ -26,7 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -47,8 +47,8 @@ func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	accountID := v.GetInt64(azconfigs.FlagName(commandNameForTenant, aziclicommon.FlagCommonAccountID))
-	tenantID := v.GetString(azconfigs.FlagName(commandNameForTenantsDelete, flagTenantID))
+	accountID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonAccountID))
+	tenantID := v.GetString(azoptions.FlagName(commandNameForTenantsDelete, flagTenantID))
 	tenant, err := client.DeleteTenant(accountID, tenantID)
 	if err != nil {
 		printer.Error(err)
@@ -82,6 +82,6 @@ Examples:
 		},
 	}
 	command.Flags().String(flagTenantID, "", "tenant id")
-	v.BindPFlag(azconfigs.FlagName(commandNameForTenantsDelete, flagTenantID), command.Flags().Lookup(flagTenantID))
+	v.BindPFlag(azoptions.FlagName(commandNameForTenantsDelete, flagTenantID), command.Flags().Lookup(flagTenantID))
 	return command
 }

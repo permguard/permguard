@@ -29,7 +29,7 @@ import (
 	aziservices "github.com/permguard/permguard/internal/agents/services"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 // Server represents the applicative server.
@@ -43,7 +43,7 @@ type Server struct {
 
 // newServer creates a new server.
 func newServer(serverCfg *ServerConfig) (*Server, error) {
-	logger, err := azconfigs.NewLogger(serverCfg.debug, serverCfg.logLevel)
+	logger, err := azoptions.NewLogger(serverCfg.debug, serverCfg.logLevel)
 	if err != nil {
 		return nil, err
 	}

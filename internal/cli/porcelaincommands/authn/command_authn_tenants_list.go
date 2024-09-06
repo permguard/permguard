@@ -25,7 +25,7 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -46,11 +46,11 @@ func runECommandForListTenants(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	page := v.GetInt32(azconfigs.FlagName(commandNameForTenant, aziclicommon.FlagCommonPage))
-	pageSize := v.GetInt32(azconfigs.FlagName(commandNameForTenant, aziclicommon.FlagCommonPageSize))
-	accountID := v.GetInt64(azconfigs.FlagName(commandNameForTenant, aziclicommon.FlagCommonAccountID))
-	tenantID := v.GetString(azconfigs.FlagName(commandNameForTenantsList, flagTenantID))
-	name := v.GetString(azconfigs.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonName))
+	page := v.GetInt32(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonPage))
+	pageSize := v.GetInt32(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonPageSize))
+	accountID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonAccountID))
+	tenantID := v.GetString(azoptions.FlagName(commandNameForTenantsList, flagTenantID))
+	name := v.GetString(azoptions.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonName))
 	tenants, err := client.FetchTenantsBy(page, pageSize, accountID, tenantID, name)
 	if err != nil {
 		printer.Error(err)
@@ -90,12 +90,12 @@ Examples:
 		},
 	}
 	command.Flags().Int32P(aziclicommon.FlagCommonPage, aziclicommon.FlagCommonPageShort, 1, "page number")
-	v.BindPFlag(azconfigs.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonPage), command.Flags().Lookup(aziclicommon.FlagCommonPage))
+	v.BindPFlag(azoptions.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonPage), command.Flags().Lookup(aziclicommon.FlagCommonPage))
 	command.Flags().Int32P(aziclicommon.FlagCommonPageSize, aziclicommon.FlagCommonPageSizeShort, 1000, "page size")
-	v.BindPFlag(azconfigs.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonPageSize), command.Flags().Lookup(aziclicommon.FlagCommonPageSize))
+	v.BindPFlag(azoptions.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonPageSize), command.Flags().Lookup(aziclicommon.FlagCommonPageSize))
 	command.Flags().String(flagTenantID, "", "tenant id filter")
-	v.BindPFlag(azconfigs.FlagName(commandNameForTenantsList, flagTenantID), command.Flags().Lookup(flagTenantID))
+	v.BindPFlag(azoptions.FlagName(commandNameForTenantsList, flagTenantID), command.Flags().Lookup(flagTenantID))
 	command.Flags().String(aziclicommon.FlagCommonName, "", "tenant name filter")
-	v.BindPFlag(azconfigs.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	v.BindPFlag(azoptions.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

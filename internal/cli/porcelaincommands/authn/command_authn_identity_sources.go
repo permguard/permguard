@@ -26,7 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -49,8 +49,8 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	accountID := v.GetInt64(azconfigs.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonAccountID))
-	name := v.GetString(azconfigs.FlagName(flagPrefix, aziclicommon.FlagCommonName))
+	accountID := v.GetInt64(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonAccountID))
+	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
 	identitySource := &azmodels.IdentitySource{
 		AccountID: accountID,
 		Name:      name,
@@ -58,7 +58,7 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 	if isCreate {
 		identitySource, err = client.CreateIdentitySource(accountID, name)
 	} else {
-		identitySourceID := v.GetString(azconfigs.FlagName(flagPrefix, flagIdentitySourceID))
+		identitySourceID := v.GetString(azoptions.FlagName(flagPrefix, flagIdentitySourceID))
 		identitySource.IdentitySourceID = identitySourceID
 		identitySource, err = client.UpdateIdentitySource(identitySource)
 	}
@@ -93,7 +93,7 @@ func createCommandForIdentitySources(deps azcli.CliDependenciesProvider, v *vipe
 	}
 
 	command.PersistentFlags().Int64(aziclicommon.FlagCommonAccountID, 0, "account id filter")
-	v.BindPFlag(azconfigs.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonAccountID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonAccountID))
+	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonAccountID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonAccountID))
 
 	command.AddCommand(createCommandForIdentitySourceCreate(deps, v))
 	command.AddCommand(createCommandForIdentitySourceUpdate(deps, v))

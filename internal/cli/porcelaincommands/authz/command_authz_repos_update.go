@@ -22,7 +22,7 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -51,8 +51,8 @@ Examples:
 		},
 	}
 	command.Flags().String(flagRepositoryID, "", "repository id")
-	v.BindPFlag(azconfigs.FlagName(commandNameForRepositoriesUpdate, flagRepositoryID), command.Flags().Lookup(flagRepositoryID))
+	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesUpdate, flagRepositoryID), command.Flags().Lookup(flagRepositoryID))
 	command.Flags().String(aziclicommon.FlagCommonName, "", "repository name")
-	v.BindPFlag(azconfigs.FlagName(commandNameForRepositoriesUpdate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesUpdate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

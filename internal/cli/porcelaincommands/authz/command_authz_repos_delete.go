@@ -26,7 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -47,8 +47,8 @@ func runECommandForDeleteRepository(deps azcli.CliDependenciesProvider, cmd *cob
 		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	accountID := v.GetInt64(azconfigs.FlagName(commandNameForRepository, aziclicommon.FlagCommonAccountID))
-	repositoryID := v.GetString(azconfigs.FlagName(commandNameForRepositoriesDelete, flagRepositoryID))
+	accountID := v.GetInt64(azoptions.FlagName(commandNameForRepository, aziclicommon.FlagCommonAccountID))
+	repositoryID := v.GetString(azoptions.FlagName(commandNameForRepositoriesDelete, flagRepositoryID))
 	repository, err := client.DeleteRepository(accountID, repositoryID)
 	if err != nil {
 		printer.Error(err)
@@ -82,6 +82,6 @@ Examples:
 		},
 	}
 	command.Flags().String(flagRepositoryID, "", "repository id")
-	v.BindPFlag(azconfigs.FlagName(commandNameForRepositoriesDelete, flagRepositoryID), command.Flags().Lookup(flagRepositoryID))
+	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesDelete, flagRepositoryID), command.Flags().Lookup(flagRepositoryID))
 	return command
 }

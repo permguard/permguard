@@ -21,10 +21,10 @@ import (
 
 	"github.com/spf13/viper"
 
-	azcopier "github.com/permguard/permguard-authz/pkg/extensions/copier"
-	azvalidators "github.com/permguard/permguard-authz/pkg/extensions/validators"
+	azcopier "github.com/permguard/permguard-core/pkg/extensions/copier"
+	azvalidators "github.com/permguard/permguard-core/pkg/extensions/validators"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -49,22 +49,22 @@ func NewPAPServiceConfig() (*PAPServiceConfig, error) {
 
 // AddFlags adds flags.
 func (c *PAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
-	flagSet.Int(azconfigs.FlagName(flagServerPAPPrefix, flagSuffixGrpcPort), 9092, "port to be used for exposing the pap grpc services")
-	flagSet.Int(azconfigs.FlagName(flagServerPAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
+	flagSet.Int(azoptions.FlagName(flagServerPAPPrefix, flagSuffixGrpcPort), 9092, "port to be used for exposing the pap grpc services")
+	flagSet.Int(azoptions.FlagName(flagServerPAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
 	return nil
 }
 
 // InitFromViper initializes the configuration from viper.
 func (c *PAPServiceConfig) InitFromViper(v *viper.Viper) error {
 	// retrieve the grpc port
-	flagName := azconfigs.FlagName(flagServerPAPPrefix, flagSuffixGrpcPort)
+	flagName := azoptions.FlagName(flagServerPAPPrefix, flagSuffixGrpcPort)
 	grpcPort := v.GetInt(flagName)
 	if !azvalidators.IsValidPort(grpcPort) {
 		return azservices.ErrServiceInvalidPort
 	}
 	c.config[flagSuffixGrpcPort] = grpcPort
 	// retrieve the data fetch max page size
-	flagName = azconfigs.FlagName(flagServerPAPPrefix, flagDataFetchMaxPageSize)
+	flagName = azoptions.FlagName(flagServerPAPPrefix, flagDataFetchMaxPageSize)
 	dataFetchMaxPageSize := v.GetInt(flagName)
 	if dataFetchMaxPageSize <= 0 {
 		return azservices.ErrServiceInvalidDataFetchPageSize
