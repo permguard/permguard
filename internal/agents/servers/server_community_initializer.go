@@ -19,13 +19,13 @@ package servers
 import (
 	"fmt"
 
+	azcopier "github.com/permguard/permguard-authz/pkg/extensions/copier"
 	aziaap "github.com/permguard/permguard/internal/agents/services/aap"
 	azipap "github.com/permguard/permguard/internal/agents/services/pap"
 	azipdp "github.com/permguard/permguard/internal/agents/services/pdp"
 	azservers "github.com/permguard/permguard/pkg/agents/servers"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azcopier "github.com/permguard/permguard/pkg/extensions/copier"
 	azisqlite "github.com/permguard/permguard/plugin/storage/sqlite"
 )
 

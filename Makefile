@@ -20,16 +20,13 @@ clean:
 init-dependency:
 	go get -u golang.org/x/crypto
 	go get -u golang.org/x/net
-	go get -u github.com/go-playground/validator/v10
-	go get -u github.com/google/uuid
+
 	go get -u github.com/davecgh/go-spew
 	go get -u github.com/xeipuuv/gojsonschema
-	go get -u github.com/jinzhu/copier
 	go get -u go.uber.org/zap
 	go get -u github.com/go-playground/validator/v10
 	go get -u google.golang.org/grpc
 	go get -u github.com/spf13/cobra
-	go get -u github.com/spf13/viper
 	go get -u github.com/spf13/viper
 	go get -u github.com/stretchr/testify
 	go get -u github.com/fatih/color

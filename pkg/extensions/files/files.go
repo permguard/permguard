@@ -17,14 +17,12 @@
 package files
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
-
-	"gopkg.in/yaml.v2"
 )
 
+// CreateFileIfNotExists creates a file if it does not exist.
 func CreateFileIfNotExists(path string, name string) (bool, error) {
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		err := os.Mkdir(path, os.ModePerm)
@@ -44,18 +42,4 @@ func CreateFileIfNotExists(path string, name string) (bool, error) {
 		return false, err
 	}
 	return false, nil
-}
-
-// UnmarshalJSONYamlFile unmarshals a json or yaml file into a map.
-func UnmarshalJSONYamlFile(path string, out interface{}) error {
-	bArray, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	err = json.Unmarshal(bArray, out)
-	if err == nil {
-		return nil
-	}
-	err = yaml.Unmarshal(bArray, out)
-	return err
 }

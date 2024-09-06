@@ -23,10 +23,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	azvalidators "github.com/permguard/permguard-authz/pkg/extensions/validators"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azconfigs "github.com/permguard/permguard/pkg/configs"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
-	azvalidators "github.com/permguard/permguard/pkg/extensions/validators"
 )
 
 // CreateContextAndPrinter creates a new cli context and printer.

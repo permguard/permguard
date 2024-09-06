@@ -22,9 +22,9 @@ import (
 
 	"github.com/pelletier/go-toml"
 
+	azcrypto "github.com/permguard/permguard-authz/pkg/extensions/crypto"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
-	azcrypto "github.com/permguard/permguard/pkg/extensions/crypto"
 	azerrors "github.com/permguard/permguard/pkg/extensions/errors"
 )
 
@@ -37,10 +37,10 @@ const (
 
 // HeadInfo represents the head information.
 type HeadInfo struct {
-    Remote string
+	Remote    string
 	AccountID int64
-	Repo string
-	RefID string
+	Repo      string
+	RefID     string
 }
 
 // RefsManager implements the internal manager for the refs file.
@@ -129,10 +129,10 @@ func (m *RefsManager) GetCurrentHead() (*HeadInfo, error) {
 		return nil, err
 	}
 	return &HeadInfo{
-		Remote: cfgHead.Head.Remote,
+		Remote:    cfgHead.Head.Remote,
 		AccountID: cfgHead.Head.AccountID,
-		Repo: cfgHead.Head.Repo,
-		RefID: cfgHead.Head.RefID,
+		Repo:      cfgHead.Head.Repo,
+		RefID:     cfgHead.Head.RefID,
 	}, nil
 }
 

@@ -24,7 +24,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	azcrypto "github.com/permguard/permguard/pkg/extensions/crypto"
+	azcrypto "github.com/permguard/permguard-authz/pkg/extensions/crypto"
 )
 
 func TestJSONUnmarshaling(t *testing.T) {
