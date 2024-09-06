@@ -68,6 +68,7 @@ func NewSystemError(errCode string) error {
 
 // NewSystemErrorWithMessage create a system error with the input error code and message.
 func NewSystemErrorWithMessage(errCode string, errMessage string) error {
+    errMessage = strings.TrimSuffix(errMessage, ".")
 	if isErrorCodeDefined(errCode) {
 		return NewSystemError(errCode)
 	} else if errMessage == "" {
@@ -82,6 +83,7 @@ func NewSystemErrorWithMessage(errCode string, errMessage string) error {
 
 // WrapSystemError wrap a system error.
 func WrapSystemError(err error, errMessage string) error {
+    errMessage = strings.TrimSuffix(errMessage, ".")
 	sysErr := ConvertToSystemError(err)
 	if sysErr == nil || len(sysErr.errCode) != 5 {
 		return NewSystemErrorWithMessage("", errMessage)
