@@ -25,7 +25,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	aztestutils "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
 	azmocks "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
-	azconfigs "github.com/permguard/permguard/pkg/configs"
+	azconfigs "github.com/permguard/permguard/pkg/cli/configs"
 )
 
 // TestCreateCommandForConfigAAPGet tests the createCommandForConfigAAPGet function.

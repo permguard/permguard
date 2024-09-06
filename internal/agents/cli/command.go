@@ -32,7 +32,7 @@ import (
 	azservers "github.com/permguard/permguard/pkg/agents/servers"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azconfigs "github.com/permguard/permguard/pkg/configs"
+	azconfigs "github.com/permguard/permguard/pkg/cli/configs"
 )
 
 const (

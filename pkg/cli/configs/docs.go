@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package configs implements the configuration for the host.
+// Package configs implements the configuration for the cli.
 package configs
