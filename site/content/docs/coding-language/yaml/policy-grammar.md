@@ -68,14 +68,12 @@ Below is the JSON schema used to validate the policy:
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^[a-zA-Z0-9]+:[a-zA-Z0-9]+$"
       }
     },
     "resources": {
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^uur:[0-9]+:[a-zA-Z0-9-]+:[a-zA-Z0-9-]+:[a-zA-Z0-9-]+/.*$"
       }
     }
   },
