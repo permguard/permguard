@@ -25,7 +25,7 @@ import (
 // ExecRefresh scans source files in the current directory and synchronizes the local state,
 func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeDir()))
 	}
 
 	fileLock, err := m.tryLock()
@@ -42,7 +42,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 // ExecValidate validates the local state against the remote state.
 func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeDir()))
 	}
 
 	fileLock, err := m.tryLock()
@@ -59,7 +59,7 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 // ExecDiff compares the local state with the remote state to identify differences.
 func (m *WorkspaceManager) ExecDiff(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeDir()))
 	}
 
 	fileLock, err := m.tryLock()

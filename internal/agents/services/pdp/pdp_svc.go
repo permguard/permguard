@@ -19,17 +19,17 @@ package pdp
 import (
 	"google.golang.org/grpc"
 
-	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
 	azctrlpdp "github.com/permguard/permguard/internal/agents/services/pdp/controllers"
 	azapiv1pdp "github.com/permguard/permguard/internal/agents/services/pdp/endpoints/api/v1"
+	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 )
 
 // PDPService holds the configuration for the server.
 type PDPService struct {
-	config 			*PDPServiceConfig
-	configReader	azruntime.ServiceConfigReader
+	config       *PDPServiceConfig
+	configReader azruntime.ServiceConfigReader
 }
 
 // NewPDPService creates a new server  configuration.
@@ -39,7 +39,7 @@ func NewPDPService(pdpServiceCfg *PDPServiceConfig) (*PDPService, error) {
 		return nil, err
 	}
 	return &PDPService{
-		config: pdpServiceCfg,
+		config:       pdpServiceCfg,
 		configReader: configReader,
 	}, nil
 }

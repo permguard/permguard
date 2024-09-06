@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package validators implement validators.
+// Package validators implements validators.
 package validators

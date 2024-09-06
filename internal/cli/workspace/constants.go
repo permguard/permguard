@@ -14,5 +14,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package mocks implements mocks.
-package mocks
+package workspace
+
+const (
+	ErrMessageCliWorkspaceDirectory = "cli: %s is not a permguard workspace directory"
+)
