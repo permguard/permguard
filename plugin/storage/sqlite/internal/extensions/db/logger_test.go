@@ -19,13 +19,13 @@ package db
 import (
 	"testing"
 
-    "go.uber.org/zap"
-    "go.uber.org/zap/zaptest/observer"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func setupForLogsCapture() (*zap.Logger, *observer.ObservedLogs) {
-    core, logs := observer.New(zap.InfoLevel)
-    return zap.New(core), logs
+	core, logs := observer.New(zap.InfoLevel)
+	return zap.New(core), logs
 }
 
 // TestGooseLoggerPrintF tests the Printf method of the GooseLogger.
@@ -35,12 +35,12 @@ func TestGooseLoggerPrintF(t *testing.T) {
 
 	gooseLogger.Printf("info %s", "message")
 
-    if logs.Len() != 1 {
-        t.Errorf("No logs")
-    } else {
-        entry := logs.All()[0]
-        if entry.Level != zap.InfoLevel || entry.Message != "info message" {
-            t.Errorf("Invalid log entry %v", entry)
-        }
-    }
+	if logs.Len() != 1 {
+		t.Errorf("No logs")
+	} else {
+		entry := logs.All()[0]
+		if entry.Level != zap.InfoLevel || entry.Message != "info message" {
+			t.Errorf("Invalid log entry %v", entry)
+		}
+	}
 }

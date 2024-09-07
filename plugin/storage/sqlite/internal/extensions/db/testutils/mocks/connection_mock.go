@@ -17,7 +17,6 @@
 package mocks
 
 import (
-
 	"go.uber.org/zap"
 
 	"github.com/jmoiron/sqlx"

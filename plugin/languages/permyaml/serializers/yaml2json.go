@@ -37,7 +37,7 @@ func (s *Yaml2Json) SerializeYAML2JSON(data []byte) ([]byte, error) {
 	var policy Policy
 	err := yaml.Unmarshal(data, &policy)
 	if err != nil {
-		return	nil, err
+		return nil, err
 	}
 	jsonData, err := json.Marshal(policy)
 	if err != nil {

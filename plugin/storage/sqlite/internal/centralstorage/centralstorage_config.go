@@ -25,13 +25,13 @@ import (
 
 const (
 	// enabledDefaultCreationKey is the key for the flag to enable the creation of default entities.
-	enabledDefaultCreationKey     = "enable.default.creation"
+	enabledDefaultCreationKey = "enable.default.creation"
 	// enabledDefaultCreationDefault is the default value for the flag to enable the creation of default entities.
 	enabledDefaultCreationDefault = false
 	// maxPageSizeKey is the key for the maximum number of items to fetch per request.
-	maxPageSizeKey                = "data.fetch.maxpagesize"
+	maxPageSizeKey = "data.fetch.maxpagesize"
 	// maxPageSizeDefault is the default value for the maximum number of items to fetch per request.
-	maxPageSizeDefault            = 10000
+	maxPageSizeDefault = 10000
 )
 
 // SQLiteCentralStorageConfig is the SQLite central storage configuration.

@@ -18,11 +18,11 @@
 package mocks
 
 import (
-	"github.com/stretchr/testify/mock"
 	"github.com/jmoiron/sqlx"
+	"github.com/stretchr/testify/mock"
 
-	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
 // MockSqliteExecutor sqlite executor mock
@@ -31,9 +31,8 @@ type MockSqliteExecutor struct {
 }
 
 // NewMockSqliteExecutor create a new mock of SqliteExecutor
-func NewMockSqliteExecutor() *MockSqliteExecutor{
-	return &MockSqliteExecutor{
-	}
+func NewMockSqliteExecutor() *MockSqliteExecutor {
+	return &MockSqliteExecutor{}
 }
 
 // Connect connects to the sqlite database.
@@ -45,4 +44,3 @@ func (m *MockSqliteExecutor) Connect(ctx *azstorage.StorageContext, sqliteConnec
 	}
 	return r0, args.Error(1)
 }
-

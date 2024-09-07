@@ -15,4 +15,4 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package persistence manage the persistence of the workspace.
-package persistence;
+package persistence

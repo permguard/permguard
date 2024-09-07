@@ -17,13 +17,13 @@
 package workspace
 
 // blobifyLocal scans source files and creates a blob for each object.
-func (m *WorkspaceManager) blobifyLocal () (error)  {
+func (m *WorkspaceManager) blobifyLocal() error {
 	// TODO: Implement this method
 	return nil
 }
 
 // buildLocalState builds the local state.
-func (m *WorkspaceManager) buildLocalState () (error)  {
+func (m *WorkspaceManager) buildLocalState() error {
 	// TODO: Implement this method
 	return nil
 }

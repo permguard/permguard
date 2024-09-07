@@ -31,9 +31,8 @@ type MockSQLiteConnector struct {
 }
 
 // NewMockSQLiteConnector creates a new mock of SQLiteConnector.
-func NewMockSQLiteConnector() *MockSQLiteConnector{
-	return &MockSQLiteConnector{
-	}
+func NewMockSQLiteConnector() *MockSQLiteConnector {
+	return &MockSQLiteConnector{}
 }
 
 // GetStorage returns the storage kind.
