@@ -28,12 +28,13 @@ Below is a specific scenario where an identity representing a pharmacy manager r
 
 The first step is to define a policy and associate it with a role by specifying the required permissions.
 
+{{< tabs "permguard-policies-permissions-definition" >}}
+{{< tab "permscript" >}}
+
 ```python
 # This is a base policy to abstract the pharmacy branch.
 policy BranchOrder {
   resources = uur:::pharmacy-branch:order/*
-  condition = base.condition
-      and $tenant in ctx.Data["TENANTS"]
 }
 
 #  This policy covers tenant-specific operations related to the management of orders within a pharmacy branch.
@@ -50,8 +51,6 @@ policy AuditBranchOrder extends BranchOrder {
 policy ViewBranchInventory {
   resources = uur:::pharmacy-branch:inventory/*
   actions = ra:inventory:view
-  condition = base.condition
-    and $tenant in ctx.Data["TENANTS"]
 }
 
 # This permission covers operations related to the activities of the pharmacist within a pharmacy branch.
@@ -59,12 +58,43 @@ permission BranchPharmacist {
   permit = [ ViewBranchInventory, ManageBranchOrders ],
   forbid = []
 }
-
-# Pharmacist role definition.
-role Pharmacist {
-  permissions = [ BranchPharmacist ]
-}
 ```
+{{< /tab >}}
+{{< tab "yaml" >}}
+
+```yaml
+---
+# This policy covers tenant-specific operations related to the management of orders within a pharmacy branch.
+name: manage-branch-order
+actions:
+  - ra:order:*
+resources:
+  - uur:::pharmacy-branch:order/*
+---
+# This policy covers tenant-specific operations related to the auditing of orders within a pharmacy branch.
+name: audit-branch-order
+actions:
+  - ra:order:view
+resources:
+  - uur:::pharmacy-branch:order/*
+---
+# This policy covers tenant-specific operations related to the management of inventory within a pharmacy branch.
+name: view-branch-inventory
+actions:
+  - ra:inventory:view
+resources:
+  - uur:::pharmacy-branch:inventory/*
+---
+# This is a base policy to abstract the pharmacy branch.
+name: branch-pharmacist
+permit:
+  - view-branch-inventory
+  - manage-branch-orders
+forbid:
+```
+
+{{< /tab >}}
+{{< /tabs >}}
 
 ### Performing Permission Evaluation
 
