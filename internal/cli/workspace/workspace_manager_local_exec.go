@@ -34,9 +34,16 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	}
 	defer fileLock.Unlock()
 
+	lang, err := m.cfgMgr.GetLanguage()
+	if err != nil {
+		return nil, err
+	}
+	m.langFct.CreateLanguageAbastraction(lang)
+	output := map[string]any{}
+	output["language"] = lang
 	// TODO: Implement this method
 
-	return nil, nil
+	return output, nil
 }
 
 // ExecValidate validates the local state.

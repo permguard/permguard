@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/viper"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
@@ -34,14 +35,25 @@ const (
 
 // runECommandForRefreshWorkspace runs the command for creating an workspace.
 func runECommandForRefreshWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	_, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	output := map[string]any{}
-	output["workspace"] = "refresh"
-	printer.Print(output)
+	absLang, err := deps.GetLanguageFactory()
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return aziclicommon.ErrCommandSilent
+	}
+	wksMgr := azicliwksmanager.NewInternalManager(ctx, absLang)
+	output, err := wksMgr.ExecRefresh(outFunc(ctx, printer))
+	if err != nil {
+		printer.Error(err)
+		return aziclicommon.ErrCommandSilent
+	}
+	if ctx.IsJSONOutput() {
+		printer.Print(output)
+	}
 	return nil
 }
 
