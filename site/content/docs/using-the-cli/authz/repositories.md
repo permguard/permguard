@@ -53,9 +53,6 @@ The output from your current version of PermGuard may differ from the example pr
 
 The `permguard authz repos create` command allows to create a repository for the mandatory input account and name.
 
-{{< tabs "permguard-repositories-create" >}}
-{{< tab "terminal" >}}
-
 ```bash
 permguard authz repos create --account 268786704340 --name v2.0
 ```
@@ -66,8 +63,10 @@ output:
 668f3771eacf4094ba8a80942ea5fd3f: v2.0
 ```
 
-{{< /tab >}}
-{{< tab "json" >}}
+<details>
+  <summary>
+    JSON Output
+  </summary>
 
 ```bash
 permguard authz repos create --account 268786704340 --name v2.0 --output json
@@ -89,15 +88,12 @@ output:
 }
 ```
 
-{{< /tab >}}
-{{< /tabs >}}
+</details>
+
 
 ## Get All Repository
 
 The `permguard authz repos list` command allows for the retrieval of all repositories.
-
-{{< tabs "permguard-repositories-list" >}}
-{{< tab "terminal" >}}
 
 ```bash
 permguard authz repos list --account 268786704340
@@ -113,8 +109,10 @@ a2b8df4c367940739d872bcbb157155f: v1.3
 d02af7e50a7b462cb496aa6ddeb4275e: v1.0
 ```
 
-{{< /tab >}}
-{{< tab "json" >}}
+<details>
+  <summary>
+    JSON Output
+  </summary>
 
 ```bash
 permguard authz repos list --account 268786704340 --output json
@@ -164,5 +162,4 @@ output:
 }
 ```
 
-{{< /tab >}}
-{{< /tabs >}}
+</details>

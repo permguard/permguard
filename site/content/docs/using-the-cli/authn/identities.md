@@ -53,9 +53,6 @@ The output from your current version of PermGuard may differ from the example pr
 
 The `permguard authn identities create` command allows to create an identity for the mandatory input account and name.
 
-{{< tabs "permguard-identities-create" >}}
-{{< tab "terminal" >}}
-
 ```bash
 permguard authn identities create --account 268786704340 --kind user --name nicolagallo --identitysourceid 1da1d9094501425085859c60429163c2
 ```
@@ -66,8 +63,10 @@ output:
 7e43160f-d4a3-4301-9139-6e2b78b9290b: nicolagallo
 ```
 
-{{< /tab >}}
-{{< tab "json" >}}
+<details>
+  <summary>
+    JSON Output
+  </summary>
 
 ```bash
 permguard authn identities create --account 268786704340 --kind user --name nicolagallo --identitysourceid 1da1d9094501425085859c60429163c2 --output json
@@ -91,15 +90,11 @@ output:
 }
 ```
 
-{{< /tab >}}
-{{< /tabs >}}
+</details>
 
 ## Get All Identity
 
 The `permguard authn identities list` command allows for the retrieval of all identity.
-
-{{< tabs "permguard-identities-list" >}}
-{{< tab "terminal" >}}
 
 ```bash
 permguard authn identities list --account 268786704340 --identitysourceid 1da1d9094501425085859c60429163c2
@@ -120,8 +115,10 @@ ea80f2bdd56c4037837e31bd9243db88: emilybrown
 fdbc2ddfa4c5401eac19bd655efefe5c: marcobianchi
 ```
 
-{{< /tab >}}
-{{< tab "json" >}}
+<details>
+  <summary>
+    JSON Output
+  </summary>
 
 ```bash
 permguard authn identities list --account 268786704340 --identitysourceid --output json
@@ -226,5 +223,4 @@ output:
 }
 ```
 
-{{< /tab >}}
-{{< /tabs >}}
+</details>

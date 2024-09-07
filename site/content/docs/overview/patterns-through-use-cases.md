@@ -59,7 +59,7 @@ With this approach the previous drawbacks are mitigated:
 - **Synchronization Challenges**: This problem is fixed as permissions are up to date.
 - **Code Duplication**: This problem is fixed as the application does not need to implement any logic to evaluate the permissions, as the policies evaluation is delegated to `PermGuard`.
 
-```python
+```python {title="app.py"}
 has_permissions = permguard.check(jwt.sub, "car-rental/1.0.0", "listcars", "car")
 
 if has_permissions:
@@ -87,7 +87,7 @@ Storing tokens in events can pose security risks, and there's also a high likeli
 
 It is possible to publish a signed event and subsequently validate the event and finally perform permission checks with `PermGuard`.
 
-```python
+```python {title="app.py"}
 signedMessage = permguard.sign(jwt.sub, message)
 publish(signedMessage)
 ```

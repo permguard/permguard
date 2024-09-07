@@ -51,8 +51,6 @@ The output from your current version of PermGuard may differ from the example pr
 
 The `permguard accounts create` command allows to create an account for the input name.
 
-{{< tabs "permguard-accounts-create" >}}
-{{< tab "terminal" >}}
 
 ```bash
 permguard accounts create --name magicfarmacia-dev
@@ -64,8 +62,10 @@ output:
  268786704340: magicfarmacia-dev
 ```
 
-{{< /tab >}}
-{{< tab "json" >}}
+<details>
+  <summary>
+    JSON Output
+  </summary>
 
 ```bash
 permguard accounts create --name magicfarmacia-dev --output json
@@ -86,15 +86,11 @@ output:
 }
 ```
 
-{{< /tab >}}
-{{< /tabs >}}
+</details>
 
 ## Fetch Accounts
 
 The `permguard accounts list` command allows for the retrieval of all accounts.
-
-{{< tabs "permguard-accounts" >}}
-{{< tab "terminal" >}}
 
 ```bash
 permguard accounts list
@@ -108,9 +104,10 @@ output:
 627303999986: magicfarmacia-prod
 ```
 
-{{< /tab >}}
-{{< tab "json" >}}
-
+<details>
+  <summary>
+    JSON Output
+  </summary>
 ```bash
 permguard accounts list --output json
 ```
@@ -142,5 +139,4 @@ output:
 }
 ```
 
-{{< /tab >}}
-{{< /tabs >}}
+</details>

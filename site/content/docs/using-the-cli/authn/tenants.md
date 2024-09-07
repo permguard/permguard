@@ -53,9 +53,6 @@ The output from your current version of PermGuard may differ from the example pr
 
 The `permguard authn tenants create` command allows to create a tenant for the mandatory input account and name.
 
-{{< tabs "permguard-tenants-create" >}}
-{{< tab "terminal" >}}
-
 ```bash
 permguard authn tenants create --account 268786704340 --name matera-branch
 
@@ -67,8 +64,10 @@ output:
 2e190ee712494838bb54d67e2a0c496a: matera-branch
 ```
 
-{{< /tab >}}
-{{< tab "json" >}}
+<details>
+  <summary>
+    JSON Output
+  </summary>
 
 ```bash
 permguard authn tenants create --account 268786704340 --name matera-branch --output json
@@ -90,15 +89,11 @@ output:
 }
 ```
 
-{{< /tab >}}
-{{< /tabs >}}
+</details>
 
 ## Get All Tenant
 
 The `permguard authn tenants list` command allows for the retrieval of all tenants.
-
-{{< tabs "permguard-tenants-list" >}}
-{{< tab "terminal" >}}
 
 ```bash
 permguard authn tenants list --account 268786704340
@@ -117,8 +112,10 @@ aca65c4dea4d488ab5a52b63b0ba25ef: milan-branch
 ec40fe0ce651404a8cc0e4ab1e386053: birmingham-branch
 ```
 
-{{< /tab >}}
-{{< tab "json" >}}
+<details>
+  <summary>
+    JSON Output
+  </summary>
 
 ```bash
 permguard authn tenants list --account 268786704340 --output json
@@ -182,5 +179,4 @@ output:
 }
 ```
 
-{{< /tab >}}
-{{< /tabs >}}
+</details>
