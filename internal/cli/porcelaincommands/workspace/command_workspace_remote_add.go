@@ -49,7 +49,12 @@ func runECommandForRemoteAddWorkspace(args []string, deps azcli.CliDependenciesP
 		printer.Error(azerrors.ErrCliArguments)
 		return aziclicommon.ErrCommandSilent
 	}
-	wksMgr := azicliwksmanager.NewInternalManager(ctx)
+	langAbs, err := deps.GetLanguageFactory()
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return aziclicommon.ErrCommandSilent
+	}
+	wksMgr := azicliwksmanager.NewInternalManager(ctx, langAbs)
 	remote := args[0]
 	server := args[1]
 	aapPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesRemoteAdd, flagAAP))

@@ -21,6 +21,7 @@ import (
 	mock "github.com/stretchr/testify/mock"
 
 	azclients "github.com/permguard/permguard/pkg/agents/clients"
+	azlang "github.com/permguard/permguard/pkg/core/languages"
 	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
@@ -54,6 +55,16 @@ func (m *CliDependenciesMock) CreateGrpcPAPClient(papTarget string) (azclients.G
 	args := m.Called(papTarget)
 	var r0 azclients.GrpcPAPClient
 	if val, ok := args.Get(0).(azclients.GrpcPAPClient); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
+}
+
+// GetLanguageFactory returns the language factory.
+func (m *CliDependenciesMock) GetLanguageFactory() (azlang.LanguageFactory, error) {
+	args := m.Called()
+	var r0 azlang.LanguageFactory
+	if val, ok := args.Get(0).(azlang.LanguageFactory); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)

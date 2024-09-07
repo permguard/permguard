@@ -17,7 +17,7 @@
 package logs
 
 // ExecInitalize the logs resources.
-func (c *LogsManager) ExecInitalize() error {
+func (c *LogsManager) ExecInitalize(lang string) error {
 	_, err := c.persMgr.CreateDirIfNotExists(true, c.getLogsDir())
 	return err
 }

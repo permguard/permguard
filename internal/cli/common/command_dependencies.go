@@ -20,10 +20,12 @@ import (
 	aziclients "github.com/permguard/permguard/internal/agents/clients"
 	azclients "github.com/permguard/permguard/pkg/agents/clients"
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
 // cliDependencies implements the Cli dependencies.
 type cliDependencies struct {
+	langFactory azlang.LanguageFactory
 }
 
 // CreatePrinter creates a new printer.
@@ -42,7 +44,14 @@ func (c *cliDependencies) CreateGrpcPAPClient(aapTarget string) (azclients.GrpcP
 	return aziclients.NewGrpcPAPClient(aapTarget)
 }
 
+// CreateGrpcPAPClient creates a new gRPC client for the PAP service.
+func (c *cliDependencies) GetLanguageFactory() (azlang.LanguageFactory, error) {
+	return c.langFactory, nil
+}
+
 // NewCliDependenciesProvider creates a new CliDependenciesProvider.
-func NewCliDependenciesProvider() (azcli.CliDependenciesProvider, error) {
-	return &cliDependencies{}, nil
+func NewCliDependenciesProvider(langFactory azlang.LanguageFactory) (azcli.CliDependenciesProvider, error) {
+	return &cliDependencies{
+		langFactory: langFactory,
+	}, nil
 }

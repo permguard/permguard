@@ -24,7 +24,7 @@ import (
 )
 
 // ExecInitWorkspace initializes the workspace.
-func (m *WorkspaceManager) ExecInitWorkspace(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	homeDir := m.getHomeDir()
 	res, err := m.persMgr.CreateDirIfNotExists(false, homeDir)
 	if err != nil {
@@ -41,7 +41,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(out func(map[string]any, string, an
 	if !res {
 		firstInit = false
 	}
-	initializers := []func() error{
+	initializers := []func(string) error{
 		m.logsMgr.ExecInitalize,
 		m.cfgMgr.ExecInitialize,
 		m.rfsMgr.ExecInitalize,
@@ -49,7 +49,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(out func(map[string]any, string, an
 		m.plansMgr.ExecInitalize,
 	}
 	for _, initializer := range initializers {
-		err := initializer()
+		err := initializer(language)
 		if err != nil {
 			return nil, err
 		}

@@ -27,6 +27,7 @@ import (
 	azicliconfigs "github.com/permguard/permguard/internal/cli/porcelaincommands/configs"
 	azicliwks "github.com/permguard/permguard/internal/cli/porcelaincommands/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
 // CommunityCliInitializer  is the community cli initializer.
@@ -60,4 +61,9 @@ func (s *CommunityCliInitializer) GetCliCommands(deps azcli.CliDependenciesProvi
 		authzCmd,
 		configCmd,
 	}, wksCmds...), nil
+}
+
+// GetLanguageFactory returns the language factory.
+func (s *CommunityCliInitializer) GetLanguageFactory() (azlang.LanguageFactory, error) {
+	return NewCommunityLanguageFactory()
 }

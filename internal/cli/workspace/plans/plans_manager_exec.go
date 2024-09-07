@@ -17,7 +17,7 @@
 package plans
 
 // ExecInitalize the plans resources.
-func (c *PlansManager) ExecInitalize() error {
+func (c *PlansManager) ExecInitalize(lang string) error {
 	_, err := c.persMgr.CreateDirIfNotExists(true, c.getPlansDir())
 	return err
 }

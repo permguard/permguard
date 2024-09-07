@@ -39,7 +39,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	return nil, nil
 }
 
-// ExecValidate validates the local state against the remote state.
+// ExecValidate validates the local state.
 func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeDir()))

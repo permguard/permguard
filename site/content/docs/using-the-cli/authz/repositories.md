@@ -90,7 +90,6 @@ output:
 
 </details>
 
-
 ## Get All Repository
 
 The `permguard authz repos list` command allows for the retrieval of all repositories.
