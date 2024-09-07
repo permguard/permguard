@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package languages contains language implementations.
-package languages
+// package permcodes contains language implementations.
+package permcodes
