@@ -15,4 +15,4 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package refs manage the refs file for the workspace.
-package refs;
+package refs

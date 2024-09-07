@@ -4,3 +4,4 @@ name: administer-platform-branches
 permit:
   - pharmacy-branch-management
 forbid:
+

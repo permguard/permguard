@@ -15,4 +15,4 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package remoteserver implements integration with remote server.
-package remoteserver;
+package remoteserver

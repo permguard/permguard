@@ -15,4 +15,4 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package config manage the config file for the workspace.
-package config;
+package config

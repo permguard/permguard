@@ -17,13 +17,13 @@
 package workspace
 
 // fetchRemote fetches the latest changes from the remote repo.
-func (m *WorkspaceManager) fetchRemote () (error)  {
+func (m *WorkspaceManager) fetchRemote() error {
 	// TODO: Implement this method
 	return nil
 }
 
 // Build build the remote state.
-func (m *WorkspaceManager) buildRemoteState () (error)  {
+func (m *WorkspaceManager) buildRemoteState() error {
 	// TODO: Implement this method
 	return nil
 }

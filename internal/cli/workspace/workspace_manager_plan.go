@@ -17,7 +17,7 @@
 package workspace
 
 // plan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
-func (m *WorkspaceManager) plan () (error)  {
+func (m *WorkspaceManager) plan() error {
 	// TODO: Implement this method
 	return nil
 }

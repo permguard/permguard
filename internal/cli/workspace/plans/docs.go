@@ -15,4 +15,4 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package plans manage the plans resources for the workspace.
-package plans;
+package plans

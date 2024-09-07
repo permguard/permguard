@@ -16,7 +16,7 @@
 
 package centralstorage
 
-const(
+const (
 	// errorMessageCannotConnect is the error message cannot connect.
 	errorMessageCannotConnect = "cannot connect."
 	// errorMessageCannotBeginTransaction is the error message cannot begin the transaction.

@@ -26,9 +26,9 @@ import (
 )
 
 const (
-	ctxSvcServiceKey	= "SERVICE"
-	ctxSvcLoggerKey  	= "LOGGER"
-	ctxSvcCfgReader		= "SERVICE-CONFIG"
+	ctxSvcServiceKey = "SERVICE"
+	ctxSvcLoggerKey  = "LOGGER"
+	ctxSvcCfgReader  = "SERVICE-CONFIG"
 )
 
 type serviceCtxKey struct{}

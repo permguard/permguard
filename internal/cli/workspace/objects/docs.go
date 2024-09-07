@@ -15,4 +15,4 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package objects manage the objects resources for the workspace.
-package objects;
+package objects

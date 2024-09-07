@@ -15,4 +15,4 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package logs manage the logs resources for the workspace.
-package logs;
+package logs

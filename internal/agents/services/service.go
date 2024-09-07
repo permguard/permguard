@@ -21,9 +21,9 @@ import (
 
 	"go.uber.org/zap"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ServiceConfig represents the service configuration.

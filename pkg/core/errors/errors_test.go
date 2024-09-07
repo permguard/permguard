@@ -82,10 +82,10 @@ func TestNewSystemError(t *testing.T) {
 		err      error
 		expected bool
 	}{
-		{ errors.New("This is a simple error"), false},
-		{ ErrClientID, true},
-		{ fmt.Errorf("%q: %w", "sample", ErrClientID), true},
-		{ fmt.Errorf("%q: %w", "sample2", fmt.Errorf("%q: %w", "sample1", ErrClientID)), true},
+		{errors.New("This is a simple error"), false},
+		{ErrClientID, true},
+		{fmt.Errorf("%q: %w", "sample", ErrClientID), true},
+		{fmt.Errorf("%q: %w", "sample2", fmt.Errorf("%q: %w", "sample1", ErrClientID)), true},
 	}
 	for _, tc := range testCases {
 		isSysErr := IsSystemError(tc.err)
@@ -98,7 +98,6 @@ func TestNewSystemError(t *testing.T) {
 		}
 	}
 }
-
 
 // TestSystemError tests system errors.
 func TestSystemError(t *testing.T) {

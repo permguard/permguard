@@ -59,4 +59,3 @@ func (s PAPController) DeleteRepository(accountID int64, repositoryID string) (*
 func (s PAPController) FetchRepositories(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Repository, error) {
 	return s.storage.FetchRepositories(page, pageSize, accountID, fields)
 }
-

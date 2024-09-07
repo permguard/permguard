@@ -19,17 +19,17 @@ package aap
 import (
 	"google.golang.org/grpc"
 
-	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
 	azctrlaap "github.com/permguard/permguard/internal/agents/services/aap/controllers"
 	azapiv1aap "github.com/permguard/permguard/internal/agents/services/aap/endpoints/api/v1"
+	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azstroage "github.com/permguard/permguard/pkg/agents/storage"
 )
 
 // AAPService holds the configuration for the server.
 type AAPService struct {
-	config			*AAPServiceConfig
-	configReader	azruntime.ServiceConfigReader
+	config       *AAPServiceConfig
+	configReader azruntime.ServiceConfigReader
 }
 
 // NewAAPService creates a new server  configuration.
@@ -39,7 +39,7 @@ func NewAAPService(aapServiceCfg *AAPServiceConfig) (*AAPService, error) {
 		return nil, err
 	}
 	return &AAPService{
-		config: aapServiceCfg,
+		config:       aapServiceCfg,
 		configReader: configReader,
 	}, nil
 }
