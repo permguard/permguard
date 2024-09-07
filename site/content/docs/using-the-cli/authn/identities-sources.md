@@ -90,7 +90,6 @@ output:
 
 </details>
 
-
 ## Get All IdentitySource
 
 The `permguard authn identitysources list` command allows for the retrieval of all identity sources.
@@ -104,7 +103,7 @@ output:
 ```bash
 1da1d9094501425085859c60429163c2: google
 82b293c0c4eb4f65a8d6f29adfeb8ca5: facebook
-````
+```
 
 <details>
   <summary>

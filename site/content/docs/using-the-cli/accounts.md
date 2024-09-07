@@ -108,6 +108,7 @@ output:
   <summary>
     JSON Output
   </summary>
+
 ```bash
 permguard accounts list --output json
 ```
