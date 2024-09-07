@@ -13,7 +13,7 @@
         // "args": ["remote", "-w", "./sample/volume/"],
         // "args": ["checkout", "dev/268786704340/magicfarmacia-v0.0", "-w", "../../samples/volume/"],
         // "args": ["checkout", "local/464776046148/v0.1", "-w", "../../../playground-yaml/"],
-        "args": ["refresh", "-w", "../../../playground-yaml/"],
+        "args": ["repo", "-w", "../../../playground-yaml/"],
         // "args": ["remote"],
         // "args": ["accounts", "list"],
         // "args": ["accounts", "create", "--name", "revo-dev"],
