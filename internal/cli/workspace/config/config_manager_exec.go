@@ -203,7 +203,7 @@ func (m *ConfigManager) ExecListRepos(activeRepoURI string, output map[string]an
 	if m.ctx.IsTerminalOutput() {
 		repos := []string{}
 		for cfgRepo := range cfg.Repositories {
-			isActive := activeRepoURI == cfgRepo
+			isActive := activeRepoURI == cfg.Repositories[cfgRepo].RefID
 			cfgRepoTxt := cfgRepo
 			if isActive {
 				cfgRepoTxt = fmt.Sprintf("*%s", cfgRepo)
@@ -216,7 +216,7 @@ func (m *ConfigManager) ExecListRepos(activeRepoURI string, output map[string]an
 	} else {
 		repos := []any{}
 		for cfgRepo := range cfg.Repositories {
-			isActive := activeRepoURI == cfgRepo
+			isActive := activeRepoURI == cfg.Repositories[cfgRepo].RefID
 			repoObj := map[string]any{
 				"remote": cfg.Repositories[cfgRepo].Remote,
 				"repo":   cfgRepo,
