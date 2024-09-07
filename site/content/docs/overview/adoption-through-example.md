@@ -37,17 +37,17 @@ policy BranchOrder {
   resources = uur:::pharmacy-branch:order/*
 }
 
-#  This policy covers tenant-specific operations related to the management of orders within a pharmacy branch.
+#  This policy covers operations related to the management of orders within a pharmacy branch.
 policy ManageBranchOrder extends BranchOrder {
   actions = ra:order:*
 }
 
-# This policy covers tenant-specific operations related to the auditing of orders within a pharmacy branch.
+# This policy covers operations related to the auditing of orders within a pharmacy branch.
 policy AuditBranchOrder extends BranchOrder {
   actions = ra:order:view
 }
 
-#  This policy covers tenant-specific operations related to the management of inventory within a pharmacy branch.
+#  This policy covers operations related to the management of inventory within a pharmacy branch.
 policy ViewBranchInventory {
   resources = uur:::pharmacy-branch:inventory/*
   actions = ra:inventory:view
@@ -64,21 +64,21 @@ permission BranchPharmacist {
 
 ```yaml
 ---
-# This policy covers tenant-specific operations related to the management of orders within a pharmacy branch.
+# This policy covers operations related to the management of orders within a pharmacy branch.
 name: manage-branch-order
 actions:
   - ra:order:*
 resources:
   - uur:::pharmacy-branch:order/*
 ---
-# This policy covers tenant-specific operations related to the auditing of orders within a pharmacy branch.
+# This policy covers operations related to the auditing of orders within a pharmacy branch.
 name: audit-branch-order
 actions:
   - ra:order:view
 resources:
   - uur:::pharmacy-branch:order/*
 ---
-# This policy covers tenant-specific operations related to the management of inventory within a pharmacy branch.
+# This policy covers operations related to the management of inventory within a pharmacy branch.
 name: view-branch-inventory
 actions:
   - ra:inventory:view
