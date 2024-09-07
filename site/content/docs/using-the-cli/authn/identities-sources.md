@@ -53,9 +53,6 @@ The output from your current version of PermGuard may differ from the example pr
 
 The `permguard authn identitysources create` command allows to create an identity source for the mandatory input account and name.
 
-{{< tabs "permguard-identitysources-create" >}}
-{{< tab "terminal" >}}
-
 ```bash
 permguard authn identitysources create --account 268786704340 --name google
 ```
@@ -66,8 +63,10 @@ output:
 1da1d9094501425085859c60429163c2: google
 ```
 
-{{< /tab >}}
-{{< tab "json" >}}
+<details>
+  <summary>
+    JSON Output
+  </summary>
 
 ```bash
 permguard authn identitysources create --account 268786704340 --name google --output json
@@ -89,15 +88,12 @@ output:
 }
 ```
 
-{{< /tab >}}
-{{< /tabs >}}
+</details>
+
 
 ## Get All IdentitySource
 
 The `permguard authn identitysources list` command allows for the retrieval of all identity sources.
-
-{{< tabs "permguard-identitysources-list" >}}
-{{< tab "terminal" >}}
 
 ```bash
 permguard authn identitysources list --account 268786704340
@@ -110,8 +106,10 @@ output:
 82b293c0c4eb4f65a8d6f29adfeb8ca5: facebook
 ````
 
-{{< /tab >}}
-{{< tab "json" >}}
+<details>
+  <summary>
+    JSON Output
+  </summary>
 
 ```bash
 permguard authn identitysources list --account 268786704340 --output json
@@ -140,5 +138,4 @@ output:
 }
 ```
 
-{{< /tab >}}
-{{< /tabs >}}
+</details>

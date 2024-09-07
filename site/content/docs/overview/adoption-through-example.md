@@ -59,6 +59,7 @@ permission BranchPharmacist {
   forbid = []
 }
 ```
+
 {{< /tab >}}
 {{< tab "yaml" >}}
 
@@ -100,7 +101,7 @@ forbid:
 
 After creating and associating the policy with the role, the next step is to perform the permission evaluation within the application.
 
-```python
+```python  {title="app.py"}
 has_permissions = permguard.check("uur:581616507495:permguard:authn:identity/pharmacist", "magicfarmacia-v0.0", "inventory", "view")
 
 if has_permissions:
