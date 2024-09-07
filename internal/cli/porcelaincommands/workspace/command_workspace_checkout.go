@@ -45,7 +45,12 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 		printer.Error(azerrors.ErrCliArguments)
 		return aziclicommon.ErrCommandSilent
 	}
-	wksMgr := azicliwksmanager.NewInternalManager(ctx)
+	langFct, err := deps.GetLanguageFactory()
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return aziclicommon.ErrCommandSilent
+	}
+	wksMgr := azicliwksmanager.NewInternalManager(ctx, langFct)
 	repo := args[0]
 	output, err := wksMgr.ExecCheckoutRepo(repo, outFunc(ctx, printer))
 	if err != nil {

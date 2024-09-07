@@ -21,6 +21,7 @@ import (
 	"github.com/spf13/viper"
 
 	azclients "github.com/permguard/permguard/pkg/agents/clients"
+	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
 // CliDependenciesProvider is the cli dependencies provider.
@@ -31,6 +32,8 @@ type CliDependenciesProvider interface {
 	CreateGrpcAAPClient(aapTarget string) (azclients.GrpcAAPClient, error)
 	// CreateGrpcPAPClient creates a new gRPC client for the PAP service.
 	CreateGrpcPAPClient(aapTarget string) (azclients.GrpcPAPClient, error)
+	// GetLanguageFactory returns the language factory.
+	GetLanguageFactory() (azlang.LanguageFactory, error)
 }
 
 // CliInitializer is the cli initializer.
@@ -39,4 +42,6 @@ type CliInitializer interface {
 	GetCliInfo() CliInfo
 	//  GetCliCommands returns the commands.
 	GetCliCommands(deps CliDependenciesProvider, v *viper.Viper) ([]*cobra.Command, error)
+	// GetLanguageFactory returns the language factory.
+	GetLanguageFactory() (azlang.LanguageFactory, error)
 }

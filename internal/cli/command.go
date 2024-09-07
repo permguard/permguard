@@ -44,8 +44,11 @@ func Run(commandsInitializer azcli.CliInitializer) {
 	if err != nil {
 		os.Exit(1)
 	}
-
-	depsProvider, err := aziclicommon.NewCliDependenciesProvider()
+	langFct, err := commandsInitializer.GetLanguageFactory()
+	if err != nil {
+		os.Exit(1)
+	}
+	depsProvider, err := aziclicommon.NewCliDependenciesProvider(langFct)
 	if err != nil {
 		os.Exit(1)
 	}

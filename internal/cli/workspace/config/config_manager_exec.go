@@ -18,16 +18,18 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ExecInitialize initializes the config resources.
-func (m *ConfigManager) ExecInitialize() error {
+func (m *ConfigManager) ExecInitialize(lang string) error {
 	config := Config{
 		Core: CoreConfig{
-			ClientVersion: m.ctx.GetClientVersion(),
+			ClientVersion: 	m.ctx.GetClientVersion(),
+			Language: 		strings.ToLower(lang),
 		},
 		Remotes:      map[string]RemoteConfig{},
 		Repositories: map[string]RepositoryConfig{},

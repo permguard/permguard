@@ -14,10 +14,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package objects
+package languages
 
-// ExecInitalize the objects resources.
-func (c *ObjectsManager) ExecInitalize(lang string) error {
-	_, err := c.persMgr.CreateDirIfNotExists(true, c.getObjectsDir())
-	return err
+// LanguageAbastraction is the interface for the language abstraction.
+type LanguageAbastraction interface {
+	// GetLanguageName returns the name of the language.
+	GetLanguageName() string
 }

@@ -25,7 +25,7 @@ import (
 // TestNewCliDependenciesProvider tests the NewCliDependenciesProvider function.
 func TestNewCliDependenciesProvider(t *testing.T) {
 	assert := assert.New(t)
-	depsProvider, err := NewCliDependenciesProvider()
+	depsProvider, err := NewCliDependenciesProvider(nil)
 	assert.Nil(err, "err should be nil")
 	assert.NotNil(depsProvider, "depsProvider should not be nil")
 }

@@ -17,7 +17,7 @@
 package refs
 
 // ExecInitalize the refs resources.
-func (m *RefsManager) ExecInitalize() error {
+func (m *RefsManager) ExecInitalize(lang string) error {
 	_, err := m.persMgr.CreateDirIfNotExists(true, m.getRefsDir())
 	if err != nil {
 		return err

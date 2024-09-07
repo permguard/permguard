@@ -51,7 +51,6 @@ The output from your current version of PermGuard may differ from the example pr
 
 The `permguard accounts create` command allows to create an account for the input name.
 
-
 ```bash
 permguard accounts create --name magicfarmacia-dev
 ```

@@ -14,10 +14,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package objects
+// Package languages for languages.
+package languages
 
-// ExecInitalize the objects resources.
-func (c *ObjectsManager) ExecInitalize(lang string) error {
-	_, err := c.persMgr.CreateDirIfNotExists(true, c.getObjectsDir())
-	return err
+// LanguageFactory is the interface for the language factory.
+type LanguageFactory interface {
+	// CreateLanguageAbastraction creates a language abstraction.
+	CreateLanguageAbastraction(language string) (LanguageAbastraction, error)
 }

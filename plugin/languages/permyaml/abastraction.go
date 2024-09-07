@@ -14,10 +14,23 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package objects
+package permyaml
 
-// ExecInitalize the objects resources.
-func (c *ObjectsManager) ExecInitalize(lang string) error {
-	_, err := c.persMgr.CreateDirIfNotExists(true, c.getObjectsDir())
-	return err
+const (
+	// LanguageName is the name of the permyaml language.
+	LanguageName = "permyaml"
+)
+
+// YAMLLanguageAbstraction is the abstraction for the permyaml language.
+type YAMLLanguageAbstraction struct {
+}
+
+// NewYAMLLanguageAbstraction creates a new YAMLLanguageAbstraction.
+func NewYAMLLanguageAbstraction() (*YAMLLanguageAbstraction, error) {
+	return &YAMLLanguageAbstraction{}, nil
+}
+
+// GetLanguageName returns the name of the language.
+func (abs *YAMLLanguageAbstraction) GetLanguageName() string {
+	return LanguageName
 }
