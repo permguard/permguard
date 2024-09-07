@@ -39,8 +39,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 		return nil, err
 	}
 	m.langFct.CreateLanguageAbastraction(lang)
-	output := map[string]any{}
-	output["language"] = lang
+	output := out(nil, "language", lang, nil)
 	// TODO: Implement this method
 
 	return output, nil
