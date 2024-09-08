@@ -14,5 +14,18 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package plans manage the plans resources for the workspace.
-package plans
+package obs
+
+// ExecInitalize the plans resources.
+func (c *PlansManager) ExecInitalize(lang string) error {
+	_, err := c.persMgr.CreateDirIfNotExists(true, c.getObjectsDir())
+	if err != nil {
+		return err
+	}
+	_, err = c.persMgr.CreateDirIfNotExists(true, c.getStatesDir())
+	if err != nil {
+		return err
+	}
+	_, err = c.persMgr.CreateDirIfNotExists(true, c.getPlansDir())
+	return err
+}

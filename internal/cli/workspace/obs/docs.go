@@ -14,10 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package objects
-
-// ExecInitalize the objects resources.
-func (c *ObjectsManager) ExecInitalize(lang string) error {
-	_, err := c.persMgr.CreateDirIfNotExists(true, c.getObjectsDir())
-	return err
-}
+// Package obs manage the objects, state and plans of the workspace.
+package obs
