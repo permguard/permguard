@@ -27,7 +27,6 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeDir()))
 	}
-
 	fileLock, err := m.tryLock()
 	if err != nil {
 		return nil, err
@@ -38,11 +37,24 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	if err != nil {
 		return nil, err
 	}
-	m.langFct.CreateLanguageAbastraction(lang)
-	output := out(nil, "language", lang, nil)
-	// TODO: Implement this method
-
-	return output, nil
+	absLang, err := m.langFct.CreateLanguageAbastraction(lang)
+	if err != nil {
+		return nil, err
+	}
+	if m.ctx.IsTerminalOutput() {
+		out(nil, "refresh", "scanning source files...", nil)
+	}
+	refCommit, err := m.blobifyLocal(absLang)
+	if err != nil {
+		return nil, err
+	}
+	if m.ctx.IsTerminalOutput() {
+		out(nil, "refresh", "building local state...", nil)
+	}
+	if err := m.buildLocalState(absLang, refCommit); err != nil {
+		return nil, err
+	}
+	return nil, nil
 }
 
 // ExecValidate validates the local state.
