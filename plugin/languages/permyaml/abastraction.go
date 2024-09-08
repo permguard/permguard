@@ -17,9 +17,9 @@
 package permyaml
 
 import (
-	azsrlzs "github.com/permguard/permguard/plugin/languages/permyaml/serializers"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azlangcode "github.com/permguard/permguard-abs-language/pkg/permcode"
+	azsrlzs "github.com/permguard/permguard/plugin/languages/permyaml/serializers"
 )
 
 const (
@@ -33,14 +33,14 @@ const (
 
 // YAMLLanguageAbstraction is the abstraction for the permyaml language.
 type YAMLLanguageAbstraction struct {
-	objMng		*azlangobjs.ObjectManager
+	objMng      *azlangobjs.ObjectManager
 	permCodeMng *azlangcode.PermCodeManager
 }
 
 // NewYAMLLanguageAbstraction creates a new YAMLLanguageAbstraction.
 func NewYAMLLanguageAbstraction() (*YAMLLanguageAbstraction, error) {
 	return &YAMLLanguageAbstraction{
-		objMng: azlangobjs.NewObjectManager(),
+		objMng:      azlangobjs.NewObjectManager(),
 		permCodeMng: azlangcode.NewPermCodeManager(),
 	}, nil
 }
@@ -62,7 +62,7 @@ func (abs *YAMLLanguageAbstraction) CreateTreeObject(tree *azlangobjs.Tree) (*az
 
 // CreateBlobObjects creates blob objects.
 func (abs *YAMLLanguageAbstraction) CreateBlobObjects(data []byte) ([]azlangobjs.Object, error) {
-	serializer, err := azsrlzs.NewYaml2Json()
+	serializer, err := azsrlzs.NewYamlSerializer()
 	if err != nil {
 		return nil, err
 	}
@@ -72,11 +72,15 @@ func (abs *YAMLLanguageAbstraction) CreateBlobObjects(data []byte) ([]azlangobjs
 	}
 	objs := make([]azlangobjs.Object, 0)
 	for _, doc := range docs {
-		content, err := serializer.SerializeYAML2JSON(doc)
+		content, err := serializer.UnmarshalLangType(doc)
 		if err != nil {
 			return nil, err
 		}
-		obj, err := abs.objMng.CreateBlobObject(content)
+		jsonType, err := abs.permCodeMng.MarshalClass(content, true, false, false)
+		if err != nil {
+			return nil, err
+		}
+		obj, err := abs.objMng.CreateBlobObject(jsonType)
 		if err != nil {
 			return nil, err
 		}
