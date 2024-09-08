@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package obs
+package cosp
 
 import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
@@ -22,36 +22,46 @@ import (
 )
 
 const (
+	// Hidden directories for code.
+	hiddenCodeDir = "code"
+	// Hidden directories for objects.
 	hiddenObjectsDir = "objects"
-	hiddenStatesDir = "states"
-	hiddenPlansDir = "plans"
+	// Hidden directories for states.
+	hiddenStatesDir  = "states"
+	// Hidden directories for plans.
+	hiddenPlansDir   = "plans"
 )
 
-// PlansManager implements the internal manager for the plans file.
-type PlansManager struct {
+// COSPManager implements the internal manager for code, objects, states and plans.
+type COSPManager struct {
 	ctx     *aziclicommon.CliCommandContext
 	persMgr *azicliwkspers.PersistenceManager
 }
 
 // NewPlansManager creates a new plansuration manager.
-func NewPlansManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.PersistenceManager) *PlansManager {
-	return &PlansManager{
+func NewPlansManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.PersistenceManager) *COSPManager {
+	return &COSPManager{
 		ctx:     ctx,
 		persMgr: persMgr,
 	}
 }
 
+// getCodeDir returns the code directory.
+func (c *COSPManager) getCodeDir() string {
+	return hiddenCodeDir
+}
+
 // getObjectsDir returns the objects directory.
-func (c *PlansManager) getObjectsDir() string {
+func (c *COSPManager) getObjectsDir() string {
 	return hiddenObjectsDir
 }
 
 // getStatesDir returns the states directory.
-func (c *PlansManager) getStatesDir() string {
+func (c *COSPManager) getStatesDir() string {
 	return hiddenStatesDir
 }
 
 // getPlansDir returns the plans directory.
-func (c *PlansManager) getPlansDir() string {
+func (c *COSPManager) getPlansDir() string {
 	return hiddenPlansDir
 }

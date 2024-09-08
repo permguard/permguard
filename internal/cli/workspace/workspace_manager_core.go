@@ -24,8 +24,8 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
+	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
-	azicliwksobs "github.com/permguard/permguard/internal/cli/workspace/obs"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
 	azicliwksremotesrv "github.com/permguard/permguard/internal/cli/workspace/remoteserver"
@@ -50,7 +50,7 @@ type WorkspaceManager struct {
 	cfgMgr    *azicliwkscfg.ConfigManager
 	logsMgr   *azicliwkslogs.LogsManager
 	rfsMgr    *azicliwksrefs.RefsManager
-	plansMgr  *azicliwksobs.PlansManager
+	cospMgr   *azicliwkscosp.COSPManager
 }
 
 // NewInternalManager creates a new internal manager.
@@ -66,7 +66,7 @@ func NewInternalManager(ctx *aziclicommon.CliCommandContext, langFct azlang.Lang
 		cfgMgr:    azicliwkscfg.NewConfigManager(ctx, persMgr),
 		logsMgr:   azicliwkslogs.NewLogsManager(ctx, persMgr),
 		rfsMgr:    azicliwksrefs.NewRefsManager(ctx, persMgr),
-		plansMgr:  azicliwksobs.NewPlansManager(ctx, persMgr),
+		cospMgr:   azicliwkscosp.NewPlansManager(ctx, persMgr),
 	}
 }
 
