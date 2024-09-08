@@ -79,6 +79,14 @@ seo:
 | 05112      | storage: unique constraint violation             |
 | 05120      | storage: entity not found in storage             |
 
+### 06xxx Language Errors
+
+| Error Code | Description                                      |
+|------------|--------------------------------------------------|
+| 06000      | language: generic error                          |
+| 06100      | generic file error                               |
+| 06200      | language: generic syntax error                   |
+
 ## 08xxx: Command Line Interface Errors
 
 | Error Code | Description                                      |

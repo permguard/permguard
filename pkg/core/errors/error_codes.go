@@ -51,6 +51,11 @@ var errorCodes = map[string]string{
 	"05112": "stroage: unique constraint violation",
 	"05120": "stroage: entity not found in storage",
 
+	// 06xxx: Language Errors
+	"06000": "language: generic error",
+	"06100": "language: generic file error",
+	"06200": "language: generic syntax error",
+
 	// 08xxx: Command Line Interface Errors
 	"08000": "cli: generic error",
 	"08001": "cli: invalid arguments",
@@ -108,6 +113,10 @@ var (
 	ErrStorageConstraintForeignKey error = NewSystemError("05111")
 	ErrStorageConstraintUnique     error = NewSystemError("05112")
 	ErrStorageNotFound             error = NewSystemError("05120")
+	// 06xxx language.
+	ErrLanguageGeneric	error = NewSystemError("06000")
+	ErrLanguageFile		error = NewSystemError("06100")
+	ErrLanguageSyntax	error = NewSystemError("06200")
 	// 08xxx: Command Line Interface Errors
 	ErrCliGeneric            error = NewSystemError("08000")
 	ErrCliArguments          error = NewSystemError("08001")
