@@ -45,7 +45,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 		out(nil, "refresh", "scanning source files...", nil)
 	}
 	selectedFiles, ignoredFiles, err := m.scanSourceCodeFiles(absLang)
-	if err != nil {
+ 	if err != nil {
 		return nil, err
 	}
 	if m.ctx.IsTerminalOutput() {

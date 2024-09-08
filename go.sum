@@ -83,6 +83,10 @@ github.com/permguard/permguard-abs-language v0.0.0-20240908215801-4141a5995eae h
 github.com/permguard/permguard-abs-language v0.0.0-20240908215801-4141a5995eae/go.mod h1:L3ZGbJOIh74QAHH5fXf9UjZrx2Fx2lFrh3NpxKvjn6Y=
 github.com/permguard/permguard-abs-language v0.0.0-20240908221302-1efd315f60ce h1:5dYkBfKqrGTGszJ6dDKRTQLqwxASUssi5H7dDZ3DtcA=
 github.com/permguard/permguard-abs-language v0.0.0-20240908221302-1efd315f60ce/go.mod h1:HsXhAF73//ro3aLCuXWKkGTmQ/AQ48Vw5aktkVtVJS4=
+github.com/permguard/permguard-abs-language v0.0.0-20240908222735-507b8bf4070c h1:1IAD0gptDM1/f0eopdLiQe58SVBGvTPKaiKY1uRK5PQ=
+github.com/permguard/permguard-abs-language v0.0.0-20240908222735-507b8bf4070c/go.mod h1:pvtXum3i6kBBPDMVdWdyKXYoZ4AACMItSBvbu1FN8I4=
+github.com/permguard/permguard-abs-language v0.0.0-20240908223311-c9efd79a6845 h1:JIzj6shsQV+q6gElGrNyxdmw0Bji2u0ijzyqpvWPXnI=
+github.com/permguard/permguard-abs-language v0.0.0-20240908223311-c9efd79a6845/go.mod h1:fxaXotjFcZDymtQbYkY/bmlVWn46y01xY8fKVO7Np/Q=
 github.com/permguard/permguard-core v0.0.0-20240907154120-626a4c2cf6dc h1:W3QcPclb6PuQH34mBoBRD2LBV34+Vny5PiuMINwxT64=
 github.com/permguard/permguard-core v0.0.0-20240907154120-626a4c2cf6dc/go.mod h1:yuI4+ui3Rk96FfKXcCi1i70trkNIhrvLc+dNeFdzIw4=
 github.com/permguard/permguard-core v0.0.0-20240908142610-840684e7f00f h1:nAspE3uSKT1yF78LB/64hnlk/qV9Z4PGQfAsoTK7g+M=
@@ -93,6 +97,14 @@ github.com/permguard/permguard-core v0.0.0-20240908215737-5f6db9de8528 h1:b75cwd
 github.com/permguard/permguard-core v0.0.0-20240908215737-5f6db9de8528/go.mod h1:yuI4+ui3Rk96FfKXcCi1i70trkNIhrvLc+dNeFdzIw4=
 github.com/permguard/permguard-core v0.0.0-20240908221243-ef00e4bb3c34 h1:lbbi+dE51Rc5eWOqE93fjXxysQXo7Mh6HfM2vHgwJyk=
 github.com/permguard/permguard-core v0.0.0-20240908221243-ef00e4bb3c34/go.mod h1:yuI4+ui3Rk96FfKXcCi1i70trkNIhrvLc+dNeFdzIw4=
+github.com/permguard/permguard-core v0.0.0-20240908222717-28120049ef1f h1:QeEC1cQKbC7a9CbFecz+SJdUsbpjWMtCZghOTDWW2eQ=
+github.com/permguard/permguard-core v0.0.0-20240908222717-28120049ef1f/go.mod h1:yuI4+ui3Rk96FfKXcCi1i70trkNIhrvLc+dNeFdzIw4=
+github.com/permguard/permguard-core v0.0.0-20240908223245-03ac707783f4 h1:4DRJqFR72/UaU/0F8pAG7dITVLkWzl7vXO9CdcZn3l8=
+github.com/permguard/permguard-core v0.0.0-20240908223245-03ac707783f4/go.mod h1:yuI4+ui3Rk96FfKXcCi1i70trkNIhrvLc+dNeFdzIw4=
+github.com/permguard/permguard-core v0.0.0-20240908225434-de2d435108c2 h1:6VyI+4d6S0QYwqthRC/0Gr4IWHz08+R+RWYZFqeTzcc=
+github.com/permguard/permguard-core v0.0.0-20240908225434-de2d435108c2/go.mod h1:yuI4+ui3Rk96FfKXcCi1i70trkNIhrvLc+dNeFdzIw4=
+github.com/permguard/permguard-core v0.0.0-20240908230017-dc2fcb00c7b3 h1:RsUAAhxoszZBafqrsPyNkhB9j9RF3sxigqriWw86zjs=
+github.com/permguard/permguard-core v0.0.0-20240908230017-dc2fcb00c7b3/go.mod h1:yuI4+ui3Rk96FfKXcCi1i70trkNIhrvLc+dNeFdzIw4=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pressly/goose/v3 v3.21.1 h1:5SSAKKWej8LVVzNLuT6KIvP1eFDuPvxa+B6H0w78buQ=
