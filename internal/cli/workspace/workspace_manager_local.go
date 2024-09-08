@@ -38,7 +38,7 @@ func (m *WorkspaceManager) blobifyLocal(absLang azlang.LanguageAbastraction) (st
 		}
 		objs, err := absLang.CreateBlobObjects(data)
 		if err != nil {
-			return "", nil
+			continue
 		}
 		for _, obj := range objs {
 			m.persMgr.WriteBinaryFile(true, obj.GetOID(), obj.GetContent(), 0644)
