@@ -54,7 +54,7 @@ func (m *ConfigManager) getConfigFile() string {
 // readConfig reads the configuration file.
 func (m *ConfigManager) readConfig() (*Config, error) {
 	var config Config
-	err := m.persMgr.ReadTOMLFile(true, m.getConfigFile(), &config)
+	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getConfigFile(), &config)
 	return &config, err
 }
 
@@ -66,9 +66,9 @@ func (m *ConfigManager) saveConfig(override bool, cfg *Config) error {
 	}
 	fileName := m.getConfigFile()
 	if override {
-		_, err = m.persMgr.WriteFile(true, fileName, data, 0644)
+		_, err = m.persMgr.WriteFile(azicliwkspers.PermGuardDir, fileName, data, 0644)
 	} else {
-		_, err = m.persMgr.WriteFileIfNotExists(true, fileName, data, 0644)
+		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermGuardDir, fileName, data, 0644)
 	}
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", fileName))

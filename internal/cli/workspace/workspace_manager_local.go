@@ -19,6 +19,7 @@ package workspace
 import (
 	//azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
+	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
 
 // codeFileInfo represents info about the code file.
@@ -29,7 +30,7 @@ type codeFileInfo struct {
 // scanSourceCodeFiles scans the source code files.
 func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastraction) ([]codeFileInfo, []codeFileInfo, error) {
 	exts := absLang.GetFileExtensions()
-	m.persMgr.ListFiles(true, "../", exts, []string{hiddenDir})
+	m.persMgr.ListFiles(azicliwkspers.PermGuardDir, exts, []string{hiddenDir})
 	return nil, nil, nil
 }
 

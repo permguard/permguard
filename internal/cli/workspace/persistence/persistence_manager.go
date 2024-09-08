@@ -25,57 +25,73 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 )
 
+type RelativeDir uint8
+
+const (
+	// WorkDir is the current working directory.
+	WorkDir RelativeDir = iota
+	// WorkspaceDir is the workspace directory.
+	WorkspaceDir RelativeDir = 1
+	// PermGuardDir is the permguard hiden directory.
+	PermGuardDir RelativeDir = 2
+)
+
 // PersistenceManager implements the internal manager for the persistence file.
 type PersistenceManager struct {
-	rootDir string
-	ctx     *aziclicommon.CliCommandContext
+	rootDir			string
+	permguardDir 	string
+	ctx     		*aziclicommon.CliCommandContext
 }
 
 // NewPersistenceManager creates a new persistenceuration manager.
-func NewPersistenceManager(rootDir string, ctx *aziclicommon.CliCommandContext) *PersistenceManager {
+func NewPersistenceManager(rootDir string, permguardDir string, ctx *aziclicommon.CliCommandContext) *PersistenceManager {
 	return &PersistenceManager{
-		rootDir: rootDir,
-		ctx:     ctx,
+		rootDir: 		rootDir,
+		permguardDir: 	permguardDir,
+		ctx:			ctx,
 	}
 }
 
-// CheckFileIfExists checks if a file exists.
-func (p *PersistenceManager) CheckFileIfExists(relative bool, name string) (bool, error) {
-	if relative {
-		name = filepath.Join(p.rootDir, name)
+// GetRelativeDir gets the relative directory.
+func (p *PersistenceManager) GetRelativeDir(relative RelativeDir, name string) string {
+	switch relative {
+	case WorkDir:
+		return name
+	case WorkspaceDir:
+		return filepath.Join(p.rootDir, name)
+	case PermGuardDir:
+		return filepath.Join(p.rootDir, p.permguardDir, name)
 	}
+	return p.rootDir
+}
+
+// CheckFileIfExists checks if a file exists.
+func (p *PersistenceManager) CheckFileIfExists(relative RelativeDir, name string) (bool, error) {
+	name = p.GetRelativeDir(relative, name)
 	return azfiles.CheckFileIfExists(name)
 }
 
 // CreateFileIfNotExists creates a file if it does not exist.
-func (p *PersistenceManager) CreateFileIfNotExists(relative bool, name string) (bool, error) {
-	if relative {
-		name = filepath.Join(p.rootDir, name)
-	}
+func (p *PersistenceManager) CreateFileIfNotExists(relative RelativeDir, name string) (bool, error) {
+	name = p.GetRelativeDir(relative, name)
 	return azfiles.CreateFileIfNotExists(name)
 }
 
 // CreateDirIfNotExists creates a directory if it does not exist.
-func (p *PersistenceManager) CreateDirIfNotExists(relative bool, name string) (bool, error) {
-	if relative {
-		name = filepath.Join(p.rootDir, name)
-	}
+func (p *PersistenceManager) CreateDirIfNotExists(relative RelativeDir, name string) (bool, error) {
+	name = p.GetRelativeDir(relative, name)
 	return azfiles.CreateDirIfNotExists(name)
 }
 
 // WriteFileIfNotExists writes a file if it does not exist.
-func (p *PersistenceManager) WriteFileIfNotExists(relative bool, name string, data []byte, perm os.FileMode) (bool, error) {
-	if relative {
-		name = filepath.Join(p.rootDir, name)
-	}
+func (p *PersistenceManager) WriteFileIfNotExists(relative RelativeDir, name string, data []byte, perm os.FileMode) (bool, error) {
+	name = p.GetRelativeDir(relative, name)
 	return azfiles.WriteFileIfNotExists(name, data, perm)
 }
 
 // ReadFile reads a file.
-func (p *PersistenceManager) ReadFile(relative bool, name string) ([]byte, uint32, error) {
-	if relative {
-		name = filepath.Join(p.rootDir, name)
-	}
+func (p *PersistenceManager) ReadFile(relative RelativeDir, name string) ([]byte, uint32, error) {
+	name = p.GetRelativeDir(relative, name)
 	file, err := os.OpenFile(name, os.O_RDONLY, 0644)
 	if err != nil {
 		return nil, 0, err
@@ -93,49 +109,37 @@ func (p *PersistenceManager) ReadFile(relative bool, name string) ([]byte, uint3
 }
 
 // WriteFile writes a file.
-func (p *PersistenceManager) WriteFile(relative bool, name string, data []byte, perm os.FileMode) (bool, error) {
-	if relative {
-		name = filepath.Join(p.rootDir, name)
-	}
+func (p *PersistenceManager) WriteFile(relative RelativeDir, name string, data []byte, perm os.FileMode) (bool, error) {
+	name = p.GetRelativeDir(relative, name)
 	return azfiles.WriteFile(name, data, perm)
 }
 
 // WriteBinaryFile writes a binary file.
-func (p *PersistenceManager) WriteBinaryFile(relative bool, name string, data []byte, perm os.FileMode) (bool, error) {
-	if relative {
-		name = filepath.Join(p.rootDir, name)
-	}
+func (p *PersistenceManager) WriteBinaryFile(relative RelativeDir, name string, data []byte, perm os.FileMode) (bool, error) {
+	name = p.GetRelativeDir(relative, name)
 	return azfiles.WriteFile(name, data, perm)
 }
 
 // AppendToFile appends to a file.
-func (p *PersistenceManager) AppendToFile(relative bool, name string, data []byte) (bool, error) {
-	if relative {
-		name = filepath.Join(p.rootDir, name)
-	}
+func (p *PersistenceManager) AppendToFile(relative RelativeDir, name string, data []byte) (bool, error) {
+	name = p.GetRelativeDir(relative, name)
 	return azfiles.AppendToFile(name, data)
 }
 
 // ReadTOMLFile reads a TOML file.
-func (p *PersistenceManager) ReadTOMLFile(relative bool, name string, v any) error {
-	if relative {
-		name = filepath.Join(p.rootDir, name)
-	}
+func (p *PersistenceManager) ReadTOMLFile(relative RelativeDir, name string, v any) error {
+	name = p.GetRelativeDir(relative, name)
 	return azfiles.ReadTOMLFile(name, v)
 }
 
 // IsInsideDir checks if a directory is inside another directory.
-func (p *PersistenceManager) IsInsideDir(relative bool, name string) (bool, error) {
-	if relative {
-		name = filepath.Join(p.rootDir, name)
-	}
+func (p *PersistenceManager) IsInsideDir(relative RelativeDir, name string) (bool, error) {
+	name = p.GetRelativeDir(relative, name)
 	return azfiles.IsInsideDir(name)
 }
 
 // ListFiles lists files.
-func (p *PersistenceManager) ListFiles(relative bool, name string, exts []string, excludeDirs []string) ([]string, error) {
-	if relative {
-		name = filepath.Join(p.rootDir, name)
-	}
+func (p *PersistenceManager) ListFiles(relative RelativeDir, exts []string, excludeDirs []string) ([]string, error) {
+	name := p.GetRelativeDir(relative, "")
 	return azfiles.ListFiles(name, exts, excludeDirs)
 }

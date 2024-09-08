@@ -16,8 +16,12 @@
 
 package logs
 
+import (
+	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
+)
+
 // ExecInitalize the logs resources.
 func (c *LogsManager) ExecInitalize(lang string) error {
-	_, err := c.persMgr.CreateDirIfNotExists(true, c.getLogsDir())
+	_, err := c.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, c.getLogsDir())
 	return err
 }
