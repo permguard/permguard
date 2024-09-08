@@ -34,7 +34,7 @@ The first step is to define a policy and associate it with a role by specifying 
 ```python
 # This is a base policy to abstract the pharmacy branch.
 policy BranchOrder {
-  resources = uur:::pharmacy-branch:order/*
+  resources = uur::::pharmacy-branch:order/*
 }
 
 #  This policy covers operations related to the management of orders within a pharmacy branch.
@@ -49,7 +49,7 @@ policy AuditBranchOrder extends BranchOrder {
 
 #  This policy covers operations related to the management of inventory within a pharmacy branch.
 policy ViewBranchInventory {
-  resources = uur:::pharmacy-branch:inventory/*
+  resources = uur::::pharmacy-branch:inventory/*
   actions = ra:inventory:view
 }
 
@@ -70,21 +70,21 @@ name: manage-branch-order
 actions:
   - ra:order:*
 resources:
-  - uur:::pharmacy-branch:order/*
+  - uur::::pharmacy-branch:order/*
 ---
 # This policy covers operations related to the auditing of orders within a pharmacy branch.
 name: audit-branch-order
 actions:
   - ra:order:view
 resources:
-  - uur:::pharmacy-branch:order/*
+  - uur::::pharmacy-branch:order/*
 ---
 # This policy covers operations related to the management of inventory within a pharmacy branch.
 name: view-branch-inventory
 actions:
   - ra:inventory:view
 resources:
-  - uur:::pharmacy-branch:inventory/*
+  - uur::::pharmacy-branch:inventory/*
 ---
 # This is a base policy to abstract the pharmacy branch.
 name: branch-pharmacist
@@ -102,7 +102,7 @@ forbid:
 After creating and associating the policy with the role, the next step is to perform the permission evaluation within the application.
 
 ```python  {title="app.py"}
-has_permissions = permguard.check("uur:581616507495:permguard:authn:identity/pharmacist", "magicfarmacia-v0.0", "inventory", "view")
+has_permissions = permguard.check("uur::581616507495:permguard:authn:identity/pharmacist", "magicfarmacia-v0.0", "inventory", "view")
 
 if has_permissions:
     print("Role can view inventory")

@@ -34,6 +34,7 @@ There are only two exceptions:
 
 The `UUR` is a unique identifier used to specify resources within policies and enforcement points. The format includes five placeholders as follows:
 
+- `{partition}`: The partition represents a deployment instance. It should be left blank for now, but it is reserved for future use.
 - `{account}`: The account associated with the resource. This field can be left blank, in which case it will default to the current account.
 - `{tenant}`: The tenant within which the resource resides.
 - `{domain}`: The domain or functional area of the resource.
@@ -45,25 +46,25 @@ This structure allows precise identification and management of resources in a mu
 Below is an example of a UUR that identifies an inventory item with the ID `b51cbd37503f4a4eaec9d2f33419d523` in the domain `pharmacy-branch`, which belongs to the tenant `matera-branch` under the account `581616507495`:
 
 ```plaintext
-uur:581616507495:matera-branch:pharmacy-branch:inventory/b51cbd37503f4a4eaec9d2f33419d523
+uur::581616507495:matera-branch:pharmacy-branch:inventory/b51cbd37503f4a4eaec9d2f33419d523
 ```
 
 Each placeholder, except the `{account}` placeholder, can either be an exact value or use the wildcard pattern `*` to match multiple values.
 
 ```plaintext
-uur:581616507495:matera-branch:pharmacy-*:inventory/*
+uur::581616507495:matera-branch:pharmacy-*:inventory/*
 ```
 
 Additionally, for the `{tenant}` placeholder, you can use the dynamic value $tenant, which associates the tenant at runtime based on the execution context:
 
 ```plaintext
-uur:$account:$tenant:pharmacy-*:inventory/*
+uur::$account:$tenant:pharmacy-*:inventory/*
 ```
 
 It is also possible to leave the `{account}` and `{tenant}` placeholders blank, in which case they will default to the current account (`$account`) and tenant (`$tenant`), respectively:
 
 ```plaintext
-uur:::pharmacy-*:inventory/*
+uur::::pharmacy-*:inventory/*
 ```
 
 {{< callout context="caution" icon="alert-triangle" >}}
@@ -73,7 +74,7 @@ Wildcard and dynamic value patterns are not permitted when referencing a resourc
 It is important to note that for resources related to identities, the exact account identifier must be used, and permguard must be specified as the tenant:
 
 ```plaintext
-uur:581616507495:permguard:authn:identity/pharmacist
+uur::581616507495:permguard:authn:identity/pharmacist
 ```
 
 ## AR (Action Resource)

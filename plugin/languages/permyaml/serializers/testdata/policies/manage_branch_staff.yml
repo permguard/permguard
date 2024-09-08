@@ -5,4 +5,4 @@ actions:
   - staff:manage
   - staff:assignroles
 resources:
-  - uur:::pharmacy-branch:staff/*
+  - uur::::pharmacy-branch:staff/*

@@ -1,6 +1,6 @@
 # Policy to list all cars.
 policy listcars {
-    resources = uur:::car-rental:car/*,
+    resources = uur::::car-rental:car/*,
     actions = ra:car:listcars
 }
 

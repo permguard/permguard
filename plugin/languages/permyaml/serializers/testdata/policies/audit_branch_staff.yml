@@ -3,4 +3,4 @@ name: audit-branch-staff
 actions:
   - staff:view
 resources:
-  - uur:::pharmacy-branch:staff/*
+  - uur::::pharmacy-branch:staff/*

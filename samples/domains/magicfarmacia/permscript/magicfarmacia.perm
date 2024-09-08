@@ -1,6 +1,6 @@
 # This is a base policy to abstract the pharmacy branch.
 policy BranchOrder {
-    resources = uur:::pharmacy-branch:order/*
+    resources = uur::::pharmacy-branch:order/*
     condition = base.condition
         and $tenant in ctx.Data["TENANTS"]
 }
@@ -17,7 +17,7 @@ policy AuditBranchOrder extends BranchOrder {
 
 #  This policy covers tenant-specific operations related to the management of inventory within a pharmacy branch.
 policy ViewBranchInventory {
-    resources = uur:::pharmacy-branch:inventory/*
+    resources = uur::::pharmacy-branch:inventory/*
 	actions = ra:inventory:view
     condition = base.condition
         and $tenant in ctx.Data["TENANTS"]
