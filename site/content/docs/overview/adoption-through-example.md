@@ -102,7 +102,7 @@ forbid:
 After creating and associating the policy with the role, the next step is to perform the permission evaluation within the application.
 
 ```python  {title="app.py"}
-has_permissions = permguard.check("uur::581616507495:permguard:authn:identity/pharmacist", "magicfarmacia-v0.0", "inventory", "view")
+has_permissions = permguard.check("uur::581616507495::iam:identity/google/pharmacist", "magicfarmacia-v0.0", "inventory", "view")
 
 if has_permissions:
     print("Role can view inventory")
