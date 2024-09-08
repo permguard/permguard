@@ -60,6 +60,7 @@ func (abs *YAMLLanguageAbstraction) CreateTreeObject(tree *azlangobjs.Tree) (*az
 }
 
 // CreateBlobObject creates a blob object.
-func (abs *YAMLLanguageAbstraction) CreateBlobObject(data []byte) (*azlangobjs.Object, error) {
-	return abs.objMng.CreateBlobObject(data)
+func (abs *YAMLLanguageAbstraction) CreateBlobObjects(data []byte) ([]azlangobjs.Object, error) {
+	//return abs.objMng.CreateBlobObject(data)
+	return nil, nil
 }
