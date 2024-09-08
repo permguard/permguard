@@ -17,12 +17,31 @@
 package workspace
 
 import (
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
 // blobifyLocal scans source files and creates a blob for each object.
 func (m *WorkspaceManager) blobifyLocal(absLang azlang.LanguageAbastraction) (string, error) {
-	// TODO: Implement this method
+	exts := absLang.GetFileExtensions()
+	files, err := m.persMgr.ListFiles(true, exts)
+	if err != nil {
+		return "", err
+	}
+	if len(files) == 0 {
+		return "", azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, "no source files found")
+	}
+	for _, file := range files {
+		file, _, err := m.persMgr.ReadFile(false, file)
+		if err != nil {
+			return "", err
+		}
+		obj, err := absLang.CreateBlobObject(file)
+		if err != nil {
+			return "", nil
+		}
+		m.persMgr.WriteFile(true, obj.OID, obj.Content, 0644)
+	}
 	return "", nil
 }
 

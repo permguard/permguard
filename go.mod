@@ -11,6 +11,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/pelletier/go-toml v1.9.5
 	github.com/permguard/permguard-core v0.0.0-20240907154120-626a4c2cf6dc
+	github.com/permguard/permguard-abs-language v0.0.0-20240908093715-a7e9b43b078c
 	github.com/pressly/goose/v3 v3.21.1
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/pflag v1.0.5

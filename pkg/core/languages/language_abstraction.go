@@ -16,8 +16,18 @@
 
 package languages
 
+import (
+	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+)
+
 // LanguageAbastraction is the interface for the language abstraction.
 type LanguageAbastraction interface {
 	// GetLanguageName returns the name of the language.
 	GetLanguageName() string
+	// GetFileExtensions returns the file extensions.
+	GetFileExtensions() []string
+	// CreateTreeObject creates a tree object.
+	CreateTreeObject(tree *azlangobjs.Tree) (*azlangobjs.Object, error)
+	// CreateBlobObject creates a blob object.
+	CreateBlobObject(data []byte) (*azlangobjs.Object, error)
 }
