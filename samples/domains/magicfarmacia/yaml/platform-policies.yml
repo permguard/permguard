@@ -4,4 +4,4 @@ name: pharmacy-branch-management
 actions:
   - pharmacy-branch:*
 resources:
-  - uur::*:platform:pharmacy-branch/*
+  - uur:::*:platform:pharmacy-branch/*

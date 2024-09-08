@@ -39,7 +39,7 @@ Policies can be defined using either PermScript or YAML.
     "inventory:view"
   ],
   "resources": [
-    "uur:::pharmacy-branch:inventory/*"
+    "uur::::pharmacy-branch:inventory/*"
   ]
 }
 ```

@@ -5,4 +5,4 @@ actions:
   - inventory:manage
   - inventory:assignroles
 resources:
-  - uur:::pharmacy-branch:inventory/*
+  - uur::::pharmacy-branch:inventory/*
