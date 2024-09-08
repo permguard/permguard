@@ -30,8 +30,20 @@ type codeFileInfo struct {
 // scanSourceCodeFiles scans the source code files.
 func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastraction) ([]codeFileInfo, []codeFileInfo, error) {
 	exts := absLang.GetFileExtensions()
-	m.persMgr.ListFiles(azicliwkspers.PermGuardDir, exts, []string{hiddenDir})
-	return nil, nil, nil
+	ignorePatterns := []string {hiddenIgnoreFile, schemaYAMLFile, schemaYMLFile, hiddenDir, gitDir}
+	files, ignoredFiles, err := m.persMgr.ScanAndFilterFiles(azicliwkspers.WorkspaceDir, exts, ignorePatterns, hiddenIgnoreFile)
+	if err != nil {
+		return nil, nil, err
+	}
+	codeFiles := make([]codeFileInfo, len(files))
+	for i, file := range files {
+		codeFiles[i] = codeFileInfo{path: file}
+	}
+	ignoredCodeFiles := make([]codeFileInfo, len(ignoredFiles))
+	for i, file := range ignoredFiles {
+		ignoredCodeFiles[i] = codeFileInfo{path: file}
+	}
+	return codeFiles, ignoredCodeFiles, nil
 }
 
 // blobifyLocal scans source files and creates a blob for each object.

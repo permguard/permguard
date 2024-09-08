@@ -17,7 +17,6 @@
 package persistence
 
 import (
-	"io"
 	"os"
 	"path/filepath"
 
@@ -89,25 +88,6 @@ func (p *PersistenceManager) WriteFileIfNotExists(relative RelativeDir, name str
 	return azfiles.WriteFileIfNotExists(name, data, perm)
 }
 
-// ReadFile reads a file.
-func (p *PersistenceManager) ReadFile(relative RelativeDir, name string) ([]byte, uint32, error) {
-	name = p.GetRelativeDir(relative, name)
-	file, err := os.OpenFile(name, os.O_RDONLY, 0644)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer file.Close()
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return nil, 0, err
-	}
-	data, err := io.ReadAll(file)
-	if err != nil {
-		return nil, 0, err
-	}
-	return data, uint32(fileInfo.Mode().Perm()), nil
-}
-
 // WriteFile writes a file.
 func (p *PersistenceManager) WriteFile(relative RelativeDir, name string, data []byte, perm os.FileMode) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
@@ -126,20 +106,26 @@ func (p *PersistenceManager) AppendToFile(relative RelativeDir, name string, dat
 	return azfiles.AppendToFile(name, data)
 }
 
-// ReadTOMLFile reads a TOML file.
-func (p *PersistenceManager) ReadTOMLFile(relative RelativeDir, name string, v any) error {
-	name = p.GetRelativeDir(relative, name)
-	return azfiles.ReadTOMLFile(name, v)
-}
-
 // IsInsideDir checks if a directory is inside another directory.
 func (p *PersistenceManager) IsInsideDir(relative RelativeDir, name string) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
 	return azfiles.IsInsideDir(name)
 }
 
-// ListFiles lists files.
-func (p *PersistenceManager) ListFiles(relative RelativeDir, exts []string, excludeDirs []string) ([]string, error) {
+// ScanAndFilterFiles scans and filters files.
+func (p *PersistenceManager) ScanAndFilterFiles(relative RelativeDir, exts []string, ignorePatterns []string, ignoreFile string) ([]string, []string, error) {
 	name := p.GetRelativeDir(relative, "")
-	return azfiles.ListFiles(name, exts, excludeDirs)
+	ignoreFile = p.GetRelativeDir(relative, ignoreFile)
+	ignoreFilePatterns, err :=  azfiles.ReadIgnoreFile(ignoreFile)
+	ignorePatterns = append(ignorePatterns, ignoreFilePatterns...)
+	if err != nil {
+		return nil, nil, err
+	}
+	return azfiles.ScanAndFilterFiles(name, exts, ignorePatterns)
+}
+
+// ReadTOMLFile reads a TOML file.
+func (p *PersistenceManager) ReadTOMLFile(relative RelativeDir, name string, v any) error {
+	name = p.GetRelativeDir(relative, name)
+	return azfiles.ReadTOMLFile(name, v)
 }

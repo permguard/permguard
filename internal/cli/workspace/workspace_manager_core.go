@@ -36,8 +36,16 @@ import (
 const (
 	// hiddenDir represents the permguard's hidden directory.
 	hiddenDir = ".permguard"
+	// hiddenDir represents the permguard's hidden ignore file.
+	hiddenIgnoreFile = ".permguardignore"
 	// hiddenLockFile represents the permguard's lock file.
 	hiddenLockFile = "permguard.lock"
+	// schemaYAMLFile represents the schema file.
+	schemaYAMLFile = "schema.yaml"
+	// schemaYAMLFile represents the schema file.
+	schemaYMLFile = "schema.yml"
+	// gitDir represents the git directory.
+	gitDir = ".git"
 )
 
 // WorkspaceManager implements the internal manager to manage the .permguard directory.
