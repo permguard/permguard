@@ -16,21 +16,50 @@
 
 package permyaml
 
+import (
+	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azlangcode "github.com/permguard/permguard-abs-language/pkg/permcode"
+)
+
 const (
 	// LanguageName is the name of the permyaml language.
 	LanguageName = "permyaml"
+	// LanguageFileYml is the yml file extension.
+	LanguageFileYml = ".yml"
+	// LanguageFileYaml is the yaml file extension.
+	LanguageFileYaml = ".yaml"
 )
 
 // YAMLLanguageAbstraction is the abstraction for the permyaml language.
 type YAMLLanguageAbstraction struct {
+	objMng		*azlangobjs.ObjectManager
+	permCodeMng *azlangcode.PermCodeManager
 }
 
 // NewYAMLLanguageAbstraction creates a new YAMLLanguageAbstraction.
 func NewYAMLLanguageAbstraction() (*YAMLLanguageAbstraction, error) {
-	return &YAMLLanguageAbstraction{}, nil
+	return &YAMLLanguageAbstraction{
+		objMng: azlangobjs.NewObjectManager(),
+		permCodeMng: azlangcode.NewPermCodeManager(),
+	}, nil
 }
 
 // GetLanguageName returns the name of the language.
 func (abs *YAMLLanguageAbstraction) GetLanguageName() string {
 	return LanguageName
+}
+
+// GetFileExtensions returns the file extensions.
+func (abs *YAMLLanguageAbstraction) GetFileExtensions() []string {
+	return []string{LanguageFileYml, LanguageFileYaml}
+}
+
+// CreateTreeObject creates a tree object.
+func (abs *YAMLLanguageAbstraction) CreateTreeObject(tree *azlangobjs.Tree) (*azlangobjs.Object, error) {
+	return abs.objMng.CreateTreeObject(tree)
+}
+
+// CreateBlobObject creates a blob object.
+func (abs *YAMLLanguageAbstraction) CreateBlobObject(data []byte) (*azlangobjs.Object, error) {
+	return abs.objMng.CreateBlobObject(data)
 }

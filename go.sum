@@ -71,6 +71,8 @@ github.com/pelletier/go-toml v1.9.5 h1:4yBQzkHv+7BHq2PQUZF3Mx0IYxG7LsP222s7Agd3v
 github.com/pelletier/go-toml v1.9.5/go.mod h1:u1nR/EPcESfeI/szUZKdtJ0xRNbUoANCkoOuaOx1Y+c=
 github.com/pelletier/go-toml/v2 v2.2.3 h1:YmeHyLY8mFWbdkNWwpr+qIL2bEqT0o95WSdkNHvL12M=
 github.com/pelletier/go-toml/v2 v2.2.3/go.mod h1:MfCQTFTvCcUyyvvwm1+G6H/jORL20Xlb6rzQu9GuUkc=
+github.com/permguard/permguard-abs-language v0.0.0-20240908093715-a7e9b43b078c h1:Pb1pSvc/5It648qqpxvkYBVxAEvM6Y3Lssu0100z4HY=
+github.com/permguard/permguard-abs-language v0.0.0-20240908093715-a7e9b43b078c/go.mod h1:LhfQsjcoEEShbWkCloUtGwBxM3/i0HLax5pcWfLu41E=
 github.com/permguard/permguard-core v0.0.0-20240907154120-626a4c2cf6dc h1:W3QcPclb6PuQH34mBoBRD2LBV34+Vny5PiuMINwxT64=
 github.com/permguard/permguard-core v0.0.0-20240907154120-626a4c2cf6dc/go.mod h1:yuI4+ui3Rk96FfKXcCi1i70trkNIhrvLc+dNeFdzIw4=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=

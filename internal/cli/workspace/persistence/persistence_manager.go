@@ -17,8 +17,10 @@
 package persistence
 
 import (
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	azfiles "github.com/permguard/permguard-core/pkg/extensions/files"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
@@ -70,6 +72,27 @@ func (p *PersistenceManager) WriteFileIfNotExists(relative bool, name string, da
 	return azfiles.WriteFileIfNotExists(name, data, perm)
 }
 
+// ReadFile reads a file.
+func (p *PersistenceManager) ReadFile(relative bool, name string) ([]byte, uint32, error) {
+	if relative {
+		name = filepath.Join(p.rootDir, name)
+	}
+	file, err := os.OpenFile(name, os.O_RDONLY, 0644)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer file.Close()
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, 0, err
+	}
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, 0, err
+	}
+	return data, uint32(fileInfo.Mode().Perm()), nil
+}
+
 // WriteFile writes a file.
 func (p *PersistenceManager) WriteFile(relative bool, name string, data []byte, perm os.FileMode) (bool, error) {
 	if relative {
@@ -95,6 +118,47 @@ func (p *PersistenceManager) ReadTOMLFile(relative bool, name string, v any) err
 }
 
 // IsInsideDir checks if a directory is inside another directory.
-func (p *PersistenceManager) IsInsideDir(name string) (bool, error) {
+func (p *PersistenceManager) IsInsideDir(relative bool, name string) (bool, error) {
+	if relative {
+		name = filepath.Join(p.rootDir, name)
+	}
 	return azfiles.IsInsideDir(name)
+}
+
+// ListFiles lists files.
+func (p *PersistenceManager) ListFiles(relative bool, exts []string) ([]string, error) {
+	var files []string
+	err := filepath.Walk(p.rootDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			if len(exts) > 0 {
+				matched := false
+				for _, ext := range exts {
+					if strings.HasSuffix(strings.ToLower(info.Name()), strings.ToLower(ext)) {
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					return nil
+				}
+			}
+			if relative {
+				relativePath, err := filepath.Rel(p.rootDir, path)
+				if err != nil {
+					return err
+				}
+				files = append(files, relativePath)
+			} else {
+				files = append(files, path)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return files, nil
 }

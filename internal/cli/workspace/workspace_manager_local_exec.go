@@ -44,14 +44,14 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	if m.ctx.IsTerminalOutput() {
 		out(nil, "refresh", "scanning source files...", nil)
 	}
-	refCommit, err := m.blobifyLocal(absLang)
+	treeUID, err := m.blobifyLocal(absLang)
 	if err != nil {
 		return nil, err
 	}
 	if m.ctx.IsTerminalOutput() {
 		out(nil, "refresh", "building local state...", nil)
 	}
-	if err := m.buildLocalState(absLang, refCommit); err != nil {
+	if err := m.buildLocalState(absLang, treeUID); err != nil {
 		return nil, err
 	}
 	return nil, nil
