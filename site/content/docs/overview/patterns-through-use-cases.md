@@ -44,10 +44,10 @@ Below a sample JWT Token:
   "exp": 1516325422,
   "scope": "openid profile email",
   "permissions": [
-    "read:car"
+    "read:inventory"
   ],
   "roles": [
-    "customer"
+    "pharmacist"
   ]
 }
 ```
@@ -60,12 +60,12 @@ With this approach the previous drawbacks are mitigated:
 - **Code Duplication**: This problem is fixed as the application does not need to implement any logic to evaluate the permissions, as the policies evaluation is delegated to `PermGuard`.
 
 ```python {title="app.py"}
-has_permissions = permguard.check(jwt.sub, "car-rental/1.0.0", "listcars", "car")
+has_permissions = permguard.check(jwt.sub, "magicfarmaciav0.0", "inventory", "read")
 
 if has_permissions:
-    print("Role can list cars")
+    print("Role can read inventory")
 else:
-    print("Role can not list cars")
+    print("Role cannot read inventory")
 ```
 
 ## Use Case: Asynchronous Operations and Revoked Permissions
