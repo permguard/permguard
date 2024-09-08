@@ -55,10 +55,10 @@ type WorkspaceManager struct {
 
 // NewInternalManager creates a new internal manager.
 func NewInternalManager(ctx *aziclicommon.CliCommandContext, langFct azlang.LanguageFactory) *WorkspaceManager {
-	hdnDir := filepath.Join(ctx.GetWorkDir(), hiddenDir)
-	persMgr := azicliwkspers.NewPersistenceManager(hdnDir, ctx)
+	homeDir := ctx.GetWorkDir()
+	persMgr := azicliwkspers.NewPersistenceManager(homeDir, hiddenDir, ctx)
 	return &WorkspaceManager{
-		homeDir:   hdnDir,
+		homeDir:   homeDir,
 		ctx:       ctx,
 		langFct:   langFct,
 		persMgr:   persMgr,
@@ -70,26 +70,31 @@ func NewInternalManager(ctx *aziclicommon.CliCommandContext, langFct azlang.Lang
 	}
 }
 
-// getHomeDir returns the home directory.
+// getHomeHiddenDir returns the home directory.
 func (m *WorkspaceManager) getHomeDir() string {
 	return m.homeDir
 }
 
+// getHomeHiddenDir returns the home hidden directory.
+func (m *WorkspaceManager) getHomeHiddenDir() string {
+	return filepath.Join(m.homeDir, hiddenDir)
+}
+
 // getLockFile returns the lock file.
 func (m *WorkspaceManager) getLockFile() string {
-	return filepath.Join(m.getHomeDir(), hiddenLockFile)
+	return filepath.Join(m.getHomeHiddenDir(), hiddenLockFile)
 }
 
 // isWorkspaceDir checks if the directory is a workspace directory.
 func (m *WorkspaceManager) isWorkspaceDir() bool {
-	isValid, _ := m.persMgr.CheckFileIfExists(true, "")
+	isValid, _ := m.persMgr.CheckFileIfExists(azicliwkspers.PermGuardDir, "")
 	return isValid
 }
 
 // tryLock tries to lock the workspace.
 func (m *WorkspaceManager) tryLock() (*flock.Flock, error) {
 	lockFile := m.getLockFile()
-	m.persMgr.CreateFileIfNotExists(true, lockFile)
+	m.persMgr.CreateFileIfNotExists(azicliwkspers.PermGuardDir, lockFile)
 	fileLock := flock.New(lockFile)
 	lock, err := fileLock.TryLock()
 	if !lock || err != nil {

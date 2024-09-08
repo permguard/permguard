@@ -16,14 +16,18 @@
 
 package refs
 
+import (
+	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
+)
+
 // ExecInitalize the refs resources.
 func (m *RefsManager) ExecInitalize(lang string) error {
-	_, err := m.persMgr.CreateDirIfNotExists(true, m.getRefsDir())
+	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, m.getRefsDir())
 	if err != nil {
 		return err
 	}
 	headFile := m.getHeadFile()
-	_, err = m.persMgr.CreateFileIfNotExists(true, headFile)
+	_, err = m.persMgr.CreateFileIfNotExists(azicliwkspers.PermGuardDir, headFile)
 	if err != nil {
 		return err
 	}

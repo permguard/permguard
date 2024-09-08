@@ -53,16 +53,16 @@ func (c *LogsManager) getLogsDir() string {
 // Log an entry
 func (c *LogsManager) Log(remote string, ref string, origin string, target string, action string) (bool, error) {
 	logDir := filepath.Join(c.getLogsDir(), remote)
-	_, err := c.persMgr.CreateDirIfNotExists(true, logDir)
+	_, err := c.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, logDir)
 	if err != nil {
 		return false, err
 	}
 	logFile := filepath.Join(logDir, ref)
-	_, err = c.persMgr.CreateFileIfNotExists(true, logFile)
+	_, err = c.persMgr.CreateFileIfNotExists(azicliwkspers.PermGuardDir, logFile)
 	if err != nil {
 		return false, err
 	}
 	timestamp := time.Now().UTC().Format("2006-01-02 15:04:05.000Z")
 	logLine := fmt.Sprintf("%s %s %s %s\n", origin, target, timestamp, action)
-	return c.persMgr.AppendToFile(true, logFile, []byte(logLine))
+	return c.persMgr.AppendToFile(azicliwkspers.PermGuardDir, logFile, []byte(logLine))
 }

@@ -25,7 +25,7 @@ import (
 // ExecRefresh scans source files in the current directory and synchronizes the local state,
 func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
 	fileLock, err := m.tryLock()
 	if err != nil {
@@ -51,7 +51,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	if m.ctx.IsTerminalOutput() {
 		selectedCount := len(selectedFiles)
 		ignoredCount := len(ignoredFiles)
-		out(nil, "refresh", fmt.Sprintf("scanned %d files, selected %d files, and ignored %d files", selectedCount + ignoredCount, selectedCount, ignoredCount), nil)
+		out(nil, "refresh", fmt.Sprintf("scanned %d files, selected %d files, and ignored %d files", selectedCount+ignoredCount, selectedCount, ignoredCount), nil)
 	}
 	// if m.ctx.IsTerminalOutput() {
 	// 	out(nil, "refresh", "building local state...", nil)
@@ -65,7 +65,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 // ExecValidate validates the local state.
 func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
 
 	fileLock, err := m.tryLock()
@@ -82,7 +82,7 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 // ExecDiff compares the local state with the remote state to identify differences.
 func (m *WorkspaceManager) ExecDiff(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
 
 	fileLock, err := m.tryLock()

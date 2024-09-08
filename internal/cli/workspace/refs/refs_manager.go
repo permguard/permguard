@@ -74,9 +74,9 @@ func (m *RefsManager) saveConfig(name string, override bool, cfg any) error {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
 	}
 	if override {
-		_, err = m.persMgr.WriteFile(true, name, data, 0644)
+		_, err = m.persMgr.WriteFile(azicliwkspers.PermGuardDir, name, data, 0644)
 	} else {
-		_, err = m.persMgr.WriteFileIfNotExists(true, name, data, 0644)
+		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermGuardDir, name, data, 0644)
 	}
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", name))
@@ -87,7 +87,7 @@ func (m *RefsManager) saveConfig(name string, override bool, cfg any) error {
 // readConfig reads the configuration file.
 func (m *RefsManager) readHeadConfig() (*HeadConfig, error) {
 	var config HeadConfig
-	err := m.persMgr.ReadTOMLFile(true, m.getHeadFile(), &config)
+	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getHeadFile(), &config)
 	return &config, err
 }
 
@@ -157,7 +157,7 @@ func (m *RefsManager) CalculateCurrentHeadRefID() (string, error) {
 // createAndGetHeadRefFile creates and gets the head ref file.
 func (m *RefsManager) createAndGetHeadRefFile(remote string, refID string) (string, error) {
 	refDir := filepath.Join(hiddenRefsDir, remote)
-	_, err := m.persMgr.CreateDirIfNotExists(true, refDir)
+	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, refDir)
 	if err != nil {
 		return "", err
 	}

@@ -21,12 +21,13 @@ import (
 
 	azvalidators "github.com/permguard/permguard-core/pkg/extensions/validators"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
 
 // ExecInitWorkspace initializes the workspace.
 func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	homeDir := m.getHomeDir()
-	res, err := m.persMgr.CreateDirIfNotExists(false, homeDir)
+	homeDir := m.getHomeHiddenDir()
+	res, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, homeDir)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +66,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 	} else {
 		remotes := []any{}
 		remoteObj := map[string]any{
-			"cwd": m.getHomeDir(),
+			"cwd": m.getHomeHiddenDir(),
 		}
 		remotes = append(remotes, remoteObj)
 		output = out(nil, "workspaces", remotes, nil)
@@ -76,7 +77,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 // ExecAddRemote adds a remote.
 func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort int, papPort int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
 	if !azvalidators.IsValidHostname(server) {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid server %s", server))
@@ -100,7 +101,7 @@ func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort i
 // ExecRemoveRemote removes a remote.
 func (m *WorkspaceManager) ExecRemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
 
 	fileLock, err := m.tryLock()
@@ -122,7 +123,7 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out func(map[string]a
 // ExecListRemotes lists the remotes.
 func (m *WorkspaceManager) ExecListRemotes(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
 
 	fileLock, err := m.tryLock()
@@ -137,7 +138,7 @@ func (m *WorkspaceManager) ExecListRemotes(out func(map[string]any, string, any,
 // ExecListRepos lists the repos.
 func (m *WorkspaceManager) ExecListRepos(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeDir()))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
 
 	fileLock, err := m.tryLock()
