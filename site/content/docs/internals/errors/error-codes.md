@@ -84,7 +84,7 @@ seo:
 | Error Code | Description                                      |
 |------------|--------------------------------------------------|
 | 06000      | language: generic error                          |
-| 06100      | generic file error                               |
+| 06100      | language: generic file error                     |
 | 06200      | language: generic syntax error                   |
 
 ## 08xxx: Command Line Interface Errors
