@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package objects
+package obs
 
 import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
@@ -23,23 +23,35 @@ import (
 
 const (
 	hiddenObjectsDir = "objects"
+	hiddenStatesDir = "states"
+	hiddenPlansDir = "plans"
 )
 
-// ObjectsManager implements the internal manager for the objects file.
-type ObjectsManager struct {
+// PlansManager implements the internal manager for the plans file.
+type PlansManager struct {
 	ctx     *aziclicommon.CliCommandContext
 	persMgr *azicliwkspers.PersistenceManager
 }
 
-// NewObjectsManager creates a new objectsuration manager.
-func NewObjectsManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.PersistenceManager) *ObjectsManager {
-	return &ObjectsManager{
+// NewPlansManager creates a new plansuration manager.
+func NewPlansManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.PersistenceManager) *PlansManager {
+	return &PlansManager{
 		ctx:     ctx,
 		persMgr: persMgr,
 	}
 }
 
 // getObjectsDir returns the objects directory.
-func (c *ObjectsManager) getObjectsDir() string {
+func (c *PlansManager) getObjectsDir() string {
 	return hiddenObjectsDir
+}
+
+// getStatesDir returns the states directory.
+func (c *PlansManager) getStatesDir() string {
+	return hiddenStatesDir
+}
+
+// getPlansDir returns the plans directory.
+func (c *PlansManager) getPlansDir() string {
+	return hiddenPlansDir
 }

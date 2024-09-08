@@ -45,7 +45,6 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 		m.logsMgr.ExecInitalize,
 		m.cfgMgr.ExecInitialize,
 		m.rfsMgr.ExecInitalize,
-		m.objsMgr.ExecInitalize,
 		m.plansMgr.ExecInitalize,
 	}
 	for _, initializer := range initializers {
