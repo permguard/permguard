@@ -20,7 +20,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	azfiles "github.com/permguard/permguard-core/pkg/extensions/files"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
@@ -101,6 +100,14 @@ func (p *PersistenceManager) WriteFile(relative bool, name string, data []byte, 
 	return azfiles.WriteFile(name, data, perm)
 }
 
+// WriteBinaryFile writes a binary file.
+func (p *PersistenceManager) WriteBinaryFile(relative bool, name string, data []byte, perm os.FileMode) (bool, error) {
+	if relative {
+		name = filepath.Join(p.rootDir, name)
+	}
+	return azfiles.WriteFile(name, data, perm)
+}
+
 // AppendToFile appends to a file.
 func (p *PersistenceManager) AppendToFile(relative bool, name string, data []byte) (bool, error) {
 	if relative {
@@ -126,39 +133,9 @@ func (p *PersistenceManager) IsInsideDir(relative bool, name string) (bool, erro
 }
 
 // ListFiles lists files.
-func (p *PersistenceManager) ListFiles(relative bool, exts []string) ([]string, error) {
-	var files []string
-	err := filepath.Walk(p.rootDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			if len(exts) > 0 {
-				matched := false
-				for _, ext := range exts {
-					if strings.HasSuffix(strings.ToLower(info.Name()), strings.ToLower(ext)) {
-						matched = true
-						break
-					}
-				}
-				if !matched {
-					return nil
-				}
-			}
-			if relative {
-				relativePath, err := filepath.Rel(p.rootDir, path)
-				if err != nil {
-					return err
-				}
-				files = append(files, relativePath)
-			} else {
-				files = append(files, path)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
+func (p *PersistenceManager) ListFiles(relative bool, name string, exts []string, excludeDirs []string) ([]string, error) {
+	if relative {
+		name = filepath.Join(p.rootDir, name)
 	}
-	return files, nil
+	return azfiles.ListFiles(name, exts, excludeDirs)
 }

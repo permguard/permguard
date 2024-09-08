@@ -73,8 +73,16 @@ github.com/pelletier/go-toml/v2 v2.2.3 h1:YmeHyLY8mFWbdkNWwpr+qIL2bEqT0o95WSdkNH
 github.com/pelletier/go-toml/v2 v2.2.3/go.mod h1:MfCQTFTvCcUyyvvwm1+G6H/jORL20Xlb6rzQu9GuUkc=
 github.com/permguard/permguard-abs-language v0.0.0-20240908093715-a7e9b43b078c h1:Pb1pSvc/5It648qqpxvkYBVxAEvM6Y3Lssu0100z4HY=
 github.com/permguard/permguard-abs-language v0.0.0-20240908093715-a7e9b43b078c/go.mod h1:LhfQsjcoEEShbWkCloUtGwBxM3/i0HLax5pcWfLu41E=
+github.com/permguard/permguard-abs-language v0.0.0-20240908142632-6632b8c0f0f7 h1:h1W47qOj4gsM7Nz5YrOhwD/5Orpw3PmQnBGoMmNoEfo=
+github.com/permguard/permguard-abs-language v0.0.0-20240908142632-6632b8c0f0f7/go.mod h1:RNp27HRzdmq7PBVJZ5NK14dnRfMxehw6JhyY24xkJE8=
+github.com/permguard/permguard-abs-language v0.0.0-20240908142833-385890c2ea7f h1:NpvV97gi0LlQ2xRcF9CzlyclZU3v+r1RWdkNNK48l94=
+github.com/permguard/permguard-abs-language v0.0.0-20240908142833-385890c2ea7f/go.mod h1:BMCMy8rPpH4kPUCyLfvFUY+lv3NPWEF/7uRg8pxLTiM=
 github.com/permguard/permguard-core v0.0.0-20240907154120-626a4c2cf6dc h1:W3QcPclb6PuQH34mBoBRD2LBV34+Vny5PiuMINwxT64=
 github.com/permguard/permguard-core v0.0.0-20240907154120-626a4c2cf6dc/go.mod h1:yuI4+ui3Rk96FfKXcCi1i70trkNIhrvLc+dNeFdzIw4=
+github.com/permguard/permguard-core v0.0.0-20240908142610-840684e7f00f h1:nAspE3uSKT1yF78LB/64hnlk/qV9Z4PGQfAsoTK7g+M=
+github.com/permguard/permguard-core v0.0.0-20240908142610-840684e7f00f/go.mod h1:yuI4+ui3Rk96FfKXcCi1i70trkNIhrvLc+dNeFdzIw4=
+github.com/permguard/permguard-core v0.0.0-20240908142810-31e8bc7b43bf h1:YT0bMji6C1eAdthVKs8sv8iWqMy0dD2jtt3JPIz3d7M=
+github.com/permguard/permguard-core v0.0.0-20240908142810-31e8bc7b43bf/go.mod h1:yuI4+ui3Rk96FfKXcCi1i70trkNIhrvLc+dNeFdzIw4=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pressly/goose/v3 v3.21.1 h1:5SSAKKWej8LVVzNLuT6KIvP1eFDuPvxa+B6H0w78buQ=

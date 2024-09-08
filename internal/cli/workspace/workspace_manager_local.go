@@ -24,7 +24,7 @@ import (
 // blobifyLocal scans source files and creates a blob for each object.
 func (m *WorkspaceManager) blobifyLocal(absLang azlang.LanguageAbastraction) (string, error) {
 	exts := absLang.GetFileExtensions()
-	files, err := m.persMgr.ListFiles(true, exts)
+	files, err := m.persMgr.ListFiles(true, "../", exts, []string{hiddenDir})
 	if err != nil {
 		return "", err
 	}
@@ -32,15 +32,17 @@ func (m *WorkspaceManager) blobifyLocal(absLang azlang.LanguageAbastraction) (st
 		return "", azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, "no source files found")
 	}
 	for _, file := range files {
-		file, _, err := m.persMgr.ReadFile(false, file)
+		data, _, err := m.persMgr.ReadFile(false, file)
 		if err != nil {
 			return "", err
 		}
-		obj, err := absLang.CreateBlobObject(file)
+		objs, err := absLang.CreateBlobObjects(data)
 		if err != nil {
 			return "", nil
 		}
-		m.persMgr.WriteFile(true, obj.OID, obj.Content, 0644)
+		for _, obj := range objs {
+			m.persMgr.WriteBinaryFile(true, obj.OID, obj.Content, 0644)
+		}
 	}
 	return "", nil
 }
