@@ -17,34 +17,46 @@
 package workspace
 
 import (
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	//azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
+// codeFileInfo represents info about the code file.
+type codeFileInfo struct {
+	path string
+}
+
+// scanSourceCodeFiles scans the source code files.
+func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastraction) ([]codeFileInfo, []codeFileInfo, error) {
+	exts := absLang.GetFileExtensions()
+	m.persMgr.ListFiles(true, "../", exts, []string{hiddenDir})
+	return nil, nil, nil
+}
+
 // blobifyLocal scans source files and creates a blob for each object.
 func (m *WorkspaceManager) blobifyLocal(absLang azlang.LanguageAbastraction) (string, error) {
-	exts := absLang.GetFileExtensions()
-	files, err := m.persMgr.ListFiles(true, "../", exts, []string{hiddenDir})
-	if err != nil {
-		return "", err
-	}
-	if len(files) == 0 {
-		return "", azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, "no source files found")
-	}
-	for _, file := range files {
-		data, _, err := m.persMgr.ReadFile(false, file)
-		if err != nil {
-			return "", err
-		}
-		objs, err := absLang.CreateBlobObjects(data)
-		if err != nil {
-			continue
-		}
-		for _, obj := range objs {
-			m.persMgr.WriteBinaryFile(true, obj.GetOID(), obj.GetContent(), 0644)
-		}
-	}
 	return "", nil
+	// files, err := m.persMgr.ListFiles(true, "../", exts, []string{hiddenDir})
+	// if err != nil {
+	// 	return "", err
+	// }
+	// if len(files) == 0 {
+	// 	return "", azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, "no source files found")
+	// }
+	// for _, file := range files {
+	// 	data, _, err := m.persMgr.ReadFile(false, file)
+	// 	if err != nil {
+	// 		return "", err
+	// 	}
+	// 	objs, err := absLang.CreateBlobObjects(data)
+	// 	if err != nil {
+	// 		continue
+	// 	}
+	// 	for _, obj := range objs {
+	// 		m.persMgr.WriteBinaryFile(true, obj.GetOID(), obj.GetContent(), 0644)
+	// 	}
+	// }
+	// return "", nil
 }
 
 // buildLocalState builds the local state.

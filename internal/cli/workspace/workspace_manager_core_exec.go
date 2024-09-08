@@ -45,7 +45,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 		m.logsMgr.ExecInitalize,
 		m.cfgMgr.ExecInitialize,
 		m.rfsMgr.ExecInitalize,
-		m.plansMgr.ExecInitalize,
+		m.cospMgr.ExecInitalize,
 	}
 	for _, initializer := range initializers {
 		err := initializer(language)
@@ -57,9 +57,9 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 	var output map[string]any
 	if m.ctx.IsTerminalOutput() {
 		if firstInit {
-			msg = fmt.Sprintf("Initialized empty PermGuard repository in %s", homeDir)
+			msg = fmt.Sprintf("initialized empty permguard repository in %s", homeDir)
 		} else {
-			msg = fmt.Sprintf("Reinitialized existing PermGuard repository in %s", homeDir)
+			msg = fmt.Sprintf("reinitialized existing permguard repository in %s", homeDir)
 		}
 		output = out(nil, "init", msg, nil)
 	} else {

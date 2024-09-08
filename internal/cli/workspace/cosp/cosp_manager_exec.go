@@ -14,11 +14,15 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package obs
+package cosp
 
 // ExecInitalize the plans resources.
-func (c *PlansManager) ExecInitalize(lang string) error {
-	_, err := c.persMgr.CreateDirIfNotExists(true, c.getObjectsDir())
+func (c *COSPManager) ExecInitalize(lang string) error {
+	_, err := c.persMgr.CreateDirIfNotExists(true, c.getCodeDir())
+	if err != nil {
+		return err
+	}
+	_, err = c.persMgr.CreateDirIfNotExists(true, c.getObjectsDir())
 	if err != nil {
 		return err
 	}
