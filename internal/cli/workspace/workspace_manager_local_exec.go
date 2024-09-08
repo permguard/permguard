@@ -51,7 +51,15 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	if m.ctx.IsTerminalOutput() {
 		selectedCount := len(selectedFiles)
 		ignoredCount := len(ignoredFiles)
-		out(nil, "refresh", fmt.Sprintf("scanned %d files, selected %d files, and ignored %d files", selectedCount+ignoredCount, selectedCount, ignoredCount), nil)
+		totalCount := selectedCount + ignoredCount
+		fileWord := func(count int) string {
+			if count == 1 {
+				return "file"
+			}
+			return "files"
+		}
+		out(nil, "refresh", fmt.Sprintf("scanned %d %s, selected %d %s, and ignored %d %s",
+			totalCount, fileWord(totalCount), selectedCount, fileWord(selectedCount), ignoredCount, fileWord(ignoredCount)), nil)
 	}
 	// if m.ctx.IsTerminalOutput() {
 	// 	out(nil, "refresh", "building local state...", nil)
