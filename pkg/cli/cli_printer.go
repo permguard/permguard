@@ -126,10 +126,16 @@ func (cp *CliPrinterTerminal) printTerminal(output map[string]any, isError bool)
 func (cp *CliPrinterTerminal) Print(output map[string]any) {
 	switch cp.output {
 	case OutputJSON:
+		if output == nil {
+			output = make(map[string]any)
+		}
 		cp.printJSON(output)
 	case OutputTerminal:
 		fallthrough
 	default:
+		if output == nil {
+			return
+		}
 		cp.printTerminal(output, false)
 	}
 }

@@ -16,14 +16,18 @@
 
 package workspace
 
+import (
+	azlang "github.com/permguard/permguard/pkg/core/languages"
+)
+
 // blobifyLocal scans source files and creates a blob for each object.
-func (m *WorkspaceManager) blobifyLocal() error {
+func (m *WorkspaceManager) blobifyLocal(absLang azlang.LanguageAbastraction) (string, error) {
 	// TODO: Implement this method
-	return nil
+	return "", nil
 }
 
 // buildLocalState builds the local state.
-func (m *WorkspaceManager) buildLocalState() error {
+func (m *WorkspaceManager) buildLocalState(absLang azlang.LanguageAbastraction, commit string) error {
 	// TODO: Implement this method
 	return nil
 }
