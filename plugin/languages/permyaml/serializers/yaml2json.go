@@ -17,6 +17,7 @@
 package serializers
 
 import (
+	"bytes"
 	"encoding/json"
 
 	"gopkg.in/yaml.v2"
@@ -30,6 +31,11 @@ type Policy struct {
 
 // Yaml2Json is a serializer that converts YAML to JSON.
 type Yaml2Json struct {
+}
+
+// NewYaml2Json creates a new Yaml2Json.
+func NewYaml2Json() ( *Yaml2Json, error) {
+	return &Yaml2Json{}, nil
 }
 
 // SerializeYAML2JSON converts a YAML byte array to a JSON byte array.
@@ -58,4 +64,23 @@ func (s *Yaml2Json) SerializeJSON2YAML(data []byte) ([]byte, error) {
 		return nil, err
 	}
 	return yamlData, nil
+}
+
+// SplitYAMLDocuments splits a YAML byte array into multiple YAML documents.
+func (s *Yaml2Json) SplitYAMLDocuments(data []byte) ([][]byte, error) {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	var documents [][]byte
+	for {
+		var doc interface{}
+		err := decoder.Decode(&doc)
+		if err != nil {
+			break
+		}
+		docBytes, err := yaml.Marshal(doc)
+		if err != nil {
+			return nil, err
+		}
+		documents = append(documents, docBytes)
+	}
+	return documents, nil
 }
