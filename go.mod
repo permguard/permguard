@@ -10,7 +10,7 @@ require (
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/pelletier/go-toml v1.9.5
-	github.com/permguard/permguard-abs-language v0.0.0-20240909181840-ab9484781a41
+	github.com/permguard/permguard-abs-language v0.0.0-20240909190050-00073aeb038b
 	github.com/permguard/permguard-core v0.0.0-20240909180739-dc8b1c8a4162
 	github.com/pressly/goose/v3 v3.21.1
 	github.com/spf13/cobra v1.8.0

@@ -17,34 +17,11 @@
 package workspace
 
 import (
-	//azerrors "github.com/permguard/permguard/pkg/core/errors"
-
 	"strings"
 
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
-
-// codeFileInfo represents info about the code file.
-type codeFileInfo struct {
-	Path 			string
-	OID 			string
-	OType 			string
-	OName 			string
-	Mode 			uint32
-	Section 		int
-	HasErrors		bool
-	ErrorMessage 	string
-}
-
-// convertCodeFilesToPath converts code files to paths.
-func convertCodeFilesToPath(files []codeFileInfo) []string {
-	paths := make([]string, len(files))
-	for i, file := range files {
-		paths[i] = file.Path
-	}
-	return paths
-}
 
 // scanSourceCodeFiles scans the source code files.
 func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastraction) ([]codeFileInfo, []codeFileInfo, error) {
@@ -99,6 +76,8 @@ func (m *WorkspaceManager) blobifyLocal(codeFileInfos []codeFileInfo, absLang az
 			blbCodeFiles = append(blbCodeFiles, *codeFile)
 		}
 	}
+	trees, _ := buildTrees(blbCodeFiles)
+	print(trees)
 	return "", blbCodeFiles, nil
 }
 
