@@ -24,6 +24,13 @@ import (
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
 
+// codeFileInfo represents info about the code file.
+func (m *WorkspaceManager) printFiles(action string, files []string, out func(map[string]any, string, any, error) map[string]any) {
+	for _, file := range files {
+		out(nil, action, file, nil)
+	}
+}
+
 // ExecInitWorkspace initializes the workspace.
 func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	homeDir := m.getHomeHiddenDir()

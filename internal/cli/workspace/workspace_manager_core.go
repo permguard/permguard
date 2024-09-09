@@ -46,6 +46,8 @@ const (
 	schemaYMLFile = "schema.yml"
 	// gitDir represents the git directory.
 	gitDir = ".git"
+	// gitIgnoreFile represents the git ignore file.
+	gitIgnoreFile = ".gitignore"
 )
 
 // WorkspaceManager implements the internal manager to manage the .permguard directory.

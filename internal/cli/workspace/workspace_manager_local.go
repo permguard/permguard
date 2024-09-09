@@ -27,10 +27,19 @@ type codeFileInfo struct {
 	path string
 }
 
+// convertCodeFilesToPath converts code files to paths.
+func convertCodeFilesToPath(files []codeFileInfo) []string {
+	paths := make([]string, len(files))
+	for i, file := range files {
+		paths[i] = file.path
+	}
+	return paths
+}
+
 // scanSourceCodeFiles scans the source code files.
 func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastraction) ([]codeFileInfo, []codeFileInfo, error) {
 	exts := absLang.GetFileExtensions()
-	ignorePatterns := []string {hiddenIgnoreFile, schemaYAMLFile, schemaYMLFile, hiddenDir, gitDir}
+	ignorePatterns := []string {hiddenIgnoreFile, schemaYAMLFile, schemaYMLFile, hiddenDir, gitDir, gitIgnoreFile}
 	files, ignoredFiles, err := m.persMgr.ScanAndFilterFiles(azicliwkspers.WorkspaceDir, exts, ignorePatterns, hiddenIgnoreFile)
 	if err != nil {
 		return nil, nil, err
