@@ -99,7 +99,7 @@ func linkTrees(path string, treesMap map[string]*azlangobjs.Tree) {
 			treesMap[currentFullPath] = currentTree
 		}
 		if parentTree != nil {
-			manager := azlangobjs.NewObjectManager()
+			manager, _ := azlangobjs.NewObjectManager()
 			obj, _ := manager.CreateTreeObject(currentTree)
 			name, mode := getFolderInfo(currentFullPath)
 			parentTreeItem := azlangobjs.NewTreeEntry(mode, obj.GetOID(), "tree", name, name)
