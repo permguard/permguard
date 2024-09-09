@@ -78,20 +78,24 @@ func (abs *YAMLLanguageAbstraction) CreateBlobObjects(path string, data []byte) 
 	for i, doc := range docs {
 		content, err := serializer.UnmarshalLangType(doc)
 		if err != nil {
-			multiSecObj.AddSectionObjectInfoWithParams(nil, i, err)
+			multiSecObj.AddSectionObjectInfoWithParams(nil, "", i, err)
 			continue
 		}
 		jsonType, err := abs.permCodeMng.MarshalClass(content, true, false, false)
 		if err != nil {
-			multiSecObj.AddSectionObjectInfoWithParams(nil, i, err)
+			multiSecObj.AddSectionObjectInfoWithParams(nil, "", i, err)
 			continue
 		}
 		obj, err := abs.objMng.CreateBlobObject(jsonType)
 		if err != nil {
-			multiSecObj.AddSectionObjectInfoWithParams(nil, i, err)
+			multiSecObj.AddSectionObjectInfoWithParams(nil, "", i, err)
 			continue
 		}
-		multiSecObj.AddSectionObjectInfoWithParams(obj, i, err)
+		objInfo, err := abs.objMng.GetObjectInfo(obj)
+		if err != nil {
+			return nil, err
+		}
+		multiSecObj.AddSectionObjectInfoWithParams(obj, objInfo.GetType(), i, err)
 	}
 	return multiSecObj, nil
 }

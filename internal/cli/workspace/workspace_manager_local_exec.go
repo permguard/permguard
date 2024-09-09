@@ -74,7 +74,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	if m.ctx.IsTerminalOutput() {
 		out(nil, "blobify", "starting blobify operation...", nil)
 	}
-	if _, err := m.blobifyLocal(selectedFiles, absLang); err != nil {
+	if _, _, err := m.blobifyLocal(selectedFiles, absLang); err != nil {
 		return nil, err
 	}
 	return output, nil
