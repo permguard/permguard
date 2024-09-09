@@ -42,7 +42,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 		return nil, err
 	}
 	if !cleaned && m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "refresh", "the staging area was already clean.", nil)
+		out(nil, "refresh", "the staging area was already clean", nil)
 	}
 
 	lang, err := m.cfgMgr.GetLanguage()
