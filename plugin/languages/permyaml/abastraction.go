@@ -39,9 +39,17 @@ type YAMLLanguageAbstraction struct {
 
 // NewYAMLLanguageAbstraction creates a new YAMLLanguageAbstraction.
 func NewYAMLLanguageAbstraction() (*YAMLLanguageAbstraction, error) {
+	objMng, err := azlangobjs.NewObjectManager()
+	if err != nil {
+		return nil, err
+	}
+	permCodeMng, err := azlangcode.NewPermCodeManager()
+	if err != nil {
+		return nil, err
+	}
 	return &YAMLLanguageAbstraction{
-		objMng:      azlangobjs.NewObjectManager(),
-		permCodeMng: azlangcode.NewPermCodeManager(),
+		objMng: objMng,
+		permCodeMng: permCodeMng,
 	}, nil
 }
 
