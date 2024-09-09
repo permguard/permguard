@@ -55,9 +55,9 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 		totalCount := selectedCount + ignoredCount
 		fileWord := func(count int) string {
 			if count == 1 {
-				return "file"
+				return "item"
 			}
-			return "files"
+			return "items"
 		}
 		out(nil, "refresh", fmt.Sprintf("scanned %d %s, selected %d %s, and ignored %d %s",
 			totalCount, fileWord(totalCount), selectedCount, fileWord(selectedCount), ignoredCount, fileWord(ignoredCount)), nil)
