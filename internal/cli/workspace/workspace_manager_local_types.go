@@ -17,7 +17,9 @@
 package workspace
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 )
@@ -43,35 +45,81 @@ func convertCodeFilesToPath(files []codeFileInfo) []string {
 	return paths
 }
 
-// buildTreeForCodeFile builds the tree for the code file.
-func buildTreeForCodeFile(codefile codeFileInfo, treesMap map[string]azlangobjs.Tree) {
+func getDirectories(path string) []string {
+	parts := strings.Split(filepath.Clean(path), string(filepath.Separator))
+	var directories []string
+	for _, part := range parts {
+		if part != "" {
+			directories = append(directories, part)
+		}
+	}
+	return directories
+}
+
+func getFolderInfo(path string) (string, uint32) {
+	mode := uint32(0777)
+	info, err := os.Stat(path)
+	if err == nil {
+		mode = uint32(info.Mode())
+	}
+	name := filepath.Base(path)
+	return name, mode
+}
+
+func buildTreeForCodeFile(codefile codeFileInfo, treesMap map[string]*azlangobjs.Tree) {
 	path := codefile.Path
 	fileName := filepath.Base(path)
 	parentPath := filepath.Dir(path)
 	parentFolder := filepath.Base(parentPath)
+	if parentPath == "." || parentPath == "/" {
+		parentPath = ""
+	}
 	print(parentFolder)
 	tree, ok := treesMap[parentPath]
 	if !ok {
-		tree = *azlangobjs.NewTree()
+		tree = azlangobjs.NewTree()
 		treesMap[parentPath] = tree
 	}
 	treeItem := azlangobjs.NewTreeEntry(codefile.Mode, codefile.OID, codefile.OType, codefile.OName, fileName)
 	tree.AddEntry(treeItem)
 }
 
-// buildTrees builds the trees.
+func linkTrees(path string, treesMap map[string]*azlangobjs.Tree) {
+	directories := getDirectories(path)
+	var parentTree *azlangobjs.Tree
+	for i := 1; i < len(directories); i++ {
+		currentFullPath := strings.Join(directories[:i], string(filepath.Separator))
+		currentTree, ok := treesMap[currentFullPath]
+		if !ok {
+			currentTree = azlangobjs.NewTree()
+			treesMap[currentFullPath] = currentTree
+		}
+		if parentTree != nil {
+			manager := azlangobjs.NewObjectManager()
+			obj, _ := manager.CreateTreeObject(currentTree)
+			name, mode := getFolderInfo(currentFullPath)
+			parentTreeItem := azlangobjs.NewTreeEntry(mode, obj.GetOID(), "tree", name, name)
+			parentTree.AddEntry(parentTreeItem)
+		}
+		parentTree = currentTree
+	}
+}
+
 func buildTrees(codeFiles []codeFileInfo) ([]azlangobjs.Tree, error) {
 	if len(codeFiles) == 0 {
 		return []azlangobjs.Tree{}, nil
 	}
-	treesMap := make(map[string]azlangobjs.Tree)
+	treesMap := make(map[string]*azlangobjs.Tree)
 	for _, codeFile := range codeFiles {
 		buildTreeForCodeFile(codeFile, treesMap)
+	}
+	for path := range treesMap {
+		linkTrees(path, treesMap)
 	}
 	trees := make([]azlangobjs.Tree, len(treesMap))
 	i := 0
 	for _, tree := range treesMap {
-		trees[i] = tree
+		trees[i] = *tree
 		i++
 	}
 	return trees, nil
