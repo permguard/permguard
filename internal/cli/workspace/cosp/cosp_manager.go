@@ -26,6 +26,8 @@ import (
 const (
 	// Hidden directories for code.
 	hiddenCodeDir = "code"
+	// Hidden directories for staging.
+	hiddenStagingDir = "staging"
 	// Hidden directories for objects.
 	hiddenObjectsDir = "objects"
 	// Hidden directories for states.
@@ -53,6 +55,11 @@ func (c *COSPManager) getCodeDir() string {
 	return hiddenCodeDir
 }
 
+// getStagingDir returns the staging directory.
+func (c *COSPManager) getStagingDir() string {
+	return hiddenStagingDir
+}
+
 // getObjectsDir returns the objects directory.
 func (c *COSPManager) getObjectsDir() string {
 	return hiddenObjectsDir
@@ -68,11 +75,16 @@ func (c *COSPManager) getPlansDir() string {
 	return hiddenPlansDir
 }
 
+// getCodeStaginDir returns the code staging directory.
+func (c *COSPManager) getCodeStaginDir() string {
+	return filepath.Join(c.getCodeDir(), c.getStagingDir())
+}
+
 // getObjectDir returns the object directory.
 func (c *COSPManager) getObjectDir(oid string, staging bool) (string,  string) {
 	basePath := ""
 	if staging {
-		basePath = c.getCodeDir()
+		basePath = c.getCodeStaginDir()
 	}
 	basePath = filepath.Join(basePath, c.getObjectsDir())
 	folder := oid[:2]
@@ -80,6 +92,11 @@ func (c *COSPManager) getObjectDir(oid string, staging bool) (string,  string) {
 	c.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, folder)
 	name := oid[2:]
 	return folder, name
+}
+
+// CleanStagingArea cleans the staging area.
+func (c *COSPManager) CleanStagingArea() (bool, error) {
+	return c.persMgr.DeleteDir(azicliwkspers.PermGuardDir, c.getCodeStaginDir())
 }
 
 // SaveObject saves the object.

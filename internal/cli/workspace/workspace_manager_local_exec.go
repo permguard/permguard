@@ -33,6 +33,18 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	}
 	defer fileLock.Unlock()
 
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "refresh", "initiating cleanup of the staging area...", nil)
+	}
+
+	cleaned, err := m.cleanupStagingArea()
+	if err != nil {
+		return nil, err
+	}
+	if !cleaned && m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "refresh", "the staging area was already clean.", nil)
+	}
+
 	lang, err := m.cfgMgr.GetLanguage()
 	if err != nil {
 		return nil, err
