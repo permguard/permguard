@@ -28,9 +28,9 @@ type codeFileInfo struct {
 	Path 			string
 	OID 			string
 	OType 			string
-	State 			string
 	Section 		int
-	ErrorMessage	bool
+	HasErrors		bool
+	ErrorMessage 	string
 }
 
 // convertCodeFilesToPath converts code files to paths.
@@ -62,12 +62,13 @@ func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastracti
 }
 
 // blobifyLocal scans source files and creates a blob for each object.
-func (m *WorkspaceManager) blobifyLocal(codeFileInfos []codeFileInfo, absLang azlang.LanguageAbastraction) (string, error) {
+func (m *WorkspaceManager) blobifyLocal(codeFileInfos []codeFileInfo, absLang azlang.LanguageAbastraction) (string, []codeFileInfo, error) {
+	blbCodeFiles := []codeFileInfo{}
 	for _, file := range codeFileInfos {
 		path := file.Path
 		data, err := m.persMgr.ReadFile(azicliwkspers.WorkDir, path)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 		multiSecObj, err := absLang.CreateBlobObjects(path, data)
 		if err != nil {
@@ -75,11 +76,23 @@ func (m *WorkspaceManager) blobifyLocal(codeFileInfos []codeFileInfo, absLang az
 		}
 		secObjs := multiSecObj.GetSectionObjectInfos()
 		for _, secObj := range secObjs {
-			obj := secObj.GetObject()
-			m.cospMgr.SaveObject(obj.GetOID(), obj.GetContent())
+			codeFile := &codeFileInfo{
+				Path: file.Path,
+				Section: secObj.GetNumberOfSection(),
+				HasErrors: secObj.GetError() != nil,
+			}
+			if codeFile.HasErrors {
+				codeFile.ErrorMessage = secObj.GetError().Error()
+			} else {
+				obj := secObj.GetObject()
+				codeFile.OID = obj.GetOID()
+				codeFile.OType = secObj.GetObjectType()
+				m.cospMgr.SaveObject(obj.GetOID(), obj.GetContent())
+			}
+			blbCodeFiles = append(blbCodeFiles, *codeFile)
 		}
 	}
-	return "", nil
+	return "", blbCodeFiles, nil
 }
 
 // buildLocalState builds the local state.
