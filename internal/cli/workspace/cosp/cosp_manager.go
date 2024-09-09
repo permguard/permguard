@@ -17,6 +17,8 @@
 package cosp
 
 import (
+	"path/filepath"
+
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
@@ -64,4 +66,20 @@ func (c *COSPManager) getStatesDir() string {
 // getPlansDir returns the plans directory.
 func (c *COSPManager) getPlansDir() string {
 	return hiddenPlansDir
+}
+
+// getObjectDir returns the object directory.
+func (c *COSPManager) getObjectDir(oid string) (string,  string) {
+	folder := oid[:2]
+	folder = filepath.Join(c.getObjectsDir(), folder)
+	c.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, folder)
+	name := oid[2:]
+	return folder, name
+}
+
+// SaveObject saves the object.
+func (c *COSPManager) SaveObject(oid string, content []byte) (bool, error) {
+	folder, name := c.getObjectDir(oid)
+	path := filepath.Join(folder, name)
+	return c.persMgr.WriteBinaryFile(azicliwkspers.PermGuardDir, path, content, 0644)
 }
