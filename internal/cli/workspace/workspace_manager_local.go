@@ -62,29 +62,24 @@ func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastracti
 }
 
 // blobifyLocal scans source files and creates a blob for each object.
-func (m *WorkspaceManager) blobifyLocal(absLang azlang.LanguageAbastraction) (string, error) {
+func (m *WorkspaceManager) blobifyLocal(codeFileInfos []codeFileInfo, absLang azlang.LanguageAbastraction) (string, error) {
+	for _, file := range codeFileInfos {
+		path := file.Path
+		data, err := m.persMgr.ReadFile(azicliwkspers.WorkDir, path)
+		if err != nil {
+			return "", err
+		}
+		multiSecObj, err := absLang.CreateBlobObjects(path, data)
+		if err != nil {
+			continue
+		}
+		secObjs := multiSecObj.GetSectionObjectInfos()
+		for _, secObj := range secObjs {
+			obj := secObj.GetObject()
+			m.persMgr.WriteBinaryFile(azicliwkspers.WorkspaceDir, obj.GetOID(), obj.GetContent(), 0644)
+		}
+	}
 	return "", nil
-	// files, err := m.persMgr.ListFiles(true, "../", exts, []string{hiddenDir})
-	// if err != nil {
-	// 	return "", err
-	// }
-	// if len(files) == 0 {
-	// 	return "", azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, "no source files found")
-	// }
-	// for _, file := range files {
-	// 	data, _, err := m.persMgr.ReadFile(false, file)
-	// 	if err != nil {
-	// 		return "", err
-	// 	}
-	// 	objs, err := absLang.CreateBlobObjects(data)
-	// 	if err != nil {
-	// 		continue
-	// 	}
-	// 	for _, obj := range objs {
-	// 		m.persMgr.WriteBinaryFile(true, obj.GetOID(), obj.GetContent(), 0644)
-	// 	}
-	// }
-	// return "", nil
 }
 
 // buildLocalState builds the local state.

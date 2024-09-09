@@ -61,30 +61,37 @@ func (abs *YAMLLanguageAbstraction) CreateTreeObject(tree *azlangobjs.Tree) (*az
 }
 
 // CreateBlobObjects creates blob objects.
-func (abs *YAMLLanguageAbstraction) CreateBlobObjects(data []byte) ([]azlangobjs.Object, error) {
+func (abs *YAMLLanguageAbstraction) CreateBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObjectInfo, error) {
 	serializer, err := azsrlzs.NewYamlSerializer()
 	if err != nil {
 		return nil, err
 	}
 	docs, err := serializer.SplitYAMLDocuments(data)
 	if err != nil {
+		return azlangobjs.NewMultiSectionsObjectInfo(path, 0, err)
+	}
+	docNumOfSects := len(docs)
+	multiSecObj, err := azlangobjs.NewMultiSectionsObjectInfo(path, docNumOfSects, nil)
+	if err != nil {
 		return nil, err
 	}
-	objs := make([]azlangobjs.Object, 0)
-	for _, doc := range docs {
+	for i, doc := range docs {
 		content, err := serializer.UnmarshalLangType(doc)
 		if err != nil {
-			return nil, err
+			multiSecObj.AddSectionObjectInfoWithParams(nil, i, err)
+			continue
 		}
 		jsonType, err := abs.permCodeMng.MarshalClass(content, true, false, false)
 		if err != nil {
-			return nil, err
+			multiSecObj.AddSectionObjectInfoWithParams(nil, i, err)
+			continue
 		}
 		obj, err := abs.objMng.CreateBlobObject(jsonType)
 		if err != nil {
-			return nil, err
+			multiSecObj.AddSectionObjectInfoWithParams(nil, i, err)
+			continue
 		}
-		objs = append(objs, *obj)
+		multiSecObj.AddSectionObjectInfoWithParams(obj, i, err)
 	}
-	return objs, nil
+	return multiSecObj, nil
 }
