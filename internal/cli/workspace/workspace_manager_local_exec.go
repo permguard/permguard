@@ -41,7 +41,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	if err != nil {
 		return nil, err
 	}
-	if m.ctx.IsTerminalOutput() {
+	if m.ctx.IsTerminalOutput() && m.ctx.IsVerbose() {
 		out(nil, "refresh", "scanning source files...", nil)
 	}
 	selectedFiles, ignoredFiles, err := m.scanSourceCodeFiles(absLang)
@@ -49,7 +49,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 		return nil, err
 	}
 	var output map[string]any
-	if m.ctx.IsTerminalOutput() {
+	if m.ctx.IsTerminalOutput() && m.ctx.IsVerbose() {
 		selectedCount := len(selectedFiles)
 		ignoredCount := len(ignoredFiles)
 		totalCount := selectedCount + ignoredCount
@@ -61,10 +61,8 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 		}
 		out(nil, "refresh", fmt.Sprintf("scanned %d %s, selected %d %s, and ignored %d %s",
 			totalCount, fileWord(totalCount), selectedCount, fileWord(selectedCount), ignoredCount, fileWord(ignoredCount)), nil)
-		if m.ctx.IsVerbose() {
-			m.printFiles("ignored", convertCodeFilesToPath(ignoredFiles), out)
-			m.printFiles("selected", convertCodeFilesToPath(selectedFiles), out)
-		}
+		m.printFiles("ignored", convertCodeFilesToPath(ignoredFiles), out)
+		m.printFiles("selected", convertCodeFilesToPath(selectedFiles), out)
 	} else if m.ctx.IsJSONOutput() {
 		output = map[string]any{
 			"ignored":  convertCodeFilesToPath(ignoredFiles),
