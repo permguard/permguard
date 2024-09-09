@@ -19,6 +19,8 @@ package workspace
 import (
 	//azerrors "github.com/permguard/permguard/pkg/core/errors"
 
+	"strings"
+
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
@@ -28,6 +30,8 @@ type codeFileInfo struct {
 	Path 			string
 	OID 			string
 	OType 			string
+	OName 			string
+	Mode 			uint32
 	Section 		int
 	HasErrors		bool
 	ErrorMessage 	string
@@ -65,8 +69,9 @@ func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastracti
 func (m *WorkspaceManager) blobifyLocal(codeFileInfos []codeFileInfo, absLang azlang.LanguageAbastraction) (string, []codeFileInfo, error) {
 	blbCodeFiles := []codeFileInfo{}
 	for _, file := range codeFileInfos {
+		wkdir := m.ctx.GetWorkDir()
 		path := file.Path
-		data, err := m.persMgr.ReadFile(azicliwkspers.WorkDir, path)
+		data, mode, err := m.persMgr.ReadFile(azicliwkspers.WorkDir, path)
 		if err != nil {
 			return "", nil, err
 		}
@@ -77,16 +82,18 @@ func (m *WorkspaceManager) blobifyLocal(codeFileInfos []codeFileInfo, absLang az
 		secObjs := multiSecObj.GetSectionObjectInfos()
 		for _, secObj := range secObjs {
 			codeFile := &codeFileInfo{
-				Path: file.Path,
+				Path: strings.TrimPrefix(path, wkdir),
 				Section: secObj.GetNumberOfSection(),
+				Mode: mode,
 				HasErrors: secObj.GetError() != nil,
+				OType: secObj.GetObjectType(),
+				OName: secObj.GetObjectName(),
 			}
 			if codeFile.HasErrors {
 				codeFile.ErrorMessage = secObj.GetError().Error()
 			} else {
 				obj := secObj.GetObject()
 				codeFile.OID = obj.GetOID()
-				codeFile.OType = secObj.GetObjectType()
 				m.cospMgr.SaveObject(obj.GetOID(), obj.GetContent())
 			}
 			blbCodeFiles = append(blbCodeFiles, *codeFile)

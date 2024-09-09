@@ -125,7 +125,7 @@ func (p *PersistenceManager) ScanAndFilterFiles(relative RelativeDir, exts []str
 }
 
 // ReadFile reads a file.
-func (p *PersistenceManager) ReadFile(relative RelativeDir, name string) ([]byte, error) {
+func (p *PersistenceManager) ReadFile(relative RelativeDir, name string) ([]byte, uint32, error){
 	name = p.GetRelativeDir(relative, name)
 	return azfiles.ReadFile(name)
 }

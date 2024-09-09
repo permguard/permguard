@@ -84,10 +84,10 @@ func (s *YamlSerializer) UnmarshalYaml(data []byte) (any, error) {
 }
 
 // UnmarshalLangType unmarshals a language type.
-func (s *YamlSerializer) UnmarshalLangType(data []byte) (any, error) {
+func (s *YamlSerializer) UnmarshalLangType(data []byte) (string, any, error) {
 	instance, err := s.UnmarshalYaml(data)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	switch v := instance.(type) {
 	case *Permission:
@@ -100,7 +100,7 @@ func (s *YamlSerializer) UnmarshalLangType(data []byte) (any, error) {
 			Permit: v.Permit,
 			Forbid: v.Forbid,
 		}
-		return langPerm, nil
+		return langPerm.Name, langPerm, nil
 	case *Policy:
 		langPolicy := &aztypes.Policy{
 			Class: aztypes.Class{
@@ -114,7 +114,7 @@ func (s *YamlSerializer) UnmarshalLangType(data []byte) (any, error) {
 		for _, action := range v.Actions {
 			langPolicy.Actions = append(langPolicy.Actions, aztypes.ARString(action))
 		}
-		return langPolicy, nil
+		return langPolicy.Name, langPolicy, nil
 	}
-	return nil, errors.New("permyaml: invalid yaml document")
+	return "", nil, errors.New("permyaml: invalid yaml document")
 }
