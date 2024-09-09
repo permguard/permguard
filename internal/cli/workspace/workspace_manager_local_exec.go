@@ -41,7 +41,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	if err != nil {
 		return nil, err
 	}
-	if m.ctx.IsTerminalOutput() && m.ctx.IsVerbose() {
+	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "scanning source files...", nil)
 	}
 	selectedFiles, ignoredFiles, err := m.scanSourceCodeFiles(absLang)
@@ -49,7 +49,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 		return nil, err
 	}
 	var output map[string]any
-	if m.ctx.IsTerminalOutput() && m.ctx.IsVerbose() {
+	if m.ctx.IsVerboseTerminalOutput() {
 		selectedCount := len(selectedFiles)
 		ignoredCount := len(ignoredFiles)
 		totalCount := selectedCount + ignoredCount
@@ -69,7 +69,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 			"selected": convertCodeFilesToPath(selectedFiles),
 		}
 	}
-	if m.ctx.IsTerminalOutput() {
+	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "blobify", "starting blobify operation...", nil)
 	}
 	if _, _, err := m.blobifyLocal(selectedFiles, absLang); err != nil {

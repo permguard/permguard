@@ -104,9 +104,19 @@ func (c *CliCommandContext) IsTerminalOutput() bool {
 	return c.GetOutput() == azcli.OutputTerminal
 }
 
+// IsVerboseTerminalOutput returns true if the output is terminal and verbosity is enabled.
+func (c *CliCommandContext) IsVerboseTerminalOutput() bool {
+	return c.IsTerminalOutput() && c.IsVerbose()
+}
+
 // IsJSONOutput returns true if the output is json.
 func (c *CliCommandContext) IsJSONOutput() bool {
 	return c.GetOutput() == azcli.OutputJSON
+}
+
+// IsVerboseJSONOutput returns true if the output is json and verbosity is enabled.
+func (c *CliCommandContext) IsVerboseJSONOutput() bool {
+	return c.IsJSONOutput() && c.IsVerbose()
 }
 
 // GetWorkDir returns the work directory.
