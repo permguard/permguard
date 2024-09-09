@@ -24,7 +24,7 @@ import (
 	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
-type codeFileInfo struct {
+type codeFile struct {
 	Path         string
 	OID          string
 	OType        string
@@ -36,7 +36,7 @@ type codeFileInfo struct {
 }
 
 // convertCodeFilesToPath converts code files to paths.
-func convertCodeFilesToPath(files []codeFileInfo) []string {
+func convertCodeFilesToPath(files []codeFile) []string {
 	paths := make([]string, len(files))
 	for i, file := range files {
 		paths[i] = file.Path
@@ -50,28 +50,28 @@ func (m *WorkspaceManager) cleanupStagingArea() (bool, error) {
 }
 
 // scanSourceCodeFiles scans the source code files.
-func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastraction) ([]codeFileInfo, []codeFileInfo, error) {
+func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastraction) ([]codeFile, []codeFile, error) {
 	exts := absLang.GetFileExtensions()
 	ignorePatterns := []string{hiddenIgnoreFile, schemaYAMLFile, schemaYMLFile, hiddenDir, gitDir, gitIgnoreFile}
 	files, ignoredFiles, err := m.persMgr.ScanAndFilterFiles(azicliwkspers.WorkspaceDir, exts, ignorePatterns, hiddenIgnoreFile)
 	if err != nil {
 		return nil, nil, err
 	}
-	codeFiles := make([]codeFileInfo, len(files))
+	codeFiles := make([]codeFile, len(files))
 	for i, file := range files {
-		codeFiles[i] = codeFileInfo{Path: file}
+		codeFiles[i] = codeFile{Path: file}
 	}
-	ignoredCodeFiles := make([]codeFileInfo, len(ignoredFiles))
+	ignoredCodeFiles := make([]codeFile, len(ignoredFiles))
 	for i, file := range ignoredFiles {
-		ignoredCodeFiles[i] = codeFileInfo{Path: file}
+		ignoredCodeFiles[i] = codeFile{Path: file}
 	}
 	return codeFiles, ignoredCodeFiles, nil
 }
 
 // blobifyLocal scans source files and creates a blob for each object.
-func (m *WorkspaceManager) blobifyLocal(codeFileInfos []codeFileInfo, absLang azlang.LanguageAbastraction) (string, []codeFileInfo, error) {
-	blbCodeFiles := []codeFileInfo{}
-	for _, file := range codeFileInfos {
+func (m *WorkspaceManager) blobifyLocal(codeFiles []codeFile, absLang azlang.LanguageAbastraction) (string, []codeFile, error) {
+	blbCodeFiles := []codeFile{}
+	for _, file := range codeFiles {
 		wkdir := m.ctx.GetWorkDir()
 		path := file.Path
 		data, mode, err := m.persMgr.ReadFile(azicliwkspers.WorkDir, path)
@@ -84,7 +84,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFileInfos []codeFileInfo, absLang az
 		}
 		secObjs := multiSecObj.GetSectionObjects()
 		for _, secObj := range secObjs {
-			codeFile := &codeFileInfo{
+			codeFile := &codeFile{
 				Path:      strings.TrimPrefix(path, wkdir),
 				Section:   secObj.GetNumberOfSection(),
 				Mode:      mode,
