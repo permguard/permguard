@@ -66,15 +66,19 @@ func getFolderInfo(path string) (string, uint32) {
 	return name, mode
 }
 
-func buildTreeForCodeFile(codefile codeFileInfo, treesMap map[string]*azlangobjs.Tree) {
-	path := codefile.Path
+func getParentFodlers(path string) (string, string, string) {
 	fileName := filepath.Base(path)
 	parentPath := filepath.Dir(path)
 	parentFolder := filepath.Base(parentPath)
 	if parentPath == "." || parentPath == "/" {
 		parentPath = ""
 	}
-	print(parentFolder)
+	return parentPath, parentFolder, fileName
+}
+
+func buildTreeForCodeFile(codefile codeFileInfo, treesMap map[string]*azlangobjs.Tree) {
+	path := codefile.Path
+	parentPath, _, fileName := getParentFodlers(path)
 	tree, ok := treesMap[parentPath]
 	if !ok {
 		tree = azlangobjs.NewTree()
@@ -110,6 +114,9 @@ func buildTrees(codeFiles []codeFileInfo) ([]azlangobjs.Tree, error) {
 		return []azlangobjs.Tree{}, nil
 	}
 	treesMap := make(map[string]*azlangobjs.Tree)
+	for _, codeFile := range codeFiles {
+		linkTrees(codeFile.Path, treesMap)
+	}
 	for _, codeFile := range codeFiles {
 		buildTreeForCodeFile(codeFile, treesMap)
 	}
