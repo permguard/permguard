@@ -17,10 +17,14 @@
 package cosp
 
 import (
+	"fmt"
 	"path/filepath"
+
+	"github.com/pelletier/go-toml"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -31,9 +35,11 @@ const (
 	// Hidden directories for objects.
 	hiddenObjectsDir = "objects"
 	// Hidden directories for states.
-	hiddenStatesDir  = "states"
+	hiddenStatesDir = "states"
 	// Hidden directories for plans.
-	hiddenPlansDir   = "plans"
+	hiddenPlansDir = "plans"
+	// Hidden configuration file.
+	hiddenConfiFile = "config"
 )
 
 // COSPManager implements the internal manager for code, objects, states and plans.
@@ -60,6 +66,11 @@ func (c *COSPManager) getStagingDir() string {
 	return hiddenStagingDir
 }
 
+// getStagingFile returns the staging config file.
+func (c *COSPManager) getStagingFile() string {
+	return filepath.Join(c.getCodeStagingDir(), hiddenConfiFile)
+}
+
 // getObjectsDir returns the objects directory.
 func (c *COSPManager) getObjectsDir() string {
 	return hiddenObjectsDir
@@ -75,16 +86,16 @@ func (c *COSPManager) getPlansDir() string {
 	return hiddenPlansDir
 }
 
-// getCodeStaginDir returns the code staging directory.
-func (c *COSPManager) getCodeStaginDir() string {
+// getCodeStagingDir returns the code staging directory.
+func (c *COSPManager) getCodeStagingDir() string {
 	return filepath.Join(c.getCodeDir(), c.getStagingDir())
 }
 
 // getObjectDir returns the object directory.
-func (c *COSPManager) getObjectDir(oid string, staging bool) (string,  string) {
+func (c *COSPManager) getObjectDir(oid string, staging bool) (string, string) {
 	basePath := ""
 	if staging {
-		basePath = c.getCodeStaginDir()
+		basePath = c.getCodeStagingDir()
 	}
 	basePath = filepath.Join(basePath, c.getObjectsDir())
 	folder := oid[:2]
@@ -96,7 +107,7 @@ func (c *COSPManager) getObjectDir(oid string, staging bool) (string,  string) {
 
 // CleanStagingArea cleans the staging area.
 func (c *COSPManager) CleanStagingArea() (bool, error) {
-	return c.persMgr.DeleteDir(azicliwkspers.PermGuardDir, c.getCodeStaginDir())
+	return c.persMgr.DeleteDir(azicliwkspers.PermGuardDir, c.getCodeStagingDir())
 }
 
 // SaveObject saves the object.
@@ -104,4 +115,38 @@ func (c *COSPManager) SaveObject(oid string, content []byte, staging bool) (bool
 	folder, name := c.getObjectDir(oid, true)
 	path := filepath.Join(folder, name)
 	return c.persMgr.WriteBinaryFile(azicliwkspers.PermGuardDir, path, content, 0644)
+}
+
+// saveConfig saves the configuration file.
+func (m *COSPManager) saveConfig(name string, override bool, cfg any) error {
+	data, err := toml.Marshal(cfg)
+	if err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
+	}
+	if override {
+		_, err = m.persMgr.WriteFile(azicliwkspers.PermGuardDir, name, data, 0644)
+	} else {
+		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermGuardDir, name, data, 0644)
+	}
+	if err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", name))
+	}
+	return nil
+}
+
+// SaveCodeStagingConfig saves the code staging configuration.
+func (m *COSPManager) SaveCodeStagingConfig(treeID, language string) error {
+	config := &CodeStagingConfig{
+		TreeID:   treeID,
+		Language: language,
+	}
+	file := m.getStagingFile()
+	return m.saveConfig(file, true, config)
+}
+
+// readCodeStagingConfig reads the configuration file.
+func (m *COSPManager) readCodeStagingConfig() (*CodeStagingConfig, error) {
+	var config CodeStagingConfig
+	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getStagingFile(), &config)
+	return &config, err
 }

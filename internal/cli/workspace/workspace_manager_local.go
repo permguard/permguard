@@ -111,7 +111,11 @@ func (m *WorkspaceManager) blobifyLocal(codeFileInfos []codeFileInfo, absLang az
 		return "", nil, err
 	}
 	m.cospMgr.SaveObject(treeObj.GetOID(), treeObj.GetContent(), true)
-	return treeObj.GetOID(), blbCodeFiles, nil
+	treeID := treeObj.GetOID()
+	if err := m.cospMgr.SaveCodeStagingConfig(treeID, absLang.GetLanguageName()); err != nil {
+		return "", nil, err
+	}
+	return treeID, blbCodeFiles, nil
 }
 
 // buildLocalState builds the local state.
