@@ -61,10 +61,10 @@ func (s *YamlSerializer) UnmarshalYaml(data []byte) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, hasPermit := tempMap["permit"];
-	_, hasForbid := tempMap["forbid"];
-	_, hasActions := tempMap["actions"];
-	_, hasResource := tempMap["resource"];
+	_, hasPermit := tempMap["permit"]
+	_, hasForbid := tempMap["forbid"]
+	_, hasActions := tempMap["actions"]
+	_, hasResource := tempMap["resource"]
 	if hasPermit || hasForbid {
 		var perm Permission
 		err = yaml.Unmarshal([]byte(data), &perm)
@@ -72,7 +72,7 @@ func (s *YamlSerializer) UnmarshalYaml(data []byte) (any, error) {
 			return nil, err
 		}
 		return &perm, nil
-	} else if hasActions || hasResource{
+	} else if hasActions || hasResource {
 		var policy Policy
 		err = yaml.Unmarshal([]byte(data), &policy)
 		if err != nil {
@@ -89,26 +89,26 @@ func (s *YamlSerializer) UnmarshalLangType(data []byte) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	switch v:= instance.(type) {
+	switch v := instance.(type) {
 	case *Permission:
-		langPerm := &aztypes.Permission {
+		langPerm := &aztypes.Permission{
 			Class: aztypes.Class{
 				SyntaxVersion: aztypes.PolicySyntax,
-				Type: aztypes.ClassTypeACPermission,
+				Type:          aztypes.ClassTypeACPermission,
 			},
-			Name: v.Name,
+			Name:   v.Name,
 			Permit: v.Permit,
 			Forbid: v.Forbid,
 		}
 		return langPerm, nil
 	case *Policy:
-		langPolicy := &aztypes.Policy {
+		langPolicy := &aztypes.Policy{
 			Class: aztypes.Class{
 				SyntaxVersion: aztypes.PolicySyntax,
-				Type: aztypes.ClassTypeACPermission,
+				Type:          aztypes.ClassTypeACPermission,
 			},
-			Name: v.Name,
-			Actions: make([]aztypes.ARString, 0),
+			Name:     v.Name,
+			Actions:  make([]aztypes.ARString, 0),
 			Resource: aztypes.UURString(v.Resources[0]),
 		}
 		for _, action := range v.Actions {

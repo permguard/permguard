@@ -124,6 +124,12 @@ func (p *PersistenceManager) ScanAndFilterFiles(relative RelativeDir, exts []str
 	return azfiles.ScanAndFilterFiles(name, exts, ignorePatterns)
 }
 
+// ReadFile reads a file.
+func (p *PersistenceManager) ReadFile(relative RelativeDir, name string) ([]byte, error) {
+	name = p.GetRelativeDir(relative, name)
+	return azfiles.ReadFile(name)
+}
+
 // ReadTOMLFile reads a TOML file.
 func (p *PersistenceManager) ReadTOMLFile(relative RelativeDir, name string, v any) error {
 	name = p.GetRelativeDir(relative, name)

@@ -16,26 +16,16 @@
 
 package serializers
 
-// Base is the base type.
-type Base struct {
-	Name string `yaml:"name"`
-}
-
-// GetName returns the name.
-func (b Base) GetName() string {
-	return b.Name
-}
-
 // Permission is the access control permission.
 type Permission struct {
-	Base
+	Name string `yaml:"name"`
 	Permit []string `yaml:"permit,omitempty"`
 	Forbid []string `yaml:"forbid,omitempty"`
 }
 
 // Policy is the access control policy.
 type Policy struct {
-	Base
-	Actions   []string `yaml:"actions,omitempty"`
-	Resources []string	`yaml:"resources,omitempty"`
+	Name string `yaml:"name"`
+	Actions   []string `yaml:"actions"`
+	Resources []string	`yaml:"resources"`
 }
