@@ -18,20 +18,26 @@ package workspace
 
 import (
 	//azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azlang "github.com/permguard/permguard/pkg/core/languages"
+
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
+	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
 // codeFileInfo represents info about the code file.
 type codeFileInfo struct {
-	path string
+	Path 			string
+	OID 			string
+	OType 			string
+	State 			string
+	Section 		int
+	ErrorMessage	bool
 }
 
 // convertCodeFilesToPath converts code files to paths.
 func convertCodeFilesToPath(files []codeFileInfo) []string {
 	paths := make([]string, len(files))
 	for i, file := range files {
-		paths[i] = file.path
+		paths[i] = file.Path
 	}
 	return paths
 }
@@ -46,11 +52,11 @@ func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastracti
 	}
 	codeFiles := make([]codeFileInfo, len(files))
 	for i, file := range files {
-		codeFiles[i] = codeFileInfo{path: file}
+		codeFiles[i] = codeFileInfo{Path: file}
 	}
 	ignoredCodeFiles := make([]codeFileInfo, len(ignoredFiles))
 	for i, file := range ignoredFiles {
-		ignoredCodeFiles[i] = codeFileInfo{path: file}
+		ignoredCodeFiles[i] = codeFileInfo{Path: file}
 	}
 	return codeFiles, ignoredCodeFiles, nil
 }
