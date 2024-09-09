@@ -76,7 +76,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFileInfos []codeFileInfo, absLang az
 		secObjs := multiSecObj.GetSectionObjectInfos()
 		for _, secObj := range secObjs {
 			obj := secObj.GetObject()
-			m.persMgr.WriteBinaryFile(azicliwkspers.WorkspaceDir, obj.GetOID(), obj.GetContent(), 0644)
+			m.cospMgr.SaveObject(obj.GetOID(), obj.GetContent())
 		}
 	}
 	return "", nil
