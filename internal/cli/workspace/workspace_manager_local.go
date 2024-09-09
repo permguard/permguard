@@ -94,7 +94,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFileInfos []codeFileInfo, absLang az
 			} else {
 				obj := secObj.GetObject()
 				codeFile.OID = obj.GetOID()
-				m.cospMgr.SaveObject(obj.GetOID(), obj.GetContent())
+				m.cospMgr.SaveObject(obj.GetOID(), obj.GetContent(), true)
 			}
 			blbCodeFiles = append(blbCodeFiles, *codeFile)
 		}

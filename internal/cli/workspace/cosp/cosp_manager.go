@@ -69,17 +69,22 @@ func (c *COSPManager) getPlansDir() string {
 }
 
 // getObjectDir returns the object directory.
-func (c *COSPManager) getObjectDir(oid string) (string,  string) {
+func (c *COSPManager) getObjectDir(oid string, staging bool) (string,  string) {
+	basePath := ""
+	if staging {
+		basePath = c.getCodeDir()
+	}
+	basePath = filepath.Join(basePath, c.getObjectsDir())
 	folder := oid[:2]
-	folder = filepath.Join(c.getObjectsDir(), folder)
+	folder = filepath.Join(basePath, folder)
 	c.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, folder)
 	name := oid[2:]
 	return folder, name
 }
 
 // SaveObject saves the object.
-func (c *COSPManager) SaveObject(oid string, content []byte) (bool, error) {
-	folder, name := c.getObjectDir(oid)
+func (c *COSPManager) SaveObject(oid string, content []byte, staging bool) (bool, error) {
+	folder, name := c.getObjectDir(oid, true)
 	path := filepath.Join(folder, name)
 	return c.persMgr.WriteBinaryFile(azicliwkspers.PermGuardDir, path, content, 0644)
 }
