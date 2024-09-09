@@ -43,7 +43,7 @@ A `PermGuard` working directory contains the following files:
 When starting a new project, the first step is to create an account:
 
 ```bash
- permguard accounts create --name magicfarmacia-dev
+permguard accounts create --name magicfarmacia-dev --output json
 {
   "accounts": [
     {
@@ -59,7 +59,7 @@ When starting a new project, the first step is to create an account:
 Next, create a repo:
 
 ```bash
- permguard repositories create --name magicfarmacia-v0.0 --account-id 268786704340
+permguard repositories create --name magicfarmacia-v0.0 --account-id 268786704340  --output json
 {
   "repositories": [
     {
