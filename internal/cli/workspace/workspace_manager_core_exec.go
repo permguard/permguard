@@ -34,7 +34,7 @@ func (m *WorkspaceManager) printFiles(action string, files []string, out func(ma
 // ExecInitWorkspace initializes the workspace.
 func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	homeDir := m.getHomeHiddenDir()
-	res, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, homeDir)
+	res, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.WorkDir, homeDir)
 	if err != nil {
 		return nil, err
 	}
