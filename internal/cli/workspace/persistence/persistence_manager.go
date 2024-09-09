@@ -82,6 +82,12 @@ func (p *PersistenceManager) CreateDirIfNotExists(relative RelativeDir, name str
 	return azfiles.CreateDirIfNotExists(name)
 }
 
+// DeleteFile deletes a file.
+func (p *PersistenceManager) DeleteDir(relative RelativeDir, name string) (bool, error) {
+	name = p.GetRelativeDir(relative, name)
+	return azfiles.DeleteDir(name)
+}
+
 // WriteFileIfNotExists writes a file if it does not exist.
 func (p *PersistenceManager) WriteFileIfNotExists(relative RelativeDir, name string, data []byte, perm os.FileMode) (bool, error) {
 	name = p.GetRelativeDir(relative, name)

@@ -19,14 +19,40 @@ package workspace
 import (
 	"strings"
 
+	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
+type codeFileInfo struct {
+	Path         string
+	OID          string
+	OType        string
+	OName        string
+	Mode         uint32
+	Section      int
+	HasErrors    bool
+	ErrorMessage string
+}
+
+// convertCodeFilesToPath converts code files to paths.
+func convertCodeFilesToPath(files []codeFileInfo) []string {
+	paths := make([]string, len(files))
+	for i, file := range files {
+		paths[i] = file.Path
+	}
+	return paths
+}
+
+// cleanupStagingArea cleans up the staging area.
+func (m *WorkspaceManager) cleanupStagingArea() (bool, error) {
+	return m.cospMgr.CleanStagingArea()
+}
+
 // scanSourceCodeFiles scans the source code files.
 func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastraction) ([]codeFileInfo, []codeFileInfo, error) {
 	exts := absLang.GetFileExtensions()
-	ignorePatterns := []string {hiddenIgnoreFile, schemaYAMLFile, schemaYMLFile, hiddenDir, gitDir, gitIgnoreFile}
+	ignorePatterns := []string{hiddenIgnoreFile, schemaYAMLFile, schemaYMLFile, hiddenDir, gitDir, gitIgnoreFile}
 	files, ignoredFiles, err := m.persMgr.ScanAndFilterFiles(azicliwkspers.WorkspaceDir, exts, ignorePatterns, hiddenIgnoreFile)
 	if err != nil {
 		return nil, nil, err
@@ -52,19 +78,19 @@ func (m *WorkspaceManager) blobifyLocal(codeFileInfos []codeFileInfo, absLang az
 		if err != nil {
 			return "", nil, err
 		}
-		multiSecObj, err := absLang.CreateBlobObjects(path, data)
+		multiSecObj, err := absLang.CreateMultiSectionsObjects(path, data)
 		if err != nil {
 			continue
 		}
-		secObjs := multiSecObj.GetSectionObjectInfos()
+		secObjs := multiSecObj.GetSectionObjects()
 		for _, secObj := range secObjs {
 			codeFile := &codeFileInfo{
-				Path: strings.TrimPrefix(path, wkdir),
-				Section: secObj.GetNumberOfSection(),
-				Mode: mode,
+				Path:      strings.TrimPrefix(path, wkdir),
+				Section:   secObj.GetNumberOfSection(),
+				Mode:      mode,
 				HasErrors: secObj.GetError() != nil,
-				OType: secObj.GetObjectType(),
-				OName: secObj.GetObjectName(),
+				OType:     secObj.GetObjectType(),
+				OName:     secObj.GetObjectName(),
 			}
 			if codeFile.HasErrors {
 				codeFile.ErrorMessage = secObj.GetError().Error()
@@ -76,9 +102,16 @@ func (m *WorkspaceManager) blobifyLocal(codeFileInfos []codeFileInfo, absLang az
 			blbCodeFiles = append(blbCodeFiles, *codeFile)
 		}
 	}
-	trees, _ := buildTrees(blbCodeFiles)
-	print(trees)
-	return "", blbCodeFiles, nil
+	tree := azlangobjs.NewTree()
+	for _, file := range blbCodeFiles {
+		tree.AddEntry(azlangobjs.NewTreeEntry(file.Mode, file.OType, file.OID, file.OName, file.Path))
+	}
+	treeObj, err := absLang.CreateTreeObject(tree)
+	if err != nil {
+		return "", nil, err
+	}
+	m.cospMgr.SaveObject(treeObj.GetOID(), treeObj.GetContent(), true)
+	return treeObj.GetOID(), blbCodeFiles, nil
 }
 
 // buildLocalState builds the local state.

@@ -68,42 +68,42 @@ func (abs *YAMLLanguageAbstraction) CreateTreeObject(tree *azlangobjs.Tree) (*az
 	return abs.objMng.CreateTreeObject(tree)
 }
 
-// CreateBlobObjects creates blob objects.
-func (abs *YAMLLanguageAbstraction) CreateBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObjectInfo, error) {
+// CreateMultiSectionsObjects create blobs for multi sections objects.
+func (abs *YAMLLanguageAbstraction) CreateMultiSectionsObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error) {
 	serializer, err := azsrlzs.NewYamlSerializer()
 	if err != nil {
 		return nil, err
 	}
 	docs, err := serializer.SplitYAMLDocuments(data)
 	if err != nil {
-		return azlangobjs.NewMultiSectionsObjectInfo(path, 0, err)
+		return azlangobjs.NewMultiSectionsObject(path, 0, err)
 	}
 	docNumOfSects := len(docs)
-	multiSecObj, err := azlangobjs.NewMultiSectionsObjectInfo(path, docNumOfSects, nil)
+	multiSecObj, err := azlangobjs.NewMultiSectionsObject(path, docNumOfSects, nil)
 	if err != nil {
 		return nil, err
 	}
 	for i, doc := range docs {
 		name, content, err := serializer.UnmarshalLangType(doc)
 		if err != nil {
-			multiSecObj.AddSectionObjectInfoWithParams(nil, "", "", i, err)
+			multiSecObj.AddSectionObjectWithParams(nil, "", "", i, err)
 			continue
 		}
 		jsonType, err := abs.permCodeMng.MarshalClass(content, true, false, false)
 		if err != nil {
-			multiSecObj.AddSectionObjectInfoWithParams(nil, "", "", i, err)
+			multiSecObj.AddSectionObjectWithParams(nil, "", "", i, err)
 			continue
 		}
 		obj, err := abs.objMng.CreateBlobObject(jsonType)
 		if err != nil {
-			multiSecObj.AddSectionObjectInfoWithParams(nil, "", "", i, err)
+			multiSecObj.AddSectionObjectWithParams(nil, "", "", i, err)
 			continue
 		}
 		objInfo, err := abs.objMng.GetObjectInfo(obj)
 		if err != nil {
 			return nil, err
 		}
-		multiSecObj.AddSectionObjectInfoWithParams(obj, objInfo.GetType(), name, i, err)
+		multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), name, i, err)
 	}
 	return multiSecObj, nil
 }
