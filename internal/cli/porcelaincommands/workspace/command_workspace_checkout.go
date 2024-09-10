@@ -50,7 +50,11 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	wksMgr := azicliwksmanager.NewInternalManager(ctx, langFct)
+	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, langFct)
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return aziclicommon.ErrCommandSilent
+	}
 	repo := args[0]
 	output, err := wksMgr.ExecCheckoutRepo(repo, outFunc(ctx, printer))
 	if err != nil {

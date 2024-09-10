@@ -18,10 +18,10 @@ package serializers
 
 import (
 	"bytes"
-	"errors"
 
 	"gopkg.in/yaml.v2"
 
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	aztypes "github.com/permguard/permguard-abs-language/pkg/permcode/types"
 )
 
@@ -80,7 +80,7 @@ func (s *YamlSerializer) UnmarshalYaml(data []byte) (any, error) {
 		}
 		return &policy, nil
 	}
-	return nil, errors.New("permyaml: invalid yaml document")
+	return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid yaml document")
 }
 
 // UnmarshalLangType unmarshals a language type.
@@ -116,5 +116,5 @@ func (s *YamlSerializer) UnmarshalLangType(data []byte) (string, any, error) {
 		}
 		return langPolicy.Name, langPolicy, nil
 	}
-	return "", nil, errors.New("permyaml: invalid yaml document")
+	return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid yaml document")
 }

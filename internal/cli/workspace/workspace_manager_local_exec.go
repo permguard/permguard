@@ -19,8 +19,8 @@ package workspace
 import (
 	"fmt"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ExecRefresh scans source files in the current directory and synchronizes the local state,
@@ -37,7 +37,6 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "initiating cleanup of the staging area...", nil)
 	}
-
 	cleaned, err := m.cleanupStagingArea()
 	if err != nil {
 		return nil, err
@@ -85,7 +84,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "starting blobification process...", nil)
 	}
-	treeID, blbCodeFiles, err := m.blobifyLocal(selectedFiles, absLang)
+	treeID, _, err := m.blobifyLocal(selectedFiles, absLang)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +95,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "initializing local state build...", nil)
 	}
-	err = m.buildLocalState(treeID, blbCodeFiles, absLang)
+	err = m.buildLocalState(treeID, absLang)
 	if err != nil {
 		return nil, err
 	}

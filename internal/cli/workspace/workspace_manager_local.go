@@ -55,7 +55,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	for _, file := range codeFiles {
 		wkdir := m.ctx.GetWorkDir()
 		path := file.Path
-		data, mode, err := m.persMgr.ReadFile(azicliwkspers.WorkDir, path)
+		data, mode, err := m.persMgr.ReadFile(azicliwkspers.WorkDir, path, false)
 		if err != nil {
 			return "", nil, err
 		}
@@ -103,7 +103,15 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 }
 
 // buildLocalState builds the local state.
-func (m *WorkspaceManager) buildLocalState(treeID string, codeFiles []azicliwkscosp.CodeFile, absLang azlang.LanguageAbastraction) error {
-	// TODO: Implement this method
+func (m *WorkspaceManager) buildLocalState(treeID string, absLang azlang.LanguageAbastraction) error {
+	obj, err := m.cospMgr.ReadObject(treeID, true)
+	if err != nil {
+		return err
+	}
+	tree, err := absLang.GetTreeeObject(obj)
+	if err != nil {
+		return err
+	}
+	print(tree)
 	return nil
 }

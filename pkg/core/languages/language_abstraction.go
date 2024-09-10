@@ -28,6 +28,8 @@ type LanguageAbastraction interface {
 	GetFileExtensions() []string
 	// CreateTreeObject creates a tree object.
 	CreateTreeObject(tree *azlangobjs.Tree) (*azlangobjs.Object, error)
+	// GetTreeeObject gets a tree object.
+	GetTreeeObject(obj *azlangobjs.Object) (*azlangobjs.Tree, error)
 	// CreateMultiSectionsObjects create blobs for multi sections objects.
 	CreateMultiSectionsObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error)
 }

@@ -39,11 +39,11 @@ type ConfigManager struct {
 }
 
 // NewConfigManager creates a new configuration manager.
-func NewConfigManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.PersistenceManager) *ConfigManager {
+func NewConfigManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.PersistenceManager) (*ConfigManager, error) {
 	return &ConfigManager{
 		ctx:     ctx,
 		persMgr: persMgr,
-	}
+	}, nil
 }
 
 // getConfigFile

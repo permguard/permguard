@@ -31,10 +31,10 @@ type RemoteServerManager struct {
 }
 
 // NewRemoteServerManager creates a new remoteuration manager.
-func NewRemoteServerManager(ctx *aziclicommon.CliCommandContext) *RemoteServerManager {
+func NewRemoteServerManager(ctx *aziclicommon.CliCommandContext) (*RemoteServerManager, error) {
 	return &RemoteServerManager{
 		ctx: ctx,
-	}
+	}, nil
 }
 
 // GetServerRemoteRepo gets the remote repo from the server.

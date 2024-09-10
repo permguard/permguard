@@ -17,6 +17,7 @@
 package permyaml
 
 import (
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azlangcode "github.com/permguard/permguard-abs-language/pkg/permcode"
 	azsrlzs "github.com/permguard/permguard/plugin/languages/permyaml/serializers"
@@ -66,6 +67,19 @@ func (abs *YAMLLanguageAbstraction) GetFileExtensions() []string {
 // CreateTreeObject creates a tree object.
 func (abs *YAMLLanguageAbstraction) CreateTreeObject(tree *azlangobjs.Tree) (*azlangobjs.Object, error) {
 	return abs.objMng.CreateTreeObject(tree)
+}
+
+// GetTreeeObject gets a tree object.
+func (abs *YAMLLanguageAbstraction) GetTreeeObject(obj *azlangobjs.Object) (*azlangobjs.Tree, error) {
+	objInfo, err := abs.objMng.GetObjectInfo(obj)
+	if err != nil {
+		return nil, err
+	}
+	value, ok := objInfo.GetInstance().(*azlangobjs.Tree)
+	if !ok {
+		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
+	}
+	return value, nil
 }
 
 // CreateMultiSectionsObjects create blobs for multi sections objects.
