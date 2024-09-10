@@ -121,7 +121,7 @@ func (m *COSPManager) CleanStagingArea() (bool, error) {
 func (m *COSPManager) SaveObject(oid string, content []byte, staging bool) (bool, error) {
 	folder, name := m.getObjectDir(oid, true)
 	path := filepath.Join(folder, name)
-	return m.persMgr.WriteBinaryFile(azicliwkspers.PermGuardDir, path, content, 0644)
+	return m.persMgr.WriteBinaryFile(azicliwkspers.PermGuardDir, path, content, 0644, true)
 }
 
 // saveConfig saves the configuration file.
@@ -131,9 +131,9 @@ func (m *COSPManager) saveConfig(name string, override bool, cfg any) error {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
 	}
 	if override {
-		_, err = m.persMgr.WriteFile(azicliwkspers.PermGuardDir, name, data, 0644)
+		_, err = m.persMgr.WriteFile(azicliwkspers.PermGuardDir, name, data, 0644, false)
 	} else {
-		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermGuardDir, name, data, 0644)
+		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermGuardDir, name, data, 0644, false)
 	}
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", name))
@@ -176,9 +176,7 @@ func (m *COSPManager) SaveCodeMap(codeFiles []CodeFile) error {
 	}
 	err := m.persMgr.WriteCSVStream(azicliwkspers.PermGuardDir, path, nil, codeFiles, rowFunc)
 	if err != nil {
-		fmt.Println("Errore durante la creazione del file CSV:", err)
-	} else {
-		fmt.Println("CSV generato con successo.")
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to write code map")
 	}
 	return nil
 }

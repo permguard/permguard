@@ -89,21 +89,21 @@ func (p *PersistenceManager) DeleteDir(relative RelativeDir, name string) (bool,
 }
 
 // WriteFileIfNotExists writes a file if it does not exist.
-func (p *PersistenceManager) WriteFileIfNotExists(relative RelativeDir, name string, data []byte, perm os.FileMode) (bool, error) {
+func (p *PersistenceManager) WriteFileIfNotExists(relative RelativeDir, name string, data []byte, perm os.FileMode, compressed bool) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.WriteFileIfNotExists(name, data, perm)
+	return azfiles.WriteFileIfNotExists(name, data, perm, compressed)
 }
 
 // WriteFile writes a file.
-func (p *PersistenceManager) WriteFile(relative RelativeDir, name string, data []byte, perm os.FileMode) (bool, error) {
+func (p *PersistenceManager) WriteFile(relative RelativeDir, name string, data []byte, perm os.FileMode, compressed bool) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.WriteFile(name, data, perm)
+	return azfiles.WriteFile(name, data, perm, compressed)
 }
 
 // WriteBinaryFile writes a binary file.
-func (p *PersistenceManager) WriteBinaryFile(relative RelativeDir, name string, data []byte, perm os.FileMode) (bool, error) {
+func (p *PersistenceManager) WriteBinaryFile(relative RelativeDir, name string, data []byte, perm os.FileMode, compressed bool) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.WriteFile(name, data, perm)
+	return azfiles.WriteFile(name, data, perm, compressed)
 }
 
 // WriteCSVStream writes a CSV stream.
