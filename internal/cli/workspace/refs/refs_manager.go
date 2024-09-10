@@ -74,9 +74,9 @@ func (m *RefsManager) saveConfig(name string, override bool, cfg any) error {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
 	}
 	if override {
-		_, err = m.persMgr.WriteFile(azicliwkspers.PermGuardDir, name, data, 0644)
+		_, err = m.persMgr.WriteFile(azicliwkspers.PermGuardDir, name, data, 0644, false)
 	} else {
-		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermGuardDir, name, data, 0644)
+		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermGuardDir, name, data, 0644, false)
 	}
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", name))

@@ -66,9 +66,9 @@ func (m *ConfigManager) saveConfig(override bool, cfg *Config) error {
 	}
 	fileName := m.getConfigFile()
 	if override {
-		_, err = m.persMgr.WriteFile(azicliwkspers.PermGuardDir, fileName, data, 0644)
+		_, err = m.persMgr.WriteFile(azicliwkspers.PermGuardDir, fileName, data, 0644, false)
 	} else {
-		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermGuardDir, fileName, data, 0644)
+		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermGuardDir, fileName, data, 0644, false)
 	}
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", fileName))
