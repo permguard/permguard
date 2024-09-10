@@ -43,12 +43,12 @@ type PersistenceManager struct {
 }
 
 // NewPersistenceManager creates a new persistenceuration manager.
-func NewPersistenceManager(rootDir string, permguardDir string, ctx *aziclicommon.CliCommandContext) *PersistenceManager {
+func NewPersistenceManager(rootDir string, permguardDir string, ctx *aziclicommon.CliCommandContext) (*PersistenceManager , error){
 	return &PersistenceManager{
 		rootDir: 		rootDir,
 		permguardDir: 	permguardDir,
 		ctx:			ctx,
-	}
+	}, nil
 }
 
 // GetRelativeDir gets the relative directory.
@@ -100,10 +100,22 @@ func (p *PersistenceManager) WriteFile(relative RelativeDir, name string, data [
 	return azfiles.WriteFile(name, data, perm, compressed)
 }
 
+// ReadFile reads a file.
+func (p *PersistenceManager) ReadFile(relative RelativeDir, name string, compressed bool) ([]byte, uint32, error){
+	name = p.GetRelativeDir(relative, name)
+	return azfiles.ReadFile(name, compressed)
+}
+
 // WriteBinaryFile writes a binary file.
 func (p *PersistenceManager) WriteBinaryFile(relative RelativeDir, name string, data []byte, perm os.FileMode, compressed bool) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
 	return azfiles.WriteFile(name, data, perm, compressed)
+}
+
+// WriteBinaryFile writes a binary file.
+func (p *PersistenceManager) ReadBinaryFile(relative RelativeDir, name string, perm os.FileMode, compressed bool) ([]byte, uint32, error) {
+	name = p.GetRelativeDir(relative, name)
+	return azfiles.ReadFile(name, compressed)
 }
 
 // WriteCSVStream writes a CSV stream.
@@ -134,12 +146,6 @@ func (p *PersistenceManager) ScanAndFilterFiles(relative RelativeDir, exts []str
 		return nil, nil, err
 	}
 	return azfiles.ScanAndFilterFiles(name, exts, ignorePatterns)
-}
-
-// ReadFile reads a file.
-func (p *PersistenceManager) ReadFile(relative RelativeDir, name string) ([]byte, uint32, error){
-	name = p.GetRelativeDir(relative, name)
-	return azfiles.ReadFile(name)
 }
 
 // ReadTOMLFile reads a TOML file.

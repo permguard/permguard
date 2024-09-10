@@ -64,20 +64,43 @@ type WorkspaceManager struct {
 }
 
 // NewInternalManager creates a new internal manager.
-func NewInternalManager(ctx *aziclicommon.CliCommandContext, langFct azlang.LanguageFactory) *WorkspaceManager {
+func NewInternalManager(ctx *aziclicommon.CliCommandContext, langFct azlang.LanguageFactory) (*WorkspaceManager, error) {
 	homeDir := ctx.GetWorkDir()
-	persMgr := azicliwkspers.NewPersistenceManager(homeDir, hiddenDir, ctx)
+	persMgr, err := azicliwkspers.NewPersistenceManager(homeDir, hiddenDir, ctx)
+	if err != nil {
+		return nil, err
+	}
+	rmSrvtMgr, err := azicliwksremotesrv.NewRemoteServerManager(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cfgMgr, err := azicliwkscfg.NewConfigManager(ctx, persMgr)
+	if err != nil {
+		return nil, err
+	}
+	logsMgr, err := azicliwkslogs.NewLogsManager(ctx, persMgr)
+	if err != nil {
+		return nil, err
+	}
+	rfsMgr, err := azicliwksrefs.NewRefsManager(ctx, persMgr)
+	if err != nil {
+		return nil, err
+	}
+	cospMgr, err := azicliwkscosp.NewPlansManager(ctx, persMgr)
+	if err != nil {
+		return nil, err
+	}
 	return &WorkspaceManager{
 		homeDir:   homeDir,
 		ctx:       ctx,
 		langFct:   langFct,
 		persMgr:   persMgr,
-		rmSrvtMgr: azicliwksremotesrv.NewRemoteServerManager(ctx),
-		cfgMgr:    azicliwkscfg.NewConfigManager(ctx, persMgr),
-		logsMgr:   azicliwkslogs.NewLogsManager(ctx, persMgr),
-		rfsMgr:    azicliwksrefs.NewRefsManager(ctx, persMgr),
-		cospMgr:   azicliwkscosp.NewPlansManager(ctx, persMgr),
-	}
+		rmSrvtMgr: rmSrvtMgr,
+		cfgMgr:    cfgMgr,
+		logsMgr:   logsMgr,
+		rfsMgr:    rfsMgr,
+		cospMgr:   cospMgr,
+	}, nil
 }
 
 // getHomeHiddenDir returns the home directory.

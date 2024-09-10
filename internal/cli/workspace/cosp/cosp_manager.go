@@ -22,9 +22,10 @@ import (
 
 	"github.com/pelletier/go-toml"
 
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -48,14 +49,20 @@ const (
 type COSPManager struct {
 	ctx     *aziclicommon.CliCommandContext
 	persMgr *azicliwkspers.PersistenceManager
+	objMgr	*azlangobjs.ObjectManager
 }
 
 // NewPlansManager creates a new plansuration manager.
-func NewPlansManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.PersistenceManager) *COSPManager {
+func NewPlansManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.PersistenceManager) (*COSPManager, error) {
+	objMgr, err := azlangobjs.NewObjectManager()
+	if err != nil {
+		return nil, err
+	}
 	return &COSPManager{
 		ctx:     ctx,
 		persMgr: persMgr,
-	}
+		objMgr:  objMgr,
+	}, nil
 }
 
 // getCodeDir returns the code directory.
@@ -122,6 +129,17 @@ func (m *COSPManager) SaveObject(oid string, content []byte, staging bool) (bool
 	folder, name := m.getObjectDir(oid, true)
 	path := filepath.Join(folder, name)
 	return m.persMgr.WriteBinaryFile(azicliwkspers.PermGuardDir, path, content, 0644, true)
+}
+
+// ReadObject reads the object.
+func (m *COSPManager) ReadObject(oid string, staging bool) (*azlangobjs.Object, error) {
+	folder, name := m.getObjectDir(oid, true)
+	path := filepath.Join(folder, name)
+	data, _, err := m.persMgr.ReadFile(azicliwkspers.PermGuardDir, path, true)
+	if err != nil {
+		return nil, err
+	}
+	return m.objMgr.ReadObjectFormData(data)
 }
 
 // saveConfig saves the configuration file.

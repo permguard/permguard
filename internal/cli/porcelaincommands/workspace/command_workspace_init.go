@@ -46,7 +46,11 @@ func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	wksMgr := azicliwksmanager.NewInternalManager(ctx, absLang)
+	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, absLang)
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return aziclicommon.ErrCommandSilent
+	}
 	output, err := wksMgr.ExecInitWorkspace(azlangpermyaml.LanguageName, outFunc(ctx, printer))
 	if err != nil {
 		printer.Error(err)

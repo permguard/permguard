@@ -38,11 +38,11 @@ type LogsManager struct {
 }
 
 // NewLogsManager creates a new logsuration manager.
-func NewLogsManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.PersistenceManager) *LogsManager {
+func NewLogsManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.PersistenceManager) (*LogsManager, error) {
 	return &LogsManager{
 		ctx:     ctx,
 		persMgr: persMgr,
-	}
+	}, nil
 }
 
 // getLogsDir returns the logs directory.

@@ -71,6 +71,6 @@ func (m *CliDependenciesMock) GetLanguageFactory() (azlang.LanguageFactory, erro
 }
 
 // NewCliDependenciesMock creates a new CliDependenciesMock.
-func NewCliDependenciesMock() *CliDependenciesMock {
+func NewCliDependenciesMock() (*CliDependenciesMock) {
 	return &CliDependenciesMock{}
 }

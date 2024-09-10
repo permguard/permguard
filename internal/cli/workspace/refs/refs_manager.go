@@ -50,11 +50,11 @@ type RefsManager struct {
 }
 
 // NewRefsManager creates a new refsuration manager.
-func NewRefsManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.PersistenceManager) *RefsManager {
+func NewRefsManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.PersistenceManager) (*RefsManager, error) {
 	return &RefsManager{
 		ctx:     ctx,
 		persMgr: persMgr,
-	}
+	}, nil
 }
 
 // getRefsDir returns the refs directory.
