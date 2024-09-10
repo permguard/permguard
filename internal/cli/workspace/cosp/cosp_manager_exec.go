@@ -21,19 +21,19 @@ import (
 )
 
 // ExecInitalize the plans resources.
-func (c *COSPManager) ExecInitalize(lang string) error {
-	_, err := c.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, c.getCodeDir())
+func (m *COSPManager) ExecInitalize(lang string) error {
+	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, m.getCodeDir())
 	if err != nil {
 		return err
 	}
-	_, err = c.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, c.getObjectsDir())
+	_, err = m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, m.getObjectsDir())
 	if err != nil {
 		return err
 	}
-	_, err = c.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, c.getStatesDir())
+	_, err = m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, m.getStatesDir())
 	if err != nil {
 		return err
 	}
-	_, err = c.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, c.getPlansDir())
+	_, err = m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, m.getPlansDir())
 	return err
 }

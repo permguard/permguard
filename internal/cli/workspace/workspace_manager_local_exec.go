@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 )
 
 // ExecRefresh scans source files in the current directory and synchronizes the local state,
@@ -57,7 +58,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 		out(nil, "refresh", "scanning source files...", nil)
 	}
 	selectedFiles, ignoredFiles, err := m.scanSourceCodeFiles(absLang)
- 	if err != nil {
+	if err != nil {
 		return nil, err
 	}
 	var output map[string]any
@@ -73,12 +74,12 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 		}
 		out(nil, "refresh", fmt.Sprintf("scanned %d %s, selected %d %s, and ignored %d %s",
 			totalCount, fileWord(totalCount), selectedCount, fileWord(selectedCount), ignoredCount, fileWord(ignoredCount)), nil)
-		m.printFiles("ignored", convertCodeFilesToPath(ignoredFiles), out)
-		m.printFiles("selected", convertCodeFilesToPath(selectedFiles), out)
+		m.printFiles("ignored", azicliwkscosp.ConvertCodeFilesToPath(ignoredFiles), out)
+		m.printFiles("selected", azicliwkscosp.ConvertCodeFilesToPath(selectedFiles), out)
 	} else if m.ctx.IsJSONOutput() {
 		output = map[string]any{
-			"ignored":  convertCodeFilesToPath(ignoredFiles),
-			"selected": convertCodeFilesToPath(selectedFiles),
+			"ignored":  azicliwkscosp.ConvertCodeFilesToPath(ignoredFiles),
+			"selected": azicliwkscosp.ConvertCodeFilesToPath(selectedFiles),
 		}
 	}
 	if m.ctx.IsVerboseTerminalOutput() {

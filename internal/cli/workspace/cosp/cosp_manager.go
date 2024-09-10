@@ -40,6 +40,8 @@ const (
 	hiddenPlansDir = "plans"
 	// Hidden configuration file.
 	hiddenConfiFile = "config"
+	// Hidden code map.
+	hiddenCodeMap = "codemap"
 )
 
 // COSPManager implements the internal manager for code, objects, states and plans.
@@ -57,64 +59,69 @@ func NewPlansManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers
 }
 
 // getCodeDir returns the code directory.
-func (c *COSPManager) getCodeDir() string {
+func (m *COSPManager) getCodeDir() string {
 	return hiddenCodeDir
 }
 
 // getStagingDir returns the staging directory.
-func (c *COSPManager) getStagingDir() string {
+func (m *COSPManager) getStagingDir() string {
 	return hiddenStagingDir
 }
 
 // getStagingFile returns the staging config file.
-func (c *COSPManager) getStagingFile() string {
-	return filepath.Join(c.getCodeStagingDir(), hiddenConfiFile)
+func (m *COSPManager) getStagingFile() string {
+	return filepath.Join(m.getCodeStagingDir(), hiddenConfiFile)
 }
 
 // getObjectsDir returns the objects directory.
-func (c *COSPManager) getObjectsDir() string {
+func (m *COSPManager) getObjectsDir() string {
 	return hiddenObjectsDir
 }
 
 // getStatesDir returns the states directory.
-func (c *COSPManager) getStatesDir() string {
+func (m *COSPManager) getStatesDir() string {
 	return hiddenStatesDir
 }
 
 // getPlansDir returns the plans directory.
-func (c *COSPManager) getPlansDir() string {
+func (m *COSPManager) getPlansDir() string {
 	return hiddenPlansDir
 }
 
 // getCodeStagingDir returns the code staging directory.
-func (c *COSPManager) getCodeStagingDir() string {
-	return filepath.Join(c.getCodeDir(), c.getStagingDir())
+func (m *COSPManager) getCodeStagingDir() string {
+	return filepath.Join(m.getCodeDir(), m.getStagingDir())
+}
+
+// getCodeMap returns the code map.
+func (m *COSPManager) getCodeMap() string {
+	return hiddenCodeMap
 }
 
 // getObjectDir returns the object directory.
-func (c *COSPManager) getObjectDir(oid string, staging bool) (string, string) {
+func (m *COSPManager) getObjectDir(oid string, staging bool) (string, string) {
 	basePath := ""
 	if staging {
-		basePath = c.getCodeStagingDir()
+		basePath = m.getCodeStagingDir()
 	}
-	basePath = filepath.Join(basePath, c.getObjectsDir())
+	basePath = filepath.Join(basePath, m.getObjectsDir())
 	folder := oid[:2]
 	folder = filepath.Join(basePath, folder)
-	c.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, folder)
+	m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, folder)
 	name := oid[2:]
 	return folder, name
 }
 
 // CleanStagingArea cleans the staging area.
-func (c *COSPManager) CleanStagingArea() (bool, error) {
-	return c.persMgr.DeleteDir(azicliwkspers.PermGuardDir, c.getCodeStagingDir())
+func (m *COSPManager) CleanStagingArea() (bool, error) {
+	return m.persMgr.DeleteDir(azicliwkspers.PermGuardDir, m.getCodeStagingDir())
 }
 
 // SaveObject saves the object.
-func (c *COSPManager) SaveObject(oid string, content []byte, staging bool) (bool, error) {
-	folder, name := c.getObjectDir(oid, true)
+func (m *COSPManager) SaveObject(oid string, content []byte, staging bool) (bool, error) {
+	folder, name := m.getObjectDir(oid, true)
 	path := filepath.Join(folder, name)
-	return c.persMgr.WriteBinaryFile(azicliwkspers.PermGuardDir, path, content, 0644)
+	return m.persMgr.WriteBinaryFile(azicliwkspers.PermGuardDir, path, content, 0644)
 }
 
 // saveConfig saves the configuration file.
@@ -144,9 +151,34 @@ func (m *COSPManager) SaveCodeStagingConfig(treeID, language string) error {
 	return m.saveConfig(file, true, config)
 }
 
-// readCodeStagingConfig reads the configuration file.
-func (m *COSPManager) readCodeStagingConfig() (*CodeStagingConfig, error) {
+// ReadCodeStagingConfig reads the configuration file.
+func (m *COSPManager) ReadCodeStagingConfig() (*CodeStagingConfig, error) {
 	var config CodeStagingConfig
 	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getStagingFile(), &config)
 	return &config, err
+}
+
+// SaveCodeMap saves the code map.
+func (m *COSPManager) SaveCodeMap(codeFiles []CodeFile) error {
+	path := filepath.Join(m.getCodeStagingDir(), "codemap")
+	rowFunc := func(record interface{}) []string {
+		codeFile := record.(CodeFile)
+		return []string{
+			codeFile.Path,
+			codeFile.OID,
+			codeFile.OType,
+			codeFile.OName,
+			fmt.Sprintf("%d", codeFile.Mode),
+			fmt.Sprintf("%d", codeFile.Section),
+			fmt.Sprintf("%v", codeFile.HasErrors),
+			codeFile.ErrorMessage,
+		}
+	}
+	err := m.persMgr.WriteCSVStream(azicliwkspers.PermGuardDir, path, nil, codeFiles, rowFunc)
+	if err != nil {
+		fmt.Println("Errore durante la creazione del file CSV:", err)
+	} else {
+		fmt.Println("CSV generato con successo.")
+	}
+	return nil
 }
