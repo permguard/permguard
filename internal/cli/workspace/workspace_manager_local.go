@@ -21,28 +21,9 @@ import (
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
+	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
-
-type codeFile struct {
-	Path         string
-	OID          string
-	OType        string
-	OName        string
-	Mode         uint32
-	Section      int
-	HasErrors    bool
-	ErrorMessage string
-}
-
-// convertCodeFilesToPath converts code files to paths.
-func convertCodeFilesToPath(files []codeFile) []string {
-	paths := make([]string, len(files))
-	for i, file := range files {
-		paths[i] = file.Path
-	}
-	return paths
-}
 
 // cleanupStagingArea cleans up the staging area.
 func (m *WorkspaceManager) cleanupStagingArea() (bool, error) {
@@ -50,27 +31,27 @@ func (m *WorkspaceManager) cleanupStagingArea() (bool, error) {
 }
 
 // scanSourceCodeFiles scans the source code files.
-func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastraction) ([]codeFile, []codeFile, error) {
+func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastraction) ([]azicliwkscosp.CodeFile, []azicliwkscosp.CodeFile, error) {
 	exts := absLang.GetFileExtensions()
 	ignorePatterns := []string{hiddenIgnoreFile, schemaYAMLFile, schemaYMLFile, hiddenDir, gitDir, gitIgnoreFile}
 	files, ignoredFiles, err := m.persMgr.ScanAndFilterFiles(azicliwkspers.WorkspaceDir, exts, ignorePatterns, hiddenIgnoreFile)
 	if err != nil {
 		return nil, nil, err
 	}
-	codeFiles := make([]codeFile, len(files))
+	codeFiles := make([]azicliwkscosp.CodeFile, len(files))
 	for i, file := range files {
-		codeFiles[i] = codeFile{Path: file}
+		codeFiles[i] = azicliwkscosp.CodeFile{Path: file}
 	}
-	ignoredCodeFiles := make([]codeFile, len(ignoredFiles))
+	ignoredCodeFiles := make([]azicliwkscosp.CodeFile, len(ignoredFiles))
 	for i, file := range ignoredFiles {
-		ignoredCodeFiles[i] = codeFile{Path: file}
+		ignoredCodeFiles[i] = azicliwkscosp.CodeFile{Path: file}
 	}
 	return codeFiles, ignoredCodeFiles, nil
 }
 
 // blobifyLocal scans source files and creates a blob for each object.
-func (m *WorkspaceManager) blobifyLocal(codeFiles []codeFile, absLang azlang.LanguageAbastraction) (string, []codeFile, error) {
-	blbCodeFiles := []codeFile{}
+func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absLang azlang.LanguageAbastraction) (string, []azicliwkscosp.CodeFile, error) {
+	blbCodeFiles := []azicliwkscosp.CodeFile{}
 	for _, file := range codeFiles {
 		wkdir := m.ctx.GetWorkDir()
 		path := file.Path
@@ -84,7 +65,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []codeFile, absLang azlang.Lan
 		}
 		secObjs := multiSecObj.GetSectionObjects()
 		for _, secObj := range secObjs {
-			codeFile := &codeFile{
+			codeFile := &azicliwkscosp.CodeFile{
 				Path:      strings.TrimPrefix(path, wkdir),
 				Section:   secObj.GetNumberOfSection(),
 				Mode:      mode,
@@ -113,6 +94,9 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []codeFile, absLang azlang.Lan
 	m.cospMgr.SaveObject(treeObj.GetOID(), treeObj.GetContent(), true)
 	treeID := treeObj.GetOID()
 	if err := m.cospMgr.SaveCodeStagingConfig(treeID, absLang.GetLanguageName()); err != nil {
+		return "", nil, err
+	}
+	if err = m.cospMgr.SaveCodeMap(blbCodeFiles); err != nil {
 		return "", nil, err
 	}
 	return treeID, blbCodeFiles, nil

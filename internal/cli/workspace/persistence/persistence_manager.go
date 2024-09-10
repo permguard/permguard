@@ -106,6 +106,12 @@ func (p *PersistenceManager) WriteBinaryFile(relative RelativeDir, name string, 
 	return azfiles.WriteFile(name, data, perm)
 }
 
+// WriteCSVStream writes a CSV stream.
+func (p *PersistenceManager) WriteCSVStream(relative RelativeDir, name string, header []string, records interface{}, rowFunc func(interface{}) []string) error {
+	name = p.GetRelativeDir(relative, name)
+	return azfiles.WriteCSVStream(name, header, records, rowFunc)
+}
+
 // AppendToFile appends to a file.
 func (p *PersistenceManager) AppendToFile(relative RelativeDir, name string, data []byte) (bool, error) {
 	name = p.GetRelativeDir(relative, name)

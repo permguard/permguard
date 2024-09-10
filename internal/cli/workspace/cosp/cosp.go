@@ -21,3 +21,24 @@ type CodeStagingConfig struct {
 	TreeID	string  `toml:"treeid"`
 	Language string `toml:"language"`
 }
+
+// CodeFile represents the code file.
+type CodeFile struct {
+	Path         string `json:"path"`
+	OID          string `json:"oid"`
+	OType        string `json:"otype"`
+	OName        string `json:"oname"`
+	Mode         uint32 `json:"mode"`
+	Section      int    `json:"section"`
+	HasErrors    bool   `json:"has_errors"`
+	ErrorMessage string `json:"error_message"`
+}
+
+// ConvertCodeFilesToPath converts code files to paths.
+func ConvertCodeFilesToPath(files []CodeFile) []string {
+	paths := make([]string, len(files))
+	for i, file := range files {
+		paths[i] = file.Path
+	}
+	return paths
+}
