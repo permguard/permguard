@@ -103,7 +103,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 }
 
 // buildLocalState builds the local state.
-func (m *WorkspaceManager) buildLocalState(absLang azlang.LanguageAbastraction, commit string) error {
+func (m *WorkspaceManager) buildLocalState(treeID string, codeFiles []azicliwkscosp.CodeFile, absLang azlang.LanguageAbastraction) error {
 	// TODO: Implement this method
 	return nil
 }
