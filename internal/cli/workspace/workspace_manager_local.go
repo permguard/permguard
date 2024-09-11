@@ -17,11 +17,13 @@
 package workspace
 
 import (
+	"fmt"
 	"strings"
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
-	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
+	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
@@ -85,11 +87,13 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	}
 	tree := azlangobjs.NewTree()
 	for _, file := range blbCodeFiles {
-		tree.AddEntry(azlangobjs.NewTreeEntry(file.Mode, file.OType, file.OID, file.OName, file.Path))
+		if err := tree.AddEntry(azlangobjs.NewTreeEntry(file.Mode, file.OType, file.OID, file.OName, file.Path)); err != nil {
+			return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguangeSemantic, fmt.Sprintf("cli: tree entry (odi: %s oname: %s) cannot be created", file.OID, file.OName))
+		}
 	}
 	treeObj, err := absLang.CreateTreeObject(tree)
 	if err != nil {
-		return "", nil, err
+		return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageGeneric, "cli: tree object cannot be created")
 	}
 	m.cospMgr.SaveObject(treeObj.GetOID(), treeObj.GetContent(), true)
 	treeID := treeObj.GetOID()

@@ -86,6 +86,7 @@ seo:
 | 06000      | language: generic error                          |
 | 06100      | language: generic file error                     |
 | 06200      | language: generic syntax error                   |
+| 06300      | language: generic semantic error                 |
 
 ## 08xxx: Command Line Interface Errors
 
