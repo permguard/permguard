@@ -84,9 +84,27 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "starting blobification process...", nil)
 	}
-	treeID, _, err := m.blobifyLocal(selectedFiles, absLang)
+	treeID, codeFiles, err := m.blobifyLocal(selectedFiles, absLang)
 	if err != nil {
 		return nil, err
+	}
+	for _, codeFile := range codeFiles {
+		hasError := false
+		errorsMap := map[string]any{}
+		if codeFile.HasErrors {
+			if m.ctx.IsVerboseTerminalOutput() {
+				out(output, "refresh", nil, fmt.Errorf("cli: error in file %s: %s", codeFile.Path, codeFile.ErrorMessage))
+			}
+			if m.ctx.IsVerboseJSONOutput() {
+				errorsMap[codeFile.Path] = codeFile.ErrorMessage
+			}
+		}
+		if m.ctx.IsVerboseJSONOutput() {
+			output["invalid_files"] = errorsMap
+		}
+		if hasError {
+			return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, "cli: the source code requires validation and corrections")
+		}
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "blobification process completed successfully", nil)
