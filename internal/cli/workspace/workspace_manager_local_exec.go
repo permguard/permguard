@@ -92,6 +92,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 		hasError := false
 		errorsMap := map[string]any{}
 		if codeFile.HasErrors {
+			hasError = true
 			if m.ctx.IsVerboseTerminalOutput() {
 				out(output, "refresh", nil, fmt.Errorf("cli: error in file %s: %s", codeFile.Path, codeFile.ErrorMessage))
 			}
@@ -103,7 +104,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 			output["invalid_files"] = errorsMap
 		}
 		if hasError {
-			return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, "cli: the source code requires validation and corrections")
+			return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: the source code requires validation and corrections")
 		}
 	}
 	if m.ctx.IsVerboseTerminalOutput() {

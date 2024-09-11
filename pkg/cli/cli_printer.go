@@ -32,7 +32,7 @@ import (
 
 const (
 	// errorMessageCodeMsg is the error message code message.
-	errorMessageCodeMsg = "error code: %s, message: %s"
+	errorMessageCodeMsg = "code: %s, message: %s"
 )
 
 const (
