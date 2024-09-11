@@ -127,7 +127,7 @@ func (m *WorkspaceManager) isWorkspaceDir() bool {
 // tryLock tries to lock the workspace.
 func (m *WorkspaceManager) tryLock() (*flock.Flock, error) {
 	lockFile := m.getLockFile()
-	m.persMgr.CreateFileIfNotExists(azicliwkspers.PermGuardDir, lockFile)
+	m.persMgr.CreateFileIfNotExists(azicliwkspers.WorkDir, lockFile)
 	fileLock := flock.New(lockFile)
 	lock, err := fileLock.TryLock()
 	if !lock || err != nil {
