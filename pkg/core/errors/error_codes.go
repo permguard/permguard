@@ -55,6 +55,7 @@ var errorCodes = map[string]string{
 	"06000": "language: generic error",
 	"06100": "language: generic file error",
 	"06200": "language: generic syntax error",
+	"06300": "language: generic semantic error",
 
 	// 08xxx: Command Line Interface Errors
 	"08000": "cli: generic error",
@@ -114,9 +115,11 @@ var (
 	ErrStorageConstraintUnique     error = NewSystemError("05112")
 	ErrStorageNotFound             error = NewSystemError("05120")
 	// 06xxx language.
-	ErrLanguageGeneric	error = NewSystemError("06000")
-	ErrLanguageFile		error = NewSystemError("06100")
-	ErrLanguageSyntax	error = NewSystemError("06200")
+	ErrLanguageGeneric		error = NewSystemError("06000")
+	ErrLanguageFile			error = NewSystemError("06100")
+	ErrLanguageSyntax		error = NewSystemError("06200")
+	ErrLanguangeSemantic	error = NewSystemError("06300")
+
 	// 08xxx: Command Line Interface Errors
 	ErrCliGeneric            error = NewSystemError("08000")
 	ErrCliArguments          error = NewSystemError("08001")
