@@ -51,7 +51,7 @@ Available Commands:
   completion  Generate the autocompletion script for the specified shell
   config      Configure the command line settings
   destroy     Destroy locally managed objects from the remote repo
-  diff        Compare the local state with the remote state to identify differences
+  objects     Manage the object store
   help        Help about any command
   init        Initialize a new repo in the working directory
   plan        Generate a plan of changes to apply to the remote repo based on the differences between the local and remote states

@@ -28,8 +28,8 @@ import (
 )
 
 const (
-	// commandNameForWorkspacesDiff is the command name for workspaces diff.
-	commandNameForWorkspacesDiff = "workspaces.diff"
+	// commandNameForWorkspacesDiff is the command name for workspaces objects.
+	commandNameForWorkspacesDiff = "workspaces.objects"
 )
 
 // runECommandForDiffWorkspace runs the command for creating an workspace.
@@ -40,21 +40,21 @@ func runECommandForDiffWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}
-	output["workspace"] = "diff"
+	output["workspace"] = "objects"
 	printer.Print(output)
 	return nil
 }
 
-// CreateCommandForWorkspaceDiff creates a command for diffializing a working directory.
-func CreateCommandForWorkspaceDiff(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+// CreateCommandForWorkspaceObjects creates a command for diffializing a working directory.
+func CreateCommandForWorkspaceObjects(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "diff",
-		Short: "Compare the local state with the remote state to identify differences",
-		Long: aziclicommon.BuildCliLongTemplate(`This command compares the local state with the remote state to identify differences.
+		Use:   "objects",
+		Short: "Manage the object store",
+		Long: aziclicommon.BuildCliLongTemplate(`This command manages the object store.
 
 Examples:
-  # compare the local state with the remote state to identify differences
-  permguard diff`),
+  # manage the object store
+  permguard objects`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDiffWorkspace(deps, cmd, v)
 		},
