@@ -25,7 +25,7 @@ To enhance coding efficiency and comfort, PermGuard provides several key command
 
 - `validate`: Validates the configurations in the working directory
 - `pull`: Fetches the remote changes and build a remote state
-- `diff`: Calculate and output the differences between the working directory and the remote server
+- `object`: Managed the object model.
 
 ## Validate
 
@@ -43,10 +43,10 @@ The `pull` command fetches the state from the remote PermGuard server and stores
  permguard pull
 ```
 
-## Diff
+## Objects
 
-The `diff` command first performs a `fetch` to retrieve the latest state from the remote server, and then calculates the differences between the working directory and the remote server.
+The `objects` command manages the object store, allowing users to display the contents of an object and calculate differences (diffs) between versions.
 
 ```bash
- permguard diff
+ permguard objects
 ```
