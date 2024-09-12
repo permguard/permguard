@@ -29,3 +29,5 @@ All you have to do is describe your schema's `resources` within your account and
 To enforce the access control process, the application implements the Policy Enforcement Point using the available SDKs
 
 ![alt text](assets/vscode/vscode-screenshot.png)
+
+Created by [Nitro Agility](https://www.nitroagility.com/).
