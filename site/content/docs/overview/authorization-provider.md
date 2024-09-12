@@ -41,6 +41,10 @@ Since PermGuard does not include an authentication layer, it is crucial to integ
 
 Additionally, the application provides the capability to create and manage users on-the-fly through the available APIs and SDKs. It also supports the creation and management of roles.
 
+## Policy as a Code
+
+PermGuard adopts a `Policy as Code` approach, enabling users to define and manage policies through code. This method ensures that all configurations are versioned, reviewed, and tested, while also centralizing policy management externally for enhanced security, compliance, and scalability.
+
 ## Integration
 
 PermGuard integrates seamlessly with any application, whether deployed on **servers**, **containers**, or in **serverless** environments. Integration is facilitated through gRPC requests to the `Policy Decision Point`, and SDKs are available for various programming languages to ensure smooth implementation.
