@@ -90,7 +90,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 		if file.HasErrors {
 			hasErrors = true
 		}
-		if err := tree.AddEntry(azlangobjs.NewTreeEntry(file.Mode, file.OType, file.OID, file.OName, file.Path)); err != nil {
+		if err := tree.AddEntry(azlangobjs.NewTreeEntry(file.OType, file.OID, file.OName)); err != nil {
 			return "", blbCodeFiles, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree item cannot be added to the tree because of errors in the code files")
 		}
 	}
