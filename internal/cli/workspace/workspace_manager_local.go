@@ -84,6 +84,9 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 			blbCodeFiles = append(blbCodeFiles, *codeFile)
 		}
 	}
+	if err := m.cospMgr.SaveCodeMap(blbCodeFiles); err != nil {
+		return "", blbCodeFiles, err
+	}
 	tree := azlangobjs.NewTree()
 	hasErrors := false
 	for _, file := range blbCodeFiles {
@@ -106,22 +109,5 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	if err := m.cospMgr.SaveCodeStagingConfig(treeID, absLang.GetLanguageName()); err != nil {
 		return treeID, blbCodeFiles, err
 	}
-	if err = m.cospMgr.SaveCodeMap(blbCodeFiles); err != nil {
-		return treeID, blbCodeFiles, err
-	}
 	return treeID, blbCodeFiles, nil
-}
-
-// buildLocalState builds the local state.
-func (m *WorkspaceManager) buildLocalState(treeID string, absLang azlang.LanguageAbastraction) error {
-	obj, err := m.cospMgr.ReadObject(treeID, true)
-	if err != nil {
-		return err
-	}
-	tree, err := absLang.GetTreeeObject(obj)
-	if err != nil {
-		return err
-	}
-	print(tree)
-	return nil
 }

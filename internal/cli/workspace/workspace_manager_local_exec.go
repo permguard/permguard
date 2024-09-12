@@ -126,16 +126,6 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 		out(nil, "refresh", "blobification process completed successfully", nil)
 		out(nil, "refresh", fmt.Sprintf("tree %s created", treeID), nil)
 	}
-	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "refresh", "initializing local state build...", nil)
-	}
-	err = m.buildLocalState(treeID, absLang)
-	if err != nil {
-		return output, err
-	}
-	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "refresh", "local state build completed", nil)
-	}
 	return output, nil
 }
 
