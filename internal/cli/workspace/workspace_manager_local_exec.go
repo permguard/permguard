@@ -47,9 +47,12 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
+	returnRefreshError := func (err error) (error) {
+		return azerrors.WrapMessageError(err, nil, "refresh")
+	}
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return nil, err
+		return nil, returnRefreshError(err)
 	}
 	defer fileLock.Unlock()
 
@@ -58,7 +61,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	}
 	cleaned, err := m.cleanupStagingArea()
 	if err != nil {
-		return nil, err
+		return nil, returnRefreshError(err)
 	}
 	if !cleaned && m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "the staging area was already clean", nil)
@@ -66,18 +69,18 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 
 	lang, err := m.cfgMgr.GetLanguage()
 	if err != nil {
-		return nil, err
+		return nil, returnRefreshError(err)
 	}
 	absLang, err := m.langFct.CreateLanguageAbastraction(lang)
 	if err != nil {
-		return nil, err
+		return nil, returnRefreshError(err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "scanning source files...", nil)
 	}
 	selectedFiles, ignoredFiles, err := m.scanSourceCodeFiles(absLang)
 	if err != nil {
-		return nil, err
+		return nil, returnRefreshError(err)
 	}
 	var output map[string]any
 	if m.ctx.IsVerboseTerminalOutput() {
@@ -106,8 +109,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	treeID, codeFiles, err := m.blobifyLocal(selectedFiles, absLang)
 	if err != nil {
 		output = buildOutputForCodeFiles(codeFiles, m, out, output)
-		newerr :=  azerrors.WrapMessageError(err, nil, "refresh")
-		return output,newerr
+		return output, returnRefreshError(err)
 	}
 	output = buildOutputForCodeFiles(codeFiles, m, out, output)
 	if m.ctx.IsVerboseTerminalOutput() {
@@ -119,7 +121,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	}
 	err = m.buildLocalState(treeID, absLang)
 	if err != nil {
-		return output, err
+		return output, returnRefreshError(err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "local state build completed", nil)
@@ -132,10 +134,12 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
-
+	returnValidateError := func (err error) (error) {
+		return azerrors.WrapMessageError(err, nil, "validate")
+	}
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return nil, err
+		return nil, returnValidateError(err)
 	}
 	defer fileLock.Unlock()
 
@@ -144,15 +148,17 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	return nil, nil
 }
 
-// ExecDiff compares the local state with the remote state to identify differences.
-func (m *WorkspaceManager) ExecDiff(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+// ExecObjects manage the object store.
+func (m *WorkspaceManager) ExecObjects(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
-
+	returnObjectsError := func (err error) (error) {
+		return azerrors.WrapMessageError(err, nil, "objects")
+	}
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return nil, err
+		return nil, returnObjectsError(err)
 	}
 	defer fileLock.Unlock()
 
