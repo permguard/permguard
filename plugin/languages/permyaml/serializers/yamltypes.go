@@ -16,6 +16,11 @@
 
 package serializers
 
+const (
+	// PermYAMLLangPackage is the language package name.
+	PermYAMLLangPackage = "permyaml"
+)
+
 // Permission is the access control permission.
 type Permission struct {
 	Name string `yaml:"name"`

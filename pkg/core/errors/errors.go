@@ -95,6 +95,25 @@ func WrapSystemError(err error, errMessage string) error {
 	}
 }
 
+// WrapMessageError wrap a message error.
+func WrapMessageError(sourceErr error, targetErr error, errorDomain string) error {
+	errMessage := sourceErr.Error()
+	parts := strings.SplitN(errMessage, ":", 2)
+	if len(parts) == 2 {
+		errMessage = parts[1]
+	}
+	errMessage = fmt.Sprintf("%s: %s", errorDomain, errMessage)
+	sysErr := ConvertToSystemError(targetErr)
+	if sysErr == nil || len(sysErr.errCode) != 5 {
+		return NewSystemErrorWithMessage("", errMessage)
+	}
+	return SystemError{
+		error:      fmt.Errorf(errorMessageCodeMsg, sysErr.errCode, errMessage),
+		errCode:    sysErr.errCode,
+		errMessage: errMessage,
+	}
+}
+
 // IsSystemError checks if the error is a SystemError.
 func IsSystemError(err error) bool {
 	var sysErr = &SystemError{}
