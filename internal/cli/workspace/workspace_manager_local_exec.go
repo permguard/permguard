@@ -86,7 +86,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	}
 	treeID, codeFiles, err := m.blobifyLocal(selectedFiles, absLang)
 	if err != nil {
-		return nil, err
+		return output, err
 	}
 	for _, codeFile := range codeFiles {
 		hasError := false
@@ -94,7 +94,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 		if codeFile.HasErrors {
 			hasError = true
 			if m.ctx.IsVerboseTerminalOutput() {
-				out(output, "refresh", nil, fmt.Errorf("cli: error in file %s: %s", codeFile.Path, codeFile.ErrorMessage))
+				 out(output, "refresh", nil, fmt.Errorf("cli: error in file %s: %s", codeFile.Path, codeFile.ErrorMessage))
 			}
 			if m.ctx.IsVerboseJSONOutput() {
 				errorsMap[codeFile.Path] = codeFile.ErrorMessage
@@ -104,7 +104,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 			output["invalid_files"] = errorsMap
 		}
 		if hasError {
-			return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: the source code requires validation and corrections")
+			return output, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: the source code requires validation and corrections")
 		}
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
@@ -116,7 +116,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	}
 	err = m.buildLocalState(treeID, absLang)
 	if err != nil {
-		return nil, err
+		return output, err
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "local state build completed", nil)

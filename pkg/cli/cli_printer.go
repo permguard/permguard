@@ -27,6 +27,7 @@ import (
 	"github.com/fatih/color"
 	"google.golang.org/grpc/status"
 
+	azcopier "github.com/permguard/permguard-core/pkg/extensions/copier"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -48,6 +49,8 @@ type CliPrinter interface {
 	Print(output map[string]any)
 	// Error prints the error.
 	Error(err error)
+	// ErrorWithOutput prints the error with the output.
+	ErrorWithOutput(output map[string]any, err error)
 }
 
 // CliPrinterTerminal is the cli printer.
@@ -220,10 +223,19 @@ func (cp *CliPrinterTerminal) createOutputWithError(errInputMsg string) map[stri
 
 // Error prints the output.
 func (cp *CliPrinterTerminal) Error(err error) {
+	var output map[string]any
+	cp.ErrorWithOutput(output, err)
+}
+
+// ErrorWithOutput prints the error with the output.
+func (cp *CliPrinterTerminal) ErrorWithOutput(output map[string]any, err error) {
 	if _, ok := err.(*net.OpError); ok {
 		err = fmt.Errorf("server cannot be reached")
 	}
-	var output map[string]any
+	if output == nil {
+		output = make(map[string]any)
+	}
+	var errorOutput map[string]any
 	if err != nil {
 		var errInputMsg string
 		if stsErr, ok := status.FromError(err); ok {
@@ -233,10 +245,13 @@ func (cp *CliPrinterTerminal) Error(err error) {
 		}
 		code, msg, err := cp.extractCodeAndMessage(errInputMsg)
 		if err != nil {
-			output = cp.createOutputWithError(errInputMsg)
+			errorOutput = cp.createOutputWithError(errInputMsg)
 		} else {
-			output = cp.createOutputWithputError(code, msg)
+			errorOutput = cp.createOutputWithputError(code, msg)
 		}
+	}
+	if len(errorOutput) > 0 {
+		output = azcopier.MergeMaps(output, errorOutput)
 	}
 	switch cp.output {
 	case OutputJSON:
