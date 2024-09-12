@@ -36,6 +36,11 @@ func (m *PrinterMock) Error(err error) {
 	m.Called(err)
 }
 
+// ErrorWithOutput prints the error with the output.
+func (m *PrinterMock) ErrorWithOutput(output map[string]any, err error) {
+	m.Called(output, err)
+}
+
 // NewPrinterMock creates a new PrinterMock.
 func NewPrinterMock() *PrinterMock {
 	return &PrinterMock{}

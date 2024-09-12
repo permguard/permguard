@@ -52,7 +52,11 @@ func runECommandForRefreshWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 	}
 	output, err := wksMgr.ExecRefresh(outFunc(ctx, printer))
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseJSONOutput() {
+			printer.ErrorWithOutput(output, err)
+		} else {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
