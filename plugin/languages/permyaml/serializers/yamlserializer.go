@@ -25,6 +25,11 @@ import (
 	aztypes "github.com/permguard/permguard-abs-language/pkg/permcode/types"
 )
 
+const(
+	errFileMessage = "permyaml: invalid permyaml file. please check the syntax and ensure it adheres to the permguard specification."
+	errSyntaxMessage = "permyaml: invalid permyaml syntax. please check the syntax and ensure it adheres to the permguard specification."
+)
+
 // YamlSerializer is the YAML serializer.
 type YamlSerializer struct {
 }
@@ -59,7 +64,7 @@ func (s *YamlSerializer) UnmarshalYaml(data []byte) (any, error) {
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	err := decoder.Decode(&tempMap)
 	if err != nil {
-		return nil, err
+		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, errFileMessage)
 	}
 	_, hasPermit := tempMap["permit"]
 	_, hasForbid := tempMap["forbid"]
@@ -69,18 +74,18 @@ func (s *YamlSerializer) UnmarshalYaml(data []byte) (any, error) {
 		var perm Permission
 		err = yaml.Unmarshal([]byte(data), &perm)
 		if err != nil {
-			return nil, err
+			return nil, azerrors.WrapSystemError(azerrors.ErrLanguageSyntax, errSyntaxMessage)
 		}
 		return &perm, nil
 	} else if hasActions || hasResource {
 		var policy Policy
 		err = yaml.Unmarshal([]byte(data), &policy)
 		if err != nil {
-			return nil, err
+			return nil, azerrors.WrapSystemError(azerrors.ErrLanguageSyntax, errSyntaxMessage)
 		}
 		return &policy, nil
 	}
-	return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid yaml document")
+	return nil, azerrors.WrapSystemError(azerrors.ErrLanguageSyntax, errSyntaxMessage)
 }
 
 // UnmarshalLangType unmarshals a language type.
@@ -116,5 +121,5 @@ func (s *YamlSerializer) UnmarshalLangType(data []byte) (string, any, error) {
 		}
 		return langPolicy.Name, langPolicy, nil
 	}
-	return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid yaml document")
+	return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, errFileMessage)
 }
