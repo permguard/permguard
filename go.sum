@@ -97,6 +97,10 @@ github.com/permguard/permguard-abs-language v0.0.0-20240912144114-ab8af05cae53 h
 github.com/permguard/permguard-abs-language v0.0.0-20240912144114-ab8af05cae53/go.mod h1:z7g1f682ERsQ63cJ2kuld4uT9R/JcMtioMYiYm0sWQM=
 github.com/permguard/permguard-abs-language v0.0.0-20240912195940-894f627079a2 h1:U0h1rITZqNKqpABSJ+rBTTCJDwoCVd/9nCMemoNpu7Q=
 github.com/permguard/permguard-abs-language v0.0.0-20240912195940-894f627079a2/go.mod h1:z7g1f682ERsQ63cJ2kuld4uT9R/JcMtioMYiYm0sWQM=
+github.com/permguard/permguard-abs-language v0.0.0-20240912200603-8e0ddd1ac4dd h1:0VVaiQoAyjwr6xSkClgzwiGyCPvfCPX6STqPMiezUyQ=
+github.com/permguard/permguard-abs-language v0.0.0-20240912200603-8e0ddd1ac4dd/go.mod h1:z7g1f682ERsQ63cJ2kuld4uT9R/JcMtioMYiYm0sWQM=
+github.com/permguard/permguard-abs-language v0.0.0-20240912200656-cc2754c50e3c h1:cgzEm8Oi8sD6vRS7dGt1zbbyLHY85Kdln2OKGQVatdY=
+github.com/permguard/permguard-abs-language v0.0.0-20240912200656-cc2754c50e3c/go.mod h1:z7g1f682ERsQ63cJ2kuld4uT9R/JcMtioMYiYm0sWQM=
 github.com/permguard/permguard-core v0.0.0-20240910081300-910050e63ae2 h1:IQDFheZUO6a/Bkwp/UFhctxQRV/1P5OdTfkL9OJqYeA=
 github.com/permguard/permguard-core v0.0.0-20240910081300-910050e63ae2/go.mod h1:pkHKLbHxsR496FUZaFPxyXmSAivQdhSl42F0NixZFeY=
 github.com/permguard/permguard-core v0.0.0-20240912071721-a9a1efaa1e81 h1:Bhp2gr2+HzYGhjIsJP9Iv6SXMTNFYtoQ/Rq01FIJqr8=
