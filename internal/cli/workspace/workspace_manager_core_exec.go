@@ -33,19 +33,15 @@ func (m *WorkspaceManager) printFiles(action string, files []string, out func(ma
 
 // ExecInitWorkspace initializes the workspace.
 func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	returnError := func (err error) (error) {
-		return azerrors.WrapMessageError(err, nil, "init")
-	}
-
 	homeDir := m.getHomeHiddenDir()
 	res, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.WorkDir, homeDir)
 	if err != nil {
-		return nil, returnError(err)
+		return nil, err
 	}
 
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return nil, returnError(err)
+		return nil, err
 	}
 	defer fileLock.Unlock()
 
@@ -62,7 +58,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 	for _, initializer := range initializers {
 		err := initializer(language)
 		if err != nil {
-			return nil, returnError(err)
+			return nil, err
 		}
 	}
 	var msg string
@@ -87,10 +83,6 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 
 // ExecAddRemote adds a remote.
 func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort int, papPort int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	returnError := func (err error) (error) {
-		return azerrors.WrapMessageError(err, nil, "add")
-	}
-
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
@@ -106,81 +98,69 @@ func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort i
 
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return nil, returnError(err)
+		return nil, err
 	}
 	defer fileLock.Unlock()
 
 	output, err := m.cfgMgr.ExecAddRemote(remote, server, aapPort, papPort, nil, out)
-	return output, returnError(err)
+	return output, err
 }
 
 // ExecRemoveRemote removes a remote.
 func (m *WorkspaceManager) ExecRemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	returnError := func (err error) (error) {
-		return azerrors.WrapMessageError(err, nil, "add")
-	}
-
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
 
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return nil, returnError(err)
+		return nil, err
 	}
 	defer fileLock.Unlock()
 
 	headInfo, err := m.rfsMgr.GetCurrentHead()
 	if err != nil {
-		return nil, returnError(err)
+		return nil, err
 	}
 	if headInfo.Remote == remote {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, fmt.Sprintf("cli: cannot remove the remote used by the currently checked out account %s", remote))
 	}
 	output, err := m.cfgMgr.ExecRemoveRemote(remote, nil, out)
-	return output, returnError(err)
+	return output, err
 }
 
 // ExecListRemotes lists the remotes.
 func (m *WorkspaceManager) ExecListRemotes(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	returnError := func (err error) (error) {
-		return azerrors.WrapMessageError(err, nil, "list")
-	}
-
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
 
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return nil, returnError(err)
+		return nil, err
 	}
 	defer fileLock.Unlock()
 
 	output, err := m.cfgMgr.ExecListRemotes(nil, out)
-	return output, returnError(err)
+	return output, err
 }
 
 // ExecListRepos lists the repos.
 func (m *WorkspaceManager) ExecListRepos(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	returnError := func (err error) (error) {
-		return azerrors.WrapMessageError(err, nil, "list")
-	}
-
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
 
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return nil, returnError(err)
+		return nil, err
 	}
 	defer fileLock.Unlock()
 
 	refID, err := m.rfsMgr.CalculateCurrentHeadRefID()
 	if err != nil {
-		return nil, returnError(err)
+		return nil, err
 	}
 	output, err := m.cfgMgr.ExecListRepos(refID, nil, out)
-	return output, returnError(err)
+	return output, err
 }
