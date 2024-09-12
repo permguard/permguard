@@ -103,7 +103,7 @@ func (abs *YAMLLanguageAbstraction) CreateMultiSectionsObjects(path string, data
 			multiSecObj.AddSectionObjectWithParams(nil, "", "", i, err)
 			continue
 		}
-		jsonType, err := abs.permCodeMng.MarshalClass(content, true, false, false)
+		jsonType, err := abs.permCodeMng.MarshalClass(content, true, true, true)
 		if err != nil {
 			multiSecObj.AddSectionObjectWithParams(nil, "", "", i, err)
 			continue
