@@ -17,7 +17,6 @@
 package workspace
 
 import (
-	"fmt"
 	"strings"
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
@@ -86,22 +85,29 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 		}
 	}
 	tree := azlangobjs.NewTree()
+	hasErrors := false
 	for _, file := range blbCodeFiles {
-		if err := tree.AddEntry(azlangobjs.NewTreeEntry(file.Mode, file.OType, file.OID, file.OName, file.Path)); err != nil {
-			return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguangeSemantic, fmt.Sprintf("cli: tree entry (odi: %s oname: %s) cannot be created", file.OID, file.OName))
+		if file.HasErrors {
+			hasErrors = true
 		}
+		if err := tree.AddEntry(azlangobjs.NewTreeEntry(file.Mode, file.OType, file.OID, file.OName, file.Path)); err != nil {
+			return "", blbCodeFiles, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree item cannot be added to the tree because of errors in the code files")
+		}
+	}
+	if hasErrors {
+		return "", blbCodeFiles, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: blobification process failed because of errors in the code files")
 	}
 	treeObj, err := absLang.CreateTreeObject(tree)
 	if err != nil {
-		return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageGeneric, "cli: tree object cannot be created")
+		return "", blbCodeFiles, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree object cannot be created")
 	}
 	m.cospMgr.SaveObject(treeObj.GetOID(), treeObj.GetContent(), true)
 	treeID := treeObj.GetOID()
 	if err := m.cospMgr.SaveCodeStagingConfig(treeID, absLang.GetLanguageName()); err != nil {
-		return "", nil, err
+		return treeID, blbCodeFiles, err
 	}
 	if err = m.cospMgr.SaveCodeMap(blbCodeFiles); err != nil {
-		return "", nil, err
+		return treeID, blbCodeFiles, err
 	}
 	return treeID, blbCodeFiles, nil
 }

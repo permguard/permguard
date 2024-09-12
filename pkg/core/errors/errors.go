@@ -96,21 +96,33 @@ func WrapSystemError(err error, errMessage string) error {
 }
 
 // WrapMessageError wrap a message error.
-func WrapMessageError(sourceErr error, targetErr error, errorDomain string) error {
-	errMessage := sourceErr.Error()
-	parts := strings.SplitN(errMessage, ":", 2)
-	if len(parts) == 2 {
-		errMessage = parts[1]
+func WrapMessageError(sourceErr error, targetErr error, errDomain string) error {
+	tgtCode := "00000"
+	tgtMessage := sourceErr.Error()
+	if targetErr == nil {
+		sysSourceErr := ConvertToSystemError(sourceErr)
+		if sysSourceErr == nil || len(sysSourceErr.errCode) != 5 {
+			return NewSystemErrorWithMessage("", tgtMessage)
+		}
+		tgtCode = sysSourceErr.errCode
+		tgtMessage = sysSourceErr.errMessage
+	} else {
+		sysTargetErr := ConvertToSystemError(targetErr)
+		if sysTargetErr == nil || len(sysTargetErr.errCode) != 5 {
+			return NewSystemErrorWithMessage("", tgtMessage)
+		}
+		tgtCode = sysTargetErr.errCode
+		tgtMessage = sysTargetErr.errMessage
 	}
-	errMessage = fmt.Sprintf("%s: %s", errorDomain, errMessage)
-	sysErr := ConvertToSystemError(targetErr)
-	if sysErr == nil || len(sysErr.errCode) != 5 {
-		return NewSystemErrorWithMessage("", errMessage)
+	parts := strings.SplitN(tgtMessage, ":", 2)
+	if len(parts) == 2 {
+		msg := strings.TrimLeft(parts[1], " ")
+		tgtMessage = fmt.Sprintf("%s: %s", errDomain, msg)
 	}
 	return SystemError{
-		error:      fmt.Errorf(errorMessageCodeMsg, sysErr.errCode, errMessage),
-		errCode:    sysErr.errCode,
-		errMessage: errMessage,
+		error:      fmt.Errorf(errorMessageCodeMsg, tgtCode, tgtMessage),
+		errCode:    tgtCode,
+		errMessage: tgtMessage,
 	}
 }
 

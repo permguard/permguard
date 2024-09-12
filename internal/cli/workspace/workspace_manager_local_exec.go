@@ -23,6 +23,25 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
+// buildOutputForCodeFiles builds the output for the code files.
+func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceManager, out func( map[string]any,  string,  any,  error) map[string]any, output map[string]any) (map[string]any) {
+	for _, codeFile := range codeFiles {
+		errorsMap := map[string]any{}
+		if codeFile.HasErrors {
+			if m.ctx.IsVerboseTerminalOutput() {
+				out(output, "refresh", nil, fmt.Errorf("refresh: error in file %s: %s", codeFile.Path, codeFile.ErrorMessage))
+			}
+			if m.ctx.IsVerboseJSONOutput() {
+				errorsMap[codeFile.Path] = codeFile.ErrorMessage
+			}
+		}
+		if m.ctx.IsVerboseJSONOutput() {
+			output["invalid_files"] = errorsMap
+		}
+	}
+	return output
+}
+
 // ExecRefresh scans source files in the current directory and synchronizes the local state,
 func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
@@ -86,27 +105,11 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	}
 	treeID, codeFiles, err := m.blobifyLocal(selectedFiles, absLang)
 	if err != nil {
-		return output, err
+		output = buildOutputForCodeFiles(codeFiles, m, out, output)
+		newerr :=  azerrors.WrapMessageError(err, nil, "refresh")
+		return output,newerr
 	}
-	for _, codeFile := range codeFiles {
-		hasError := false
-		errorsMap := map[string]any{}
-		if codeFile.HasErrors {
-			hasError = true
-			if m.ctx.IsVerboseTerminalOutput() {
-				 out(output, "refresh", nil, fmt.Errorf("cli: error in file %s: %s", codeFile.Path, codeFile.ErrorMessage))
-			}
-			if m.ctx.IsVerboseJSONOutput() {
-				errorsMap[codeFile.Path] = codeFile.ErrorMessage
-			}
-		}
-		if m.ctx.IsVerboseJSONOutput() {
-			output["invalid_files"] = errorsMap
-		}
-		if hasError {
-			return output, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: the source code requires validation and corrections")
-		}
-	}
+	output = buildOutputForCodeFiles(codeFiles, m, out, output)
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "blobification process completed successfully", nil)
 		out(nil, "refresh", fmt.Sprintf("tree %s created", treeID), nil)
