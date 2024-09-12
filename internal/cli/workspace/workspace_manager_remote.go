@@ -21,9 +21,3 @@ func (m *WorkspaceManager) fetchRemote() error {
 	// TODO: Implement this method
 	return nil
 }
-
-// Build build the remote state.
-func (m *WorkspaceManager) buildRemoteState() error {
-	// TODO: Implement this method
-	return nil
-}

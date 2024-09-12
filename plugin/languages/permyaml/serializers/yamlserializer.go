@@ -110,7 +110,7 @@ func (s *YamlSerializer) UnmarshalLangType(data []byte) (string, any, error) {
 		langPolicy := &aztypes.Policy{
 			Class: aztypes.Class{
 				SyntaxVersion: aztypes.PolicySyntax,
-				Type:          aztypes.ClassTypeACPermission,
+				Type:          aztypes.ClassTypeACPolicy,
 			},
 			Name:     v.Name,
 			Actions:  make([]aztypes.ARString, 0),
