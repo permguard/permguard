@@ -65,7 +65,11 @@ func runECommandForRemoteAddWorkspace(args []string, deps azcli.CliDependenciesP
 	papPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesRemoteAdd, flagPAP))
 	output, err := wksMgr.ExecAddRemote(remote, server, aapPort, papPort, outFunc(ctx, printer))
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseJSONOutput() {
+			printer.ErrorWithOutput(output, err)
+		} else {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
