@@ -155,6 +155,13 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 		out(nil, "refresh", "blobification process completed successfully", nil)
 		out(nil, "refresh", fmt.Sprintf("tree %s created", treeID), nil)
 	}
+	if m.ctx.IsTerminalOutput() && !internal {
+		out(nil, "", "your workspace has been refreshed\n", nil)
+		out(nil, "", fmt.Sprintf("	- repo: %s", aziclicommon.KeywordText(ref)), nil)
+		out(nil, "", fmt.Sprintf("	- treeid: %s", aziclicommon.IDText(treeID)), nil)
+		out(nil, "", "\n", nil)
+		return output, nil
+	}
 	return output, nil
 }
 
@@ -165,6 +172,11 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	}
 
 	ref, err := m.rfsMgr.GetCurrentHeadRef()
+	if err != nil {
+		return nil, err
+	}
+
+	codeStaging, err := m.cospMgr.ReadCodeStagingConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +198,10 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	}
 
 	if len(invlsCodeFiles) == 0 {
-		out(nil, "", fmt.Sprintf("your workspace %s is valid", aziclicommon.KeywordText(ref)), nil)
+		out(nil, "", "your workspace is valid\n", nil)
+		out(nil, "", fmt.Sprintf("	- repo: %s", aziclicommon.KeywordText(ref)), nil)
+		out(nil, "", fmt.Sprintf("	- treeid: %s", aziclicommon.IDText(codeStaging.TreeID)), nil)
+		out(nil, "", "\n", nil)
 		return output, nil
 	}
 
