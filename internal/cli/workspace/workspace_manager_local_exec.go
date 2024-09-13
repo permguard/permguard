@@ -70,6 +70,11 @@ func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceMan
 
 // ExecRefresh scans source files in the current directory and synchronizes the local state,
 func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	return m.execInternalRefresh(false, out)
+}
+
+// execInternalRefresh scans source files in the current directory and synchronizes the local state,
+func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
@@ -78,6 +83,11 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 		return nil, err
 	}
 	defer fileLock.Unlock()
+
+	ref, err := m.rfsMgr.GetCurrentHeadRef()
+	if err != nil {
+		return nil, err
+	}
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "initiating cleanup of the staging area...", nil)
@@ -118,8 +128,10 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 		}
 		out(nil, "refresh", fmt.Sprintf("scanned %s %s, selected %s %s, and ignored %s %s",
 			aziclicommon.NumberText(totalCount), fileWord(totalCount), aziclicommon.NumberText(selectedCount), fileWord(selectedCount), aziclicommon.NumberText(ignoredCount), fileWord(ignoredCount)), nil)
+		out(nil, "", "\n", nil)
 		m.printFiles("ignored", azicliwkscosp.ConvertCodeFilesToPath(ignoredFiles), out)
 		m.printFiles("selected", azicliwkscosp.ConvertCodeFilesToPath(selectedFiles), out)
+		out(nil, "", "\n", nil)
 	} else if m.ctx.IsJSONOutput() {
 		output = map[string]any{
 			"ignored":  azicliwkscosp.ConvertCodeFilesToPath(ignoredFiles),
@@ -132,6 +144,10 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 	treeID, codeFiles, err := m.blobifyLocal(selectedFiles, absLang)
 	if err != nil {
 		output = buildOutputForCodeFiles(codeFiles, m, out, output)
+		if !internal {
+			out(nil, "", fmt.Sprintf("your workspace %s has errors\n", aziclicommon.KeywordText(ref)), nil)
+			out(nil, "", "please fix the errors to proceed", nil)
+		}
 		return output, err
 	}
 	output = buildOutputForCodeFiles(codeFiles, m, out, output)
@@ -147,7 +163,13 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
-	output, _ := m.ExecRefresh(out)
+
+	ref, err := m.rfsMgr.GetCurrentHeadRef()
+	if err != nil {
+		return nil, err
+	}
+
+	output, _ := m.execInternalRefresh(true, out)
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "validate", "retrieving codemap", nil)
@@ -164,11 +186,11 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	}
 
 	if len(invlsCodeFiles) == 0 {
-		out(nil, "", "your workspace is valid", nil)
+		out(nil, "", fmt.Sprintf("your workspace %s is valid", aziclicommon.KeywordText(ref)), nil)
 		return output, nil
 	}
 
-	out(nil, "", "your workspace has errors in the following files:\n", nil)
+	out(nil, "", fmt.Sprintf("your workspace %s has errors in the following files\n", aziclicommon.KeywordText(ref)), nil)
 	for key := range groupCodeFiles(invlsCodeFiles) {
 		out(nil, "", fmt.Sprintf("	%s", aziclicommon.FileText(key)), nil)
 		for _, codeFile := range groupCodeFiles(invlsCodeFiles)[key] {
@@ -194,6 +216,8 @@ func (m *WorkspaceManager) ExecObjects(out func(map[string]any, string, any, err
 		return nil, err
 	}
 	defer fileLock.Unlock()
+
+	m.cospMgr.CleanStagingArea()
 
 	// TODO: Implement this method
 
