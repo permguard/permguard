@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -63,10 +64,8 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 	cfg.Remotes[remote] = cfgRemote
 	m.saveConfig(true, cfg)
 	if m.ctx.IsTerminalOutput() {
-		if m.ctx.IsVerbose() {
-			output = out(nil, "remote", remote, nil)
-		}
-	} else {
+		output = out(nil, "", fmt.Sprintf("remote %s has been added", aziclicommon.KeywordText(remote)), nil)
+	} else if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{
 			"remote": remote,
@@ -98,10 +97,8 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 	}
 	cfgRemote := cfg.Remotes[remote]
 	if m.ctx.IsTerminalOutput() {
-		if m.ctx.IsVerbose() {
-			output = out(nil, "remote", cfgRemote, nil)
-		}
-	} else {
+		output = out(nil, "", fmt.Sprintf("remote %s has been removed", aziclicommon.KeywordText(remote)), nil)
+	} else if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{
 			"remote": remote,
@@ -131,8 +128,14 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out func(map[stri
 		for cfgRemote := range cfg.Remotes {
 			remotes = append(remotes, cfgRemote)
 		}
-		if len(remotes) > 0 {
-			output = out(nil, "remotes", remotes, nil)
+		if len(remotes) == 0 {
+			out(nil, "", "your workspace doesn't have any remote configured", nil)
+		} else {
+			out(nil, "", "your workspace configured remotes:\n", nil)
+			for _, remote := range remotes {
+				out(nil, "", fmt.Sprintf("	- %s", aziclicommon.KeywordText(remote)), nil)
+			}
+			out(nil, "", "\n", nil)
 		}
 	} else {
 		remotes := []any{}
@@ -176,10 +179,8 @@ func (m *ConfigManager) ExecAddRepo(remote string, accountID int64, repo string,
 		m.saveConfig(true, cfg)
 	}
 	if m.ctx.IsTerminalOutput() {
-		if m.ctx.IsVerbose() {
-			output = out(nil, "repo", refID, nil)
-		}
-	} else {
+		output = out(nil, "", fmt.Sprintf("repo %s has been added", aziclicommon.KeywordText(refID)), nil)
+	} else if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{
 			"remote": remote,
@@ -210,8 +211,14 @@ func (m *ConfigManager) ExecListRepos(activeRepoURI string, output map[string]an
 			}
 			repos = append(repos, cfgRepoTxt)
 		}
-		if len(repos) > 0 {
-			output = out(nil, "repos", repos, nil)
+		if len(repos) == 0 {
+			out(nil, "", "your workspace doesn't have any repo configured", nil)
+		} else {
+			out(nil, "", "your workspace configured repos:\n", nil)
+			for _, repo := range repos {
+				out(nil, "", fmt.Sprintf("	- %s", aziclicommon.KeywordText(repo)), nil)
+			}
+			out(nil, "", "\n", nil)
 		}
 	} else {
 		repos := []any{}
