@@ -38,6 +38,12 @@ func KeywordText(text string) string {
 	return out.Sprintf(text)
 }
 
+// IDText returns the ID string.
+func IDText(text string) string {
+	out := color.New(color.FgCyan)
+	return out.Sprintf(text)
+}
+
 // FileText returns the text string.
 func FileText(text string) string {
 	out := color.New(color.FgYellow)
