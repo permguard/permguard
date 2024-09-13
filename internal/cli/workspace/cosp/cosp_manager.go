@@ -19,13 +19,14 @@ package cosp
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 
 	"github.com/pelletier/go-toml"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -198,3 +199,46 @@ func (m *COSPManager) SaveCodeMap(codeFiles []CodeFile) error {
 	}
 	return nil
 }
+
+// ReadCodeMap reads the code map.
+func (m *COSPManager) ReadCodeMap() ([]CodeFile, error) {
+	path := filepath.Join(m.getCodeStagingDir(), "codemap")
+	var codeFiles []CodeFile
+	recordFunc := func(record []string) error {
+		if len(record) < 8 {
+			return fmt.Errorf("invalid record format")
+		}
+		mode64, err := strconv.ParseUint(record[4], 10, 32)
+		if err != nil {
+			return err
+		}
+		mode := uint32(mode64)
+		section, err := strconv.Atoi(record[5])
+		if err != nil {
+			return err
+		}
+		hasErrors, err := strconv.ParseBool(record[6])
+		if err != nil {
+			return err
+		}
+		codeFile := CodeFile{
+			Path:         record[0],
+			OID:          record[1],
+			OType:        record[2],
+			OName:        record[3],
+			Mode:         mode,
+			Section:      section,
+			HasErrors:    hasErrors,
+			ErrorMessage: record[7],
+		}
+		codeFiles = append(codeFiles, codeFile)
+		return nil
+	}
+	err := m.persMgr.ReadFromCSVStream(azicliwkspers.PermGuardDir, path, nil, recordFunc)
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to read code map")
+	}
+
+	return codeFiles, nil
+}
+

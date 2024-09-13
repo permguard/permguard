@@ -35,9 +35,7 @@ var outFunc = func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter
 		if out == nil {
 			out = make(map[string]any)
 		}
-		if key != "" {
-			out[key] = value
-		}
+		out[key] = value
 		if ctx.IsTerminalOutput() {
 			if err != nil {
 				printer.Error(err)
