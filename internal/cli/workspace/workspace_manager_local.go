@@ -111,3 +111,11 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	}
 	return treeID, blbCodeFiles, nil
 }
+
+func (m *WorkspaceManager) retrieveCodeMap(filesInvalid, filesValid bool) ([]azicliwkscosp.CodeFile, error) {
+	if err := m.cospMgr.SaveCodeStagingConfig(treeID, absLang.GetLanguageName()); err != nil {
+		return treeID, blbCodeFiles, err
+	}
+	codeFiles := []azicliwkscosp.CodeFile{}
+	return codeFiles, nil
+}

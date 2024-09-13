@@ -105,6 +105,8 @@ github.com/permguard/permguard-abs-language v0.0.0-20240912204006-b11efc7aa465 h
 github.com/permguard/permguard-abs-language v0.0.0-20240912204006-b11efc7aa465/go.mod h1:z7g1f682ERsQ63cJ2kuld4uT9R/JcMtioMYiYm0sWQM=
 github.com/permguard/permguard-abs-language v0.0.0-20240912205320-772d4c6fd4ae h1:vyXR3vCHFwg70Es55StMEa87/je/k+xZ3IF/xg7yWck=
 github.com/permguard/permguard-abs-language v0.0.0-20240912205320-772d4c6fd4ae/go.mod h1:z7g1f682ERsQ63cJ2kuld4uT9R/JcMtioMYiYm0sWQM=
+github.com/permguard/permguard-abs-language v0.0.0-20240913102544-57fcd0fba37a h1:JKq1slXakFQM2MRHlBXj3KxthRqC+uelxG0FpRBQyt8=
+github.com/permguard/permguard-abs-language v0.0.0-20240913102544-57fcd0fba37a/go.mod h1:De2uBqoN4j2/poOi/brTHJpn1uLcm1zbNZSEDjnuz28=
 github.com/permguard/permguard-core v0.0.0-20240910081300-910050e63ae2 h1:IQDFheZUO6a/Bkwp/UFhctxQRV/1P5OdTfkL9OJqYeA=
 github.com/permguard/permguard-core v0.0.0-20240910081300-910050e63ae2/go.mod h1:pkHKLbHxsR496FUZaFPxyXmSAivQdhSl42F0NixZFeY=
 github.com/permguard/permguard-core v0.0.0-20240912071721-a9a1efaa1e81 h1:Bhp2gr2+HzYGhjIsJP9Iv6SXMTNFYtoQ/Rq01FIJqr8=
@@ -115,6 +117,8 @@ github.com/permguard/permguard-core v0.0.0-20240912081013-04f539cf1897 h1:IavRCx
 github.com/permguard/permguard-core v0.0.0-20240912081013-04f539cf1897/go.mod h1:pkHKLbHxsR496FUZaFPxyXmSAivQdhSl42F0NixZFeY=
 github.com/permguard/permguard-core v0.0.0-20240912081304-b904dc222072 h1:k/ddcdVqz/+IfyR1FUa9YVUZkegse+APgnDW24iSXfY=
 github.com/permguard/permguard-core v0.0.0-20240912081304-b904dc222072/go.mod h1:pkHKLbHxsR496FUZaFPxyXmSAivQdhSl42F0NixZFeY=
+github.com/permguard/permguard-core v0.0.0-20240913102517-fd858a29671f h1:KjToxCyATcOAhS2e8zTGXGJaZcpPrwa5+14LHiK9Vwg=
+github.com/permguard/permguard-core v0.0.0-20240913102517-fd858a29671f/go.mod h1:pkHKLbHxsR496FUZaFPxyXmSAivQdhSl42F0NixZFeY=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pressly/goose/v3 v3.21.1 h1:5SSAKKWej8LVVzNLuT6KIvP1eFDuPvxa+B6H0w78buQ=
