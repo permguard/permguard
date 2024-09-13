@@ -50,7 +50,9 @@ func runECommandForDeleteAccount(deps azcli.CliDependenciesProvider, cmd *cobra.
 	accountID := v.GetInt64(azoptions.FlagName(commandNameForAccountsDelete, aziclicommon.FlagCommonAccountID))
 	account, err := client.DeleteAccount(accountID)
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseTerminalOutput() {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}

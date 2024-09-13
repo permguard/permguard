@@ -68,7 +68,9 @@ func runECommandForUpsertIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 		identity, err = client.UpdateIdentity(identity)
 	}
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseTerminalOutput() {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}

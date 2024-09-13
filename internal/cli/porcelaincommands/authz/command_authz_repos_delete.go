@@ -51,7 +51,9 @@ func runECommandForDeleteRepository(deps azcli.CliDependenciesProvider, cmd *cob
 	repositoryID := v.GetString(azoptions.FlagName(commandNameForRepositoriesDelete, flagRepositoryID))
 	repository, err := client.DeleteRepository(accountID, repositoryID)
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseTerminalOutput() {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}

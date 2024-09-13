@@ -51,7 +51,9 @@ func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	tenantID := v.GetString(azoptions.FlagName(commandNameForTenantsDelete, flagTenantID))
 	tenant, err := client.DeleteTenant(accountID, tenantID)
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseTerminalOutput() {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}

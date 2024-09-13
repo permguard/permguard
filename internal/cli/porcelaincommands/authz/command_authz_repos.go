@@ -63,7 +63,9 @@ func runECommandForUpsertRepository(deps azcli.CliDependenciesProvider, cmd *cob
 		repository, err = client.UpdateRepository(repository)
 	}
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseTerminalOutput() {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}

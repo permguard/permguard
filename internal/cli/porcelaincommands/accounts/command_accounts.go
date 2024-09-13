@@ -59,7 +59,9 @@ func runECommandForUpsertAccount(deps azcli.CliDependenciesProvider, cmd *cobra.
 		account, err = client.UpdateAccount(inputAccount)
 	}
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseTerminalOutput() {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}

@@ -55,7 +55,9 @@ func runECommandForListIdentities(deps azcli.CliDependenciesProvider, cmd *cobra
 	name := v.GetString(azoptions.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonName))
 	identities, err := client.FetchIdentitiesBy(page, pageSize, accountID, identitySourceID, identityID, kind, name)
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseTerminalOutput() {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}

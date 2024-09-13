@@ -51,7 +51,9 @@ func runECommandForDeleteIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 	identityID := v.GetString(azoptions.FlagName(commandNameForIdentitiesDelete, flagIdentityID))
 	identity, err := client.DeleteIdentity(accountID, identityID)
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseTerminalOutput() {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}

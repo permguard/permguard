@@ -53,7 +53,9 @@ func runECommandForListRepositories(deps azcli.CliDependenciesProvider, cmd *cob
 	name := v.GetString(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonName))
 	repositories, err := client.FetchRepositoriesBy(page, pageSize, accountID, repositoryID, name)
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseTerminalOutput() {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}
