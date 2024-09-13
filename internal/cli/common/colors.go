@@ -16,43 +16,30 @@
 
 package common
 
-import "fmt"
+import (
+	"github.com/fatih/color"
+)
 
-// WhiteString returns the white string.
-func WhiteString(text string) string {
-	return fmt.Sprintf("\033[37m%s\033[0m", text)
+// NormalText returns the nomarl text string.
+func NormalText(text string) string {
+	out := color.New(color.FgWhite)
+	return out.Sprintf(text)
 }
 
-// RedString returns the red string.
-func RedString(text string) string {
-	return fmt.Sprintf("\033[31m%s\033[0m", text)
+// ErrorText returns the error string.
+func ErrorText(text string) string {
+	out := color.New(color.FgRed)
+	return out.Sprintf(text)
 }
 
-// YellowString returns the red string.
-func YellowString(text string) string {
-	return fmt.Sprintf("\033[33m%s\033[0m", text)
+// FileText returns the text string.
+func FileText(text string) string {
+	out := color.New(color.FgYellow)
+	return out.Sprintf(text)
 }
 
-// YellowDigit returns the yellow digit.
-func YellowDigit(digit int) string {
-	return fmt.Sprintf("\033[33m%d\033[0m", digit)
-}
-
-// GreenString returns the green string.
-func GreenString(text string) string {
-	return fmt.Sprintf("\033[32m%s\033[0m", text)
-}
-
-// BlueString returns the blue string.
-func BlueString(text string) string {
-	return fmt.Sprintf("\033[34m%s\033[0m", text)
-}
-
-func PinkString(text string) string {
-	return fmt.Sprintf("\033[35m%s\033[0m", text)
-}
-
-// CyanString returns the cyan string.
-func CyanString(text string) string {
-	return fmt.Sprintf("\033[36m%s\033[0m", text)
+// NumberText returns the yellow digit.
+func NumberText(digit int) string {
+	out := color.New(color.FgGreen)
+	return out.Sprintf("%d", digit)
 }

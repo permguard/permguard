@@ -83,23 +83,23 @@ func (cp *CliPrinterTerminal) printJSON(output map[string]any) {
 // printValue prints the value.
 func (cp *CliPrinterTerminal) printValue(key string, value any) {
 	if value == nil || (reflect.TypeOf(value).Kind() == reflect.String && value.(string) == "") {
-		green := color.New(color.FgGreen)
-		green.Println(key)
+		keyColor := color.New(color.FgHiBlack)
+		keyColor.Println(key)
 		return
 	}
 	switch v := value.(type) {
 	case map[string]any:
-		green := color.New(color.FgGreen)
+		keyColor := color.New(color.FgHiBlack)
 		if key != "" {
-			green.Println(key + ":")
+			keyColor.Println(key + ":")
 		}
 		for k, val := range v {
 			cp.printValue("\t"+k, val)
 		}
 	default:
-		green := color.New(color.FgGreen)
+		keyColor := color.New(color.FgHiBlack)
 		if key != "" {
-			green.Printf("%s: ", key)
+			keyColor.Printf("%s: ", key)
 		}
 		if reflect.TypeOf(v).Kind() == reflect.Slice && reflect.TypeOf(v).Elem().Kind() == reflect.String {
 			white := color.New(color.FgYellow)
@@ -107,7 +107,7 @@ func (cp *CliPrinterTerminal) printValue(key string, value any) {
 			result := strings.Join(array, ", ")
 			white.Println(result)
 		} else {
-			white := color.New(color.FgWhite)
+			white := color.New(color.FgHiWhite)
 			white.Println(v)
 		}
 	}
