@@ -175,14 +175,8 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	if err != nil {
 		return nil, err
 	}
-
-	codeStaging, err := m.cospMgr.ReadCodeStagingConfig()
-	if err != nil {
-		return nil, err
-	}
-
+	
 	output, _ := m.execInternalRefresh(true, out)
-
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "validate", "retrieving codemap", nil)
 	}
@@ -198,6 +192,10 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	}
 
 	if len(invlsCodeFiles) == 0 {
+		codeStaging, err := m.cospMgr.ReadCodeStagingConfig()
+		if err != nil {
+			return nil, err
+		}
 		out(nil, "", "your workspace is valid\n", nil)
 		out(nil, "", fmt.Sprintf("	- repo: %s", aziclicommon.KeywordText(ref)), nil)
 		out(nil, "", fmt.Sprintf("	- treeid: %s", aziclicommon.IDText(codeStaging.TreeID)), nil)
