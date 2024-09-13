@@ -24,6 +24,18 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
+// groupCodeFiles groups the code files.
+func groupCodeFiles(codeFiles []azicliwkscosp.CodeFile) map[string][]azicliwkscosp.CodeFile {
+	grouped := map[string][]azicliwkscosp.CodeFile{}
+	for _, codeFile := range codeFiles {
+		if _, ok := grouped[codeFile.Path]; !ok {
+			grouped[codeFile.Path] = []azicliwkscosp.CodeFile{}
+		}
+		grouped[codeFile.Path] = append(grouped[codeFile.Path], codeFile)
+	}
+	return grouped
+}
+
 // buildOutputForCodeFiles builds the output for the code files.
 func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceManager, out func(map[string]any, string, any, error) map[string]any, output map[string]any) map[string]any {
 	errorsMap := map[string]any{}
@@ -135,7 +147,7 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
-	m.ExecRefresh(out)
+	output, _ := m.ExecRefresh(out)
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "validate", "retrieving codemap", nil)
@@ -145,17 +157,28 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "validate", "codemap could not be retrieved", nil)
 		}
-		return nil, err
+		return output, err
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "validate", "codemap retrieved successfully", nil)
 	}
 
-	for _, invlsCodeFile := range invlsCodeFiles {
-		out(nil, invlsCodeFile.Path, fmt.Sprintf("%d %s", invlsCodeFile.Section, invlsCodeFile.ErrorMessage), nil)
+	if len(invlsCodeFiles) == 0 {
+		out(nil, "", "your workspace is valid", nil)
+		return output, nil
 	}
 
-	return nil, nil
+	out(nil, "", "your workspace has errors in the following files:\n", nil)
+
+	for key := range groupCodeFiles(invlsCodeFiles) {
+		out(nil, "", fmt.Sprintf("	%s", aziclicommon.FileText(key)), nil)
+		for _, codeFile := range groupCodeFiles(invlsCodeFiles)[key] {
+			out(nil, "", fmt.Sprintf("		%s: %s", aziclicommon.NumberText(codeFile.Section+1,), aziclicommon.ErrorText(codeFile.ErrorMessage)), nil)
+		}
+	}
+
+	out(nil, "", "\nplease fix the errors to proceed", nil)
+	return output, nil
 }
 
 // ExecObjects manage the object store.
