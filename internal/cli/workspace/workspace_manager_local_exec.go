@@ -169,14 +169,17 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	}
 
 	out(nil, "", "your workspace has errors in the following files:\n", nil)
-
 	for key := range groupCodeFiles(invlsCodeFiles) {
 		out(nil, "", fmt.Sprintf("	%s", aziclicommon.FileText(key)), nil)
 		for _, codeFile := range groupCodeFiles(invlsCodeFiles)[key] {
-			out(nil, "", fmt.Sprintf("		%s: %s", aziclicommon.NumberText(codeFile.Section+1,), aziclicommon.ErrorText(codeFile.ErrorMessage)), nil)
+			if codeFile.OID == "" {
+				out(nil, "", fmt.Sprintf("		%s: %s", aziclicommon.NumberText(codeFile.Section+1,), aziclicommon.ErrorText(codeFile.ErrorMessage)), nil)
+			} else {
+				out(nil, "", fmt.Sprintf("		%s: %s %s", aziclicommon.NumberText(codeFile.Section+1,),
+					aziclicommon.KeywordText(codeFile.OID), aziclicommon.ErrorText(codeFile.ErrorMessage)), nil)
+			}
 		}
 	}
-
 	out(nil, "", "\nplease fix the errors to proceed", nil)
 	return output, nil
 }
