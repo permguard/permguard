@@ -58,7 +58,7 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps azcli.CliDependenci
 	remote := args[0]
 	output, err := wksMgr.ExecRemoveRemote(remote, outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsVerboseJSONOutput() {
+		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
 		} else if ctx.IsVerboseTerminalOutput() {
 			printer.Error(err)

@@ -38,6 +38,9 @@ func groupCodeFiles(codeFiles []azicliwkscosp.CodeFile) map[string][]azicliwksco
 
 // buildOutputForCodeFiles builds the output for the code files.
 func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceManager, out func(map[string]any, string, any, error) map[string]any, output map[string]any) map[string]any {
+	if output == nil {
+		output = map[string]any{}
+	}
 	errorsMap := map[string]any{}
 	for _, codeFile := range codeFiles {
 		if codeFile.HasErrors {
@@ -46,7 +49,7 @@ func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceMan
 			if m.ctx.IsVerboseTerminalOutput() {
 				out(output, "refresh", fmt.Sprintf(`error in file %s,section %s and message %s`, aziclicommon.FileText(cFile), aziclicommon.NumberText(cSection), aziclicommon.ErrorText(codeFile.ErrorMessage)), nil)
 			}
-			if m.ctx.IsVerboseJSONOutput() {
+			if m.ctx.IsJSONOutput() {
 				if _, ok := errorsMap[cFile]; !ok {
 					errorsMap[cFile] = map[string]any{}
 				}
@@ -63,7 +66,7 @@ func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceMan
 		}
 	}
 	if len(errorsMap) > 0 {
-		output["invalid_files"] = errorsMap
+		output["errors"] = errorsMap
 	}
 	return output
 }
@@ -132,7 +135,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 		m.printFiles("ignored", azicliwkscosp.ConvertCodeFilesToPath(ignoredFiles), out)
 		m.printFiles("selected", azicliwkscosp.ConvertCodeFilesToPath(selectedFiles), out)
 		out(nil, "", "\n", nil)
-	} else if m.ctx.IsJSONOutput() {
+	} else if m.ctx.IsVerboseJSONOutput() {
 		output = map[string]any{
 			"ignored":  azicliwkscosp.ConvertCodeFilesToPath(ignoredFiles),
 			"selected": azicliwkscosp.ConvertCodeFilesToPath(selectedFiles),
@@ -144,7 +147,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 	treeID, codeFiles, err := m.blobifyLocal(selectedFiles, absLang)
 	if err != nil {
 		output = buildOutputForCodeFiles(codeFiles, m, out, output)
-		if !internal {
+		if m.ctx.IsTerminalOutput() && !internal {
 			out(nil, "", fmt.Sprintf("your workspace %s has errors\n", aziclicommon.KeywordText(ref)), nil)
 			out(nil, "", "please fix the errors to proceed", nil)
 		}
@@ -175,7 +178,7 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	if err != nil {
 		return nil, err
 	}
-	
+
 	output, _ := m.execInternalRefresh(true, out)
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "validate", "retrieving codemap", nil)

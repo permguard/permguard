@@ -52,7 +52,7 @@ func runECommandForValidateWorkspace(deps azcli.CliDependenciesProvider, cmd *co
 	}
 	output, err := wksMgr.ExecValidate(outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsVerboseJSONOutput() {
+		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
 		} else if ctx.IsVerboseTerminalOutput() {
 			printer.Error(err)

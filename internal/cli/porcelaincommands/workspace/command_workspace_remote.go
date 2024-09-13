@@ -52,7 +52,7 @@ func runECommandForRemoteWorkspace(deps azcli.CliDependenciesProvider, cmd *cobr
 	}
 	output, err := wksMgr.ExecListRemotes(outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsVerboseJSONOutput() {
+		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
 		} else if ctx.IsVerboseTerminalOutput() {
 			printer.Error(err)
