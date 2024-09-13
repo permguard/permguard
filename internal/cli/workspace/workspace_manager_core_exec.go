@@ -20,14 +20,15 @@ import (
 	"fmt"
 
 	azvalidators "github.com/permguard/permguard-core/pkg/extensions/validators"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // codeFileInfo represents info about the code file.
 func (m *WorkspaceManager) printFiles(action string, files []string, out func(map[string]any, string, any, error) map[string]any) {
 	for _, file := range files {
-		out(nil, action, file, nil)
+		out(nil, action, aziclicommon.FileText(file), nil)
 	}
 }
 

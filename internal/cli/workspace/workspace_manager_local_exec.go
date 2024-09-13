@@ -25,14 +25,14 @@ import (
 )
 
 // buildOutputForCodeFiles builds the output for the code files.
-func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceManager, out func(map[string]any,  string,  any,  error) map[string]any, output map[string]any) (map[string]any) {
+func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceManager, out func(map[string]any, string, any, error) map[string]any, output map[string]any) map[string]any {
 	errorsMap := map[string]any{}
 	for _, codeFile := range codeFiles {
 		if codeFile.HasErrors {
 			cFile := codeFile.Path
 			cSection := codeFile.Section + 1
 			if m.ctx.IsVerboseTerminalOutput() {
-				out(output, "refresh", fmt.Sprintf(`error in file "%s",section %s and message "%s"`, aziclicommon.YellowString(cFile), aziclicommon.YellowDigit(cSection), aziclicommon.YellowString(codeFile.ErrorMessage)), nil)
+				out(output, "refresh", fmt.Sprintf(`error in file %s,section %s and message %s`, aziclicommon.FileText(cFile), aziclicommon.NumberText(cSection), aziclicommon.ErrorText(codeFile.ErrorMessage)), nil)
 			}
 			if m.ctx.IsVerboseJSONOutput() {
 				if _, ok := errorsMap[cFile]; !ok {
@@ -104,8 +104,8 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 			}
 			return "items"
 		}
-		out(nil, "refresh", fmt.Sprintf("scanned %d %s, selected %d %s, and ignored %d %s",
-			totalCount, fileWord(totalCount), selectedCount, fileWord(selectedCount), ignoredCount, fileWord(ignoredCount)), nil)
+		out(nil, "refresh", fmt.Sprintf("scanned %s %s, selected %s %s, and ignored %s %s",
+			aziclicommon.NumberText(totalCount), fileWord(totalCount), aziclicommon.NumberText(selectedCount), fileWord(selectedCount), aziclicommon.NumberText(ignoredCount), fileWord(ignoredCount)), nil)
 		m.printFiles("ignored", azicliwkscosp.ConvertCodeFilesToPath(ignoredFiles), out)
 		m.printFiles("selected", azicliwkscosp.ConvertCodeFilesToPath(selectedFiles), out)
 	} else if m.ctx.IsJSONOutput() {
@@ -137,16 +137,19 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	}
 	m.ExecRefresh(out)
 
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "validate", "retrieving codemap", nil)
+	}
 	_, invlsCodeFiles, err := m.retrieveCodeMap()
 	if err != nil {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "validate", "codemap could not be retrieved", nil)
+		}
 		return nil, err
 	}
-
-	out(nil, "", aziclicommon.BlueString("Hello how are you") , nil)
-	out(nil, "", aziclicommon.GreenString("Hello how are you") , nil)
-	out(nil, "", aziclicommon.YellowString("Hello how are you") , nil)
-	out(nil, "", aziclicommon.RedString("Hello how are you") , nil)
-	out(nil, "", aziclicommon.CyanString("Hello how are you") , nil)
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "validate", "codemap retrieved successfully", nil)
+	}
 
 	for _, invlsCodeFile := range invlsCodeFiles {
 		out(nil, invlsCodeFile.Path, fmt.Sprintf("%d %s", invlsCodeFile.Section, invlsCodeFile.ErrorMessage), nil)
