@@ -45,7 +45,7 @@ func viperWriteEndpoint(v *viper.Viper, key string, value string) error {
 
 // runECommandForAAPSet runs the command for setting the aap gRPC target.
 func runECommandForAAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
-	_, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
@@ -56,7 +56,9 @@ func runECommandForAAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 	}
 	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixAAP, aziclicommon.FlagSuffixAAPTarget), args[0])
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseTerminalOutput() {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	return nil
@@ -64,7 +66,7 @@ func runECommandForAAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 
 // runECommandForPAPSet runs the command for setting the pap gRPC target.
 func runECommandForPAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
-	_, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
@@ -75,7 +77,9 @@ func runECommandForPAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 	}
 	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget), args[0])
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseTerminalOutput() {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	return nil

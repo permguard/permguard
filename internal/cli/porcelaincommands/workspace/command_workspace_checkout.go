@@ -60,7 +60,7 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 	if err != nil {
 		if ctx.IsVerboseJSONOutput() {
 			printer.ErrorWithOutput(output, err)
-		} else {
+		} else if ctx.IsVerboseTerminalOutput() {
 			printer.Error(err)
 		}
 		return aziclicommon.ErrCommandSilent

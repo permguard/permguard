@@ -51,7 +51,9 @@ func runECommandForDeleteIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 	identitySourceID := v.GetString(azoptions.FlagName(commandNameForIdentitySourcesDelete, flagIdentitySourceID))
 	identitySource, err := client.DeleteIdentitySource(accountID, identitySourceID)
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseTerminalOutput() {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}

@@ -54,7 +54,9 @@ func runECommandForListAccounts(deps azcli.CliDependenciesProvider, cmd *cobra.C
 
 	accounts, err := client.FetchAccountsBy(page, pageSize, accountID, name)
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseTerminalOutput() {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}

@@ -67,7 +67,7 @@ func runECommandForRemoteAddWorkspace(args []string, deps azcli.CliDependenciesP
 	if err != nil {
 		if ctx.IsVerboseJSONOutput() {
 			printer.ErrorWithOutput(output, err)
-		} else {
+		} else if ctx.IsVerboseTerminalOutput() {
 			printer.Error(err)
 		}
 		return aziclicommon.ErrCommandSilent

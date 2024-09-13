@@ -63,7 +63,9 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 		identitySource, err = client.UpdateIdentitySource(identitySource)
 	}
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseTerminalOutput() {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}

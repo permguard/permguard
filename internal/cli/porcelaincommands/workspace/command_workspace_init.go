@@ -23,10 +23,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azlangpermyaml "github.com/permguard/permguard/plugin/languages/permyaml"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azlangpermyaml "github.com/permguard/permguard/plugin/languages/permyaml"
 )
 
 const (
@@ -55,7 +55,7 @@ func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 	if err != nil {
 		if ctx.IsVerboseJSONOutput() {
 			printer.ErrorWithOutput(output, err)
-		} else {
+		} else if ctx.IsVerboseTerminalOutput() {
 			printer.Error(err)
 		}
 		return aziclicommon.ErrCommandSilent

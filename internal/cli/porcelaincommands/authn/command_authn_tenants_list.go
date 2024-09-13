@@ -53,7 +53,9 @@ func runECommandForListTenants(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 	name := v.GetString(azoptions.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonName))
 	tenants, err := client.FetchTenantsBy(page, pageSize, accountID, tenantID, name)
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseTerminalOutput() {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}

@@ -53,7 +53,9 @@ func runECommandForListIdentitySources(deps azcli.CliDependenciesProvider, cmd *
 	name := v.GetString(azoptions.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonName))
 	identitySources, err := client.FetchIdentitySourcesBy(page, pageSize, accountID, identitySourceID, name)
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseTerminalOutput() {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}

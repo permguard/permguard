@@ -63,7 +63,9 @@ func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		tenant, err = client.UpdateTenant(tenant)
 	}
 	if err != nil {
-		printer.Error(err)
+		if ctx.IsVerboseTerminalOutput() {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	output := map[string]any{}
