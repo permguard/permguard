@@ -112,7 +112,7 @@ func (p *PersistenceManager) WriteBinaryFile(relative RelativeDir, name string, 
 	return azfiles.WriteFile(name, data, perm, compressed)
 }
 
-// WriteBinaryFile writes a binary file.
+// ReadBinaryFile reads a binary file.
 func (p *PersistenceManager) ReadBinaryFile(relative RelativeDir, name string, perm os.FileMode, compressed bool) ([]byte, uint32, error) {
 	name = p.GetRelativeDir(relative, name)
 	return azfiles.ReadFile(name, compressed)
@@ -122,6 +122,12 @@ func (p *PersistenceManager) ReadBinaryFile(relative RelativeDir, name string, p
 func (p *PersistenceManager) WriteCSVStream(relative RelativeDir, name string, header []string, records interface{}, rowFunc func(interface{}) []string) error {
 	name = p.GetRelativeDir(relative, name)
 	return azfiles.WriteCSVStream(name, header, records, rowFunc)
+}
+
+// ReadFromCSVStream reads from a CSV stream.
+func (p *PersistenceManager) ReadFromCSVStream(relative RelativeDir, name string, header []string, recordFunc func([]string) error) error {
+	name = p.GetRelativeDir(relative, name)
+	return azfiles.ReadFromCSVStream(name, header, recordFunc)
 }
 
 // AppendToFile appends to a file.

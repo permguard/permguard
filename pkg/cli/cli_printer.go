@@ -90,13 +90,17 @@ func (cp *CliPrinterTerminal) printValue(key string, value any) {
 	switch v := value.(type) {
 	case map[string]any:
 		green := color.New(color.FgGreen)
-		green.Println(key + ":")
+		if key != "" {
+			green.Println(key + ":")
+		}
 		for k, val := range v {
 			cp.printValue("\t"+k, val)
 		}
 	default:
 		green := color.New(color.FgGreen)
-		green.Printf("%s: ", key)
+		if key != "" {
+			green.Printf("%s: ", key)
+		}
 		if reflect.TypeOf(v).Kind() == reflect.Slice && reflect.TypeOf(v).Elem().Kind() == reflect.String {
 			white := color.New(color.FgYellow)
 			array := v.([]string)

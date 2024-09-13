@@ -134,13 +134,17 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
-	fileLock, err := m.tryLock()
+	m.ExecRefresh(out)
+
+	_, invlsCodeFiles, err := m.retrieveCodeMap()
 	if err != nil {
 		return nil, err
 	}
-	defer fileLock.Unlock()
 
-	// TODO: Implement this method
+	out(nil, "", "ciao \033[31mThis is a red text\033[0m", nil)
+	for _, invlsCodeFile := range invlsCodeFiles {
+		out(nil, invlsCodeFile.Path, fmt.Sprintf("%d %s", invlsCodeFile.Section, invlsCodeFile.ErrorMessage), nil)
+	}
 
 	return nil, nil
 }
