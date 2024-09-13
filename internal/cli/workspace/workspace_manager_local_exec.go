@@ -19,6 +19,7 @@ package workspace
 import (
 	"fmt"
 
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
@@ -31,7 +32,7 @@ func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceMan
 			cFile := codeFile.Path
 			cSection := codeFile.Section + 1
 			if m.ctx.IsVerboseTerminalOutput() {
-				out(output, "refresh", nil, fmt.Errorf(`refresh: error in file "%s",section %d and message "%s"`, cFile, cSection, codeFile.ErrorMessage))
+				out(output, "refresh", fmt.Sprintf(`error in file "%s",section %s and message "%s"`, aziclicommon.YellowString(cFile), aziclicommon.YellowDigit(cSection), aziclicommon.YellowString(codeFile.ErrorMessage)), nil)
 			}
 			if m.ctx.IsVerboseJSONOutput() {
 				if _, ok := errorsMap[cFile]; !ok {
@@ -141,7 +142,12 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 		return nil, err
 	}
 
-	out(nil, "", "ciao \033[31mThis is a red text\033[0m", nil)
+	out(nil, "", aziclicommon.BlueString("Hello how are you") , nil)
+	out(nil, "", aziclicommon.GreenString("Hello how are you") , nil)
+	out(nil, "", aziclicommon.YellowString("Hello how are you") , nil)
+	out(nil, "", aziclicommon.RedString("Hello how are you") , nil)
+	out(nil, "", aziclicommon.CyanString("Hello how are you") , nil)
+
 	for _, invlsCodeFile := range invlsCodeFiles {
 		out(nil, invlsCodeFile.Path, fmt.Sprintf("%d %s", invlsCodeFile.Section, invlsCodeFile.ErrorMessage), nil)
 	}
