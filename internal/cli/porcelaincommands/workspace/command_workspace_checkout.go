@@ -58,7 +58,7 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 	repo := args[0]
 	output, err := wksMgr.ExecCheckoutRepo(repo, outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsVerboseJSONOutput() {
+		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
 		} else if ctx.IsVerboseTerminalOutput() {
 			printer.Error(err)
