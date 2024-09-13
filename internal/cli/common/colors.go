@@ -32,6 +32,12 @@ func ErrorText(text string) string {
 	return out.Sprintf(text)
 }
 
+// KeywordText returns the keyword string.
+func KeywordText(text string) string {
+	out := color.New(color.FgMagenta)
+	return out.Sprintf(text)
+}
+
 // FileText returns the text string.
 func FileText(text string) string {
 	out := color.New(color.FgYellow)
