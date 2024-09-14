@@ -26,8 +26,8 @@ func LogHeaderText(text string) string {
 	return out.Sprintf(text)
 }
 
-// ErrorText returns the error text.
-func ErrorText(text string) string {
+// LogErrorText returns the log error text.
+func LogErrorText(text string) string {
 	out := color.New(color.FgRed)
 	return out.Sprintf(text)
 }
