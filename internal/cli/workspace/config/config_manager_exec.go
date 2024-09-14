@@ -178,6 +178,11 @@ func (m *ConfigManager) ExecAddRepo(remote string, accountID int64, repo string,
 		cfg.Repositories[ref] = cfgRepo
 		m.saveConfig(true, cfg)
 	}
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "repo", fmt.Sprintf("Remote successfully set to %s.", aziclicommon.KeywordText(remote)), nil)
+		out(nil, "repo", fmt.Sprintf("Refs successfully set to %s.", aziclicommon.IDText(cfgRepo.RefID)), nil)
+		out(nil, "repo", fmt.Sprintf("Repo successfully set to %s.", aziclicommon.KeywordText(ref)), nil)
+	}
 	if m.ctx.IsTerminalOutput() {
 		output = out(nil, "", fmt.Sprintf("Repo %s has been added.", aziclicommon.KeywordText(ref)), nil)
 	} else if m.ctx.IsJSONOutput() {

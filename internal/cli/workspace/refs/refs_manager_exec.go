@@ -19,6 +19,7 @@ package refs
 import (
 	"fmt"
 
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
 
@@ -72,9 +73,11 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 		return "", "", nil, err
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		if m.ctx.IsVerbose() {
-			output = out(nil, "head", fmt.Sprintf("Head reference checked out to %s.", refPath), nil)
-		}
+		out(nil, "head", fmt.Sprintf("Head remote successfully set to %s.", aziclicommon.KeywordText(headCfg.Head.Remote)), nil)
+		out(nil, "head", fmt.Sprintf("Head accountid successfully set to %s.", aziclicommon.BigNumberText(headCfg.Head.AccountID)), nil)
+		out(nil, "head", fmt.Sprintf("Head remote_repo successfully set to %s.", aziclicommon.KeywordText(headCfg.Head.Repo)), nil)
+		out(nil, "head", fmt.Sprintf("Head refid successfully set to %s.", aziclicommon.IDText(headCfg.Head.RefID)), nil)
+		out(nil, "head", fmt.Sprintf("Head reference checked out to %s.", aziclicommon.KeywordText(refPath)), nil)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
 			"remote":    headCfg.Head.Remote,
