@@ -47,7 +47,7 @@ func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceMan
 			cFile := codeFile.Path
 			cSection := codeFile.Section + 1
 			if m.ctx.IsVerboseTerminalOutput() {
-				out(output, "refresh", fmt.Sprintf(`error in file %s,section %s and message %s`, aziclicommon.FileText(cFile), aziclicommon.NumberText(cSection), aziclicommon.ErrorText(codeFile.ErrorMessage)), nil)
+				out(output, "refresh", fmt.Sprintf(`Error in file %s, section %s and error message %s.`, aziclicommon.FileText(cFile), aziclicommon.NumberText(cSection), aziclicommon.ErrorText(codeFile.ErrorMessage)), nil)
 			}
 			if m.ctx.IsJSONOutput() {
 				if _, ok := errorsMap[cFile]; !ok {
@@ -93,14 +93,18 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 	}
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "refresh", "initiating cleanup of the staging area...", nil)
+		out(nil, "refresh", "Initiating cleanup of the staging area...", nil)
 	}
 	cleaned, err := m.cleanupStagingArea()
 	if err != nil {
 		return nil, err
 	}
-	if !cleaned && m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "refresh", "the staging area was already clean", nil)
+	if m.ctx.IsVerboseTerminalOutput() {
+		if cleaned {
+			out(nil, "refresh", "Staging area cleaned successfully.", nil)
+		} else {
+			out(nil, "refresh", "The staging area was already clean.", nil)
+		}
 	}
 
 	lang, err := m.cfgMgr.GetLanguage()
@@ -112,7 +116,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 		return nil, err
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "refresh", "scanning source files...", nil)
+		out(nil, "refresh", "Scanning source files...", nil)
 	}
 	selectedFiles, ignoredFiles, err := m.scanSourceCodeFiles(absLang)
 	if err != nil {
@@ -129,12 +133,10 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 			}
 			return "items"
 		}
-		out(nil, "refresh", fmt.Sprintf("scanned %s %s, selected %s %s, and ignored %s %s",
+		out(nil, "refresh", fmt.Sprintf("Scanned %s %s, selected %s %s, and ignored %s %s.",
 			aziclicommon.NumberText(totalCount), fileWord(totalCount), aziclicommon.NumberText(selectedCount), fileWord(selectedCount), aziclicommon.NumberText(ignoredCount), fileWord(ignoredCount)), nil)
-		out(nil, "", "\n", nil)
 		m.printFiles("excluded_files", azicliwkscosp.ConvertCodeFilesToPath(ignoredFiles), out)
 		m.printFiles("processed_files", azicliwkscosp.ConvertCodeFilesToPath(selectedFiles), out)
-		out(nil, "", "\n", nil)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		output = map[string]any{
 			"excluded_files":  azicliwkscosp.ConvertCodeFilesToPath(ignoredFiles),
@@ -142,24 +144,27 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 		}
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "refresh", "starting blobification process...", nil)
+		out(nil, "refresh", "Starting blobification process...", nil)
 	}
 	treeID, codeFiles, err := m.blobifyLocal(selectedFiles, absLang)
 	if err != nil {
 		output = buildOutputForCodeFiles(codeFiles, m, out, output)
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "refresh", "Blobification process couldn't be completed.", nil)
+		}
 		if m.ctx.IsTerminalOutput() && !internal {
-			out(nil, "", fmt.Sprintf("your workspace %s has errors\n", aziclicommon.KeywordText(ref)), nil)
-			out(nil, "", "please validate and fix the errors to proceed", nil)
+			out(nil, "", fmt.Sprintf("Your workspace %s has errors.\n", aziclicommon.KeywordText(ref)), nil)
+			out(nil, "", "Please validate and fix the errors to proceed.", nil)
 		}
 		return output, err
 	}
 	output = buildOutputForCodeFiles(codeFiles, m, out, output)
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "refresh", "blobification process completed successfully", nil)
-		out(nil, "refresh", fmt.Sprintf("tree %s created", treeID), nil)
+		out(nil, "refresh", "Blobification process completed successfully.", nil)
+		out(nil, "refresh", fmt.Sprintf("Tree %s created.", treeID), nil)
 	}
 	if m.ctx.IsTerminalOutput() && !internal {
-		out(nil, "", "your workspace has been refreshed\n", nil)
+		out(nil, "", "Your workspace has been refreshed:\n", nil)
 		out(nil, "", fmt.Sprintf("	- repo: %s", aziclicommon.KeywordText(ref)), nil)
 		out(nil, "", fmt.Sprintf("	- treeid: %s", aziclicommon.IDText(treeID)), nil)
 		out(nil, "", "\n", nil)
@@ -181,17 +186,17 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 
 	output, _ := m.execInternalRefresh(true, out)
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "validate", "retrieving codemap", nil)
+		out(nil, "validate", "Retrieving codemap...", nil)
 	}
 	_, invlsCodeFiles, err := m.retrieveCodeMap()
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "validate", "codemap could not be retrieved", nil)
+			out(nil, "validate", "Codemap could not be retrieved.", nil)
 		}
 		return output, err
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "validate", "codemap retrieved successfully", nil)
+		out(nil, "validate", "Codemap retrieved successfully.", nil)
 	}
 
 	if len(invlsCodeFiles) == 0 {
@@ -199,16 +204,16 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 		if err != nil {
 			return nil, err
 		}
-		out(nil, "", "your workspace is valid\n", nil)
+		out(nil, "", "Your workspace is valid:\n", nil)
 		out(nil, "", fmt.Sprintf("	- repo: %s", aziclicommon.KeywordText(ref)), nil)
 		out(nil, "", fmt.Sprintf("	- treeid: %s", aziclicommon.IDText(codeStaging.TreeID)), nil)
 		out(nil, "", "\n", nil)
 		return output, nil
 	}
 
-	out(nil, "", fmt.Sprintf("your workspace %s has errors in the following files\n", aziclicommon.KeywordText(ref)), nil)
+	out(nil, "", fmt.Sprintf("Your workspace %s has errors in the following files:\n", aziclicommon.KeywordText(ref)), nil)
 	for key := range groupCodeFiles(invlsCodeFiles) {
-		out(nil, "", fmt.Sprintf("	%s", aziclicommon.FileText(key)), nil)
+		out(nil, "", fmt.Sprintf("	- %s", aziclicommon.FileText(key)), nil)
 		for _, codeFile := range groupCodeFiles(invlsCodeFiles)[key] {
 			if codeFile.OID == "" {
 				out(nil, "", fmt.Sprintf("		%s: %s", aziclicommon.NumberText(codeFile.Section+1,), aziclicommon.ErrorText(codeFile.ErrorMessage)), nil)
@@ -218,7 +223,7 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 			}
 		}
 	}
-	out(nil, "", "\nplease fix the errors to proceed", nil)
+	out(nil, "", "\nPlease fix the errors to proceed.", nil)
 	return output, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: validation errors found in code files within the workspace. please check the logs for more details.")
 }
 

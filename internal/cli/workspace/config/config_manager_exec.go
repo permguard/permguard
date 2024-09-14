@@ -64,7 +64,7 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 	cfg.Remotes[remote] = cfgRemote
 	m.saveConfig(true, cfg)
 	if m.ctx.IsTerminalOutput() {
-		output = out(nil, "", fmt.Sprintf("remote %s has been added", aziclicommon.KeywordText(remote)), nil)
+		output = out(nil, "", fmt.Sprintf("Remote %s has been added.", aziclicommon.KeywordText(remote)), nil)
 	} else if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{
@@ -97,7 +97,7 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 	}
 	cfgRemote := cfg.Remotes[remote]
 	if m.ctx.IsTerminalOutput() {
-		output = out(nil, "", fmt.Sprintf("remote %s has been removed", aziclicommon.KeywordText(remote)), nil)
+		output = out(nil, "", fmt.Sprintf("Remote %s has been removed.", aziclicommon.KeywordText(remote)), nil)
 	} else if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{
@@ -129,9 +129,9 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out func(map[stri
 			remotes = append(remotes, cfgRemote)
 		}
 		if len(remotes) == 0 {
-			out(nil, "", "your workspace doesn't have any remote configured", nil)
+			out(nil, "", "Your workspace doesn't have any remote configured.", nil)
 		} else {
-			out(nil, "", "your workspace configured remotes:\n", nil)
+			out(nil, "", "Your workspace configured remotes:\n", nil)
 			for _, remote := range remotes {
 				out(nil, "", fmt.Sprintf("	- %s", aziclicommon.KeywordText(remote)), nil)
 			}
@@ -179,7 +179,7 @@ func (m *ConfigManager) ExecAddRepo(remote string, accountID int64, repo string,
 		m.saveConfig(true, cfg)
 	}
 	if m.ctx.IsTerminalOutput() {
-		output = out(nil, "", fmt.Sprintf("repo %s has been added", aziclicommon.KeywordText(refID)), nil)
+		output = out(nil, "", fmt.Sprintf("Repo %s has been added.", aziclicommon.KeywordText(refID)), nil)
 	} else if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{
@@ -212,9 +212,9 @@ func (m *ConfigManager) ExecListRepos(activeRepoURI string, output map[string]an
 			repos = append(repos, cfgRepoTxt)
 		}
 		if len(repos) == 0 {
-			out(nil, "", "your workspace doesn't have any repo configured", nil)
+			out(nil, "", "Your workspace doesn't have any repo configured.", nil)
 		} else {
-			out(nil, "", "your workspace configured repos:\n", nil)
+			out(nil, "", "Your workspace configured repos:\n", nil)
 			for _, repo := range repos {
 				out(nil, "", fmt.Sprintf("	- %s", aziclicommon.KeywordText(repo)), nil)
 			}
