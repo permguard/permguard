@@ -87,11 +87,6 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 	}
 	defer fileLock.Unlock()
 
-	ref, err := m.rfsMgr.GetCurrentHeadRef()
-	if err != nil {
-		return nil, err
-	}
-
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "Initiating cleanup of the local area...", nil)
 	}
@@ -153,7 +148,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 			out(nil, "refresh", "Blobification process couldn't be completed.", nil)
 		}
 		if m.ctx.IsTerminalOutput() && !internal {
-			out(nil, "", fmt.Sprintf("Your workspace %s has errors.\n", aziclicommon.KeywordText(ref)), nil)
+			out(nil, "", "Your workspace has errors.", nil)
 			out(nil, "", "Please validate and fix the errors to proceed.", nil)
 		}
 		return output, err
@@ -161,13 +156,10 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 	output = buildOutputForCodeFiles(codeFiles, m, out, output)
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "Blobification process completed successfully.", nil)
-		out(nil, "refresh", fmt.Sprintf("Tree %s created.", treeID), nil)
+		out(nil, "refresh", fmt.Sprintf("New tree created with ID: %s.", aziclicommon.IDText(treeID)), nil)
 	}
 	if m.ctx.IsTerminalOutput() && !internal {
-		out(nil, "", "Your workspace has been refreshed:\n", nil)
-		out(nil, "", fmt.Sprintf("	- repo: %s", aziclicommon.KeywordText(ref)), nil)
-		out(nil, "", fmt.Sprintf("	- treeid: %s", aziclicommon.IDText(treeID)), nil)
-		out(nil, "", "\n", nil)
+		out(nil, "", "Your workspace has been refreshed.", nil)
 		return output, nil
 	}
 	return output, nil
@@ -177,15 +169,6 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
-	}
-
-	ref, err := m.rfsMgr.GetCurrentHeadRef()
-	if err != nil {
-		return nil, err
-	}
-	refID, err := m.rfsMgr.CalculateCurrentHeadRefID()
-	if err != nil {
-		return nil, err
 	}
 
 	output, _ := m.execInternalRefresh(true, out)
@@ -201,22 +184,17 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "validate", "Codemap retrieved successfully.", nil)
+		out(nil, "validate", "Validation process initiated...", nil)
 	}
-
 	if len(invlsCodeFiles) == 0 {
-		codeLocal, err := m.cospMgr.ReadCodeLocalConfig()
-		if err != nil {
-			return nil, err
-		}
-		out(nil, "", "Your workspace has been validated successfully:\n", nil)
-		out(nil, "", fmt.Sprintf("	- repo: %s", aziclicommon.KeywordText(ref)), nil)
-		out(nil, "", fmt.Sprintf("	- refid: %s", aziclicommon.IDText(refID)), nil)
-		out(nil, "", fmt.Sprintf("	- treeid: %s", aziclicommon.IDText(codeLocal.TreeID)), nil)
-		out(nil, "", "\n", nil)
+		out(nil, "validate", "Validation completed successfully.", nil)
+		out(nil, "", "Your workspace has been validated successfully.", nil)
 		return output, nil
 	}
-
-	out(nil, "", fmt.Sprintf("Your workspace %s has errors in the following files:\n", aziclicommon.KeywordText(ref)), nil)
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "validate", "Validation failed. Invalid code files detected.", nil)
+	}
+	out(nil, "", "Your workspace has errors in the following files:\n", nil)
 	for key := range groupCodeFiles(invlsCodeFiles) {
 		out(nil, "", fmt.Sprintf("	- %s", aziclicommon.FileText(key)), nil)
 		for _, codeFile := range groupCodeFiles(invlsCodeFiles)[key] {
