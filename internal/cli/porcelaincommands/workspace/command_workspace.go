@@ -28,22 +28,22 @@ import (
 
 // outFunc is the function to output the result.
 var outFunc = func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter) func(map[string]any, string, any, error) map[string]any {
-	return func(out map[string]any, key string, value any, err error) map[string]any {
+	return func(output map[string]any, key string, value any, err error) map[string]any {
 		if ctx.IsJSONOutput() {
 			key = strings.ReplaceAll(key, "-", "_")
 		}
-		if out == nil {
-			out = make(map[string]any)
+		if output == nil {
+			output = make(map[string]any)
 		}
-		out[key] = value
+		output[key] = value
 		if ctx.IsTerminalOutput() {
 			if err != nil {
 				printer.Error(err)
 			} else {
-				printer.Print(out)
+				printer.Print(output)
 			}
 		}
-		return out
+		return output
 	}
 }
 
