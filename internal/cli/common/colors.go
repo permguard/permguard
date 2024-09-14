@@ -20,7 +20,6 @@ import (
 	"github.com/fatih/color"
 )
 
-
 // LogHeaderText returns the log header text.
 func LogHeaderText(text string) string {
 	out := color.New(color.FgWhite)
