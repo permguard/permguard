@@ -17,6 +17,8 @@
 package refs
 
 import (
+	"fmt"
+
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
 
@@ -69,20 +71,18 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 	if err != nil {
 		return "", "", nil, err
 	}
-	if m.ctx.IsTerminalOutput() {
+	if m.ctx.IsVerboseTerminalOutput() {
 		if m.ctx.IsVerbose() {
-			output = out(nil, "head", refPath, nil)
+			output = out(nil, "head", fmt.Sprintf("Head reference checked out to %s.", refPath), nil)
 		}
-	} else {
-		remotes := []any{}
+	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
 			"remote":    headCfg.Head.Remote,
 			"accountid": headCfg.Head.AccountID,
-			"repo":      headCfg.Head.Repo,
+			"remote_repo": headCfg.Head.Repo,
 			"refid":     headCfg.Head.RefID,
 		}
-		remotes = append(remotes, remoteObj)
-		output = out(output, "head", remotes, nil)
+		output = out(output, "head", remoteObj, nil)
 	}
 	ref, err := m.GetCurrentHeadRef()
 	if err != nil {

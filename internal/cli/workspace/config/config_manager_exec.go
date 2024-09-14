@@ -185,6 +185,7 @@ func (m *ConfigManager) ExecAddRepo(remote string, accountID int64, repo string,
 		remoteObj := map[string]any{
 			"remote": remote,
 			"refs":   cfgRepo.RefID,
+			"repo":   ref,
 		}
 		remotes = append(remotes, remoteObj)
 		output = out(output, "repos", remotes, nil)
