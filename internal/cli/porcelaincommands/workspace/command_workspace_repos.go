@@ -29,12 +29,12 @@ import (
 )
 
 const (
-	// commandNameForWorkspacesRepo is the command name for workspaces repo.
-	commandNameForWorkspacesRepo = "workspaces.repo"
+	// commandNameForWorkspacesRepo is the command name for workspace repos.
+	commandNameForWorkspacesRepo = "workspaces.repos"
 )
 
-// runECommandForRepoWorkspace runs the command for creating an workspace.
-func runECommandForRepoWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+// runECommandForReposWorkspace runs the command for creating an workspace.
+func runECommandForReposWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -68,11 +68,11 @@ func runECommandForRepoWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 // CreateCommandForWorkspaceRepo creates a command for repoializing a working directory.
 func CreateCommandForWorkspaceRepo(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "repo",
-		Short: `Manage repo settings and operations`,
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages repo settings and operations.`),
+		Use:   "repos",
+		Short: `Manage repos settings and operations`,
+		Long:  aziclicommon.BuildCliLongTemplate(`This command manages repos settings and operations.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForRepoWorkspace(deps, cmd, v)
+			return runECommandForReposWorkspace(deps, cmd, v)
 		},
 	}
 	return command

@@ -32,4 +32,7 @@ type LanguageAbastraction interface {
 	GetTreeeObject(obj *azlangobjs.Object) (*azlangobjs.Tree, error)
 	// CreateMultiSectionsObjects create blobs for multi sections objects.
 	CreateMultiSectionsObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error)
+	// CreateSchemaSectionsObject create blobs for multi sections schema objects.
+	CreateSchemaSectionsObject(path string, data []byte) (*azlangobjs.MultiSectionsObject, error)
+
 }

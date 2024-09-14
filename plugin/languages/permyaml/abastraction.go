@@ -121,3 +121,36 @@ func (abs *YAMLLanguageAbstraction) CreateMultiSectionsObjects(path string, data
 	}
 	return multiSecObj, nil
 }
+
+// CreateSchemaSectionsObject creates a schema section object.
+func (abs *YAMLLanguageAbstraction) CreateSchemaSectionsObject(path string, data []byte) (*azlangobjs.MultiSectionsObject, error) {
+	serializer, err := azsrlzs.NewYamlSerializer()
+	if err != nil {
+		return nil, err
+	}
+	multiSecObj, err := azlangobjs.NewMultiSectionsObject(path, 1, nil)
+	if err != nil {
+		return nil, err
+	}
+	name, content, err := serializer.UnmarshalLangType(data)
+	if err != nil {
+		multiSecObj.AddSectionObjectWithParams(nil, "", "", 0, err)
+		return multiSecObj, nil
+	}
+	jsonType, err := abs.permCodeMng.MarshalClass(content, true, true, true)
+	if err != nil {
+		multiSecObj.AddSectionObjectWithParams(nil, "", "", 0, err)
+		return multiSecObj, nil
+	}
+	obj, err := abs.objMng.CreateBlobObject(jsonType)
+	if err != nil {
+		multiSecObj.AddSectionObjectWithParams(nil, "", "", 0, err)
+		return multiSecObj, nil
+	}
+	objInfo, err := abs.objMng.GetObjectInfo(obj)
+	if err != nil {
+		return nil, err
+	}
+	multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), name, 0, err)
+	return multiSecObj, nil
+}
