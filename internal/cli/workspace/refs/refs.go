@@ -25,7 +25,7 @@ type HeadConfig struct {
 type HeadRefsConfig struct {
 	Remote    string `toml:"remote"`
 	AccountID int64  `toml:"accountid"`
-	Repo      string `toml:"repo"`
+	Repo      string `toml:"remote_repo"`
 	RefID     string `toml:"refid"`
 }
 
