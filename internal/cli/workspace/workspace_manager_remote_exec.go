@@ -41,7 +41,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 	defer fileLock.Unlock()
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "checkout", "Initiating remote verification process...", nil)
+		out(nil, "checkout", "Initiating remote verification process.", nil)
 	}
 	repo, _ := m.cfgMgr.GetRepo(repoURI)
 	if repo != nil {
@@ -59,7 +59,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 		return nil, err
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "checkout", "Retrieving remote repository information...", nil)
+		out(nil, "checkout", "Retrieving remote repository information.", nil)
 	}
 	srvRepo, err := m.rmSrvtMgr.GetServerRemoteRepo(repoInfo.AccountID, repoInfo.Repo, cfgRemote.Server, cfgRemote.AAPPort, cfgRemote.PAPPort)
 	if err != nil {

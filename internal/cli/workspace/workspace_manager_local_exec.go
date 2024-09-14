@@ -88,7 +88,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 	defer fileLock.Unlock()
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "refresh", "Initiating cleanup of the local area...", nil)
+		out(nil, "refresh", "Initiating cleanup of the local area.", nil)
 	}
 	cleaned, err := m.cleanupLocalArea()
 	if err != nil {
@@ -111,7 +111,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 		return nil, err
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "refresh", "Scanning source files...", nil)
+		out(nil, "refresh", "Scanning source files.", nil)
 	}
 	selectedFiles, ignoredFiles, err := m.scanSourceCodeFiles(absLang)
 	if err != nil {
@@ -139,7 +139,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 		}
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "refresh", "Starting blobification process...", nil)
+		out(nil, "refresh", "Starting blobification process.", nil)
 	}
 	treeID, codeFiles, err := m.blobifyLocal(selectedFiles, absLang)
 	if err != nil {
@@ -173,7 +173,7 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 
 	output, _ := m.execInternalRefresh(true, out)
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "validate", "Retrieving codemap...", nil)
+		out(nil, "validate", "Retrieving codemap.", nil)
 	}
 	_, invlsCodeFiles, err := m.retrieveCodeMap()
 	if err != nil {
@@ -184,7 +184,7 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "validate", "Codemap retrieved successfully.", nil)
-		out(nil, "validate", "Validation process initiated...", nil)
+		out(nil, "validate", "Validation process initiated.", nil)
 	}
 	if len(invlsCodeFiles) == 0 {
 		out(nil, "validate", "Validation completed successfully.", nil)
