@@ -30,18 +30,18 @@ import (
 )
 
 const (
-	// Hidden directories for code.
-	hiddenCodeDir = "code"
-	// Hidden directories for staging.
-	hiddenStagingDir = "staging"
-	// Hidden directories for objects.
-	hiddenObjectsDir = "objects"
 	// Hidden directories for states.
 	hiddenStatesDir = "states"
+	// Hidden directories for local.
+	hiddenLocalDir = "local"
+	// Hidden directories for objects.
+	hiddenObjectsDir = "objects"
+	// Hidden directories for code.
+	hiddenCodeDir = "code"
 	// Hidden directories for plans.
 	hiddenPlansDir = "plans"
 	// Hidden configuration file.
-	hiddenConfiFile = "config"
+	hiddenConfigFile = "config"
 	// Hidden code map.
 	hiddenCodeMap = "codemap"
 )
@@ -50,7 +50,7 @@ const (
 type COSPManager struct {
 	ctx     *aziclicommon.CliCommandContext
 	persMgr *azicliwkspers.PersistenceManager
-	objMgr	*azlangobjs.ObjectManager
+	objMgr  *azlangobjs.ObjectManager
 }
 
 // NewPlansManager creates a new plansuration manager.
@@ -66,21 +66,6 @@ func NewPlansManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers
 	}, nil
 }
 
-// getCodeDir returns the code directory.
-func (m *COSPManager) getCodeDir() string {
-	return hiddenCodeDir
-}
-
-// getStagingDir returns the staging directory.
-func (m *COSPManager) getStagingDir() string {
-	return hiddenStagingDir
-}
-
-// getStagingFile returns the staging config file.
-func (m *COSPManager) getStagingFile() string {
-	return filepath.Join(m.getCodeStagingDir(), hiddenConfiFile)
-}
-
 // getObjectsDir returns the objects directory.
 func (m *COSPManager) getObjectsDir() string {
 	return hiddenObjectsDir
@@ -91,26 +76,41 @@ func (m *COSPManager) getStatesDir() string {
 	return hiddenStatesDir
 }
 
-// getPlansDir returns the plans directory.
-func (m *COSPManager) getPlansDir() string {
-	return hiddenPlansDir
+// getCodeDir returns the code directory.
+func (m *COSPManager) getCodeDir() string {
+	return hiddenCodeDir
 }
 
-// getCodeStagingDir returns the code staging directory.
-func (m *COSPManager) getCodeStagingDir() string {
-	return filepath.Join(m.getCodeDir(), m.getStagingDir())
+// getCodeLocalDir returns the code local directory.
+func (m *COSPManager) getCodeLocalDir() string {
+	return filepath.Join(m.getCodeDir(), hiddenLocalDir)
 }
 
-// getCodeMap returns the code map.
-func (m *COSPManager) getCodeMap() string {
+// getCodeLocalFile returns the local config file.
+func (m *COSPManager) getCodeLocalFile() string {
+	return filepath.Join(m.getCodeLocalDir(), hiddenConfigFile)
+}
+
+// getStatesDir returns the code states directory.
+func (m *COSPManager) getCodeStatesDir() string {
+	return filepath.Join(m.getCodeDir(), hiddenStatesDir)
+}
+
+// getCodePlansDir returns the code plans directory.
+func (m *COSPManager) getCodePlansDir() string {
+	return filepath.Join(m.getCodeDir(), hiddenPlansDir)
+}
+
+// getCodeMapFile returns the code map file.
+func (m *COSPManager) getCodeMapFile() string {
 	return hiddenCodeMap
 }
 
 // getObjectDir returns the object directory.
-func (m *COSPManager) getObjectDir(oid string, staging bool) (string, string) {
+func (m *COSPManager) getObjectDir(oid string, local bool) (string, string) {
 	basePath := ""
-	if staging {
-		basePath = m.getCodeStagingDir()
+	if local {
+		basePath = m.getCodeLocalDir()
 	}
 	basePath = filepath.Join(basePath, m.getObjectsDir())
 	folder := oid[:2]
@@ -120,20 +120,20 @@ func (m *COSPManager) getObjectDir(oid string, staging bool) (string, string) {
 	return folder, name
 }
 
-// CleanStagingArea cleans the staging area.
-func (m *COSPManager) CleanStagingArea() (bool, error) {
-	return m.persMgr.DeleteDir(azicliwkspers.PermGuardDir, m.getCodeStagingDir())
+// CleanLocalArea cleans the local area.
+func (m *COSPManager) CleanLocalArea() (bool, error) {
+	return m.persMgr.DeleteDir(azicliwkspers.PermGuardDir, m.getCodeLocalDir())
 }
 
 // SaveObject saves the object.
-func (m *COSPManager) SaveObject(oid string, content []byte, staging bool) (bool, error) {
+func (m *COSPManager) SaveObject(oid string, content []byte, local bool) (bool, error) {
 	folder, name := m.getObjectDir(oid, true)
 	path := filepath.Join(folder, name)
 	return m.persMgr.WriteBinaryFile(azicliwkspers.PermGuardDir, path, content, 0644, true)
 }
 
 // ReadObject reads the object.
-func (m *COSPManager) ReadObject(oid string, staging bool) (*azlangobjs.Object, error) {
+func (m *COSPManager) ReadObject(oid string, local bool) (*azlangobjs.Object, error) {
 	folder, name := m.getObjectDir(oid, true)
 	path := filepath.Join(folder, name)
 	data, _, err := m.persMgr.ReadFile(azicliwkspers.PermGuardDir, path, true)
@@ -160,26 +160,26 @@ func (m *COSPManager) saveConfig(name string, override bool, cfg any) error {
 	return nil
 }
 
-// SaveCodeStagingConfig saves the code staging configuration.
-func (m *COSPManager) SaveCodeStagingConfig(treeID, language string) error {
-	config := &CodeStagingConfig{
+// SaveCodeLocalConfig saves the code local configuration.
+func (m *COSPManager) SaveCodeLocalConfig(treeID, language string) error {
+	config := &CodeLocalConfig{
 		TreeID:   treeID,
 		Language: language,
 	}
-	file := m.getStagingFile()
+	file := m.getCodeLocalFile()
 	return m.saveConfig(file, true, config)
 }
 
-// ReadCodeStagingConfig reads the configuration file.
-func (m *COSPManager) ReadCodeStagingConfig() (*CodeStagingConfig, error) {
-	var config CodeStagingConfig
-	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getStagingFile(), &config)
+// ReadCodeLocalConfig reads the configuration file.
+func (m *COSPManager) ReadCodeLocalConfig() (*CodeLocalConfig, error) {
+	var config CodeLocalConfig
+	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getCodeLocalFile(), &config)
 	return &config, err
 }
 
 // SaveCodeMap saves the code map.
 func (m *COSPManager) SaveCodeMap(codeFiles []CodeFile) error {
-	path := filepath.Join(m.getCodeStagingDir(), "codemap")
+	path := filepath.Join(m.getCodeLocalDir(), "codemap")
 	rowFunc := func(record interface{}) []string {
 		codeFile := record.(CodeFile)
 		return []string{
@@ -202,7 +202,7 @@ func (m *COSPManager) SaveCodeMap(codeFiles []CodeFile) error {
 
 // ReadCodeMap reads the code map.
 func (m *COSPManager) ReadCodeMap() ([]CodeFile, error) {
-	path := filepath.Join(m.getCodeStagingDir(), "codemap")
+	path := filepath.Join(m.getCodeLocalDir(), "codemap")
 	var codeFiles []CodeFile
 	recordFunc := func(record []string) error {
 		if len(record) < 8 {
@@ -241,4 +241,3 @@ func (m *COSPManager) ReadCodeMap() ([]CodeFile, error) {
 
 	return codeFiles, nil
 }
-

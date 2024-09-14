@@ -93,17 +93,17 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 	}
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "refresh", "Initiating cleanup of the staging area...", nil)
+		out(nil, "refresh", "Initiating cleanup of the local area...", nil)
 	}
-	cleaned, err := m.cleanupStagingArea()
+	cleaned, err := m.cleanupLocalArea()
 	if err != nil {
 		return nil, err
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		if cleaned {
-			out(nil, "refresh", "Staging area cleaned successfully.", nil)
+			out(nil, "refresh", "Local area cleaned successfully.", nil)
 		} else {
-			out(nil, "refresh", "The staging area was already clean.", nil)
+			out(nil, "refresh", "The local area was already clean.", nil)
 		}
 	}
 
@@ -183,6 +183,10 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	if err != nil {
 		return nil, err
 	}
+	refID, err := m.rfsMgr.CalculateCurrentHeadRefID()
+	if err != nil {
+		return nil, err
+	}
 
 	output, _ := m.execInternalRefresh(true, out)
 	if m.ctx.IsVerboseTerminalOutput() {
@@ -200,13 +204,14 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	}
 
 	if len(invlsCodeFiles) == 0 {
-		codeStaging, err := m.cospMgr.ReadCodeStagingConfig()
+		codeLocal, err := m.cospMgr.ReadCodeLocalConfig()
 		if err != nil {
 			return nil, err
 		}
-		out(nil, "", "Your workspace is valid:\n", nil)
+		out(nil, "", "Your workspace has been validated successfully:\n", nil)
 		out(nil, "", fmt.Sprintf("	- repo: %s", aziclicommon.KeywordText(ref)), nil)
-		out(nil, "", fmt.Sprintf("	- treeid: %s", aziclicommon.IDText(codeStaging.TreeID)), nil)
+		out(nil, "", fmt.Sprintf("	- refid: %s", aziclicommon.IDText(refID)), nil)
+		out(nil, "", fmt.Sprintf("	- treeid: %s", aziclicommon.IDText(codeLocal.TreeID)), nil)
 		out(nil, "", "\n", nil)
 		return output, nil
 	}
@@ -216,9 +221,9 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 		out(nil, "", fmt.Sprintf("	- %s", aziclicommon.FileText(key)), nil)
 		for _, codeFile := range groupCodeFiles(invlsCodeFiles)[key] {
 			if codeFile.OID == "" {
-				out(nil, "", fmt.Sprintf("		%s: %s", aziclicommon.NumberText(codeFile.Section+1,), aziclicommon.ErrorText(codeFile.ErrorMessage)), nil)
+				out(nil, "", fmt.Sprintf("		%s: %s", aziclicommon.NumberText(codeFile.Section+1), aziclicommon.ErrorText(codeFile.ErrorMessage)), nil)
 			} else {
-				out(nil, "", fmt.Sprintf("		%s: %s %s", aziclicommon.NumberText(codeFile.Section+1,),
+				out(nil, "", fmt.Sprintf("		%s: %s %s", aziclicommon.NumberText(codeFile.Section+1),
 					aziclicommon.KeywordText(codeFile.OID), aziclicommon.ErrorText(codeFile.ErrorMessage)), nil)
 			}
 		}
@@ -238,7 +243,7 @@ func (m *WorkspaceManager) ExecObjects(out func(map[string]any, string, any, err
 	}
 	defer fileLock.Unlock()
 
-	m.cospMgr.CleanStagingArea()
+	m.cospMgr.CleanLocalArea()
 
 	// TODO: Implement this method
 

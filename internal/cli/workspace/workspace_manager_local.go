@@ -26,9 +26,9 @@ import (
 	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
-// cleanupStagingArea cleans up the staging area.
-func (m *WorkspaceManager) cleanupStagingArea() (bool, error) {
-	return m.cospMgr.CleanStagingArea()
+// cleanupLocalArea cleans up the local area.
+func (m *WorkspaceManager) cleanupLocalArea() (bool, error) {
+	return m.cospMgr.CleanLocalArea()
 }
 
 // scanSourceCodeFiles scans the source code files.
@@ -106,7 +106,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	}
 	m.cospMgr.SaveObject(treeObj.GetOID(), treeObj.GetContent(), true)
 	treeID := treeObj.GetOID()
-	if err := m.cospMgr.SaveCodeStagingConfig(treeID, absLang.GetLanguageName()); err != nil {
+	if err := m.cospMgr.SaveCodeLocalConfig(treeID, absLang.GetLanguageName()); err != nil {
 		return treeID, blbCodeFiles, err
 	}
 	return treeID, blbCodeFiles, nil

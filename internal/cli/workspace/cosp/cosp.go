@@ -16,8 +16,8 @@
 
 package cosp
 
-// CodeStagingConfig represents the configuration for the code staging.
-type CodeStagingConfig struct {
+// CodeLocalConfig represents the configuration for the code local.
+type CodeLocalConfig struct {
 	TreeID	string  `toml:"treeid"`
 	Language string `toml:"language"`
 }
