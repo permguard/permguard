@@ -20,38 +20,44 @@ import (
 	"github.com/fatih/color"
 )
 
-// NormalText returns the nomarl text string.
+// NormalText returns the normal text.
 func NormalText(text string) string {
 	out := color.New(color.FgWhite)
 	return out.Sprintf(text)
 }
 
-// ErrorText returns the error string.
+// ErrorText returns the error text.
 func ErrorText(text string) string {
 	out := color.New(color.FgRed)
 	return out.Sprintf(text)
 }
 
-// KeywordText returns the keyword string.
+// KeywordText returns the keyword text.
 func KeywordText(text string) string {
 	out := color.New(color.FgMagenta)
 	return out.Sprintf(text)
 }
 
-// IDText returns the ID string.
+// IDText returns the ID text.
 func IDText(text string) string {
 	out := color.New(color.FgCyan)
 	return out.Sprintf(text)
 }
 
-// FileText returns the text string.
+// FileText returns the file text.
 func FileText(text string) string {
 	out := color.New(color.FgYellow)
 	return out.Sprintf(text)
 }
 
-// NumberText returns the yellow digit.
+// NumberText returns number text.
 func NumberText(digit int) string {
+	out := color.New(color.FgGreen)
+	return out.Sprintf("%d", digit)
+}
+
+// BigNumberText returns big number text.
+func BigNumberText(digit int64) string {
 	out := color.New(color.FgGreen)
 	return out.Sprintf("%d", digit)
 }
