@@ -23,13 +23,22 @@ PermGuard adopts a code-first approach to managing schemas, policies and permiss
 
 To enhance coding efficiency and comfort, PermGuard provides several key commands:
 
+- `refresh`: Generates the local state
 - `validate`: Validates the configurations in the working directory
 - `pull`: Fetches the remote changes and build a remote state
 - `object`: Managed the object model.
 
+## Refresh
+
+The `refresh` command updates the local workspace by cleaning up temporary files, regenerating necessary configurations, and ensuring that the local source code is in sync with the expected state. This command focuses solely on the local workspace and the source code, without interacting with any remote repositories.
+
+```bash
+permguard refresh
+```
+
 ## Validate
 
-The `validate` command checks the configurations in the working directory for syntax errors and ensures that they are valid. This command is useful for identifying issues before applying changes to the server.
+The `validate` command checks the configurations in the working directory for syntax errors and ensures that they are valid. This command is useful for identifying issues before applying changes to the server. This command focuses solely on the local workspace and the source code, without interacting with any remote repositories.
 
 ```bash
  permguard validate
@@ -46,6 +55,7 @@ The `pull` command fetches the state from the remote PermGuard server and stores
 ## Objects
 
 The `objects` command manages the object store, allowing users to display the contents of an object and calculate differences (diffs) between versions.
+This command focuses solely on the local workspace and the source code, without interacting with any remote repositories.
 
 ```bash
  permguard objects
