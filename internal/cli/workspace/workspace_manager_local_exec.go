@@ -66,7 +66,7 @@ func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceMan
 		}
 	}
 	if len(errorsMap) > 0 {
-		output["errors"] = errorsMap
+		output["validation_errors"] = errorsMap
 	}
 	return output
 }
@@ -132,13 +132,13 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 		out(nil, "refresh", fmt.Sprintf("scanned %s %s, selected %s %s, and ignored %s %s",
 			aziclicommon.NumberText(totalCount), fileWord(totalCount), aziclicommon.NumberText(selectedCount), fileWord(selectedCount), aziclicommon.NumberText(ignoredCount), fileWord(ignoredCount)), nil)
 		out(nil, "", "\n", nil)
-		m.printFiles("ignored", azicliwkscosp.ConvertCodeFilesToPath(ignoredFiles), out)
-		m.printFiles("selected", azicliwkscosp.ConvertCodeFilesToPath(selectedFiles), out)
+		m.printFiles("excluded_files", azicliwkscosp.ConvertCodeFilesToPath(ignoredFiles), out)
+		m.printFiles("processed_files", azicliwkscosp.ConvertCodeFilesToPath(selectedFiles), out)
 		out(nil, "", "\n", nil)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		output = map[string]any{
-			"ignored":  azicliwkscosp.ConvertCodeFilesToPath(ignoredFiles),
-			"selected": azicliwkscosp.ConvertCodeFilesToPath(selectedFiles),
+			"excluded_files":  azicliwkscosp.ConvertCodeFilesToPath(ignoredFiles),
+			"processed_files": azicliwkscosp.ConvertCodeFilesToPath(selectedFiles),
 		}
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
