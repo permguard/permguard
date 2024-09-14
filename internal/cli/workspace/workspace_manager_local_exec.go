@@ -196,7 +196,12 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "validate", "Validation failed. Invalid code files detected.", nil)
 	}
-	out(nil, "", "Your workspace has errors in the following files:\n", nil)
+	if len(invlsCodeFiles) == 1 {
+		out(nil, "", "Your workspace has on error in the following file:\n", nil)
+
+	} else {
+		out(nil, "", "Your workspace has errors in the following files:\n", nil)
+	}
 	for key := range groupCodeFiles(invlsCodeFiles) {
 		out(nil, "", fmt.Sprintf("	- %s", aziclicommon.FileText(key)), nil)
 		for _, codeFile := range groupCodeFiles(invlsCodeFiles)[key] {
