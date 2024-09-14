@@ -70,6 +70,7 @@ func (s *YamlSerializer) UnmarshalYaml(data []byte) (any, error) {
 	_, hasForbid := tempMap["forbid"]
 	_, hasActions := tempMap["actions"]
 	_, hasResource := tempMap["resource"]
+	_, hasDomains := tempMap["domains"]
 	if hasPermit || hasForbid {
 		var perm Permission
 		err = yaml.Unmarshal([]byte(data), &perm)
@@ -84,6 +85,8 @@ func (s *YamlSerializer) UnmarshalYaml(data []byte) (any, error) {
 			return nil, azerrors.WrapSystemError(azerrors.ErrLanguageSyntax, errSyntaxMessage)
 		}
 		return &policy, nil
+	} else if hasDomains {
+		
 	}
 	return nil, azerrors.WrapSystemError(azerrors.ErrLanguageSyntax, errSyntaxMessage)
 }

@@ -141,6 +141,15 @@ func ConvertToSystemError(err error) *SystemError {
 	return nil
 }
 
+// GetSystemErrorMessage returns the system error message.
+func GetSystemErrorMessage(err error) string {
+	var sysErr = &SystemError{}
+	if errors.As(err, sysErr) {
+		return sysErr.errMessage
+	}
+	return err.Error()
+}
+
 // IsErrorInClass verify if the error is in the class of the input mask.
 func IsErrorInClass(err error, mask string) bool {
 	sysErr := ConvertToSystemError(err)

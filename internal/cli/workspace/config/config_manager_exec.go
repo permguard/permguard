@@ -189,7 +189,7 @@ func (m *ConfigManager) ExecAddRepo(remote string, accountID int64, repo string,
 		remotes := []any{}
 		remoteObj := map[string]any{
 			"remote": remote,
-			"refs":   cfgRepo.RefID,
+			"refid":   cfgRepo.RefID,
 			"repo":   ref,
 		}
 		remotes = append(remotes, remoteObj)
@@ -233,7 +233,7 @@ func (m *ConfigManager) ExecListRepos(activeRepoURI string, output map[string]an
 			repoObj := map[string]any{
 				"remote": cfg.Repositories[cfgRepo].Remote,
 				"repo":   cfgRepo,
-				"refs":   cfg.Repositories[cfgRepo].RefID,
+				"refid":   cfg.Repositories[cfgRepo].RefID,
 				"active": isActive,
 			}
 			repos = append(repos, repoObj)

@@ -41,18 +41,111 @@ func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastracti
 	}
 	codeFiles := make([]azicliwkscosp.CodeFile, len(files))
 	for i, file := range files {
-		codeFiles[i] = azicliwkscosp.CodeFile{Path: file}
+		codeFiles[i] = azicliwkscosp.CodeFile{Type: azicliwkscosp.CodeFileTypePermCode, Path: file}
 	}
 	ignoredCodeFiles := make([]azicliwkscosp.CodeFile, len(ignoredFiles))
 	for i, file := range ignoredFiles {
 		ignoredCodeFiles[i] = azicliwkscosp.CodeFile{Path: file}
 	}
+	schemaFiles := []string{schemaYMLFile, schemaYAMLFile}
+	for _, schemaFile := range schemaFiles {
+		if exists, _ := m.persMgr.CheckFileIfExists(azicliwkspers.WorkspaceDir, schemaFile); exists {
+			schemaFileName := m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaFile)
+			codeFiles = append(codeFiles, azicliwkscosp.CodeFile{ Type: azicliwkscosp.CodeFilePermSchema, Path: schemaFileName,})
+		}
+	}
 	return codeFiles, ignoredCodeFiles, nil
+}
+
+// blobifyPermSchemaFile blobify a permguard schema file.
+func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path string, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile, absLang azlang.LanguageAbastraction, data []byte, file azicliwkscosp.CodeFile) []azicliwkscosp.CodeFile {
+	if schemaFileCount > 1 {
+		codeFile := azicliwkscosp.CodeFile{
+			Path:         strings.TrimPrefix(path, wkdir),
+			Section:      0,
+			Mode:         mode,
+			HasErrors:    true,
+			ErrorMessage: "permcode: only one schema file is permitted in the workspace. please ensure that there are no duplicate schema files",
+		}
+		blbCodeFiles = append(blbCodeFiles, codeFile)
+	} else {
+		multiSecObj, err := absLang.CreateSchemaSectionsObject(path, data)
+		if err != nil {
+			codeFile := &azicliwkscosp.CodeFile{
+				Type:         file.Type,
+				Path:         strings.TrimPrefix(path, wkdir),
+				Section:      0,
+				Mode:         mode,
+				HasErrors:    true,
+				ErrorMessage: err.Error(),
+			}
+			blbCodeFiles = append(blbCodeFiles, *codeFile)
+			return blbCodeFiles
+		}
+		secObj := multiSecObj.GetSectionObjects()[0]
+		codeFile := &azicliwkscosp.CodeFile{
+			Type:      file.Type,
+			Path:      strings.TrimPrefix(path, wkdir),
+			Section:   secObj.GetNumberOfSection(),
+			Mode:      mode,
+			HasErrors: secObj.GetError() != nil,
+			OType:     secObj.GetObjectType(),
+			OName:     secObj.GetObjectName(),
+		}
+		if codeFile.HasErrors {
+			codeFile.ErrorMessage = azerrors.GetSystemErrorMessage(secObj.GetError())
+		} else {
+			obj := secObj.GetObject()
+			codeFile.OID = obj.GetOID()
+			m.cospMgr.SaveObject(obj.GetOID(), obj.GetContent(), true)
+		}
+		blbCodeFiles = append(blbCodeFiles, *codeFile)
+	}
+	return blbCodeFiles
+}
+
+// blobifyPermSchemaFile blobify a permguard code file.
+func (m *WorkspaceManager) blobifyPermCodeFile(absLang azlang.LanguageAbastraction, path string, data []byte, file azicliwkscosp.CodeFile, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile) []azicliwkscosp.CodeFile {
+	multiSecObj, err := absLang.CreateMultiSectionsObjects(path, data)
+	if err != nil {
+		codeFile := &azicliwkscosp.CodeFile{
+			Type:         file.Type,
+			Path:         strings.TrimPrefix(path, wkdir),
+			Section:      -1,
+			Mode:         mode,
+			HasErrors:    true,
+			ErrorMessage: err.Error(),
+		}
+		blbCodeFiles = append(blbCodeFiles, *codeFile)
+		return blbCodeFiles
+	}
+	secObjs := multiSecObj.GetSectionObjects()
+	for _, secObj := range secObjs {
+		codeFile := &azicliwkscosp.CodeFile{
+			Type:      file.Type,
+			Path:      strings.TrimPrefix(path, wkdir),
+			Section:   secObj.GetNumberOfSection(),
+			Mode:      mode,
+			HasErrors: secObj.GetError() != nil,
+			OType:     secObj.GetObjectType(),
+			OName:     secObj.GetObjectName(),
+		}
+		if codeFile.HasErrors {
+			codeFile.ErrorMessage = azerrors.GetSystemErrorMessage(secObj.GetError())
+		} else {
+			obj := secObj.GetObject()
+			codeFile.OID = obj.GetOID()
+			m.cospMgr.SaveObject(obj.GetOID(), obj.GetContent(), true)
+		}
+		blbCodeFiles = append(blbCodeFiles, *codeFile)
+	}
+	return blbCodeFiles
 }
 
 // blobifyLocal scans source files and creates a blob for each object.
 func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absLang azlang.LanguageAbastraction) (string, []azicliwkscosp.CodeFile, error) {
 	blbCodeFiles := []azicliwkscosp.CodeFile{}
+	schemaFileCount := 0
 	for _, file := range codeFiles {
 		wkdir := m.ctx.GetWorkDir()
 		path := file.Path
@@ -60,28 +153,13 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 		if err != nil {
 			return "", nil, err
 		}
-		multiSecObj, err := absLang.CreateMultiSectionsObjects(path, data)
-		if err != nil {
-			continue
-		}
-		secObjs := multiSecObj.GetSectionObjects()
-		for _, secObj := range secObjs {
-			codeFile := &azicliwkscosp.CodeFile{
-				Path:      strings.TrimPrefix(path, wkdir),
-				Section:   secObj.GetNumberOfSection(),
-				Mode:      mode,
-				HasErrors: secObj.GetError() != nil,
-				OType:     secObj.GetObjectType(),
-				OName:     secObj.GetObjectName(),
-			}
-			if codeFile.HasErrors {
-				codeFile.ErrorMessage = secObj.GetError().Error()
-			} else {
-				obj := secObj.GetObject()
-				codeFile.OID = obj.GetOID()
-				m.cospMgr.SaveObject(obj.GetOID(), obj.GetContent(), true)
-			}
-			blbCodeFiles = append(blbCodeFiles, *codeFile)
+		if file.Type == azicliwkscosp.CodeFileTypePermCode {
+			blbCodeFiles = m.blobifyPermCodeFile(absLang, path, data, file, wkdir, mode, blbCodeFiles)
+		} else if file.Type == azicliwkscosp.CodeFilePermSchema {
+			schemaFileCount++
+			blbCodeFiles = m.blobifyPermSchemaFile(schemaFileCount, path, wkdir, mode, blbCodeFiles, absLang, data, file)
+		} else {
+			return "", nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: file type is not supported")
 		}
 	}
 	if err := m.cospMgr.SaveCodeMap(blbCodeFiles); err != nil {
@@ -111,7 +189,6 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	}
 	return treeID, blbCodeFiles, nil
 }
-
 // retrieveCodeMap retrieves the code map.
 func (m *WorkspaceManager) retrieveCodeMap() ([]azicliwkscosp.CodeFile, []azicliwkscosp.CodeFile, error) {
 	codeFiles, err := m.cospMgr.ReadCodeMap()

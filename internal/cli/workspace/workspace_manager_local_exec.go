@@ -187,7 +187,9 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 		out(nil, "validate", "Validation process initiated.", nil)
 	}
 	if len(invlsCodeFiles) == 0 {
-		out(nil, "validate", "Validation completed successfully.", nil)
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "validate", "Validation completed successfully.", nil)
+		}
 		out(nil, "", "Your workspace has been validated successfully.", nil)
 		return output, nil
 	}

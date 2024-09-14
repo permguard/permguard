@@ -16,14 +16,22 @@
 
 package cosp
 
+const (
+	// CodeFileTypePermCode represents the code file type.
+	CodeFileTypePermCode = "permcode"
+	// CodeFileTypePermSchema represents the schema file type.
+	CodeFilePermSchema   = "permschema"
+)
+
 // CodeLocalConfig represents the configuration for the code local.
 type CodeLocalConfig struct {
-	TreeID	string  `toml:"treeid"`
+	TreeID   string `toml:"treeid"`
 	Language string `toml:"language"`
 }
 
 // CodeFile represents the code file.
 type CodeFile struct {
+	Type         string `json:"type"`
 	Path         string `json:"path"`
 	OID          string `json:"oid"`
 	OType        string `json:"otype"`

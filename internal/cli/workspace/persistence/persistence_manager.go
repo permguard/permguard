@@ -65,7 +65,7 @@ func (p *PersistenceManager) GetRelativeDir(relative RelativeDir, name string) s
 }
 
 // CheckFileIfExists checks if a file exists.
-func (p *PersistenceManager) CheckFileIfExists(relative RelativeDir, name string) (bool, error) {
+func (p *PersistenceManager) 	CheckFileIfExists(relative RelativeDir, name string) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
 	return azfiles.CheckFileIfExists(name)
 }
