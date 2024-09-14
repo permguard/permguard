@@ -17,13 +17,12 @@
 package common
 
 import (
-	"time"
-
 	"github.com/fatih/color"
 )
 
-// NormalText returns the normal text.
-func NormalText(text string) string {
+
+// LogHeaderText returns the log header text.
+func LogHeaderText(text string) string {
 	out := color.New(color.FgWhite)
 	return out.Sprintf(text)
 }
@@ -36,7 +35,13 @@ func ErrorText(text string) string {
 
 // TimeStampText returns the timestamp text.
 func TimeStampText(text string) string {
-	out := color.New(color.FgCyan)
+	out := color.New(color.FgBlue)
+	return out.Sprintf(text)
+}
+
+// NormalText returns the normal text.
+func NormalText(text string) string {
+	out := color.New(color.FgWhite)
 	return out.Sprintf(text)
 }
 
