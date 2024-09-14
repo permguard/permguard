@@ -53,6 +53,47 @@ type CliPrinter interface {
 	ErrorWithOutput(output map[string]any, err error)
 }
 
+// convertToSnakeCase converts a string to snake_case
+func convertToSnakeCase(str string) string {
+	var result []rune
+	for i, r := range str {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			result = append(result, '_')
+		}
+		result = append(result, r)
+	}
+	return strings.ToLower(string(result))
+}
+
+// Recursively process the structure or map to convert keys to snake_case
+func convertKeysToSnakeCase(data interface{}) interface{} {
+	if reflect.TypeOf(data).Kind() == reflect.Map {
+		newMap := make(map[string]interface{})
+		for k, v := range data.(map[string]interface{}) {
+			newKey := convertToSnakeCase(k)
+			newMap[newKey] = convertKeysToSnakeCase(v)
+		}
+		return newMap
+	}
+	if reflect.TypeOf(data).Kind() == reflect.Struct {
+		newMap := make(map[string]interface{})
+		v := reflect.ValueOf(data)
+		for i := 0; i < v.NumField(); i++ {
+			field := v.Type().Field(i)
+			newKey := convertToSnakeCase(field.Name)
+			newMap[newKey] = convertKeysToSnakeCase(v.Field(i).Interface())
+		}
+		return newMap
+	}
+	return data
+}
+
+// marshalWithSnakeCase marshals a struct into JSON with snake_case keys
+func marshalWithSnakeCase(v interface{}) ([]byte, error) {
+	processedData := convertKeysToSnakeCase(v)
+	return json.Marshal(processedData)
+}
+
 // CliPrinterTerminal is the cli printer.
 type CliPrinterTerminal struct {
 	verbose bool
@@ -73,7 +114,7 @@ func NewCliPrinterTerminal(verbose bool, output string) (*CliPrinterTerminal, er
 
 // printJSON prints the output as json.
 func (cp *CliPrinterTerminal) printJSON(output map[string]any) {
-	jsonData, err := json.Marshal(output)
+	jsonData, err := marshalWithSnakeCase(output)
 	if err != nil {
 		return
 	}

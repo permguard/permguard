@@ -23,7 +23,7 @@ The primary function of the PermGuard CLI is to create, modify, and destroy sche
 
 Provisioning in PermGuard involves the process of creating and managing these resources, including schemas, policies, and permissions.
 
-This can primarily be accomplished using the `plan`, `apply`, and `destroy` commands.
+This can primarily be accomplished using the `plan` and `apply` commands.
 
 ## Plan
 
@@ -45,14 +45,4 @@ By default, apply performs a `fresh plan` right before applying changes. However
 
 ```bash
  permguard apply
-```
-
-## Destroy
-
-The `destroy` command destroys all in the remote server.
-
-It uses state data to identify and determine which real-world objects correspond to the managed resources.
-
-```bash
- permguard destroy
 ```

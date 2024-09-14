@@ -50,7 +50,6 @@ Available Commands:
   clone       Clone a remote repo to the local working directory
   completion  Generate the autocompletion script for the specified shell
   config      Configure the command line settings
-  destroy     Destroy locally managed objects from the remote repo
   objects     Manage the object store
   help        Help about any command
   init        Initialize a new repo in the working directory

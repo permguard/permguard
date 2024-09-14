@@ -55,20 +55,3 @@ func (m *WorkspaceManager) ExecApply(out func(map[string]any, string, any, error
 
 	return nil, nil
 }
-
-// ExecDestroy destroies locally managed objects from the remote repo
-func (m *WorkspaceManager) ExecDestroy(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
-	}
-
-	fileLock, err := m.tryLock()
-	if err != nil {
-		return nil, err
-	}
-	defer fileLock.Unlock()
-
-	// TODO: Implement this method
-
-	return nil, nil
-}

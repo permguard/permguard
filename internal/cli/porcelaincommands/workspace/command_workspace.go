@@ -61,7 +61,6 @@ func CreateCommandsForWorkspace(deps azcli.CliDependenciesProvider, v *viper.Vip
 		CreateCommandForWorkspaceObjects(deps, v),
 		CreateCommandForWorkspacePlan(deps, v),
 		CreateCommandForWorkspaceApply(deps, v),
-		CreateCommandForWorkspaceDestroy(deps, v),
 	}
 	return commands
 }
