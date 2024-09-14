@@ -73,12 +73,10 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 		}
 		output = out(nil, "", msg, nil)
 	} else {
-		remotes := []any{}
 		remoteObj := map[string]any{
 			"cwd": m.getHomeHiddenDir(),
 		}
-		remotes = append(remotes, remoteObj)
-		output = out(nil, "workspaces", remotes, nil)
+		output = out(nil, "workspace", remoteObj, nil)
 	}
 	return output, nil
 }
