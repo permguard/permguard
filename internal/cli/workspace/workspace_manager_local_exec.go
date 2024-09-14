@@ -149,7 +149,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 		output = buildOutputForCodeFiles(codeFiles, m, out, output)
 		if m.ctx.IsTerminalOutput() && !internal {
 			out(nil, "", fmt.Sprintf("your workspace %s has errors\n", aziclicommon.KeywordText(ref)), nil)
-			out(nil, "", "please fix the errors to proceed", nil)
+			out(nil, "", "please validate and fix the errors to proceed", nil)
 		}
 		return output, err
 	}
@@ -219,7 +219,7 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 		}
 	}
 	out(nil, "", "\nplease fix the errors to proceed", nil)
-	return output, nil
+	return output, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: validation errors found in code files within the workspace. please check the logs for more details.")
 }
 
 // ExecObjects manage the object store.
