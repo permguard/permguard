@@ -17,7 +17,9 @@
 package workspace
 
 import (
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -34,6 +36,10 @@ var outFunc = func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter
 		}
 		if output == nil {
 			output = make(map[string]any)
+		}
+		if ctx.IsVerboseTerminalOutput() {
+			timestamp := time.Now().Format("2006-01-02 15:04:05")
+			key = fmt.Sprintf("%s %s", aziclicommon.TimeStampText(timestamp), key)
 		}
 		output[key] = value
 		if ctx.IsTerminalOutput() {
