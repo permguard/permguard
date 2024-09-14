@@ -27,7 +27,7 @@ import (
 
 // codeFileInfo represents info about the code file.
 func (m *WorkspaceManager) printFiles(action string, files []string, out func(map[string]any, string, any, error) map[string]any) {
-	out(nil, "", fmt.Sprintf("	  %s:", action), nil)
+	out(nil, "", fmt.Sprintf("	- %s:", action), nil)
 	for _, file := range files {
 		out(nil, "", fmt.Sprintf("	  	- %s", aziclicommon.FileText(aziclicommon.FileText(file))), nil)
 	}
