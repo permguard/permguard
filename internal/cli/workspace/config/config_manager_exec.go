@@ -179,7 +179,7 @@ func (m *ConfigManager) ExecAddRepo(remote string, accountID int64, repo string,
 		m.saveConfig(true, cfg)
 	}
 	if m.ctx.IsTerminalOutput() {
-		output = out(nil, "", fmt.Sprintf("Repo %s has been added.", aziclicommon.KeywordText(refID)), nil)
+		output = out(nil, "", fmt.Sprintf("Repo %s has been added.", aziclicommon.KeywordText(ref)), nil)
 	} else if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{

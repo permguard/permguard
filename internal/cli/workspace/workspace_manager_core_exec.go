@@ -67,9 +67,9 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 	var output map[string]any
 	if m.ctx.IsTerminalOutput() {
 		if firstInit {
-			msg = fmt.Sprintf("initialized empty permguard repository in %s", aziclicommon.FileText(homeDir))
+			msg = fmt.Sprintf("Initialized empty permguard repository in %s.", aziclicommon.FileText(homeDir))
 		} else {
-			msg = fmt.Sprintf("reinitialized existing permguard repository in %s", aziclicommon.FileText(homeDir))
+			msg = fmt.Sprintf("Reinitialized existing permguard repository in %s.", aziclicommon.FileText(homeDir))
 		}
 		output = out(nil, "", msg, nil)
 	} else {
