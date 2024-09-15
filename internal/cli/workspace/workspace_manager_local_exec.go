@@ -158,7 +158,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 	output = buildOutputForCodeFiles(codeFiles, m, out, output)
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "Blobification process completed successfully.", nil)
-		out(nil, "refresh", fmt.Sprintf("New tree created with ID: %s.", aziclicommon.IDText(treeID)), nil)
+		out(nil, "refresh", fmt.Sprintf("New tree created with id: %s.", aziclicommon.IDText(treeID)), nil)
 	}
 	if m.ctx.IsTerminalOutput() && !internal {
 		out(nil, "", "Your workspace has been refreshed.", nil)
