@@ -227,8 +227,8 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", fmt.Sprintf("The tree has been created with ID: %s.", aziclicommon.IDText(treeObj.GetOID())) , nil)
 	}
-	out(nil, "", "Apply process completed successfully.", nil)
 
+	out(nil, "", "Apply process completed successfully.", nil)
 	if !internal {
 		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repo: %s.", aziclicommon.KeywordText(headRef)), nil)
 	}
