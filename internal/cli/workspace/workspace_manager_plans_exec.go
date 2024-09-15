@@ -213,10 +213,19 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 		out(nil, "apply", "The plan has been read successfully.", nil)
 	}
 
-	_, _, err = m.buildPlanTree(plan, absLang)
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "apply", "Preparing to build the tree.", nil)
+	}
+	_, treeObj, err := m.buildPlanTree(plan, absLang)
 	if err != nil {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "apply", "Failed to build the tree.", nil)
+		}
 		out(nil, "", errPlanningProcessFailed, nil)
 		return output, err
+	}
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "apply", fmt.Sprintf("The tree has been created with ID: %s.", aziclicommon.IDText(treeObj.GetOID())) , nil)
 	}
 	out(nil, "", "Apply process completed successfully.", nil)
 
