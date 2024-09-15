@@ -21,7 +21,6 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ExecPlan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
@@ -32,7 +31,7 @@ func (m *WorkspaceManager) ExecPlan(out func(map[string]any, string, any, error)
 // execInternalPlan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
 func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
+		return m.raiseWrongWorkspaceDirError(out)
 	}
 
 	_, err := m.execInternalValidate(internal, out)
@@ -59,15 +58,14 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 		out(nil, "plan", fmt.Sprintf("Repo set to %s.", aziclicommon.KeywordText(headRef)), nil)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
-			"remote":    headInfo.Remote,
-			"accountid": headInfo.AccountID,
+			"remote":      headInfo.Remote,
+			"accountid":   headInfo.AccountID,
 			"remote_repo": headInfo.Repo,
-			"refid":     headInfo.RefID,
+			"refid":       headInfo.RefID,
 		}
 		output = out(output, "head", remoteObj, nil)
 		output = out(output, "repo", headRef, nil)
 	}
-
 
 	if m.ctx.IsTerminalOutput() {
 		out(nil, "", fmt.Sprintf("Initiating the planning process for repo %s.", aziclicommon.KeywordText(headRef)), nil)
@@ -146,7 +144,7 @@ func (m *WorkspaceManager) ExecApply(out func(map[string]any, string, any, error
 // execInternalApply applies the plan to the remote repo
 func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
+		return m.raiseWrongWorkspaceDirError(out)
 	}
 
 	_, err := m.execInternalPlan(internal, out)

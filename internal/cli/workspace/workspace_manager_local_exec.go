@@ -79,7 +79,7 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 // execInternalRefresh scans source files in the current directory and synchronizes the local state,
 func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
+		return m.raiseWrongWorkspaceDirError(out)
 	}
 	fileLock, err := m.tryLock()
 	if err != nil {
@@ -173,7 +173,7 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 // execInternalValidate validates the local state.
 func (m *WorkspaceManager) execInternalValidate(internal bool, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
+		return m.raiseWrongWorkspaceDirError(out)
 	}
 
 	output, _ := m.execInternalRefresh(true, out)
@@ -229,7 +229,7 @@ func (m *WorkspaceManager) execInternalValidate(internal bool, out func(map[stri
 // ExecObjects manage the object store.
 func (m *WorkspaceManager) ExecObjects(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
+		return m.raiseWrongWorkspaceDirError(out)
 	}
 	fileLock, err := m.tryLock()
 	if err != nil {
