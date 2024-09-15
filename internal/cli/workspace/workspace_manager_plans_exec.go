@@ -21,7 +21,6 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ExecPlan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
@@ -32,24 +31,16 @@ func (m *WorkspaceManager) ExecPlan(out func(map[string]any, string, any, error)
 // execInternalPlan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
 func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return m.raiseWrongWorkspaceDirError(out)
+		return nil, m.raiseWrongWorkspaceDirError(out)
+	}
+	headInfo, err := m.getCurrentHeadInfo(out)
+	if err != nil {
+		return nil, err
 	}
 
 	output, err := m.execInternalValidate(internal, out)
 	if err != nil {
 		return output, err
-	}
-
-	headInfo, err := m.rfsMgr.GetCurrentHead()
-	if err != nil {
-		return output, err
-	}
-	if headInfo.RefID == "" {
-		if m.ctx.IsTerminalOutput() {
-			out(nil, "", "No repository is configured in the current workspace.", nil)
-			out(nil, "", "Please checkout a repository and try again.", nil)
-		}
-		return output, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceInvaliHead, "cli: invalid head configuration")
 	}
 
 	headRef, err := m.rfsMgr.GetCurrentHeadRef()
@@ -151,10 +142,14 @@ func (m *WorkspaceManager) ExecApply(out func(map[string]any, string, any, error
 // execInternalApply applies the plan to the remote repo
 func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
-		return m.raiseWrongWorkspaceDirError(out)
+		return nil, m.raiseWrongWorkspaceDirError(out)
+	}
+	_, err := m.getCurrentHeadInfo(out)
+	if err != nil {
+		return nil, err
 	}
 
-	_, err := m.execInternalPlan(internal, out)
+	_, err = m.execInternalPlan(internal, out)
 	if err != nil {
 		return nil, err
 	}
