@@ -103,6 +103,15 @@ func NewInternalManager(ctx *aziclicommon.CliCommandContext, langFct azlang.Lang
 	}, nil
 }
 
+// raiseWrongWorkspaceDirError raises an error when the directory is not a workspace directory.
+func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	if m.ctx.IsTerminalOutput() {
+		out(nil, "", "The current working directory is not a valid PermGuard workspace.", nil)
+		out(nil, "", "Please initialize the workspace by running the 'init' command.", nil)
+	}
+	return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
+}
+
 // getHomeHiddenDir returns the home directory.
 func (m *WorkspaceManager) getHomeDir() string {
 	return m.homeDir
