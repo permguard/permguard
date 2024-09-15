@@ -162,6 +162,16 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 			return "", nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: file type is not supported")
 		}
 	}
+	if schemaFileCount == 0 {
+		codeFile := azicliwkscosp.CodeFile{
+			Path:         m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaYAMLFile),
+			Section:      0,
+			Mode:         0,
+			HasErrors:    true,
+			ErrorMessage: "permcode: the schema file 'schema.yml' is missing. please ensure there are no duplicate schema files and that the required schema file is present.",
+		}
+		blbCodeFiles = append(blbCodeFiles, codeFile)
+	}
 	if err := m.cospMgr.SaveCodeMap(blbCodeFiles); err != nil {
 		return "", blbCodeFiles, err
 	}
