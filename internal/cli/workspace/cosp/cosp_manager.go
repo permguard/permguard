@@ -256,8 +256,9 @@ func (m *COSPManager) convertCodeFileToCodeObject(file CodeFile) (*CodeObject, e
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordMalformed, "cli: code file OID is empty.")
 	}
 	return &CodeObject{
-		OName: file.OName,
-		OID: file.OID,
+		OName: 	file.OName,
+		OType: 	file.OType,
+		OID: 	file.OID,
 	}, nil
 }
 
@@ -275,32 +276,34 @@ func (m *COSPManager) ConvertCodeFilesToCodeObjects(files []CodeFile) ([]CodeObj
 }
 
 // CalculateCodeObjectsState calculates the code objects state.
-func (m *COSPManager) CalculateCodeObjectsState(currentObjs []CodeObject, newObjs []CodeObject) []CodeObjectState {
+func (m *COSPManager) CalculateCodeObjectsState(currentObjs []CodeObject, remoteObjs []CodeObject) []CodeObjectState {
 	if currentObjs == nil {
 		currentObjs = []CodeObject{}
 	}
-	if newObjs == nil {
-		newObjs = []CodeObject{}
+	if remoteObjs == nil {
+		remoteObjs = []CodeObject{}
 	}
 	currentMap := make(map[string]string)
-	newMap := make(map[string]string)
 	for _, obj := range currentObjs {
 		currentMap[obj.OName] = obj.OID
 	}
-	for _, obj := range newObjs {
-		newMap[obj.OName] = obj.OID
+	remoteMap := make(map[string]string)
+	for _, obj := range remoteObjs {
+		remoteMap[obj.OName] = obj.OID
 	}
 	result := []CodeObjectState{}
 	for _, obj := range currentObjs {
-		if newOID, exists := newMap[obj.OName]; exists {
+		if newOID, exists := remoteMap[obj.OName]; exists {
 			if obj.OID != newOID {
 				result = append(result, CodeObjectState{CodeObject: obj, State: CodeObjectStateModify})
+			} else {
+				result = append(result, CodeObjectState{CodeObject: obj, State: CodeObjectStateUnchanged})
 			}
 		} else {
 			result = append(result, CodeObjectState{CodeObject: obj, State: CodeObjectStateCreate})
 		}
 	}
-	for _, obj := range newObjs {
+	for _, obj := range remoteObjs {
 		if _, exists := currentMap[obj.OName]; !exists {
 			result = append(result, CodeObjectState{CodeObject: obj, State: CodeObjectStateDelete})
 		}
@@ -331,6 +334,7 @@ func (m *COSPManager) saveCodeObjects(path string, codeObjects []CodeObject) err
 		codeObject := record.(CodeObject)
 		return []string{
 			codeObject.OName,
+			codeObject.OType,
 			codeObject.OID,
 		}
 	}
@@ -362,7 +366,8 @@ func (m *COSPManager) readCodeObjects(path string) ([]CodeObject, error) {
 		}
 		codeObject := CodeObject{
 			OName: record[0],
-			OID:   record[1],
+			OType: record[1],
+			OID:   record[2],
 		}
 		codeObjects = append(codeObjects, codeObject)
 		return nil

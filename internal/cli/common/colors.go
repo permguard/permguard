@@ -74,6 +74,12 @@ func BigNumberText(digit int64) string {
 	return out.Sprintf("%d", digit)
 }
 
+// UnchangedText returns the unchanged text.
+func UnchangedText(text string) string {
+	out := color.New(color.FgHiWhite)
+	return out.Sprintf(text)
+}
+
 // CreateText returns the create text.
 func CreateText(text string) string {
 	out := color.New(color.FgHiGreen)
