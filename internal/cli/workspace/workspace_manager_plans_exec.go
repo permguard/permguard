@@ -38,12 +38,12 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 		return nil, err
 	}
 
-	output, err := m.execInternalValidate(internal, out)
+	headRef, err := m.rfsMgr.GetCurrentHeadRef()
 	if err != nil {
-		return output, err
+		return nil, err
 	}
 
-	headRef, err := m.rfsMgr.GetCurrentHeadRef()
+	output, err := m.execInternalValidate(true, out)
 	if err != nil {
 		return output, err
 	}
@@ -125,7 +125,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 			}
 		}
 		if m.ctx.IsTerminalOutput() {
-			out(nil, "", "\n", nil)
+			out(nil, "", "", nil)
 		}
 		planObjs := append(createdItems, modifiedItems...)
 		planObjs = append(planObjs, unchangedItems...)
@@ -171,17 +171,57 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 	if !m.isWorkspaceDir() {
 		return nil, m.raiseWrongWorkspaceDirError(out)
 	}
-	_, err := m.getCurrentHeadInfo(out)
+	headInfo, err := m.getCurrentHeadInfo(out)
+	if err != nil {
+		return nil, err
+	}
+	headRef, err := m.rfsMgr.GetCurrentHeadRef()
+	if err != nil {
+		return nil, err
+	}
+	lang, err := m.cfgMgr.GetLanguage()
+	if err != nil {
+		return nil, err
+	}
+	absLang, err := m.langFct.CreateLanguageAbastraction(lang)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = m.execInternalPlan(internal, out)
+	output, err := m.execInternalPlan(true, out)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: Implement this method
+	out(nil, "", fmt.Sprintf("Initiating the apply process for repo %s.", aziclicommon.KeywordText(headRef)), nil)
 
-	return nil, nil
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "apply", "Preparing to read the plan.", nil)
+	}
+	errPlanningProcessFailed := "Apply process failed."
+	plan, err := m.cospMgr.ReadCodePlan(headInfo.Remote, headInfo.RefID)
+	if err != nil {
+		if m.ctx.IsTerminalOutput() {
+			if m.ctx.IsVerboseTerminalOutput() {
+				out(nil, "apply", "Failed to read the plan.", nil)
+			}
+			out(nil, "", errPlanningProcessFailed, nil)
+		}
+		return output, err
+	}
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "apply", "The plan has been read successfully.", nil)
+	}
+
+	_, _, err = m.buildPlanTree(plan, absLang)
+	if err != nil {
+		out(nil, "", errPlanningProcessFailed, nil)
+		return output, err
+	}
+	out(nil, "", "Apply process completed successfully.", nil)
+
+	if !internal {
+		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repo: %s.", aziclicommon.KeywordText(headRef)), nil)
+	}
+	return output, nil
 }

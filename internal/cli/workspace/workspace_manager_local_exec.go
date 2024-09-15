@@ -130,8 +130,10 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 		}
 		out(nil, "refresh", fmt.Sprintf("Scanned %s %s, selected %s %s, and ignored %s %s.",
 			aziclicommon.NumberText(totalCount), fileWord(totalCount), aziclicommon.NumberText(selectedCount), fileWord(selectedCount), aziclicommon.NumberText(ignoredCount), fileWord(ignoredCount)), nil)
+		out(nil, "", "", nil)
 		m.printFiles("excluded_files", azicliwkscosp.ConvertCodeFilesToPath(ignoredFiles), out)
 		m.printFiles("processed_files", azicliwkscosp.ConvertCodeFilesToPath(selectedFiles), out)
+		out(nil, "", "", nil)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		output = map[string]any{
 			"excluded_files":  azicliwkscosp.ConvertCodeFilesToPath(ignoredFiles),
