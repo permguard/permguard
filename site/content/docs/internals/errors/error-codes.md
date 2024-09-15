@@ -106,6 +106,7 @@ seo:
 | 08101      | cli: operation on directory failed               |
 | 08102      | cli: operation on file failed                    |
 | 08110      | cli: workspace operation failed                  |
+| 08111      | cli: workspace invalid head                      |
 
 ## 09xxx Plugin errors
 

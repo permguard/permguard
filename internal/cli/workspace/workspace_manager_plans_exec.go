@@ -119,9 +119,28 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 		}
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", "\n", nil)
-			if !internal {
-				out(nil, "", "Run the 'apply' command to apply those changes.", nil)
+		}
+		planObjs := append(createdItems, modifiedItems...)
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "plan", fmt.Sprintf("Remote for the plan is set to: %s.", aziclicommon.KeywordText(headInfo.Remote)), nil)
+			out(nil, "plan", fmt.Sprintf("Reference ID for the plan is set to: %s", aziclicommon.IDText(headInfo.RefID)), nil)
+			out(nil, "plan", "Preparing to save the plan.", nil)
+		}
+		err := m.cospMgr.SaveCodePlan(headInfo.Remote, headInfo.RefID, planObjs)
+		if err != nil {
+			if m.ctx.IsVerboseTerminalOutput() {
+				out(nil, "plan", "Failed to save the plan.", nil)
 			}
+			if m.ctx.IsTerminalOutput() {
+				out(nil, "", "Unable to save the plan.", nil)
+			}
+			return output, err
+		}
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "plan", "Plan saved successfully.", nil)
+		}
+		if !internal && m.ctx.IsTerminalOutput() {
+			out(nil, "", "Run the 'apply' command to apply the changes.", nil)
 		}
 	}
 	if m.ctx.IsJSONOutput() {

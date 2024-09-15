@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/pelletier/go-toml"
 
@@ -46,6 +47,8 @@ const (
 	hiddenCodeMap = "codemap"
 	// Hidden code states.
 	hiddenCodeState = "codestate"
+	// Hidden code plan.
+	hiddenCodePlan = "plan"
 )
 
 // COSPManager implements the internal manager for code, objects, states and plans.
@@ -244,45 +247,6 @@ func (m *COSPManager) ReadCodeMap() ([]CodeFile, error) {
 	return codeFiles, nil
 }
 
-// SaveCodeState saves the code state.
-func (m *COSPManager) SaveCodeState(codeObjects []CodeObject) error {
-	path := filepath.Join(m.getCodeAreaDir(), hiddenCodeState)
-	rowFunc := func(record interface{}) []string {
-		codeObject := record.(CodeObject)
-		return []string{
-			codeObject.OName,
-			codeObject.OID,
-		}
-	}
-	err := m.persMgr.WriteCSVStream(azicliwkspers.PermGuardDir, path, nil, codeObjects, rowFunc)
-	if err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to write code state")
-	}
-	return nil
-}
-
-// ReadCodeState reads the code state.
-func (m *COSPManager) ReadCodeState() ([]CodeObject, error) {
-	path := filepath.Join(m.getCodeAreaDir(), hiddenCodeState)
-	var codeObjects []CodeObject
-	recordFunc := func(record []string) error {
-		if len(record) < 2 {
-			return fmt.Errorf("invalid record format")
-		}
-		codeObject := CodeObject{
-			OName: record[0],
-			OID:   record[1],
-		}
-		codeObjects = append(codeObjects, codeObject)
-		return nil
-	}
-	err := m.persMgr.ReadFromCSVStream(azicliwkspers.PermGuardDir, path, nil, recordFunc)
-	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to read code state")
-	}
-	return codeObjects, nil
-}
-
 // convertCodeFileToCodeObject converts the code file to the code object.
 func (m *COSPManager) convertCodeFileToCodeObject(file CodeFile) (*CodeObject, error) {
 	if file.OName == "" {
@@ -342,4 +306,70 @@ func (m *COSPManager) CalculateCodeObjectsState(currentObjs []CodeObject, newObj
 		}
 	}
 	return result
+}
+
+// SaveCodeState saves the code state.
+func (m *COSPManager) SaveCodeState(codeObjects []CodeObject) error {
+	path := filepath.Join(m.getCodeAreaDir(), hiddenCodeState)
+	return m.saveCodeObjects(path, codeObjects)
+}
+
+// SaveCodePlan saves the code plan.
+func (m *COSPManager) SaveCodePlan(remote string, refID string, codeObjects []CodeObject) error {
+	path := filepath.Join(m.getCodeDir(), strings.ToLower(remote), strings.ToLower(refID))
+	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, path)
+	if err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to create code plan")
+	}
+	path = filepath.Join(path, hiddenCodePlan)
+	return m.saveCodeObjects(path, codeObjects)
+}
+
+// saveCodeObjects saves the code objects.
+func (m *COSPManager) saveCodeObjects(path string, codeObjects []CodeObject) error {
+	rowFunc := func(record interface{}) []string {
+		codeObject := record.(CodeObject)
+		return []string{
+			codeObject.OName,
+			codeObject.OID,
+		}
+	}
+	err := m.persMgr.WriteCSVStream(azicliwkspers.PermGuardDir, path, nil, codeObjects, rowFunc)
+	if err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to write code state")
+	}
+	return nil
+}
+
+// ReadCodeState reads the code state.
+func (m *COSPManager) ReadCodeState() ([]CodeObject, error) {
+	path := filepath.Join(m.getCodeAreaDir(), hiddenCodeState)
+	return m.readCodeObjects(path)
+}
+
+// ReadCodePlan reads the code plan.
+func (m *COSPManager) ReadCodePlan(remote string, refID string) ([]CodeObject, error) {
+	path := filepath.Join(m.getCodeDir(), strings.ToLower(remote), strings.ToLower(refID), hiddenCodePlan)
+	return m.readCodeObjects(path)
+}
+
+// readCodeObjects reads the code objects.
+func (m *COSPManager) readCodeObjects(path string) ([]CodeObject, error) {
+	var codeObjects []CodeObject
+	recordFunc := func(record []string) error {
+		if len(record) < 2 {
+			return fmt.Errorf("invalid record format")
+		}
+		codeObject := CodeObject{
+			OName: record[0],
+			OID:   record[1],
+		}
+		codeObjects = append(codeObjects, codeObject)
+		return nil
+	}
+	err := m.persMgr.ReadFromCSVStream(azicliwkspers.PermGuardDir, path, nil, recordFunc)
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to read code state")
+	}
+	return codeObjects, nil
 }

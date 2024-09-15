@@ -23,7 +23,7 @@ import (
 	azapiv1aap "github.com/permguard/permguard/internal/agents/services/aap/endpoints/api/v1"
 	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azstroage "github.com/permguard/permguard/pkg/agents/storage"
+	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 )
 
 // AAPService holds the configuration for the server.
@@ -54,7 +54,7 @@ func (f *AAPService) GetEndpoints() ([]azservices.EndpointInitializer, error) {
 	endpoint, err := azservices.NewEndpointInitializer(
 		f.config.GetService(),
 		f.config.GetPort(),
-		func(grpcServer *grpc.Server, srvCtx *azservices.ServiceContext, endptCtx *azservices.EndpointContext, storageConnector *azstroage.StorageConnector) error {
+		func(grpcServer *grpc.Server, srvCtx *azservices.ServiceContext, endptCtx *azservices.EndpointContext, storageConnector *azstorage.StorageConnector) error {
 			centralStorage, err := storageConnector.GetCentralStorage(endptCtx)
 			if err != nil {
 				return err
