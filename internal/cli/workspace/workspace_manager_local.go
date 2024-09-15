@@ -175,6 +175,13 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	if err := m.cospMgr.SaveCodeMap(blbCodeFiles); err != nil {
 		return "", blbCodeFiles, err
 	}
+	codeObsState, err := m.cospMgr.ConvertCodeFilesToCodeObjects(blbCodeFiles)
+	if err != nil {
+		return "", blbCodeFiles, err
+	}
+	if err := m.cospMgr.SaveCodeState(codeObsState); err != nil {
+		return "", blbCodeFiles, err
+	}
 	tree := azlangobjs.NewTree()
 	hasErrors := false
 	for _, file := range blbCodeFiles {
