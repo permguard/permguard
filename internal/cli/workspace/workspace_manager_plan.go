@@ -17,10 +17,28 @@
 package workspace
 
 import (
+	azlang "github.com/permguard/permguard/pkg/core/languages"
+	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 )
 
 // plan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
 func (m *WorkspaceManager) plan(currentFiles []azicliwkscosp.CodeObject, remoteFiles []azicliwkscosp.CodeObject) ([]azicliwkscosp.CodeObjectState, error) {
 	return m.cospMgr.CalculateCodeObjectsState(currentFiles, remoteFiles), nil
+}
+
+// buildPlanTree builds the plan tree.
+func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObject, absLang azlang.LanguageAbastraction) (*azlangobjs.Tree, *azlangobjs.Object, error) {
+	tree := azlangobjs.NewTree()
+	for _, planItem := range plan {
+		if err := tree.AddEntry(azlangobjs.NewTreeEntry(planItem.OType, planItem.OID, planItem.OName)); err != nil {
+			return nil, nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree item cannot be added to the tree because of errors in the code files")
+		}
+	}
+	treeObj, err := absLang.CreateTreeObject(tree)
+	if err != nil {
+		return nil, nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree object cannot be created")
+	}
+	return tree, treeObj, nil
 }
