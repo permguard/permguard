@@ -73,3 +73,21 @@ func BigNumberText(digit int64) string {
 	out := color.New(color.FgGreen)
 	return out.Sprintf("%d", digit)
 }
+
+// CreateText returns the create text.
+func CreateText(text string) string {
+	out := color.New(color.FgHiGreen)
+	return out.Sprintf(text)
+}
+
+// ModifyText returns the modify text.
+func ModifyText(text string) string {
+	out := color.New(color.FgHiYellow)
+	return out.Sprintf(text)
+}
+
+// DeleteText returns the delete text.
+func DeleteText(text string) string {
+	out := color.New(color.FgHiRed)
+	return out.Sprintf(text)
+}

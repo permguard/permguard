@@ -28,7 +28,7 @@ import (
 
 // cleanupLocalArea cleans up the local area.
 func (m *WorkspaceManager) cleanupLocalArea() (bool, error) {
-	return m.cospMgr.CleanLocalArea()
+	return m.cospMgr.CleanCodeArea()
 }
 
 // scanSourceCodeFiles scans the source code files.
@@ -51,7 +51,7 @@ func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastracti
 	for _, schemaFile := range schemaFiles {
 		if exists, _ := m.persMgr.CheckFileIfExists(azicliwkspers.WorkspaceDir, schemaFile); exists {
 			schemaFileName := m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaFile)
-			codeFiles = append(codeFiles, azicliwkscosp.CodeFile{ Type: azicliwkscosp.CodeFilePermSchema, Path: schemaFileName,})
+			codeFiles = append(codeFiles, azicliwkscosp.CodeFile{Type: azicliwkscosp.CodeFilePermSchema, Path: schemaFileName})
 		}
 	}
 	return codeFiles, ignoredCodeFiles, nil
@@ -194,11 +194,12 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	}
 	m.cospMgr.SaveObject(treeObj.GetOID(), treeObj.GetContent(), true)
 	treeID := treeObj.GetOID()
-	if err := m.cospMgr.SaveCodeLocalConfig(treeID, absLang.GetLanguageName()); err != nil {
+	if err := m.cospMgr.SaveCodeAreaConfig(treeID, absLang.GetLanguageName()); err != nil {
 		return treeID, blbCodeFiles, err
 	}
 	return treeID, blbCodeFiles, nil
 }
+
 // retrieveCodeMap retrieves the code map.
 func (m *WorkspaceManager) retrieveCodeMap() ([]azicliwkscosp.CodeFile, []azicliwkscosp.CodeFile, error) {
 	codeFiles, err := m.cospMgr.ReadCodeMap()

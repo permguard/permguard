@@ -32,8 +32,8 @@ import (
 const (
 	// Hidden directories for states.
 	hiddenStatesDir = "states"
-	// Hidden directories for local.
-	hiddenLocalDir = "local"
+	// Hidden directories for source code.
+	hiddenSourceCodeDir = "@source"
 	// Hidden directories for objects.
 	hiddenObjectsDir = "objects"
 	// Hidden directories for code.
@@ -81,14 +81,14 @@ func (m *COSPManager) getCodeDir() string {
 	return hiddenCodeDir
 }
 
-// getCodeLocalDir returns the code local directory.
-func (m *COSPManager) getCodeLocalDir() string {
-	return filepath.Join(m.getCodeDir(), hiddenLocalDir)
+// getCodeAreaDir returns the code area directory.
+func (m *COSPManager) getCodeAreaDir() string {
+	return filepath.Join(m.getCodeDir(), hiddenSourceCodeDir)
 }
 
-// getCodeLocalFile returns the local config file.
-func (m *COSPManager) getCodeLocalFile() string {
-	return filepath.Join(m.getCodeLocalDir(), hiddenConfigFile)
+// getCodeAreaConfigFile returns the code area config file.
+func (m *COSPManager) getCodeAreaConfigFile() string {
+	return filepath.Join(m.getCodeAreaDir(), hiddenConfigFile)
 }
 
 // getStatesDir returns the code states directory.
@@ -110,7 +110,7 @@ func (m *COSPManager) getCodeMapFile() string {
 func (m *COSPManager) getObjectDir(oid string, local bool) (string, string) {
 	basePath := ""
 	if local {
-		basePath = m.getCodeLocalDir()
+		basePath = m.getCodeAreaDir()
 	}
 	basePath = filepath.Join(basePath, m.getObjectsDir())
 	folder := oid[:2]
@@ -120,20 +120,20 @@ func (m *COSPManager) getObjectDir(oid string, local bool) (string, string) {
 	return folder, name
 }
 
-// CleanLocalArea cleans the local area.
-func (m *COSPManager) CleanLocalArea() (bool, error) {
-	return m.persMgr.DeleteDir(azicliwkspers.PermGuardDir, m.getCodeLocalDir())
+// CleanCodeArea cleans the code area.
+func (m *COSPManager) CleanCodeArea() (bool, error) {
+	return m.persMgr.DeleteDir(azicliwkspers.PermGuardDir, m.getCodeAreaDir())
 }
 
 // SaveObject saves the object.
-func (m *COSPManager) SaveObject(oid string, content []byte, local bool) (bool, error) {
+func (m *COSPManager) SaveObject(oid string, content []byte, isCodeDir bool) (bool, error) {
 	folder, name := m.getObjectDir(oid, true)
 	path := filepath.Join(folder, name)
 	return m.persMgr.WriteBinaryFile(azicliwkspers.PermGuardDir, path, content, 0644, true)
 }
 
 // ReadObject reads the object.
-func (m *COSPManager) ReadObject(oid string, local bool) (*azlangobjs.Object, error) {
+func (m *COSPManager) ReadObject(oid string, idCodeDir bool) (*azlangobjs.Object, error) {
 	folder, name := m.getObjectDir(oid, true)
 	path := filepath.Join(folder, name)
 	data, _, err := m.persMgr.ReadFile(azicliwkspers.PermGuardDir, path, true)
@@ -160,26 +160,26 @@ func (m *COSPManager) saveConfig(name string, override bool, cfg any) error {
 	return nil
 }
 
-// SaveCodeLocalConfig saves the code local configuration.
-func (m *COSPManager) SaveCodeLocalConfig(treeID, language string) error {
+// SaveCodeAreaConfig saves the code area config.
+func (m *COSPManager) SaveCodeAreaConfig(treeID, language string) error {
 	config := &CodeLocalConfig{
 		TreeID:   treeID,
 		Language: language,
 	}
-	file := m.getCodeLocalFile()
+	file := m.getCodeAreaConfigFile()
 	return m.saveConfig(file, true, config)
 }
 
-// ReadCodeLocalConfig reads the configuration file.
-func (m *COSPManager) ReadCodeLocalConfig() (*CodeLocalConfig, error) {
+// ReadCodeAreaConfig reads the code area config file.
+func (m *COSPManager) ReadCodeAreaConfig() (*CodeLocalConfig, error) {
 	var config CodeLocalConfig
-	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getCodeLocalFile(), &config)
+	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getCodeAreaConfigFile(), &config)
 	return &config, err
 }
 
 // SaveCodeMap saves the code map.
 func (m *COSPManager) SaveCodeMap(codeFiles []CodeFile) error {
-	path := filepath.Join(m.getCodeLocalDir(), "codemap")
+	path := filepath.Join(m.getCodeAreaDir(), hiddenCodeMap)
 	rowFunc := func(record interface{}) []string {
 		codeFile := record.(CodeFile)
 		return []string{
@@ -202,7 +202,7 @@ func (m *COSPManager) SaveCodeMap(codeFiles []CodeFile) error {
 
 // ReadCodeMap reads the code map.
 func (m *COSPManager) ReadCodeMap() ([]CodeFile, error) {
-	path := filepath.Join(m.getCodeLocalDir(), "codemap")
+	path := filepath.Join(m.getCodeAreaDir(), hiddenCodeMap)
 	var codeFiles []CodeFile
 	recordFunc := func(record []string) error {
 		if len(record) < 8 {
@@ -240,4 +240,65 @@ func (m *COSPManager) ReadCodeMap() ([]CodeFile, error) {
 	}
 
 	return codeFiles, nil
+}
+
+// convertCodeFileToCodeObject converts the code file to the code object.
+func (m *COSPManager) convertCodeFileToCodeObject(file CodeFile) (*CodeObject, error) {
+	if file.OName == "" {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordMalformed, "cli: code file name is empty.")
+	}
+	if file.OID == "" {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordMalformed, "cli: code file OID is empty.")
+	}
+	return &CodeObject{
+		OName: file.OName,
+		OID: file.OID,
+	}, nil
+}
+
+// ConvertCodeFilesToCodeObjects converts code files to code objects.
+func (m *COSPManager) ConvertCodeFilesToCodeObjects(files []CodeFile) ([]CodeObject, error) {
+	objects := make([]CodeObject, len(files))
+	for i, file := range files {
+		object, err := m.convertCodeFileToCodeObject(file)
+		if err != nil {
+			return nil, err
+		}
+		objects[i] = *object
+	}
+	return objects, nil
+}
+
+// CalculateCodeObjectsState calculates the code objects state.
+func (m *COSPManager) CalculateCodeObjectsState(currentObjs []CodeObject, newObjs []CodeObject) []CodeObjectState {
+	if currentObjs == nil {
+		currentObjs = []CodeObject{}
+	}
+	if newObjs == nil {
+		newObjs = []CodeObject{}
+	}
+	currentMap := make(map[string]string)
+	newMap := make(map[string]string)
+	for _, obj := range currentObjs {
+		currentMap[obj.OName] = obj.OID
+	}
+	for _, obj := range newObjs {
+		newMap[obj.OName] = obj.OID
+	}
+	result := []CodeObjectState{}
+	for _, obj := range currentObjs {
+		if newOID, exists := newMap[obj.OName]; exists {
+			if obj.OID != newOID {
+				result = append(result, CodeObjectState{CodeObject: obj, State: CodeObjectStateModify})
+			}
+		} else {
+			result = append(result, CodeObjectState{CodeObject: obj, State: CodeObjectStateCreate})
+		}
+	}
+	for _, obj := range newObjs {
+		if _, exists := currentMap[obj.OName]; !exists {
+			result = append(result, CodeObjectState{CodeObject: obj, State: CodeObjectStateDelete})
+		}
+	}
+	return result
 }
