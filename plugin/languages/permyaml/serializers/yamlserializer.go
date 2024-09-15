@@ -21,12 +21,12 @@ import (
 
 	"gopkg.in/yaml.v2"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	aztypes "github.com/permguard/permguard-abs-language/pkg/permcode/types"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
-const(
-	errFileMessage = "permyaml: invalid permyaml file. please check the syntax and ensure it adheres to the permguard specification."
+const (
+	errFileMessage   = "permyaml: invalid permyaml file. please check the syntax and ensure it adheres to the permguard specification."
 	errSyntaxMessage = "permyaml: invalid permyaml syntax. please check the syntax and ensure it adheres to the permguard specification."
 )
 
@@ -86,7 +86,12 @@ func (s *YamlSerializer) UnmarshalYaml(data []byte) (any, error) {
 		}
 		return &policy, nil
 	} else if hasDomains {
-		
+		var schema aztypes.Schema
+		err = yaml.Unmarshal([]byte(data), &schema)
+		if err != nil {
+			return nil, azerrors.WrapSystemError(azerrors.ErrLanguageSyntax, errSyntaxMessage)
+		}
+		return &schema, nil
 	}
 	return nil, azerrors.WrapSystemError(azerrors.ErrLanguageSyntax, errSyntaxMessage)
 }
@@ -101,7 +106,7 @@ func (s *YamlSerializer) UnmarshalLangType(data []byte) (string, any, error) {
 	case *Permission:
 		langPerm := &aztypes.Permission{
 			Class: aztypes.Class{
-				SyntaxVersion: aztypes.PolicySyntax,
+				SyntaxVersion: aztypes.PermCodeSyntax,
 				Type:          aztypes.ClassTypeACPermission,
 			},
 			Name:   v.Name,
@@ -112,7 +117,7 @@ func (s *YamlSerializer) UnmarshalLangType(data []byte) (string, any, error) {
 	case *Policy:
 		langPolicy := &aztypes.Policy{
 			Class: aztypes.Class{
-				SyntaxVersion: aztypes.PolicySyntax,
+				SyntaxVersion: aztypes.PermCodeSyntax,
 				Type:          aztypes.ClassTypeACPolicy,
 			},
 			Name:     v.Name,
@@ -123,6 +128,10 @@ func (s *YamlSerializer) UnmarshalLangType(data []byte) (string, any, error) {
 			langPolicy.Actions = append(langPolicy.Actions, aztypes.ARString(action))
 		}
 		return langPolicy.Name, langPolicy, nil
+	case *aztypes.Schema:
+		v.SyntaxVersion = aztypes.PermCodeSyntax
+		v.Type = aztypes.ClassTypeSchema
+		return "schema", v, nil
 	}
 	return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, errFileMessage)
 }
