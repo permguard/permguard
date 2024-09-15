@@ -225,8 +225,18 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 		return output, err
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "apply", fmt.Sprintf("The tree has been created with ID: %s.", aziclicommon.IDText(treeObj.GetOID())) , nil)
+		out(nil, "apply", fmt.Sprintf("The tree has been created with id: %s.", aziclicommon.IDText(treeObj.GetOID())), nil)
 	}
+
+	out(nil, "", "", nil)
+	for _, planObj := range plan {
+		if planObj.State == azicliwkscosp.CodeObjectStateUnchanged {
+			continue
+		}
+		out(nil, "", fmt.Sprintf("%s object with id: %s, type %s and name: %s.", aziclicommon.RemoteOperationText("Synchornizing"),
+			aziclicommon.IDText(planObj.OID), aziclicommon.KeywordText(planObj.OType), aziclicommon.KeywordText(planObj.OName)), nil)
+	}
+	out(nil, "", "", nil)
 
 	out(nil, "", "Apply process completed successfully.", nil)
 	if !internal {

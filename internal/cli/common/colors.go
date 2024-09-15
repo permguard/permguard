@@ -56,6 +56,12 @@ func IDText(text string) string {
 	return out.Sprintf(text)
 }
 
+// RemoteOperationText returns the remote operation text.
+func RemoteOperationText(text string) string {
+	out := color.New(color.FgYellow)
+	return out.Sprintf(text)
+}
+
 // FileText returns the file text.
 func FileText(text string) string {
 	out := color.New(color.FgYellow)
