@@ -19,11 +19,11 @@ package workspace
 import (
 	"strings"
 
-	azlang "github.com/permguard/permguard/pkg/core/languages"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
 // cleanupLocalArea cleans up the local area.
@@ -183,7 +183,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	if err := m.cospMgr.SaveCodeMap(blbCodeFiles); err != nil {
 		return "", blbCodeFiles, err
 	}
-	codeObsState, err := m.cospMgr.ConvertCodeFilesToCodeObjects(blbCodeFiles)
+	codeObsState, err := m.cospMgr.ConvertCodeFilesToCodeObjectStates(blbCodeFiles)
 	if err != nil {
 		return "", blbCodeFiles, err
 	}

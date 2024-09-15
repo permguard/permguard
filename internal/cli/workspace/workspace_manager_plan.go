@@ -24,12 +24,12 @@ import (
 )
 
 // plan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
-func (m *WorkspaceManager) plan(currentFiles []azicliwkscosp.CodeObject, remoteFiles []azicliwkscosp.CodeObject) ([]azicliwkscosp.CodeObjectState, error) {
+func (m *WorkspaceManager) plan(currentFiles []azicliwkscosp.CodeObjectState, remoteFiles []azicliwkscosp.CodeObjectState) ([]azicliwkscosp.CodeObjectState, error) {
 	return m.cospMgr.CalculateCodeObjectsState(currentFiles, remoteFiles), nil
 }
 
 // buildPlanTree builds the plan tree.
-func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObject, absLang azlang.LanguageAbastraction) (*azlangobjs.Tree, *azlangobjs.Object, error) {
+func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, absLang azlang.LanguageAbastraction) (*azlangobjs.Tree, *azlangobjs.Object, error) {
 	tree := azlangobjs.NewTree()
 	for _, planItem := range plan {
 		if err := tree.AddEntry(azlangobjs.NewTreeEntry(planItem.OType, planItem.OID, planItem.OName)); err != nil {

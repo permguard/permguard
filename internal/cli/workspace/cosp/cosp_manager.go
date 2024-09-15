@@ -96,7 +96,7 @@ func (m *COSPManager) getCodeAreaConfigFile() string {
 	return filepath.Join(m.getCodeAreaDir(), hiddenConfigFile)
 }
 
-// getStatesDir returns the code states directory.
+// getStatesDir returns the code object states directory.
 func (m *COSPManager) getCodeStatesDir() string {
 	return filepath.Join(m.getCodeDir(), hiddenStatesDir)
 }
@@ -247,26 +247,28 @@ func (m *COSPManager) ReadCodeMap() ([]CodeFile, error) {
 	return codeFiles, nil
 }
 
-// convertCodeFileToCodeObject converts the code file to the code object.
-func (m *COSPManager) convertCodeFileToCodeObject(file CodeFile) (*CodeObject, error) {
+// convertCodeFileToCodeObjectState converts the code file to the code object.
+func (m *COSPManager) convertCodeFileToCodeObjectState(file CodeFile) (*CodeObjectState, error) {
 	if file.OName == "" {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordMalformed, "cli: code file name is empty.")
 	}
 	if file.OID == "" {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordMalformed, "cli: code file OID is empty.")
 	}
-	return &CodeObject{
-		OName: 	file.OName,
-		OType: 	file.OType,
-		OID: 	file.OID,
+	return &CodeObjectState{
+		CodeObject: CodeObject{
+			OName: file.OName,
+			OType: file.OType,
+			OID:   file.OID,
+		},
 	}, nil
 }
 
-// ConvertCodeFilesToCodeObjects converts code files to code objects.
-func (m *COSPManager) ConvertCodeFilesToCodeObjects(files []CodeFile) ([]CodeObject, error) {
-	objects := make([]CodeObject, len(files))
+// ConvertCodeFilesToCodeObjectStates converts code files to code objects.
+func (m *COSPManager) ConvertCodeFilesToCodeObjectStates(files []CodeFile) ([]CodeObjectState, error) {
+	objects := make([]CodeObjectState, len(files))
 	for i, file := range files {
-		object, err := m.convertCodeFileToCodeObject(file)
+		object, err := m.convertCodeFileToCodeObjectState(file)
 		if err != nil {
 			return nil, err
 		}
@@ -276,12 +278,12 @@ func (m *COSPManager) ConvertCodeFilesToCodeObjects(files []CodeFile) ([]CodeObj
 }
 
 // CalculateCodeObjectsState calculates the code objects state.
-func (m *COSPManager) CalculateCodeObjectsState(currentObjs []CodeObject, remoteObjs []CodeObject) []CodeObjectState {
+func (m *COSPManager) CalculateCodeObjectsState(currentObjs []CodeObjectState, remoteObjs []CodeObjectState) []CodeObjectState {
 	if currentObjs == nil {
-		currentObjs = []CodeObject{}
+		currentObjs = []CodeObjectState{}
 	}
 	if remoteObjs == nil {
-		remoteObjs = []CodeObject{}
+		remoteObjs = []CodeObjectState{}
 	}
 	currentMap := make(map[string]string)
 	for _, obj := range currentObjs {
@@ -295,44 +297,45 @@ func (m *COSPManager) CalculateCodeObjectsState(currentObjs []CodeObject, remote
 	for _, obj := range currentObjs {
 		if newOID, exists := remoteMap[obj.OName]; exists {
 			if obj.OID != newOID {
-				result = append(result, CodeObjectState{CodeObject: obj, State: CodeObjectStateModify})
+				result = append(result, CodeObjectState{CodeObject: obj.CodeObject, State: CodeObjectStateModify})
 			} else {
-				result = append(result, CodeObjectState{CodeObject: obj, State: CodeObjectStateUnchanged})
+				result = append(result, CodeObjectState{CodeObject: obj.CodeObject, State: CodeObjectStateUnchanged})
 			}
 		} else {
-			result = append(result, CodeObjectState{CodeObject: obj, State: CodeObjectStateCreate})
+			result = append(result, CodeObjectState{CodeObject: obj.CodeObject, State: CodeObjectStateCreate})
 		}
 	}
 	for _, obj := range remoteObjs {
 		if _, exists := currentMap[obj.OName]; !exists {
-			result = append(result, CodeObjectState{CodeObject: obj, State: CodeObjectStateDelete})
+			result = append(result, CodeObjectState{CodeObject: obj.CodeObject, State: CodeObjectStateDelete})
 		}
 	}
 	return result
 }
 
-// SaveCodeState saves the code state.
-func (m *COSPManager) SaveCodeState(codeObjects []CodeObject) error {
+// SaveCodeState saves the code object state.
+func (m *COSPManager) SaveCodeState(codeObjects []CodeObjectState) error {
 	path := filepath.Join(m.getCodeAreaDir(), hiddenCodeState)
-	return m.saveCodeObjects(path, codeObjects)
+	return m.saveCodeObjectStates(path, codeObjects)
 }
 
 // SaveCodePlan saves the code plan.
-func (m *COSPManager) SaveCodePlan(remote string, refID string, codeObjects []CodeObject) error {
+func (m *COSPManager) SaveCodePlan(remote string, refID string, codeObjects []CodeObjectState) error {
 	path := filepath.Join(m.getCodeDir(), strings.ToLower(remote), strings.ToLower(refID))
 	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, path)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to create code plan")
 	}
 	path = filepath.Join(path, hiddenCodePlan)
-	return m.saveCodeObjects(path, codeObjects)
+	return m.saveCodeObjectStates(path, codeObjects)
 }
 
-// saveCodeObjects saves the code objects.
-func (m *COSPManager) saveCodeObjects(path string, codeObjects []CodeObject) error {
+// saveCodeObjectStates saves the code objects.
+func (m *COSPManager) saveCodeObjectStates(path string, codeObjects []CodeObjectState) error {
 	rowFunc := func(record interface{}) []string {
-		codeObject := record.(CodeObject)
+		codeObject := record.(CodeObjectState)
 		return []string{
+			codeObject.State,
 			codeObject.OName,
 			codeObject.OType,
 			codeObject.OID,
@@ -340,34 +343,37 @@ func (m *COSPManager) saveCodeObjects(path string, codeObjects []CodeObject) err
 	}
 	err := m.persMgr.WriteCSVStream(azicliwkspers.PermGuardDir, path, nil, codeObjects, rowFunc)
 	if err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to write code state")
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to write code object state")
 	}
 	return nil
 }
 
-// ReadCodeState reads the code state.
-func (m *COSPManager) ReadCodeState() ([]CodeObject, error) {
+// ReadCodeState reads the code object state.
+func (m *COSPManager) ReadCodeState() ([]CodeObjectState, error) {
 	path := filepath.Join(m.getCodeAreaDir(), hiddenCodeState)
-	return m.readCodeObjects(path)
+	return m.readCodeObjectStates(path)
 }
 
 // ReadCodePlan reads the code plan.
-func (m *COSPManager) ReadCodePlan(remote string, refID string) ([]CodeObject, error) {
+func (m *COSPManager) ReadCodePlan(remote string, refID string) ([]CodeObjectState, error) {
 	path := filepath.Join(m.getCodeDir(), strings.ToLower(remote), strings.ToLower(refID), hiddenCodePlan)
-	return m.readCodeObjects(path)
+	return m.readCodeObjectStates(path)
 }
 
-// readCodeObjects reads the code objects.
-func (m *COSPManager) readCodeObjects(path string) ([]CodeObject, error) {
-	var codeObjects []CodeObject
+// readCodeObjectStates reads the code objects states.
+func (m *COSPManager) readCodeObjectStates(path string) ([]CodeObjectState, error) {
+	var codeObjects []CodeObjectState
 	recordFunc := func(record []string) error {
 		if len(record) < 2 {
 			return fmt.Errorf("invalid record format")
 		}
-		codeObject := CodeObject{
-			OName: record[0],
-			OType: record[1],
-			OID:   record[2],
+		codeObject := CodeObjectState{
+			State: record[0],
+			CodeObject: CodeObject{
+				OName: record[1],
+				OType: record[2],
+				OID:   record[3],
+			},
 		}
 		codeObjects = append(codeObjects, codeObject)
 		return nil
