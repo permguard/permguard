@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -67,17 +68,42 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 		output = out(output, "repo", headRef, nil)
 	}
 
+
 	if m.ctx.IsTerminalOutput() {
 		out(nil, "", fmt.Sprintf("Initiating the planning process for repo %s.", aziclicommon.KeywordText(headRef)), nil)
 	}
 
-	err = m.plan()
+	codeStateObjs, err := m.plan(nil, nil)
 	if err != nil {
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", "Planning process failed.", nil)
 		}
 		return nil, err
 	}
+	if len(codeStateObjs) == 0 {
+		if m.ctx.IsTerminalOutput() {
+			out(nil, "", "No changes to apply.", nil)
+		}
+	} else {
+		for _, codeStateObj := range codeStateObjs {
+			if codeStateObj.State == azicliwkscosp.CodeObjectStateCreate {
+				if m.ctx.IsTerminalOutput() {
+					out(nil, "", fmt.Sprintf("%s %s", aziclicommon.CreateText(fmt.Sprintf("+ %s", codeStateObj.OName)), aziclicommon.IDText(codeStateObj.OID)), nil)
+				}
+			}
+			if codeStateObj.State == azicliwkscosp.CodeObjectStateModify {
+				if m.ctx.IsTerminalOutput() {
+					out(nil, "", fmt.Sprintf("%s %s", aziclicommon.ModifyText(fmt.Sprintf("~ %s", codeStateObj.OName)), aziclicommon.IDText(codeStateObj.OID)), nil)
+				}
+			}
+			if codeStateObj.State == azicliwkscosp.CodeObjectStateDelete {
+				if m.ctx.IsTerminalOutput() {
+					out(nil, "", fmt.Sprintf("%s %s", aziclicommon.DeleteText(fmt.Sprintf("- %s", codeStateObj.OName)), aziclicommon.IDText(codeStateObj.OID)), nil)
+				}
+			}
+		}
+	}
+	
 	if m.ctx.IsTerminalOutput() {
 		out(nil, "", "Planning process completed successfully.", nil)
 	}

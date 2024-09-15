@@ -64,6 +64,7 @@ var errorCodes = map[string]string{
 	"08003": "cli: not a permguard workspace directory",
 	"08004": "cli: record already exists",
 	"08005": "cli: record not found",
+	"08006": "cli: record is malformed",
 
 	// 081xx: Command Line Interface File System Errors
 	"08100": "cli: file system error",
@@ -127,6 +128,7 @@ var (
 	ErrCliWorkspaceDir       error = NewSystemError("08003")
 	ErrCliRecordExists       error = NewSystemError("08004")
 	ErrCliRecordNotFound     error = NewSystemError("08005")
+	ErrCliRecordMalformed    error = NewSystemError("08006")
 	ErrCliFileSystem         error = NewSystemError("08100")
 	ErrCliDirectoryOperation error = NewSystemError("08101")
 	ErrCliFileOperation      error = NewSystemError("08102")

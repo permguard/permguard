@@ -237,7 +237,7 @@ func (m *WorkspaceManager) ExecObjects(out func(map[string]any, string, any, err
 	}
 	defer fileLock.Unlock()
 
-	m.cospMgr.CleanLocalArea()
+	m.cospMgr.CleanCodeArea()
 
 	// TODO: Implement this method
 

@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package obs manage the code, objects, state and plans of the workspace.
+// Package cosp manage the code, objects, state and plans of the workspace.
 package cosp

@@ -16,8 +16,11 @@
 
 package workspace
 
+import (
+	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
+)
+
 // plan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
-func (m *WorkspaceManager) plan() error {
-	// TODO: Implement this method
-	return nil
+func (m *WorkspaceManager) plan(currentFiles []azicliwkscosp.CodeObject, remoteFiles []azicliwkscosp.CodeObject) ([]azicliwkscosp.CodeObjectState, error) {
+	return m.cospMgr.CalculateCodeObjectsState(currentFiles, remoteFiles), nil
 }
