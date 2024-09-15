@@ -43,16 +43,28 @@ func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastracti
 	for i, file := range files {
 		codeFiles[i] = azicliwkscosp.CodeFile{Type: azicliwkscosp.CodeFileTypePermCode, Path: file}
 	}
-	ignoredCodeFiles := make([]azicliwkscosp.CodeFile, len(ignoredFiles))
-	for i, file := range ignoredFiles {
-		ignoredCodeFiles[i] = azicliwkscosp.CodeFile{Path: file}
-	}
 	schemaFiles := []string{schemaYMLFile, schemaYAMLFile}
+	existingSchemaFiles := []string{}
 	for _, schemaFile := range schemaFiles {
 		if exists, _ := m.persMgr.CheckFileIfExists(azicliwkspers.WorkspaceDir, schemaFile); exists {
 			schemaFileName := m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaFile)
+			existingSchemaFiles = append(existingSchemaFiles, schemaFileName)
 			codeFiles = append(codeFiles, azicliwkscosp.CodeFile{Type: azicliwkscosp.CodeFilePermSchema, Path: schemaFileName})
 		}
+	}
+	ignoredCodeFiles := []azicliwkscosp.CodeFile{}
+	for _, file := range ignoredFiles {
+		exit := false
+		for _, schemaFile := range existingSchemaFiles {
+			if file == schemaFile {
+				exit = true
+				continue
+			}
+		}
+		if exit {
+			continue
+		}
+		ignoredCodeFiles = append(ignoredCodeFiles, azicliwkscosp.CodeFile{Path: file})
 	}
 	return codeFiles, ignoredCodeFiles, nil
 }
