@@ -21,6 +21,8 @@ const (
 	CodeFileTypePermCode = "permcode"
 	// CodeFileTypePermSchema represents the schema file type.
 	CodeFilePermSchema   = "permschema"
+	// CodeObjectStateModify represents the modify state.
+	CodeObjectStateUnchanged = "unchanged"
 	// CodeObjectStateCreate represents the create state.
 	CodeObjectStateCreate = "create"
 	// CodeObjectStateModify represents the modify state.
@@ -60,6 +62,7 @@ func ConvertCodeFilesToPath(files []CodeFile) []string {
 // CodeObject represents the code object.
 type CodeObject struct {
 	OName        string `json:"oname"`
+	OType        string `json:"otype"`
 	OID          string `json:"oid"`
 }
 

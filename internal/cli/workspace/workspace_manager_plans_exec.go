@@ -85,6 +85,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 		return output, err
 	}
 
+	unchangedItems := []azicliwkscosp.CodeObject{}
 	createdItems := []azicliwkscosp.CodeObject{}
 	modifiedItems := []azicliwkscosp.CodeObject{}
 	deletedItems := []azicliwkscosp.CodeObject{}
@@ -98,6 +99,12 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 			out(nil, "", "The following changes have been identified and are ready to be applied:\n", nil)
 		}
 		for _, codeStateObj := range codeStateObjs {
+			if codeStateObj.State == azicliwkscosp.CodeObjectStateUnchanged {
+				if m.ctx.IsTerminalOutput() {
+					out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.UnchangedText("="), aziclicommon.IDText(codeStateObj.OID), aziclicommon.UnchangedText(codeStateObj.OName)), nil)
+				}
+				unchangedItems = append(unchangedItems, codeStateObj.CodeObject)
+			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateCreate {
 				if m.ctx.IsTerminalOutput() {
 					out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.CreateText("+"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.CreateText(codeStateObj.OName)), nil)
@@ -106,13 +113,13 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateModify {
 				if m.ctx.IsTerminalOutput() {
-					out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.ModifyText("+"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.ModifyText(codeStateObj.OName)), nil)
+					out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.ModifyText("~"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.ModifyText(codeStateObj.OName)), nil)
 				}
 				modifiedItems = append(modifiedItems, codeStateObj.CodeObject)
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateDelete {
 				if m.ctx.IsTerminalOutput() {
-					out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.DeleteText("+"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.ModifyText(codeStateObj.OName)), nil)
+					out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.DeleteText("-"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.DeleteText(codeStateObj.OName)), nil)
 				}
 				deletedItems = append(deletedItems, codeStateObj.CodeObject)
 			}
@@ -121,6 +128,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 			out(nil, "", "\n", nil)
 		}
 		planObjs := append(createdItems, modifiedItems...)
+		planObjs = append(planObjs, unchangedItems...)
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "plan", fmt.Sprintf("Remote for the plan is set to: %s.", aziclicommon.KeywordText(headInfo.Remote)), nil)
 			out(nil, "plan", fmt.Sprintf("Reference ID for the plan is set to: %s", aziclicommon.IDText(headInfo.RefID)), nil)
