@@ -44,12 +44,12 @@ var errorCodes = map[string]string{
 	"05001": "server: infrastructure error",
 
 	// 051xx: Storage Errors
-	"05100": "stroage: generic error",
+	"05100": "storage: generic error",
 	"05101": "storage: entity mapping error",
 	"05110": "storage: constraint error",
-	"05111": "stroage: foreign key constraint violation",
-	"05112": "stroage: unique constraint violation",
-	"05120": "stroage: entity not found in storage",
+	"05111": "storage: foreign key constraint violation",
+	"05112": "storage: unique constraint violation",
+	"05120": "storage: entity not found in storage",
 
 	// 06xxx: Language Errors
 	"06000": "language: generic error",
@@ -117,24 +117,24 @@ var (
 	ErrStorageConstraintUnique     error = NewSystemError("05112")
 	ErrStorageNotFound             error = NewSystemError("05120")
 	// 06xxx language.
-	ErrLanguageGeneric		error = NewSystemError("06000")
-	ErrLanguageFile			error = NewSystemError("06100")
-	ErrLanguageSyntax		error = NewSystemError("06200")
-	ErrLanguangeSemantic	error = NewSystemError("06300")
+	ErrLanguageGeneric   error = NewSystemError("06000")
+	ErrLanguageFile      error = NewSystemError("06100")
+	ErrLanguageSyntax    error = NewSystemError("06200")
+	ErrLanguangeSemantic error = NewSystemError("06300")
 
 	// 08xxx: Command Line Interface Errors
-	ErrCliGeneric            	error = NewSystemError("08000")
-	ErrCliArguments          	error = NewSystemError("08001")
-	ErrCliInput              	error = NewSystemError("08002")
-	ErrCliWorkspaceDir       	error = NewSystemError("08003")
-	ErrCliRecordExists       	error = NewSystemError("08004")
-	ErrCliRecordNotFound     	error = NewSystemError("08005")
-	ErrCliRecordMalformed    	error = NewSystemError("08006")
-	ErrCliFileSystem         	error = NewSystemError("08100")
-	ErrCliDirectoryOperation 	error = NewSystemError("08101")
-	ErrCliFileOperation      	error = NewSystemError("08102")
-	ErrCliWorkspace          	error = NewSystemError("08110")
-	ErrCliWorkspaceInvaliHead	error = NewSystemError("08111")
+	ErrCliGeneric             error = NewSystemError("08000")
+	ErrCliArguments           error = NewSystemError("08001")
+	ErrCliInput               error = NewSystemError("08002")
+	ErrCliWorkspaceDir        error = NewSystemError("08003")
+	ErrCliRecordExists        error = NewSystemError("08004")
+	ErrCliRecordNotFound      error = NewSystemError("08005")
+	ErrCliRecordMalformed     error = NewSystemError("08006")
+	ErrCliFileSystem          error = NewSystemError("08100")
+	ErrCliDirectoryOperation  error = NewSystemError("08101")
+	ErrCliFileOperation       error = NewSystemError("08102")
+	ErrCliWorkspace           error = NewSystemError("08110")
+	ErrCliWorkspaceInvaliHead error = NewSystemError("08111")
 	// 09xxx plugin errors.
 	ErrPluginGeneric error = NewSystemError("09000")
 )
