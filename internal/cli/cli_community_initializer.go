@@ -20,7 +20,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azclicommon "github.com/permguard/permguard/internal/cli/common"
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliaccounts "github.com/permguard/permguard/internal/cli/porcelaincommands/accounts"
 	azicliauthn "github.com/permguard/permguard/internal/cli/porcelaincommands/authn"
 	azicliauthz "github.com/permguard/permguard/internal/cli/porcelaincommands/authz"
@@ -44,7 +44,7 @@ func (s *CommunityCliInitializer) GetCliInfo() azcli.CliInfo {
 		Name:  "Community Command Line Interface",
 		Use:   "PermGuard Command Line Interface",
 		Short: "The official PermGuard© Cli",
-		Long:  azclicommon.BuildCliLongTemplate("PermGuard is an Open Source Multi-Account and Multi-Tenant Authorization Provider."),
+		Long:  aziclicommon.BuildCliLongTemplate("PermGuard is an Open Source Multi-Account and Multi-Tenant Authorization Provider."),
 	}
 }
 
