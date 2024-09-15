@@ -71,6 +71,7 @@ var errorCodes = map[string]string{
 	"08101": "cli: operation on directory failed",
 	"08102": "cli: operation on file failed",
 	"08110": "cli: workspace operation failed",
+	"08111": "cli: workspace invalid head",
 
 	// 09xxx: Plugin Errors
 	"09000": "plugin: generic error",
@@ -122,17 +123,18 @@ var (
 	ErrLanguangeSemantic	error = NewSystemError("06300")
 
 	// 08xxx: Command Line Interface Errors
-	ErrCliGeneric            error = NewSystemError("08000")
-	ErrCliArguments          error = NewSystemError("08001")
-	ErrCliInput              error = NewSystemError("08002")
-	ErrCliWorkspaceDir       error = NewSystemError("08003")
-	ErrCliRecordExists       error = NewSystemError("08004")
-	ErrCliRecordNotFound     error = NewSystemError("08005")
-	ErrCliRecordMalformed    error = NewSystemError("08006")
-	ErrCliFileSystem         error = NewSystemError("08100")
-	ErrCliDirectoryOperation error = NewSystemError("08101")
-	ErrCliFileOperation      error = NewSystemError("08102")
-	ErrCliWorkspace          error = NewSystemError("08110")
+	ErrCliGeneric            	error = NewSystemError("08000")
+	ErrCliArguments          	error = NewSystemError("08001")
+	ErrCliInput              	error = NewSystemError("08002")
+	ErrCliWorkspaceDir       	error = NewSystemError("08003")
+	ErrCliRecordExists       	error = NewSystemError("08004")
+	ErrCliRecordNotFound     	error = NewSystemError("08005")
+	ErrCliRecordMalformed    	error = NewSystemError("08006")
+	ErrCliFileSystem         	error = NewSystemError("08100")
+	ErrCliDirectoryOperation 	error = NewSystemError("08101")
+	ErrCliFileOperation      	error = NewSystemError("08102")
+	ErrCliWorkspace          	error = NewSystemError("08110")
+	ErrCliWorkspaceInvaliHead	error = NewSystemError("08111")
 	// 09xxx plugin errors.
 	ErrPluginGeneric error = NewSystemError("09000")
 )

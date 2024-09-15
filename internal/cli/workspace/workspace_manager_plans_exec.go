@@ -21,6 +21,7 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ExecPlan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
@@ -34,22 +35,28 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 		return m.raiseWrongWorkspaceDirError(out)
 	}
 
-	_, err := m.execInternalValidate(internal, out)
+	output, err := m.execInternalValidate(internal, out)
 	if err != nil {
-		return nil, err
+		return output, err
 	}
 
 	headInfo, err := m.rfsMgr.GetCurrentHead()
 	if err != nil {
-		return nil, err
+		return output, err
+	}
+	if headInfo.RefID == "" {
+		if m.ctx.IsTerminalOutput() {
+			out(nil, "", "No repository is configured in the current workspace.", nil)
+			out(nil, "", "Please checkout a repository and try again.", nil)
+		}
+		return output, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceInvaliHead, "cli: invalid head configuration")
 	}
 
 	headRef, err := m.rfsMgr.GetCurrentHeadRef()
 	if err != nil {
-		return nil, err
+		return output, err
 	}
 
-	output := map[string]any{}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "plan", fmt.Sprintf("Head remote set to %s.", aziclicommon.KeywordText(headInfo.Remote)), nil)
 		out(nil, "plan", fmt.Sprintf("Head accountid set to %s.", aziclicommon.BigNumberText(headInfo.AccountID)), nil)
@@ -77,14 +84,14 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", errPlanningProcessFailed, nil)
 		}
-		return nil, err
+		return output, err
 	}
 	codeStateObjs, err := m.plan(codeObjState, nil)
 	if err != nil {
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", errPlanningProcessFailed, nil)
 		}
-		return nil, err
+		return output, err
 	}
 
 	createdItems := []azicliwkscosp.CodeObject{}
