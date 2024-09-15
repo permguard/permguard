@@ -19,37 +19,80 @@ package workspace
 import (
 	"fmt"
 
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ExecPlan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
 func (m *WorkspaceManager) ExecPlan(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	return m.execInternalPlan(false, out)
+}
+
+// execInternalPlan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
+func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
 
-	fileLock, err := m.tryLock()
+	_, err := m.execInternalValidate(internal, out)
 	if err != nil {
 		return nil, err
 	}
-	defer fileLock.Unlock()
 
-	// TODO: Implement this method
+	headInfo, err := m.rfsMgr.GetCurrentHead()
+	if err != nil {
+		return nil, err
+	}
 
-	return nil, nil
+	headRef, err := m.rfsMgr.GetCurrentHeadRef()
+	if err != nil {
+		return nil, err
+	}
+
+	output := map[string]any{}
+	if m.ctx.IsVerboseJSONOutput() {
+		remoteObj := map[string]any{
+			"remote":    headInfo.Remote,
+			"accountid": headInfo.AccountID,
+			"remote_repo": headInfo.Repo,
+			"refid":     headInfo.RefID,
+		}
+		output = out(output, "head", remoteObj, nil)
+		output = out(output, "repo", headRef, nil)
+	}
+
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "plan", fmt.Sprintf("Initiating the planning process for repo %s.", aziclicommon.KeywordText(headRef)), nil)
+	}
+
+	err = m.plan()
+	if err != nil {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "plan", fmt.Sprintf("Planning process failed for repo %s", aziclicommon.KeywordText(headRef)), nil)
+		}
+		return nil, err
+	}
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "plan", fmt.Sprintf("Planning process completed successfully for repo %s.", aziclicommon.KeywordText(headRef)), nil)
+	}
+	return output, nil
 }
 
 // ExecApply applies the plan to the remote repo
 func (m *WorkspaceManager) ExecApply(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	return m.execInternalApply(false, out)
+}
+
+// execInternalApply applies the plan to the remote repo
+func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
 
-	fileLock, err := m.tryLock()
+	_, err := m.execInternalPlan(internal, out)
 	if err != nil {
 		return nil, err
 	}
-	defer fileLock.Unlock()
 
 	// TODO: Implement this method
 

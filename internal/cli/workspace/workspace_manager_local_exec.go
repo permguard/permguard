@@ -167,6 +167,11 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 
 // ExecValidate validates the local state.
 func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	return m.execInternalValidate(false, out)
+}
+
+// execInternalValidate validates the local state.
+func (m *WorkspaceManager) execInternalValidate(internal bool, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if !m.isWorkspaceDir() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
 	}
@@ -190,30 +195,34 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "validate", "Validation completed successfully.", nil)
 		}
-		out(nil, "", "Your workspace has been validated successfully.", nil)
+		if !internal {
+			out(nil, "", "Your workspace has been validated successfully.", nil)
+		}
 		return output, nil
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "validate", "Validation failed. Invalid code files detected.", nil)
 	}
-	if len(invlsCodeFiles) == 1 {
-		out(nil, "", "Your workspace has on error in the following file:\n", nil)
+	if !internal {
+		if len(invlsCodeFiles) == 1 {
+			out(nil, "", "Your workspace has on error in the following file:\n", nil)
 
-	} else {
-		out(nil, "", "Your workspace has errors in the following files:\n", nil)
-	}
-	for key := range groupCodeFiles(invlsCodeFiles) {
-		out(nil, "", fmt.Sprintf("	- %s", aziclicommon.FileText(key)), nil)
-		for _, codeFile := range groupCodeFiles(invlsCodeFiles)[key] {
-			if codeFile.OID == "" {
-				out(nil, "", fmt.Sprintf("		%s: %s", aziclicommon.NumberText(codeFile.Section+1), aziclicommon.LogErrorText(codeFile.ErrorMessage)), nil)
-			} else {
-				out(nil, "", fmt.Sprintf("		%s: %s %s", aziclicommon.NumberText(codeFile.Section+1),
-					aziclicommon.KeywordText(codeFile.OID), aziclicommon.LogErrorText(codeFile.ErrorMessage)), nil)
+		} else {
+			out(nil, "", "Your workspace has errors in the following files:\n", nil)
+		}
+		for key := range groupCodeFiles(invlsCodeFiles) {
+			out(nil, "", fmt.Sprintf("	- %s", aziclicommon.FileText(key)), nil)
+			for _, codeFile := range groupCodeFiles(invlsCodeFiles)[key] {
+				if codeFile.OID == "" {
+					out(nil, "", fmt.Sprintf("		%s: %s", aziclicommon.NumberText(codeFile.Section+1), aziclicommon.LogErrorText(codeFile.ErrorMessage)), nil)
+				} else {
+					out(nil, "", fmt.Sprintf("		%s: %s %s", aziclicommon.NumberText(codeFile.Section+1),
+						aziclicommon.KeywordText(codeFile.OID), aziclicommon.LogErrorText(codeFile.ErrorMessage)), nil)
+				}
 			}
 		}
+		out(nil, "", "\nPlease fix the errors to proceed.", nil)
 	}
-	out(nil, "", "\nPlease fix the errors to proceed.", nil)
 	return output, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: validation errors found in code files within the workspace. please check the logs for more details.")
 }
 

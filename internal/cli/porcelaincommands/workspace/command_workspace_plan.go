@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/viper"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
@@ -34,14 +35,33 @@ const (
 
 // runECommandForPlanWorkspace runs the command for creating an workspace.
 func runECommandForPlanWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	_, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	output := map[string]any{}
-	output["workspace"] = "plan"
-	printer.Print(output)
+	absLang, err := deps.GetLanguageFactory()
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return aziclicommon.ErrCommandSilent
+	}
+	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, absLang)
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return aziclicommon.ErrCommandSilent
+	}
+	output, err := wksMgr.ExecPlan(outFunc(ctx, printer))
+	if err != nil {
+		if ctx.IsJSONOutput() {
+			printer.ErrorWithOutput(output, err)
+		} else if ctx.IsVerboseTerminalOutput() {
+			printer.Error(err)
+		}
+		return aziclicommon.ErrCommandSilent
+	}
+	if ctx.IsJSONOutput() {
+		printer.Print(output)
+	}
 	return nil
 }
 
