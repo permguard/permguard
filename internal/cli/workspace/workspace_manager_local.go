@@ -52,19 +52,15 @@ func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastracti
 			codeFiles = append(codeFiles, azicliwkscosp.CodeFile{Type: azicliwkscosp.CodeFilePermSchema, Path: schemaFileName})
 		}
 	}
+	schemaFileSet := make(map[string]struct{})
+	for _, schemaFile := range existingSchemaFiles {
+		schemaFileSet[schemaFile] = struct{}{}
+	}
 	ignoredCodeFiles := []azicliwkscosp.CodeFile{}
 	for _, file := range ignoredFiles {
-		exit := false
-		for _, schemaFile := range existingSchemaFiles {
-			if file == schemaFile {
-				exit = true
-				continue
-			}
+		if _, exists := schemaFileSet[file]; !exists {
+			ignoredCodeFiles = append(ignoredCodeFiles, azicliwkscosp.CodeFile{Path: file})
 		}
-		if exit {
-			continue
-		}
-		ignoredCodeFiles = append(ignoredCodeFiles, azicliwkscosp.CodeFile{Path: file})
 	}
 	return codeFiles, ignoredCodeFiles, nil
 }
