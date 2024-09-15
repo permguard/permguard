@@ -116,7 +116,9 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 		}
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", "\n", nil)
-			out(nil, "", "Run the 'apply' command to apply those changes.", nil)
+			if !internal {
+				out(nil, "", "Run the 'apply' command to apply those changes.", nil)
+			}
 		}
 	}
 	return output, nil
