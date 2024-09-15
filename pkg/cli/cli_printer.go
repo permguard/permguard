@@ -148,7 +148,7 @@ func (cp *CliPrinterTerminal) printValue(key string, value any) {
 			result := strings.Join(array, ", ")
 			white.Println(result)
 		} else {
-			white := color.New(color.FgHiWhite)
+			white := color.New(color.Reset)
 			white.Println(v)
 		}
 	}
