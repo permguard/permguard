@@ -44,6 +44,8 @@ const (
 	hiddenConfigFile = "config"
 	// Hidden code map.
 	hiddenCodeMap = "codemap"
+	// Hidden code states.
+	hiddenCodeState = "codestate"
 )
 
 // COSPManager implements the internal manager for code, objects, states and plans.
@@ -240,6 +242,45 @@ func (m *COSPManager) ReadCodeMap() ([]CodeFile, error) {
 	}
 
 	return codeFiles, nil
+}
+
+// SaveCodeState saves the code state.
+func (m *COSPManager) SaveCodeState(codeObjects []CodeObject) error {
+	path := filepath.Join(m.getCodeAreaDir(), hiddenCodeState)
+	rowFunc := func(record interface{}) []string {
+		codeObject := record.(CodeObject)
+		return []string{
+			codeObject.OName,
+			codeObject.OID,
+		}
+	}
+	err := m.persMgr.WriteCSVStream(azicliwkspers.PermGuardDir, path, nil, codeObjects, rowFunc)
+	if err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to write code state")
+	}
+	return nil
+}
+
+// ReadCodeState reads the code state.
+func (m *COSPManager) ReadCodeState() ([]CodeObject, error) {
+	path := filepath.Join(m.getCodeAreaDir(), hiddenCodeState)
+	var codeObjects []CodeObject
+	recordFunc := func(record []string) error {
+		if len(record) < 2 {
+			return fmt.Errorf("invalid record format")
+		}
+		codeObject := CodeObject{
+			OName: record[0],
+			OID:   record[1],
+		}
+		codeObjects = append(codeObjects, codeObject)
+		return nil
+	}
+	err := m.persMgr.ReadFromCSVStream(azicliwkspers.PermGuardDir, path, nil, recordFunc)
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to read code state")
+	}
+	return codeObjects, nil
 }
 
 // convertCodeFileToCodeObject converts the code file to the code object.

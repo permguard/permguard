@@ -73,39 +73,51 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 		out(nil, "", fmt.Sprintf("Initiating the planning process for repo %s.", aziclicommon.KeywordText(headRef)), nil)
 	}
 
-	codeStateObjs, err := m.plan(nil, nil)
+	errPlanningProcessFailed := "Planning process failed."
+	codeObjState, err := m.cospMgr.ReadCodeState()
 	if err != nil {
 		if m.ctx.IsTerminalOutput() {
-			out(nil, "", "Planning process failed.", nil)
+			out(nil, "", errPlanningProcessFailed, nil)
+		}
+		return nil, err
+	}
+	codeStateObjs, err := m.plan(codeObjState, nil)
+	if err != nil {
+		if m.ctx.IsTerminalOutput() {
+			out(nil, "", errPlanningProcessFailed, nil)
 		}
 		return nil, err
 	}
 	if len(codeStateObjs) == 0 {
 		if m.ctx.IsTerminalOutput() {
-			out(nil, "", "No changes to apply.", nil)
+			out(nil, "", "No changes detected during the planning phase. system is up to date.", nil)
 		}
 	} else {
+		if m.ctx.IsTerminalOutput() {
+			out(nil, "", "Planning process completed successfully.", nil)
+			out(nil, "", "The following changes have been identified and are ready to be applied:\n", nil)
+		}
 		for _, codeStateObj := range codeStateObjs {
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateCreate {
 				if m.ctx.IsTerminalOutput() {
-					out(nil, "", fmt.Sprintf("%s %s", aziclicommon.CreateText(fmt.Sprintf("+ %s", codeStateObj.OName)), aziclicommon.IDText(codeStateObj.OID)), nil)
+					out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.CreateText("+"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.CreateText(codeStateObj.OName)), nil)
 				}
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateModify {
 				if m.ctx.IsTerminalOutput() {
-					out(nil, "", fmt.Sprintf("%s %s", aziclicommon.ModifyText(fmt.Sprintf("~ %s", codeStateObj.OName)), aziclicommon.IDText(codeStateObj.OID)), nil)
+					out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.ModifyText("+"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.ModifyText(codeStateObj.OName)), nil)
 				}
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateDelete {
 				if m.ctx.IsTerminalOutput() {
-					out(nil, "", fmt.Sprintf("%s %s", aziclicommon.DeleteText(fmt.Sprintf("- %s", codeStateObj.OName)), aziclicommon.IDText(codeStateObj.OID)), nil)
+					out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.DeleteText("+"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.ModifyText(codeStateObj.OName)), nil)
 				}
 			}
 		}
-	}
-	
-	if m.ctx.IsTerminalOutput() {
-		out(nil, "", "Planning process completed successfully.", nil)
+		if m.ctx.IsTerminalOutput() {
+			out(nil, "", "\n", nil)
+			out(nil, "", "Run the 'apply' command to apply those changes.", nil)
+		}
 	}
 	return output, nil
 }
