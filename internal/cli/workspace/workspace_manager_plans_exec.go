@@ -85,10 +85,10 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 		return output, err
 	}
 
-	unchangedItems := []azicliwkscosp.CodeObject{}
-	createdItems := []azicliwkscosp.CodeObject{}
-	modifiedItems := []azicliwkscosp.CodeObject{}
-	deletedItems := []azicliwkscosp.CodeObject{}
+	unchangedItems := []azicliwkscosp.CodeObjectState{}
+	createdItems := []azicliwkscosp.CodeObjectState{}
+	modifiedItems := []azicliwkscosp.CodeObjectState{}
+	deletedItems := []azicliwkscosp.CodeObjectState{}
 	if len(codeStateObjs) == 0 {
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", "No changes detected during the planning phase. system is up to date.", nil)
@@ -103,25 +103,25 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 				if m.ctx.IsTerminalOutput() {
 					out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.UnchangedText("="), aziclicommon.IDText(codeStateObj.OID), aziclicommon.UnchangedText(codeStateObj.OName)), nil)
 				}
-				unchangedItems = append(unchangedItems, codeStateObj.CodeObject)
+				unchangedItems = append(unchangedItems, codeStateObj)
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateCreate {
 				if m.ctx.IsTerminalOutput() {
 					out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.CreateText("+"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.CreateText(codeStateObj.OName)), nil)
 				}
-				createdItems = append(createdItems, codeStateObj.CodeObject)
+				createdItems = append(createdItems, codeStateObj)
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateModify {
 				if m.ctx.IsTerminalOutput() {
 					out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.ModifyText("~"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.ModifyText(codeStateObj.OName)), nil)
 				}
-				modifiedItems = append(modifiedItems, codeStateObj.CodeObject)
+				modifiedItems = append(modifiedItems, codeStateObj)
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateDelete {
 				if m.ctx.IsTerminalOutput() {
 					out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.DeleteText("-"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.DeleteText(codeStateObj.OName)), nil)
 				}
-				deletedItems = append(deletedItems, codeStateObj.CodeObject)
+				deletedItems = append(deletedItems, codeStateObj)
 			}
 		}
 		if m.ctx.IsTerminalOutput() {
