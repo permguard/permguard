@@ -29,7 +29,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 		return nil, m.raiseWrongWorkspaceDirError(out)
 	}
 
-	repoInfo, err := azicliwksvals.ExtractFromRepoURI(repoURI)
+	repoInfo, err := azicliwksvals.GetRepoInfoFromURI(repoURI)
 	if err != nil {
 		return nil, err
 	}

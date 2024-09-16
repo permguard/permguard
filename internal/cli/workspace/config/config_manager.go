@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	// hiddenConfigFile represents the hidden configuration file.
+	// hiddenConfigFile represents the hidden config file.
 	hiddenConfigFile = "config"
 )
 
@@ -51,14 +51,14 @@ func (m *ConfigManager) getConfigFile() string {
 	return hiddenConfigFile
 }
 
-// readConfig reads the configuration file.
+// readConfig reads the config file.
 func (m *ConfigManager) readConfig() (*Config, error) {
 	var config Config
 	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getConfigFile(), &config)
 	return &config, err
 }
 
-// saveConfig saves the configuration file.
+// saveConfig saves the config file.
 func (m *ConfigManager) saveConfig(override bool, cfg *Config) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {

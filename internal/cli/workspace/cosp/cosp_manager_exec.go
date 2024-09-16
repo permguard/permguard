@@ -22,10 +22,10 @@ import (
 
 // ExecInitalize the plans resources.
 func (m *COSPManager) ExecInitalize(lang string) error {
-	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, m.getObjectsDir())
+	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, m.getCodeDir())
 	if err != nil {
 		return err
 	}
-	_, err = m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, m.getCodeDir())
+	_, err = m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, m.getObjectsDir())
 	return err
 }

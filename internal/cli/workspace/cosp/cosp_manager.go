@@ -37,7 +37,7 @@ const (
 	hiddenSourceCodeDir = "@source"
 	// Hidden directories for objects.
 	hiddenObjectsDir = "objects"
-	// Hidden configuration file.
+	// Hidden config file.
 	hiddenConfigFile = "config"
 	// Hidden code map file.
 	hiddenCodeMapFile = "codemap"
@@ -124,7 +124,7 @@ func (m *COSPManager) ReadCodeSourceObject(oid string) (*azlangobjs.Object, erro
 	return m.objMgr.CreateObjectFormData(data)
 }
 
-// saveConfig saves the configuration file.
+// saveConfig saves the config file.
 func (m *COSPManager) saveConfig(name string, override bool, cfg any) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
