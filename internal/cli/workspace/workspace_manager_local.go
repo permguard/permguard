@@ -183,6 +183,11 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	if err := m.cospMgr.SaveCodeSourceCodeMap(blbCodeFiles); err != nil {
 		return "", blbCodeFiles, err
 	}
+	for _, blobCodeFile := range blbCodeFiles {
+		if blobCodeFile.HasErrors {
+			return "", blbCodeFiles, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: blobification process failed because of errors in the code files")
+		}
+	}
 	codeObsState, err := m.cospMgr.ConvertCodeFilesToCodeObjectStates(blbCodeFiles)
 	if err != nil {
 		return "", blbCodeFiles, err
@@ -191,23 +196,18 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 		return "", blbCodeFiles, err
 	}
 	tree := azlangobjs.NewTree()
-	hasErrors := false
-	for _, file := range blbCodeFiles {
-		if file.HasErrors {
-			hasErrors = true
-		}
-		if err := tree.AddEntry(azlangobjs.NewTreeEntry(file.OType, file.OID, file.OName)); err != nil {
+	for _, codeObjState := range codeObsState {
+		if err := tree.AddEntry(azlangobjs.NewTreeEntry(codeObjState.OType, codeObjState.OID, codeObjState.OName)); err != nil {
 			return "", blbCodeFiles, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree item cannot be added to the tree because of errors in the code files")
 		}
-	}
-	if hasErrors {
-		return "", blbCodeFiles, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: blobification process failed because of errors in the code files")
 	}
 	treeObj, err := absLang.CreateTreeObject(tree)
 	if err != nil {
 		return "", blbCodeFiles, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree object cannot be created")
 	}
-	m.cospMgr.SaveCodeSourceObject(treeObj.GetOID(), treeObj.GetContent())
+	if _, err = m.cospMgr.SaveCodeSourceObject(treeObj.GetOID(), treeObj.GetContent()); err != nil {
+		return "", blbCodeFiles, err
+	}
 	treeID := treeObj.GetOID()
 	if err := m.cospMgr.SaveCodeSourceConfig(treeID, absLang.GetLanguageName()); err != nil {
 		return treeID, blbCodeFiles, err
