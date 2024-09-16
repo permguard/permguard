@@ -39,6 +39,9 @@ const (
 	V1PAPService_UpdateRepository_FullMethodName  = "/policyadministrationpoint.V1PAPService/UpdateRepository"
 	V1PAPService_DeleteRepository_FullMethodName  = "/policyadministrationpoint.V1PAPService/DeleteRepository"
 	V1PAPService_FetchRepositories_FullMethodName = "/policyadministrationpoint.V1PAPService/FetchRepositories"
+	V1PAPService_GetObject_FullMethodName         = "/policyadministrationpoint.V1PAPService/GetObject"
+	V1PAPService_PushObjects_FullMethodName       = "/policyadministrationpoint.V1PAPService/PushObjects"
+	V1PAPService_PullObjects_FullMethodName       = "/policyadministrationpoint.V1PAPService/PullObjects"
 )
 
 // V1PAPServiceClient is the client API for V1PAPService service.
@@ -55,6 +58,12 @@ type V1PAPServiceClient interface {
 	DeleteRepository(ctx context.Context, in *RepositoryDeleteRequest, opts ...grpc.CallOption) (*RepositoryResponse, error)
 	// Fetch repositories
 	FetchRepositories(ctx context.Context, in *RepositoryFetchRequest, opts ...grpc.CallOption) (*RepositoryListResponse, error)
+	// Get a specific object
+	GetObject(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (*GetResponse, error)
+	// Push objects
+	PushObjects(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushRequest, PushResponse], error)
+	// Pull objects
+	PullObjects(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Batch], error)
 }
 
 type v1PAPServiceClient struct {
@@ -105,6 +114,48 @@ func (c *v1PAPServiceClient) FetchRepositories(ctx context.Context, in *Reposito
 	return out, nil
 }
 
+func (c *v1PAPServiceClient) GetObject(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (*GetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetResponse)
+	err := c.cc.Invoke(ctx, V1PAPService_GetObject_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *v1PAPServiceClient) PushObjects(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushRequest, PushResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &V1PAPService_ServiceDesc.Streams[0], V1PAPService_PushObjects_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[PushRequest, PushResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type V1PAPService_PushObjectsClient = grpc.ClientStreamingClient[PushRequest, PushResponse]
+
+func (c *v1PAPServiceClient) PullObjects(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Batch], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &V1PAPService_ServiceDesc.Streams[1], V1PAPService_PullObjects_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[PullRequest, Batch]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type V1PAPService_PullObjectsClient = grpc.ServerStreamingClient[Batch]
+
 // V1PAPServiceServer is the server API for V1PAPService service.
 // All implementations must embed UnimplementedV1PAPServiceServer
 // for forward compatibility.
@@ -119,6 +170,12 @@ type V1PAPServiceServer interface {
 	DeleteRepository(context.Context, *RepositoryDeleteRequest) (*RepositoryResponse, error)
 	// Fetch repositories
 	FetchRepositories(context.Context, *RepositoryFetchRequest) (*RepositoryListResponse, error)
+	// Get a specific object
+	GetObject(context.Context, *GetRequest) (*GetResponse, error)
+	// Push objects
+	PushObjects(grpc.ClientStreamingServer[PushRequest, PushResponse]) error
+	// Pull objects
+	PullObjects(*PullRequest, grpc.ServerStreamingServer[Batch]) error
 	mustEmbedUnimplementedV1PAPServiceServer()
 }
 
@@ -141,6 +198,15 @@ func (UnimplementedV1PAPServiceServer) DeleteRepository(context.Context, *Reposi
 func (UnimplementedV1PAPServiceServer) FetchRepositories(context.Context, *RepositoryFetchRequest) (*RepositoryListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FetchRepositories not implemented")
 }
+func (UnimplementedV1PAPServiceServer) GetObject(context.Context, *GetRequest) (*GetResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetObject not implemented")
+}
+func (UnimplementedV1PAPServiceServer) PushObjects(grpc.ClientStreamingServer[PushRequest, PushResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method PushObjects not implemented")
+}
+func (UnimplementedV1PAPServiceServer) PullObjects(*PullRequest, grpc.ServerStreamingServer[Batch]) error {
+	return status.Errorf(codes.Unimplemented, "method PullObjects not implemented")
+}
 func (UnimplementedV1PAPServiceServer) mustEmbedUnimplementedV1PAPServiceServer() {}
 func (UnimplementedV1PAPServiceServer) testEmbeddedByValue()                      {}
 
@@ -162,7 +228,7 @@ func RegisterV1PAPServiceServer(s grpc.ServiceRegistrar, srv V1PAPServiceServer)
 	s.RegisterService(&V1PAPService_ServiceDesc, srv)
 }
 
-func _V1PAPService_CreateRepository_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1PAPService_CreateRepository_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RepositoryCreateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -174,13 +240,13 @@ func _V1PAPService_CreateRepository_Handler(srv any, ctx context.Context, dec fu
 		Server:     srv,
 		FullMethod: V1PAPService_CreateRepository_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1PAPServiceServer).CreateRepository(ctx, req.(*RepositoryCreateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1PAPService_UpdateRepository_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1PAPService_UpdateRepository_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RepositoryUpdateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -192,13 +258,13 @@ func _V1PAPService_UpdateRepository_Handler(srv any, ctx context.Context, dec fu
 		Server:     srv,
 		FullMethod: V1PAPService_UpdateRepository_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1PAPServiceServer).UpdateRepository(ctx, req.(*RepositoryUpdateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1PAPService_DeleteRepository_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1PAPService_DeleteRepository_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RepositoryDeleteRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -210,13 +276,13 @@ func _V1PAPService_DeleteRepository_Handler(srv any, ctx context.Context, dec fu
 		Server:     srv,
 		FullMethod: V1PAPService_DeleteRepository_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1PAPServiceServer).DeleteRepository(ctx, req.(*RepositoryDeleteRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1PAPService_FetchRepositories_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1PAPService_FetchRepositories_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RepositoryFetchRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -228,11 +294,47 @@ func _V1PAPService_FetchRepositories_Handler(srv any, ctx context.Context, dec f
 		Server:     srv,
 		FullMethod: V1PAPService_FetchRepositories_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1PAPServiceServer).FetchRepositories(ctx, req.(*RepositoryFetchRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
+
+func _V1PAPService_GetObject_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(V1PAPServiceServer).GetObject(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: V1PAPService_GetObject_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(V1PAPServiceServer).GetObject(ctx, req.(*GetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _V1PAPService_PushObjects_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(V1PAPServiceServer).PushObjects(&grpc.GenericServerStream[PushRequest, PushResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type V1PAPService_PushObjectsServer = grpc.ClientStreamingServer[PushRequest, PushResponse]
+
+func _V1PAPService_PullObjects_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(PullRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(V1PAPServiceServer).PullObjects(m, &grpc.GenericServerStream[PullRequest, Batch]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type V1PAPService_PullObjectsServer = grpc.ServerStreamingServer[Batch]
 
 // V1PAPService_ServiceDesc is the grpc.ServiceDesc for V1PAPService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -257,7 +359,22 @@ var V1PAPService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "FetchRepositories",
 			Handler:    _V1PAPService_FetchRepositories_Handler,
 		},
+		{
+			MethodName: "GetObject",
+			Handler:    _V1PAPService_GetObject_Handler,
+		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "PushObjects",
+			Handler:       _V1PAPService_PushObjects_Handler,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "PullObjects",
+			Handler:       _V1PAPService_PullObjects_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "internal/agents/services/pap/endpoints/api/v1/pap.proto",
 }

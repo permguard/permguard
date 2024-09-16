@@ -387,7 +387,7 @@ func RegisterV1AAPServiceServer(s grpc.ServiceRegistrar, srv V1AAPServiceServer)
 	s.RegisterService(&V1AAPService_ServiceDesc, srv)
 }
 
-func _V1AAPService_CreateAccount_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1AAPService_CreateAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AccountCreateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -399,13 +399,13 @@ func _V1AAPService_CreateAccount_Handler(srv any, ctx context.Context, dec func(
 		Server:     srv,
 		FullMethod: V1AAPService_CreateAccount_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1AAPServiceServer).CreateAccount(ctx, req.(*AccountCreateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_UpdateAccount_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1AAPService_UpdateAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AccountUpdateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -417,13 +417,13 @@ func _V1AAPService_UpdateAccount_Handler(srv any, ctx context.Context, dec func(
 		Server:     srv,
 		FullMethod: V1AAPService_UpdateAccount_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1AAPServiceServer).UpdateAccount(ctx, req.(*AccountUpdateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_DeleteAccount_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1AAPService_DeleteAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AccountDeleteRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -435,13 +435,13 @@ func _V1AAPService_DeleteAccount_Handler(srv any, ctx context.Context, dec func(
 		Server:     srv,
 		FullMethod: V1AAPService_DeleteAccount_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1AAPServiceServer).DeleteAccount(ctx, req.(*AccountDeleteRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_FetchAccounts_Handler(srv any, stream grpc.ServerStream) error {
+func _V1AAPService_FetchAccounts_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(AccountFetchRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
@@ -452,7 +452,7 @@ func _V1AAPService_FetchAccounts_Handler(srv any, stream grpc.ServerStream) erro
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type V1AAPService_FetchAccountsServer = grpc.ServerStreamingServer[AccountResponse]
 
-func _V1AAPService_CreateIdentitySource_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1AAPService_CreateIdentitySource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(IdentitySourceCreateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -464,13 +464,13 @@ func _V1AAPService_CreateIdentitySource_Handler(srv any, ctx context.Context, de
 		Server:     srv,
 		FullMethod: V1AAPService_CreateIdentitySource_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1AAPServiceServer).CreateIdentitySource(ctx, req.(*IdentitySourceCreateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_UpdateIdentitySource_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1AAPService_UpdateIdentitySource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(IdentitySourceUpdateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -482,13 +482,13 @@ func _V1AAPService_UpdateIdentitySource_Handler(srv any, ctx context.Context, de
 		Server:     srv,
 		FullMethod: V1AAPService_UpdateIdentitySource_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1AAPServiceServer).UpdateIdentitySource(ctx, req.(*IdentitySourceUpdateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_DeleteIdentitySource_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1AAPService_DeleteIdentitySource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(IdentitySourceDeleteRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -500,13 +500,13 @@ func _V1AAPService_DeleteIdentitySource_Handler(srv any, ctx context.Context, de
 		Server:     srv,
 		FullMethod: V1AAPService_DeleteIdentitySource_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1AAPServiceServer).DeleteIdentitySource(ctx, req.(*IdentitySourceDeleteRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_FetchIdentitySources_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1AAPService_FetchIdentitySources_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(IdentitySourceFetchRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -518,13 +518,13 @@ func _V1AAPService_FetchIdentitySources_Handler(srv any, ctx context.Context, de
 		Server:     srv,
 		FullMethod: V1AAPService_FetchIdentitySources_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1AAPServiceServer).FetchIdentitySources(ctx, req.(*IdentitySourceFetchRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_CreateIdentity_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1AAPService_CreateIdentity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(IdentityCreateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -536,13 +536,13 @@ func _V1AAPService_CreateIdentity_Handler(srv any, ctx context.Context, dec func
 		Server:     srv,
 		FullMethod: V1AAPService_CreateIdentity_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1AAPServiceServer).CreateIdentity(ctx, req.(*IdentityCreateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_UpdateIdentity_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1AAPService_UpdateIdentity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(IdentityUpdateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -554,13 +554,13 @@ func _V1AAPService_UpdateIdentity_Handler(srv any, ctx context.Context, dec func
 		Server:     srv,
 		FullMethod: V1AAPService_UpdateIdentity_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1AAPServiceServer).UpdateIdentity(ctx, req.(*IdentityUpdateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_DeleteIdentity_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1AAPService_DeleteIdentity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(IdentityDeleteRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -572,13 +572,13 @@ func _V1AAPService_DeleteIdentity_Handler(srv any, ctx context.Context, dec func
 		Server:     srv,
 		FullMethod: V1AAPService_DeleteIdentity_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1AAPServiceServer).DeleteIdentity(ctx, req.(*IdentityDeleteRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_FetchIdentities_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1AAPService_FetchIdentities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(IdentityFetchRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -590,13 +590,13 @@ func _V1AAPService_FetchIdentities_Handler(srv any, ctx context.Context, dec fun
 		Server:     srv,
 		FullMethod: V1AAPService_FetchIdentities_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1AAPServiceServer).FetchIdentities(ctx, req.(*IdentityFetchRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_CreateTenant_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1AAPService_CreateTenant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TenantCreateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -608,13 +608,13 @@ func _V1AAPService_CreateTenant_Handler(srv any, ctx context.Context, dec func(a
 		Server:     srv,
 		FullMethod: V1AAPService_CreateTenant_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1AAPServiceServer).CreateTenant(ctx, req.(*TenantCreateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_UpdateTenant_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1AAPService_UpdateTenant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TenantUpdateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -626,13 +626,13 @@ func _V1AAPService_UpdateTenant_Handler(srv any, ctx context.Context, dec func(a
 		Server:     srv,
 		FullMethod: V1AAPService_UpdateTenant_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1AAPServiceServer).UpdateTenant(ctx, req.(*TenantUpdateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_DeleteTenant_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1AAPService_DeleteTenant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TenantDeleteRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -644,13 +644,13 @@ func _V1AAPService_DeleteTenant_Handler(srv any, ctx context.Context, dec func(a
 		Server:     srv,
 		FullMethod: V1AAPService_DeleteTenant_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1AAPServiceServer).DeleteTenant(ctx, req.(*TenantDeleteRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_FetchTenants_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func _V1AAPService_FetchTenants_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TenantFetchRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -662,7 +662,7 @@ func _V1AAPService_FetchTenants_Handler(srv any, ctx context.Context, dec func(a
 		Server:     srv,
 		FullMethod: V1AAPService_FetchTenants_FullMethodName,
 	}
-	handler := func(ctx context.Context, req any) (any, error) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(V1AAPServiceServer).FetchTenants(ctx, req.(*TenantFetchRequest))
 	}
 	return interceptor(ctx, in, info, handler)
