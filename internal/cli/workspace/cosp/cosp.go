@@ -31,10 +31,15 @@ const (
 	CodeObjectStateDelete = "delete"
 )
 
+// CodeMapConfig represents the configuration for the code map.
+type CodeMapConfig struct {
+	TreeID   string `toml:"treeid"`
+}
+
 // CodeLocalConfig represents the configuration for the code local.
 type CodeLocalConfig struct {
-	TreeID   string `toml:"treeid"`
 	Language string `toml:"language"`
+	CodeMap   CodeMapConfig `toml:"codemap"`
 }
 
 // CodeFile represents the code file.
