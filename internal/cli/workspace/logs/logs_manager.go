@@ -64,5 +64,5 @@ func (c *LogsManager) Log(remote string, ref string, origin string, target strin
 	}
 	timestamp := time.Now().UTC().Format("2006-01-02 15:04:05.000Z")
 	logLine := fmt.Sprintf("%s %s %s %s\n", origin, target, timestamp, action)
-	return c.persMgr.AppendToFile(azicliwkspers.PermGuardDir, logFile, []byte(logLine))
+	return c.persMgr.AppendToFile(azicliwkspers.PermGuardDir, logFile, []byte(logLine), false)
 }

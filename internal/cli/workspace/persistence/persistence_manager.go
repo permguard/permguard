@@ -37,17 +37,17 @@ const (
 
 // PersistenceManager implements the internal manager for the persistence file.
 type PersistenceManager struct {
-	rootDir			string
-	permguardDir 	string
-	ctx     		*aziclicommon.CliCommandContext
+	rootDir      string
+	permguardDir string
+	ctx          *aziclicommon.CliCommandContext
 }
 
 // NewPersistenceManager creates a new persistenceuration manager.
-func NewPersistenceManager(rootDir string, permguardDir string, ctx *aziclicommon.CliCommandContext) (*PersistenceManager , error){
+func NewPersistenceManager(rootDir string, permguardDir string, ctx *aziclicommon.CliCommandContext) (*PersistenceManager, error) {
 	return &PersistenceManager{
-		rootDir: 		rootDir,
-		permguardDir: 	permguardDir,
-		ctx:			ctx,
+		rootDir:      rootDir,
+		permguardDir: permguardDir,
+		ctx:          ctx,
 	}, nil
 }
 
@@ -64,10 +64,10 @@ func (p *PersistenceManager) GetRelativeDir(relative RelativeDir, name string) s
 	return p.rootDir
 }
 
-// CheckFileIfExists checks if a file exists.
-func (p *PersistenceManager) CheckFileIfExists(relative RelativeDir, name string) (bool, error) {
+// CheckPathIfExists checks if a file exists.
+func (p *PersistenceManager) CheckPathIfExists(relative RelativeDir, name string) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.CheckFileIfExists(name)
+	return azfiles.CheckPathIfExists(name)
 }
 
 // CreateFileIfNotExists creates a file if it does not exist.
@@ -83,9 +83,9 @@ func (p *PersistenceManager) CreateDirIfNotExists(relative RelativeDir, name str
 }
 
 // DeleteFile deletes a file.
-func (p *PersistenceManager) DeleteDir(relative RelativeDir, name string) (bool, error) {
+func (p *PersistenceManager) DeletePath(relative RelativeDir, name string) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.DeleteDir(name)
+	return azfiles.DeletePath(name)
 }
 
 // WriteFileIfNotExists writes a file if it does not exist.
@@ -101,7 +101,7 @@ func (p *PersistenceManager) WriteFile(relative RelativeDir, name string, data [
 }
 
 // ReadFile reads a file.
-func (p *PersistenceManager) ReadFile(relative RelativeDir, name string, compressed bool) ([]byte, uint32, error){
+func (p *PersistenceManager) ReadFile(relative RelativeDir, name string, compressed bool) ([]byte, uint32, error) {
 	name = p.GetRelativeDir(relative, name)
 	return azfiles.ReadFile(name, compressed)
 }
@@ -124,29 +124,23 @@ func (p *PersistenceManager) WriteCSVStream(relative RelativeDir, name string, h
 	return azfiles.WriteCSVStream(name, header, records, rowFunc)
 }
 
-// ReadFromCSVStream reads from a CSV stream.
-func (p *PersistenceManager) ReadFromCSVStream(relative RelativeDir, name string, header []string, recordFunc func([]string) error) error {
+// ReadCSVStream reads from a CSV stream.
+func (p *PersistenceManager) ReadCSVStream(relative RelativeDir, name string, header []string, recordFunc func([]string) error) error {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.ReadFromCSVStream(name, header, recordFunc)
+	return azfiles.ReadCSVStream(name, header, recordFunc)
 }
 
 // AppendToFile appends to a file.
-func (p *PersistenceManager) AppendToFile(relative RelativeDir, name string, data []byte) (bool, error) {
+func (p *PersistenceManager) AppendToFile(relative RelativeDir, name string, data []byte, compressed bool) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.AppendToFile(name, data)
-}
-
-// IsInsideDir checks if a directory is inside another directory.
-func (p *PersistenceManager) IsInsideDir(relative RelativeDir, name string) (bool, error) {
-	name = p.GetRelativeDir(relative, name)
-	return azfiles.IsInsideDir(name)
+	return azfiles.AppendToFile(name, data, compressed)
 }
 
 // ScanAndFilterFiles scans and filters files.
 func (p *PersistenceManager) ScanAndFilterFiles(relative RelativeDir, exts []string, ignorePatterns []string, ignoreFile string) ([]string, []string, error) {
 	name := p.GetRelativeDir(relative, "")
 	ignoreFile = p.GetRelativeDir(relative, ignoreFile)
-	ignoreFilePatterns, err :=  azfiles.ReadIgnoreFile(ignoreFile)
+	ignoreFilePatterns, err := azfiles.ReadIgnoreFile(ignoreFile)
 	ignorePatterns = append(ignorePatterns, ignoreFilePatterns...)
 	if err != nil {
 		return nil, nil, err

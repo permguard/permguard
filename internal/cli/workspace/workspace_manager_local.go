@@ -46,7 +46,7 @@ func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastracti
 	schemaFiles := []string{schemaYMLFile, schemaYAMLFile}
 	existingSchemaFiles := []string{}
 	for _, schemaFile := range schemaFiles {
-		if exists, _ := m.persMgr.CheckFileIfExists(azicliwkspers.WorkspaceDir, schemaFile); exists {
+		if exists, _ := m.persMgr.CheckPathIfExists(azicliwkspers.WorkspaceDir, schemaFile); exists {
 			schemaFileName := m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaFile)
 			existingSchemaFiles = append(existingSchemaFiles, schemaFileName)
 			codeFiles = append(codeFiles, azicliwkscosp.CodeFile{Type: azicliwkscosp.CodeFilePermSchema, Path: schemaFileName})

@@ -127,7 +127,7 @@ func (m *COSPManager) getObjectDir(oid string, local bool) (string, string) {
 
 // CleanCodeArea cleans the code area.
 func (m *COSPManager) CleanCodeArea() (bool, error) {
-	return m.persMgr.DeleteDir(azicliwkspers.PermGuardDir, m.getCodeAreaDir())
+	return m.persMgr.DeletePath(azicliwkspers.PermGuardDir, m.getCodeAreaDir())
 }
 
 // SaveObject saves the object.
@@ -145,7 +145,7 @@ func (m *COSPManager) ReadObject(oid string, idCodeDir bool) (*azlangobjs.Object
 	if err != nil {
 		return nil, err
 	}
-	return m.objMgr.ReadObjectFormData(data)
+	return m.objMgr.CreateObjectFormData(data)
 }
 
 // saveConfig saves the configuration file.
@@ -239,7 +239,7 @@ func (m *COSPManager) ReadCodeMap() ([]CodeFile, error) {
 		codeFiles = append(codeFiles, codeFile)
 		return nil
 	}
-	err := m.persMgr.ReadFromCSVStream(azicliwkspers.PermGuardDir, path, nil, recordFunc)
+	err := m.persMgr.ReadCSVStream(azicliwkspers.PermGuardDir, path, nil, recordFunc)
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to read code map")
 	}
@@ -378,7 +378,7 @@ func (m *COSPManager) readCodeObjectStates(path string) ([]CodeObjectState, erro
 		codeObjects = append(codeObjects, codeObject)
 		return nil
 	}
-	err := m.persMgr.ReadFromCSVStream(azicliwkspers.PermGuardDir, path, nil, recordFunc)
+	err := m.persMgr.ReadCSVStream(azicliwkspers.PermGuardDir, path, nil, recordFunc)
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to read code state")
 	}
