@@ -72,19 +72,14 @@ func (m *COSPManager) getCodeDir() string {
 	return hiddenCodeDir
 }
 
-// getCodeSourceDir returns the code source directory.
-func (m *COSPManager) getCodeSourceDir() string {
-	return filepath.Join(m.getCodeDir(), hiddenSourceCodeDir)
-}
-
-// getCodeSourceConfigFile returns the code source config file.
-func (m *COSPManager) getCodeSourceConfigFile() string {
-	return filepath.Join(m.getCodeSourceDir(), hiddenConfigFile)
-}
-
 // getObjectsDir returns the objects directory.
 func (m *COSPManager) getObjectsDir() string {
 	return hiddenObjectsDir
+}
+
+// getCodeSourceDir returns the code source directory.
+func (m *COSPManager) getCodeSourceDir() string {
+	return filepath.Join(m.getCodeDir(), hiddenSourceCodeDir)
 }
 
 // getCodeSourceObjectDir returns the code source object directory.
@@ -99,6 +94,11 @@ func (m *COSPManager) getCodeSourceObjectDir(oid string, local bool) (string, st
 	m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, folder)
 	name := oid[2:]
 	return folder, name
+}
+
+// getCodeSourceConfigFile returns the code source config file.
+func (m *COSPManager) getCodeSourceConfigFile() string {
+	return filepath.Join(m.getCodeSourceDir(), hiddenConfigFile)
 }
 
 // CleanCodeSource cleans the code source area.
