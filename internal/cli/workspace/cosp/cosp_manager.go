@@ -134,7 +134,7 @@ func (m *COSPManager) CleanCodeArea() (bool, error) {
 func (m *COSPManager) SaveObject(oid string, content []byte, isCodeDir bool) (bool, error) {
 	folder, name := m.getObjectDir(oid, true)
 	path := filepath.Join(folder, name)
-	return m.persMgr.WriteBinaryFile(azicliwkspers.PermGuardDir, path, content, 0644, true)
+	return m.persMgr.WriteFile(azicliwkspers.PermGuardDir, path, content, 0644, true)
 }
 
 // ReadObject reads the object.
@@ -198,7 +198,7 @@ func (m *COSPManager) SaveCodeMap(codeFiles []CodeFile) error {
 			codeFile.ErrorMessage,
 		}
 	}
-	err := m.persMgr.WriteCSVStream(azicliwkspers.PermGuardDir, path, nil, codeFiles, rowFunc)
+	err := m.persMgr.WriteCSVStream(azicliwkspers.PermGuardDir, path, nil, codeFiles, rowFunc, true)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to write code map")
 	}
@@ -239,7 +239,7 @@ func (m *COSPManager) ReadCodeMap() ([]CodeFile, error) {
 		codeFiles = append(codeFiles, codeFile)
 		return nil
 	}
-	err := m.persMgr.ReadCSVStream(azicliwkspers.PermGuardDir, path, nil, recordFunc)
+	err := m.persMgr.ReadCSVStream(azicliwkspers.PermGuardDir, path, nil, recordFunc, true)
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to read code map")
 	}
@@ -341,7 +341,7 @@ func (m *COSPManager) saveCodeObjectStates(path string, codeObjects []CodeObject
 			codeObject.OID,
 		}
 	}
-	err := m.persMgr.WriteCSVStream(azicliwkspers.PermGuardDir, path, nil, codeObjects, rowFunc)
+	err := m.persMgr.WriteCSVStream(azicliwkspers.PermGuardDir, path, nil, codeObjects, rowFunc, true)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to write code object state")
 	}
@@ -378,7 +378,7 @@ func (m *COSPManager) readCodeObjectStates(path string) ([]CodeObjectState, erro
 		codeObjects = append(codeObjects, codeObject)
 		return nil
 	}
-	err := m.persMgr.ReadCSVStream(azicliwkspers.PermGuardDir, path, nil, recordFunc)
+	err := m.persMgr.ReadCSVStream(azicliwkspers.PermGuardDir, path, nil, recordFunc, true)
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to read code state")
 	}
