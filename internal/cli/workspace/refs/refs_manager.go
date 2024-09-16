@@ -69,7 +69,7 @@ func (m *RefsManager) getHeadFile() string {
 	return hiddenHeadFile
 }
 
-// saveConfig saves the configuration file.
+// saveConfig saves the config file.
 func (m *RefsManager) saveConfig(name string, override bool, cfg any) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
@@ -86,7 +86,7 @@ func (m *RefsManager) saveConfig(name string, override bool, cfg any) error {
 	return nil
 }
 
-// ReadHeadConfig reads the configuration file.
+// ReadHeadConfig reads the config file.
 func (m *RefsManager) ReadHeadConfig() (*HeadConfig, error) {
 	var config HeadConfig
 	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getHeadFile(), &config)

@@ -140,7 +140,7 @@ func (m *WorkspaceManager) tryLock() (*flock.Flock, error) {
 func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out func(map[string]any, string, any, error) map[string]any) error {
 	out(nil, "", "The current working directory is not a valid PermGuard workspace.", nil)
 	out(nil, "", "Please initialize the workspace by running the 'init' command.", nil)
-	return azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf(ErrMessageCliWorkspaceDirectory, m.getHomeHiddenDir()))
+	return azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeHiddenDir()))
 }
 
 // getCurrentHeadInfo returns the current head info.

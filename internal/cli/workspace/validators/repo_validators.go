@@ -35,14 +35,14 @@ type RepoInfo struct {
 // SanitizeRepo sanitizes the remote name.
 func SanitizeRepo(repoURI string) (string, error) {
 	repoURI = strings.ToLower(repoURI)
-	if _, err := ExtractFromRepoURI(repoURI); err != nil {
+	if _, err := GetRepoInfoFromURI(repoURI); err != nil {
 		return "", err
 	}
 	return repoURI, nil
 }
 
-// ExtractFromRepoURI sanitizes the repo name.
-func ExtractFromRepoURI(repoURI string) (*RepoInfo, error) {
+// GetRepoInfoFromURI gets the repo information from the URI.
+func GetRepoInfoFromURI(repoURI string) (*RepoInfo, error) {
 	result := &RepoInfo{}
 	repoURI = strings.ToLower(repoURI)
 	items := strings.Split(repoURI, "/")
