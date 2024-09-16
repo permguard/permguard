@@ -46,19 +46,12 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 	if err != nil {
 		return "", "", nil, err
 	}
-	refPath, err := m.createAndGetHeadRefFile(remote, refID)
+
+	refPath, _, err := m.SaveRefsConfig(remote, refID, commit)
 	if err != nil {
 		return "", "", nil, err
 	}
-	refCfg := RefsConfig{
-		Objects: RefsObjectsConfig{
-			Commit: commit,
-		},
-	}
-	err = m.saveConfig(refPath, true, &refCfg)
-	if err != nil {
-		return "", "", nil, err
-	}
+
 	headCfg := HeadConfig{
 		Head: HeadRefsConfig{
 			Remote:    remote,
@@ -80,10 +73,10 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 		out(nil, "head", fmt.Sprintf("Head reference checked out to %s.", aziclicommon.KeywordText(refPath)), nil)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
-			"remote":    headCfg.Head.Remote,
-			"accountid": headCfg.Head.AccountID,
+			"remote":      headCfg.Head.Remote,
+			"accountid":   headCfg.Head.AccountID,
 			"remote_repo": headCfg.Head.Repo,
-			"refid":     headCfg.Head.RefID,
+			"refid":       headCfg.Head.RefID,
 		}
 		output = out(output, "head", remoteObj, nil)
 	}

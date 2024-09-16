@@ -33,6 +33,8 @@ const (
 	hiddenRefsDir = "refs"
 	// hiddenHeadFile represents the hidden head file.
 	hiddenHeadFile = "HEAD"
+	// ZeroOID  represents the zero oid
+	ZeroOID = "0000000000000000000000000000000000000000000000000000000000000000"
 )
 
 // HeadInfo represents the head information.
@@ -84,11 +86,62 @@ func (m *RefsManager) saveConfig(name string, override bool, cfg any) error {
 	return nil
 }
 
+// readRefsConfig reads the refs objects configuration.
+func (m *RefsManager) readRefsConfig(name string) (*RefsConfig, error) {
+	var config RefsConfig
+	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, name, &config)
+	return &config, err
+}
+
 // readConfig reads the configuration file.
 func (m *RefsManager) readHeadConfig() (*HeadConfig, error) {
 	var config HeadConfig
 	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getHeadFile(), &config)
 	return &config, err
+}
+
+// ReadRefsCommit reads the refs commit.
+func (m *RefsManager) ReadRefsCommit(remote string, refID string) (string, error) {
+	_, refsCfg, err := m.ReadRefsConfig(remote, refID)
+	if err != nil {
+		return "", err
+	}
+	if refsCfg == nil {
+		return "", azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: invalid refs config file")
+
+	}
+	return refsCfg.Objects.Commit, nil
+}
+
+// ReadRefsConfig reads the refs configuration.
+func (m *RefsManager) ReadRefsConfig(remote string, refID string) (string, *RefsConfig, error) {
+	refPath, err := m.createAndGetHeadRefFile(remote, refID)
+	if err != nil {
+		return refPath, nil, err
+	}
+	refCfg, err := m.readRefsConfig(refPath)
+	if err != nil {
+		return refPath, nil, err
+	}
+	return refPath, refCfg, nil
+}
+
+// SaveRefsConfig saves the refs configuration.
+func (m *RefsManager) SaveRefsConfig(remote string, refID string, commit string) (string, *RefsConfig, error) {
+	refPath, err := m.createAndGetHeadRefFile(remote, refID)
+	if err != nil {
+		return refPath, nil, err
+	}
+	refCfg := RefsConfig{
+		Objects: RefsObjectsConfig{
+			Commit: commit,
+		},
+	}
+	err = m.saveConfig(refPath, true, &refCfg)
+	if err != nil {
+		return refPath, nil, err
+	}
+	return refPath, &refCfg, nil
 }
 
 // GetRefWithBase gets the ref with base.

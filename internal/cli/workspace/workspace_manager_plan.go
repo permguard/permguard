@@ -17,15 +17,15 @@
 package workspace
 
 import (
-	azlang "github.com/permguard/permguard/pkg/core/languages"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
 // plan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
-func (m *WorkspaceManager) plan(currentFiles []azicliwkscosp.CodeObjectState, remoteFiles []azicliwkscosp.CodeObjectState) ([]azicliwkscosp.CodeObjectState, error) {
-	return m.cospMgr.CalculateCodeObjectsState(currentFiles, remoteFiles), nil
+func (m *WorkspaceManager) plan(currentCodeObsStates []azicliwkscosp.CodeObjectState, remoteCodeObsStates []azicliwkscosp.CodeObjectState) ([]azicliwkscosp.CodeObjectState, error) {
+	return m.cospMgr.CalculateCodeObjectsState(currentCodeObsStates, remoteCodeObsStates), nil
 }
 
 // buildPlanTree builds the plan tree.
