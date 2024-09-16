@@ -81,7 +81,8 @@ message Batch {
 message PushRequest {
     int64 accountID = 1;
     string repoID = 2;
-    Batch batch = 3;
+	string type = 3;
+    Batch batch = 4;
 }
 
 // PushResponse is the response to push objects
