@@ -68,9 +68,6 @@ message RepositoryResponse {
 // PackMessage is a pack message.
 message PackMessage {
   bytes data = 1;
-  string ref = 2;
-  bool success = 3;
-  string error = 4;
 }
 
 // V1PAPService is the service for the Policy Administration Point.
