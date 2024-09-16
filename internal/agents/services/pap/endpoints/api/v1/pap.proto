@@ -81,7 +81,7 @@ message Batch {
 message PushRequest {
     int64 accountID = 1;
     string repoID = 2;
-	string type = 3;
+	string commitOID = 3;
     Batch batch = 4;
 }
 
