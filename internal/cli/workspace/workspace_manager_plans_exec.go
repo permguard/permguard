@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 )
 
@@ -68,12 +69,29 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 	out(nil, "", fmt.Sprintf("Initiating the planning process for repo %s.", aziclicommon.KeywordText(headRef)), nil)
 
 	errPlanningProcessFailed := "Planning process failed."
+
+	commit, err := m.rfsMgr.ReadRefsCommit(headInfo.Remote, headInfo.RefID)
+	if err != nil {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "plan", fmt.Sprintf("Unable to read the commit for remote %s and refid %s.",  aziclicommon.KeywordText(headInfo.Remote), aziclicommon.IDText(headInfo.RefID)), nil)
+		}
+		out(nil, "", errPlanningProcessFailed, nil)
+		return nil, err
+	}
+
+	var remoteFiles []azicliwkscosp.CodeObjectState = nil
+	if commit == azicliwksrefs.ZeroOID {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "plan", fmt.Sprintf("The reference ID %s has no commits associated with it.", aziclicommon.IDText(headInfo.RefID)), nil)
+		}
+	}
+
 	codeObjState, err := m.cospMgr.ReadCodeState()
 	if err != nil {
 		out(nil, "", errPlanningProcessFailed, nil)
 		return output, err
 	}
-	codeStateObjs, err := m.plan(codeObjState, nil)
+	codeStateObjs, err := m.plan(codeObjState, remoteFiles)
 	if err != nil {
 		out(nil, "", errPlanningProcessFailed, nil)
 		return output, err
