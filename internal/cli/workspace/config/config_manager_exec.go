@@ -63,9 +63,8 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 	}
 	cfg.Remotes[remote] = cfgRemote
 	m.saveConfig(true, cfg)
-	if m.ctx.IsTerminalOutput() {
-		output = out(nil, "", fmt.Sprintf("Remote %s has been added.", aziclicommon.KeywordText(remote)), nil)
-	} else if m.ctx.IsJSONOutput() {
+	output = out(nil, "", fmt.Sprintf("Remote %s has been added.", aziclicommon.KeywordText(remote)), nil)
+	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{
 			"remote": remote,
@@ -96,9 +95,8 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 		return output, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", remote))
 	}
 	cfgRemote := cfg.Remotes[remote]
-	if m.ctx.IsTerminalOutput() {
-		output = out(nil, "", fmt.Sprintf("Remote %s has been removed.", aziclicommon.KeywordText(remote)), nil)
-	} else if m.ctx.IsJSONOutput() {
+	output = out(nil, "", fmt.Sprintf("Remote %s has been removed.", aziclicommon.KeywordText(remote)), nil)
+	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{
 			"remote": remote,
@@ -137,7 +135,7 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out func(map[stri
 			}
 			out(nil, "", "\n", nil)
 		}
-	} else {
+	} else if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		for cfgRemote := range cfg.Remotes {
 			remoteObj := map[string]any{
@@ -183,9 +181,8 @@ func (m *ConfigManager) ExecAddRepo(remote string, accountID int64, repo string,
 		out(nil, "repo", fmt.Sprintf("Refs successfully set to %s.", aziclicommon.IDText(cfgRepo.RefID)), nil)
 		out(nil, "repo", fmt.Sprintf("Repo successfully set to %s.", aziclicommon.KeywordText(ref)), nil)
 	}
-	if m.ctx.IsTerminalOutput() {
-		output = out(nil, "", fmt.Sprintf("Repo %s has been added.", aziclicommon.KeywordText(ref)), nil)
-	} else if m.ctx.IsJSONOutput() {
+	output = out(nil, "", fmt.Sprintf("Repo %s has been added.", aziclicommon.KeywordText(ref)), nil)
+	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{
 			"remote": remote,
@@ -226,7 +223,7 @@ func (m *ConfigManager) ExecListRepos(activeRepoURI string, output map[string]an
 			}
 			out(nil, "", "\n", nil)
 		}
-	} else {
+	} else if m.ctx.IsJSONOutput() {
 		repos := []any{}
 		for cfgRepo := range cfg.Repositories {
 			isActive := activeRepoURI == cfg.Repositories[cfgRepo].RefID
