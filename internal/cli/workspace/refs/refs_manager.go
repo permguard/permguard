@@ -86,15 +86,8 @@ func (m *RefsManager) saveConfig(name string, override bool, cfg any) error {
 	return nil
 }
 
-// readRefsConfig reads the refs objects configuration.
-func (m *RefsManager) readRefsConfig(name string) (*RefsConfig, error) {
-	var config RefsConfig
-	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, name, &config)
-	return &config, err
-}
-
-// readConfig reads the configuration file.
-func (m *RefsManager) readHeadConfig() (*HeadConfig, error) {
+// ReadHeadConfig reads the configuration file.
+func (m *RefsManager) ReadHeadConfig() (*HeadConfig, error) {
 	var config HeadConfig
 	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getHeadFile(), &config)
 	return &config, err
@@ -119,11 +112,12 @@ func (m *RefsManager) ReadRefsConfig(remote string, refID string) (string, *Refs
 	if err != nil {
 		return refPath, nil, err
 	}
-	refCfg, err := m.readRefsConfig(refPath)
+	var config RefsConfig
+	err = m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, refPath, &config)
 	if err != nil {
 		return refPath, nil, err
 	}
-	return refPath, refCfg, nil
+	return refPath, &config, nil
 }
 
 // SaveRefsConfig saves the refs configuration.
@@ -177,7 +171,7 @@ func (m *RefsManager) CalculateRefID(remote string, accountID int64, repo string
 
 // GetCurrentHead gets the current head.
 func (m *RefsManager) GetCurrentHead() (*HeadInfo, error) {
-	cfgHead, err := m.readHeadConfig()
+	cfgHead, err := m.ReadHeadConfig()
 	if err != nil {
 		return nil, err
 	}
