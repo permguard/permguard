@@ -65,23 +65,17 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 		output = out(output, "repo", headRef, nil)
 	}
 
-	if m.ctx.IsTerminalOutput() {
-		out(nil, "", fmt.Sprintf("Initiating the planning process for repo %s.", aziclicommon.KeywordText(headRef)), nil)
-	}
+	out(nil, "", fmt.Sprintf("Initiating the planning process for repo %s.", aziclicommon.KeywordText(headRef)), nil)
 
 	errPlanningProcessFailed := "Planning process failed."
 	codeObjState, err := m.cospMgr.ReadCodeState()
 	if err != nil {
-		if m.ctx.IsTerminalOutput() {
-			out(nil, "", errPlanningProcessFailed, nil)
-		}
+		out(nil, "", errPlanningProcessFailed, nil)
 		return output, err
 	}
 	codeStateObjs, err := m.plan(codeObjState, nil)
 	if err != nil {
-		if m.ctx.IsTerminalOutput() {
-			out(nil, "", errPlanningProcessFailed, nil)
-		}
+		out(nil, "", errPlanningProcessFailed, nil)
 		return output, err
 	}
 
@@ -90,43 +84,29 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 	modifiedItems := []azicliwkscosp.CodeObjectState{}
 	deletedItems := []azicliwkscosp.CodeObjectState{}
 	if len(codeStateObjs) == 0 {
-		if m.ctx.IsTerminalOutput() {
-			out(nil, "", "No changes detected during the planning phase. system is up to date.", nil)
-		}
+		out(nil, "", "No changes detected during the planning phase. system is up to date.", nil)
 	} else {
-		if m.ctx.IsTerminalOutput() {
-			out(nil, "", "Planning process completed successfully.", nil)
-			out(nil, "", "The following changes have been identified and are ready to be applied:\n", nil)
-		}
+		out(nil, "", "Planning process completed successfully.", nil)
+		out(nil, "", "The following changes have been identified and are ready to be applied:\n", nil)
 		for _, codeStateObj := range codeStateObjs {
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateUnchanged {
-				if m.ctx.IsTerminalOutput() {
-					out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.UnchangedText("="), aziclicommon.IDText(codeStateObj.OID), aziclicommon.UnchangedText(codeStateObj.OName)), nil)
-				}
+				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.UnchangedText("="), aziclicommon.IDText(codeStateObj.OID), aziclicommon.UnchangedText(codeStateObj.OName)), nil)
 				unchangedItems = append(unchangedItems, codeStateObj)
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateCreate {
-				if m.ctx.IsTerminalOutput() {
-					out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.CreateText("+"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.CreateText(codeStateObj.OName)), nil)
-				}
+				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.CreateText("+"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.CreateText(codeStateObj.OName)), nil)
 				createdItems = append(createdItems, codeStateObj)
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateModify {
-				if m.ctx.IsTerminalOutput() {
-					out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.ModifyText("~"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.ModifyText(codeStateObj.OName)), nil)
-				}
+				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.ModifyText("~"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.ModifyText(codeStateObj.OName)), nil)
 				modifiedItems = append(modifiedItems, codeStateObj)
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateDelete {
-				if m.ctx.IsTerminalOutput() {
-					out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.DeleteText("-"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.DeleteText(codeStateObj.OName)), nil)
-				}
+				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.DeleteText("-"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.DeleteText(codeStateObj.OName)), nil)
 				deletedItems = append(deletedItems, codeStateObj)
 			}
 		}
-		if m.ctx.IsTerminalOutput() {
-			out(nil, "", "", nil)
-		}
+		out(nil, "", "", nil)
 		planObjs := append(createdItems, modifiedItems...)
 		planObjs = append(planObjs, unchangedItems...)
 		if m.ctx.IsVerboseTerminalOutput() {
@@ -139,15 +119,13 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 			if m.ctx.IsVerboseTerminalOutput() {
 				out(nil, "plan", "Failed to save the plan.", nil)
 			}
-			if m.ctx.IsTerminalOutput() {
-				out(nil, "", "Unable to save the plan.", nil)
-			}
+			out(nil, "", "Unable to save the plan.", nil)
 			return output, err
 		}
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "plan", "Plan saved successfully.", nil)
 		}
-		if !internal && m.ctx.IsTerminalOutput() {
+		if !internal {
 			out(nil, "", "Run the 'apply' command to apply the changes.", nil)
 		}
 	}
@@ -201,12 +179,10 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 	errPlanningProcessFailed := "Apply process failed."
 	plan, err := m.cospMgr.ReadCodePlan(headInfo.Remote, headInfo.RefID)
 	if err != nil {
-		if m.ctx.IsTerminalOutput() {
-			if m.ctx.IsVerboseTerminalOutput() {
-				out(nil, "apply", "Failed to read the plan.", nil)
-			}
-			out(nil, "", errPlanningProcessFailed, nil)
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "apply", "Failed to read the plan.", nil)
 		}
+		out(nil, "", errPlanningProcessFailed, nil)
 		return output, err
 	}
 	if m.ctx.IsVerboseTerminalOutput() {

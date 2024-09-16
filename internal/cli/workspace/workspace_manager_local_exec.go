@@ -149,7 +149,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "refresh", "Blobification process couldn't be completed.", nil)
 		}
-		if m.ctx.IsTerminalOutput() && !internal {
+		if !internal {
 			out(nil, "", "Your workspace has errors.", nil)
 			out(nil, "", "Please validate and fix the errors to proceed.", nil)
 		}
@@ -160,7 +160,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 		out(nil, "refresh", "Blobification process completed successfully.", nil)
 		out(nil, "refresh", fmt.Sprintf("New tree created with id: %s.", aziclicommon.IDText(treeID)), nil)
 	}
-	if m.ctx.IsTerminalOutput() && !internal {
+	if !internal {
 		out(nil, "", "Your workspace has been refreshed.", nil)
 		return output, nil
 	}
