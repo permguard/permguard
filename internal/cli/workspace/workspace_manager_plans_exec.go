@@ -20,8 +20,8 @@ import (
 	"fmt"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
+	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
 )
 
 // ExecPlan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
@@ -73,7 +73,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 	commit, err := m.rfsMgr.ReadRefsCommit(headInfo.Remote, headInfo.RefID)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("Unable to read the commit for remote %s and refid %s.",  aziclicommon.KeywordText(headInfo.Remote), aziclicommon.IDText(headInfo.RefID)), nil)
+			out(nil, "plan", fmt.Sprintf("Unable to read the commit for remote %s and refid %s.", aziclicommon.KeywordText(headInfo.Remote), aziclicommon.IDText(headInfo.RefID)), nil)
 		}
 		out(nil, "", errPlanningProcessFailed, nil)
 		return nil, err
@@ -227,7 +227,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 		if planObj.State == azicliwkscosp.CodeObjectStateUnchanged {
 			continue
 		}
-		out(nil, "", fmt.Sprintf("%s object with id: %s, type %s and name: %s.", aziclicommon.RemoteOperationText("Synchornizing"),
+		out(nil, "", fmt.Sprintf("%s object with id: %s, type %s and name: %s.", aziclicommon.RemoteOperationText("Synchronizing"),
 			aziclicommon.IDText(planObj.OID), aziclicommon.KeywordText(planObj.OType), aziclicommon.KeywordText(planObj.OName)), nil)
 	}
 	out(nil, "", "", nil)
