@@ -21,6 +21,7 @@ import (
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
+	grpc "google.golang.org/grpc"
 )
 
 // PAPService is the service for the PAP.
@@ -79,7 +80,7 @@ func (s V1PAPServer) DeleteRepository(ctx context.Context, repositoryRequest *Re
 }
 
 // FetchRepositories returns all repositories.
-func (s V1PAPServer) FetchRepositories(ctx context.Context, repositoryRequest *RepositoryFetchRequest) (*RepositoryListResponse, error) {
+func (s V1PAPServer) FetchRepositories(repositoryRequest *RepositoryFetchRequest, stream grpc.ServerStreamingServer[RepositoryResponse]) (error) {
 	fields := map[string]any{}
 	fields[azmodels.FieldRepositoryAccountID] = repositoryRequest.AccountID
 	if repositoryRequest.Name != nil {
@@ -98,17 +99,14 @@ func (s V1PAPServer) FetchRepositories(ctx context.Context, repositoryRequest *R
 	}
 	repositories, err := s.service.FetchRepositories(page, pageSize, repositoryRequest.AccountID, fields)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	repositoryList := &RepositoryListResponse{
-		Repositories: make([]*RepositoryResponse, len(repositories)),
-	}
-	for i, repository := range repositories {
+	for _, repository := range repositories {
 		cvtedRepository, err := MapAgentRepositoryToGrpcRepositoryResponse(&repository)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		repositoryList.Repositories[i] = cvtedRepository
+		stream.SendMsg(cvtedRepository)
 	}
-	return repositoryList, nil
+	return nil
 }

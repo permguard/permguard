@@ -74,7 +74,7 @@ type V1AAPServiceClient interface {
 	// Delete an identity source
 	DeleteIdentitySource(ctx context.Context, in *IdentitySourceDeleteRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error)
 	// Fetch identity sources
-	FetchIdentitySources(ctx context.Context, in *IdentitySourceFetchRequest, opts ...grpc.CallOption) (*IdentitySourceListResponse, error)
+	FetchIdentitySources(ctx context.Context, in *IdentitySourceFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IdentitySourceResponse], error)
 	// Create an identity
 	CreateIdentity(ctx context.Context, in *IdentityCreateRequest, opts ...grpc.CallOption) (*IdentityResponse, error)
 	// Update an identity
@@ -82,7 +82,7 @@ type V1AAPServiceClient interface {
 	// Delete an identity
 	DeleteIdentity(ctx context.Context, in *IdentityDeleteRequest, opts ...grpc.CallOption) (*IdentityResponse, error)
 	// Fetch Identities
-	FetchIdentities(ctx context.Context, in *IdentityFetchRequest, opts ...grpc.CallOption) (*IdentityListResponse, error)
+	FetchIdentities(ctx context.Context, in *IdentityFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IdentityResponse], error)
 	// Create an tenant
 	CreateTenant(ctx context.Context, in *TenantCreateRequest, opts ...grpc.CallOption) (*TenantResponse, error)
 	// Update an tenant
@@ -90,7 +90,7 @@ type V1AAPServiceClient interface {
 	// Delete an tenant
 	DeleteTenant(ctx context.Context, in *TenantDeleteRequest, opts ...grpc.CallOption) (*TenantResponse, error)
 	// Fetch Tenants
-	FetchTenants(ctx context.Context, in *TenantFetchRequest, opts ...grpc.CallOption) (*TenantListResponse, error)
+	FetchTenants(ctx context.Context, in *TenantFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TenantResponse], error)
 }
 
 type v1AAPServiceClient struct {
@@ -180,15 +180,24 @@ func (c *v1AAPServiceClient) DeleteIdentitySource(ctx context.Context, in *Ident
 	return out, nil
 }
 
-func (c *v1AAPServiceClient) FetchIdentitySources(ctx context.Context, in *IdentitySourceFetchRequest, opts ...grpc.CallOption) (*IdentitySourceListResponse, error) {
+func (c *v1AAPServiceClient) FetchIdentitySources(ctx context.Context, in *IdentitySourceFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IdentitySourceResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(IdentitySourceListResponse)
-	err := c.cc.Invoke(ctx, V1AAPService_FetchIdentitySources_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &V1AAPService_ServiceDesc.Streams[1], V1AAPService_FetchIdentitySources_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[IdentitySourceFetchRequest, IdentitySourceResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type V1AAPService_FetchIdentitySourcesClient = grpc.ServerStreamingClient[IdentitySourceResponse]
 
 func (c *v1AAPServiceClient) CreateIdentity(ctx context.Context, in *IdentityCreateRequest, opts ...grpc.CallOption) (*IdentityResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -220,15 +229,24 @@ func (c *v1AAPServiceClient) DeleteIdentity(ctx context.Context, in *IdentityDel
 	return out, nil
 }
 
-func (c *v1AAPServiceClient) FetchIdentities(ctx context.Context, in *IdentityFetchRequest, opts ...grpc.CallOption) (*IdentityListResponse, error) {
+func (c *v1AAPServiceClient) FetchIdentities(ctx context.Context, in *IdentityFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IdentityResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(IdentityListResponse)
-	err := c.cc.Invoke(ctx, V1AAPService_FetchIdentities_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &V1AAPService_ServiceDesc.Streams[2], V1AAPService_FetchIdentities_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[IdentityFetchRequest, IdentityResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type V1AAPService_FetchIdentitiesClient = grpc.ServerStreamingClient[IdentityResponse]
 
 func (c *v1AAPServiceClient) CreateTenant(ctx context.Context, in *TenantCreateRequest, opts ...grpc.CallOption) (*TenantResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -260,15 +278,24 @@ func (c *v1AAPServiceClient) DeleteTenant(ctx context.Context, in *TenantDeleteR
 	return out, nil
 }
 
-func (c *v1AAPServiceClient) FetchTenants(ctx context.Context, in *TenantFetchRequest, opts ...grpc.CallOption) (*TenantListResponse, error) {
+func (c *v1AAPServiceClient) FetchTenants(ctx context.Context, in *TenantFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TenantResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(TenantListResponse)
-	err := c.cc.Invoke(ctx, V1AAPService_FetchTenants_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &V1AAPService_ServiceDesc.Streams[3], V1AAPService_FetchTenants_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[TenantFetchRequest, TenantResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type V1AAPService_FetchTenantsClient = grpc.ServerStreamingClient[TenantResponse]
 
 // V1AAPServiceServer is the server API for V1AAPService service.
 // All implementations must embed UnimplementedV1AAPServiceServer
@@ -291,7 +318,7 @@ type V1AAPServiceServer interface {
 	// Delete an identity source
 	DeleteIdentitySource(context.Context, *IdentitySourceDeleteRequest) (*IdentitySourceResponse, error)
 	// Fetch identity sources
-	FetchIdentitySources(context.Context, *IdentitySourceFetchRequest) (*IdentitySourceListResponse, error)
+	FetchIdentitySources(*IdentitySourceFetchRequest, grpc.ServerStreamingServer[IdentitySourceResponse]) error
 	// Create an identity
 	CreateIdentity(context.Context, *IdentityCreateRequest) (*IdentityResponse, error)
 	// Update an identity
@@ -299,7 +326,7 @@ type V1AAPServiceServer interface {
 	// Delete an identity
 	DeleteIdentity(context.Context, *IdentityDeleteRequest) (*IdentityResponse, error)
 	// Fetch Identities
-	FetchIdentities(context.Context, *IdentityFetchRequest) (*IdentityListResponse, error)
+	FetchIdentities(*IdentityFetchRequest, grpc.ServerStreamingServer[IdentityResponse]) error
 	// Create an tenant
 	CreateTenant(context.Context, *TenantCreateRequest) (*TenantResponse, error)
 	// Update an tenant
@@ -307,7 +334,7 @@ type V1AAPServiceServer interface {
 	// Delete an tenant
 	DeleteTenant(context.Context, *TenantDeleteRequest) (*TenantResponse, error)
 	// Fetch Tenants
-	FetchTenants(context.Context, *TenantFetchRequest) (*TenantListResponse, error)
+	FetchTenants(*TenantFetchRequest, grpc.ServerStreamingServer[TenantResponse]) error
 	mustEmbedUnimplementedV1AAPServiceServer()
 }
 
@@ -339,8 +366,8 @@ func (UnimplementedV1AAPServiceServer) UpdateIdentitySource(context.Context, *Id
 func (UnimplementedV1AAPServiceServer) DeleteIdentitySource(context.Context, *IdentitySourceDeleteRequest) (*IdentitySourceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteIdentitySource not implemented")
 }
-func (UnimplementedV1AAPServiceServer) FetchIdentitySources(context.Context, *IdentitySourceFetchRequest) (*IdentitySourceListResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method FetchIdentitySources not implemented")
+func (UnimplementedV1AAPServiceServer) FetchIdentitySources(*IdentitySourceFetchRequest, grpc.ServerStreamingServer[IdentitySourceResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method FetchIdentitySources not implemented")
 }
 func (UnimplementedV1AAPServiceServer) CreateIdentity(context.Context, *IdentityCreateRequest) (*IdentityResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateIdentity not implemented")
@@ -351,8 +378,8 @@ func (UnimplementedV1AAPServiceServer) UpdateIdentity(context.Context, *Identity
 func (UnimplementedV1AAPServiceServer) DeleteIdentity(context.Context, *IdentityDeleteRequest) (*IdentityResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteIdentity not implemented")
 }
-func (UnimplementedV1AAPServiceServer) FetchIdentities(context.Context, *IdentityFetchRequest) (*IdentityListResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method FetchIdentities not implemented")
+func (UnimplementedV1AAPServiceServer) FetchIdentities(*IdentityFetchRequest, grpc.ServerStreamingServer[IdentityResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method FetchIdentities not implemented")
 }
 func (UnimplementedV1AAPServiceServer) CreateTenant(context.Context, *TenantCreateRequest) (*TenantResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateTenant not implemented")
@@ -363,8 +390,8 @@ func (UnimplementedV1AAPServiceServer) UpdateTenant(context.Context, *TenantUpda
 func (UnimplementedV1AAPServiceServer) DeleteTenant(context.Context, *TenantDeleteRequest) (*TenantResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteTenant not implemented")
 }
-func (UnimplementedV1AAPServiceServer) FetchTenants(context.Context, *TenantFetchRequest) (*TenantListResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method FetchTenants not implemented")
+func (UnimplementedV1AAPServiceServer) FetchTenants(*TenantFetchRequest, grpc.ServerStreamingServer[TenantResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method FetchTenants not implemented")
 }
 func (UnimplementedV1AAPServiceServer) mustEmbedUnimplementedV1AAPServiceServer() {}
 func (UnimplementedV1AAPServiceServer) testEmbeddedByValue()                      {}
@@ -506,23 +533,16 @@ func _V1AAPService_DeleteIdentitySource_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_FetchIdentitySources_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(IdentitySourceFetchRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _V1AAPService_FetchIdentitySources_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(IdentitySourceFetchRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(V1AAPServiceServer).FetchIdentitySources(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: V1AAPService_FetchIdentitySources_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1AAPServiceServer).FetchIdentitySources(ctx, req.(*IdentitySourceFetchRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(V1AAPServiceServer).FetchIdentitySources(m, &grpc.GenericServerStream[IdentitySourceFetchRequest, IdentitySourceResponse]{ServerStream: stream})
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type V1AAPService_FetchIdentitySourcesServer = grpc.ServerStreamingServer[IdentitySourceResponse]
 
 func _V1AAPService_CreateIdentity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(IdentityCreateRequest)
@@ -578,23 +598,16 @@ func _V1AAPService_DeleteIdentity_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_FetchIdentities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(IdentityFetchRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _V1AAPService_FetchIdentities_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(IdentityFetchRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(V1AAPServiceServer).FetchIdentities(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: V1AAPService_FetchIdentities_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1AAPServiceServer).FetchIdentities(ctx, req.(*IdentityFetchRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(V1AAPServiceServer).FetchIdentities(m, &grpc.GenericServerStream[IdentityFetchRequest, IdentityResponse]{ServerStream: stream})
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type V1AAPService_FetchIdentitiesServer = grpc.ServerStreamingServer[IdentityResponse]
 
 func _V1AAPService_CreateTenant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TenantCreateRequest)
@@ -650,23 +663,16 @@ func _V1AAPService_DeleteTenant_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_FetchTenants_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(TenantFetchRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _V1AAPService_FetchTenants_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(TenantFetchRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(V1AAPServiceServer).FetchTenants(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: V1AAPService_FetchTenants_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1AAPServiceServer).FetchTenants(ctx, req.(*TenantFetchRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(V1AAPServiceServer).FetchTenants(m, &grpc.GenericServerStream[TenantFetchRequest, TenantResponse]{ServerStream: stream})
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type V1AAPService_FetchTenantsServer = grpc.ServerStreamingServer[TenantResponse]
 
 // V1AAPService_ServiceDesc is the grpc.ServiceDesc for V1AAPService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -700,10 +706,6 @@ var V1AAPService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _V1AAPService_DeleteIdentitySource_Handler,
 		},
 		{
-			MethodName: "FetchIdentitySources",
-			Handler:    _V1AAPService_FetchIdentitySources_Handler,
-		},
-		{
 			MethodName: "CreateIdentity",
 			Handler:    _V1AAPService_CreateIdentity_Handler,
 		},
@@ -714,10 +716,6 @@ var V1AAPService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteIdentity",
 			Handler:    _V1AAPService_DeleteIdentity_Handler,
-		},
-		{
-			MethodName: "FetchIdentities",
-			Handler:    _V1AAPService_FetchIdentities_Handler,
 		},
 		{
 			MethodName: "CreateTenant",
@@ -731,15 +729,26 @@ var V1AAPService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "DeleteTenant",
 			Handler:    _V1AAPService_DeleteTenant_Handler,
 		},
-		{
-			MethodName: "FetchTenants",
-			Handler:    _V1AAPService_FetchTenants_Handler,
-		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "FetchAccounts",
 			Handler:       _V1AAPService_FetchAccounts_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "FetchIdentitySources",
+			Handler:       _V1AAPService_FetchIdentitySources_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "FetchIdentities",
+			Handler:       _V1AAPService_FetchIdentities_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "FetchTenants",
+			Handler:       _V1AAPService_FetchTenants_Handler,
 			ServerStreams: true,
 		},
 	},

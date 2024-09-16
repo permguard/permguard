@@ -18,6 +18,7 @@ package clients
 
 import (
 	"context"
+	"io"
 
 	azapiv1aap "github.com/permguard/permguard/internal/agents/services/aap/endpoints/api/v1"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
@@ -103,17 +104,24 @@ func (c *GrpcAAPClient) FetchIdentitySourcesBy(page int32, pageSize int32, accou
 	if identitySourceID != "" {
 		identitySourceFetchRequest.IdentitySourceID = &identitySourceID
 	}
-	identitySourceList, err := client.FetchIdentitySources(context.Background(), identitySourceFetchRequest)
+	stream, err := client.FetchIdentitySources(context.Background(), identitySourceFetchRequest)
 	if err != nil {
 		return nil, err
 	}
-	identitySources := make([]azmodels.IdentitySource, len(identitySourceList.IdentitySources))
-	for i, gIdentitySource := range identitySourceList.IdentitySources {
-		identitySource, err := azapiv1aap.MapGrpcIdentitySourceResponseToAgentIdentitySource(gIdentitySource)
+	identitySources := []azmodels.IdentitySource{}
+	for {
+		response, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
 		if err != nil {
 			return nil, err
 		}
-		identitySources[i] = *identitySource
+		identitySource, err := azapiv1aap.MapGrpcIdentitySourceResponseToAgentIdentitySource(response)
+		if err != nil {
+			return nil, err
+		}
+		identitySources = append(identitySources, *identitySource)
 	}
 	return identitySources, nil
 }
