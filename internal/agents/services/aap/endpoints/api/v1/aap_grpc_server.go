@@ -167,7 +167,7 @@ func (s *V1AAPServer) DeleteIdentitySource(ctx context.Context, identitySourceRe
 }
 
 // FetchIdentitySources returns all identity sources.
-func (s *V1AAPServer) FetchIdentitySources(ctx context.Context, identitySourceRequest *IdentitySourceFetchRequest) (*IdentitySourceListResponse, error) {
+func (s *V1AAPServer) FetchIdentitySources(identitySourceRequest *IdentitySourceFetchRequest, stream grpc.ServerStreamingServer[IdentitySourceResponse]) (error) {
 	fields := map[string]any{}
 	fields[azmodels.FieldIdentitySourceAccountID] = identitySourceRequest.AccountID
 	if identitySourceRequest.Name != nil {
@@ -186,19 +186,16 @@ func (s *V1AAPServer) FetchIdentitySources(ctx context.Context, identitySourceRe
 	}
 	identitySources, err := s.service.FetchIdentitySources(page, pageSize, identitySourceRequest.AccountID, fields)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	identitySourceList := &IdentitySourceListResponse{
-		IdentitySources: make([]*IdentitySourceResponse, len(identitySources)),
-	}
-	for i, identitySource := range identitySources {
+	for _, identitySource := range identitySources {
 		cvtedIdentitySource, err := MapAgentIdentitySourceToGrpcIdentitySourceResponse(&identitySource)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		identitySourceList.IdentitySources[i] = cvtedIdentitySource
+		stream.SendMsg(cvtedIdentitySource)
 	}
-	return identitySourceList, nil
+	return nil
 }
 
 // CreateIdentity creates a new identity.
@@ -229,7 +226,7 @@ func (s *V1AAPServer) DeleteIdentity(ctx context.Context, identityRequest *Ident
 }
 
 // FetchIdentities returns all identities.
-func (s *V1AAPServer) FetchIdentities(ctx context.Context, identityRequest *IdentityFetchRequest) (*IdentityListResponse, error) {
+func (s *V1AAPServer) FetchIdentities(identityRequest *IdentityFetchRequest, stream grpc.ServerStreamingServer[IdentityResponse]) (error) {
 	fields := map[string]any{}
 	fields[azmodels.FieldIdentityAccountID] = identityRequest.AccountID
 	if identityRequest.IdentitySourceID != nil {
@@ -254,19 +251,16 @@ func (s *V1AAPServer) FetchIdentities(ctx context.Context, identityRequest *Iden
 	}
 	identities, err := s.service.FetchIdentities(page, pageSize, identityRequest.AccountID, fields)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	identityList := &IdentityListResponse{
-		Identities: make([]*IdentityResponse, len(identities)),
-	}
-	for i, identity := range identities {
+	for _, identity := range identities {
 		cvtedIdentity, err := MapAgentIdentityToGrpcIdentityResponse(&identity)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		identityList.Identities[i] = cvtedIdentity
+		stream.SendMsg(cvtedIdentity)
 	}
-	return identityList, nil
+	return nil
 }
 
 // CreateTenant creates a new tenant.
@@ -297,7 +291,7 @@ func (s *V1AAPServer) DeleteTenant(ctx context.Context, tenantRequest *TenantDel
 }
 
 // FetchTenants returns all tenants.
-func (s *V1AAPServer) FetchTenants(ctx context.Context, tenantRequest *TenantFetchRequest) (*TenantListResponse, error) {
+func (s *V1AAPServer) FetchTenants(tenantRequest *TenantFetchRequest, stream grpc.ServerStreamingServer[TenantResponse]) (error) {
 	fields := map[string]any{}
 	fields[azmodels.FieldTenantAccountID] = tenantRequest.AccountID
 	if tenantRequest.Name != nil {
@@ -316,17 +310,14 @@ func (s *V1AAPServer) FetchTenants(ctx context.Context, tenantRequest *TenantFet
 	}
 	tenants, err := s.service.FetchTenants(page, pageSize, tenantRequest.AccountID, fields)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	tenantList := &TenantListResponse{
-		Tenants: make([]*TenantResponse, len(tenants)),
-	}
-	for i, tenant := range tenants {
+	for _, tenant := range tenants {
 		cvtedTenant, err := MapAgentTenantToGrpcTenantResponse(&tenant)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		tenantList.Tenants[i] = cvtedTenant
+		stream.SendMsg(cvtedTenant)
 	}
-	return tenantList, nil
+	return nil
 }

@@ -18,6 +18,7 @@ package clients
 
 import (
 	"context"
+	"io"
 
 	azapiv1aap "github.com/permguard/permguard/internal/agents/services/aap/endpoints/api/v1"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
@@ -103,17 +104,24 @@ func (c *GrpcAAPClient) FetchTenantsBy(page int32, pageSize int32, accountID int
 	if tenantID != "" {
 		tenantFetchRequest.TenantID = &tenantID
 	}
-	tenantList, err := client.FetchTenants(context.Background(), tenantFetchRequest)
+	stream, err := client.FetchTenants(context.Background(), tenantFetchRequest)
 	if err != nil {
 		return nil, err
 	}
-	tenants := make([]azmodels.Tenant, len(tenantList.Tenants))
-	for i, tenant := range tenantList.Tenants {
-		tenant, err := azapiv1aap.MapGrpcTenantResponseToAgentTenant(tenant)
+	tenants := []azmodels.Tenant{}
+	for {
+		response, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
 		if err != nil {
 			return nil, err
 		}
-		tenants[i] = *tenant
+		tenant, err := azapiv1aap.MapGrpcTenantResponseToAgentTenant(response)
+		if err != nil {
+			return nil, err
+		}
+		tenants = append(tenants, *tenant)
 	}
 	return tenants, nil
 }

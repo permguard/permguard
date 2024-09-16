@@ -18,6 +18,7 @@ package clients
 
 import (
 	"context"
+	"io"
 
 	azapiv1pap "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
@@ -103,17 +104,24 @@ func (c *GrpcPAPClient) FetchRepositoriesBy(page int32, pageSize int32, accountI
 	if repositoryID != "" {
 		repositoryFetchRequest.RepositoryID = &repositoryID
 	}
-	repositoryList, err := client.FetchRepositories(context.Background(), repositoryFetchRequest)
+	stream, err := client.FetchRepositories(context.Background(), repositoryFetchRequest)
 	if err != nil {
 		return nil, err
 	}
-	repositories := make([]azmodels.Repository, len(repositoryList.Repositories))
-	for i, repository := range repositoryList.Repositories {
-		repository, err := azapiv1pap.MapGrpcRepositoryResponseToAgentRepository(repository)
+	repositories := []azmodels.Repository{}
+	for {
+		response, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
 		if err != nil {
 			return nil, err
 		}
-		repositories[i] = *repository
+		repository, err := azapiv1pap.MapGrpcRepositoryResponseToAgentRepository(response)
+		if err != nil {
+			return nil, err
+		}
+		repositories = append(repositories, *repository)
 	}
 	return repositories, nil
 }

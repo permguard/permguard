@@ -63,11 +63,6 @@ message RepositoryResponse {
 	string Refs = 6;
 }
 
-// RepositoryList is a list of Repositories
-message RepositoryListResponse {
-	repeated RepositoryResponse Repositories = 1;
-}
-
 // Push and Pull Objects
 
 // BatchItem is a single object in the batch
@@ -100,20 +95,6 @@ message PullRequest {
     repeated string OIDs = 3;
 }
 
-// Get Objects
-
-// GetRequest is the request to get an object
-message GetRequest {
-    string OID = 1;
-}
-
-// GetResponse is the response to get an object
-message GetResponse {
-    string OID = 1;
-    string OType = 2;
-    bytes OContent = 3;
-}
-
 // V1PAPService is the service for the Policy Administration Point
 service V1PAPService {
 	// Create an repository
@@ -123,9 +104,7 @@ service V1PAPService {
 	// Delete an repository
 	rpc DeleteRepository(RepositoryDeleteRequest) returns (RepositoryResponse) {}
 	// Fetch repositories
-	rpc FetchRepositories(RepositoryFetchRequest) returns (RepositoryListResponse) {}
-	// Get a specific object
-	rpc GetObject(GetRequest) returns (GetResponse) {}
+	rpc FetchRepositories(RepositoryFetchRequest) returns (stream RepositoryResponse) {}
 	// Push objects
 	rpc PushObjects(stream PushRequest) returns (PushResponse) {}
 	// Pull objects

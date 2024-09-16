@@ -96,11 +96,6 @@ message TenantResponse {
     string Name = 5;
 }
 
-// TenantList is a list of Tenants
-message TenantListResponse {
-	repeated TenantResponse Tenants = 1;
-}
-
 // IdentitySources
 
 // IdentitySource get request
@@ -138,11 +133,6 @@ message IdentitySourceResponse {
     google.protobuf.Timestamp CreatedAt = 3;
     google.protobuf.Timestamp UpdatedAt = 4;
     string Name = 5;
-}
-
-// IdentitySourceList is a list of IdentitySources
-message IdentitySourceListResponse {
-	repeated IdentitySourceResponse IdentitySources = 1;
 }
 
 // Identities
@@ -191,11 +181,6 @@ message IdentityResponse {
     string Name = 7;
 }
 
-// IdentityList is a list of Identities
-message IdentityListResponse {
-	repeated IdentityResponse Identities = 1;
-}
-
 // V1AAPService is the service for the Account Administration Point
 service V1AAPService {
 	// Create an account
@@ -214,7 +199,7 @@ service V1AAPService {
 	// Delete an identity source
 	rpc DeleteIdentitySource(IdentitySourceDeleteRequest) returns (IdentitySourceResponse) {}
 	// Fetch identity sources
-	rpc FetchIdentitySources(IdentitySourceFetchRequest) returns (IdentitySourceListResponse) {}
+	rpc FetchIdentitySources(IdentitySourceFetchRequest) returns (stream IdentitySourceResponse) {}
 
 	// Create an identity
 	rpc CreateIdentity(IdentityCreateRequest) returns (IdentityResponse) {}
@@ -223,7 +208,7 @@ service V1AAPService {
 	// Delete an identity
 	rpc DeleteIdentity(IdentityDeleteRequest) returns (IdentityResponse) {}
 	// Fetch Identities
-	rpc FetchIdentities(IdentityFetchRequest) returns (IdentityListResponse) {}
+	rpc FetchIdentities(IdentityFetchRequest) returns (stream IdentityResponse) {}
 
 	// Create an tenant
 	rpc CreateTenant(TenantCreateRequest) returns (TenantResponse) {}
@@ -232,5 +217,5 @@ service V1AAPService {
 	// Delete an tenant
 	rpc DeleteTenant(TenantDeleteRequest) returns (TenantResponse) {}
 	// Fetch Tenants
-	rpc FetchTenants(TenantFetchRequest) returns (TenantListResponse) {}
+	rpc FetchTenants(TenantFetchRequest) returns (stream TenantResponse) {}
 }
