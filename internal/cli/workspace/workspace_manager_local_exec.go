@@ -48,8 +48,7 @@ func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceMan
 			cSection := codeFile.Section + 1
 			if m.ctx.IsVerboseTerminalOutput() {
 				out(output, "refresh", fmt.Sprintf(`Error in file %s, section %s and error message %s.`, aziclicommon.FileText(cFile), aziclicommon.NumberText(cSection), aziclicommon.LogErrorText(codeFile.ErrorMessage)), nil)
-			}
-			if m.ctx.IsJSONOutput() {
+			} else if m.ctx.IsJSONOutput() {
 				if _, ok := errorsMap[cFile]; !ok {
 					errorsMap[cFile] = map[string]any{}
 				}
