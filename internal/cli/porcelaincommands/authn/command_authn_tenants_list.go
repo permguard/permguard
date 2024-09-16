@@ -46,8 +46,8 @@ func runECommandForListTenants(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	page := v.GetInt32(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonPage))
-	pageSize := v.GetInt32(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonPageSize))
+	page := v.GetInt32(azoptions.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonPage))
+	pageSize := v.GetInt32(azoptions.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonPageSize))
 	accountID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonAccountID))
 	tenantID := v.GetString(azoptions.FlagName(commandNameForTenantsList, flagTenantID))
 	name := v.GetString(azoptions.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonName))
