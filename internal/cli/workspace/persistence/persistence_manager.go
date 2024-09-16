@@ -70,10 +70,10 @@ func (p *PersistenceManager) CheckPathIfExists(relative RelativeDir, name string
 	return azfiles.CheckPathIfExists(name)
 }
 
-// CreateFileIfNotExists creates a file if it does not exist.
-func (p *PersistenceManager) CreateFileIfNotExists(relative RelativeDir, name string) (bool, error) {
+// DeleteFile deletes a file.
+func (p *PersistenceManager) DeletePath(relative RelativeDir, name string) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.CreateFileIfNotExists(name)
+	return azfiles.DeletePath(name)
 }
 
 // CreateDirIfNotExists creates a directory if it does not exist.
@@ -82,10 +82,10 @@ func (p *PersistenceManager) CreateDirIfNotExists(relative RelativeDir, name str
 	return azfiles.CreateDirIfNotExists(name)
 }
 
-// DeleteFile deletes a file.
-func (p *PersistenceManager) DeletePath(relative RelativeDir, name string) (bool, error) {
+// CreateFileIfNotExists creates a file if it does not exist.
+func (p *PersistenceManager) CreateFileIfNotExists(relative RelativeDir, name string) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.DeletePath(name)
+	return azfiles.CreateFileIfNotExists(name)
 }
 
 // WriteFileIfNotExists writes a file if it does not exist.
@@ -100,40 +100,16 @@ func (p *PersistenceManager) WriteFile(relative RelativeDir, name string, data [
 	return azfiles.WriteFile(name, data, perm, compressed)
 }
 
-// ReadFile reads a file.
-func (p *PersistenceManager) ReadFile(relative RelativeDir, name string, compressed bool) ([]byte, uint32, error) {
-	name = p.GetRelativeDir(relative, name)
-	return azfiles.ReadFile(name, compressed)
-}
-
-// WriteBinaryFile writes a binary file.
-func (p *PersistenceManager) WriteBinaryFile(relative RelativeDir, name string, data []byte, perm os.FileMode, compressed bool) (bool, error) {
-	name = p.GetRelativeDir(relative, name)
-	return azfiles.WriteFile(name, data, perm, compressed)
-}
-
-// ReadBinaryFile reads a binary file.
-func (p *PersistenceManager) ReadBinaryFile(relative RelativeDir, name string, perm os.FileMode, compressed bool) ([]byte, uint32, error) {
-	name = p.GetRelativeDir(relative, name)
-	return azfiles.ReadFile(name, compressed)
-}
-
-// WriteCSVStream writes a CSV stream.
-func (p *PersistenceManager) WriteCSVStream(relative RelativeDir, name string, header []string, records interface{}, rowFunc func(interface{}) []string) error {
-	name = p.GetRelativeDir(relative, name)
-	return azfiles.WriteCSVStream(name, header, records, rowFunc)
-}
-
-// ReadCSVStream reads from a CSV stream.
-func (p *PersistenceManager) ReadCSVStream(relative RelativeDir, name string, header []string, recordFunc func([]string) error) error {
-	name = p.GetRelativeDir(relative, name)
-	return azfiles.ReadCSVStream(name, header, recordFunc)
-}
-
 // AppendToFile appends to a file.
 func (p *PersistenceManager) AppendToFile(relative RelativeDir, name string, data []byte, compressed bool) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
 	return azfiles.AppendToFile(name, data, compressed)
+}
+
+// ReadFile reads a file.
+func (p *PersistenceManager) ReadFile(relative RelativeDir, name string, compressed bool) ([]byte, uint32, error) {
+	name = p.GetRelativeDir(relative, name)
+	return azfiles.ReadFile(name, compressed)
 }
 
 // ScanAndFilterFiles scans and filters files.
@@ -146,6 +122,18 @@ func (p *PersistenceManager) ScanAndFilterFiles(relative RelativeDir, exts []str
 		return nil, nil, err
 	}
 	return azfiles.ScanAndFilterFiles(name, exts, ignorePatterns)
+}
+
+// WriteCSVStream writes a CSV stream.
+func (p *PersistenceManager) WriteCSVStream(relative RelativeDir, name string, header []string, records interface{}, rowFunc func(interface{}) []string, compressed bool) error {
+	name = p.GetRelativeDir(relative, name)
+	return azfiles.WriteCSVStream(name, header, records, rowFunc, compressed)
+}
+
+// ReadCSVStream reads from a CSV stream.
+func (p *PersistenceManager) ReadCSVStream(relative RelativeDir, name string, header []string, recordFunc func([]string) error, compressed bool) error {
+	name = p.GetRelativeDir(relative, name)
+	return azfiles.ReadCSVStream(name, header, recordFunc, compressed)
 }
 
 // ReadTOMLFile reads a TOML file.
