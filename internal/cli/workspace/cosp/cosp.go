@@ -20,7 +20,7 @@ const (
 	// CodeFileTypePermCode represents the code file type.
 	CodeFileTypePermCode = "permcode"
 	// CodeFileTypePermSchema represents the schema file type.
-	CodeFilePermSchema   = "permschema"
+	CodeFilePermSchema = "permschema"
 	// CodeObjectStateModify represents the modify state.
 	CodeObjectStateUnchanged = "unchanged"
 	// CodeObjectStateCreate represents the create state.
@@ -31,15 +31,15 @@ const (
 	CodeObjectStateDelete = "delete"
 )
 
-// CodeMapConfig represents the configuration for the code map.
-type CodeMapConfig struct {
-	TreeID   string `toml:"treeid"`
+// CodeStateConfig represents the config of the code state.
+type CodeStateConfig struct {
+	TreeID string `toml:"treeid"`
 }
 
 // CodeLocalConfig represents the configuration for the code local.
 type CodeLocalConfig struct {
-	Language string `toml:"language"`
-	CodeMap   CodeMapConfig `toml:"codemap"`
+	Language 	string          `toml:"language"`
+	CodeState	CodeStateConfig `toml:"codestate"`
 }
 
 // CodeFile represents the code file.
@@ -66,15 +66,13 @@ func ConvertCodeFilesToPath(files []CodeFile) []string {
 
 // CodeObject represents the code object.
 type CodeObject struct {
-	OName        string `json:"oname"`
-	OType        string `json:"otype"`
-	OID          string `json:"oid"`
+	OName string `json:"oname"`
+	OType string `json:"otype"`
+	OID   string `json:"oid"`
 }
 
 // CodeObjectState represents the code object state.
 type CodeObjectState struct {
 	CodeObject
-	State	string `json:"state"`
+	State string `json:"state"`
 }
-
-

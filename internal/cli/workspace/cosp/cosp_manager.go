@@ -145,8 +145,8 @@ func (m *COSPManager) saveConfig(name string, override bool, cfg any) error {
 func (m *COSPManager) SaveCodeSourceConfig(treeID, language string) error {
 	config := &CodeLocalConfig{
 		Language: language,
-		CodeMap: CodeMapConfig{
-			TreeID:   treeID,
+		CodeState: CodeStateConfig{
+			TreeID: treeID,
 		},
 	}
 	file := m.getCodeSourceConfigFile()
