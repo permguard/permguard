@@ -57,39 +57,39 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// V1AAPService is the service for the Account Administration Point
+// V1AAPService is the service for the Account Administration Point.
 type V1AAPServiceClient interface {
-	// Create an account
+	// Create an account.
 	CreateAccount(ctx context.Context, in *AccountCreateRequest, opts ...grpc.CallOption) (*AccountResponse, error)
-	// Update an account
+	// Update an account.
 	UpdateAccount(ctx context.Context, in *AccountUpdateRequest, opts ...grpc.CallOption) (*AccountResponse, error)
-	// Delete an account
+	// Delete an account.
 	DeleteAccount(ctx context.Context, in *AccountDeleteRequest, opts ...grpc.CallOption) (*AccountResponse, error)
-	// Fetch Accounts
+	// Fetch Accounts.
 	FetchAccounts(ctx context.Context, in *AccountFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AccountResponse], error)
-	// Create an identity source
+	// Create an identity source.
 	CreateIdentitySource(ctx context.Context, in *IdentitySourceCreateRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error)
-	// Update an identity source
+	// Update an identity source.
 	UpdateIdentitySource(ctx context.Context, in *IdentitySourceUpdateRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error)
-	// Delete an identity source
+	// Delete an identity source.
 	DeleteIdentitySource(ctx context.Context, in *IdentitySourceDeleteRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error)
-	// Fetch identity sources
+	// Fetch identity sources.
 	FetchIdentitySources(ctx context.Context, in *IdentitySourceFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IdentitySourceResponse], error)
-	// Create an identity
+	// Create an identity.
 	CreateIdentity(ctx context.Context, in *IdentityCreateRequest, opts ...grpc.CallOption) (*IdentityResponse, error)
-	// Update an identity
+	// Update an identity.
 	UpdateIdentity(ctx context.Context, in *IdentityUpdateRequest, opts ...grpc.CallOption) (*IdentityResponse, error)
-	// Delete an identity
+	// Delete an identity.
 	DeleteIdentity(ctx context.Context, in *IdentityDeleteRequest, opts ...grpc.CallOption) (*IdentityResponse, error)
-	// Fetch Identities
+	// Fetch Identities.
 	FetchIdentities(ctx context.Context, in *IdentityFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IdentityResponse], error)
-	// Create an tenant
+	// Create an tenant.
 	CreateTenant(ctx context.Context, in *TenantCreateRequest, opts ...grpc.CallOption) (*TenantResponse, error)
-	// Update an tenant
+	// Update an tenant.
 	UpdateTenant(ctx context.Context, in *TenantUpdateRequest, opts ...grpc.CallOption) (*TenantResponse, error)
-	// Delete an tenant
+	// Delete an tenant.
 	DeleteTenant(ctx context.Context, in *TenantDeleteRequest, opts ...grpc.CallOption) (*TenantResponse, error)
-	// Fetch Tenants
+	// Fetch Tenants.
 	FetchTenants(ctx context.Context, in *TenantFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TenantResponse], error)
 }
 
@@ -301,39 +301,39 @@ type V1AAPService_FetchTenantsClient = grpc.ServerStreamingClient[TenantResponse
 // All implementations must embed UnimplementedV1AAPServiceServer
 // for forward compatibility.
 //
-// V1AAPService is the service for the Account Administration Point
+// V1AAPService is the service for the Account Administration Point.
 type V1AAPServiceServer interface {
-	// Create an account
+	// Create an account.
 	CreateAccount(context.Context, *AccountCreateRequest) (*AccountResponse, error)
-	// Update an account
+	// Update an account.
 	UpdateAccount(context.Context, *AccountUpdateRequest) (*AccountResponse, error)
-	// Delete an account
+	// Delete an account.
 	DeleteAccount(context.Context, *AccountDeleteRequest) (*AccountResponse, error)
-	// Fetch Accounts
+	// Fetch Accounts.
 	FetchAccounts(*AccountFetchRequest, grpc.ServerStreamingServer[AccountResponse]) error
-	// Create an identity source
+	// Create an identity source.
 	CreateIdentitySource(context.Context, *IdentitySourceCreateRequest) (*IdentitySourceResponse, error)
-	// Update an identity source
+	// Update an identity source.
 	UpdateIdentitySource(context.Context, *IdentitySourceUpdateRequest) (*IdentitySourceResponse, error)
-	// Delete an identity source
+	// Delete an identity source.
 	DeleteIdentitySource(context.Context, *IdentitySourceDeleteRequest) (*IdentitySourceResponse, error)
-	// Fetch identity sources
+	// Fetch identity sources.
 	FetchIdentitySources(*IdentitySourceFetchRequest, grpc.ServerStreamingServer[IdentitySourceResponse]) error
-	// Create an identity
+	// Create an identity.
 	CreateIdentity(context.Context, *IdentityCreateRequest) (*IdentityResponse, error)
-	// Update an identity
+	// Update an identity.
 	UpdateIdentity(context.Context, *IdentityUpdateRequest) (*IdentityResponse, error)
-	// Delete an identity
+	// Delete an identity.
 	DeleteIdentity(context.Context, *IdentityDeleteRequest) (*IdentityResponse, error)
-	// Fetch Identities
+	// Fetch Identities.
 	FetchIdentities(*IdentityFetchRequest, grpc.ServerStreamingServer[IdentityResponse]) error
-	// Create an tenant
+	// Create an tenant.
 	CreateTenant(context.Context, *TenantCreateRequest) (*TenantResponse, error)
-	// Update an tenant
+	// Update an tenant.
 	UpdateTenant(context.Context, *TenantUpdateRequest) (*TenantResponse, error)
-	// Delete an tenant
+	// Delete an tenant.
 	DeleteTenant(context.Context, *TenantDeleteRequest) (*TenantResponse, error)
-	// Fetch Tenants
+	// Fetch Tenants.
 	FetchTenants(*TenantFetchRequest, grpc.ServerStreamingServer[TenantResponse]) error
 	mustEmbedUnimplementedV1AAPServiceServer()
 }

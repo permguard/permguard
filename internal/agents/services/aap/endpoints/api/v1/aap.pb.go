@@ -37,7 +37,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Account get request
+// Account get request.
 type AccountFetchRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -109,7 +109,7 @@ func (x *AccountFetchRequest) GetName() string {
 	return ""
 }
 
-// Account create request
+// Account create request.
 type AccountCreateRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -157,7 +157,7 @@ func (x *AccountCreateRequest) GetName() string {
 	return ""
 }
 
-// Account update request
+// Account update request.
 type AccountUpdateRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -213,7 +213,7 @@ func (x *AccountUpdateRequest) GetName() string {
 	return ""
 }
 
-// Account delete request
+// Account delete request.
 type AccountDeleteRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -261,7 +261,7 @@ func (x *AccountDeleteRequest) GetAccountID() int64 {
 	return 0
 }
 
-// Account response
+// Account response.
 type AccountResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -333,7 +333,7 @@ func (x *AccountResponse) GetName() string {
 	return ""
 }
 
-// Tenant get request
+// Tenant get request.
 type TenantFetchRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -413,7 +413,7 @@ func (x *TenantFetchRequest) GetName() string {
 	return ""
 }
 
-// Tenant create request
+// Tenant create request.
 type TenantCreateRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -469,7 +469,7 @@ func (x *TenantCreateRequest) GetName() string {
 	return ""
 }
 
-// Tenant update request
+// Tenant update request.
 type TenantUpdateRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -533,7 +533,7 @@ func (x *TenantUpdateRequest) GetName() string {
 	return ""
 }
 
-// Tenant delete request
+// Tenant delete request.
 type TenantDeleteRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -589,7 +589,7 @@ func (x *TenantDeleteRequest) GetTenantID() string {
 	return ""
 }
 
-// Tenant response
+// Tenant response.
 type TenantResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -669,7 +669,7 @@ func (x *TenantResponse) GetName() string {
 	return ""
 }
 
-// IdentitySource get request
+// IdentitySource get request.
 type IdentitySourceFetchRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -749,7 +749,7 @@ func (x *IdentitySourceFetchRequest) GetName() string {
 	return ""
 }
 
-// IdentitySource create request
+// IdentitySource create request.
 type IdentitySourceCreateRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -805,7 +805,7 @@ func (x *IdentitySourceCreateRequest) GetName() string {
 	return ""
 }
 
-// IdentitySource update request
+// IdentitySource update request.
 type IdentitySourceUpdateRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -869,7 +869,7 @@ func (x *IdentitySourceUpdateRequest) GetName() string {
 	return ""
 }
 
-// IdentitySource delete request
+// IdentitySource delete request.
 type IdentitySourceDeleteRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -925,7 +925,7 @@ func (x *IdentitySourceDeleteRequest) GetIdentitySourceID() string {
 	return ""
 }
 
-// IdentitySource response
+// IdentitySource response.
 type IdentitySourceResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1005,7 +1005,7 @@ func (x *IdentitySourceResponse) GetName() string {
 	return ""
 }
 
-// Identities
+// Identities.
 type IdentityFetchRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1101,7 +1101,7 @@ func (x *IdentityFetchRequest) GetName() string {
 	return ""
 }
 
-// Identity create request
+// Identity create request.
 type IdentityCreateRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1173,7 +1173,7 @@ func (x *IdentityCreateRequest) GetName() string {
 	return ""
 }
 
-// Identity update request
+// Identity update request.
 type IdentityUpdateRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1245,7 +1245,7 @@ func (x *IdentityUpdateRequest) GetName() string {
 	return ""
 }
 
-// Identity delete request
+// Identity delete request.
 type IdentityDeleteRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1301,7 +1301,7 @@ func (x *IdentityDeleteRequest) GetIdentityID() string {
 	return ""
 }
 
-// Identity response
+// Identity response.
 type IdentityResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
