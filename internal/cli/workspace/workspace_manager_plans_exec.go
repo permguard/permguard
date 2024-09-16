@@ -86,7 +86,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 		}
 	}
 
-	codeObjState, err := m.cospMgr.ReadCodeState()
+	codeObjState, err := m.cospMgr.ReadCodeSourceCodeState()
 	if err != nil {
 		out(nil, "", errPlanningProcessFailed, nil)
 		return output, err
@@ -132,7 +132,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 			out(nil, "plan", fmt.Sprintf("Reference ID for the plan is set to: %s", aziclicommon.IDText(headInfo.RefID)), nil)
 			out(nil, "plan", "Preparing to save the plan.", nil)
 		}
-		err := m.cospMgr.SaveCodePlan(headInfo.Remote, headInfo.RefID, planObjs)
+		err := m.cospMgr.SaveRemoteCodePlan(headInfo.Remote, headInfo.RefID, planObjs)
 		if err != nil {
 			if m.ctx.IsVerboseTerminalOutput() {
 				out(nil, "plan", "Failed to save the plan.", nil)
@@ -195,7 +195,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 		out(nil, "apply", "Preparing to read the plan.", nil)
 	}
 	errPlanningProcessFailed := "Apply process failed."
-	plan, err := m.cospMgr.ReadCodePlan(headInfo.Remote, headInfo.RefID)
+	plan, err := m.cospMgr.ReadRemoteCodePlan(headInfo.Remote, headInfo.RefID)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "apply", "Failed to read the plan.", nil)

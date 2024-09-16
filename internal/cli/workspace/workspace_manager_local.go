@@ -28,7 +28,7 @@ import (
 
 // cleanupLocalArea cleans up the local area.
 func (m *WorkspaceManager) cleanupLocalArea() (bool, error) {
-	return m.cospMgr.CleanCodeArea()
+	return m.cospMgr.CleanCodeSource()
 }
 
 // scanSourceCodeFiles scans the source code files.
@@ -105,7 +105,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 		} else {
 			obj := secObj.GetObject()
 			codeFile.OID = obj.GetOID()
-			m.cospMgr.SaveObject(obj.GetOID(), obj.GetContent(), true)
+			m.cospMgr.SaveCodeSourceObject(obj.GetOID(), obj.GetContent())
 		}
 		blbCodeFiles = append(blbCodeFiles, *codeFile)
 	}
@@ -143,7 +143,7 @@ func (m *WorkspaceManager) blobifyPermCodeFile(absLang azlang.LanguageAbastracti
 		} else {
 			obj := secObj.GetObject()
 			codeFile.OID = obj.GetOID()
-			m.cospMgr.SaveObject(obj.GetOID(), obj.GetContent(), true)
+			m.cospMgr.SaveCodeSourceObject(obj.GetOID(), obj.GetContent())
 		}
 		blbCodeFiles = append(blbCodeFiles, *codeFile)
 	}
@@ -180,14 +180,14 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 		}
 		blbCodeFiles = append(blbCodeFiles, codeFile)
 	}
-	if err := m.cospMgr.SaveCodeMap(blbCodeFiles); err != nil {
+	if err := m.cospMgr.SaveCodeSourceCodeMap(blbCodeFiles); err != nil {
 		return "", blbCodeFiles, err
 	}
 	codeObsState, err := m.cospMgr.ConvertCodeFilesToCodeObjectStates(blbCodeFiles)
 	if err != nil {
 		return "", blbCodeFiles, err
 	}
-	if err := m.cospMgr.SaveCodeState(codeObsState); err != nil {
+	if err := m.cospMgr.SaveCodeSourceCodeState(codeObsState); err != nil {
 		return "", blbCodeFiles, err
 	}
 	tree := azlangobjs.NewTree()
@@ -207,9 +207,9 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	if err != nil {
 		return "", blbCodeFiles, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree object cannot be created")
 	}
-	m.cospMgr.SaveObject(treeObj.GetOID(), treeObj.GetContent(), true)
+	m.cospMgr.SaveCodeSourceObject(treeObj.GetOID(), treeObj.GetContent())
 	treeID := treeObj.GetOID()
-	if err := m.cospMgr.SaveCodeAreaConfig(treeID, absLang.GetLanguageName()); err != nil {
+	if err := m.cospMgr.SaveCodeSourceConfig(treeID, absLang.GetLanguageName()); err != nil {
 		return treeID, blbCodeFiles, err
 	}
 	return treeID, blbCodeFiles, nil
@@ -217,7 +217,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 
 // retrieveCodeMap retrieves the code map.
 func (m *WorkspaceManager) retrieveCodeMap() ([]azicliwkscosp.CodeFile, []azicliwkscosp.CodeFile, error) {
-	codeFiles, err := m.cospMgr.ReadCodeMap()
+	codeFiles, err := m.cospMgr.ReadCodeSourceCodeMap()
 	if err != nil {
 		return nil, nil, err
 	}
