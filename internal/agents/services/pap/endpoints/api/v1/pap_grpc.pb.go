@@ -39,31 +39,28 @@ const (
 	V1PAPService_UpdateRepository_FullMethodName  = "/policyadministrationpoint.V1PAPService/UpdateRepository"
 	V1PAPService_DeleteRepository_FullMethodName  = "/policyadministrationpoint.V1PAPService/DeleteRepository"
 	V1PAPService_FetchRepositories_FullMethodName = "/policyadministrationpoint.V1PAPService/FetchRepositories"
-	V1PAPService_Push_FullMethodName              = "/policyadministrationpoint.V1PAPService/Push"
-	V1PAPService_Pull_FullMethodName              = "/policyadministrationpoint.V1PAPService/Pull"
-	V1PAPService_PullObjects_FullMethodName       = "/policyadministrationpoint.V1PAPService/PullObjects"
+	V1PAPService_ReceivePack_FullMethodName       = "/policyadministrationpoint.V1PAPService/ReceivePack"
+	V1PAPService_UploadPack_FullMethodName        = "/policyadministrationpoint.V1PAPService/UploadPack"
 )
 
 // V1PAPServiceClient is the client API for V1PAPService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// V1PAPService is the service for the Policy Administration Point
+// V1PAPService is the service for the Policy Administration Point.
 type V1PAPServiceClient interface {
-	// Create an repository
+	// Create an repository.
 	CreateRepository(ctx context.Context, in *RepositoryCreateRequest, opts ...grpc.CallOption) (*RepositoryResponse, error)
-	// Update an repository
+	// Update an repository.
 	UpdateRepository(ctx context.Context, in *RepositoryUpdateRequest, opts ...grpc.CallOption) (*RepositoryResponse, error)
-	// Delete an repository
+	// Delete an repository.
 	DeleteRepository(ctx context.Context, in *RepositoryDeleteRequest, opts ...grpc.CallOption) (*RepositoryResponse, error)
-	// Fetch repositories
+	// Fetch repositories.
 	FetchRepositories(ctx context.Context, in *RepositoryFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RepositoryResponse], error)
-	// Push commit
-	Push(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushRequest, PushResponse], error)
-	// Pull commit
-	Pull(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Batch], error)
-	// Pull objects
-	PullObjects(ctx context.Context, in *PullObjectsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Batch], error)
+	// ReceivePack receives objects from the client.
+	ReceivePack(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PackMessage, PackMessage], error)
+	// UploadPack uploads objects to the client.
+	UploadPack(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PackMessage, PackMessage], error)
 }
 
 type v1PAPServiceClient struct {
@@ -123,77 +120,50 @@ func (c *v1PAPServiceClient) FetchRepositories(ctx context.Context, in *Reposito
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type V1PAPService_FetchRepositoriesClient = grpc.ServerStreamingClient[RepositoryResponse]
 
-func (c *v1PAPServiceClient) Push(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushRequest, PushResponse], error) {
+func (c *v1PAPServiceClient) ReceivePack(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PackMessage, PackMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &V1PAPService_ServiceDesc.Streams[1], V1PAPService_Push_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &V1PAPService_ServiceDesc.Streams[1], V1PAPService_ReceivePack_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[PushRequest, PushResponse]{ClientStream: stream}
+	x := &grpc.GenericClientStream[PackMessage, PackMessage]{ClientStream: stream}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type V1PAPService_PushClient = grpc.ClientStreamingClient[PushRequest, PushResponse]
+type V1PAPService_ReceivePackClient = grpc.BidiStreamingClient[PackMessage, PackMessage]
 
-func (c *v1PAPServiceClient) Pull(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Batch], error) {
+func (c *v1PAPServiceClient) UploadPack(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PackMessage, PackMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &V1PAPService_ServiceDesc.Streams[2], V1PAPService_Pull_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &V1PAPService_ServiceDesc.Streams[2], V1PAPService_UploadPack_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[PullRequest, Batch]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
+	x := &grpc.GenericClientStream[PackMessage, PackMessage]{ClientStream: stream}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type V1PAPService_PullClient = grpc.ServerStreamingClient[Batch]
-
-func (c *v1PAPServiceClient) PullObjects(ctx context.Context, in *PullObjectsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Batch], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &V1PAPService_ServiceDesc.Streams[3], V1PAPService_PullObjects_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[PullObjectsRequest, Batch]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type V1PAPService_PullObjectsClient = grpc.ServerStreamingClient[Batch]
+type V1PAPService_UploadPackClient = grpc.BidiStreamingClient[PackMessage, PackMessage]
 
 // V1PAPServiceServer is the server API for V1PAPService service.
 // All implementations must embed UnimplementedV1PAPServiceServer
 // for forward compatibility.
 //
-// V1PAPService is the service for the Policy Administration Point
+// V1PAPService is the service for the Policy Administration Point.
 type V1PAPServiceServer interface {
-	// Create an repository
+	// Create an repository.
 	CreateRepository(context.Context, *RepositoryCreateRequest) (*RepositoryResponse, error)
-	// Update an repository
+	// Update an repository.
 	UpdateRepository(context.Context, *RepositoryUpdateRequest) (*RepositoryResponse, error)
-	// Delete an repository
+	// Delete an repository.
 	DeleteRepository(context.Context, *RepositoryDeleteRequest) (*RepositoryResponse, error)
-	// Fetch repositories
+	// Fetch repositories.
 	FetchRepositories(*RepositoryFetchRequest, grpc.ServerStreamingServer[RepositoryResponse]) error
-	// Push commit
-	Push(grpc.ClientStreamingServer[PushRequest, PushResponse]) error
-	// Pull commit
-	Pull(*PullRequest, grpc.ServerStreamingServer[Batch]) error
-	// Pull objects
-	PullObjects(*PullObjectsRequest, grpc.ServerStreamingServer[Batch]) error
+	// ReceivePack receives objects from the client.
+	ReceivePack(grpc.BidiStreamingServer[PackMessage, PackMessage]) error
+	// UploadPack uploads objects to the client.
+	UploadPack(grpc.BidiStreamingServer[PackMessage, PackMessage]) error
 	mustEmbedUnimplementedV1PAPServiceServer()
 }
 
@@ -216,14 +186,11 @@ func (UnimplementedV1PAPServiceServer) DeleteRepository(context.Context, *Reposi
 func (UnimplementedV1PAPServiceServer) FetchRepositories(*RepositoryFetchRequest, grpc.ServerStreamingServer[RepositoryResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method FetchRepositories not implemented")
 }
-func (UnimplementedV1PAPServiceServer) Push(grpc.ClientStreamingServer[PushRequest, PushResponse]) error {
-	return status.Errorf(codes.Unimplemented, "method Push not implemented")
+func (UnimplementedV1PAPServiceServer) ReceivePack(grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
+	return status.Errorf(codes.Unimplemented, "method ReceivePack not implemented")
 }
-func (UnimplementedV1PAPServiceServer) Pull(*PullRequest, grpc.ServerStreamingServer[Batch]) error {
-	return status.Errorf(codes.Unimplemented, "method Pull not implemented")
-}
-func (UnimplementedV1PAPServiceServer) PullObjects(*PullObjectsRequest, grpc.ServerStreamingServer[Batch]) error {
-	return status.Errorf(codes.Unimplemented, "method PullObjects not implemented")
+func (UnimplementedV1PAPServiceServer) UploadPack(grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
+	return status.Errorf(codes.Unimplemented, "method UploadPack not implemented")
 }
 func (UnimplementedV1PAPServiceServer) mustEmbedUnimplementedV1PAPServiceServer() {}
 func (UnimplementedV1PAPServiceServer) testEmbeddedByValue()                      {}
@@ -311,34 +278,19 @@ func _V1PAPService_FetchRepositories_Handler(srv interface{}, stream grpc.Server
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type V1PAPService_FetchRepositoriesServer = grpc.ServerStreamingServer[RepositoryResponse]
 
-func _V1PAPService_Push_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(V1PAPServiceServer).Push(&grpc.GenericServerStream[PushRequest, PushResponse]{ServerStream: stream})
+func _V1PAPService_ReceivePack_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(V1PAPServiceServer).ReceivePack(&grpc.GenericServerStream[PackMessage, PackMessage]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type V1PAPService_PushServer = grpc.ClientStreamingServer[PushRequest, PushResponse]
+type V1PAPService_ReceivePackServer = grpc.BidiStreamingServer[PackMessage, PackMessage]
 
-func _V1PAPService_Pull_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(PullRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(V1PAPServiceServer).Pull(m, &grpc.GenericServerStream[PullRequest, Batch]{ServerStream: stream})
+func _V1PAPService_UploadPack_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(V1PAPServiceServer).UploadPack(&grpc.GenericServerStream[PackMessage, PackMessage]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type V1PAPService_PullServer = grpc.ServerStreamingServer[Batch]
-
-func _V1PAPService_PullObjects_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(PullObjectsRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(V1PAPServiceServer).PullObjects(m, &grpc.GenericServerStream[PullObjectsRequest, Batch]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type V1PAPService_PullObjectsServer = grpc.ServerStreamingServer[Batch]
+type V1PAPService_UploadPackServer = grpc.BidiStreamingServer[PackMessage, PackMessage]
 
 // V1PAPService_ServiceDesc is the grpc.ServiceDesc for V1PAPService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -367,19 +319,16 @@ var V1PAPService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 		{
-			StreamName:    "Push",
-			Handler:       _V1PAPService_Push_Handler,
+			StreamName:    "ReceivePack",
+			Handler:       _V1PAPService_ReceivePack_Handler,
+			ServerStreams: true,
 			ClientStreams: true,
 		},
 		{
-			StreamName:    "Pull",
-			Handler:       _V1PAPService_Pull_Handler,
+			StreamName:    "UploadPack",
+			Handler:       _V1PAPService_UploadPack_Handler,
 			ServerStreams: true,
-		},
-		{
-			StreamName:    "PullObjects",
-			Handler:       _V1PAPService_PullObjects_Handler,
-			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "internal/agents/services/pap/endpoints/api/v1/pap.proto",

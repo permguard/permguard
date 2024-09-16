@@ -111,17 +111,12 @@ func (s V1PAPServer) FetchRepositories(repositoryRequest *RepositoryFetchRequest
 	return nil
 }
 
-// Push is a client streaming RPC to push objects.
-func (s V1PAPServer) Push(grpc.ClientStreamingServer[PushRequest, PushResponse]) error {
+// ReceivePack receives objects from the client.
+func (s V1PAPServer) ReceivePack(grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
 	return nil
 }
 
-// Pull is a server streaming RPC to pull objects.
-func (s V1PAPServer) Pull(*PullRequest, grpc.ServerStreamingServer[Batch]) error {
-	return nil
-}
-
-// PullObjects is a server streaming RPC to pull objects.
-func (s V1PAPServer) PullObjects(*PullObjectsRequest, grpc.ServerStreamingServer[Batch]) error {
+// UploadPack uploads objects to the client.
+func (s V1PAPServer) UploadPack(grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
 	return nil
 }

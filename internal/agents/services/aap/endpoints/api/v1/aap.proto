@@ -25,7 +25,7 @@ option go_package = "github.com/permguard/permguard/internal/hosts/api/aap/v1";
 
 // Accounts
 
-// Account get request
+// Account get request.
 message AccountFetchRequest {
 	optional int32 Page = 1;
 	optional int32 PageSize = 2;
@@ -33,23 +33,23 @@ message AccountFetchRequest {
 	optional string Name = 4;
 }
 
-// Account create request
+// Account create request.
 message AccountCreateRequest {
 	string Name = 1;
 }
 
-// Account update request
+// Account update request.
 message AccountUpdateRequest {
     int64 AccountID = 1;
     string Name = 2;
 }
 
-// Account delete request
+// Account delete request.
 message AccountDeleteRequest {
 	int64 AccountID = 1;
 }
 
-// Account response
+// Account response.
 message AccountResponse {
     int64 AccountID = 1;
     google.protobuf.Timestamp CreatedAt = 2;
@@ -59,7 +59,7 @@ message AccountResponse {
 
 // Tenants
 
-// Tenant get request
+// Tenant get request.
 message TenantFetchRequest {
 	optional int32 Page = 1;
 	optional int32 PageSize= 2;
@@ -68,26 +68,26 @@ message TenantFetchRequest {
 	optional string Name = 5;
 }
 
-// Tenant create request
+// Tenant create request.
 message TenantCreateRequest {
     int64 AccountID = 1;
 	string Name = 2;
 }
 
-// Tenant update request
+// Tenant update request.
 message TenantUpdateRequest {
     int64 AccountID = 1;
     string TenantID = 2;
     string Name = 3;
 }
 
-// Tenant delete request
+// Tenant delete request.
 message TenantDeleteRequest {
 	int64 AccountID = 1;
 	string TenantID = 2;
 }
 
-// Tenant response
+// Tenant response.
 message TenantResponse {
     string TenantID = 1;
     int64 AccountID = 2;
@@ -98,7 +98,7 @@ message TenantResponse {
 
 // IdentitySources
 
-// IdentitySource get request
+// IdentitySource get request.
 message IdentitySourceFetchRequest {
 	optional int32 Page = 1;
 	optional int32 PageSize = 2;
@@ -107,26 +107,26 @@ message IdentitySourceFetchRequest {
 	optional string Name = 5;
 }
 
-// IdentitySource create request
+// IdentitySource create request.
 message IdentitySourceCreateRequest {
     int64 AccountID = 1;
 	string Name = 2;
 }
 
-// IdentitySource update request
+// IdentitySource update request.
 message IdentitySourceUpdateRequest {
 	int64 AccountID = 1;
     string IdentitySourceID = 2;
     string Name = 3;
 }
 
-// IdentitySource delete request
+// IdentitySource delete request.
 message IdentitySourceDeleteRequest {
 	int64 AccountID = 1;
 	string IdentitySourceID = 2;
 }
 
-// IdentitySource response
+// IdentitySource response.
 message IdentitySourceResponse {
     string IdentitySourceID = 1;
     int64 AccountID = 2;
@@ -137,7 +137,7 @@ message IdentitySourceResponse {
 
 // Identities
 
-// Identities
+// Identities.
 message IdentityFetchRequest {
 	optional int32 Page = 1;
 	optional int32 PageSize = 2;
@@ -148,7 +148,7 @@ message IdentityFetchRequest {
 	optional string Name = 7;
 }
 
-// Identity create request
+// Identity create request.
 message IdentityCreateRequest {
 	int64 AccountID = 1;
 	string IdentitySourceID = 2;
@@ -156,7 +156,7 @@ message IdentityCreateRequest {
 	string Name = 4;
 }
 
-// Identity update request
+// Identity update request.
 message IdentityUpdateRequest {
 	int64 AccountID = 1;
     string IdentityID = 2;
@@ -164,13 +164,13 @@ message IdentityUpdateRequest {
 	string Name = 4;
 }
 
-// Identity delete request
+// Identity delete request.
 message IdentityDeleteRequest {
 	int64 AccountID = 1;
 	string IdentityID = 2;
 }
 
-// Identity response
+// Identity response.
 message IdentityResponse {
     string IdentityID = 1;
     int64 AccountID = 2;
@@ -181,41 +181,41 @@ message IdentityResponse {
     string Name = 7;
 }
 
-// V1AAPService is the service for the Account Administration Point
+// V1AAPService is the service for the Account Administration Point.
 service V1AAPService {
-	// Create an account
+	// Create an account.
 	rpc CreateAccount(AccountCreateRequest) returns (AccountResponse) {}
-	// Update an account
+	// Update an account.
 	rpc UpdateAccount(AccountUpdateRequest) returns (AccountResponse) {}
-	// Delete an account
+	// Delete an account.
 	rpc DeleteAccount(AccountDeleteRequest) returns (AccountResponse) {}
-	// Fetch Accounts
+	// Fetch Accounts.
 	rpc FetchAccounts(AccountFetchRequest) returns (stream AccountResponse) {}
 
-	// Create an identity source
+	// Create an identity source.
 	rpc CreateIdentitySource(IdentitySourceCreateRequest) returns (IdentitySourceResponse) {}
-	// Update an identity source
+	// Update an identity source.
 	rpc UpdateIdentitySource(IdentitySourceUpdateRequest) returns (IdentitySourceResponse) {}
-	// Delete an identity source
+	// Delete an identity source.
 	rpc DeleteIdentitySource(IdentitySourceDeleteRequest) returns (IdentitySourceResponse) {}
-	// Fetch identity sources
+	// Fetch identity sources.
 	rpc FetchIdentitySources(IdentitySourceFetchRequest) returns (stream IdentitySourceResponse) {}
 
-	// Create an identity
+	// Create an identity.
 	rpc CreateIdentity(IdentityCreateRequest) returns (IdentityResponse) {}
-	// Update an identity
+	// Update an identity.
 	rpc UpdateIdentity(IdentityUpdateRequest) returns (IdentityResponse) {}
-	// Delete an identity
+	// Delete an identity.
 	rpc DeleteIdentity(IdentityDeleteRequest) returns (IdentityResponse) {}
-	// Fetch Identities
+	// Fetch Identities.
 	rpc FetchIdentities(IdentityFetchRequest) returns (stream IdentityResponse) {}
 
-	// Create an tenant
+	// Create an tenant.
 	rpc CreateTenant(TenantCreateRequest) returns (TenantResponse) {}
-	// Update an tenant
+	// Update an tenant.
 	rpc UpdateTenant(TenantUpdateRequest) returns (TenantResponse) {}
-	// Delete an tenant
+	// Delete an tenant.
 	rpc DeleteTenant(TenantDeleteRequest) returns (TenantResponse) {}
-	// Fetch Tenants
+	// Fetch Tenants.
 	rpc FetchTenants(TenantFetchRequest) returns (stream TenantResponse) {}
 }
