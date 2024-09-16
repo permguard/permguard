@@ -91,12 +91,16 @@ github.com/permguard/permguard-abs-language v0.0.0-20240916222615-3259f0b90a05 h
 github.com/permguard/permguard-abs-language v0.0.0-20240916222615-3259f0b90a05/go.mod h1:ncN+msBeNRPwGOKKnVq5RMzEWtXXmoQpB6swLWHrKHo=
 github.com/permguard/permguard-abs-language v0.0.0-20240916223357-c8df4c8ad9e0 h1:3Di9uevfQFctlr7uV9fwNHhHHgXoFxj/rciy+wmwwYU=
 github.com/permguard/permguard-abs-language v0.0.0-20240916223357-c8df4c8ad9e0/go.mod h1:gE2SZr2QCGP4bwLbDawAmHEJvcMUcMcCwRfu+Q+N09k=
+github.com/permguard/permguard-abs-language v0.0.0-20240916223935-6b04f724a0be h1:U2M1JOuM5AYl9xXZUtRfur15tyfPJHGdIUDYoNgg+tU=
+github.com/permguard/permguard-abs-language v0.0.0-20240916223935-6b04f724a0be/go.mod h1:RY2QEZvgvG2WG2qS/nPK0RDwX7KViF1bt7iPVR4Ym/A=
 github.com/permguard/permguard-core v0.0.0-20240913102517-fd858a29671f h1:KjToxCyATcOAhS2e8zTGXGJaZcpPrwa5+14LHiK9Vwg=
 github.com/permguard/permguard-core v0.0.0-20240913102517-fd858a29671f/go.mod h1:pkHKLbHxsR496FUZaFPxyXmSAivQdhSl42F0NixZFeY=
 github.com/permguard/permguard-core v0.0.0-20240916222548-e5a232f3313d h1:gISEGyfS1SDfowWPulopX5MnXBbekZjANgm/CqU4UoM=
 github.com/permguard/permguard-core v0.0.0-20240916222548-e5a232f3313d/go.mod h1:pkHKLbHxsR496FUZaFPxyXmSAivQdhSl42F0NixZFeY=
 github.com/permguard/permguard-core v0.0.0-20240916223330-0e7d3b22f483 h1:cgHMb1IBfmh7mUtbf8LSGagOjO2FTAFoGUnS8PbXlx4=
 github.com/permguard/permguard-core v0.0.0-20240916223330-0e7d3b22f483/go.mod h1:pkHKLbHxsR496FUZaFPxyXmSAivQdhSl42F0NixZFeY=
+github.com/permguard/permguard-core v0.0.0-20240916223822-3e4d9e332b3a h1:aPVoS98wYHTNRRRGUutTbC/lth+RrA9n3wSCggTaS9Q=
+github.com/permguard/permguard-core v0.0.0-20240916223822-3e4d9e332b3a/go.mod h1:pkHKLbHxsR496FUZaFPxyXmSAivQdhSl42F0NixZFeY=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pressly/goose/v3 v3.21.1 h1:5SSAKKWej8LVVzNLuT6KIvP1eFDuPvxa+B6H0w78buQ=
