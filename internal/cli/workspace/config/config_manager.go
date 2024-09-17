@@ -23,7 +23,7 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
-	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
+	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -87,7 +87,7 @@ func (m *ConfigManager) GetLanguage() (string, error) {
 
 // GetRemoteInfo gets the remote info.
 func (m *ConfigManager) GetRemoteInfo(remote string) (*RemoteInfo, error) {
-	remote, err := azicliwksvals.SanitizeRemote(remote)
+	remote, err := azicliwksrepos.SanitizeRemote(remote)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func (m *ConfigManager) GetRemoteInfo(remote string) (*RemoteInfo, error) {
 
 // CheckRepoIfExists checks if a repository exists.
 func (m *ConfigManager) CheckRepoIfExists(repoURI string) (bool, error) {
-	repoURI, err := azicliwksvals.SanitizeRepo(repoURI)
+	repoURI, err := azicliwksrepos.SanitizeRepo(repoURI)
 	if err != nil {
 		return false, err
 	}

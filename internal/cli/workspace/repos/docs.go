@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package validators provides validation functions.
-package validators
+// Package repos implements the repos.
+package repos

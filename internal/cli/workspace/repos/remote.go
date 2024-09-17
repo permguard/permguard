@@ -14,7 +14,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package validators
+// Package repos implements the repos.
+package repos
 
 import (
 	"fmt"

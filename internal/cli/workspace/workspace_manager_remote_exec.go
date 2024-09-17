@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
+	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -35,7 +35,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
-	repoInfo, err := azicliwksvals.GetRepoInfoFromURI(repoURI)
+	repoInfo, err := azicliwksrepos.GetRepoInfoFromURI(repoURI)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
