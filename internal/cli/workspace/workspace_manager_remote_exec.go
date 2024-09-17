@@ -81,7 +81,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	output, err = m.cfgMgr.ExecAddRepo(headInfo.GetRefs(), repoInfo.GetRepo(), output, out)
+	output, err = m.cfgMgr.ExecAddRepo(headInfo.GetRefs(), repoURI, output, out)
 	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
 		return failedOpErr(output, err)
 	}
