@@ -24,18 +24,6 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
-// groupCodeFiles groups the code files.
-func groupCodeFiles(codeFiles []azicliwkscosp.CodeFile) map[string][]azicliwkscosp.CodeFile {
-	grouped := map[string][]azicliwkscosp.CodeFile{}
-	for _, codeFile := range codeFiles {
-		if _, ok := grouped[codeFile.Path]; !ok {
-			grouped[codeFile.Path] = []azicliwkscosp.CodeFile{}
-		}
-		grouped[codeFile.Path] = append(grouped[codeFile.Path], codeFile)
-	}
-	return grouped
-}
-
 // buildOutputForCodeFiles builds the output for the code files.
 func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceManager, out func(map[string]any, string, any, error) map[string]any, output map[string]any) map[string]any {
 	if output == nil {
@@ -77,12 +65,17 @@ func (m *WorkspaceManager) ExecRefresh(out func(map[string]any, string, any, err
 
 // execInternalRefresh scans source files in the current directory and synchronizes the local state,
 func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", "Failed to refresh the current workspace.", nil)
+		return output, err
+	}
+
 	if !m.isWorkspaceDir() {
-		return nil, m.raiseWrongWorkspaceDirError(out)
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	defer fileLock.Unlock()
 
@@ -91,7 +84,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 	}
 	cleaned, err := m.cleanupLocalArea()
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		if cleaned {
@@ -103,18 +96,18 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 
 	lang, err := m.cfgMgr.GetLanguage()
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	absLang, err := m.langFct.CreateLanguageAbastraction(lang)
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "Scanning source files.", nil)
 	}
 	selectedFiles, ignoredFiles, err := m.scanSourceCodeFiles(absLang)
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	var output map[string]any
 	if m.ctx.IsVerboseTerminalOutput() {
@@ -152,7 +145,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out func(map[strin
 			out(nil, "", "Your workspace has errors.", nil)
 			out(nil, "", "Please validate and fix the errors to proceed.", nil)
 		}
-		return output, err
+		return failedOpErr(output, err)
 	}
 	output = buildOutputForCodeFiles(codeFiles, m, out, output)
 	if m.ctx.IsVerboseTerminalOutput() {
@@ -173,8 +166,13 @@ func (m *WorkspaceManager) ExecValidate(out func(map[string]any, string, any, er
 
 // execInternalValidate validates the local state.
 func (m *WorkspaceManager) execInternalValidate(internal bool, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", "Failed to validate the current workspace.", nil)
+		return output, err
+	}
+
 	if !m.isWorkspaceDir() {
-		return nil, m.raiseWrongWorkspaceDirError(out)
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
 	output, _ := m.execInternalRefresh(true, out)
@@ -186,7 +184,7 @@ func (m *WorkspaceManager) execInternalValidate(internal bool, out func(map[stri
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "validate", "Codemap could not be retrieved.", nil)
 		}
-		return output, err
+		return failedOpErr(output, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "validate", "Codemap retrieved successfully.", nil)
@@ -224,17 +222,22 @@ func (m *WorkspaceManager) execInternalValidate(internal bool, out func(map[stri
 		}
 		out(nil, "", "\nPlease fix the errors to proceed.", nil)
 	}
-	return output, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: validation errors found in code files within the workspace. please check the logs for more details.")
+	return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: validation errors found in code files within the workspace. please check the logs for more details."))
 }
 
 // ExecObjects manage the object store.
 func (m *WorkspaceManager) ExecObjects(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", "Failed to access objects in the current workspace.", nil)
+		return output, err
+	}
+
 	if !m.isWorkspaceDir() {
-		return nil, m.raiseWrongWorkspaceDirError(out)
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	defer fileLock.Unlock()
 

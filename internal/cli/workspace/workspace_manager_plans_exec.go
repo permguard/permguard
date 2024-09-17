@@ -31,23 +31,28 @@ func (m *WorkspaceManager) ExecPlan(out func(map[string]any, string, any, error)
 
 // execInternalPlan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
 func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", "Failed to build the plan.", nil)
+		return output, err
+	}
+
 	if !m.isWorkspaceDir() {
-		return nil, m.raiseWrongWorkspaceDirError(out)
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
 	headRef, err := m.rfsMgr.GetCurrentHeadRefs()
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 
 	output, err := m.execInternalValidate(true, out)
 	if err != nil {
-		return output, err
+		return failedOpErr(output, err)
 	}
 
 	refs, err := m.rfsMgr.GetCurrentHeadRefs()
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "plan", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(refs)), nil)
@@ -70,7 +75,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 			out(nil, "plan", fmt.Sprintf("Unable to read the commit for refs %s.", aziclicommon.KeywordText(refs)), nil)
 		}
 		out(nil, "", errPlanningProcessFailed, nil)
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 
 	var remoteCodeState []azicliwkscosp.CodeObjectState = nil
@@ -83,12 +88,12 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 	localCodeState, err := m.cospMgr.ReadCodeSourceCodeState()
 	if err != nil {
 		out(nil, "", errPlanningProcessFailed, nil)
-		return output, err
+		return failedOpErr(output, err)
 	}
 	codeStateObjs, err := m.plan(localCodeState, remoteCodeState)
 	if err != nil {
 		out(nil, "", errPlanningProcessFailed, nil)
-		return output, err
+		return failedOpErr(output, err)
 	}
 
 	unchangedItems := []azicliwkscosp.CodeObjectState{}
@@ -127,7 +132,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 				out(nil, "plan", "Failed to retrieve the current head refs info.", nil)
 			}
 			out(nil, "", "Unable to build the plan.", nil)
-			return output, err
+			return failedOpErr(output, err)
 		}
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "plan", fmt.Sprintf("Remote for the plan is set to: %s.", aziclicommon.KeywordText(refsInfo.GetRemote())), nil)
@@ -140,7 +145,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 				out(nil, "plan", "Failed to save the plan.", nil)
 			}
 			out(nil, "", "Unable to save the plan.", nil)
-			return output, err
+			return failedOpErr(output, err)
 		}
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "plan", "Plan saved successfully.", nil)
@@ -166,29 +171,35 @@ func (m *WorkspaceManager) ExecApply(out func(map[string]any, string, any, error
 
 // execInternalApply applies the plan to the remote repo
 func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	if !m.isWorkspaceDir() {
-		return nil, m.raiseWrongWorkspaceDirError(out)
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", "Failed to apply the plan.", nil)
+		return output, err
 	}
+
+	if !m.isWorkspaceDir() {
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
+	}
+
 	refsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	headRef, err := m.rfsMgr.GetCurrentHeadRefs()
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	lang, err := m.cfgMgr.GetLanguage()
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	absLang, err := m.langFct.CreateLanguageAbastraction(lang)
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 
 	output, err := m.execInternalPlan(true, out)
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 
 	out(nil, "", fmt.Sprintf("Initiating the apply process for repo %s.", aziclicommon.KeywordText(headRef)), nil)
@@ -203,7 +214,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 			out(nil, "apply", "Failed to read the plan.", nil)
 		}
 		out(nil, "", errPlanningProcessFailed, nil)
-		return output, err
+		return failedOpErr(output, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", "The plan has been read successfully.", nil)
@@ -218,7 +229,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 			out(nil, "apply", "Failed to build the tree.", nil)
 		}
 		out(nil, "", errPlanningProcessFailed, nil)
-		return output, err
+		return failedOpErr(output, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", fmt.Sprintf("The tree has been created with id: %s.", aziclicommon.IDText(treeObj.GetOID())), nil)
