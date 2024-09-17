@@ -75,7 +75,7 @@ func (m *RefsManager) ensureRefsFileExists(refs string) error {
 	if err != nil {
 		return err
 	}
-	_, err = m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, refsFile)
+	_, err = m.persMgr.CreateFileIfNotExists(azicliwkspers.PermGuardDir, refsFile)
 	if err != nil {
 		return err
 	}

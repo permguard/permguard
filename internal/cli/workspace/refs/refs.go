@@ -75,7 +75,7 @@ func computeRefID(remote string, accountID int64, repo string) string {
 
 // generateRefsWithRefID generates the refs with refid.
 func generateRefsWithRefID(remote string, accountID int64, repo string, refID string) string {
-	return strings.Join([]string{remote, strconv.FormatInt(accountID, 10), repo, refID}, refsSeparator)
+	return strings.Join([]string{refsPrefix, remote, strconv.FormatInt(accountID, 10), repo, refID}, refsSeparator)
 }
 
 // generateRefs generates the refs.
