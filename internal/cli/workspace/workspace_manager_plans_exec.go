@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
 )
@@ -41,7 +42,11 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 	}
 
 	headRef, err := m.rfsMgr.GetCurrentHeadRefs()
-	if err != nil {
+	if err != nil || headRef == "" {
+		out(nil, "", "Please ensure a valid remote repo is checked out.", nil)
+		if err == nil {
+			 err = azerrors.WrapSystemError(azerrors.ErrCliWorkspace, "cli: invalid head refs")
+		}
 		return failedOpErr(nil, err)
 	}
 
@@ -186,7 +191,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	
+
 	lang, err := m.cfgMgr.GetLanguage()
 	if err != nil {
 		return failedOpErr(nil, err)
