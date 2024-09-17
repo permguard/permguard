@@ -27,7 +27,7 @@ import (
 // ExecCheckoutRepo checks out a repository.
 func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to checkout repository %s.", aziclicommon.KeywordText(repoURI)), nil)
+		out(nil, "", fmt.Sprintf("Failed to checkout repo %s.", aziclicommon.KeywordText(repoURI)), nil)
 		return output, err
 	}
 
@@ -54,7 +54,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "checkout", "Remote verification failed: repository already exists.", nil)
 		}
-		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: repository %s already exists", repoURI)))
+		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: repo %s already exists", repoURI)))
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "checkout", "Remote verified successfully.", nil)
@@ -91,8 +91,13 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 
 // ExecPull fetches the latest changes from the remote repo and constructs the remote state.
 func (m *WorkspaceManager) ExecPull(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", "Failed to pull the repo.", nil)
+		return output, err
+	}
+
 	if !m.isWorkspaceDir() {
-		return nil, m.raiseWrongWorkspaceDirError(out)
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
 	fileLock, err := m.tryLock()
@@ -100,6 +105,15 @@ func (m *WorkspaceManager) ExecPull(out func(map[string]any, string, any, error)
 		return nil, err
 	}
 	defer fileLock.Unlock()
+
+	headRef, err := m.rfsMgr.GetCurrentHeadRefs()
+	if err != nil || headRef == "" {
+		out(nil, "", "Please ensure a valid remote repo is checked out.", nil)
+		if err == nil {
+			err = azerrors.WrapSystemError(azerrors.ErrCliWorkspace, "cli: invalid head refs")
+		}
+		return failedOpErr(nil, err)
+	}
 
 	// TODO: Implement this method
 
