@@ -70,7 +70,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 
 	errPlanningProcessFailed := "Planning process failed."
 
-	commit, err := m.rfsMgr.ReadRefsCommit(headInfo.Remote, headInfo.RefID)
+	commit, err := m.rfsMgr.GetRefsCommit(headInfo.Remote, headInfo.RefID)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "plan", fmt.Sprintf("Unable to read the commit for remote %s and refid %s.", aziclicommon.KeywordText(headInfo.Remote), aziclicommon.IDText(headInfo.RefID)), nil)
