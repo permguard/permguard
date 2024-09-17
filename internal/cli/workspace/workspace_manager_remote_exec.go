@@ -54,14 +54,14 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 		out(nil, "checkout", "Remote verified successfully.", nil)
 	}
 
-	remoteInfo, err := m.cfgMgr.GetRemoteInfo(repoInfo.Remote)
+	remoteInfo, err := m.cfgMgr.GetRemoteInfo(repoInfo.GetRemote())
 	if err != nil {
 		return nil, err
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "checkout", "Retrieving remote repository information.", nil)
 	}
-	srvRepo, err := m.rmSrvtMgr.GetServerRemoteRepo(repoInfo.AccountID, repoInfo.Repo, remoteInfo.GetServer(), remoteInfo.GetAAPPort(), remoteInfo.GetPAPPort())
+	srvRepo, err := m.rmSrvtMgr.GetServerRemoteRepo(repoInfo.GetAccountID(), repoInfo.GetRepo(), remoteInfo.GetServer(), remoteInfo.GetAAPPort(), remoteInfo.GetPAPPort())
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "checkout", "Failed to retrieve remote repository information.", nil)
@@ -71,15 +71,15 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "checkout", "Remote repository retrieved successfully.", nil)
 	}
-	ref, refID, output, err := m.rfsMgr.CheckoutHead(repoInfo.Remote, repoInfo.AccountID, repoInfo.Repo, srvRepo.Refs, nil, out)
+	headInfo, output, err := m.rfsMgr.CheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.Refs, nil, out)
 	if err != nil {
 		return nil, err
 	}
-	output, err = m.cfgMgr.ExecAddRepo(repoInfo.Remote, repoInfo.AccountID, repoInfo.Repo, ref, refID, output, out)
+	output, err = m.cfgMgr.ExecAddRepo(headInfo.GetRefs(), repoInfo.GetRepo(), output, out)
 	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
 		return nil, err
 	}
-	m.logsMgr.Log(repoInfo.Remote, refID, srvRepo.Refs, srvRepo.Refs, fmt.Sprintf("checkout: %s", repoURI))
+	m.logsMgr.Log(repoInfo.GetRemote(), headInfo.GetRefs(), srvRepo.Refs, srvRepo.Refs, fmt.Sprintf("checkout: %s", repoURI))
 	return output, nil
 }
 

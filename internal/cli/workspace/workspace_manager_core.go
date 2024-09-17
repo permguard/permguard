@@ -146,7 +146,7 @@ func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out func(map[string]any, 
 // getCurrentHeadInfo returns the current head info.
 func (m *WorkspaceManager) getCurrentHeadInfo(out func(map[string]any, string, any, error) map[string]any) (*azicliwksrefs.HeadInfo, error) {
 	headInfo, err := m.rfsMgr.GetCurrentHead()
-	if err != nil || headInfo.RefID == "" {
+	if err != nil || headInfo.GetRefs() == "" {
 		out(nil, "", "No repository is configured in the current workspace.", nil)
 		out(nil, "", "Please checkout a repository and try again.", nil)
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceInvaliHead, "cli: invalid head configuration")

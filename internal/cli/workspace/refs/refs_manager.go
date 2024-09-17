@@ -85,9 +85,9 @@ func (m *RefsManager) ensureRefsFileExists(refs string) error {
 // GenerateRefs generates the refs.
 func (m *RefsManager) GenerateRefs(remote string, accountID int64, repo string, refID string) string {
 	refsInfo := &RefsInfo{
-		remote:   remote,
+		remote:    remote,
 		accountID: accountID,
-		repo:     repo,
+		repo:      repo,
 	}
 	refs := convertRefsInfoToString(refsInfo)
 	return refs
@@ -110,12 +110,12 @@ func (m *RefsManager) saveConfig(name string, override bool, cfg any) error {
 	return nil
 }
 
-// SaveRefsConfig saves the refs configuration.
-func (m *RefsManager) SaveHeadConfig(refs string, commit string) error {
+// SaveHeadConfig saves the head config file.
+func (m *RefsManager) SaveHeadConfig(refs string) error {
 	headFile := m.getHeadFile()
 	headCfg := headConfig{
 		Reference: headReferenceConfig{
-			Refs: commit,
+			Refs: refs,
 		},
 	}
 	err := m.saveConfig(headFile, true, &headCfg)
@@ -192,8 +192,8 @@ func (m *RefsManager) GetCurrentHead() (*HeadInfo, error) {
 	}, nil
 }
 
-// GetCurrentHeadRef gets the current head ref.
-func (m *RefsManager) GetCurrentHeadRef() (string, error) {
+// GetCurrentHeadRefs gets the current head ref.
+func (m *RefsManager) GetCurrentHeadRefs() (string, error) {
 	headInfo, err := m.GetCurrentHead()
 	if err != nil {
 		return "", err
@@ -208,4 +208,13 @@ func (m *RefsManager) GetCurrentHeadCommit() (string, error) {
 		return "", err
 	}
 	return m.GetRefsCommit(headInfo.refs)
+}
+
+// GetCurrentHeadRefsInfo gets the current head refs information.
+func (m *RefsManager) GetCurrentHeadRefsInfo() (*RefsInfo, error) {
+	headInfo, err := m.GetCurrentHead()
+	if err != nil {
+		return nil, err
+	}
+	return convertStringToRefsInfo(headInfo.refs)
 }

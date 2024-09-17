@@ -27,9 +27,24 @@ import (
 
 // RepoInfo contains the repo information.
 type RepoInfo struct {
-	Remote    string
-	AccountID int64
-	Repo      string
+	remote    string
+	accountID int64
+	repo      string
+}
+
+// GetRemote returns the remote.
+func (r *RepoInfo) GetRemote() string {
+	return r.remote
+}
+
+// GetAccountID returns the account id.
+func (r *RepoInfo) GetAccountID() int64 {
+	return r.accountID
+}
+
+// GetRepo returns the repo.
+func (r *RepoInfo) GetRepo() string {
+	return r.repo
 }
 
 // SanitizeRepo sanitizes the remote name.
@@ -54,7 +69,7 @@ func GetRepoInfoFromURI(repoURI string) (*RepoInfo, error) {
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid remote %s", remoteName))
 	}
-	result.Remote = remoteName
+	result.remote = remoteName
 
 	accountIDStr := items[1]
 	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
@@ -65,13 +80,13 @@ func GetRepoInfoFromURI(repoURI string) (*RepoInfo, error) {
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
 	}
-	result.AccountID = accountID
+	result.accountID = accountID
 
 	repoName := items[2]
 	err = azvalidators.ValidateName("repo", repoName)
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repo name %s", repoName))
 	}
-	result.Repo = repoName
+	result.repo = repoName
 	return result, nil
 }

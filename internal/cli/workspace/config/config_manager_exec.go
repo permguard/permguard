@@ -152,7 +152,7 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out func(map[stri
 }
 
 // ExecAddRepo adds a repo.
-func (m *ConfigManager) ExecAddRepo(remote string, accountID int64, repo string, ref string, refID string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *ConfigManager) ExecAddRepo(refs string, repo string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -162,32 +162,27 @@ func (m *ConfigManager) ExecAddRepo(remote string, accountID int64, repo string,
 	}
 	var cfgRepo repositoryConfig
 	exists := false
-	for repo := range cfg.Repositories {
-		if ref == repo {
+	for repository := range cfg.Repositories {
+		if repository == repo {
 			cfgRepo = cfg.Repositories[repo]
 			exists = true
 		}
 	}
 	if !exists {
 		cfgRepo = repositoryConfig{
-			Remote: remote,
-			RefID:  refID,
+			Refs: refs,
 		}
-		cfg.Repositories[ref] = cfgRepo
+		cfg.Repositories[repo] = cfgRepo
 		m.saveConfig(true, cfg)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "repo", fmt.Sprintf("Remote successfully set to %s.", aziclicommon.KeywordText(remote)), nil)
-		out(nil, "repo", fmt.Sprintf("Refs successfully set to %s.", aziclicommon.IDText(cfgRepo.RefID)), nil)
-		out(nil, "repo", fmt.Sprintf("Repo successfully set to %s.", aziclicommon.KeywordText(ref)), nil)
+		out(nil, "repo", fmt.Sprintf("Refs successfully set to %s.", aziclicommon.KeywordText(cfgRepo.Refs)), nil)
 	}
-	output = out(nil, "", fmt.Sprintf("Repo %s has been added.", aziclicommon.KeywordText(ref)), nil)
+	output = out(nil, "", fmt.Sprintf("Repo %s has been added.", aziclicommon.KeywordText(repo)), nil)
 	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{
-			"remote": remote,
-			"refid":  cfgRepo.RefID,
-			"repo":   ref,
+			"repo": repo,
 		}
 		remotes = append(remotes, remoteObj)
 		output = out(output, "repos", remotes, nil)
@@ -196,7 +191,7 @@ func (m *ConfigManager) ExecAddRepo(remote string, accountID int64, repo string,
 }
 
 // ExecListRepos lists the repos.
-func (m *ConfigManager) ExecListRepos(activeRepoURI string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *ConfigManager) ExecListRepos(activeRefs string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -207,7 +202,7 @@ func (m *ConfigManager) ExecListRepos(activeRepoURI string, output map[string]an
 	if m.ctx.IsTerminalOutput() {
 		repos := []string{}
 		for cfgRepo := range cfg.Repositories {
-			isActive := activeRepoURI == cfg.Repositories[cfgRepo].RefID
+			isActive := activeRefs == cfg.Repositories[cfgRepo].Refs
 			cfgRepoTxt := cfgRepo
 			if isActive {
 				cfgRepoTxt = fmt.Sprintf("*%s", cfgRepo)
@@ -226,11 +221,10 @@ func (m *ConfigManager) ExecListRepos(activeRepoURI string, output map[string]an
 	} else if m.ctx.IsJSONOutput() {
 		repos := []any{}
 		for cfgRepo := range cfg.Repositories {
-			isActive := activeRepoURI == cfg.Repositories[cfgRepo].RefID
+			isActive := activeRefs == cfg.Repositories[cfgRepo].Refs
 			repoObj := map[string]any{
-				"remote": cfg.Repositories[cfgRepo].Remote,
+				"refs": cfg.Repositories[cfgRepo].Refs,
 				"repo":   cfgRepo,
-				"refid":  cfg.Repositories[cfgRepo].RefID,
 				"active": isActive,
 			}
 			repos = append(repos, repoObj)
