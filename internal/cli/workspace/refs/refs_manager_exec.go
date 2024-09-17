@@ -42,22 +42,15 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 	if output == nil {
 		output = map[string]any{}
 	}
-	refID, err := m.CalculateRefID(remote, accountID, repo)
-	if err != nil {
-		return "", "", nil, err
-	}
-
+	refs := generateRefs(remote, accountID, repo)
 	refPath, err := m.SaveRefsConfig(remote, refID, commit)
 	if err != nil {
 		return "", "", nil, err
 	}
 
 	headCfg := headConfig{
-		Head: headRefsConfig{
-			Remote:    remote,
-			AccountID: accountID,
-			Repo:      repo,
-			RefID:     refID,
+		Reference: headReferenceConfig{
+			Refs: refs,
 		},
 	}
 	headFile := m.getHeadFile()
@@ -66,17 +59,10 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 		return "", "", nil, err
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "head", fmt.Sprintf("Head remote successfully set to %s.", aziclicommon.KeywordText(headCfg.Head.Remote)), nil)
-		out(nil, "head", fmt.Sprintf("Head accountid successfully set to %s.", aziclicommon.BigNumberText(headCfg.Head.AccountID)), nil)
-		out(nil, "head", fmt.Sprintf("Head remote_repo successfully set to %s.", aziclicommon.KeywordText(headCfg.Head.Repo)), nil)
-		out(nil, "head", fmt.Sprintf("Head refid successfully set to %s.", aziclicommon.IDText(headCfg.Head.RefID)), nil)
-		out(nil, "head", fmt.Sprintf("Head reference checked out to %s.", aziclicommon.KeywordText(refPath)), nil)
+		out(nil, "head", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(refs)), nil)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
-			"remote":      headCfg.Head.Remote,
-			"accountid":   headCfg.Head.AccountID,
-			"remote_repo": headCfg.Head.Repo,
-			"refid":       headCfg.Head.RefID,
+			"refs": refs,
 		}
 		output = out(output, "head", remoteObj, nil)
 	}
