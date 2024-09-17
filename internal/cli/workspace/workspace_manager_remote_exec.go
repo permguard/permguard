@@ -43,8 +43,8 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "checkout", "Initiating remote verification process.", nil)
 	}
-	repoExists, _ := m.cfgMgr.RepoExists(repoURI)
-	if repoExists {
+	exist, _ := m.cfgMgr.CheckRepoIfExists(repoURI)
+	if exist {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "checkout", "Remote verification failed: repository already exists.", nil)
 		}
@@ -54,14 +54,14 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 		out(nil, "checkout", "Remote verified successfully.", nil)
 	}
 
-	cfgRemote, err := m.cfgMgr.GetRemoteInfo(repoInfo.Remote)
+	remoteInfo, err := m.cfgMgr.GetRemoteInfo(repoInfo.Remote)
 	if err != nil {
 		return nil, err
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "checkout", "Retrieving remote repository information.", nil)
 	}
-	srvRepo, err := m.rmSrvtMgr.GetServerRemoteRepo(repoInfo.AccountID, repoInfo.Repo, cfgRemote.GetServer(), cfgRemote.GetAAPPort(), cfgRemote.GetPAPPort())
+	srvRepo, err := m.rmSrvtMgr.GetServerRemoteRepo(repoInfo.AccountID, repoInfo.Repo, remoteInfo.GetServer(), remoteInfo.GetAAPPort(), remoteInfo.GetPAPPort())
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "checkout", "Failed to retrieve remote repository information.", nil)

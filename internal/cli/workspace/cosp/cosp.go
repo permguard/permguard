@@ -31,15 +31,15 @@ const (
 	CodeObjectStateDelete = "delete"
 )
 
-// CodeStateConfig represents the config of the code state.
-type CodeStateConfig struct {
+// codeStateConfig represents the config of the code state.
+type codeStateConfig struct {
 	TreeID string `toml:"treeid"`
 }
 
-// CodeLocalConfig represents the configuration for the code local.
-type CodeLocalConfig struct {
-	Language 	string          `toml:"language"`
-	CodeState	CodeStateConfig `toml:"codestate"`
+// codeLocalConfig represents the configuration for the code local.
+type codeLocalConfig struct {
+	Language  string          `toml:"language"`
+	CodeState codeStateConfig `toml:"codestate"`
 }
 
 // CodeFile represents the code file.
