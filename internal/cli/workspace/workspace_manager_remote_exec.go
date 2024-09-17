@@ -26,13 +26,14 @@ import (
 
 // ExecCheckoutRepo checks out a repository.
 func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	if !m.isWorkspaceDir() {
-		return nil, m.raiseWrongWorkspaceDirError(out)
-	}
-
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", fmt.Sprintf("Failed to checkout repository %s.", aziclicommon.KeywordText(repoURI)), nil)
 		return output, err
+	}
+
+	if !m.isWorkspaceDir() {
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
+
 	}
 
 	repoInfo, err := azicliwksvals.GetRepoInfoFromURI(repoURI)
