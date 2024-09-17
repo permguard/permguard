@@ -35,13 +35,12 @@ func (m *WorkspaceManager) printFiles(action string, files []string, out func(ma
 
 // ExecInitWorkspace initializes the workspace.
 func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	homeDir := m.getHomeHiddenDir()
-
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to initialize the workspace in %s.", aziclicommon.FileText(homeDir)), nil)
+		out(nil, "", "Failed to initialize the workspace", nil)
 		return output, err
 	}
 
+	homeDir := m.getHomeHiddenDir()
 	res, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.WorkDir, homeDir)
 	if err != nil {
 		return failedOpErr(nil, err)
@@ -106,13 +105,13 @@ func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort i
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 	if !azvalidators.IsValidHostname(server) {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid server %s", server))
+		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid server %s", server)))
 	}
 	if !azvalidators.IsValidPort(aapPort) {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid aap port %d", aapPort))
+		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid aap port %d", aapPort)))
 	}
 	if !azvalidators.IsValidPort(papPort) {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid pap port %d", papPort))
+		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid pap port %d", papPort)))
 	}
 
 	fileLock, err := m.tryLock()
@@ -183,7 +182,6 @@ func (m *WorkspaceManager) ExecListRepos(out func(map[string]any, string, any, e
 		out(nil, "", "Failed to list repos.", nil)
 		return output, err
 	}
-
 
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))

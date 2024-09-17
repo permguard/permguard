@@ -26,6 +26,18 @@ import (
 	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
+// groupCodeFiles groups the code files.
+func groupCodeFiles(codeFiles []azicliwkscosp.CodeFile) map[string][]azicliwkscosp.CodeFile {
+	grouped := map[string][]azicliwkscosp.CodeFile{}
+	for _, codeFile := range codeFiles {
+		if _, ok := grouped[codeFile.Path]; !ok {
+			grouped[codeFile.Path] = []azicliwkscosp.CodeFile{}
+		}
+		grouped[codeFile.Path] = append(grouped[codeFile.Path], codeFile)
+	}
+	return grouped
+}
+
 // cleanupLocalArea cleans up the local area.
 func (m *WorkspaceManager) cleanupLocalArea() (bool, error) {
 	return m.cospMgr.CleanCodeSource()
