@@ -143,9 +143,9 @@ func (m *COSPManager) saveConfig(name string, override bool, cfg any) error {
 
 // SaveCodeSourceConfig saves the code source config file.
 func (m *COSPManager) SaveCodeSourceConfig(treeID, language string) error {
-	config := &CodeLocalConfig{
+	config := &codeLocalConfig{
 		Language: language,
-		CodeState: CodeStateConfig{
+		CodeState: codeStateConfig{
 			TreeID: treeID,
 		},
 	}
@@ -154,8 +154,8 @@ func (m *COSPManager) SaveCodeSourceConfig(treeID, language string) error {
 }
 
 // readCodeSourceConfig reads the code source config file.
-func (m *COSPManager) readCodeSourceConfig() (*CodeLocalConfig, error) {
-	var config CodeLocalConfig
+func (m *COSPManager) readCodeSourceConfig() (*codeLocalConfig, error) {
+	var config codeLocalConfig
 	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getCodeSourceConfigFile(), &config)
 	return &config, err
 }

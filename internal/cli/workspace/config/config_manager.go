@@ -106,8 +106,8 @@ func (m *ConfigManager) GetRemoteInfo(remote string) (*RemoteInfo, error) {
 	}, nil
 }
 
-// RepoExists gets a repo.
-func (m *ConfigManager) RepoExists(repoURI string) (bool, error) {
+// CheckRepoIfExists checks if a repository exists.
+func (m *ConfigManager) CheckRepoIfExists(repoURI string) (bool, error) {
 	repoURI, err := azicliwksvals.SanitizeRepo(repoURI)
 	if err != nil {
 		return false, err
