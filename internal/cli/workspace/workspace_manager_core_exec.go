@@ -38,9 +38,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 	homeDir := m.getHomeHiddenDir()
 
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "checkout", fmt.Sprintf("Failed to initialize the workspace in %s.", aziclicommon.FileText(homeDir)), err)
-		}
+		out(nil, "", fmt.Sprintf("Failed to initialize the workspace in %s.", aziclicommon.FileText(homeDir)), err)
 		return output, err
 	}
 
@@ -99,8 +97,13 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 
 // ExecAddRemote adds a remote.
 func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort int, papPort int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", fmt.Sprintf("Failed to add remote %s.", aziclicommon.KeywordText(remote)), err)
+		return output, err
+	}
+
 	if !m.isWorkspaceDir() {
-		return nil, m.raiseWrongWorkspaceDirError(out)
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 	if !azvalidators.IsValidHostname(server) {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid server %s", server))
@@ -110,13 +113,6 @@ func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort i
 	}
 	if !azvalidators.IsValidPort(papPort) {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid pap port %d", papPort))
-	}
-
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "checkout", fmt.Sprintf("Failed to add remote %s.", aziclicommon.KeywordText(remote)), err)
-		}
-		return output, err
 	}
 
 	fileLock, err := m.tryLock()
@@ -131,15 +127,13 @@ func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort i
 
 // ExecRemoveRemote removes a remote.
 func (m *WorkspaceManager) ExecRemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	if !m.isWorkspaceDir() {
-		return nil, m.raiseWrongWorkspaceDirError(out)
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", fmt.Sprintf("Failed to remove remote %s.", aziclicommon.KeywordText(remote)), err)
+		return output, err
 	}
 
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "checkout", fmt.Sprintf("Failed to remove remote %s.", aziclicommon.KeywordText(remote)), err)
-		}
-		return output, err
+	if !m.isWorkspaceDir() {
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
 	fileLock, err := m.tryLock()
@@ -164,15 +158,13 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out func(map[string]a
 
 // ExecListRemotes lists the remotes.
 func (m *WorkspaceManager) ExecListRemotes(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	if !m.isWorkspaceDir() {
-		return nil, m.raiseWrongWorkspaceDirError(out)
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", "Failed to list remotes.", err)
+		return output, err
 	}
 
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "checkout", "Failed to list remotes.", err)
-		}
-		return output, err
+	if !m.isWorkspaceDir() {
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
 	fileLock, err := m.tryLock()
@@ -187,15 +179,14 @@ func (m *WorkspaceManager) ExecListRemotes(out func(map[string]any, string, any,
 
 // ExecListRepos lists the repos.
 func (m *WorkspaceManager) ExecListRepos(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
-	if !m.isWorkspaceDir() {
-		return nil, m.raiseWrongWorkspaceDirError(out)
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", "Failed to list repos.", err)
+		return output, err
 	}
 
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "checkout", "Failed to list repos.", err)
-		}
-		return output, err
+
+	if !m.isWorkspaceDir() {
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
 	fileLock, err := m.tryLock()
