@@ -36,14 +36,22 @@ func (m *WorkspaceManager) printFiles(action string, files []string, out func(ma
 // ExecInitWorkspace initializes the workspace.
 func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	homeDir := m.getHomeHiddenDir()
+
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "checkout", fmt.Sprintf("Failed to initialize the workspace in %s.", aziclicommon.FileText(homeDir)), err)
+		}
+		return output, err
+	}
+
 	res, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.WorkDir, homeDir)
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	defer fileLock.Unlock()
 
@@ -66,7 +74,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 			if m.ctx.IsVerboseTerminalOutput(){
 				out(nil, "init", "Initialization failed.", nil)
 			}
-			return nil, err
+			return failedOpErr(nil, err)
 		}
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
@@ -104,9 +112,16 @@ func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort i
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid pap port %d", papPort))
 	}
 
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "checkout", fmt.Sprintf("Failed to add remote %s.", aziclicommon.KeywordText(remote)), err)
+		}
+		return output, err
+	}
+
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	defer fileLock.Unlock()
 
@@ -120,18 +135,28 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out func(map[string]a
 		return nil, m.raiseWrongWorkspaceDirError(out)
 	}
 
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "checkout", fmt.Sprintf("Failed to remove remote %s.", aziclicommon.KeywordText(remote)), err)
+		}
+		return output, err
+	}
+
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	defer fileLock.Unlock()
 
 	refsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	if refsInfo.GetRemote() == remote {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, fmt.Sprintf("cli: cannot remove the remote used by the currently checked out account %s", remote))
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "remote", "Failed to delete remote: it is associated with the current HEAD.", nil)
+		}
+		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, fmt.Sprintf("cli: cannot remove the remote used by the currently checked out account %s", remote)))
 	}
 	output, err := m.cfgMgr.ExecRemoveRemote(remote, nil, out)
 	return output, err
@@ -143,9 +168,16 @@ func (m *WorkspaceManager) ExecListRemotes(out func(map[string]any, string, any,
 		return nil, m.raiseWrongWorkspaceDirError(out)
 	}
 
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "checkout", "Failed to list remotes.", err)
+		}
+		return output, err
+	}
+
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	defer fileLock.Unlock()
 
@@ -159,15 +191,22 @@ func (m *WorkspaceManager) ExecListRepos(out func(map[string]any, string, any, e
 		return nil, m.raiseWrongWorkspaceDirError(out)
 	}
 
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "checkout", "Failed to list repos.", err)
+		}
+		return output, err
+	}
+
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	defer fileLock.Unlock()
 
 	refID, err := m.rfsMgr.GetCurrentHeadRefs()
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	output, err := m.cfgMgr.ExecListRepos(refID, nil, out)
 	return output, err
