@@ -34,12 +34,8 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 	if !m.isWorkspaceDir() {
 		return nil, m.raiseWrongWorkspaceDirError(out)
 	}
-	headInfo, err := m.getCurrentHeadInfo(out)
-	if err != nil {
-		return nil, err
-	}
 
-	headRef, err := m.rfsMgr.GetCurrentHeadRef()
+	headRef, err := m.rfsMgr.GetCurrentHeadRefs()
 	if err != nil {
 		return nil, err
 	}
@@ -49,18 +45,16 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 		return output, err
 	}
 
+	refs, err := m.rfsMgr.GetCurrentHeadRefs()
+	if err != nil {
+		return nil, err
+	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "plan", fmt.Sprintf("Head remote set to %s.", aziclicommon.KeywordText(headInfo.Remote)), nil)
-		out(nil, "plan", fmt.Sprintf("Head accountid set to %s.", aziclicommon.BigNumberText(headInfo.AccountID)), nil)
-		out(nil, "plan", fmt.Sprintf("Head remote_repo set to %s.", aziclicommon.KeywordText(headInfo.Repo)), nil)
-		out(nil, "plan", fmt.Sprintf("Head refid set to %s.", aziclicommon.IDText(headInfo.RefID)), nil)
+		out(nil, "plan", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(refs)), nil)
 		out(nil, "plan", fmt.Sprintf("Repo set to %s.", aziclicommon.KeywordText(headRef)), nil)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
-			"remote":      headInfo.Remote,
-			"accountid":   headInfo.AccountID,
-			"remote_repo": headInfo.Repo,
-			"refid":       headInfo.RefID,
+			"refs": refs,
 		}
 		output = out(output, "head", remoteObj, nil)
 		output = out(output, "repo", headRef, nil)
@@ -70,10 +64,10 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 
 	errPlanningProcessFailed := "Planning process failed."
 
-	commit, err := m.rfsMgr.GetRefsCommit(headInfo.Remote, headInfo.RefID)
+	commit, err := m.rfsMgr.GetRefsCommit(refs)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("Unable to read the commit for remote %s and refid %s.", aziclicommon.KeywordText(headInfo.Remote), aziclicommon.IDText(headInfo.RefID)), nil)
+			out(nil, "plan", fmt.Sprintf("Unable to read the commit for refs %s.", aziclicommon.KeywordText(refs)), nil)
 		}
 		out(nil, "", errPlanningProcessFailed, nil)
 		return nil, err
@@ -82,7 +76,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 	var remoteCodeState []azicliwkscosp.CodeObjectState = nil
 	if commit == azicliwksrefs.ZeroOID {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("The reference ID %s has no commits associated with it.", aziclicommon.IDText(headInfo.RefID)), nil)
+			out(nil, "plan", fmt.Sprintf("The refs %s has no commits associated with it.", aziclicommon.KeywordText(refs)), nil)
 		}
 	}
 
@@ -127,12 +121,20 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 		out(nil, "", "", nil)
 		planObjs := append(createdItems, modifiedItems...)
 		planObjs = append(planObjs, unchangedItems...)
+		refsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
+		if err != nil {
+			if m.ctx.IsVerboseTerminalOutput() {
+				out(nil, "plan", "Failed to retrieve the current head refs info.", nil)
+			}
+			out(nil, "", "Unable to build the plan.", nil)
+			return output, err
+		}
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("Remote for the plan is set to: %s.", aziclicommon.KeywordText(headInfo.Remote)), nil)
-			out(nil, "plan", fmt.Sprintf("Reference ID for the plan is set to: %s", aziclicommon.IDText(headInfo.RefID)), nil)
+			out(nil, "plan", fmt.Sprintf("Remote for the plan is set to: %s.", aziclicommon.KeywordText(refsInfo.GetRemote())), nil)
+			out(nil, "plan", fmt.Sprintf("Reference ID for the plan is set to: %s", aziclicommon.IDText(refsInfo.GetRefID())), nil)
 			out(nil, "plan", "Preparing to save the plan.", nil)
 		}
-		err := m.cospMgr.SaveRemoteCodePlan(headInfo.Remote, headInfo.RefID, planObjs)
+		err = m.cospMgr.SaveRemoteCodePlan(refsInfo.GetRemote(), refsInfo.GetRefID(), planObjs)
 		if err != nil {
 			if m.ctx.IsVerboseTerminalOutput() {
 				out(nil, "plan", "Failed to save the plan.", nil)
@@ -167,11 +169,11 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 	if !m.isWorkspaceDir() {
 		return nil, m.raiseWrongWorkspaceDirError(out)
 	}
-	headInfo, err := m.getCurrentHeadInfo(out)
+	refsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
 	if err != nil {
 		return nil, err
 	}
-	headRef, err := m.rfsMgr.GetCurrentHeadRef()
+	headRef, err := m.rfsMgr.GetCurrentHeadRefs()
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +197,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 		out(nil, "apply", "Preparing to read the plan.", nil)
 	}
 	errPlanningProcessFailed := "Apply process failed."
-	plan, err := m.cospMgr.ReadRemoteCodePlan(headInfo.Remote, headInfo.RefID)
+	plan, err := m.cospMgr.ReadRemoteCodePlan(refsInfo.GetRemote(), refsInfo.GetRefID())
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "apply", "Failed to read the plan.", nil)

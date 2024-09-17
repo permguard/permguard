@@ -51,13 +51,13 @@ func (c *LogsManager) getLogsDir() string {
 }
 
 // Log an entry
-func (c *LogsManager) Log(remote string, ref string, origin string, target string, action string) (bool, error) {
+func (c *LogsManager) Log(remote string, refs string, origin string, target string, action string) (bool, error) {
 	logDir := filepath.Join(c.getLogsDir(), remote)
 	_, err := c.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, logDir)
 	if err != nil {
 		return false, err
 	}
-	logFile := filepath.Join(logDir, ref)
+	logFile := filepath.Join(logDir, refs)
 	_, err = c.persMgr.CreateFileIfNotExists(azicliwkspers.PermGuardDir, logFile)
 	if err != nil {
 		return false, err

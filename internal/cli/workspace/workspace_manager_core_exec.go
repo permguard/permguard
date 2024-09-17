@@ -117,11 +117,11 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out func(map[string]a
 	}
 	defer fileLock.Unlock()
 
-	headInfo, err := m.rfsMgr.GetCurrentHead()
+	refsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
 	if err != nil {
 		return nil, err
 	}
-	if headInfo.Remote == remote {
+	if refsInfo.GetRemote() == remote {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, fmt.Sprintf("cli: cannot remove the remote used by the currently checked out account %s", remote))
 	}
 	output, err := m.cfgMgr.ExecRemoveRemote(remote, nil, out)
@@ -156,7 +156,7 @@ func (m *WorkspaceManager) ExecListRepos(out func(map[string]any, string, any, e
 	}
 	defer fileLock.Unlock()
 
-	refID, err := m.rfsMgr.CalculateCurrentHeadRefID()
+	refID, err := m.rfsMgr.GetCurrentHeadRefs()
 	if err != nil {
 		return nil, err
 	}

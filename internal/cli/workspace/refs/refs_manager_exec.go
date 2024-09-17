@@ -43,20 +43,13 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 		output = map[string]any{}
 	}
 	refs := generateRefs(remote, accountID, repo)
-	refPath, err := m.SaveRefsConfig(remote, refID, commit)
+	err := m.SaveRefsConfig(refs, commit)
 	if err != nil {
-		return "", "", nil, err
+		return nil, output, err
 	}
-
-	headCfg := headConfig{
-		Reference: headReferenceConfig{
-			Refs: refs,
-		},
-	}
-	headFile := m.getHeadFile()
-	err = m.saveConfig(headFile, true, &headCfg)
+	err = m.SaveHeadConfig(refs)
 	if err != nil {
-		return "", "", nil, err
+		return nil, output, err
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "head", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(refs)), nil)
@@ -66,13 +59,9 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 		}
 		output = out(output, "head", remoteObj, nil)
 	}
-	ref, err := m.GetCurrentHeadRef()
+	headInfo, err := m.GetCurrentHead()
 	if err != nil {
-		return "", "", nil, err
+		return nil, output, err
 	}
-	refID, err = m.CalculateCurrentHeadRefID()
-	if err != nil {
-		return "", "", nil, err
-	}
-	return ref, refID, output, nil
+	return headInfo, output, nil
 }

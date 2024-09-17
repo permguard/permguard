@@ -38,8 +38,7 @@ type remoteConfig struct {
 
 // repositoryConfig represents the configuration for the repository.
 type repositoryConfig struct {
-	Remote string `toml:"remote"`
-	RefID  string `toml:"refid"`
+	Refs  string `toml:"refs"`
 }
 
 // RemoteInfo represents the remote information.
