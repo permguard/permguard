@@ -52,8 +52,8 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 		return "", "", nil, err
 	}
 
-	headCfg := HeadConfig{
-		Head: HeadRefsConfig{
+	headCfg := headConfig{
+		Head: headRefsConfig{
 			Remote:    remote,
 			AccountID: accountID,
 			Repo:      repo,

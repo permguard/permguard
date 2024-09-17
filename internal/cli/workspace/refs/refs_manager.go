@@ -87,8 +87,8 @@ func (m *RefsManager) saveConfig(name string, override bool, cfg any) error {
 }
 
 // readHeadConfig reads the config file.
-func (m *RefsManager) readHeadConfig() (*HeadConfig, error) {
-	var config HeadConfig
+func (m *RefsManager) readHeadConfig() (*headConfig, error) {
+	var config headConfig
 	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getHeadFile(), &config)
 	return &config, err
 }
@@ -118,12 +118,12 @@ func (m *RefsManager) createAndGetHeadRefFile(remote string, refID string) (stri
 }
 
 // readRefsConfig reads the refs configuration.
-func (m *RefsManager) readRefsConfig(remote string, refID string) (string, *RefsConfig, error) {
+func (m *RefsManager) readRefsConfig(remote string, refID string) (string, *refsConfig, error) {
 	refPath, err := m.createAndGetHeadRefFile(remote, refID)
 	if err != nil {
 		return refPath, nil, err
 	}
-	var config RefsConfig
+	var config refsConfig
 	err = m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, refPath, &config)
 	if err != nil {
 		return refPath, nil, err
@@ -137,8 +137,8 @@ func (m *RefsManager) SaveRefsConfig(remote string, refID string, commit string)
 	if err != nil {
 		return refPath, err
 	}
-	refCfg := RefsConfig{
-		Objects: RefsObjectsConfig{
+	refCfg := refsConfig{
+		Objects: refsObjectsConfig{
 			Commit: commit,
 		},
 	}
@@ -211,4 +211,3 @@ func (m *RefsManager) CalculateCurrentHeadRefID() (string, error) {
 	}
 	return m.CalculateRefID(headInfo.Remote, headInfo.AccountID, headInfo.Repo)
 }
-
