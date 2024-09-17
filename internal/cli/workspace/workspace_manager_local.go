@@ -17,6 +17,7 @@
 package workspace
 
 import (
+	"path/filepath"
 	"strings"
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
@@ -74,8 +75,22 @@ func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastracti
 			ignoredCodeFiles = append(ignoredCodeFiles, azicliwkscosp.CodeFile{Path: file})
 		}
 	}
-	return codeFiles, ignoredCodeFiles, nil
+	pwd := m.ctx.GetWorkDir()
+	normalizedCodeFiles := []azicliwkscosp.CodeFile{}
+	for _, codeFile := range codeFiles {
+		relativePath, _ := filepath.Rel(pwd, codeFile.Path)
+		newCodeFile := azicliwkscosp.CodeFile{Type: codeFile.Type, Path: relativePath}
+		normalizedCodeFiles = append(normalizedCodeFiles, newCodeFile)
+	}
+	normalizedIgnoredCodeFiles := []azicliwkscosp.CodeFile{}
+	for _, codeFile := range ignoredCodeFiles {
+		relativePath, _ := filepath.Rel(pwd, codeFile.Path)
+		newCodeFile := azicliwkscosp.CodeFile{Type: codeFile.Type, Path: relativePath}
+		normalizedIgnoredCodeFiles = append(normalizedIgnoredCodeFiles, newCodeFile)
+	}
+	return normalizedCodeFiles, normalizedIgnoredCodeFiles, nil
 }
+
 
 // blobifyPermSchemaFile blobify a permguard schema file.
 func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path string, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile, absLang azlang.LanguageAbastraction, data []byte, file azicliwkscosp.CodeFile) []azicliwkscosp.CodeFile {
@@ -169,7 +184,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	for _, file := range codeFiles {
 		wkdir := m.ctx.GetWorkDir()
 		path := file.Path
-		data, mode, err := m.persMgr.ReadFile(azicliwkspers.WorkDir, path, false)
+		data, mode, err := m.persMgr.ReadFile(azicliwkspers.WorkspaceDir, path, false)
 		if err != nil {
 			return "", nil, err
 		}
