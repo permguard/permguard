@@ -47,6 +47,9 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 	}
 	defer fileLock.Unlock()
 
+	if m.ctx.IsVerboseTerminalOutput(){
+		out(nil, "init", fmt.Sprintf("Initializing PermGuard workspace in %s.", aziclicommon.FileText(homeDir)), nil)
+	}
 	firstInit := true
 	if !res {
 		firstInit = false
@@ -60,8 +63,14 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 	for _, initializer := range initializers {
 		err := initializer(language)
 		if err != nil {
+			if m.ctx.IsVerboseTerminalOutput(){
+				out(nil, "init", "Initialization failed.", nil)
+			}
 			return nil, err
 		}
+	}
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "init", "Initialization succeeded.", nil)
 	}
 	var msg string
 	var output map[string]any
