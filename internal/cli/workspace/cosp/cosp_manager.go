@@ -153,8 +153,8 @@ func (m *COSPManager) SaveCodeSourceConfig(treeID, language string) error {
 	return m.saveConfig(file, true, config)
 }
 
-// ReadCodeSourceConfig reads the code source config file.
-func (m *COSPManager) ReadCodeSourceConfig() (*CodeLocalConfig, error) {
+// readCodeSourceConfig reads the code source config file.
+func (m *COSPManager) readCodeSourceConfig() (*CodeLocalConfig, error) {
 	var config CodeLocalConfig
 	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getCodeSourceConfigFile(), &config)
 	return &config, err

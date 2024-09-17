@@ -95,7 +95,7 @@ func (m *RefsManager) readHeadConfig() (*HeadConfig, error) {
 
 // ReadRefsCommit reads the refs commit.
 func (m *RefsManager) ReadRefsCommit(remote string, refID string) (string, error) {
-	_, refsCfg, err := m.ReadRefsConfig(remote, refID)
+	_, refsCfg, err := m.readRefsConfig(remote, refID)
 	if err != nil {
 		return "", err
 	}
@@ -117,8 +117,8 @@ func (m *RefsManager) createAndGetHeadRefFile(remote string, refID string) (stri
 	return refPath, err
 }
 
-// ReadRefsConfig reads the refs configuration.
-func (m *RefsManager) ReadRefsConfig(remote string, refID string) (string, *RefsConfig, error) {
+// readRefsConfig reads the refs configuration.
+func (m *RefsManager) readRefsConfig(remote string, refID string) (string, *RefsConfig, error) {
 	refPath, err := m.createAndGetHeadRefFile(remote, refID)
 	if err != nil {
 		return refPath, nil, err
@@ -132,10 +132,10 @@ func (m *RefsManager) ReadRefsConfig(remote string, refID string) (string, *Refs
 }
 
 // SaveRefsConfig saves the refs configuration.
-func (m *RefsManager) SaveRefsConfig(remote string, refID string, commit string) (string, *RefsConfig, error) {
+func (m *RefsManager) SaveRefsConfig(remote string, refID string, commit string) (string, error) {
 	refPath, err := m.createAndGetHeadRefFile(remote, refID)
 	if err != nil {
-		return refPath, nil, err
+		return refPath, err
 	}
 	refCfg := RefsConfig{
 		Objects: RefsObjectsConfig{
@@ -144,9 +144,9 @@ func (m *RefsManager) SaveRefsConfig(remote string, refID string, commit string)
 	}
 	err = m.saveConfig(refPath, true, &refCfg)
 	if err != nil {
-		return refPath, nil, err
+		return refPath, err
 	}
-	return refPath, &refCfg, nil
+	return refPath, nil
 }
 
 // GetRefWithBase gets the ref with base.
