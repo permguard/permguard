@@ -16,28 +16,50 @@
 
 package config
 
-// Config represents the configuration for the workspace.
-type Config struct {
-	Core         CoreConfig                  `toml:"core"`
-	Remotes      map[string]RemoteConfig     `toml:"remote"`
-	Repositories map[string]RepositoryConfig `toml:"repository"`
+// config represents the configuration for the workspace.
+type config struct {
+	Core         coreConfig                  `toml:"core"`
+	Remotes      map[string]remoteConfig     `toml:"remote"`
+	Repositories map[string]repositoryConfig `toml:"repository"`
 }
 
-// CoreConfig represents the configuration for the core.
-type CoreConfig struct {
+// coreConfig represents the configuration for the core.
+type coreConfig struct {
 	ClientVersion string `toml:"client-version"`
-	Language	  string `toml:"language"`
+	Language      string `toml:"language"`
 }
 
-// RemoteConfig represents the configuration for the remote.
-type RemoteConfig struct {
+// remoteConfig represents the configuration for the remote.
+type remoteConfig struct {
 	Server  string `toml:"server"`
 	AAPPort int    `toml:"aapport"`
 	PAPPort int    `toml:"papport"`
 }
 
-// RepositoryConfig represents the configuration for the repository.
-type RepositoryConfig struct {
+// repositoryConfig represents the configuration for the repository.
+type repositoryConfig struct {
 	Remote string `toml:"remote"`
 	RefID  string `toml:"refid"`
+}
+
+// RemoteInfo represents the remote information.
+type RemoteInfo struct {
+	server  string
+	aapPort int
+	papPort int
+}
+
+// GetServer returns the server.
+func (i *RemoteInfo) GetServer() string {
+	return i.server
+}
+
+// GetAAPPort returns the aap port.
+func (i *RemoteInfo) GetAAPPort() int {
+	return i.aapPort
+}
+
+// GetPAPPort returns the pap port.
+func (i *RemoteInfo) GetPAPPort() int {
+	return i.papPort
 }

@@ -20,20 +20,20 @@ import (
 	"fmt"
 	"strings"
 
-	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ExecInitialize initializes the config resources.
 func (m *ConfigManager) ExecInitialize(lang string) error {
-	config := Config{
-		Core: CoreConfig{
-			ClientVersion: 	m.ctx.GetClientVersion(),
-			Language: 		strings.ToLower(lang),
+	config := config{
+		Core: coreConfig{
+			ClientVersion: m.ctx.GetClientVersion(),
+			Language:      strings.ToLower(lang),
 		},
-		Remotes:      map[string]RemoteConfig{},
-		Repositories: map[string]RepositoryConfig{},
+		Remotes:      map[string]remoteConfig{},
+		Repositories: map[string]repositoryConfig{},
 	}
 	return m.saveConfig(false, &config)
 }
@@ -56,7 +56,7 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 			return output, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: remote %s already exists", remote))
 		}
 	}
-	cfgRemote := RemoteConfig{
+	cfgRemote := remoteConfig{
 		Server:  server,
 		AAPPort: aap,
 		PAPPort: pap,
@@ -160,7 +160,7 @@ func (m *ConfigManager) ExecAddRepo(remote string, accountID int64, repo string,
 	if err != nil {
 		return output, err
 	}
-	var cfgRepo RepositoryConfig
+	var cfgRepo repositoryConfig
 	exists := false
 	for repo := range cfg.Repositories {
 		if ref == repo {
@@ -169,7 +169,7 @@ func (m *ConfigManager) ExecAddRepo(remote string, accountID int64, repo string,
 		}
 	}
 	if !exists {
-		cfgRepo = RepositoryConfig{
+		cfgRepo = repositoryConfig{
 			Remote: remote,
 			RefID:  refID,
 		}
@@ -186,7 +186,7 @@ func (m *ConfigManager) ExecAddRepo(remote string, accountID int64, repo string,
 		remotes := []any{}
 		remoteObj := map[string]any{
 			"remote": remote,
-			"refid":   cfgRepo.RefID,
+			"refid":  cfgRepo.RefID,
 			"repo":   ref,
 		}
 		remotes = append(remotes, remoteObj)
@@ -230,7 +230,7 @@ func (m *ConfigManager) ExecListRepos(activeRepoURI string, output map[string]an
 			repoObj := map[string]any{
 				"remote": cfg.Repositories[cfgRepo].Remote,
 				"repo":   cfgRepo,
-				"refid":   cfg.Repositories[cfgRepo].RefID,
+				"refid":  cfg.Repositories[cfgRepo].RefID,
 				"active": isActive,
 			}
 			repos = append(repos, repoObj)

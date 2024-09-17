@@ -52,14 +52,14 @@ func (m *ConfigManager) getConfigFile() string {
 }
 
 // readConfig reads the config file.
-func (m *ConfigManager) readConfig() (*Config, error) {
-	var config Config
+func (m *ConfigManager) readConfig() (*config, error) {
+	var config config
 	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getConfigFile(), &config)
 	return &config, err
 }
 
 // saveConfig saves the config file.
-func (m *ConfigManager) saveConfig(override bool, cfg *Config) error {
+func (m *ConfigManager) saveConfig(override bool, cfg *config) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
@@ -85,8 +85,8 @@ func (m *ConfigManager) GetLanguage() (string, error) {
 	return cfg.Core.Language, nil
 }
 
-// GetRemote gets a remote.
-func (m *ConfigManager) GetRemote(remote string) (*RemoteConfig, error) {
+// GetRemoteInfo gets the remote info.
+func (m *ConfigManager) GetRemoteInfo(remote string) (*RemoteInfo, error) {
 	remote, err := azicliwksvals.SanitizeRemote(remote)
 	if err != nil {
 		return nil, err
@@ -99,22 +99,25 @@ func (m *ConfigManager) GetRemote(remote string) (*RemoteConfig, error) {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", remote))
 	}
 	cfgRemote := cfg.Remotes[remote]
-	return &cfgRemote, nil
+	return &RemoteInfo{
+		server:  cfgRemote.Server,
+		aapPort: cfgRemote.AAPPort,
+		papPort: cfgRemote.PAPPort,
+	}, nil
 }
 
-// GetRepo gets a repo.
-func (m *ConfigManager) GetRepo(repoURI string) (*RepositoryConfig, error) {
+// RepoExists gets a repo.
+func (m *ConfigManager) RepoExists(repoURI string) (bool, error) {
 	repoURI, err := azicliwksvals.SanitizeRepo(repoURI)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 	cfg, err := m.readConfig()
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 	if _, ok := cfg.Repositories[repoURI]; !ok {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: repo %s does not exist", repoURI))
+		return false, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: repo %s does not exist", repoURI))
 	}
-	cfgRepo := cfg.Repositories[repoURI]
-	return &cfgRepo, nil
+	return true, nil
 }
