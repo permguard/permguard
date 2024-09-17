@@ -156,6 +156,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 	}
 	if m.ctx.IsJSONOutput() {
 		changes := map[string]any{}
+		changes["unchanged"] = unchangedItems
 		changes["create"] = createdItems
 		changes["modify"] = modifiedItems
 		changes["delete"] = deletedItems
