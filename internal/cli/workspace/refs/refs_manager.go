@@ -86,8 +86,8 @@ func (m *RefsManager) saveConfig(name string, override bool, cfg any) error {
 	return nil
 }
 
-// ReadHeadConfig reads the config file.
-func (m *RefsManager) ReadHeadConfig() (*HeadConfig, error) {
+// readHeadConfig reads the config file.
+func (m *RefsManager) readHeadConfig() (*HeadConfig, error) {
 	var config HeadConfig
 	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getHeadFile(), &config)
 	return &config, err
@@ -104,6 +104,17 @@ func (m *RefsManager) ReadRefsCommit(remote string, refID string) (string, error
 
 	}
 	return refsCfg.Objects.Commit, nil
+}
+
+// createAndGetHeadRefFile creates and gets the head ref file.
+func (m *RefsManager) createAndGetHeadRefFile(remote string, refID string) (string, error) {
+	refDir := filepath.Join(hiddenRefsDir, remote)
+	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, refDir)
+	if err != nil {
+		return "", err
+	}
+	refPath := filepath.Join(refDir, refID)
+	return refPath, err
 }
 
 // ReadRefsConfig reads the refs configuration.
@@ -171,7 +182,7 @@ func (m *RefsManager) CalculateRefID(remote string, accountID int64, repo string
 
 // GetCurrentHead gets the current head.
 func (m *RefsManager) GetCurrentHead() (*HeadInfo, error) {
-	cfgHead, err := m.ReadHeadConfig()
+	cfgHead, err := m.readHeadConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -201,13 +212,3 @@ func (m *RefsManager) CalculateCurrentHeadRefID() (string, error) {
 	return m.CalculateRefID(headInfo.Remote, headInfo.AccountID, headInfo.Repo)
 }
 
-// createAndGetHeadRefFile creates and gets the head ref file.
-func (m *RefsManager) createAndGetHeadRefFile(remote string, refID string) (string, error) {
-	refDir := filepath.Join(hiddenRefsDir, remote)
-	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, refDir)
-	if err != nil {
-		return "", err
-	}
-	refPath := filepath.Join(refDir, refID)
-	return refPath, err
-}
