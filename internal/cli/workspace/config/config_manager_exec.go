@@ -63,7 +63,8 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 	}
 	cfg.Remotes[remote] = cfgRemote
 	m.saveConfig(true, cfg)
-	output = out(nil, "", fmt.Sprintf("Remote %s has been added.", aziclicommon.KeywordText(remote)), nil)
+	out(nil, "", fmt.Sprintf("Remote %s has been added.", aziclicommon.KeywordText(remote)), nil)
+	output = map[string]any{}
 	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{
@@ -95,7 +96,8 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 		return output, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", remote))
 	}
 	cfgRemote := cfg.Remotes[remote]
-	output = out(nil, "", fmt.Sprintf("Remote %s has been removed.", aziclicommon.KeywordText(remote)), nil)
+	out(nil, "", fmt.Sprintf("Remote %s has been removed.", aziclicommon.KeywordText(remote)), nil)
+	output = map[string]any{}
 	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{
@@ -178,7 +180,8 @@ func (m *ConfigManager) ExecAddRepo(refs string, repo string, output map[string]
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "repo", fmt.Sprintf("Refs successfully set to %s.", aziclicommon.KeywordText(cfgRepo.Refs)), nil)
 	}
-	output = out(nil, "", fmt.Sprintf("Repo %s has been added.", aziclicommon.KeywordText(repo)), nil)
+	out(nil, "", fmt.Sprintf("Repo %s has been added.", aziclicommon.KeywordText(repo)), nil)
+	output = map[string]any{}
 	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{

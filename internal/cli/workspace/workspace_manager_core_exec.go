@@ -84,7 +84,8 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 	} else {
 		msg = fmt.Sprintf("Reinitialized existing permguard repository in %s.", aziclicommon.FileText(homeDir))
 	}
-	output = out(nil, "", msg, nil)
+	out(nil, "", msg, nil)
+	output = map[string]any{}
 	if m.ctx.IsJSONOutput() {
 		remoteObj := map[string]any{
 			"cwd": m.getHomeHiddenDir(),
