@@ -37,14 +37,6 @@ const (
 	ZeroOID = "0000000000000000000000000000000000000000000000000000000000000000"
 )
 
-// HeadInfo represents the head information.
-type HeadInfo struct {
-	Remote    string
-	AccountID int64
-	Repo      string
-	RefID     string
-}
-
 // RefsManager implements the internal manager for the refs file.
 type RefsManager struct {
 	ctx     *aziclicommon.CliCommandContext
@@ -106,8 +98,8 @@ func (m *RefsManager) ReadRefsCommit(remote string, refID string) (string, error
 	return refsCfg.Objects.Commit, nil
 }
 
-// createAndGetHeadRefFile creates and gets the head ref file.
-func (m *RefsManager) createAndGetHeadRefFile(remote string, refID string) (string, error) {
+// GetHeadRefsFile creates and gets the head ref file.
+func (m *RefsManager) GetHeadRefsFile(remote string, refID string) (string, error) {
 	refDir := filepath.Join(hiddenRefsDir, remote)
 	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, refDir)
 	if err != nil {
@@ -119,7 +111,7 @@ func (m *RefsManager) createAndGetHeadRefFile(remote string, refID string) (stri
 
 // readRefsConfig reads the refs configuration.
 func (m *RefsManager) readRefsConfig(remote string, refID string) (string, *refsConfig, error) {
-	refPath, err := m.createAndGetHeadRefFile(remote, refID)
+	refPath, err := m.GetHeadRefsFile(remote, refID)
 	if err != nil {
 		return refPath, nil, err
 	}
@@ -133,7 +125,7 @@ func (m *RefsManager) readRefsConfig(remote string, refID string) (string, *refs
 
 // SaveRefsConfig saves the refs configuration.
 func (m *RefsManager) SaveRefsConfig(remote string, refID string, commit string) (string, error) {
-	refPath, err := m.createAndGetHeadRefFile(remote, refID)
+	refPath, err := m.GetHeadRefsFile(remote, refID)
 	if err != nil {
 		return refPath, err
 	}
