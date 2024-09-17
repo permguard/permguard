@@ -57,7 +57,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "plan", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(headRef)), nil)
-		out(nil, "plan", fmt.Sprintf("Repo set to %s.", aziclicommon.KeywordText(headRef)), nil)
+		out(nil, "plan", fmt.Sprintf("Repo set to %s.", aziclicommon.KeywordText(refsInfo.GetRepoURI())), nil)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
 			"refs": headRef,
@@ -66,7 +66,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 		output = out(output, "repo", refsInfo.GetRepoURI(), nil)
 	}
 
-	out(nil, "", fmt.Sprintf("Initiating the planning process for repo %s.", aziclicommon.KeywordText(headRef)), nil)
+	out(nil, "", fmt.Sprintf("Initiating the planning process for repo %s.", aziclicommon.KeywordText(refsInfo.GetRepoURI())), nil)
 
 	errPlanningProcessFailed := "Planning process failed."
 
@@ -204,7 +204,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 		return failedOpErr(nil, err)
 	}
 
-	out(nil, "", fmt.Sprintf("Initiating the apply process for repo %s.", aziclicommon.KeywordText(headRef)), nil)
+	out(nil, "", fmt.Sprintf("Initiating the apply process for repo %s.", aziclicommon.KeywordText(refsInfo.GetRepoURI())), nil)
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", "Preparing to read the plan.", nil)
