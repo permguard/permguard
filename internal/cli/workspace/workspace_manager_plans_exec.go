@@ -79,19 +79,19 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 		return nil, err
 	}
 
-	var remoteFiles []azicliwkscosp.CodeObjectState = nil
+	var remoteCodeState []azicliwkscosp.CodeObjectState = nil
 	if commit == azicliwksrefs.ZeroOID {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "plan", fmt.Sprintf("The reference ID %s has no commits associated with it.", aziclicommon.IDText(headInfo.RefID)), nil)
 		}
 	}
 
-	codeObjState, err := m.cospMgr.ReadCodeSourceCodeState()
+	localCodeState, err := m.cospMgr.ReadCodeSourceCodeState()
 	if err != nil {
 		out(nil, "", errPlanningProcessFailed, nil)
 		return output, err
 	}
-	codeStateObjs, err := m.plan(codeObjState, remoteFiles)
+	codeStateObjs, err := m.plan(localCodeState, remoteCodeState)
 	if err != nil {
 		out(nil, "", errPlanningProcessFailed, nil)
 		return output, err
