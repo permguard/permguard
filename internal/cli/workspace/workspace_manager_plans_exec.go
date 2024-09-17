@@ -45,34 +45,35 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 		return failedOpErr(nil, err)
 	}
 
+	refsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+
 	output, err := m.execInternalValidate(true, out)
 	if err != nil {
 		return failedOpErr(output, err)
 	}
 
-	refs, err := m.rfsMgr.GetCurrentHeadRefs()
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "plan", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(refs)), nil)
+		out(nil, "plan", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(headRef)), nil)
 		out(nil, "plan", fmt.Sprintf("Repo set to %s.", aziclicommon.KeywordText(headRef)), nil)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
-			"refs": refs,
+			"refs": headRef,
 		}
 		output = out(output, "head", remoteObj, nil)
-		output = out(output, "repo", headRef, nil)
+		output = out(output, "repo", refsInfo.GetRepoURI(), nil)
 	}
 
 	out(nil, "", fmt.Sprintf("Initiating the planning process for repo %s.", aziclicommon.KeywordText(headRef)), nil)
 
 	errPlanningProcessFailed := "Planning process failed."
 
-	commit, err := m.rfsMgr.GetRefsCommit(refs)
+	commit, err := m.rfsMgr.GetRefsCommit(headRef)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("Unable to read the commit for refs %s.", aziclicommon.KeywordText(refs)), nil)
+			out(nil, "plan", fmt.Sprintf("Unable to read the commit for refs %s.", aziclicommon.KeywordText(headRef)), nil)
 		}
 		out(nil, "", errPlanningProcessFailed, nil)
 		return failedOpErr(nil, err)
@@ -81,7 +82,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 	var remoteCodeState []azicliwkscosp.CodeObjectState = nil
 	if commit == azicliwksrefs.ZeroOID {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("The refs %s has no commits associated with it.", aziclicommon.KeywordText(refs)), nil)
+			out(nil, "plan", fmt.Sprintf("The refs %s has no commits associated with it.", aziclicommon.KeywordText(headRef)), nil)
 		}
 	}
 

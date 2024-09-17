@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 
+	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
 	azcrypto "github.com/permguard/permguard-core/pkg/extensions/crypto"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
@@ -139,4 +140,13 @@ func (i *RefsInfo) GetRepo() string {
 // GetRefID returns the ref ID.
 func (i *RefsInfo) GetRefID() string {
 	return i.refID
+}
+
+// GetRepoURI returns the repo uri.
+func (i *RefsInfo) GetRepoURI() string {
+	repoURI, err := azicliwksrepos.GetRepoURI(i.remote, i.accountID, i.repo)
+	if err != nil {
+		return ""
+	}
+	return repoURI
 }

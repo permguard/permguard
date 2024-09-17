@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package validators
+package repos
 
 import (
 	"fmt"
@@ -47,13 +47,19 @@ func (r *RepoInfo) GetRepo() string {
 	return r.repo
 }
 
-// SanitizeRepo sanitizes the remote name.
-func SanitizeRepo(repoURI string) (string, error) {
-	repoURI = strings.ToLower(repoURI)
-	if _, err := GetRepoInfoFromURI(repoURI); err != nil {
-		return "", err
+// GetRepoURI gets the repo URI.
+func GetRepoURI(remote string, accountID int64, repo string) (string, error) {
+	repoInfo := &RepoInfo{
+		remote:    remote,
+		accountID: accountID,
+		repo:      repo,
 	}
-	return repoURI, nil
+	return GetRepoURIFromRepoInfo(repoInfo)
+}
+
+// GetRepoURIFromRepoInfo gets the repo URI from the repo info.
+func GetRepoURIFromRepoInfo(repoInfo *RepoInfo) (string, error) {
+	return fmt.Sprintf("%s/%d/%s", repoInfo.remote, repoInfo.accountID, repoInfo.repo), nil
 }
 
 // GetRepoInfoFromURI gets the repo information from the URI.
@@ -89,4 +95,13 @@ func GetRepoInfoFromURI(repoURI string) (*RepoInfo, error) {
 	}
 	result.repo = repoName
 	return result, nil
+}
+
+// SanitizeRepo sanitizes the remote name.
+func SanitizeRepo(repoURI string) (string, error) {
+	repoURI = strings.ToLower(repoURI)
+	if _, err := GetRepoInfoFromURI(repoURI); err != nil {
+		return "", err
+	}
+	return repoURI, nil
 }

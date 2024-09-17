@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
+	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -43,7 +43,7 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 	if output == nil {
 		output = map[string]any{}
 	}
-	remote, err := azicliwksvals.SanitizeRemote(remote)
+	remote, err := azicliwksrepos.SanitizeRemote(remote)
 	if err != nil {
 		return output, err
 	}
@@ -84,7 +84,7 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 	if output == nil {
 		output = map[string]any{}
 	}
-	remote, err := azicliwksvals.SanitizeRemote(remote)
+	remote, err := azicliwksrepos.SanitizeRemote(remote)
 	if err != nil {
 		return output, err
 	}
