@@ -38,7 +38,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 	homeDir := m.getHomeHiddenDir()
 
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to initialize the workspace in %s.", aziclicommon.FileText(homeDir)), err)
+		out(nil, "", fmt.Sprintf("Failed to initialize the workspace in %s.", aziclicommon.FileText(homeDir)), nil)
 		return output, err
 	}
 
@@ -98,7 +98,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 // ExecAddRemote adds a remote.
 func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort int, papPort int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to add remote %s.", aziclicommon.KeywordText(remote)), err)
+		out(nil, "", fmt.Sprintf("Failed to add remote %s.", aziclicommon.KeywordText(remote)), nil)
 		return output, err
 	}
 
@@ -122,13 +122,13 @@ func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort i
 	defer fileLock.Unlock()
 
 	output, err := m.cfgMgr.ExecAddRemote(remote, server, aapPort, papPort, nil, out)
-	return output, err
+	return failedOpErr(output, err)
 }
 
 // ExecRemoveRemote removes a remote.
 func (m *WorkspaceManager) ExecRemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to remove remote %s.", aziclicommon.KeywordText(remote)), err)
+		out(nil, "", fmt.Sprintf("Failed to remove remote %s.", aziclicommon.KeywordText(remote)), nil)
 		return output, err
 	}
 
@@ -153,13 +153,13 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out func(map[string]a
 		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, fmt.Sprintf("cli: cannot remove the remote used by the currently checked out account %s", remote)))
 	}
 	output, err := m.cfgMgr.ExecRemoveRemote(remote, nil, out)
-	return output, err
+	return failedOpErr(output, err)
 }
 
 // ExecListRemotes lists the remotes.
 func (m *WorkspaceManager) ExecListRemotes(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to list remotes.", err)
+		out(nil, "", "Failed to list remotes.", nil)
 		return output, err
 	}
 
@@ -174,13 +174,13 @@ func (m *WorkspaceManager) ExecListRemotes(out func(map[string]any, string, any,
 	defer fileLock.Unlock()
 
 	output, err := m.cfgMgr.ExecListRemotes(nil, out)
-	return output, err
+	return failedOpErr(output, err)
 }
 
 // ExecListRepos lists the repos.
 func (m *WorkspaceManager) ExecListRepos(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to list repos.", err)
+		out(nil, "", "Failed to list repos.", nil)
 		return output, err
 	}
 
@@ -200,5 +200,5 @@ func (m *WorkspaceManager) ExecListRepos(out func(map[string]any, string, any, e
 		return failedOpErr(nil, err)
 	}
 	output, err := m.cfgMgr.ExecListRepos(refID, nil, out)
-	return output, err
+	return failedOpErr(output, err)
 }

@@ -31,9 +31,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 	}
 
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "checkout", fmt.Sprintf("Failed to checkout repository %s.", aziclicommon.KeywordText(repoURI)), err)
-		}
+		out(nil, "", fmt.Sprintf("Failed to checkout repository %s.", aziclicommon.KeywordText(repoURI)), nil)
 		return output, err
 	}
 
