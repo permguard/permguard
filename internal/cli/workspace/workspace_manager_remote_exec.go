@@ -19,6 +19,7 @@ package workspace
 import (
 	"fmt"
 
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwksvals "github.com/permguard/permguard/internal/cli/workspace/validators"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
@@ -29,14 +30,21 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 		return nil, m.raiseWrongWorkspaceDirError(out)
 	}
 
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "checkout", fmt.Sprintf("Failed to checkout repository %s.", aziclicommon.KeywordText(repoURI)), err)
+		}
+		return output, err
+	}
+
 	repoInfo, err := azicliwksvals.GetRepoInfoFromURI(repoURI)
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	defer fileLock.Unlock()
 
@@ -48,7 +56,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "checkout", "Remote verification failed: repository already exists.", nil)
 		}
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: repository %s already exists", repoURI))
+		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: repository %s already exists", repoURI)))
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "checkout", "Remote verified successfully.", nil)
@@ -56,7 +64,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 
 	remoteInfo, err := m.cfgMgr.GetRemoteInfo(repoInfo.GetRemote())
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "checkout", "Retrieving remote repository information.", nil)
@@ -66,18 +74,18 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "checkout", "Failed to retrieve remote repository information.", nil)
 		}
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "checkout", "Remote repository retrieved successfully.", nil)
 	}
 	headInfo, output, err := m.rfsMgr.CheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.Refs, nil, out)
 	if err != nil {
-		return nil, err
+		return failedOpErr(nil, err)
 	}
 	output, err = m.cfgMgr.ExecAddRepo(headInfo.GetRefs(), repoInfo.GetRepo(), output, out)
 	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
-		return nil, err
+		return failedOpErr(output, err)
 	}
 	m.logsMgr.Log(repoInfo.GetRemote(), headInfo.GetRefs(), srvRepo.Refs, srvRepo.Refs, fmt.Sprintf("checkout: %s", repoURI))
 	return output, nil
