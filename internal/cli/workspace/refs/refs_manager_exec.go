@@ -38,7 +38,7 @@ func (m *RefsManager) ExecInitalize(lang string) error {
 }
 
 // CheckoutHead checks out the head.
-func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, commit string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (string, string, map[string]any, error) {
+func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, commit string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (*HeadInfo, map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}

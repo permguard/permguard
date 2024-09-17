@@ -124,10 +124,10 @@ func (m *RefsManager) readRefsConfig(remote string, refID string) (string, *refs
 }
 
 // SaveRefsConfig saves the refs configuration.
-func (m *RefsManager) SaveRefsConfig(remote string, refID string, commit string) (string, error) {
+func (m *RefsManager) SaveRefsConfig(remote string, refID string, commit string) (error) {
 	refPath, err := m.GetHeadRefsFile(remote, refID)
 	if err != nil {
-		return refPath, err
+		return err
 	}
 	refCfg := refsConfig{
 		Objects: refsObjectsConfig{
@@ -136,9 +136,9 @@ func (m *RefsManager) SaveRefsConfig(remote string, refID string, commit string)
 	}
 	err = m.saveConfig(refPath, true, &refCfg)
 	if err != nil {
-		return refPath, err
+		return err
 	}
-	return refPath, nil
+	return nil
 }
 
 // GetRefWithBase gets the ref with base.
