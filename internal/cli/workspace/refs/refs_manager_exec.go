@@ -47,7 +47,7 @@ func (m *RefsManager) CheckoutHead(remote string, accountID int64, repo string, 
 		return "", "", nil, err
 	}
 
-	refPath, _, err := m.SaveRefsConfig(remote, refID, commit)
+	refPath, err := m.SaveRefsConfig(remote, refID, commit)
 	if err != nil {
 		return "", "", nil, err
 	}
