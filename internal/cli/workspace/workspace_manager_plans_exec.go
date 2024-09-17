@@ -186,10 +186,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	headRef, err := m.rfsMgr.GetCurrentHeadRefs()
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
+	
 	lang, err := m.cfgMgr.GetLanguage()
 	if err != nil {
 		return failedOpErr(nil, err)
@@ -249,7 +246,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 
 	out(nil, "", "Apply process completed successfully.", nil)
 	if !internal {
-		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repo: %s.", aziclicommon.KeywordText(headRef)), nil)
+		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repo: %s.", aziclicommon.KeywordText(refsInfo.GetRepoURI())), nil)
 	}
 	return output, nil
 }
