@@ -83,8 +83,11 @@ tasks:
     silent: true
   # Depedencies
   dep-core:
-    desc: get abstraction core dependency
+    desc: get core dependency
     cmd: 'go get -u github.com/permguard/permguard-core@{{.CLI_ARGS}}'
+  dep-notp:
+    desc: get notp dependency
+    cmd: 'go get -u github.com/permguard/permguard-notp-protocol@{{.CLI_ARGS}}'
   dep-lang:
     desc: get abstraction languange dependency
     cmd: 'go get -u github.com/permguard/permguard-abs-language@{{.CLI_ARGS}}'
