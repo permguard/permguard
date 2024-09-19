@@ -73,8 +73,12 @@ github.com/pelletier/go-toml/v2 v2.2.3 h1:YmeHyLY8mFWbdkNWwpr+qIL2bEqT0o95WSdkNH
 github.com/pelletier/go-toml/v2 v2.2.3/go.mod h1:MfCQTFTvCcUyyvvwm1+G6H/jORL20Xlb6rzQu9GuUkc=
 github.com/permguard/permguard-abs-language v0.0.0-20240919215815-ac2f72c38749 h1:A2HOCN3QxTUAqDr6oinYTbIjMSDkJlQl6a7gZme4RsE=
 github.com/permguard/permguard-abs-language v0.0.0-20240919215815-ac2f72c38749/go.mod h1:QXjprjGbxZgw21szGiknvFQPuz9nyKRvamOyN+hPkVw=
+github.com/permguard/permguard-abs-language v0.0.0-20240919220117-0594cfca4a6b h1:KNCRPsaeOYYXC7k2r6mOvl5R6dKCVPb1SkQOqgmonJA=
+github.com/permguard/permguard-abs-language v0.0.0-20240919220117-0594cfca4a6b/go.mod h1:y9K1rferlp2SGz7esN8+2Rt+GhC/xp9pYEjNSrPQzaU=
 github.com/permguard/permguard-core v0.0.0-20240916223822-3e4d9e332b3a h1:aPVoS98wYHTNRRRGUutTbC/lth+RrA9n3wSCggTaS9Q=
 github.com/permguard/permguard-core v0.0.0-20240916223822-3e4d9e332b3a/go.mod h1:pkHKLbHxsR496FUZaFPxyXmSAivQdhSl42F0NixZFeY=
+github.com/permguard/permguard-notp-protocol v0.0.0-20240919220042-1bf3c6271790 h1:BO3u2Ja0hSUsY5nly7rYQgob/y6lqNqxP4IcGA3aX+M=
+github.com/permguard/permguard-notp-protocol v0.0.0-20240919220042-1bf3c6271790/go.mod h1:83DE8U3LUVIcC+lhnWM2QjGT+XM7IVZc/PKZo7TnReI=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pressly/goose/v3 v3.21.1 h1:5SSAKKWej8LVVzNLuT6KIvP1eFDuPvxa+B6H0w78buQ=
