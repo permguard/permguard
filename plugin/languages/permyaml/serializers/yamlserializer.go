@@ -44,7 +44,7 @@ func (s *YamlSerializer) SplitYAMLDocuments(data []byte) ([][]byte, error) {
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	var documents [][]byte
 	for {
-		var doc interface{}
+		var doc any
 		err := decoder.Decode(&doc)
 		if err != nil {
 			break
@@ -60,7 +60,7 @@ func (s *YamlSerializer) SplitYAMLDocuments(data []byte) ([][]byte, error) {
 
 // UnmarshalYaml unmarshals a YAML byte array.
 func (s *YamlSerializer) UnmarshalYaml(data []byte) (any, error) {
-	var tempMap map[string]interface{}
+	var tempMap map[string]any
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	err := decoder.Decode(&tempMap)
 	if err != nil {
