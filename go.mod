@@ -10,7 +10,7 @@ require (
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/pelletier/go-toml v1.9.5
-	github.com/permguard/permguard-abs-language v0.0.0-20240920080850-751f4dd10431
+	github.com/permguard/permguard-abs-language v0.0.0-20240920103635-1689f73b8811
 	github.com/permguard/permguard-core v0.0.0-20240920075643-dd82260c5146
 	github.com/pressly/goose/v3 v3.21.1
 	github.com/spf13/cobra v1.8.0
@@ -40,7 +40,6 @@ require (
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
-	github.com/permguard/permguard-notp-protocol v0.0.0-20240920080802-974982842756 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/sagikazarmark/locafero v0.6.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
