@@ -125,7 +125,7 @@ func (p *PersistenceManager) ScanAndFilterFiles(relative RelativeDir, exts []str
 }
 
 // WriteCSVStream writes a CSV stream.
-func (p *PersistenceManager) WriteCSVStream(relative RelativeDir, name string, header []string, records interface{}, rowFunc func(interface{}) []string, compressed bool) error {
+func (p *PersistenceManager) WriteCSVStream(relative RelativeDir, name string, header []string, records any, rowFunc func(any) []string, compressed bool) error {
 	name = p.GetRelativeDir(relative, name)
 	return azfiles.WriteCSVStream(name, header, records, rowFunc, compressed)
 }

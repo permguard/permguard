@@ -163,7 +163,7 @@ func (m *COSPManager) readCodeSourceConfig() (*codeLocalConfig, error) {
 // SaveCodeSourceCodeMap saves the code map in the code source.
 func (m *COSPManager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 	path := filepath.Join(m.getCodeSourceDir(), hiddenCodeMapFile)
-	rowFunc := func(record interface{}) []string {
+	rowFunc := func(record any) []string {
 		codeFile := record.(CodeFile)
 		return []string{
 			codeFile.Path,
@@ -273,7 +273,7 @@ func (m *COSPManager) convertCodeFileToCodeObjectState(codeFile CodeFile) (*Code
 
 // saveCodeObjectStates saves the code objects states.
 func (m *COSPManager) saveCodeObjectStates(path string, codeObjects []CodeObjectState) error {
-	rowFunc := func(record interface{}) []string {
+	rowFunc := func(record any) []string {
 		codeObject := record.(CodeObjectState)
 		return []string{
 			codeObject.State,

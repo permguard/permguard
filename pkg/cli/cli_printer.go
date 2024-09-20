@@ -66,17 +66,17 @@ func convertToSnakeCase(str string) string {
 }
 
 // Recursively process the structure or map to convert keys to snake_case
-func convertKeysToSnakeCase(data interface{}) interface{} {
+func convertKeysToSnakeCase(data any) any {
 	if reflect.TypeOf(data).Kind() == reflect.Map {
-		newMap := make(map[string]interface{})
-		for k, v := range data.(map[string]interface{}) {
+		newMap := make(map[string]any)
+		for k, v := range data.(map[string]any) {
 			newKey := convertToSnakeCase(k)
 			newMap[newKey] = convertKeysToSnakeCase(v)
 		}
 		return newMap
 	}
 	if reflect.TypeOf(data).Kind() == reflect.Struct {
-		newMap := make(map[string]interface{})
+		newMap := make(map[string]any)
 		v := reflect.ValueOf(data)
 		for i := 0; i < v.NumField(); i++ {
 			field := v.Type().Field(i)
@@ -89,7 +89,7 @@ func convertKeysToSnakeCase(data interface{}) interface{} {
 }
 
 // marshalWithSnakeCase marshals a struct into JSON with snake_case keys
-func marshalWithSnakeCase(v interface{}) ([]byte, error) {
+func marshalWithSnakeCase(v any) ([]byte, error) {
 	processedData := convertKeysToSnakeCase(v)
 	return json.Marshal(processedData)
 }
