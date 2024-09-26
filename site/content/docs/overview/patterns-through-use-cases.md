@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "patterns-through-use-cases-ff808103155aea16d2022dd1284416bf"
-weight: 1005
+weight: 1006
 toc: true
 seo:
   title: "" # custom title (optional)
