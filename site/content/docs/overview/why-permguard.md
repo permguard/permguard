@@ -24,11 +24,11 @@ seo:
 A common question that arises is how `PermGuard` compares to `Keycloak`, `Okta`, and `Auth0`, especially since all these solutions seem to deal with access control. While it’s true that these products include some authorization capabilities, their primary focus and the depth of their functionality differ significantly from what PermGuard offers. Here's a breakdown:
 
 - **Primary Function**
-  - `Keycloak, Okta, and Auth0` are primarily **Identity and Access Management (IAM)** solutions. Their main responsibility is to authenticate users and manage identities (e.g., providing `Single Sign-On (SSO)`, federating identities, and supporting `OAuth2` or `SAML`).
+  - `Keycloak, Okta, and Auth0` are primarily `Identity and Access Management (IAM)` solutions. Their main responsibility is to authenticate users and manage identities (e.g., providing `Single Sign-On (SSO)`, federating identities, and supporting `OAuth2` or `SAML`).
   - `PermGuard`, by contrast, is designed to manage `permissions` and `authorization policies` at a deeper, more granular level. It focuses on `Policy-as-Code`, enabling precise and scalable control over who can do what within an application or across multiple environments (multi-account, multi-tenant). While it can map identities from external IAM providers, PermGuard leaves identity management entirely to these external tools.
 
 - **Authentication vs Authorization**
-  - **Keycloak, Okta, and Auth0** focus primarily on `authentication` (proving who the user is).
+  - `Keycloak, Okta, and Auth0` focus primarily on `authentication` (proving who the user is).
   - `PermGuard`, however, manages `authorization` (deciding what an authenticated user is allowed to do). With `eventual consistency` and `real-time policy enforcement`, PermGuard ensures that policies are synchronized and enforced efficiently across any infrastructure, including `Kubernetes`, `serverless environments`, `VMs`, `IoT`, and `edge nodes`.
 
 - **Scalability and Policy Management**
