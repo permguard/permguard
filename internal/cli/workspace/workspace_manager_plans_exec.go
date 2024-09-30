@@ -239,6 +239,12 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 		out(nil, "apply", fmt.Sprintf("The tree has been created with id: %s.", aziclicommon.IDText(treeObj.GetOID())), nil)
 	}
 
+	remoteInfo, err := m.cfgMgr.GetRemoteInfo(refsInfo.GetRemote())
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	m.rmSrvtMgr.ReceivePack(refsInfo.GetRemote(), remoteInfo.GetPAPPort())
+
 	out(nil, "", "", nil)
 	for _, planObj := range plan {
 		if planObj.State == azicliwkscosp.CodeObjectStateUnchanged {

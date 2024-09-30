@@ -18,6 +18,8 @@ package v1
 
 import (
 	"context"
+	"io"
+	"time"
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
@@ -112,8 +114,22 @@ func (s V1PAPServer) FetchRepositories(repositoryRequest *RepositoryFetchRequest
 }
 
 // ReceivePack receives objects from the client.
-func (s V1PAPServer) ReceivePack(grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
-	return nil
+func (s V1PAPServer) ReceivePack(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
+    for {
+        _, err := stream.Recv()
+        if err == io.EOF {
+            return nil
+        }
+        if err != nil {
+            return err
+        }
+        pack := &PackMessage{
+			Data: []byte(time.Now().Format(time.RFC3339)),
+		}
+        if err := stream.Send(pack); err != nil {
+            return err
+        }
+    }
 }
 
 // UploadPack uploads objects to the client.
