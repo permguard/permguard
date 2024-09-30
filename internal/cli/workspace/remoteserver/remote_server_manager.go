@@ -59,3 +59,14 @@ func (m *RemoteServerManager) GetServerRemoteRepo(accountID int64, repo string, 
 	}
 	return &srvRepo[0], nil
 }
+
+// ReceivePack receives the pack from the server.
+func (m *RemoteServerManager) ReceivePack(server string, papPort int) error {
+	pppServer := fmt.Sprintf("%s:%d", server, papPort)
+	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
+	if err != nil {
+		return err
+	}
+	papClient.ReceivePack()
+	return nil
+}

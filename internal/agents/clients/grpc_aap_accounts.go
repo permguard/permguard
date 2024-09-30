@@ -41,7 +41,7 @@ func NewGrpcAAPClient(target string) (*GrpcAAPClient, error) {
 
 // createGRPCClient creates a new gRPC client.
 func (c *GrpcAAPClient) createGRPCClient() (azapiv1aap.V1AAPServiceClient, error) {
-	conn, err := grpc.Dial(c.target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(c.target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
 	}
