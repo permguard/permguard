@@ -67,6 +67,9 @@ func (m *RemoteServerManager) ReceivePack(server string, papPort int) error {
 	if err != nil {
 		return err
 	}
-	papClient.ReceivePack()
+	err = papClient.ReceivePack()
+	if err != nil {
+		return err
+	}
 	return nil
 }
