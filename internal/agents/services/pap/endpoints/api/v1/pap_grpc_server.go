@@ -18,6 +18,7 @@ package v1
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 
@@ -124,7 +125,7 @@ func (s V1PAPServer) ReceivePack(stream grpc.BidiStreamingServer[PackMessage, Pa
             return err
         }
         pack := &PackMessage{
-			Data: []byte(time.Now().Format(time.RFC3339)),
+			Data: []byte(fmt.Sprintf("server-receive-pack: %s", time.Now().Format(time.RFC3339))),
 		}
         if err := stream.Send(pack); err != nil {
             return err

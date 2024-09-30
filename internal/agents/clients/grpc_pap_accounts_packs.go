@@ -41,7 +41,7 @@ func (c *GrpcPAPClient) ReceivePack() error {
 			if err != nil {
 				print(err)
 			}
-			print(string(res.Data))
+			println(string(res.Data))
 		}
 	}()
 

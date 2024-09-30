@@ -243,7 +243,10 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	m.rmSrvtMgr.ReceivePack(refsInfo.GetRemote(), remoteInfo.GetPAPPort())
+	err = m.rmSrvtMgr.ReceivePack(refsInfo.GetRemote(), remoteInfo.GetPAPPort())
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
 
 	out(nil, "", "", nil)
 	for _, planObj := range plan {
