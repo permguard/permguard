@@ -34,8 +34,9 @@ Through the chosen approach, it is possible to specify who or what can access re
 - `Can Access`: *Permissions granted by attaching policies*
 - `Resources`: *Resources targeted by permissions*
 
-{{< inline-svg src="images/overview/permguard-flow.svg" width="100%" height="100%" class="svg-inline-custom svg-lightmode" >}}
-{{< inline-svg src="images/overview/permguard-flow.svg" width="100%" height="100%" style="background-color:#ffffff; border: 0px solid #d53ec6;"  class="svg-inline-custom svg-darkmode" >}}
+<div style="text-align: center">
+  <img alt="PermGuard Policies" src="/images/diagrams/d1.png"/>
+</div>
 
 {{< callout context="note" icon="info-circle" >}}
 It's important to note that PermGuard supports tenancy, enabling each account to have multiple isolated tenants, and each tenant can, in turn, have multiple isolated

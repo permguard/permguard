@@ -21,8 +21,9 @@ seo:
 
 A common use case for `PermGuard` is in the context of cloud-native applications, where an identity can initiate an action via an API. This action can then be split into events that are dispatched and processed by multiple microservices.
 
-{{< inline-svg src="images/overview/permguard-cloud-native-architecture.svg.svg" width="100%" height="100%" class="svg-inline-custom svg-lightmode" >}}
-{{< inline-svg src="images/overview/permguard-cloud-native-architecture.svg.svg" width="100%" height="100%" style="background-color:#ffffff; border: 0px solid #d53ec6;"  class="svg-inline-custom svg-darkmode" >}}
+<div style="text-align: center">
+  <img alt="PermGuard Policies" src="/images/diagrams/d2.png"/>
+</div>
 
 PermGuard focuses on [Authz](/docs/concepts/authn-authz/authn-vs-authz/) therefore it does not provide any authentication mechanism. It is assumed that the user is already authenticated and the JWT token is available.
 
@@ -72,8 +73,9 @@ else:
 
 In the context of asynchronous operations, there is no guarantee about when the operations will be executed. This can result in a scenario where permissions are revoked after the operation has already been initiated.
 
-{{< inline-svg src="images/overview/usecase-async-revoked-permissions.svg" width="100%" height="100%" class="svg-inline-custom svg-lightmode" >}}
-{{< inline-svg src="images/overview/usecase-async-revoked-permissions.svg" width="100%" height="100%" style="background-color:#ffffff; border: 0px solid #d53ec6;"  class="svg-inline-custom svg-darkmode" >}}
+<div style="text-align: center">
+  <img alt="PermGuard Policies" src="/images/diagrams/d3.png"/>
+</div>
 
 By leveraging `PermGuard`, if the operation has been revoked, the policy evaluation will return false, resulting in the denial of the operation. Consequently, the operation will not be executed, contributing to a higher level of security within the application.
 
@@ -82,8 +84,9 @@ By leveraging `PermGuard`, if the operation has been revoked, the policy evaluat
 In scenarios involving asynchronous operations, it's typical for an application not to receive an authorization token as input.
 Storing tokens in events can pose security risks, and there's also a high likelihood that the token would expire before it's consumed.
 
-{{< inline-svg src="images/overview/usecase-securing-async-operations.svg" width="100%" height="100%" class="svg-inline-custom svg-lightmode" >}}
-{{< inline-svg src="images/overview/usecase-securing-async-operations.svg" width="100%" height="100%" style="background-color:#ffffff; border: 0px solid #d53ec6;"  class="svg-inline-custom svg-darkmode" >}}
+<div style="text-align: center">
+  <img alt="PermGuard Policies" src="/images/diagrams/d4.png"/>
+</div>
 
 It is possible to publish a signed event and subsequently validate the event and finally perform permission checks with `PermGuard`.
 
