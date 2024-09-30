@@ -59,7 +59,7 @@ type V1PAPServer struct {
 }
 
 // CreateRepository creates a new repository.
-func (s V1PAPServer) CreateRepository(ctx context.Context, repositoryRequest *RepositoryCreateRequest) (*RepositoryResponse, error) {
+func (s *V1PAPServer) CreateRepository(ctx context.Context, repositoryRequest *RepositoryCreateRequest) (*RepositoryResponse, error) {
 	repository, err := s.service.CreateRepository(&azmodels.Repository{AccountID: repositoryRequest.AccountID, Name: repositoryRequest.Name})
 	if err != nil {
 		return nil, err
@@ -68,7 +68,7 @@ func (s V1PAPServer) CreateRepository(ctx context.Context, repositoryRequest *Re
 }
 
 // UpdateRepository updates a repository.
-func (s V1PAPServer) UpdateRepository(ctx context.Context, repositoryRequest *RepositoryUpdateRequest) (*RepositoryResponse, error) {
+func (s *V1PAPServer) UpdateRepository(ctx context.Context, repositoryRequest *RepositoryUpdateRequest) (*RepositoryResponse, error) {
 	repository, err := s.service.UpdateRepository((&azmodels.Repository{RepositoryID: repositoryRequest.RepositoryID, AccountID: repositoryRequest.AccountID, Name: repositoryRequest.Name}))
 	if err != nil {
 		return nil, err
@@ -77,7 +77,7 @@ func (s V1PAPServer) UpdateRepository(ctx context.Context, repositoryRequest *Re
 }
 
 // DeleteRepository deletes a repository.
-func (s V1PAPServer) DeleteRepository(ctx context.Context, repositoryRequest *RepositoryDeleteRequest) (*RepositoryResponse, error) {
+func (s *V1PAPServer) DeleteRepository(ctx context.Context, repositoryRequest *RepositoryDeleteRequest) (*RepositoryResponse, error) {
 	repository, err := s.service.DeleteRepository(repositoryRequest.AccountID, repositoryRequest.RepositoryID)
 	if err != nil {
 		return nil, err
@@ -86,7 +86,7 @@ func (s V1PAPServer) DeleteRepository(ctx context.Context, repositoryRequest *Re
 }
 
 // FetchRepositories returns all repositories.
-func (s V1PAPServer) FetchRepositories(repositoryRequest *RepositoryFetchRequest, stream grpc.ServerStreamingServer[RepositoryResponse]) (error) {
+func (s *V1PAPServer) FetchRepositories(repositoryRequest *RepositoryFetchRequest, stream grpc.ServerStreamingServer[RepositoryResponse]) (error) {
 	fields := map[string]any{}
 	fields[azmodels.FieldRepositoryAccountID] = repositoryRequest.AccountID
 	if repositoryRequest.Name != nil {
@@ -118,12 +118,12 @@ func (s V1PAPServer) FetchRepositories(repositoryRequest *RepositoryFetchRequest
 }
 
 // ReceivePack receives objects from the client.
-func (s V1PAPServer) ReceivePack(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
+func (s *V1PAPServer) ReceivePack(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
 	return nil
 }
 
 // createWiredStateMachine creates a wired state machine.
-func (c *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[PackMessage, PackMessage], timeout time.Duration) (*notpstatemachines.StateMachine, error) {
+func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[PackMessage, PackMessage], timeout time.Duration) (*notpstatemachines.StateMachine, error) {
 	var sender notptransport.WireSendFunc = func(packet *notppackets.Packet) error {
 		pack := &PackMessage{
 			Data: packet.Data,
@@ -159,7 +159,7 @@ func (c *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 }
 
 // UploadPack uploads objects to the client.
-func (s V1PAPServer) UploadPack(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
+func (s *V1PAPServer) UploadPack(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
 	timeout := 30 * time.Second
 	stateMachine, err := s.createWiredStateMachine(stream, timeout)
 	if err != nil {
