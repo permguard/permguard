@@ -21,37 +21,59 @@ import (
 	"time"
 
 	azapiv1pap "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
+
+	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
+	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
+	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
+	notptransport "github.com/permguard/permguard-notp-protocol/pkg/notp/transport"
 )
 
-// ReceivePack receives a pack.
-func (c *GrpcPAPClient) ReceivePack() error {
+// UploadPack receives a pack.
+func (c *GrpcPAPClient) UploadPack() error {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return err
 	}
-	stream, err := client.ReceivePack(context.Background())
+	stream, err := client.UploadPack(context.Background())
 	if err != nil {
 		return err
 	}
 	defer stream.CloseSend()
 
-	go func() {
-		for {
-			res, err := stream.Recv()
-			if err != nil {
-				print(err)
-			}
-			println(string(res.Data))
-		}
-	}()
-
-	for {
+	var sender notptransport.WireSendFunc = func(packet *notppackets.Packet) error {
 		pack := &azapiv1pap.PackMessage{
-			Data: []byte(time.Now().Format(time.RFC3339)),
+			Data: packet.Data,
 		}
-		if err := stream.Send(pack); err != nil {
-			return err
-		}
-		time.Sleep(1 * time.Second)
+		return stream.Send(pack)
 	}
+	var receiver notptransport.WireRecvFunc = func() (*notppackets.Packet, error) {
+		pack, err := stream.Recv()
+		if err != nil {
+			return nil, err
+		}
+		return &notppackets.Packet{Data: pack.Data}, nil
+	}
+	transportStream, err := notptransport.NewWireStream(sender, receiver, 1 * time.Second)
+	if err != nil {
+		return err
+	}
+	transportLayer, err := notptransport.NewTransportLayer(transportStream.TransmitPacket, transportStream.ReceivePacket, nil)
+	if err != nil {
+		return err
+	}
+	var hostHandler notpstatemachines.HostHandler = func(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+		handlerReturn := &notpstatemachines.HostHandlerRuturn {
+			Packetables: packets,
+		}
+		return handlerReturn, nil
+	}
+	stateMachine, err := notpstatemachines.NewFollowerStateMachine(hostHandler, transportLayer)
+	if err != nil {
+		return err
+	}
+	err = stateMachine.Run(notpstatemachines.PushFlowType)
+	if err != nil {
+		return err
+	}
+	return nil
 }
