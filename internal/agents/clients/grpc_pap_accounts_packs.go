@@ -20,15 +20,11 @@ import (
 	"context"
 	"time"
 
-	azapiv1pap "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
-
+	azpap "github.com/permguard/permguard/internal/agents/services/pap"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
-	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
-	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
-	notptransport "github.com/permguard/permguard-notp-protocol/pkg/notp/transport"
 )
 
-// UploadPack receives a pack.
+// UploadPack uploads a pack.
 func (c *GrpcPAPClient) UploadPack() error {
 	client, err := c.createGRPCClient()
 	if err != nil {
@@ -40,34 +36,8 @@ func (c *GrpcPAPClient) UploadPack() error {
 	}
 	defer stream.CloseSend()
 
-	var sender notptransport.WireSendFunc = func(packet *notppackets.Packet) error {
-		pack := &azapiv1pap.PackMessage{
-			Data: packet.Data,
-		}
-		return stream.Send(pack)
-	}
-	var receiver notptransport.WireRecvFunc = func() (*notppackets.Packet, error) {
-		pack, err := stream.Recv()
-		if err != nil {
-			return nil, err
-		}
-		return &notppackets.Packet{Data: pack.Data}, nil
-	}
-	transportStream, err := notptransport.NewWireStream(sender, receiver, 1 * time.Second)
-	if err != nil {
-		return err
-	}
-	transportLayer, err := notptransport.NewTransportLayer(transportStream.TransmitPacket, transportStream.ReceivePacket, nil)
-	if err != nil {
-		return err
-	}
-	var hostHandler notpstatemachines.HostHandler = func(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
-		handlerReturn := &notpstatemachines.HostHandlerRuturn {
-			Packetables: packets,
-		}
-		return handlerReturn, nil
-	}
-	stateMachine, err := notpstatemachines.NewFollowerStateMachine(hostHandler, transportLayer)
+	timeout := 30 * time.Second
+	stateMachine, err := azpap.CreateWiredStateMachine(stream, timeout)
 	if err != nil {
 		return err
 	}
