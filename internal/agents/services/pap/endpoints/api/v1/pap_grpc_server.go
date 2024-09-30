@@ -18,13 +18,16 @@ package v1
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"time"
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	grpc "google.golang.org/grpc"
+
+	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
+	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
+	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
+	notptransport "github.com/permguard/permguard-notp-protocol/pkg/notp/transport"
 )
 
 // PAPService is the service for the PAP.
@@ -119,21 +122,52 @@ func (s V1PAPServer) ReceivePack(stream grpc.BidiStreamingServer[PackMessage, Pa
 	return nil
 }
 
+// createWiredStateMachine creates a wired state machine.
+func (c *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[PackMessage, PackMessage], timeout time.Duration) (*notpstatemachines.StateMachine, error) {
+	var sender notptransport.WireSendFunc = func(packet *notppackets.Packet) error {
+		pack := &PackMessage{
+			Data: packet.Data,
+		}
+		return stream.Send(pack)
+	}
+	var receiver notptransport.WireRecvFunc = func() (*notppackets.Packet, error) {
+		pack, err := stream.Recv()
+		if err != nil {
+			return nil, err
+		}
+		return &notppackets.Packet{Data: pack.Data}, nil
+	}
+	transportStream, err := notptransport.NewWireStream(sender, receiver, timeout)
+	if err != nil {
+		return nil, err
+	}
+	transportLayer, err := notptransport.NewTransportLayer(transportStream.TransmitPacket, transportStream.ReceivePacket, nil)
+	if err != nil {
+		return nil, err
+	}
+	var hostHandler notpstatemachines.HostHandler = func(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+		handlerReturn := &notpstatemachines.HostHandlerRuturn {
+			Packetables: packets,
+		}
+		return handlerReturn, nil
+	}
+	stateMachine, err := notpstatemachines.NewLeaderStateMachine(hostHandler, transportLayer)
+	if err != nil {
+		return nil, err
+	}
+	return stateMachine, nil
+}
+
 // UploadPack uploads objects to the client.
 func (s V1PAPServer) UploadPack(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
-	for {
-        msg, err := stream.Recv()
-        if err == io.EOF {
-            return nil
-        }
-        if err != nil {
-            return err
-        }
-        pack := &PackMessage{
-			Data: []byte(fmt.Sprintf("%s: %s", string(msg.Data), time.Now().Format(time.RFC3339))),
-		}
-        if err := stream.Send(pack); err != nil {
-            return err
-        }
-    }
+	timeout := 30 * time.Second
+	stateMachine, err := s.createWiredStateMachine(stream, timeout)
+	if err != nil {
+		return err
+	}
+	err = stateMachine.Run(notpstatemachines.UnknownFlowType)
+	if err != nil {
+		return err
+	}
+	return nil
 }
