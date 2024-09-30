@@ -116,8 +116,13 @@ func (s V1PAPServer) FetchRepositories(repositoryRequest *RepositoryFetchRequest
 
 // ReceivePack receives objects from the client.
 func (s V1PAPServer) ReceivePack(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
-    for {
-        _, err := stream.Recv()
+	return nil
+}
+
+// UploadPack uploads objects to the client.
+func (s V1PAPServer) UploadPack(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
+	for {
+        msg, err := stream.Recv()
         if err == io.EOF {
             return nil
         }
@@ -125,15 +130,10 @@ func (s V1PAPServer) ReceivePack(stream grpc.BidiStreamingServer[PackMessage, Pa
             return err
         }
         pack := &PackMessage{
-			Data: []byte(fmt.Sprintf("server-receive-pack: %s", time.Now().Format(time.RFC3339))),
+			Data: []byte(fmt.Sprintf("%s: %s", string(msg.Data), time.Now().Format(time.RFC3339))),
 		}
         if err := stream.Send(pack); err != nil {
             return err
         }
     }
-}
-
-// UploadPack uploads objects to the client.
-func (s V1PAPServer) UploadPack(grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
-	return nil
 }
