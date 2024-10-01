@@ -26,7 +26,6 @@ import (
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
-	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
 	notptransport "github.com/permguard/permguard-notp-protocol/pkg/notp/transport"
 )
 
@@ -36,7 +35,7 @@ const (
 )
 
 // createWiredStateMachine creates a wired state machine.
-func (c *GrpcPAPClient) createWiredStateMachine(stream grpc.BidiStreamingClient[azapiv1pap.PackMessage, azapiv1pap.PackMessage]) (*notpstatemachines.StateMachine, error) {
+func (c *GrpcPAPClient) createWiredStateMachine(stream grpc.BidiStreamingClient[azapiv1pap.PackMessage, azapiv1pap.PackMessage], hostHandler notpstatemachines.HostHandler) (*notpstatemachines.StateMachine, error) {
 	var sender notptransport.WireSendFunc = func(packet *notppackets.Packet) error {
 		pack := &azapiv1pap.PackMessage{
 			Data: packet.Data,
@@ -58,12 +57,6 @@ func (c *GrpcPAPClient) createWiredStateMachine(stream grpc.BidiStreamingClient[
 	if err != nil {
 		return nil, err
 	}
-	var hostHandler notpstatemachines.HostHandler = func(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
-		handlerReturn := &notpstatemachines.HostHandlerRuturn {
-			Packetables: packets,
-		}
-		return handlerReturn, nil
-	}
 	stateMachine, err := notpstatemachines.NewFollowerStateMachine(hostHandler, transportLayer)
 	if err != nil {
 		return nil, err
@@ -72,7 +65,7 @@ func (c *GrpcPAPClient) createWiredStateMachine(stream grpc.BidiStreamingClient[
 }
 
 // NOTPStream handles bidirectional stream using the NOTP protocol.
-func (c *GrpcPAPClient) NOTPStream() error {
+func (c *GrpcPAPClient) NOTPStream(hostHandler notpstatemachines.HostHandler, flowType notpstatemachines.FlowType) error {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return err
@@ -83,11 +76,11 @@ func (c *GrpcPAPClient) NOTPStream() error {
 	}
 	defer stream.CloseSend()
 
-	stateMachine, err := c.createWiredStateMachine(stream)
+	stateMachine, err := c.createWiredStateMachine(stream, hostHandler)
 	if err != nil {
 		return err
 	}
-	err = stateMachine.Run(notpstatemachines.PushFlowType)
+	err = stateMachine.Run(flowType)
 	if err != nil {
 		return err
 	}
