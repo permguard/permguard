@@ -243,7 +243,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	err = m.rmSrvtMgr.NOTPPush(remoteInfo.GetServer(), remoteInfo.GetPAPPort())
+	err = m.rmSrvtMgr.NOTPPush(remoteInfo.GetServer(), remoteInfo.GetPAPPort(), m)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
