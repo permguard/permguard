@@ -23,6 +23,10 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+
+	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
+	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
+	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
 )
 
 // RemoteServerManager implements the internal manager for the remote file.
@@ -60,14 +64,20 @@ func (m *RemoteServerManager) GetServerRemoteRepo(accountID int64, repo string, 
 	return &srvRepo[0], nil
 }
 
-// NOTPStream handles bidirectional stream using the NOTP protocol.
-func (m *RemoteServerManager) NOTPStream(server string, papPort int) error {
+// NOTPPush push objects using the NOTP protocol.
+func (m *RemoteServerManager) NOTPPush(server string, papPort int) error {
 	pppServer := fmt.Sprintf("%s:%d", server, papPort)
 	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
 	if err != nil {
 		return err
 	}
-	err = papClient.NOTPStream()
+	var hostHandler notpstatemachines.HostHandler = func(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+		handlerReturn := &notpstatemachines.HostHandlerRuturn{
+			Packetables: packets,
+		}
+		return handlerReturn, nil
+	}
+	err = papClient.NOTPStream(hostHandler, notpstatemachines.PushFlowType)
 	if err != nil {
 		return err
 	}
