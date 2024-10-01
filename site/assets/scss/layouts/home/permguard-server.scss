@@ -1,0 +1,51 @@
+.permguard-server {
+  padding-top: 4.5rem;
+
+  &__title {
+    font-size: 56px;
+    margin-bottom: -10px;
+    margin-top: 1rem;
+  }
+
+  &__description {
+    max-width: 576px;
+    font-size: 24px;
+    margin: 0;
+    line-height: 1.4;
+  }
+
+  &__img {
+    margin-left: 1rem;
+  }
+}
+
+@media (max-width: 991px) {
+  .permguard-server {
+    &__img {
+      margin-left: 0;
+      margin: 0 auto;
+    }
+
+    &__title {
+      margin-top: -2.5rem;
+    }
+
+    &__description {
+      margin-bottom: 15px;
+      max-width: 100%;
+    }
+  }
+}
+
+@media (max-width: 575px) {
+  .permguard-server {
+    &__title {
+      font-size: 32px;
+      margin-top: -2.5rem;
+    }
+
+    &__description {
+      font-size: 18px;
+    }
+  }
+}
