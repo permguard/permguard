@@ -19,9 +19,9 @@ package workspace
 import (
 	"fmt"
 
+	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
-	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -85,7 +85,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 	}
 
 	var remoteCodeState []azicliwkscosp.CodeObjectState = nil
-	if commit == azicliwksrefs.ZeroOID {
+	if commit == azlangobjs.ZeroOID {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "plan", fmt.Sprintf("The refs %s has no commits associated with it.", aziclicommon.KeywordText(headRef)), nil)
 		}

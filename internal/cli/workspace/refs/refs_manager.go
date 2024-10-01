@@ -32,8 +32,6 @@ const (
 	hiddenRefsDir = "refs"
 	// hiddenHeadFile represents the hidden head file.
 	hiddenHeadFile = "HEAD"
-	// ZeroOID  represents the zero oid
-	ZeroOID = "0000000000000000000000000000000000000000000000000000000000000000"
 )
 
 // RefsManager implements the internal manager for the refs files.
