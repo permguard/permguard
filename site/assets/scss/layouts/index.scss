@@ -1,0 +1,24 @@
+@import "./home/hero.scss";
+@import "./home/description.scss";
+@import "./home/diagram.scss";
+@import "./home/permguard-server.scss";
+@import "./home/workspace.scss";
+@import "./home/code.scss";
+@import "./home/policies.scss";
+@import "./home/pep.scss";
+@import "./home/enforce.scss";
+@import "./home/where-to-enforce.scss";
+@import "./home/tenancy.scss";
+@import "./home/vscode.scss";
+// @import "./home/community.scss";
+@import "./home/versioning.scss";
+
+.gradient-text {
+  background: linear-gradient(
+    to bottom,
+    #ffffff,
+    #999999
+  ); /* Top to bottom gradient */
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

@@ -1,0 +1,21 @@
+.diagram {
+  padding-top: 4.5rem;
+
+  &__box {
+    border: 1px solid rgba($color: #fff, $alpha: 0.1);
+    border-radius: 24px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+}
+
+@media (max-width: 767px) {
+  .diagram {
+    padding-top: 1.5rem;
+
+    img {
+      max-width: 400px;
+    }
+  }
+}
