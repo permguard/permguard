@@ -20,6 +20,9 @@ import (
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azStorage "github.com/permguard/permguard/pkg/agents/storage"
+	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
+	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
+	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
 )
 
 type PAPController struct {
@@ -58,4 +61,29 @@ func (s PAPController) DeleteRepository(accountID int64, repositoryID string) (*
 // FetchRepositories gets all repositories.
 func (s PAPController) FetchRepositories(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Repository, error) {
 	return s.storage.FetchRepositories(page, pageSize, accountID, fields)
+}
+
+// OnPushHandleNotifyCurrentState notifies the current state.
+func (s PAPController) OnPushHandleNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	return s.storage.OnPushHandleNotifyCurrentState(handlerCtx, statePacket, packets)
+}
+
+// OnPushSendNotifyCurrentStateResponse handles the current state response.
+func (s PAPController) OnPushSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	return s.storage.OnPushSendNotifyCurrentStateResponse(handlerCtx, statePacket, packets)
+}
+
+// OnPushSendNegotiationRequest handles the negotiation request.
+func (s PAPController) OnPushSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	return s.storage.OnPushSendNegotiationRequest(handlerCtx, statePacket, packets)
+}
+
+// OnPushHandleNegotiationResponse sends the negotiation response.
+func (s PAPController) OnPushHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	return s.storage.OnPushHandleNegotiationResponse(handlerCtx, statePacket, packets)
+}
+
+// OnPushHandleExchangeDataStream exchanges the data stream.
+func (s PAPController) OnPushHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	return s.storage.OnPushHandleExchangeDataStream(handlerCtx, statePacket, packets)
 }

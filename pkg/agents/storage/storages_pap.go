@@ -18,6 +18,9 @@ package storage
 
 import (
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
+	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
+	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
 )
 
 // PAPCentralStorage is the interface for the AAP central storage.
@@ -30,4 +33,14 @@ type PAPCentralStorage interface {
 	DeleteRepository(accountID int64, repositoryID string) (*azmodels.Repository, error)
 	// FetchRepositories gets all repositories.
 	FetchRepositories(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Repository, error)
+	// OnPushHandleNotifyCurrentState notifies the current state.
+	OnPushHandleNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPushSendNotifyCurrentStateResponse handles the current state response.
+	OnPushSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPushSendNegotiationRequest sends the negotiation request.
+	OnPushSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPushHandleNegotiationResponse handles the negotiation response.
+	OnPushHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPushHandleExchangeDataStream exchanges the data stream.
+	OnPushHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
 }
