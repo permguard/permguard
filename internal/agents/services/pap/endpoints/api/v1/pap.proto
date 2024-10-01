@@ -82,6 +82,6 @@ service V1PAPService {
 	rpc FetchRepositories(RepositoryFetchRequest) returns (stream RepositoryResponse) {}
 	// ReceivePack receives objects from the client.
 	rpc ReceivePack(stream PackMessage) returns (stream PackMessage) {}
-	// UploadPack uploads objects to the client.
-	rpc UploadPack(stream PackMessage) returns (stream PackMessage) {}
+	// NOTPStream handles bidirectional stream using the NOTP protocol.
+	rpc NOTPStream(stream PackMessage) returns (stream PackMessage) {}
 }

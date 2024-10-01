@@ -30,6 +30,11 @@ import (
 	notptransport "github.com/permguard/permguard-notp-protocol/pkg/notp/transport"
 )
 
+const (
+	// DefaultTimeout is the default timeout for the wired state machine.
+	DefaultTimeout = 30 * time.Second
+)
+
 // PAPService is the service for the PAP.
 type PAPService interface {
 	Setup() error
@@ -123,7 +128,7 @@ func (s *V1PAPServer) ReceivePack(stream grpc.BidiStreamingServer[PackMessage, P
 }
 
 // createWiredStateMachine creates a wired state machine.
-func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[PackMessage, PackMessage], timeout time.Duration) (*notpstatemachines.StateMachine, error) {
+func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) (*notpstatemachines.StateMachine, error) {
 	var sender notptransport.WireSendFunc = func(packet *notppackets.Packet) error {
 		pack := &PackMessage{
 			Data: packet.Data,
@@ -137,7 +142,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 		}
 		return &notppackets.Packet{Data: pack.Data}, nil
 	}
-	transportStream, err := notptransport.NewWireStream(sender, receiver, timeout)
+	transportStream, err := notptransport.NewWireStream(sender, receiver, DefaultTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -158,10 +163,9 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 	return stateMachine, nil
 }
 
-// UploadPack uploads objects to the client.
-func (s *V1PAPServer) UploadPack(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
-	timeout := 30 * time.Second
-	stateMachine, err := s.createWiredStateMachine(stream, timeout)
+// NOTPStream handles bidirectional stream using the NOTP protocol.
+func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
+	stateMachine, err := s.createWiredStateMachine(stream)
 	if err != nil {
 		return err
 	}

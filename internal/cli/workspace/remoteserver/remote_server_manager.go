@@ -60,14 +60,14 @@ func (m *RemoteServerManager) GetServerRemoteRepo(accountID int64, repo string, 
 	return &srvRepo[0], nil
 }
 
-// UploadPack uploads the pack to the server.
-func (m *RemoteServerManager) UploadPack(server string, papPort int) error {
+// NOTPStream handles bidirectional stream using the NOTP protocol.
+func (m *RemoteServerManager) NOTPStream(server string, papPort int) error {
 	pppServer := fmt.Sprintf("%s:%d", server, papPort)
 	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
 	if err != nil {
 		return err
 	}
-	err = papClient.UploadPack()
+	err = papClient.NOTPStream()
 	if err != nil {
 		return err
 	}

@@ -243,7 +243,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	err = m.rmSrvtMgr.UploadPack(refsInfo.GetRemote(), remoteInfo.GetPAPPort())
+	err = m.rmSrvtMgr.NOTPStream(remoteInfo.GetServer(), remoteInfo.GetPAPPort())
 	if err != nil {
 		return failedOpErr(nil, err)
 	}

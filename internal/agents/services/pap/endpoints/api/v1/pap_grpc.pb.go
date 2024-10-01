@@ -40,7 +40,7 @@ const (
 	V1PAPService_DeleteRepository_FullMethodName  = "/policyadministrationpoint.V1PAPService/DeleteRepository"
 	V1PAPService_FetchRepositories_FullMethodName = "/policyadministrationpoint.V1PAPService/FetchRepositories"
 	V1PAPService_ReceivePack_FullMethodName       = "/policyadministrationpoint.V1PAPService/ReceivePack"
-	V1PAPService_UploadPack_FullMethodName        = "/policyadministrationpoint.V1PAPService/UploadPack"
+	V1PAPService_NOTPStream_FullMethodName        = "/policyadministrationpoint.V1PAPService/NOTPStream"
 )
 
 // V1PAPServiceClient is the client API for V1PAPService service.
@@ -59,8 +59,8 @@ type V1PAPServiceClient interface {
 	FetchRepositories(ctx context.Context, in *RepositoryFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RepositoryResponse], error)
 	// ReceivePack receives objects from the client.
 	ReceivePack(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PackMessage, PackMessage], error)
-	// UploadPack uploads objects to the client.
-	UploadPack(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PackMessage, PackMessage], error)
+	// NOTPStream handles bidirectional stream using the NOTP protocol.
+	NOTPStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PackMessage, PackMessage], error)
 }
 
 type v1PAPServiceClient struct {
@@ -133,9 +133,9 @@ func (c *v1PAPServiceClient) ReceivePack(ctx context.Context, opts ...grpc.CallO
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type V1PAPService_ReceivePackClient = grpc.BidiStreamingClient[PackMessage, PackMessage]
 
-func (c *v1PAPServiceClient) UploadPack(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PackMessage, PackMessage], error) {
+func (c *v1PAPServiceClient) NOTPStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PackMessage, PackMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &V1PAPService_ServiceDesc.Streams[2], V1PAPService_UploadPack_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &V1PAPService_ServiceDesc.Streams[2], V1PAPService_NOTPStream_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +144,7 @@ func (c *v1PAPServiceClient) UploadPack(ctx context.Context, opts ...grpc.CallOp
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type V1PAPService_UploadPackClient = grpc.BidiStreamingClient[PackMessage, PackMessage]
+type V1PAPService_NOTPStreamClient = grpc.BidiStreamingClient[PackMessage, PackMessage]
 
 // V1PAPServiceServer is the server API for V1PAPService service.
 // All implementations must embed UnimplementedV1PAPServiceServer
@@ -162,8 +162,8 @@ type V1PAPServiceServer interface {
 	FetchRepositories(*RepositoryFetchRequest, grpc.ServerStreamingServer[RepositoryResponse]) error
 	// ReceivePack receives objects from the client.
 	ReceivePack(grpc.BidiStreamingServer[PackMessage, PackMessage]) error
-	// UploadPack uploads objects to the client.
-	UploadPack(grpc.BidiStreamingServer[PackMessage, PackMessage]) error
+	// NOTPStream handles bidirectional stream using the NOTP protocol.
+	NOTPStream(grpc.BidiStreamingServer[PackMessage, PackMessage]) error
 	mustEmbedUnimplementedV1PAPServiceServer()
 }
 
@@ -189,8 +189,8 @@ func (UnimplementedV1PAPServiceServer) FetchRepositories(*RepositoryFetchRequest
 func (UnimplementedV1PAPServiceServer) ReceivePack(grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
 	return status.Errorf(codes.Unimplemented, "method ReceivePack not implemented")
 }
-func (UnimplementedV1PAPServiceServer) UploadPack(grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
-	return status.Errorf(codes.Unimplemented, "method UploadPack not implemented")
+func (UnimplementedV1PAPServiceServer) NOTPStream(grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
+	return status.Errorf(codes.Unimplemented, "method NOTPStream not implemented")
 }
 func (UnimplementedV1PAPServiceServer) mustEmbedUnimplementedV1PAPServiceServer() {}
 func (UnimplementedV1PAPServiceServer) testEmbeddedByValue()                      {}
@@ -285,12 +285,12 @@ func _V1PAPService_ReceivePack_Handler(srv interface{}, stream grpc.ServerStream
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type V1PAPService_ReceivePackServer = grpc.BidiStreamingServer[PackMessage, PackMessage]
 
-func _V1PAPService_UploadPack_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(V1PAPServiceServer).UploadPack(&grpc.GenericServerStream[PackMessage, PackMessage]{ServerStream: stream})
+func _V1PAPService_NOTPStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(V1PAPServiceServer).NOTPStream(&grpc.GenericServerStream[PackMessage, PackMessage]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type V1PAPService_UploadPackServer = grpc.BidiStreamingServer[PackMessage, PackMessage]
+type V1PAPService_NOTPStreamServer = grpc.BidiStreamingServer[PackMessage, PackMessage]
 
 // V1PAPService_ServiceDesc is the grpc.ServiceDesc for V1PAPService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -325,8 +325,8 @@ var V1PAPService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 		{
-			StreamName:    "UploadPack",
-			Handler:       _V1PAPService_UploadPack_Handler,
+			StreamName:    "NOTPStream",
+			Handler:       _V1PAPService_NOTPStream_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

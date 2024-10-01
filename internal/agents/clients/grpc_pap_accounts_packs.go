@@ -30,8 +30,13 @@ import (
 	notptransport "github.com/permguard/permguard-notp-protocol/pkg/notp/transport"
 )
 
+const (
+	// DefaultTimeout is the default timeout for the wired state machine.
+	DefaultTimeout = 30 * time.Second
+)
+
 // createWiredStateMachine creates a wired state machine.
-func (c *GrpcPAPClient) createWiredStateMachine(stream grpc.BidiStreamingClient[azapiv1pap.PackMessage, azapiv1pap.PackMessage], timeout time.Duration) (*notpstatemachines.StateMachine, error) {
+func (c *GrpcPAPClient) createWiredStateMachine(stream grpc.BidiStreamingClient[azapiv1pap.PackMessage, azapiv1pap.PackMessage]) (*notpstatemachines.StateMachine, error) {
 	var sender notptransport.WireSendFunc = func(packet *notppackets.Packet) error {
 		pack := &azapiv1pap.PackMessage{
 			Data: packet.Data,
@@ -45,7 +50,7 @@ func (c *GrpcPAPClient) createWiredStateMachine(stream grpc.BidiStreamingClient[
 		}
 		return &notppackets.Packet{Data: pack.Data}, nil
 	}
-	transportStream, err := notptransport.NewWireStream(sender, receiver, timeout)
+	transportStream, err := notptransport.NewWireStream(sender, receiver, DefaultTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -66,20 +71,19 @@ func (c *GrpcPAPClient) createWiredStateMachine(stream grpc.BidiStreamingClient[
 	return stateMachine, nil
 }
 
-// UploadPack uploads a pack.
-func (c *GrpcPAPClient) UploadPack() error {
+// NOTPStream handles bidirectional stream using the NOTP protocol.
+func (c *GrpcPAPClient) NOTPStream() error {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return err
 	}
-	stream, err := client.UploadPack(context.Background())
+	stream, err := client.NOTPStream(context.Background())
 	if err != nil {
 		return err
 	}
 	defer stream.CloseSend()
 
-	timeout := 30 * time.Second
-	stateMachine, err := c.createWiredStateMachine(stream, timeout)
+	stateMachine, err := c.createWiredStateMachine(stream)
 	if err != nil {
 		return err
 	}
