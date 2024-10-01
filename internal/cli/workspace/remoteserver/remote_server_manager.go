@@ -64,18 +64,54 @@ func (m *RemoteServerManager) GetServerRemoteRepo(accountID int64, repo string, 
 	return &srvRepo[0], nil
 }
 
+// NOTPClient is the interface for the NOTP client.
+type NOTPClient interface {
+	OnPushSendNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	OnPushHandleNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	OnPushHandleNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	OnPushSendNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	OnPushExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+}
+
 // NOTPPush push objects using the NOTP protocol.
-func (m *RemoteServerManager) NOTPPush(server string, papPort int) error {
+func (m *RemoteServerManager) NOTPPush(server string, papPort int, clientProvider NOTPClient) error {
 	pppServer := fmt.Sprintf("%s:%d", server, papPort)
 	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
 	if err != nil {
 		return err
 	}
 	var hostHandler notpstatemachines.HostHandler = func(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
-		handlerReturn := &notpstatemachines.HostHandlerRuturn{
-			Packetables: packets,
+		switch handlerCtx.GetCurrentStateID() {
+		case notpstatemachines.NotifyObjectsStateID:
+			switch statePacket.MessageCode {
+			case notpsmpackets.NotifyCurrentObjectStatesMessage:
+				return clientProvider.OnPushSendNotifyCurrentState(handlerCtx, statePacket, packets)
+			case notpsmpackets.RespondCurrentStateMessage:
+				return clientProvider.OnPushHandleNotifyCurrentStateResponse(handlerCtx, statePacket, packets)
+			default:
+				return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid message code %d", statePacket.MessageCode))
+			}
+
+		case notpstatemachines.PublisherNegotiationStateID:
+			switch statePacket.MessageCode {
+			case notpsmpackets.NegotiationRequestMessage:
+				return clientProvider.OnPushHandleNegotiationRequest(handlerCtx, statePacket, packets)
+			case notpsmpackets.RespondNegotiationRequestMessage:
+				return clientProvider.OnPushSendNegotiationResponse(handlerCtx, statePacket, packets)
+			default:
+				return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid message code %d", statePacket.MessageCode))
+			}
+
+		case notpstatemachines.PublisherDataStreamStateID:
+			switch statePacket.MessageCode {
+			case notpsmpackets.ExchangeDataStreamMessage:
+				return clientProvider.OnPushExchangeDataStream(handlerCtx, statePacket, packets)
+			default:
+				return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid message code %d", statePacket.MessageCode))
+			}
+		default:
+			return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid state %d", handlerCtx.GetCurrentStateID()))
 		}
-		return handlerReturn, nil
 	}
 	err = papClient.NOTPStream(hostHandler, notpstatemachines.PushFlowType)
 	if err != nil {
