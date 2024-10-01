@@ -18,11 +18,14 @@ package v1
 
 import (
 	"context"
+	"fmt"
 	"time"
+
+	grpc "google.golang.org/grpc"
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
-	grpc "google.golang.org/grpc"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
@@ -46,6 +49,16 @@ type PAPService interface {
 	DeleteRepository(accountID int64, repositoryID string) (*azmodels.Repository, error)
 	// FetchRepositories gets all repositories.
 	FetchRepositories(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Repository, error)
+	// OnPushHandleNotifyCurrentState notifies the current state.
+	OnPushHandleNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPushSendNotifyCurrentStateResponse handles the current state response.
+	OnPushSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPushSendNegotiationRequest sends the negotiation request.
+	OnPushSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPushHandleNegotiationResponse handles the negotiation response.
+	OnPushHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPushHandleExchangeDataStream exchanges the data stream.
+	OnPushHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
 }
 
 // NewV1PAPServer creates a new PAP server.
@@ -151,10 +164,37 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 		return nil, err
 	}
 	var hostHandler notpstatemachines.HostHandler = func(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
-		handlerReturn := &notpstatemachines.HostHandlerRuturn {
-			Packetables: packets,
+		switch handlerCtx.GetCurrentStateID() {
+		case notpstatemachines.ProcessNotifyObjectsStateID:
+			switch statePacket.MessageCode {
+			case notpsmpackets.NotifyCurrentObjectStatesMessage:
+				return s.service.OnPushHandleNotifyCurrentState(handlerCtx, statePacket, packets)
+			case notpsmpackets.RespondCurrentStateMessage:
+				return s.service.OnPushSendNotifyCurrentStateResponse(handlerCtx, statePacket, packets)
+			default:
+				return nil, azerrors.WrapSystemError(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid message code %d", statePacket.MessageCode))
+			}
+
+		case notpstatemachines.SubscriberNegotiationStateID:
+			switch statePacket.MessageCode {
+			case notpsmpackets.NegotiationRequestMessage:
+				return s.service.OnPushSendNegotiationRequest(handlerCtx, statePacket, packets)
+			case notpsmpackets.RespondNegotiationRequestMessage:
+				return s.service.OnPushHandleNegotiationResponse(handlerCtx, statePacket, packets)
+			default:
+				return nil, azerrors.WrapSystemError(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid message code %d", statePacket.MessageCode))
+			}
+
+		case notpstatemachines.SubscriberDataStreamStateID:
+			switch statePacket.MessageCode {
+			case notpsmpackets.ExchangeDataStreamMessage:
+				return s.service.OnPushHandleExchangeDataStream(handlerCtx, statePacket, packets)
+			default:
+				return nil, azerrors.WrapSystemError(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid message code %d", statePacket.MessageCode))
+			}
+		default:
+			return nil, azerrors.WrapSystemError(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid state %d", handlerCtx.GetCurrentStateID()))
 		}
-		return handlerReturn, nil
 	}
 	stateMachine, err := notpstatemachines.NewLeaderStateMachine(hostHandler, transportLayer)
 	if err != nil {
