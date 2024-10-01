@@ -1,0 +1,59 @@
+.versioning {
+  margin-top: 5rem !important;
+  padding-top: 0rem;
+  position: relative;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+
+  &__title {
+    font-size: 56px;
+    margin-bottom: 0.75rem;
+    margin-top: 6rem;
+    text-align: center;
+  }
+
+  &__description {
+    font-size: 24px;
+    margin: 0 auto;
+    max-width: 1038px;
+    text-align: center;
+  }
+
+  &__img {
+    margin-top: 1.5rem;
+
+    &--small {
+      width: 420px !important;
+      max-width: 100%;
+    }
+  }
+}
+
+@media (max-width: 991px) {
+  .versioning {
+    margin-top: 2rem !important;
+    &__title {
+      margin-top: 0;
+    }
+
+    &__img {
+      margin-top: 2rem;
+    }
+  }
+}
+
+@media (max-width: 575px) {
+  .versioning {
+    &__title {
+      font-size: 34px;
+    }
+
+    &__description {
+      font-size: 18px;
+      line-height: 1.4;
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{{ if and site.Params.doks.menu.section.auto site.Params.doks.menu.section.collapsibleSidebar -}}
+  {{ partial "sidebar/auto-collapsible-menu.html" . -}}
+{{ else if and site.Params.doks.menu.section.auto (not site.Params.doks.menu.section.collapsibleSidebar) -}}
+  {{ partial "sidebar/auto-default-menu.html" . -}}
+{{ else if and (not site.Params.doks.menu.section.auto) site.Params.doks.menu.section.collapsibleSidebar -}}
+  {{ partial "sidebar/manual-collapsible-menu.html" . -}}
+{{ else if and (not site.Params.doks.menu.section.auto) (not site.Params.doks.menu.section.collapsibleSidebar) -}}
+  {{ partial "sidebar/manual-default-menu.html" . -}}
+{{ end -}}

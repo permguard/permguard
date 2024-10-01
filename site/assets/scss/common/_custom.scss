@@ -16,4 +16,39 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+@import "../layouts/index.scss";
+@import "../layouts/footer/footer.scss";
+@import "../layouts/header/header.scss";
+
 // Put your custom SCSS code here
+.font-montserrat {
+  font-family: "Montserrat", sans-serif;
+}
+
+* {
+  font-family: "Inter", sans-serif;
+}
+
+[data-bs-theme="dark"] .offcanvas .nav-link {
+  color: white;
+}
+
+body {
+  background-image: url("/images/bg.svg") !important;
+}
+
+.text-small {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.color-secondary {
+  color: #a1a1aa !important;
+}
+
+@media (min-width: 1200px) {
+  .container-lg {
+    padding-right: calc(var(--bs-gutter-x) * 0.25);
+    padding-left: calc(var(--bs-gutter-x) * 0.25);
+  }
+}
