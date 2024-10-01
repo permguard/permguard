@@ -1,0 +1,39 @@
+header {
+  overflow: hidden;
+  position: relative;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    z-index: -1;
+    bottom: 0;
+    right: 0;
+    left: 0;
+    transition: all 0.1s;
+  }
+}
+
+.header {
+  &--blur {
+    &::before {
+      backdrop-filter: blur(6px);
+      background-color: rgba($color: #17181c, $alpha: 0.95) !important;
+    }
+  }
+}
+
+@media (max-width: 575px) {
+  .header {
+    padding: 18px 2px 18px 8px;
+  }
+}
+
+// DOCS border remove
+.navbar {
+  border-bottom: none !important;
+}
+
+.docs-sidebar {
+  border-right: none !important;
+}
