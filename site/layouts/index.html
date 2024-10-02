@@ -267,26 +267,26 @@
       class="theme-devibeans"
     ><code class="language-go">// Function to check if the user has permission to perform an action
 func checkPermissions(token, system, resource, action string) bool {
-payload := decodeJWT(token)
-roles, ok := payload["roles"].([]string)
-if !ok {
-return false
-}
-
-// Iterate through roles and check if any role grants the required permissions
-for _, role := range roles {
-rolePermissions := getPermissionsForRole(role)
-if resources, systemFound := rolePermissions[resource]; systemFound {
-  if actions, resourceFound := resources[system]; resourceFound {
-    for _, allowedAction := range actions {
-      if strings.EqualFold(allowedAction, action) {
-        return true // Permission granted
-      }
+    payload := decodeJWT(token)
+    roles, ok := payload["roles"].([]string)
+    if !ok {
+        return false
     }
-  }
-}
-}
-return false // No permission granted
+
+    // Iterate through roles and check if any role grants the required permissions
+    for _, role := range roles {
+        rolePermissions := getPermissionsForRole(role)
+        if resources, systemFound := rolePermissions[resource]; systemFound {
+            if actions, resourceFound := resources[system]; resourceFound {
+                for _, allowedAction := range actions {
+                    if strings.EqualFold(allowedAction, action) {
+                        return true // Permission granted
+                    }
+                }
+            }
+        }
+    }
+    return false // No permission granted
 }
 
 hasPermissions := checkPermissions(token, system, "inventory", "view")
