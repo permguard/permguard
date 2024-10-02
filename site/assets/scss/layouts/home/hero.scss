@@ -45,6 +45,8 @@
   .hero {
     &__image {
       margin: 0 auto;
+      width: 630px;
+      max-width: 100%;
     }
 
     &__col {
