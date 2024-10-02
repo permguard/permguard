@@ -49,7 +49,7 @@
       flex-direction: column;
       align-items: center;
 
-      & > h5 {
+      & > h3 {
         background: linear-gradient(
           to bottom,
           #ffffff,
@@ -104,7 +104,7 @@
       &__info-container {
         height: 125px;
 
-        h5 {
+        h3 {
           font-size: 18px;
           font-weight: 600;
         }

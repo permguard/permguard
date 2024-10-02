@@ -46,75 +46,75 @@
   </p>
 
   <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-3 description__cards">
-    <div class="col description__card-col">
+    <article class="col description__card-col">
       <div class="description__card">
         <img src="/images/home/cards/accounts.png" alt="" />
         <div class="description__card__info-container">
-          <h5>Accounts</h5>
+          <h3>Accounts</h3>
           <p>
             Create and configure an Account, optionally including its Tenants.
           </p>
         </div>
       </div>
-    </div>
-    <div class="col description__card-col">
+    </article>
+    <article class="col description__card-col">
       <div class="description__card">
         <img src="/images/home/cards/identities.png" alt="" />
         <div class="description__card__info-container">
-          <h5>Identities</h5>
+          <h3>Identities</h3>
           <p>
             Create and identity source and populate it with Users and Roles
             using available SDKs.
           </p>
         </div>
       </div>
-    </div>
-    <div class="col description__card-col">
+    </article>
+    <article class="col description__card-col">
       <div class="description__card">
         <img src="/images/home/cards/repositories.png" alt="" />
         <div class="description__card__info-container">
-          <h5>Repositories</h5>
+          <h3>Repositories</h3>
           <p>
             Create Repository and configure its Schema (domains, resources and
             actions).
           </p>
         </div>
       </div>
-    </div>
-    <div class="col description__card-col">
+    </article>
+    <article class="col description__card-col">
       <div class="description__card">
         <img src="/images/home/cards/policies.png" alt="" />
         <div class="description__card__info-container">
-          <h5>Policies</h5>
+          <h3>Policies</h3>
           <p>
             Configure Policies to define what can be permitted or forbidden.
           </p>
         </div>
       </div>
-    </div>
-    <div class="col description__card-col">
+    </article>
+    <article class="col description__card-col">
       <div class="description__card">
         <img src="/images/home/cards/permissions.png" alt="" />
         <div class="description__card__info-container">
-          <h5>Permissions</h5>
+          <h3>Permissions</h3>
           <p>
             Configure Permissions on policies and assign them to identities
             (users and roles).
           </p>
         </div>
       </div>
-    </div>
-    <div class="col description__card-col">
+    </article>
+    <article class="col description__card-col">
       <div class="description__card">
         <img src="/images/home/cards/enforce.png" alt="" />
         <div class="description__card__info-container">
-          <h5>Enforce</h5>
+          <h3>Enforce</h3>
           <p>
             Enforce the permissions in the application using available SDKs.
           </p>
         </div>
       </div>
-    </div>
+    </article>
   </div>
 </section>
 
@@ -133,21 +133,21 @@
 <!-- Section 4 -->
 <section class="section pb-3 permguard-server px-xl-4 px-xxl-0">
   <div class="row align-items-center">
-    <div
+    <hgroup
       class="col-16 col-lg-8 d-flex flex-column gap-4 align-items-center align-items-lg-start"
     >
-      <h3
+      <h2
         class="text-white fw-medium permguard-server__title gradient-text text-center text-lg-start"
       >
         PermGuard Server
-      </h3>
+      </h2>
       <p class="permguard-server__description text-center text-lg-start">
         Start the PermGuard Server to act as the central authority for managing
         Accounts, Identity Sources, Identities, and Tenants. It’s important to
         integrate your preferred authentication provider, as PermGuard does not
         implement authentication
       </p>
-    </div>
+    </hgroup>
     <div class="col-16 col-lg-8 d-flex">
       <img
         class="permguard-server__img"
@@ -173,30 +173,32 @@
         alt=""
       />
     </div>
-    <div class="col-16 col-lg-8 col d-flex flex-column gap-4">
-      <h3
+    <hgroup class="col-16 col-lg-8 col d-flex flex-column gap-4">
+      <h2
         class="text-white fw-medium workspace__title gradient-text text-center text-lg-start"
       >
         Workspace
-      </h3>
+      </h2>
       <p class="workspace__description text-center text-lg-start">
         Initialize a local workspace and checkout a remote PermGuard server
         account using the PermGuard Command Line.
       </p>
-    </div>
+    </hgroup>
   </div>
 </section>
 
 <!-- Section 6 -->
 <section class="section pb-3 code px-xl-4 px-xxl-0">
-  <h3 class="text-white fw-medium code__title gradient-text">
-    Policy as Code (PAC)
-  </h3>
-  <p class="code__description">
-    Define your Authorization Model using YAML schemas. Code Permissions and
-    Policies in supported languages. PermYAML is available now, and PermScipt is
-    coming soon.
-  </p>
+  <hgroup>
+    <h2 class="text-white fw-medium code__title gradient-text">
+      Policy as Code (PAC)
+    </h2>
+    <p class="code__description">
+      Define your Authorization Model using YAML schemas. Code Permissions and
+      Policies in supported languages. PermYAML is available now, and PermScipt
+      is coming soon.
+    </p>
+  </hgroup>
 
   <div class="code__languages">
     <button data-language="go" class="code__language code__language--active">
@@ -359,31 +361,33 @@ hasPermissions := checkPermissions(token, system, "inventory", "view")
     <div class="col-16 col-lg-8 d-flex">
       <img class="policies__img" src="/images/home/policies.png" alt="" />
     </div>
-    <div
+    <hgroup
       class="col-16 col-lg-8 d-flex flex-column gap-4 policies__description-box align-items-center align-items-lg-start"
     >
-      <h3
+      <h2
         class="text-white fw-medium policies__title gradient-text text-center text-lg-start"
       >
         Apply Policy as Code to Remote Repo
-      </h3>
+      </h2>
       <p class="policies__description text-center text-lg-start">
         Use the PermGuard command line to build a plan based on the local state
         and apply changes to the remote repository.
       </p>
-    </div>
+    </hgroup>
   </div>
 </section>
 
 <!-- Section 8 -->
 <section class="section pb-3 pep px-xl-4 px-xxl-0">
-  <h3 class="text-white fw-medium pep__title gradient-text">
-    Integrate PermGuard PEP
-  </h3>
-  <p class="pep__description">
-    Integrate PermGuard’s Policy Enforcement Point (PEP) using the available
-    SDKs, or build your own with gRPC endpoints for unsupported languages.
-  </p>
+  <hgroup>
+    <h2 class="text-white fw-medium pep__title gradient-text">
+      Integrate PermGuard PEP
+    </h2>
+    <p class="pep__description">
+      Integrate PermGuard’s Policy Enforcement Point (PEP) using the available
+      SDKs, or build your own with gRPC endpoints for unsupported languages.
+    </p>
+  </hgroup>
   <div class="pep__languages">
     <div class="pep__language">
       <img
@@ -434,19 +438,19 @@ hasPermissions := checkPermissions(token, system, "inventory", "view")
 <!-- Section 9 -->
 <section class="section pb-3 enforce px-xl-4 px-xxl-0">
   <div class="row align-items-center enforce__row">
-    <div
+    <hgroup
       class="col-16 col-lg-7 d-flex flex-column gap-4 align-items-center align-items-lg-start"
     >
-      <h3
+      <h2
         class="text-white fw-medium enforce__title gradient-text text-center text-lg-start"
       >
         Enforce Permissions in Your Code
-      </h3>
+      </h2>
       <p class="enforce__description text-center text-lg-start">
         Ensure permissions in your code by verifying that the current identity
         has the rights to perform actions on the specified resources.
       </p>
-    </div>
+    </hgroup>
     <div class="col-16 col-lg-9 d-flex justify-content-center enforce__col">
       <div class="enforce__img">
         <div class="enforce__img__header">
@@ -479,28 +483,28 @@ async def view_inventory(token: str = Depends(oauth2_scheme)):
         alt=""
       />
     </div>
-    <div
+    <hgroup
       class="col-16 col-lg-8 d-flex flex-column gap-4 where-to-enforce__description-box align-items-center align-items-lg-start"
     >
-      <h3
+      <h2
         class="text-white fw-medium where-to-enforce__title gradient-text text-sm-center text-lg-start"
       >
         Where to Enforce
-      </h3>
+      </h2>
       <p class="where-to-enforce__description text-center text-lg-start">
         The Policy Enforcement Point (PEP) can be set up in various
         environments:
       </p>
-      <div class="where-to-enforce__description-rows">
-        <div class="where-to-enforce__description-row">
+      <ul class="where-to-enforce__description-rows">
+        <li class="where-to-enforce__description-row">
           <img
             class="where-to-enforce__description-row__img"
             src="/images/home/check.svg"
             alt=""
           />
           <p>Kubernetes, using a sidecar deployment</p>
-        </div>
-        <div class="where-to-enforce__description-row">
+        </li>
+        <li class="where-to-enforce__description-row">
           <img
             class="where-to-enforce__description-row__img"
             src="/images/home/check.svg"
@@ -508,37 +512,40 @@ async def view_inventory(token: str = Depends(oauth2_scheme)):
           />
 
           <p>Serverless, with proximity node agents</p>
-        </div>
-        <div class="where-to-enforce__description-row">
+        </li>
+        <li class="where-to-enforce__description-row">
           <img
             class="where-to-enforce__description-row__img"
             src="/images/home/check.svg"
             alt=""
           />
           <p>Standalone server Edge computing</p>
-        </div>
-      </div>
-    </div>
+        </li>
+      </ul>
+    </hgroup>
   </div>
 </section>
 
 <section class="section pb-3 versioning px-xl-4 px-xxl-0">
-  <h3 class="text-white fw-medium versioning__title gradient-text">
-    Guaranteed Versioning & Immutability
-  </h3>
-  <p class="versioning__description">
-    PermGuard guarantees compliance through built-in versioning and immutability
-    using a Git-like algorithm, ensuring policies and permissions are stored in
-    a tamper-proof and traceable manner.
-    <br />
-    <br />
-    Proximity nodes independently pull updates via the NOTP (Negotiated Object
-    Transfer Protocol), allowing each node to reference specific points in time
-    while optimizing bandwidth usage. Policies are converted to an intermediate
-    language, PermCode, and stored in immutable blobs. This approach, combined
-    with the abstract language layer, allows PermGuard to extend seamlessly with
-    other languages, ensuring there is no dependency on code-specific APIs.
-  </p>
+  <hgroup>
+    <h2 class="text-white fw-medium versioning__title gradient-text">
+      Guaranteed Versioning & Immutability
+    </h2>
+    <p class="versioning__description">
+      PermGuard guarantees compliance through built-in versioning and
+      immutability using a Git-like algorithm, ensuring policies and permissions
+      are stored in a tamper-proof and traceable manner.
+      <br />
+      <br />
+      Proximity nodes independently pull updates via the NOTP (Negotiated Object
+      Transfer Protocol), allowing each node to reference specific points in
+      time while optimizing bandwidth usage. Policies are converted to an
+      intermediate language, PermCode, and stored in immutable blobs. This
+      approach, combined with the abstract language layer, allows PermGuard to
+      extend seamlessly with other languages, ensuring there is no dependency on
+      code-specific APIs.
+    </p>
+  </hgroup>
   <img
     class="versioning__img d-none d-lg-block"
     src="/images/home/versioning.png"
@@ -554,20 +561,20 @@ async def view_inventory(token: str = Depends(oauth2_scheme)):
 <!-- Section 11 -->
 <section class="section pb-3 tenancy px-xl-4 px-xxl-0">
   <div class="row align-items-center tenancy__row">
-    <div
+    <hgroup
       class="col-16 col-lg-8 d-flex flex-column gap-4 align-items-center align-items-lg-start"
     >
-      <h3
+      <h2
         class="text-white fw-medium tenancy__title gradient-text text-center text-lg-start"
       >
         Multi Tenancy
-      </h3>
+      </h2>
       <p class="tenancy__description text-center text-lg-start">
         With PermGuard, you can implement multi-tenancy permissions, ideal for
         SaaS environments where different permission models are needed for each
         tenant.
       </p>
-    </div>
+    </hgroup>
     <div
       class="col-16 col-lg-8 d-flex justify-content-center justify-content-lg-end"
     >
@@ -582,19 +589,19 @@ async def view_inventory(token: str = Depends(oauth2_scheme)):
     <div class="col-16 col-lg-8 d-flex">
       <img class="vscode__img" src="/images/home/vscode.png" alt="" />
     </div>
-    <div
+    <hgroup
       class="col-16 col-lg-8 d-flex flex-column gap-4 vscode__description-box align-items-center align-items-lg-start"
     >
-      <h3
+      <h2
         class="text-white fw-medium vscode__title gradient-text text-center text-lg-start"
       >
         Install The Vscode Extension
-      </h3>
+      </h2>
       <p class="vscode__description text-center text-lg-start">
         Install the Visual Studio Code Extension to enhance your development
         experience.
       </p>
-    </div>
+    </hgroup>
   </div>
 </section>
 
