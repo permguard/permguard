@@ -121,7 +121,7 @@
 <!-- Section 3 -->
 <section class="section pb-3 diagram px-xl-4 px-xxl-0">
   <div class="diagram__box">
-    <img class="d-none d-md-block" src="/images/home/diagram.svg" alt="" />
+    <img class="d-none d-md-block" src="/images/home/diagram.png" alt="" />
     <img
       class="d-block d-md-none w-100"
       src="/images/home/diagram-mobile.png"
@@ -201,7 +201,7 @@
   <div class="code__languages">
     <button data-language="go" class="code__language code__language--active">
       <img
-        class="code__language__image"
+        class="code__language__image code__language__image--go"
         src="/images/home/languages/Go.png"
         alt=""
       />
@@ -257,6 +257,11 @@
   </div>
 
   <div class="code__img code__img--small d-block d-md-none">
+    <div class="code__img__header">
+      <div class="code__img__header__btn code__img__header__btn--red"></div>
+      <div class="code__img__header__btn code__img__header__btn--yellow"></div>
+      <div class="code__img__header__btn code__img__header__btn--green"></div>
+    </div>
     <pre
       slot="first"
       class="theme-devibeans"
@@ -566,7 +571,7 @@ async def view_inventory(token: str = Depends(oauth2_scheme)):
     <div
       class="col-16 col-lg-8 d-flex justify-content-center justify-content-lg-end"
     >
-      <img src="/images/home/tenancy.png" alt="" />
+      <img class="tenancy__img" src="/images/home/tenancy.png" alt="" />
     </div>
   </div>
 </section>
