@@ -247,7 +247,48 @@
     </button>
   </div>
 
-  <div class="code__img">
+  <div class="code__switch d-flex d-md-none">
+    <p>Before</p>
+    <label class="switch">
+      <input id="switchInput" type="checkbox" />
+      <span class="slider round"></span>
+    </label>
+    <p>After</p>
+  </div>
+
+  <div class="code__img code__img--small d-block d-md-none">
+    <pre
+      slot="first"
+      class="theme-devibeans"
+    ><code class="language-go">// Function to check if the user has permission to perform an action
+func checkPermissions(token, system, resource, action string) bool {
+payload := decodeJWT(token)
+roles, ok := payload["roles"].([]string)
+if !ok {
+return false
+}
+
+// Iterate through roles and check if any role grants the required permissions
+for _, role := range roles {
+rolePermissions := getPermissionsForRole(role)
+if resources, systemFound := rolePermissions[resource]; systemFound {
+  if actions, resourceFound := resources[system]; resourceFound {
+    for _, allowedAction := range actions {
+      if strings.EqualFold(allowedAction, action) {
+        return true // Permission granted
+      }
+    }
+  }
+}
+}
+return false // No permission granted
+}
+
+hasPermissions := checkPermissions(token, system, "inventory", "view")
+</code></pre>
+  </div>
+
+  <div class="code__img d-none d-md-block">
     <div class="code__img__header">
       <div class="code__img__header__btn code__img__header__btn--red"></div>
       <div class="code__img__header__btn code__img__header__btn--yellow"></div>
@@ -284,8 +325,12 @@ func checkPermissions(token, system, resource, action string) bool {
 hasPermissions := checkPermissions(token, system, "inventory", "view")
 </code></pre>
       <pre slot="second">
-<code class="language-go">hasPermissions := permguard.Check("uur::581616507495::iam:identity/google/pharmacist", "magicfarmacia-v0.0", "inventory", "view")
-
+<code class="language-go">hasPermissions := permguard.Check(
+  "uur::581616507495::iam:identity/google/pharmacist", 
+  "magicfarmacia-v0.0", 
+  "inventory", 
+  "view",
+)
 </code>
 </pre>
     </img-comparison-slider>
