@@ -1,116 +1,121 @@
-<div class="container-lg footer px-4">
-  <div class="row footer__row">
-    <div class="col-16 col-xl-4 footer__col footer__col-title mb-4 mb-xl-0">
-      <a
-        class="navbar-brand fw-medium me-auto me-lg-3 fs-6 text-white font-montserrat"
-        href="/"
-      >
-        <img src="/images/logos/top_logo.svg" alt="Permguard" class="me-1" />
+{{ if (in site.Params.doks.sectionNav .Section) -}}
+<div class="container-lg footer footer--docs px-4">
+  {{ else -}}
+  <div class="container-lg footer px-4">
+    {{ end -}}
+    <div class="row footer__row">
+      <div class="col-16 col-xl-4 footer__col footer__col-title mb-4 mb-xl-0">
+        <a
+          class="navbar-brand fw-medium me-auto me-lg-3 fs-6 text-white font-montserrat"
+          href="/"
+        >
+          <img src="/images/logos/top_logo.svg" alt="Permguard" class="me-1" />
 
-        Permguard</a
-      >
-      <div class="d-flex mt-4 align-items-center">
-        <div>
-          <img src="/images/home/mail.svg" alt="email" />
+          Permguard</a
+        >
+        <div class="d-flex mt-4 align-items-center">
+          <div>
+            <img src="/images/home/mail.svg" alt="email" />
+          </div>
+
+          <a
+            href="mailto:opensource@permguard.com"
+            class="text-white ms-3 text-small fw-medium"
+            >opensource@permguard.com</a
+          >
         </div>
+      </div>
+      <div class="col-8 col-lg-4 col-xl-3 footer__col">
+        <h3 class="text-white text-small m-0 fw-medium">Overview</h3>
+        <div class="d-flex flex-column gap-3 footer__links">
+          <a
+            class="mt-2 text-small color-secondary fw-medium"
+            href="/docs/overview/introduction-to-permguard/"
+            >Introduction to PermGuard</a
+          >
+          <a
+            class="text-small color-secondary fw-medium"
+            href="/docs/overview/why-permguard/"
+            >Why PermGuard</a
+          >
+          <a
+            class="text-small color-secondary fw-medium"
+            href="/docs/overview/patterns-through-use-cases/"
+            >Patterns Through Use Cases</a
+          >
+          <a
+            class="text-small color-secondary fw-medium"
+            href="/docs/concepts/authn-authz/authn-vs-authz/"
+            >Concepts</a
+          >
+        </div>
+      </div>
+      <div class="col-8 col-lg-4 col-xl-3 footer__col">
+        <h3 class="text-white text-small m-0 fw-medium">Developer</h3>
+        <div class="d-flex flex-column gap-3 footer__links">
+          <a
+            class="mt-2 text-small color-secondary fw-medium"
+            href="/docs/workspace/initializing-working-directories/"
+            >Initializing Working Directories</a
+          >
+          <a
+            class="text-small color-secondary fw-medium"
+            href="/docs/using-the-cli/how-to-use/"
+            >Use the PermGuard CLI</a
+          >
+          <a
+            class="text-small color-secondary fw-medium"
+            href="/docs/coding-language/configuration-languages/"
+            >Configuration Languages</a
+          >
+        </div>
+      </div>
+      <div class="col-8 col-lg-4 col-xl-3 footer__col">
+        <h3 class="text-white text-small m-0 fw-medium">DevOps</h3>
+        <div class="d-flex flex-column gap-3 footer__links">
+          <a
+            class="mt-2 text-small color-secondary fw-medium"
+            href="/docs/running-the-server/configurations/"
+            >Configurations</a
+          >
+          <a
+            class="text-small color-secondary fw-medium"
+            href="/docs/running-the-server/cli-flags/"
+            >Cli Flags</a
+          >
+        </div>
+      </div>
+      <div class="col-8 col-lg-4 col-xl-3 footer__col">
+        <h3 class="text-white text-small m-0 fw-medium">Useful Links</h3>
+        <div class="d-flex flex-column gap-3 footer__links">
+          <a
+            class="mt-2 text-small color-secondary fw-medium"
+            href="https://github.com/permguard/permguard?tab=Apache-2.0-1-ov-file#readme"
+            target="_blank"
+            >License</a
+          >
+          <a class="text-small color-secondary fw-medium" href="/blog/">Blog</a>
+        </div>
+      </div>
+    </div>
 
-        <a
-          href="mailto:opensource@permguard.com"
-          class="text-white ms-3 text-small fw-medium"
-          >opensource@permguard.com</a
-        >
-      </div>
-    </div>
-    <div class="col-8 col-lg-4 col-xl-3 footer__col">
-      <h3 class="text-white text-small m-0 fw-medium">Overview</h3>
-      <div class="d-flex flex-column gap-3 footer__links">
-        <a
-          class="mt-2 text-small color-secondary fw-medium"
-          href="/docs/overview/introduction-to-permguard/"
-          >Introduction to PermGuard</a
-        >
-        <a
-          class="text-small color-secondary fw-medium"
-          href="/docs/overview/why-permguard/"
-          >Why PermGuard</a
-        >
-        <a
-          class="text-small color-secondary fw-medium"
-          href="/docs/overview/patterns-through-use-cases/"
-          >Patterns Through Use Cases</a
-        >
-        <a
-          class="text-small color-secondary fw-medium"
-          href="/docs/concepts/authn-authz/authn-vs-authz/"
-          >Concepts</a
-        >
-      </div>
-    </div>
-    <div class="col-8 col-lg-4 col-xl-3 footer__col">
-      <h3 class="text-white text-small m-0 fw-medium">Developer</h3>
-      <div class="d-flex flex-column gap-3 footer__links">
-        <a
-          class="mt-2 text-small color-secondary fw-medium"
-          href="/docs/workspace/initializing-working-directories/"
-          >Initializing Working Directories</a
-        >
-        <a
-          class="text-small color-secondary fw-medium"
-          href="/docs/using-the-cli/how-to-use/"
-          >Use the PermGuard CLI</a
-        >
-        <a
-          class="text-small color-secondary fw-medium"
-          href="/docs/coding-language/configuration-languages/"
-          >Configuration Languages</a
-        >
-      </div>
-    </div>
-    <div class="col-8 col-lg-4 col-xl-3 footer__col">
-      <h3 class="text-white text-small m-0 fw-medium">DevOps</h3>
-      <div class="d-flex flex-column gap-3 footer__links">
-        <a
-          class="mt-2 text-small color-secondary fw-medium"
-          href="/docs/running-the-server/configurations/"
-          >Configurations</a
-        >
-        <a
-          class="text-small color-secondary fw-medium"
-          href="/docs/running-the-server/cli-flags/"
-          >Cli Flags</a
-        >
-      </div>
-    </div>
-    <div class="col-8 col-lg-4 col-xl-3 footer__col">
-      <h3 class="text-white text-small m-0 fw-medium">Useful Links</h3>
-      <div class="d-flex flex-column gap-3 footer__links">
-        <a
-          class="mt-2 text-small color-secondary fw-medium"
-          href="https://github.com/permguard/permguard?tab=Apache-2.0-1-ov-file#readme"
-          target="_blank"
-          >License</a
-        >
-        <a class="text-small color-secondary fw-medium" href="/blog/">Blog</a>
-      </div>
-    </div>
-  </div>
-
-  <div class="d-flex justify-content-between legal-notice">
-    <p class="text-white text-small fw-medium legal-notice__title">
-      ©️ PermGuard, all rights reserved.
-    </p>
-
-    <div class="d-flex legal-notice__row">
+    <div class="d-flex justify-content-between legal-notice">
       <p class="text-white text-small fw-medium legal-notice__title">
-        Brought to you by
-        <a
-          class="legal-notice__link"
-          target="_blank"
-          href="https://www.nitroagility.com/"
-          >Nitro Agility</a
-        >
-        S.r.I.
+        ©️ PermGuard, all rights reserved.
       </p>
+
+      <div class="d-flex legal-notice__row">
+        <p class="text-white text-small fw-medium legal-notice__title">
+          Brought to you by
+          <a
+            class="legal-notice__link"
+            target="_blank"
+            href="https://www.nitroagility.com/"
+            >Nitro Agility</a
+          >
+          S.r.I.
+        </p>
+      </div>
     </div>
   </div>
 </div>

@@ -22,3 +22,21 @@
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
+
+.docs-toc {
+  height: calc(100% - 4.25rem) !important;
+}
+
+.docs-sidebar {
+  height: calc(100% - 4.25rem) !important;
+}
+
+.docs-links {
+  padding-bottom: 0.5rem !important;
+}
+
+.docs {
+  & .content {
+    padding: 0 15px !important;
+  }
+}

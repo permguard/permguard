@@ -3,6 +3,10 @@
   padding-bottom: 4rem;
   border-top: none !important;
 
+  &--docs {
+    margin-top: 85px;
+  }
+
   &__row {
     padding: 0 calc(var(--bs-gutter-x) * 0.25);
   }
@@ -37,6 +41,10 @@
     padding-bottom: 25px;
     &__col {
       margin-bottom: 25px;
+    }
+
+    &--docs {
+      margin-top: -20px;
     }
   }
 

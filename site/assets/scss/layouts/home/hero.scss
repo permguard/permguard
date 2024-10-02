@@ -41,10 +41,24 @@
   }
 }
 
+@media (max-width: 1199px) {
+  .hero {
+    &__logo {
+      height: 100px;
+    }
+  }
+}
+
 @media (max-width: 991px) {
   .hero {
+    &__logo {
+      height: auto;
+    }
+
     &__image {
       margin: 0 auto;
+      width: 630px;
+      max-width: 100%;
     }
 
     &__col {
