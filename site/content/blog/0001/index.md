@@ -2,7 +2,7 @@
 title: "Welcome to PermGuard"
 slug: "Welcome to PermGuard"
 description: "PermGuard is an Open Source Multi-Account and Multi-Tenant Authorization Provider"
-summary: "PermGuard a modern Authorization Provider"
+summary: "PermGuard is an Open Source Multi-Account and Multi-Tenant Authorization Provider"
 date: 2023-08-20T17:33:41+01:00
 lastmod: 2023-08-20T17:33:41+01:00
 draft: false
@@ -19,6 +19,26 @@ seo:
   noindex: false # false (default) or true
 ---
 
-PermGuard is an open-source multi-account and multi-tenant authorization provider that implements the authorization layer, allowing the application’s authorization logic to be separated from the core application code.
+In today’s digital landscape, authentication is essential, but it’s not enough.
 
-Feel free to download and give it a try!
+True security requires a modern authorization model—programmable, repeatable, and built for scalable governance.
+
+Managing access to sensitive data and services across applications can be challenging with outdated models that are slow and difficult to govern as corporate requirments grow.
+
+{{< callout context="tip" icon="rocket" >}}
+Introducing PermGuard: the Zero Trust, cloud-native solution built for the future of authorization.
+{{< /callout >}}
+
+`PermGuard` secures your application layer with Policy-as-Code, using its own language and extensible with other policy engines. Centralize policies and manage multi-domain resources and user actions with PBAC.
+
+- Built for scale, `PermGuard` supports multi-account and multi-tenant setups, perfect for complex environments. Developers can seamlessly plan and deploy permissions, backed by Git-like object storage that guarantees immutability and versioning out of the box to meet enterprise compliance needs.
+
+- Designed for enterprise use, `PermGuard` includes a toolchain that helps developers manage multiple versions and authorization models. It accommodates patterns that arise in complex cloud-native or microservices architectures, yet is versatile enough to be used even with simpler applications like a "Hello World" app.
+
+- With real-time evaluation and eventual consistency, policies remain synchronized across Kubernetes, serverless, VMs, IoT, or edge nodes. Proximity nodes ensure permissions are evaluated instantly where they matter most.
+
+- Simple, fast, and secure. Integrate `PermGuard`’s SDK, and you’re ready to scale.
+
+This is the future of cloud-native authorization. `PermGuard` is setting new standards in governance and access control.
+
+Unlock a powerful authorization model with `PermGuard`.
