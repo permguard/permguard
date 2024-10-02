@@ -19,7 +19,7 @@
     class="navbar-brand fw-medium me-auto me-lg-3 fs-6 text-white font-montserrat"
     href="/"
   >
-    <img src="/images/logos/top_logo.svg" alt="Permguard" class="me-1" />
+    <img src="/images/logos/top_logo.svg" alt="Permguard logo" class="me-1" />
 
     Permguard</a
   >
@@ -107,7 +107,8 @@
       </div>
       -->
       <div class="offcanvas-body d-flex flex-column flex-lg-row justify-content-between">
-        <ul class="navbar-nav flex-grow-1">
+        <nav role="navigation" class="flex-grow-1">
+        <ul class="navbar-nav">
           {{- $current := . -}}
           {{- $section := $current.Section -}}
           {{ range .Site.Menus.main -}}
@@ -133,11 +134,12 @@
               </li>
             {{ else -}}
               <li class="nav-item">
-                <a class="nav-link{{ if $active }} active{{ end }}" href="{{ .URL | absURL }}"{{ if $active }} aria-current="true"{{ end }}>{{ .Name }}</a>
+                <a class="nav-link{{ if $active }} active{{ end }}" title="{{ .Name }}" href="{{ .URL | absURL }}"{{ if $active }} aria-current="true"{{ end }}>{{ .Name }}</a>
               </li>
             {{ end -}}
           {{ end -}}
         </ul>
+      </nav>
 
         <!-- FlexSearch desktop -->
         {{ partial "main/showFlexSearch" . }}

@@ -7,7 +7,7 @@
     >
       <img
         src="/images/logos/top_logo.svg"
-        alt="Permguard"
+        alt="Permguard logo"
         class="hero__logo"
       />
       <h1 class="text-white font-montserrat fw-medium hero__title mb-0">
@@ -24,13 +24,17 @@
       >
     </div>
     <div class="col-16 col-lg-9 d-none d-sm-flex d-lg-block">
-      <img class="hero__image" src="/images/home/hero.png" alt="" />
+      <img
+        class="hero__image"
+        src="/images/home/hero.webp"
+        alt="Permguard schema"
+      />
     </div>
     <div class="col-16 col-lg-9 p-0 d-block d-sm-none">
       <img
         class="hero__image w-100"
-        src="/images/home/hero-mobile.png"
-        alt=""
+        src="/images/home/hero-mobile.webp"
+        alt="Permguard schema"
       />
     </div>
   </div>
@@ -46,86 +50,90 @@
   </p>
 
   <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-3 description__cards">
-    <div class="col description__card-col">
+    <article class="col description__card-col">
       <div class="description__card">
-        <img src="/images/home/cards/accounts.png" alt="" />
+        <img src="/images/home/cards/accounts.webp" alt="Accounts" />
         <div class="description__card__info-container">
-          <h5>Accounts</h5>
+          <h3>Accounts</h3>
           <p>
             Create and configure an Account, optionally including its Tenants.
           </p>
         </div>
       </div>
-    </div>
-    <div class="col description__card-col">
+    </article>
+    <article class="col description__card-col">
       <div class="description__card">
-        <img src="/images/home/cards/identities.png" alt="" />
+        <img src="/images/home/cards/identities.webp" alt="Identities" />
         <div class="description__card__info-container">
-          <h5>Identities</h5>
+          <h3>Identities</h3>
           <p>
             Create and identity source and populate it with Users and Roles
             using available SDKs.
           </p>
         </div>
       </div>
-    </div>
-    <div class="col description__card-col">
+    </article>
+    <article class="col description__card-col">
       <div class="description__card">
-        <img src="/images/home/cards/repositories.png" alt="" />
+        <img src="/images/home/cards/repositories.webp" alt="Repositories" />
         <div class="description__card__info-container">
-          <h5>Repositories</h5>
+          <h3>Repositories</h3>
           <p>
             Create Repository and configure its Schema (domains, resources and
             actions).
           </p>
         </div>
       </div>
-    </div>
-    <div class="col description__card-col">
+    </article>
+    <article class="col description__card-col">
       <div class="description__card">
-        <img src="/images/home/cards/policies.png" alt="" />
+        <img src="/images/home/cards/policies.webp" alt="Policies" />
         <div class="description__card__info-container">
-          <h5>Policies</h5>
+          <h3>Policies</h3>
           <p>
             Configure Policies to define what can be permitted or forbidden.
           </p>
         </div>
       </div>
-    </div>
-    <div class="col description__card-col">
+    </article>
+    <article class="col description__card-col">
       <div class="description__card">
-        <img src="/images/home/cards/permissions.png" alt="" />
+        <img src="/images/home/cards/permissions.webp" alt="Permissions" />
         <div class="description__card__info-container">
-          <h5>Permissions</h5>
+          <h3>Permissions</h3>
           <p>
             Configure Permissions on policies and assign them to identities
             (users and roles).
           </p>
         </div>
       </div>
-    </div>
-    <div class="col description__card-col">
+    </article>
+    <article class="col description__card-col">
       <div class="description__card">
-        <img src="/images/home/cards/enforce.png" alt="" />
+        <img src="/images/home/cards/enforce.webp" alt="Enforce" />
         <div class="description__card__info-container">
-          <h5>Enforce</h5>
+          <h3>Enforce</h3>
           <p>
             Enforce the permissions in the application using available SDKs.
           </p>
         </div>
       </div>
-    </div>
+    </article>
   </div>
 </section>
 
 <!-- Section 3 -->
 <section class="section pb-3 diagram px-xl-4 px-xxl-0">
   <div class="diagram__box">
-    <img class="d-none d-md-block" src="/images/home/diagram.png" alt="" />
+    <img
+      class="d-none d-md-block"
+      src="/images/home/diagram.webp"
+      alt="Diagram"
+    />
     <img
       class="d-block d-md-none w-100"
-      src="/images/home/diagram-mobile.png"
-      alt=""
+      src="/images/home/diagram-mobile.webp"
+      alt="Diagram"
     />
   </div>
 </section>
@@ -133,26 +141,26 @@
 <!-- Section 4 -->
 <section class="section pb-3 permguard-server px-xl-4 px-xxl-0">
   <div class="row align-items-center">
-    <div
+    <hgroup
       class="col-16 col-lg-8 d-flex flex-column gap-4 align-items-center align-items-lg-start"
     >
-      <h3
+      <h2
         class="text-white fw-medium permguard-server__title gradient-text text-center text-lg-start"
       >
         PermGuard Server
-      </h3>
+      </h2>
       <p class="permguard-server__description text-center text-lg-start">
         Start the PermGuard Server to act as the central authority for managing
         Accounts, Identity Sources, Identities, and Tenants. It’s important to
         integrate your preferred authentication provider, as PermGuard does not
         implement authentication
       </p>
-    </div>
+    </hgroup>
     <div class="col-16 col-lg-8 d-flex">
       <img
         class="permguard-server__img"
-        src="/images/home/permguard_server.png"
-        alt=""
+        src="/images/home/permguard_server.webp"
+        alt="PermGuard Server"
       />
     </div>
   </div>
@@ -164,62 +172,72 @@
     <div class="col-16 col-lg-8 col workspace__col">
       <img
         class="workspace__image d-none d-lg-block"
-        src="/images/home/workspace.png"
-        alt=""
+        src="/images/home/workspace.webp"
+        alt="Workspace"
       />
       <img
         class="workspace__image d-block d-lg-none"
-        src="/images/home/workspace-mobile.png"
-        alt=""
+        src="/images/home/workspace-mobile.webp"
+        alt="Workspace"
       />
     </div>
-    <div class="col-16 col-lg-8 col d-flex flex-column gap-4">
-      <h3
+    <hgroup class="col-16 col-lg-8 col d-flex flex-column gap-4">
+      <h2
         class="text-white fw-medium workspace__title gradient-text text-center text-lg-start"
       >
         Workspace
-      </h3>
+      </h2>
       <p class="workspace__description text-center text-lg-start">
         Initialize a local workspace and checkout a remote PermGuard server
         account using the PermGuard Command Line.
       </p>
-    </div>
+    </hgroup>
   </div>
 </section>
 
 <!-- Section 6 -->
 <section class="section pb-3 code px-xl-4 px-xxl-0">
-  <h3 class="text-white fw-medium code__title gradient-text">
-    Policy as Code (PAC)
-  </h3>
-  <p class="code__description">
-    Define your Authorization Model using YAML schemas. Code Permissions and
-    Policies in supported languages. PermYAML is available now, and PermScipt is
-    coming soon.
-  </p>
+  <hgroup>
+    <h2 class="text-white fw-medium code__title gradient-text">
+      Policy as Code (PAC)
+    </h2>
+    <p class="code__description">
+      Define your Authorization Model using YAML schemas. Code Permissions and
+      Policies in supported languages. PermYAML is available now, and PermScipt
+      is coming soon.
+    </p>
+  </hgroup>
 
   <div class="code__languages">
-    <button data-language="go" class="code__language code__language--active">
+    <button
+      data-language="go"
+      aria-label="Golang"
+      class="code__language code__language--active"
+    >
       <img
         class="code__language__image code__language__image--go"
-        src="/images/home/languages/Go.png"
-        alt=""
+        src="/images/home/languages/Go.webp"
+        alt="Golang"
       />
       <p class="d-none d-md-inline">Go</p>
     </button>
-    <button data-language="python" class="code__language">
+    <button data-language="python" aria-label="Python" class="code__language">
       <img
         class="code__language__image"
-        src="/images/home/languages/Python.png"
-        alt=""
+        src="/images/home/languages/Python.webp"
+        alt="Python"
       />
       <p class="d-none d-md-inline">Python</p>
     </button>
-    <button disabled class="code__language code__language--disabled">
+    <button
+      disabled
+      class="code__language code__language--disabled"
+      aria-label="TypeScript"
+    >
       <img
         class="code__language__image"
-        src="/images/home/languages/Typescript-disabled.png"
-        alt=""
+        src="/images/home/languages/Typescript-disabled.webp"
+        alt="TypeScript"
       />
       <p class="d-none d-md-inline">TypeScript</p>
       <span class="code__language__soon">Soon</span>
@@ -227,20 +245,25 @@
     <button
       disabled
       class="code__language d-none d-sm-flex code__language--disabled"
+      aria-label=".Net Core"
     >
       <img
         class="code__language__image"
-        src="/images/home/languages/dotNet-disabled.png"
-        alt=""
+        src="/images/home/languages/dotNet-disabled.webp"
+        alt=".NET Core"
       />
       <p class="d-none d-md-inline">.NET Core</p>
       <span class="code__language__soon">Soon</span>
     </button>
-    <button disabled class="code__language code__language--disabled">
+    <button
+      disabled
+      class="code__language code__language--disabled"
+      aria-label="Java"
+    >
       <img
         class="code__language__image"
-        src="/images/home/languages/Java-disabled.png"
-        alt=""
+        src="/images/home/languages/Java-disabled.webp"
+        alt="Java"
       />
       <p class="d-none d-md-inline">Java</p>
       <span class="code__language__soon">Soon</span>
@@ -267,26 +290,26 @@
       class="theme-devibeans"
     ><code class="language-go">// Function to check if the user has permission to perform an action
 func checkPermissions(token, system, resource, action string) bool {
-payload := decodeJWT(token)
-roles, ok := payload["roles"].([]string)
-if !ok {
-return false
-}
-
-// Iterate through roles and check if any role grants the required permissions
-for _, role := range roles {
-rolePermissions := getPermissionsForRole(role)
-if resources, systemFound := rolePermissions[resource]; systemFound {
-  if actions, resourceFound := resources[system]; resourceFound {
-    for _, allowedAction := range actions {
-      if strings.EqualFold(allowedAction, action) {
-        return true // Permission granted
-      }
+    payload := decodeJWT(token)
+    roles, ok := payload["roles"].([]string)
+    if !ok {
+        return false
     }
-  }
-}
-}
-return false // No permission granted
+
+    // Iterate through roles and check if any role grants the required permissions
+    for _, role := range roles {
+        rolePermissions := getPermissionsForRole(role)
+        if resources, systemFound := rolePermissions[resource]; systemFound {
+            if actions, resourceFound := resources[system]; resourceFound {
+                for _, allowedAction := range actions {
+                    if strings.EqualFold(allowedAction, action) {
+                        return true // Permission granted
+                    }
+                }
+            }
+        }
+    }
+    return false // No permission granted
 }
 
 hasPermissions := checkPermissions(token, system, "inventory", "view")
@@ -343,12 +366,12 @@ hasPermissions := checkPermissions(token, system, "inventory", "view")
 
   <!-- <img
     class="code__img d-none d-sm-block"
-    src="/images/home/policy_as_code.png"
+    src="/images/home/policy_as_code.webp"
     alt=""
   />
   <img
     class="code__img d-block d-sm-none"
-    src="/images/home/policy_as_code-mobile.png"
+    src="/images/home/policy_as_code-mobile.webp"
     alt=""
   /> -->
 </section>
@@ -357,55 +380,61 @@ hasPermissions := checkPermissions(token, system, "inventory", "view")
 <section class="section pb-3 policies px-xl-4 px-xxl-0">
   <div class="row align-items-center policies__row">
     <div class="col-16 col-lg-8 d-flex">
-      <img class="policies__img" src="/images/home/policies.png" alt="" />
+      <img
+        class="policies__img"
+        src="/images/home/policies.webp"
+        alt="Policies"
+      />
     </div>
-    <div
+    <hgroup
       class="col-16 col-lg-8 d-flex flex-column gap-4 policies__description-box align-items-center align-items-lg-start"
     >
-      <h3
+      <h2
         class="text-white fw-medium policies__title gradient-text text-center text-lg-start"
       >
         Apply Policy as Code to Remote Repo
-      </h3>
+      </h2>
       <p class="policies__description text-center text-lg-start">
         Use the PermGuard command line to build a plan based on the local state
         and apply changes to the remote repository.
       </p>
-    </div>
+    </hgroup>
   </div>
 </section>
 
 <!-- Section 8 -->
 <section class="section pb-3 pep px-xl-4 px-xxl-0">
-  <h3 class="text-white fw-medium pep__title gradient-text">
-    Integrate PermGuard PEP
-  </h3>
-  <p class="pep__description">
-    Integrate PermGuard’s Policy Enforcement Point (PEP) using the available
-    SDKs, or build your own with gRPC endpoints for unsupported languages.
-  </p>
+  <hgroup>
+    <h2 class="text-white fw-medium pep__title gradient-text">
+      Integrate PermGuard PEP
+    </h2>
+    <p class="pep__description">
+      Integrate PermGuard’s Policy Enforcement Point (PEP) using the available
+      SDKs, or build your own with gRPC endpoints for unsupported languages.
+    </p>
+  </hgroup>
   <div class="pep__languages">
     <div class="pep__language">
       <img
         class="pep__language__image"
-        src="/images/home/languages/Go.png"
-        alt=""
+        src="/images/home/languages/Go.webp"
+        alt="Golang"
       />
       <p>Go</p>
     </div>
     <div class="pep__language">
       <img
         class="pep__language__image"
-        src="/images/home/languages/Python.png"
-        alt=""
+        src="/images/home/languages/Python.webp"
+        alt="Python"
       />
       <p>Python</p>
     </div>
     <div class="pep__language pep__language--disabled">
       <img
         class="pep__language__image"
-        src="/images/home/languages/Typescript-disabled.png"
-        alt=""
+        src="/images/home/languages/Typescript-disabled.webp"
+        alt="TypeScript"
       />
       <p>TypeScript</p>
       <span class="pep__language__soon">Soon</span>
@@ -413,8 +442,8 @@ hasPermissions := checkPermissions(token, system, "inventory", "view")
     <div class="pep__language pep__language--disabled">
       <img
         class="pep__language__image"
-        src="/images/home/languages/dotNet-disabled.png"
-        alt=""
+        src="/images/home/languages/dotNet-disabled.webp"
+        alt=".NET Core"
       />
       <p>.NET Core</p>
       <span class="pep__language__soon">Soon</span>
@@ -422,8 +451,8 @@ hasPermissions := checkPermissions(token, system, "inventory", "view")
     <div class="pep__language pep__language--disabled">
       <img
         class="pep__language__image"
-        src="/images/home/languages/Java-disabled.png"
-        alt=""
+        src="/images/home/languages/Java-disabled.webp"
+        alt="Java"
       />
       <p>Java</p>
       <span class="pep__language__soon">Soon</span>
@@ -434,23 +463,27 @@ hasPermissions := checkPermissions(token, system, "inventory", "view")
 <!-- Section 9 -->
 <section class="section pb-3 enforce px-xl-4 px-xxl-0">
   <div class="row align-items-center enforce__row">
-    <div
+    <hgroup
       class="col-16 col-lg-7 d-flex flex-column gap-4 align-items-center align-items-lg-start"
     >
-      <h3
+      <h2
         class="text-white fw-medium enforce__title gradient-text text-center text-lg-start"
       >
         Enforce Permissions in Your Code
-      </h3>
+      </h2>
       <p class="enforce__description text-center text-lg-start">
         Ensure permissions in your code by verifying that the current identity
         has the rights to perform actions on the specified resources.
       </p>
-    </div>
+    </hgroup>
     <div class="col-16 col-lg-9 d-flex justify-content-center enforce__col">
       <div class="enforce__img">
         <div class="enforce__img__header">
-          <img src="/images/home/code_header.svg" alt="" draggable="false" />
+          <img
+            src="/images/home/code_header.svg"
+            alt="Code window"
+            draggable="false"
+          />
         </div>
         <pre
           class="theme-devibeans"
@@ -475,103 +508,110 @@ async def view_inventory(token: str = Depends(oauth2_scheme)):
     <div class="col-16 col-lg-8 d-flex where-to-enforce__col-img">
       <img
         class="where-to-enforce__img"
-        src="/images/home/where_to_enforce.png"
-        alt=""
+        src="/images/home/where_to_enforce.webp"
+        alt="Where to Enforce"
       />
     </div>
-    <div
+    <hgroup
       class="col-16 col-lg-8 d-flex flex-column gap-4 where-to-enforce__description-box align-items-center align-items-lg-start"
     >
-      <h3
+      <h2
         class="text-white fw-medium where-to-enforce__title gradient-text text-sm-center text-lg-start"
       >
         Where to Enforce
-      </h3>
+      </h2>
       <p class="where-to-enforce__description text-center text-lg-start">
         The Policy Enforcement Point (PEP) can be set up in various
         environments:
       </p>
-      <div class="where-to-enforce__description-rows">
-        <div class="where-to-enforce__description-row">
+      <ul class="where-to-enforce__description-rows">
+        <li class="where-to-enforce__description-row">
           <img
             class="where-to-enforce__description-row__img"
             src="/images/home/check.svg"
-            alt=""
+            alt="Check sign"
           />
           <p>Kubernetes, using a sidecar deployment</p>
-        </div>
-        <div class="where-to-enforce__description-row">
+        </li>
+        <li class="where-to-enforce__description-row">
           <img
             class="where-to-enforce__description-row__img"
             src="/images/home/check.svg"
-            alt=""
+            alt="Check sign"
           />
 
           <p>Serverless, with proximity node agents</p>
-        </div>
-        <div class="where-to-enforce__description-row">
+        </li>
+        <li class="where-to-enforce__description-row">
           <img
             class="where-to-enforce__description-row__img"
             src="/images/home/check.svg"
-            alt=""
+            alt="Check sign"
           />
           <p>Standalone server Edge computing</p>
-        </div>
-      </div>
-    </div>
+        </li>
+      </ul>
+    </hgroup>
   </div>
 </section>
 
 <section class="section pb-3 versioning px-xl-4 px-xxl-0">
-  <h3 class="text-white fw-medium versioning__title gradient-text">
-    Guaranteed Versioning & Immutability
-  </h3>
-  <p class="versioning__description">
-    PermGuard guarantees compliance through built-in versioning and immutability
-    using a Git-like algorithm, ensuring policies and permissions are stored in
-    a tamper-proof and traceable manner.
-    <br />
-    <br />
-    Proximity nodes independently pull updates via the NOTP (Negotiated Object
-    Transfer Protocol), allowing each node to reference specific points in time
-    while optimizing bandwidth usage. Policies are converted to an intermediate
-    language, PermCode, and stored in immutable blobs. This approach, combined
-    with the abstract language layer, allows PermGuard to extend seamlessly with
-    other languages, ensuring there is no dependency on code-specific APIs.
-  </p>
+  <hgroup>
+    <h2 class="text-white fw-medium versioning__title gradient-text">
+      Guaranteed Versioning & Immutability
+    </h2>
+    <p class="versioning__description">
+      PermGuard guarantees compliance through built-in versioning and
+      immutability using a Git-like algorithm, ensuring policies and permissions
+      are stored in a tamper-proof and traceable manner.
+      <br />
+      <br />
+      Proximity nodes independently pull updates via the NOTP (Negotiated Object
+      Transfer Protocol), allowing each node to reference specific points in
+      time while optimizing bandwidth usage. Policies are converted to an
+      intermediate language, PermCode, and stored in immutable blobs. This
+      approach, combined with the abstract language layer, allows PermGuard to
+      extend seamlessly with other languages, ensuring there is no dependency on
+      code-specific APIs.
+    </p>
+  </hgroup>
   <img
     class="versioning__img d-none d-lg-block"
-    src="/images/home/versioning.png"
-    alt=""
+    src="/images/home/versioning.webp"
+    alt="Guaranteed Versioning"
   />
   <img
     class="versioning__img versioning__img--small d-block d-lg-none"
-    src="/images/home/versioning-mobile.png"
-    alt=""
+    src="/images/home/versioning-mobile.webp"
+    alt="Guaranteed Versioning"
   />
 </section>
 
 <!-- Section 11 -->
 <section class="section pb-3 tenancy px-xl-4 px-xxl-0">
   <div class="row align-items-center tenancy__row">
-    <div
+    <hgroup
       class="col-16 col-lg-8 d-flex flex-column gap-4 align-items-center align-items-lg-start"
     >
-      <h3
+      <h2
         class="text-white fw-medium tenancy__title gradient-text text-center text-lg-start"
       >
         Multi Tenancy
-      </h3>
+      </h2>
       <p class="tenancy__description text-center text-lg-start">
         With PermGuard, you can implement multi-tenancy permissions, ideal for
         SaaS environments where different permission models are needed for each
         tenant.
       </p>
-    </div>
+    </hgroup>
     <div
       class="col-16 col-lg-8 d-flex justify-content-center justify-content-lg-end"
     >
-      <img class="tenancy__img" src="/images/home/tenancy.png" alt="" />
+      <img
+        class="tenancy__img"
+        src="/images/home/tenancy.webp"
+        alt="Multi Tenancy"
+      />
     </div>
   </div>
 </section>
@@ -580,21 +620,25 @@ async def view_inventory(token: str = Depends(oauth2_scheme)):
 <section class="section pb-3 vscode px-xl-4 px-xxl-0">
   <div class="row align-items-center">
     <div class="col-16 col-lg-8 d-flex">
-      <img class="vscode__img" src="/images/home/vscode.png" alt="" />
+      <img
+        class="vscode__img"
+        src="/images/home/vscode.webp"
+        alt="Vscode Extension"
+      />
     </div>
-    <div
+    <hgroup
       class="col-16 col-lg-8 d-flex flex-column gap-4 vscode__description-box align-items-center align-items-lg-start"
     >
-      <h3
+      <h2
         class="text-white fw-medium vscode__title gradient-text text-center text-lg-start"
       >
         Install The Vscode Extension
-      </h3>
+      </h2>
       <p class="vscode__description text-center text-lg-start">
         Install the Visual Studio Code Extension to enhance your development
         experience.
       </p>
-    </div>
+    </hgroup>
   </div>
 </section>
 
@@ -606,7 +650,7 @@ async def view_inventory(token: str = Depends(oauth2_scheme)):
         Join our community
       </h5>
       <div class="community__description text-center text-lg-start">
-        <img src="/images/home/community.png" alt="" />
+        <img src="/images/home/community.webp" alt="" />
         <p>Join with more than 3k members</p>
       </div>
     </div>
@@ -617,7 +661,7 @@ async def view_inventory(token: str = Depends(oauth2_scheme)):
         Get support from our experts, learn from fellow devs
       </p>
       <button class="community__btn">
-        <img src="/images/home/slack.png" alt="Slack" />
+        <img src="/images/home/slack.webp" alt="Slack" />
         <span>Join PermGuard’s Slack</span>
       </button>
     </div>
