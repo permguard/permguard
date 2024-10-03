@@ -137,18 +137,18 @@ func (m *WorkspaceManager) tryLock() (*flock.Flock, error) {
 }
 
 // raiseWrongWorkspaceDirError raises an error when the directory is not a workspace directory.
-func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out func(map[string]any, string, any, error) map[string]any) error {
-	out(nil, "", "The current working directory is not a valid PermGuard workspace.", nil)
-	out(nil, "", "Please initialize the workspace by running the 'init' command.", nil)
+func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out aziclicommon.PrinterOutFunc) error {
+	out(nil, "", "The current working directory is not a valid PermGuard workspace.", nil, true)
+	out(nil, "", "Please initialize the workspace by running the 'init' command.", nil, true)
 	return azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeHiddenDir()))
 }
 
 // getCurrentHeadInfo returns the current head info.
-func (m *WorkspaceManager) getCurrentHeadInfo(out func(map[string]any, string, any, error) map[string]any) (*azicliwksrefs.HeadInfo, error) {
+func (m *WorkspaceManager) getCurrentHeadInfo(out aziclicommon.PrinterOutFunc) (*azicliwksrefs.HeadInfo, error) {
 	headInfo, err := m.rfsMgr.GetCurrentHead()
 	if err != nil || headInfo.GetRefs() == "" {
-		out(nil, "", "No repository is configured in the current workspace.", nil)
-		out(nil, "", "Please checkout a repository and try again.", nil)
+		out(nil, "", "No repository is configured in the current workspace.", nil, true)
+		out(nil, "", "Please checkout a repository and try again.", nil, true)
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceInvaliHead, "cli: invalid head configuration")
 	}
 	return headInfo, nil

@@ -41,7 +41,7 @@ func runECommandForPullWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 	}
 	output := map[string]any{}
 	output["workspace"] = "pull"
-	printer.Print(output)
+	printer.Println(output)
 	return nil
 }
 

@@ -60,7 +60,7 @@ func runECommandForApplyWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra
 		return aziclicommon.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
-		printer.Print(output)
+		printer.Println(output)
 	}
 	return nil
 }

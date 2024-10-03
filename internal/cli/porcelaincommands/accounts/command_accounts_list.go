@@ -68,7 +68,7 @@ func runECommandForListAccounts(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	} else if ctx.IsJSONOutput() {
 		output["accounts"] = accounts
 	}
-	printer.Print(output)
+	printer.Println(output)
 	return nil
 }
 

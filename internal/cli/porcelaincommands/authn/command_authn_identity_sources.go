@@ -76,7 +76,7 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 	} else if ctx.IsJSONOutput() {
 		output["identity_sources"] = []*azmodels.IdentitySource{identitySource}
 	}
-	printer.Print(output)
+	printer.Println(output)
 	return nil
 }
 

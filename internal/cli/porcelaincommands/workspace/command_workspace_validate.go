@@ -60,7 +60,7 @@ func runECommandForValidateWorkspace(deps azcli.CliDependenciesProvider, cmd *co
 		return aziclicommon.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
-		printer.Print(output)
+		printer.Println(output)
 	}
 	return nil
 }

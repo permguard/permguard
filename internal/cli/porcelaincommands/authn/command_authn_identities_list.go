@@ -70,7 +70,7 @@ func runECommandForListIdentities(deps azcli.CliDependenciesProvider, cmd *cobra
 	} else if ctx.IsJSONOutput() {
 		output["identities"] = identities
 	}
-	printer.Print(output)
+	printer.Println(output)
 	return nil
 }
 
