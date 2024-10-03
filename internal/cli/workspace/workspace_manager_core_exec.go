@@ -53,7 +53,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out aziclicommon.P
 	defer fileLock.Unlock()
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "init", fmt.Sprintf("Initializing PermGuard workspace in %s.", aziclicommon.FileText(homeDir)), nil, true)
+		out(nil, "init", fmt.Sprintf("Initializing Permguard workspace in %s.", aziclicommon.FileText(homeDir)), nil, true)
 	}
 	firstInit := true
 	if !res {

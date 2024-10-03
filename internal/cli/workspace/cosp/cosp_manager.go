@@ -96,28 +96,28 @@ func (m *COSPManager) getCodeSourceObjectDir(oid string, local bool) (string, st
 	basePath = filepath.Join(basePath, m.getObjectsDir())
 	folder := oid[:2]
 	folder = filepath.Join(basePath, folder)
-	m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, folder)
+	m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, folder)
 	name := oid[2:]
 	return folder, name
 }
 
 // CleanCodeSource cleans the code source area.
 func (m *COSPManager) CleanCodeSource() (bool, error) {
-	return m.persMgr.DeletePath(azicliwkspers.PermGuardDir, m.getCodeSourceDir())
+	return m.persMgr.DeletePath(azicliwkspers.PermguardDir, m.getCodeSourceDir())
 }
 
 // SaveCodeSourceObject saves the object in the code source.
 func (m *COSPManager) SaveCodeSourceObject(oid string, content []byte) (bool, error) {
 	folder, name := m.getCodeSourceObjectDir(oid, true)
 	path := filepath.Join(folder, name)
-	return m.persMgr.WriteFile(azicliwkspers.PermGuardDir, path, content, 0644, true)
+	return m.persMgr.WriteFile(azicliwkspers.PermguardDir, path, content, 0644, true)
 }
 
 // ReadCodeSourceObject reads the object from the code source.
 func (m *COSPManager) ReadCodeSourceObject(oid string) (*azlangobjs.Object, error) {
 	folder, name := m.getCodeSourceObjectDir(oid, true)
 	path := filepath.Join(folder, name)
-	data, _, err := m.persMgr.ReadFile(azicliwkspers.PermGuardDir, path, true)
+	data, _, err := m.persMgr.ReadFile(azicliwkspers.PermguardDir, path, true)
 	if err != nil {
 		return nil, err
 	}
@@ -131,9 +131,9 @@ func (m *COSPManager) saveConfig(name string, override bool, cfg any) error {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
 	}
 	if override {
-		_, err = m.persMgr.WriteFile(azicliwkspers.PermGuardDir, name, data, 0644, false)
+		_, err = m.persMgr.WriteFile(azicliwkspers.PermguardDir, name, data, 0644, false)
 	} else {
-		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermGuardDir, name, data, 0644, false)
+		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermguardDir, name, data, 0644, false)
 	}
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", name))
@@ -156,7 +156,7 @@ func (m *COSPManager) SaveCodeSourceConfig(treeID, language string) error {
 // readCodeSourceConfig reads the code source config file.
 func (m *COSPManager) readCodeSourceConfig() (*codeLocalConfig, error) {
 	var config codeLocalConfig
-	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getCodeSourceConfigFile(), &config)
+	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermguardDir, m.getCodeSourceConfigFile(), &config)
 	return &config, err
 }
 
@@ -176,7 +176,7 @@ func (m *COSPManager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 			codeFile.ErrorMessage,
 		}
 	}
-	err := m.persMgr.WriteCSVStream(azicliwkspers.PermGuardDir, path, nil, codeFiles, rowFunc, true)
+	err := m.persMgr.WriteCSVStream(azicliwkspers.PermguardDir, path, nil, codeFiles, rowFunc, true)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to write code map")
 	}
@@ -217,7 +217,7 @@ func (m *COSPManager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 		codeFiles = append(codeFiles, codeFile)
 		return nil
 	}
-	err := m.persMgr.ReadCSVStream(azicliwkspers.PermGuardDir, path, nil, recordFunc, true)
+	err := m.persMgr.ReadCSVStream(azicliwkspers.PermguardDir, path, nil, recordFunc, true)
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to read code map")
 	}
@@ -240,7 +240,7 @@ func (m *COSPManager) ReadCodeSourceCodeState() ([]CodeObjectState, error) {
 // SaveRemoteCodePlan saves the code plan for the input remote.
 func (m *COSPManager) SaveRemoteCodePlan(remote string, refID string, codeObjects []CodeObjectState) error {
 	path := filepath.Join(m.getCodeDir(), strings.ToLower(remote), strings.ToLower(refID))
-	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, path)
+	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, path)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to create code plan")
 	}
@@ -282,7 +282,7 @@ func (m *COSPManager) saveCodeObjectStates(path string, codeObjects []CodeObject
 			codeObject.OID,
 		}
 	}
-	err := m.persMgr.WriteCSVStream(azicliwkspers.PermGuardDir, path, nil, codeObjects, rowFunc, true)
+	err := m.persMgr.WriteCSVStream(azicliwkspers.PermguardDir, path, nil, codeObjects, rowFunc, true)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to write code object state")
 	}
@@ -307,7 +307,7 @@ func (m *COSPManager) readCodeObjectStates(path string) ([]CodeObjectState, erro
 		codeObjects = append(codeObjects, codeObject)
 		return nil
 	}
-	err := m.persMgr.ReadCSVStream(azicliwkspers.PermGuardDir, path, nil, recordFunc, true)
+	err := m.persMgr.ReadCSVStream(azicliwkspers.PermguardDir, path, nil, recordFunc, true)
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to read code state")
 	}

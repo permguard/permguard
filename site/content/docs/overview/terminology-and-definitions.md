@@ -18,7 +18,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-The `PermGuard Terminology and Definitions` section contains explanations for key terms and concepts.
+The `Permguard Terminology and Definitions` section contains explanations for key terms and concepts.
 Use this resource to quickly clarify any terminology encountered throughout the documentation.
 
 - **Authorization Model**: *An authorization model serves to model the application's authorization logic, which may not necessarily correspond to domain entities and tables.*

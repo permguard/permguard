@@ -34,7 +34,7 @@ import (
 // TestListCommandForTenantsList tests the listCommandForTenantsList function.
 func TestListCommandForTenantsList(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command lists all remote tenants."}
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command lists all remote tenants."}
 	aztestutils.BaseCommandTest(t, createCommandForTenantList, args, false, outputs)
 }
 

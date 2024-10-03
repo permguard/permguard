@@ -42,9 +42,9 @@ func NewCommunityCliInitializer() (*CommunityCliInitializer, error) {
 func (s *CommunityCliInitializer) GetCliInfo() azcli.CliInfo {
 	return azcli.CliInfo{
 		Name:  "Community Command Line Interface",
-		Use:   "PermGuard Command Line Interface",
-		Short: "The official PermGuard© Cli",
-		Long:  aziclicommon.BuildCliLongTemplate("PermGuard is an Open Source Multi-Account and Multi-Tenant Authorization Provider."),
+		Use:   "Permguard Command Line Interface",
+		Short: "The official Permguard© Cli",
+		Long:  aziclicommon.BuildCliLongTemplate("Permguard is an Open Source Multi-Account and Multi-Tenant Authorization Provider."),
 	}
 }
 

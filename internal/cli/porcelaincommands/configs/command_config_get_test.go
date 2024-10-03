@@ -31,7 +31,7 @@ import (
 // TestCreateCommandForConfigAAPGet tests the createCommandForConfigAAPGet function.
 func TestCreateCommandForConfigAAPGet(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command gets the aap grpc target."}
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command gets the aap grpc target."}
 	aztestutils.BaseCommandTest(t, createCommandForConfigAAPGet, args, false, outputs)
 }
 
@@ -75,7 +75,7 @@ func TestCliConfigGetAAPTarget(t *testing.T) {
 // TestCreateCommandForConfigPAPGet tests the createCommandForConfigPAPGet function.
 func TestCreateCommandForConfigPAPGet(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command gets the pap grpc target."}
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command gets the pap grpc target."}
 	aztestutils.BaseCommandTest(t, createCommandForConfigPAPGet, args, false, outputs)
 }
 

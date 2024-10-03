@@ -25,12 +25,12 @@ import (
 
 // ExecInitalize the refs resources.
 func (m *RefsManager) ExecInitalize(lang string) error {
-	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermGuardDir, m.getRefsDir())
+	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, m.getRefsDir())
 	if err != nil {
 		return err
 	}
 	headFile := m.getHeadFile()
-	_, err = m.persMgr.CreateFileIfNotExists(azicliwkspers.PermGuardDir, headFile)
+	_, err = m.persMgr.CreateFileIfNotExists(azicliwkspers.PermguardDir, headFile)
 	if err != nil {
 		return err
 	}
