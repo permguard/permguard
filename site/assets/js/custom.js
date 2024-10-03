@@ -19,21 +19,14 @@
 // Put your custom JS code here
 
 const PYTHON_CODE = {
-  before: `# Function to check if the user has permission to perform an action
+  before: `
 def check_permissions(token: str, system: str, resource: str, action: str):
-    # Decode the JWT token to extract the payload
     payload = decode_jwt(token)
-    # Get the list of roles from the token
     roles: List[str] = payload.get("roles", [])
-    # Iterate through roles and check if any role grants the required permissions
     for role in roles:
-        # Fetch permissions for this role from DB/API
         role_permissions = get_permissions_for_role(role)
-        # Check if the system is defined for this role
         if system in role_permissions:
-            # Check if the resource is allowed
             if resource in role_permissions[system]:
-                # Check if the action is permitted
                 if action in role_permissions[system][resource]:
                     # If all conditions match, permission is granted
                     return True
