@@ -23,8 +23,8 @@ Using the `IdentitySources` commands, it is possible to manage identity sources.
 This command manages identity sources.
 
 Usage:
-  PermGuard authn identitysources [flags]
-  PermGuard authn identitysources [command]
+  Permguard authn identitysources [flags]
+  Permguard authn identitysources [command]
 
 Available Commands:
   create      Create an identity source
@@ -42,11 +42,11 @@ Global Flags:
   -w, --workdir string   workdir (default ".")
   -v, --verbose         true for verbose output
 
-Use "PermGuard authn identitysources [command] --help" for more information about a command.
+Use "Permguard authn identitysources [command] --help" for more information about a command.
 ```
 
 {{< callout context="caution" icon="alert-triangle" >}}
-The output from your current version of PermGuard may differ from the example provided on this page.
+The output from your current version of Permguard may differ from the example provided on this page.
 {{< /callout >}}
 
 ## Create an IdentitySource

@@ -23,8 +23,8 @@ Using the `Repositories` commands, it is possible to Manage Repositories on the 
 This command manages repositories.
 
 Usage:
-  PermGuard authz repos [flags]
-  PermGuard authz repos [command]
+  Permguard authz repos [flags]
+  Permguard authz repos [command]
 
 Available Commands:
   create      Create a repository
@@ -42,11 +42,11 @@ Global Flags:
   -w, --workdir string   workdir (default ".")
   -v, --verbose         true for verbose output
 
-Use "PermGuard authz repos [command] --help" for more information about a command.
+Use "Permguard authz repos [command] --help" for more information about a command.
 ```
 
 {{< callout context="caution" icon="alert-triangle" >}}
-The output from your current version of PermGuard may differ from the example provided on this page.
+The output from your current version of Permguard may differ from the example provided on this page.
 {{< /callout >}}
 
 ## Create an Repository

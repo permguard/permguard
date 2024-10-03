@@ -48,7 +48,7 @@ resources:
 
 A policy is composed of three main elements: name, actions, and resources.
 
-- `name`: The unique identifier for the policy. It should be descriptive and adhere to the established PermGuard naming conventions.
+- `name`: The unique identifier for the policy. It should be descriptive and adhere to the established Permguard naming conventions.
 - `actions`: This section defines the specific operations that the policy allows on the resources. Actions must use the RA (Resource Action) naming convention. Each action is written in the format `{resource}`:``{action}``, where:
   - `{resource}` represents the type of resource being acted upon.
   - ``{action}`` specifies the operation allowed on the resource.

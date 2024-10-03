@@ -18,15 +18,15 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-`PermGuard` is a modern `Authorization Provider` that implements an advanced authorization layer. It delivers dynamic access control by managing user permissions, roles, and policies, ensuring secure and efficient authorization across diverse systems and applications.
+`Permguard` is a modern `Authorization Provider` that implements an advanced authorization layer. It delivers dynamic access control by managing user permissions, roles, and policies, ensuring secure and efficient authorization across diverse systems and applications.
 
 ## Infrastructure
 
-PermGuard can be deployed in various environments, ranging from virtual machines to container orchestration systems like Kubernetes and beyond.
+Permguard can be deployed in various environments, ranging from virtual machines to container orchestration systems like Kubernetes and beyond.
 
 ## Administration
 
-PermGuard exposes gRPC endpoints for administrative functions, including the ability to create and manage:
+Permguard exposes gRPC endpoints for administrative functions, including the ability to create and manage:
 
 - Accounts
 - Tenants
@@ -37,20 +37,20 @@ PermGuard exposes gRPC endpoints for administrative functions, including the abi
 
 ## Identities
 
-Since PermGuard does not include an authentication layer, it is crucial to integrate it with an Authentication Provider. This integration can be accomplished by importing users from the Authentication Provider using the available APIs and SDKs, or through manual processes via the PermGuard CLI.
+Since Permguard does not include an authentication layer, it is crucial to integrate it with an Authentication Provider. This integration can be accomplished by importing users from the Authentication Provider using the available APIs and SDKs, or through manual processes via the Permguard CLI.
 
 Additionally, the application provides the capability to create and manage users on-the-fly through the available APIs and SDKs. It also supports the creation and management of roles.
 
 ## Policy as a Code
 
-PermGuard adopts a `Policy as Code` approach, enabling users to define and manage policies through code. This method ensures that all configurations are versioned, reviewed, and tested, while also centralizing policy management externally for enhanced security, compliance, and scalability.
+Permguard adopts a `Policy as Code` approach, enabling users to define and manage policies through code. This method ensures that all configurations are versioned, reviewed, and tested, while also centralizing policy management externally for enhanced security, compliance, and scalability.
 
 ## Integration
 
-PermGuard integrates seamlessly with any application, whether deployed on **servers**, **containers**, or in **serverless** environments. Integration is facilitated through gRPC requests to the `Policy Decision Point`, and SDKs are available for various programming languages to ensure smooth implementation.
+Permguard integrates seamlessly with any application, whether deployed on **servers**, **containers**, or in **serverless** environments. Integration is facilitated through gRPC requests to the `Policy Decision Point`, and SDKs are available for various programming languages to ensure smooth implementation.
 
 {{< callout context="note" icon="info-circle" >}}
-A Policy Decision Point can be deployed close to the node, such as in a sidecar container. These proximity services synchronize with the remote PermGuard instance, ensuring low latency and high availability. `Permission evaluation` is performed in `approximately 1ms`.
+A Policy Decision Point can be deployed close to the node, such as in a sidecar container. These proximity services synchronize with the remote Permguard instance, ensuring low latency and high availability. `Permission evaluation` is performed in `approximately 1ms`.
 
 {{< /callout >}}
 

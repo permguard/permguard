@@ -34,7 +34,7 @@ import (
 // TestDeleteCommandForIdentitiesDelete tests the deleteCommandForIdentitiesDelete function.
 func TestDeleteCommandForIdentitiesDelete(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command deletes a remote identity."}
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command deletes a remote identity."}
 	aztestutils.BaseCommandTest(t, createCommandForIdentityDelete, args, false, outputs)
 }
 

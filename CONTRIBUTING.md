@@ -1,6 +1,6 @@
-# Contributing to PermGuard
+# Contributing to Permguard
 
-Thank you sincerely for considering contributing to the PermGuard project. We highly value the input and engagement of our community members.
+Thank you sincerely for considering contributing to the Permguard project. We highly value the input and engagement of our community members.
 
 Please make sure to review our set guidelines detailed in the [conduct protocol](CODE_OF_CONDUCT.md) that governs interactions within this project's sphere.
 

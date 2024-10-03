@@ -73,7 +73,7 @@ func (m *RefsManager) ensureRefsFileExists(refs string) error {
 	if err != nil {
 		return err
 	}
-	_, err = m.persMgr.CreateFileIfNotExists(azicliwkspers.PermGuardDir, refsFile)
+	_, err = m.persMgr.CreateFileIfNotExists(azicliwkspers.PermguardDir, refsFile)
 	if err != nil {
 		return err
 	}
@@ -98,9 +98,9 @@ func (m *RefsManager) saveConfig(name string, override bool, cfg any) error {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
 	}
 	if override {
-		_, err = m.persMgr.WriteFile(azicliwkspers.PermGuardDir, name, data, 0644, false)
+		_, err = m.persMgr.WriteFile(azicliwkspers.PermguardDir, name, data, 0644, false)
 	} else {
-		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermGuardDir, name, data, 0644, false)
+		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermguardDir, name, data, 0644, false)
 	}
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", name))
@@ -126,7 +126,7 @@ func (m *RefsManager) SaveHeadConfig(refs string) error {
 // readHeadConfig reads the config file.
 func (m *RefsManager) readHeadConfig() (*headConfig, error) {
 	var config headConfig
-	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getHeadFile(), &config)
+	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermguardDir, m.getHeadFile(), &config)
 	return &config, err
 }
 
@@ -159,7 +159,7 @@ func (m *RefsManager) readRefsConfig(refs string) (*refsConfig, error) {
 		return nil, err
 	}
 	var config refsConfig
-	err = m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, refsPath, &config)
+	err = m.persMgr.ReadTOMLFile(azicliwkspers.PermguardDir, refsPath, &config)
 	if err != nil {
 		return nil, err
 	}

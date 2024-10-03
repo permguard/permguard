@@ -1,6 +1,6 @@
 # Hugo
 title = "permguard"
-description = "PermGuard is an Open Source Multi-Account and Multi-Tenant Authorization Provider."
+description = "Permguard is an Open Source Multi-Account and Multi-Tenant Authorization Provider."
 images = ["cover.png"]
 
 # mainSections

@@ -18,12 +18,12 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-In `PermGuard`, multiple repositories can be created, and each of them has a single **schema**. This provides a structured method for modelling the authorization model.
+In `Permguard`, multiple repositories can be created, and each of them has a single **schema**. This provides a structured method for modelling the authorization model.
 
 {{< callout context="note" icon="info-circle" >}}
 In the context of the [MagicFarmacia sample](/docs/overview/adoption-through-example#integration-use-case-pharmacy-branch-management), , the schema primarily represents two domains: the `platform` tenant, which serves as the master tenant capable of managing all branches, and the `pharmacy branch` tenant.
 
-The platform implements features to create a new tenant for each branch, which can be accomplished using the internal PermGuard API.
+The platform implements features to create a new tenant for each branch, which can be accomplished using the internal Permguard API.
 {{< /callout >}}
 
 ## Schema
@@ -49,11 +49,11 @@ Typically, fewer Resources and Actions are modeled compared to the entities in t
 {{< /callout >}}
 
 ## Resource
-A **Resource** serves as the central entity within `PermGuard`. It represents a logical entity within the application that must be enriched with authorization policies.
+A **Resource** serves as the central entity within `Permguard`. It represents a logical entity within the application that must be enriched with authorization policies.
 
 When creating authorization Resources, it's essential to consider `performance` and execution time required by the application to evaluate policies. This ensures optimal performance and efficient policy evaluation within the application context.
 
-In summary, `Resources` in PermGuard provide a structured approach to managing authorization policies, promoting flexibility and performance optimization within the application ecosystem.
+In summary, `Resources` in Permguard provide a structured approach to managing authorization policies, promoting flexibility and performance optimization within the application ecosystem.
 
 ```json
 {

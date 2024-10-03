@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-`PermGuard` implements common validators that are universally used across multiple components
+`Permguard` implements common validators that are universally used across multiple components
 
 | TYPE | VALIDATION                             | CASE   | DESCRIPTION                                                                       |
 |------|----------------------------------------|--------|-----------------------------------------------------------------------------------|

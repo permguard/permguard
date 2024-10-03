@@ -120,7 +120,7 @@ func (m *WorkspaceManager) getLockFile() string {
 
 // isWorkspaceDir checks if the directory is a workspace directory.
 func (m *WorkspaceManager) isWorkspaceDir() bool {
-	isValid, _ := m.persMgr.CheckPathIfExists(azicliwkspers.PermGuardDir, "")
+	isValid, _ := m.persMgr.CheckPathIfExists(azicliwkspers.PermguardDir, "")
 	return isValid
 }
 
@@ -138,7 +138,7 @@ func (m *WorkspaceManager) tryLock() (*flock.Flock, error) {
 
 // raiseWrongWorkspaceDirError raises an error when the directory is not a workspace directory.
 func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out aziclicommon.PrinterOutFunc) error {
-	out(nil, "", "The current working directory is not a valid PermGuard workspace.", nil, true)
+	out(nil, "", "The current working directory is not a valid Permguard workspace.", nil, true)
 	out(nil, "", "Please initialize the workspace by running the 'init' command.", nil, true)
 	return azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeHiddenDir()))
 }

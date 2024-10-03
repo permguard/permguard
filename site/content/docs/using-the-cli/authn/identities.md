@@ -23,8 +23,8 @@ Using the `Identities` commands, it is possible to manage identity.
 This command manages identities.
 
 Usage:
-  PermGuard authn identities [flags]
-  PermGuard authn identities [command]
+  Permguard authn identities [flags]
+  Permguard authn identities [command]
 
 Available Commands:
   create      Create an identity
@@ -42,11 +42,11 @@ Global Flags:
   -w, --workdir string   workdir (default ".")
   -v, --verbose         true for verbose output
 
-Use "PermGuard authn identities [command] --help" for more information about a command.
+Use "Permguard authn identities [command] --help" for more information about a command.
 ```
 
 {{< callout context="caution" icon="alert-triangle" >}}
-The output from your current version of PermGuard may differ from the example provided on this page.
+The output from your current version of Permguard may differ from the example provided on this page.
 {{< /callout >}}
 
 ## Create an Identity

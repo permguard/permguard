@@ -34,7 +34,7 @@ import (
 // TestCreateCommandForIdentitiesCreate tests the createCommandForIdentitiesCreate function.
 func TestCreateCommandForIdentitiesCreate(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command creates a remote identity."}
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command creates a remote identity."}
 	aztestutils.BaseCommandTest(t, createCommandForIdentityCreate, args, false, outputs)
 }
 

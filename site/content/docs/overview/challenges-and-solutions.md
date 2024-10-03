@@ -20,7 +20,7 @@ seo:
 ---
 Companies and software solutions commonly adopt an `Authentication Provider` as a `central point to manage users`. By centrally managing users, different applications can avoid the need for custom authentication implementations and delegate authentication to the Authentication Provider.
 
-Similarly, software often necessitates a centralized solution for authorization. `PermGuard` emerges as an `Authorization Provider` by implementing a `central point to manage authorizations`.
+Similarly, software often necessitates a centralized solution for authorization. `Permguard` emerges as an `Authorization Provider` by implementing a `central point to manage authorizations`.
 
 {{< callout context="note" icon="info-circle" >}}
 Authorization is a complex aspect that should not be implemented separately in each application, similar to authentication. Building an authentication layer compliant with the latest security standards isn't a simple task, and the same applies to the authorization layer.
@@ -34,7 +34,7 @@ There are serval level of authorization that can be implemented, essentially the
 - Level 2: Functional Access
 - Level 3: Data Access
 
-PermGuard has been specifically designed to cover and facilitate the implementation of all these levels of authorization.
+Permguard has been specifically designed to cover and facilitate the implementation of all these levels of authorization.
 
 ### Level 1: Application and API Access
 This level of authorization covers the access to the application and the API. It is the most common level of authorization and it is the one that is typically implemented by an Authentication Provider.
@@ -58,13 +58,13 @@ However, this approach presents several drawbacks:
 
 ## The Solutions
 
-`PermGuard` implements an authorization layer. With this approach the previous drawbacks are mitigated:
+`Permguard` implements an authorization layer. With this approach the previous drawbacks are mitigated:
 
-- **Tight Coupled Authorization Logic**: This challenge is fixed as the authorization logic is loosely coupled from the application code. Administrators can create new roles and permissions without requiring changes to the application's code base. The application retrieves the latest policies from the authorization layer without any code modifications and evaluates them using PermGuard.
-- **Duplicated Code**: This challenge is fixed as the authorization evaluation logic is implemented within PermGuard, eliminating duplicated code as the policies are authored externally to the application code.
+- **Tight Coupled Authorization Logic**: This challenge is fixed as the authorization logic is loosely coupled from the application code. Administrators can create new roles and permissions without requiring changes to the application's code base. The application retrieves the latest policies from the authorization layer without any code modifications and evaluates them using Permguard.
+- **Duplicated Code**: This challenge is fixed as the authorization evaluation logic is implemented within Permguard, eliminating duplicated code as the policies are authored externally to the application code.
 - **Limited Flexibility**: This challenge is fixed as using the code-first approach, it is possible to define complex authorization policies. This allows administrators to utilize a configuration language that is highly expressive, enabling the creation of custom and complex permissions.
 - **Security Risks**: This challenge is fixed as having a central point for managing the authorization layer enables the tracking of permissions for each identity across different applications.
 
 {{< callout context="note" icon="info-circle" >}}
-`PermGuard` further enhances the concept of the authorization layer by allowing the creation of multiple types of identities, including Users and Roles.
+`Permguard` further enhances the concept of the authorization layer by allowing the creation of multiple types of identities, including Users and Roles.
 {{< /callout >}}
