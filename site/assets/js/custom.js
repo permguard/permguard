@@ -42,15 +42,15 @@ def check_permissions(token: str, system: str, resource: str, action: str):
 
 has_permissions = check_permissions(token, system, "inventory", "view")`,
   after: `has_permissions = permguard.check(
-    "uur::581616507495::iam:identity/google/pharmacist", 
-    "magicfarmacia-v0.0", 
-    "inventory", 
+    "uur::581616507495::iam:identity/google/pharmacist",
+    "magicfarmacia-v0.0",
+    "inventory",
     "view"
 )`,
 };
 
 const GO_CODE = {
-  before: `// Function to check if the user has permission to perform an action
+  before: `
 func checkPermissions(token, system, resource, action string) bool {
     payload := decodeJWT(token)
     roles, ok := payload["roles"].([]string)
@@ -58,7 +58,6 @@ func checkPermissions(token, system, resource, action string) bool {
         return false
     }
 
-    // Iterate through roles and check if any role grants the required permissions
     for _, role := range roles {
         rolePermissions := getPermissionsForRole(role)
         if resources, systemFound := rolePermissions[resource]; systemFound {
@@ -76,9 +75,9 @@ func checkPermissions(token, system, resource, action string) bool {
 
 hasPermissions := checkPermissions(token, system, "inventory", "view")`,
   after: `hasPermissions := permguard.Check(
-    "uur::581616507495::iam:identity/google/pharmacist", 
-    "magicfarmacia-v0.0", 
-    "inventory", 
+    "uur::581616507495::iam:identity/google/pharmacist",
+    "magicfarmacia-v0.0",
+    "inventory",
     "view",
 )`,
 };
