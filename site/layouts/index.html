@@ -288,7 +288,7 @@
     <pre
       slot="first"
       class="theme-devibeans"
-    ><code class="language-go">// Function to check if the user has permission to perform an action
+    ><code class="language-go">
 func checkPermissions(token, system, resource, action string) bool {
     payload := decodeJWT(token)
     roles, ok := payload["roles"].([]string)
@@ -296,7 +296,6 @@ func checkPermissions(token, system, resource, action string) bool {
         return false
     }
 
-    // Iterate through roles and check if any role grants the required permissions
     for _, role := range roles {
         rolePermissions := getPermissionsForRole(role)
         if resources, systemFound := rolePermissions[resource]; systemFound {
@@ -326,7 +325,7 @@ hasPermissions := checkPermissions(token, system, "inventory", "view")
       <pre
         slot="first"
         class="theme-devibeans"
-      ><code class="language-go">// Function to check if the user has permission to perform an action
+      ><code class="language-go">
 func checkPermissions(token, system, resource, action string) bool {
   payload := decodeJWT(token)
   roles, ok := payload["roles"].([]string)
@@ -334,7 +333,6 @@ func checkPermissions(token, system, resource, action string) bool {
     return false
   }
 
-  // Iterate through roles and check if any role grants the required permissions
   for _, role := range roles {
     rolePermissions := getPermissionsForRole(role)
     if resources, systemFound := rolePermissions[resource]; systemFound {
