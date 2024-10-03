@@ -20,6 +20,7 @@
   type="text/javascript"
 ></script>
 
+<!-- Fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link
@@ -35,15 +36,11 @@
   rel="stylesheet"
 />
 
-<link
-  rel="stylesheet"
-  href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/devibeans.min.css"
-/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-
-<!-- and it's easy to individually load additional languages -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/go.min.js"></script>
+<!-- Code highlighter -->
+<link rel="stylesheet" href="/css/highlightjs/devibeans.min.css" />
+<script src="/js/highlightjs/highlight.min.js"></script>
+<script src="/js/highlightjs/languages/python.min.js"></script>
+<script src="/js/highlightjs/languages/go.min.js"></script>
 
 <script>
   if (window.location.pathname === "/") {
@@ -52,8 +49,5 @@
 </script>
 
 <!-- Code compare slider -->
-<script defer src="/js/slider.js"></script>
-<link
-  rel="stylesheet"
-  href="https://cdn.jsdelivr.net/npm/img-comparison-slider@8/dist/styles.css"
-/>
+<script defer src="/js/comparision-slider/slider.js"></script>
+<link rel="stylesheet" href="/css/comparision-slider/styles.css" />
