@@ -44,7 +44,7 @@
 <section class="section description px-xl-4 px-xxl-0">
   <p class="text-white text-center fw-medium description__text">
     PemGuard is an Open Source Authorization Provider for cloud-native, edge,
-    and multi-talent apps, decoupled from application code. It implements a
+    and multi-tenant apps, decoupled from application code. It implements a
     centralized authorization layer using Policy-as-code, enabling enforcement
     of permission from anywhere, including VMs, Containers, and Serverless.
   </p>
@@ -354,9 +354,9 @@ hasPermissions := checkPermissions(token, system, "inventory", "view")
 </code></pre>
       <pre slot="second">
 <code class="language-go">hasPermissions := permguard.Check(
-  "uur::581616507495::iam:identity/google/pharmacist", 
-  "magicfarmacia-v0.0", 
-  "inventory", 
+  "uur::581616507495::iam:identity/google/pharmacist",
+  "magicfarmacia-v0.0",
+  "inventory",
   "view",
 )
 </code>
