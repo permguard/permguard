@@ -38,7 +38,7 @@ func (m *RefsManager) ExecInitalize(lang string) error {
 }
 
 // ExecCheckoutHead checks out the head.
-func (m *RefsManager) ExecCheckoutHead(remote string, accountID int64, repo string, commit string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (*HeadInfo, map[string]any, error) {
+func (m *RefsManager) ExecCheckoutHead(remote string, accountID int64, repo string, commit string, output map[string]any, out aziclicommon.PrinterOutFunc) (*HeadInfo, map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -52,12 +52,12 @@ func (m *RefsManager) ExecCheckoutHead(remote string, accountID int64, repo stri
 		return nil, output, err
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "head", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(refs)), nil)
+		out(nil, "head", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(refs)), nil, true)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
 			"refs": refs,
 		}
-		output = out(output, "head", remoteObj, nil)
+		output = out(output, "head", remoteObj, nil, true)
 	}
 	headInfo, err := m.GetCurrentHead()
 	if err != nil {

@@ -29,8 +29,8 @@ import (
 )
 
 // outFunc is the function to output the result.
-var outFunc = func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter) func(map[string]any, string, any, error) map[string]any {
-	return func(output map[string]any, key string, value any, err error) map[string]any {
+var outFunc = func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter) aziclicommon.PrinterOutFunc {
+	return func(output map[string]any, key string, value any, err error, newLine bool) map[string]any {
 		if ctx.IsJSONOutput() {
 			key = strings.ReplaceAll(key, "-", "_")
 		}
@@ -46,7 +46,11 @@ var outFunc = func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter
 			if err != nil {
 				printer.Error(err)
 			} else {
-				printer.Print(output)
+				if newLine {
+					printer.Println(output)
+				} else {
+					printer.Print(output)
+				}
 			}
 		}
 		return output

@@ -64,7 +64,7 @@ func runECommandForDeleteIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 	} else if ctx.IsJSONOutput() {
 		output["identities"] = []*azmodels.Identity{identity}
 	}
-	printer.Print(output)
+	printer.Println(output)
 	return nil
 }
 

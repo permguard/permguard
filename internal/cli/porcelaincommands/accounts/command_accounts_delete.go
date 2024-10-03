@@ -62,7 +62,7 @@ func runECommandForDeleteAccount(deps azcli.CliDependenciesProvider, cmd *cobra.
 	} else if ctx.IsJSONOutput() {
 		output["accounts"] = []*azmodels.Account{account}
 	}
-	printer.Print(output)
+	printer.Println(output)
 	return nil
 }
 

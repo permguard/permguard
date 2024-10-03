@@ -47,6 +47,8 @@ const (
 type CliPrinter interface {
 	// Print prints the output.
 	Print(output map[string]any)
+	// Println prints the output.
+	Println(output map[string]any)
 	// Error prints the error.
 	Error(err error)
 	// ErrorWithOutput prints the error with the output.
@@ -122,7 +124,7 @@ func (cp *CliPrinterTerminal) printJSON(output map[string]any) {
 }
 
 // printValue prints the value.
-func (cp *CliPrinterTerminal) printValue(key string, value any) {
+func (cp *CliPrinterTerminal) printValue(key string, value any, newLine bool) {
 	if value == nil || (reflect.TypeOf(value).Kind() == reflect.String && value.(string) == "") {
 		keyColor := color.New(color.FgHiBlack)
 		keyColor.Println(key)
@@ -135,7 +137,7 @@ func (cp *CliPrinterTerminal) printValue(key string, value any) {
 			keyColor.Println(key + ":")
 		}
 		for k, val := range v {
-			cp.printValue("\t"+k, val)
+			cp.printValue("\t"+k, val, newLine)
 		}
 	default:
 		keyColor := color.New(color.FgHiBlack)
@@ -146,16 +148,24 @@ func (cp *CliPrinterTerminal) printValue(key string, value any) {
 			white := color.New(color.FgYellow)
 			array := v.([]string)
 			result := strings.Join(array, ", ")
-			white.Println(result)
+			if newLine {
+				white.Println(result)
+			} else {
+				white.Print(result)
+			}
 		} else {
 			white := color.New(color.Reset)
-			white.Println(v)
+			if newLine {
+				white.Println(v)
+			} else {
+				white.Print(v)
+			}
 		}
 	}
 }
 
 // printTerminal prints the output as terminal text.
-func (cp *CliPrinterTerminal) printTerminal(output map[string]any, isError bool) {
+func (cp *CliPrinterTerminal) printTerminal(output map[string]any, isError bool, newLine bool,) {
 	keys := make([]string, 0, len(output))
 	for k := range output {
 		keys = append(keys, k)
@@ -165,13 +175,23 @@ func (cp *CliPrinterTerminal) printTerminal(output map[string]any, isError bool)
 		if isError {
 			color.Red("%s: %s\n", k, output[k])
 		} else {
-			cp.printValue(k, output[k])
+			cp.printValue(k, output[k], newLine)
 		}
 	}
 }
 
 // Print prints the output.
 func (cp *CliPrinterTerminal) Print(output map[string]any) {
+	cp.print(output, false)
+}
+
+// Println prints the output.
+func (cp *CliPrinterTerminal) Println(output map[string]any) {
+	cp.print(output, true)
+}
+
+// print prints the output.
+func (cp *CliPrinterTerminal) print(output map[string]any, newLine bool) {
 	switch cp.output {
 	case OutputJSON:
 		if output == nil {
@@ -184,7 +204,7 @@ func (cp *CliPrinterTerminal) Print(output map[string]any) {
 		if output == nil {
 			return
 		}
-		cp.printTerminal(output, false)
+		cp.printTerminal(output, false, newLine)
 	}
 }
 
@@ -304,6 +324,6 @@ func (cp *CliPrinterTerminal) ErrorWithOutput(output map[string]any, err error) 
 	case OutputTerminal:
 		fallthrough
 	default:
-		cp.printTerminal(output, true)
+		cp.printTerminal(output, true, true)
 	}
 }

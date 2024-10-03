@@ -66,7 +66,7 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 		return aziclicommon.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
-		printer.Print(output)
+		printer.Println(output)
 	}
 	return nil
 }
