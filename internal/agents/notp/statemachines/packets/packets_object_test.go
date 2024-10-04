@@ -26,7 +26,7 @@ import (
 func TestObjectStatePacket(t *testing.T) {
 	assert := assert.New(t)
 
-	packet := &ObjectRequestStatePacket{}
+	packet := &ObjectStatePacket{}
 	packet.OID = "41d8c67c-705f-4d7e-a758-46e86d0fd9e6"
 	packet.OType = "mycustomtype"
 	packet.Content = []byte("mycontent")
@@ -34,7 +34,7 @@ func TestObjectStatePacket(t *testing.T) {
 	data, err := packet.Serialize()
 	assert.Nil(err)
 
-	newPacket := &ObjectRequestStatePacket{}
+	newPacket := &ObjectStatePacket{}
 	err = newPacket.Deserialize(data)
 
 	assert.Nil(err)
