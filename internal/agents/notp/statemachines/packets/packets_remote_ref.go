@@ -20,24 +20,24 @@ import (
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 )
 
-// AdvertiseObjectResponseStatePacket is the packet to advertise the object response state.
-type AdvertiseObjectResponseStatePacket struct {
-	// Commit is the commit.
-	Commit string
+// RemoteRefStatePacket is the packet to advertise the remote ref state.
+type RemoteRefStatePacket struct {
+	// RefCommit is the commit of the remote ref.
+	RefCommit string
 }
 
 // GetType returns the type of the packet.
-func (p *AdvertiseObjectResponseStatePacket) GetType() uint64 {
-	return notppackets.CombineUint32toUint64(AdvertiseObjectResponseStatePacketType, 0)
+func (p *RemoteRefStatePacket) GetType() uint64 {
+	return notppackets.CombineUint32toUint64(RemoteRefStatePacketType, 0)
 }
 
 // Serialize serializes the packet.
-func (p *AdvertiseObjectResponseStatePacket) Serialize() ([]byte, error) {
-	return []byte(p.Commit), nil
+func (p *RemoteRefStatePacket) Serialize() ([]byte, error) {
+	return []byte(p.RefCommit), nil
 }
 
 // Deserialize deserializes the packet.
-func (p *AdvertiseObjectResponseStatePacket) Deserialize(data []byte) error {
-	p.Commit = string(data)
+func (p *RemoteRefStatePacket) Deserialize(data []byte) error {
+	p.RefCommit = string(data)
 	return nil
 }

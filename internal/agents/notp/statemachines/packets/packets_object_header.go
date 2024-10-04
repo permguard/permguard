@@ -24,29 +24,29 @@ import (
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 )
 
-// AdvertiseObjectRequestStatePacket is the packet to advertise the object request state.
-type AdvertiseObjectRequestStatePacket struct {
+// ObjectHeaderStatePacket is object state description packet.
+type ObjectHeaderStatePacket struct {
 	// OID is the OID.
-	OID 	string
+	OID string
 	// OType is the object type.
-	OType 	string
-}
-
-// GetType returns the type of the packet.
-func (p *AdvertiseObjectRequestStatePacket) GetType() uint64 {
-	return notppackets.CombineUint32toUint64(AdvertiseObjectRequestStatePacketType, 0)
+	OType string
 }
 
 // Serialize serializes the packet.
-func (p *AdvertiseObjectRequestStatePacket) Serialize() ([]byte, error) {
+func (p *ObjectHeaderStatePacket) Serialize() ([]byte, error) {
 	buffer := bytes.NewBuffer([]byte{})
 
-	err := binary.Write(buffer, binary.BigEndian, p.OID)
+	err := binary.Write(buffer, binary.BigEndian, notppackets.EncodeByteArray([]byte(p.OID)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to write OID: %v", err)
 	}
 
-	err = binary.Write(buffer, binary.BigEndian, p.OType)
+	err = buffer.WriteByte(notppackets.PacketNullByte)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write null byte after OID: %v", err)
+	}
+
+	err = binary.Write(buffer, binary.BigEndian, notppackets.EncodeByteArray([]byte(p.OType)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to write OType: %v", err)
 	}
@@ -55,22 +55,22 @@ func (p *AdvertiseObjectRequestStatePacket) Serialize() ([]byte, error) {
 }
 
 // Deserialize deserializes the packet.
-func (p *AdvertiseObjectRequestStatePacket) Deserialize(data []byte) error {
-	if len(data) < 12 {
-		return fmt.Errorf("buffer too small, need at least 12 bytes but got %d", len(data))
+func (p *ObjectHeaderStatePacket) Deserialize(data []byte) error {
+	if len(data) < 1 {
+		return fmt.Errorf("buffer too small, need at least one byte")
 	}
 
-	buffer := bytes.NewBuffer(data)
-
-	err := binary.Read(buffer, binary.BigEndian, &p.OID)
-	if err != nil {
-		return fmt.Errorf("failed to read StateCode: %v", err)
+	oidNullByteIndex := bytes.IndexByte(data, notppackets.PacketNullByte)
+	if oidNullByteIndex == -1 {
+		return fmt.Errorf("missing first null byte")
+	}
+	p.OID = string(notppackets.DecodeByteArray(data[:oidNullByteIndex]))
+	if oidNullByteIndex+1 >= len(data) {
+		return fmt.Errorf("missing data after OID")
 	}
 
-	err = binary.Read(buffer, binary.BigEndian, &p.OType)
-	if err != nil {
-		return fmt.Errorf("failed to read StateValue: %v", err)
-	}
+	startIndex := oidNullByteIndex + 1
+	p.OType = string(notppackets.DecodeByteArray(data[startIndex:]))
 
 	return nil
 }

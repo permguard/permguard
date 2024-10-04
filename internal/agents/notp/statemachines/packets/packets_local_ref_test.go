@@ -22,12 +22,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestObjectStatePacket tests the object state packet
-func TestObjectStatePacket(t *testing.T) {
+// TestLocalRefStatePacket tests the local ref state packet
+func TestLocalRefStatePacket(t *testing.T) {
 	assert := assert.New(t)
 
-	packet := &ObjectStatePacket{}
-	packet.Content = []byte("mycontent")
+	packet := &LocalRefStatePacket{}
+	packet.RefCommit = "477161cc-83c5-4004-8901-a61727ce045a"
+	packet.RemoteRefTimestamp = 1234567890
 
 	data, err := packet.Serialize()
 	assert.Nil(err)
@@ -36,5 +37,6 @@ func TestObjectStatePacket(t *testing.T) {
 	err = newPacket.Deserialize(data)
 
 	assert.Nil(err)
-	assert.Equal(packet.Content, packet.Content)
+	assert.Equal(packet.RefCommit, packet.RefCommit)
+	assert.Equal(packet.RemoteRefTimestamp, packet.RemoteRefTimestamp)
 }

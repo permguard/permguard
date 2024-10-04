@@ -22,19 +22,21 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestObjectStatePacket tests the object state packet
-func TestObjectStatePacket(t *testing.T) {
+// TestObjectHeaderStatePacket tests the object header state packet
+func TestObjectHeaderStatePacket(t *testing.T) {
 	assert := assert.New(t)
 
-	packet := &ObjectStatePacket{}
-	packet.Content = []byte("mycontent")
+	packet := &ObjectHeaderStatePacket{}
+	packet.OID = "41d8c67c-705f-4d7e-a758-46e86d0fd9e6"
+	packet.OType = "mycustomtype"
 
 	data, err := packet.Serialize()
 	assert.Nil(err)
 
-	newPacket := &ObjectStatePacket{}
+	newPacket := &ObjectHeaderStatePacket{}
 	err = newPacket.Deserialize(data)
 
 	assert.Nil(err)
-	assert.Equal(packet.Content, packet.Content)
+	assert.Equal(packet.OID, newPacket.OID)
+	assert.Equal(packet.OType, newPacket.OType)
 }

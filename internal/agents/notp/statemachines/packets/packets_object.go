@@ -26,10 +26,6 @@ import (
 
 // ObjectStatePacket is the packet to advertise the object state.
 type ObjectStatePacket struct {
-	// OID is the OID.
-	OID string
-	// OType is the object type.
-	OType string
 	// Content represents the object's content.
 	Content []byte
 }
@@ -38,27 +34,7 @@ type ObjectStatePacket struct {
 func (p *ObjectStatePacket) Serialize() ([]byte, error) {
 	buffer := bytes.NewBuffer([]byte{})
 
-	err := binary.Write(buffer, binary.BigEndian, notppackets.EncodeByteArray([]byte(p.OID)))
-	if err != nil {
-		return nil, fmt.Errorf("failed to write OID: %v", err)
-	}
-
-	err = buffer.WriteByte(notppackets.PacketNullByte)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write null byte after OID: %v", err)
-	}
-
-	err = binary.Write(buffer, binary.BigEndian, notppackets.EncodeByteArray([]byte(p.OType)))
-	if err != nil {
-		return nil, fmt.Errorf("failed to write OType: %v", err)
-	}
-
-	err = buffer.WriteByte(notppackets.PacketNullByte)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write null byte after OType: %v", err)
-	}
-
-	err = binary.Write(buffer, binary.BigEndian, notppackets.EncodeByteArray(p.Content))
+	err := binary.Write(buffer, binary.BigEndian, notppackets.EncodeByteArray(p.Content))
 	if err != nil {
 		return nil, fmt.Errorf("failed to write Content: %v", err)
 	}
@@ -72,28 +48,7 @@ func (p *ObjectStatePacket) Deserialize(data []byte) error {
 		return fmt.Errorf("buffer too small, need at least one byte")
 	}
 
-	oidNullByteIndex := bytes.IndexByte(data, notppackets.PacketNullByte)
-	if oidNullByteIndex == -1 {
-		return fmt.Errorf("missing first null byte")
-	}
-	p.OID = string(notppackets.DecodeByteArray(data[:oidNullByteIndex]))
-	if oidNullByteIndex+1 >= len(data) {
-		return fmt.Errorf("missing data after OID")
-	}
-
-	startIndex := oidNullByteIndex + 1
-	otypeNullByteIndex := bytes.IndexByte(data[startIndex:], notppackets.PacketNullByte)
-	if otypeNullByteIndex == -1 {
-		return fmt.Errorf("missing second null byte")
-	}
-	otypeNullByteIndex += startIndex
-	p.OType = string(notppackets.DecodeByteArray(data[startIndex:otypeNullByteIndex]))
-	if otypeNullByteIndex+1 > len(data) {
-		return fmt.Errorf("missing data after OType")
-	}
-
-	startIndex = otypeNullByteIndex + 1
-	p.Content = notppackets.DecodeByteArray(data[startIndex:])
+	p.Content = notppackets.DecodeByteArray(data)
 
 	return nil
 }
