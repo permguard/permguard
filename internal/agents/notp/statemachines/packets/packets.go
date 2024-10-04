@@ -17,10 +17,14 @@
 package packets
 
 const (
-	// AdvertiseObjectsStatePacketType represents the type of the advertise objects state packet.
-	AdvertiseObjectsStatePacketType = uint32(20)
-	// NegotiateObjectsStatePacketType represents the type of the negotiate objects state packet.
-	NegotiateObjectsStatePacketType = uint32(21)
-	// TransferObjectsStatePacketType represents the type of the transfer objects state packet.
-	TransfeObjectsStatePacketTypee = uint32(22)
+	// AdvertiseObjectRequestStatePacketType represents the type of the advertise object request state packet.
+	AdvertiseObjectRequestStatePacketType = uint32(20)
+	// AdvertiseObjectResponseStatePacketType represents the type of the advertise object response state packet.
+	AdvertiseObjectResponseStatePacketType = uint32(20)
+	// NegotiateObjectRequestStatePacketType represents the type of the negotiate object request state packet.
+	NegotiateObjectRequestStatePacketType = uint32(21)
+	// NegotiateObjectResponseStatePacketType represents the type of the negotiate object response state packet.
+	NegotiateObjectResponseStatePacketType = uint32(21)
+	// ObjectStatePacketType represents the type of the object state packet.
+	ObjectStatePacketType = uint32(22)
 )

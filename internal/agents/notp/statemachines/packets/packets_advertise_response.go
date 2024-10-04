@@ -20,24 +20,24 @@ import (
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 )
 
-// AdvertiseObjectsStatePacketType represents the type of the advertise objects state packet.
-type AdvertiseObjectsStatePacket struct {
+// AdvertiseObjectResponseStatePacket is the packet to advertise the object response state.
+type AdvertiseObjectResponseStatePacket struct {
 	// Commit is the commit.
 	Commit string
 }
 
 // GetType returns the type of the packet.
-func (p *AdvertiseObjectsStatePacket) GetType() uint64 {
-	return notppackets.CombineUint32toUint64(AdvertiseObjectsStatePacketType, 0)
+func (p *AdvertiseObjectResponseStatePacket) GetType() uint64 {
+	return notppackets.CombineUint32toUint64(AdvertiseObjectResponseStatePacketType, 0)
 }
 
 // Serialize serializes the packet.
-func (p *AdvertiseObjectsStatePacket) Serialize() ([]byte, error) {
+func (p *AdvertiseObjectResponseStatePacket) Serialize() ([]byte, error) {
 	return []byte(p.Commit), nil
 }
 
 // Deserialize deserializes the packet.
-func (p *AdvertiseObjectsStatePacket) Deserialize(data []byte) error {
+func (p *AdvertiseObjectResponseStatePacket) Deserialize(data []byte) error {
 	p.Commit = string(data)
 	return nil
 }
