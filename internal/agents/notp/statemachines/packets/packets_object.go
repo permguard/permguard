@@ -24,18 +24,18 @@ import (
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 )
 
-// ObjectRequestStatePacket is the packet to  the object request state.
-type ObjectRequestStatePacket struct {
+// ObjectStatePacket is the packet to advertise the object state.
+type ObjectStatePacket struct {
 	// OID is the OID.
-	OID 	string
+	OID string
 	// OType is the object type.
-	OType 	string
+	OType string
 	// Content represents the object's content.
 	Content []byte
 }
 
 // Serialize serializes the packet.
-func (p *ObjectRequestStatePacket) Serialize() ([]byte, error) {
+func (p *ObjectStatePacket) Serialize() ([]byte, error) {
 	buffer := bytes.NewBuffer([]byte{})
 
 	err := binary.Write(buffer, binary.BigEndian, notppackets.EncodeByteArray([]byte(p.OID)))
@@ -67,7 +67,7 @@ func (p *ObjectRequestStatePacket) Serialize() ([]byte, error) {
 }
 
 // Deserialize deserializes the packet.
-func (p *ObjectRequestStatePacket) Deserialize(data []byte) error {
+func (p *ObjectStatePacket) Deserialize(data []byte) error {
 	if len(data) < 1 {
 		return fmt.Errorf("buffer too small, need at least one byte")
 	}
