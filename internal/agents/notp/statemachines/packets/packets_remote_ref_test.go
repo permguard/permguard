@@ -32,7 +32,7 @@ func TestRemoteRefStatePacket(t *testing.T) {
 	data, err := packet.Serialize()
 	assert.Nil(err)
 
-	newPacket := &ObjectStatePacket{}
+	newPacket := &RemoteRefStatePacket{}
 	err = newPacket.Deserialize(data)
 
 	assert.Nil(err)
