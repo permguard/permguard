@@ -38,6 +38,7 @@ func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *no
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
+	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
 	return handlerReturn, nil
 }
 
@@ -46,6 +47,7 @@ func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatem
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
+	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
 	return handlerReturn, nil
 }
 
@@ -54,6 +56,7 @@ func (m *WorkspaceManager) OnPushSendNegotiationResponse(handlerCtx *notpstatema
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
+	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
 	return handlerReturn, nil
 }
 
@@ -62,5 +65,6 @@ func (m *WorkspaceManager) OnPushExchangeDataStream(handlerCtx *notpstatemachine
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
+	handlerReturn.HasMore = false
 	return handlerReturn, nil
 }

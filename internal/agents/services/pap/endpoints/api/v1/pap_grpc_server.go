@@ -211,7 +211,7 @@ func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, Pa
 	}
 	err = stateMachine.Run(notpstatemachines.UnknownFlowType)
 	if err != nil {
-		return err
+		return azerrors.WrapSystemError(azerrors.ErrServerGeneric, fmt.Sprintf("server: notp stream unhandled err %s", err.Error()))
 	}
 	return nil
 }
