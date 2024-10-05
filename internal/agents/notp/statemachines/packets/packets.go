@@ -17,10 +17,12 @@
 package packets
 
 const (
+	// FlowIDStatePacketType represents the type of the flow ID state packet.
+	FlowIDStatePacketType = uint32(20)
 	// RemoteRefStatePacketType represents the type of the remote ref state packet.
-	RemoteRefStatePacketType = uint32(20)
+	RemoteRefStatePacketType = uint32(21)
 	// LocalRefStatePacketType represents the type of the local ref state packet.
-	LocalRefStatePacketType = uint32(20)
+	LocalRefStatePacketType = uint32(22)
 	// ObjectStatePacketType represents the type of the object state packet.
-	ObjectStatePacketType = uint32(22)
+	ObjectStatePacketType = uint32(23)
 )
