@@ -130,7 +130,7 @@ actions:
 
 When composing a schema, the following rules must be observed:
 
-- Unique Names: Each domain, resource, and action must have a unique name within its context to avoid conflicts and ensure clarity. The naming of the schema must also adhere to the established PermGuard naming conventions.
+- Unique Names: Each domain, resource, and action must have a unique name within its context to avoid conflicts and ensure clarity. The naming of the schema must also adhere to the established Permguard naming conventions.
 - Hierarchical Structure: The schema must be structured hierarchically, with domains at the top level, followed by resources within each domain, and actions within each resource.
 - Optional Descriptions: While descriptions are optional, they are recommended for enhancing the clarity and maintainability of the schema.
 - Mandatory Names: The name field is mandatory for every domain, resource, and action. This ensures that each element is properly identified and can be referenced in policies.

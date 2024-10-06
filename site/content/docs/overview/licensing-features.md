@@ -18,7 +18,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-`PermGuard` is open source and it is distributed under the `Apache-2.0 license`.
+`Permguard` is open source and it is distributed under the `Apache-2.0 license`.
 It has been designed to be user-friendly and packed with essential features such as:
 
 - **Multi Accounts:** Ability to manage multiple isolated accounts.
@@ -31,5 +31,5 @@ It has been designed to be user-friendly and packed with essential features such
   - **Configuration Language:** Ability to configure the repository using a code-first approach with either Permscript language or YAML.
 
 <div style="text-align: center">
-  <img alt="PermGuard Policies" src="/images/diagrams/d5.png"/>
+  <img alt="Permguard Policies" src="/images/diagrams/d5.png"/>
 </div>

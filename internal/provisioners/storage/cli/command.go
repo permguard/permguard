@@ -19,7 +19,7 @@ var asciiArt string
 // runECommand runs the command.
 func runECommand(cmdInfo azprovisioners.StorageProvisionerInfo, storageProvisioner azprovisioners.StorageProvisioner, v *viper.Viper) error {
 	fmt.Println(asciiArt)
-	fmt.Printf("PermGuard %s - Copyright © 2022 Nitro Agility S.r.l.\n", cmdInfo.Name)
+	fmt.Printf("Permguard %s - Copyright © 2022 Nitro Agility S.r.l.\n", cmdInfo.Name)
 	fmt.Println("")
 
 	err := storageProvisioner.InitFromViper(v)

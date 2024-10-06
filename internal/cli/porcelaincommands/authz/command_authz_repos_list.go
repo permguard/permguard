@@ -68,7 +68,7 @@ func runECommandForListRepositories(deps azcli.CliDependenciesProvider, cmd *cob
 	} else if ctx.IsJSONOutput() {
 		output["repositories"] = repositories
 	}
-	printer.Print(output)
+	printer.Println(output)
 	return nil
 }
 

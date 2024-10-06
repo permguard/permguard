@@ -19,11 +19,11 @@ seo:
   noindex: false # false (default) or true
 ---
 
-PermGuard can be installed in any environment, offering the flexibility to deploy multiple instances of the PermGuard server.
+Permguard can be installed in any environment, offering the flexibility to deploy multiple instances of the Permguard server.
 
-A recommended approach is to deploy a dedicated PermGuard server for each environment, such as development, staging, and production. This separation ensures isolated and secure management of permissions tailored to each stage of your deployment pipeline.
+A recommended approach is to deploy a dedicated Permguard server for each environment, such as development, staging, and production. This separation ensures isolated and secure management of permissions tailored to each stage of your deployment pipeline.
 
-When managing one or more servers, and provisioning to any of them, it is essential to properly configure the available remote connections. This configuration enables seamless communication and coordination between the various PermGuard instances.
+When managing one or more servers, and provisioning to any of them, it is essential to properly configure the available remote connections. This configuration enables seamless communication and coordination between the various Permguard instances.
 
 A remote can be added using the remote command:
 
@@ -37,7 +37,7 @@ and it can be removed using the remote command:
  permguard remote remove dev
 ```
 
-If the PermGuard server ports differ from the default values (`aap`:`9091` and `pap`:`9092`), you can specify the custom port numbers using the `--aap` and `--pap` flag:
+If the Permguard server ports differ from the default values (`aap`:`9091` and `pap`:`9092`), you can specify the custom port numbers using the `--aap` and `--pap` flag:
 
 ```bash
  permguard remote add dev server.permguard.com --aap 9095 --pap 9096

@@ -31,7 +31,7 @@ import (
 // TestCreateCommandForConfigAAPGet tests the createCommandForConfigAAPGet function.
 func TestCreateCommandForConfigAAPGet(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command gets the aap grpc target."}
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command gets the aap grpc target."}
 	aztestutils.BaseCommandTest(t, createCommandForConfigAAPGet, args, false, outputs)
 }
 
@@ -53,7 +53,7 @@ func TestCliConfigGetAAPTarget(t *testing.T) {
 		cmd := createCommandForConfigAAPGet(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
+		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		printerMock := azmocks.NewPrinterMock()
 		outputPrinter := map[string]any{}
@@ -64,18 +64,19 @@ func TestCliConfigGetAAPTarget(t *testing.T) {
 			outputPrinter["aap_target"] = "localhost:9092"
 		}
 		printerMock.On("Print", outputPrinter).Return()
+		printerMock.On("Println", outputPrinter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 
 		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
-		printerMock.AssertCalled(t, "Print", outputPrinter)
+		printerMock.AssertCalled(t, "Println", outputPrinter)
 	}
 }
 
 // TestCreateCommandForConfigPAPGet tests the createCommandForConfigPAPGet function.
 func TestCreateCommandForConfigPAPGet(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command gets the pap grpc target."}
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command gets the pap grpc target."}
 	aztestutils.BaseCommandTest(t, createCommandForConfigPAPGet, args, false, outputs)
 }
 
@@ -97,7 +98,7 @@ func TestCliConfigGetPAPTarget(t *testing.T) {
 		cmd := createCommandForConfigPAPGet(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
+		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		printerMock := azmocks.NewPrinterMock()
 		outputPrinter := map[string]any{}
@@ -108,10 +109,11 @@ func TestCliConfigGetPAPTarget(t *testing.T) {
 			outputPrinter["pap_target"] = "localhost:9092"
 		}
 		printerMock.On("Print", outputPrinter).Return()
+		printerMock.On("Println", outputPrinter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 
 		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
-		printerMock.AssertCalled(t, "Print", outputPrinter)
+		printerMock.AssertCalled(t, "Println", outputPrinter)
 	}
 }

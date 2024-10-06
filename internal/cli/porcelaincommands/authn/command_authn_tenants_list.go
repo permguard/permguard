@@ -68,7 +68,7 @@ func runECommandForListTenants(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 	} else if ctx.IsJSONOutput() {
 		output["tenants"] = tenants
 	}
-	printer.Print(output)
+	printer.Println(output)
 	return nil
 }
 

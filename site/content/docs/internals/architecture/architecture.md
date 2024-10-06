@@ -19,10 +19,10 @@ seo:
   noindex: false # false (default) or true
 ---
 
-`PermGuard` consists of several services, which can be deployed either on a single instance using the `all-in-one` distribution, or individually using separate distributions for each service."
+`Permguard` consists of several services, which can be deployed either on a single instance using the `all-in-one` distribution, or individually using separate distributions for each service."
 
 <div style="text-align: center">
-  <img alt="PermGuard Policies" src="/images/diagrams/d6.png"/>
+  <img alt="Permguard Policies" src="/images/diagrams/d6.png"/>
 </div>
 
 ## Account Administration Point (AAP)

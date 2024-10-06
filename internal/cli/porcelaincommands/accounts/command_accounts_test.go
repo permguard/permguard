@@ -25,6 +25,6 @@ import (
 // TestCreateCommandForAccounts tests the CreateCommandForAccounts function.
 func TestCreateCommandForAccounts(t *testing.T) {
 	args := []string{}
-	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command manages accounts on the remote server."}
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command manages accounts on the remote server."}
 	aztestutils.BaseCommandTest(t, CreateCommandForAccounts, args, false, outputs)
 }

@@ -30,7 +30,7 @@ import (
 // TestCreateCommandForConfigAAPSet tests the createCommandForConfigAAPSet function.
 func TestCreateCommandForConfigAAPSet(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command sets the aap grpc target."}
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command sets the aap grpc target."}
 	aztestutils.BaseCommandTest(t, createCommandForConfigAAPSet, args, false, outputs)
 }
 
@@ -51,7 +51,7 @@ func TestCliConfigSetAAPTargetWithError(t *testing.T) {
 		cmd := createCommandForConfigAAPSet(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
+		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		printerMock := azmocks.NewPrinterMock()
 		printerMock.On("Error", mock.Anything).Return()
@@ -65,7 +65,7 @@ func TestCliConfigSetAAPTargetWithError(t *testing.T) {
 // TestCreateCommandForConfigPAPSet tests the createCommandForConfigPAPSet function.
 func TestCreateCommandForConfigPAPSet(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command sets the pap grpc target."}
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command sets the pap grpc target."}
 	aztestutils.BaseCommandTest(t, createCommandForConfigPAPSet, args, false, outputs)
 }
 
@@ -86,7 +86,7 @@ func TestCliConfigSetPAPTargetWithError(t *testing.T) {
 		cmd := createCommandForConfigPAPSet(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
+		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		printerMock := azmocks.NewPrinterMock()
 		printerMock.On("Error", mock.Anything).Return()

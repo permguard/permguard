@@ -25,9 +25,9 @@ import (
 )
 
 // ExecCheckoutRepo checks out a repository.
-func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to checkout repo %s.", aziclicommon.KeywordText(repoURI)), nil)
+		out(nil, "", fmt.Sprintf("Failed to checkout repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
 		return output, err
 	}
 
@@ -47,17 +47,17 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 	defer fileLock.Unlock()
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "checkout", "Initiating remote verification process.", nil)
+		out(nil, "checkout", "Initiating remote verification process.", nil, true)
 	}
 	exist, _ := m.cfgMgr.CheckRepoIfExists(repoURI)
 	if exist {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "checkout", "Remote verification failed: repository already exists.", nil)
+			out(nil, "checkout", "Remote verification failed: repository already exists.", nil, true)
 		}
 		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: repo %s already exists", repoURI)))
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "checkout", "Remote verified successfully.", nil)
+		out(nil, "checkout", "Remote verified successfully.", nil, true)
 	}
 
 	remoteInfo, err := m.cfgMgr.GetRemoteInfo(repoInfo.GetRemote())
@@ -65,19 +65,19 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 		return failedOpErr(nil, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "checkout", "Retrieving remote repository information.", nil)
+		out(nil, "checkout", "Retrieving remote repository information.", nil, true)
 	}
 	srvRepo, err := m.rmSrvtMgr.GetServerRemoteRepo(repoInfo.GetAccountID(), repoInfo.GetRepo(), remoteInfo.GetServer(), remoteInfo.GetAAPPort(), remoteInfo.GetPAPPort())
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "checkout", "Failed to retrieve remote repository information.", nil)
+			out(nil, "checkout", "Failed to retrieve remote repository information.", nil, true)
 		}
 		return failedOpErr(nil, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "checkout", "Remote repository retrieved successfully.", nil)
+		out(nil, "checkout", "Remote repository retrieved successfully.", nil, true)
 	}
-	headInfo, output, err := m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.Refs, nil, out)
+	headInfo, output, err := m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.RepositoryID, srvRepo.Refs, nil, out)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
@@ -90,9 +90,9 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out func(map[string]
 }
 
 // ExecPull fetches the latest changes from the remote repo and constructs the remote state.
-func (m *WorkspaceManager) ExecPull(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to pull the repo.", nil)
+		out(nil, "", "Failed to pull the repo.", nil, true)
 		return output, err
 	}
 
@@ -108,7 +108,7 @@ func (m *WorkspaceManager) ExecPull(out func(map[string]any, string, any, error)
 
 	headRef, err := m.rfsMgr.GetCurrentHeadRefs()
 	if err != nil || headRef == "" {
-		out(nil, "", "Please ensure a valid remote repo is checked out.", nil)
+		out(nil, "", "Please ensure a valid remote repo is checked out.", nil, true)
 		if err == nil {
 			err = azerrors.WrapSystemError(azerrors.ErrCliWorkspace, "cli: invalid head refs")
 		}

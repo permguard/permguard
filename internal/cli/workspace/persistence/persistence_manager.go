@@ -31,8 +31,8 @@ const (
 	WorkDir RelativeDir = iota
 	// WorkspaceDir is the workspace directory.
 	WorkspaceDir RelativeDir = 1
-	// PermGuardDir is the permguard hiden directory.
-	PermGuardDir RelativeDir = 2
+	// PermguardDir is the permguard hiden directory.
+	PermguardDir RelativeDir = 2
 )
 
 // PersistenceManager implements the internal manager for the persistence file.
@@ -58,7 +58,7 @@ func (p *PersistenceManager) GetRelativeDir(relative RelativeDir, name string) s
 		return name
 	case WorkspaceDir:
 		return filepath.Join(p.rootDir, name)
-	case PermGuardDir:
+	case PermguardDir:
 		return filepath.Join(p.rootDir, p.permguardDir, name)
 	}
 	return p.rootDir

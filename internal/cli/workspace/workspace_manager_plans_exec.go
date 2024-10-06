@@ -19,21 +19,20 @@ package workspace
 import (
 	"fmt"
 
+	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
-	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ExecPlan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
-func (m *WorkspaceManager) ExecPlan(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *WorkspaceManager) ExecPlan(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	return m.execInternalPlan(false, out)
 }
 
 // execInternalPlan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
-func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to build the plan.", nil)
+		out(nil, "", "Failed to build the plan.", nil, true)
 		return output, err
 	}
 
@@ -41,64 +40,49 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
-	headRef, err := m.rfsMgr.GetCurrentHeadRefs()
-	if err != nil || headRef == "" {
-		out(nil, "", "Please ensure a valid remote repo is checked out.", nil)
-		if err == nil {
-			err = azerrors.WrapSystemError(azerrors.ErrCliWorkspace, "cli: invalid head refs")
-		}
-		return failedOpErr(nil, err)
-	}
-
-	refsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
+	// Read current head settings
+	headCtx, err := m.getCurrentHeadContext()
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
 
+	// Executes the validation for the current head
 	output, err := m.execInternalValidate(true, out)
 	if err != nil {
 		return failedOpErr(output, err)
 	}
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "plan", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(headRef)), nil)
-		out(nil, "plan", fmt.Sprintf("Repo set to %s.", aziclicommon.KeywordText(refsInfo.GetRepoURI())), nil)
+		out(nil, "plan", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(headCtx.GetRefs())), nil, true)
+		out(nil, "plan", fmt.Sprintf("Repo set to %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
-			"refs": headRef,
+			"refs": headCtx.GetRefs(),
 		}
-		output = out(output, "head", remoteObj, nil)
-		output = out(output, "repo", refsInfo.GetRepoURI(), nil)
+		output = out(output, "head", remoteObj, nil, true)
+		output = out(output, "repo", headCtx.GetRepoURI(), nil, true)
 	}
 
-	out(nil, "", fmt.Sprintf("Initiating the planning process for repo %s.", aziclicommon.KeywordText(refsInfo.GetRepoURI())), nil)
+	// Executes the planning for the current head
+	out(nil, "", fmt.Sprintf("Initiating the planning process for repo %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 
 	errPlanningProcessFailed := "Planning process failed."
 
-	commit, err := m.rfsMgr.GetRefsCommit(headRef)
-	if err != nil {
-		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("Unable to read the commit for refs %s.", aziclicommon.KeywordText(headRef)), nil)
-		}
-		out(nil, "", errPlanningProcessFailed, nil)
-		return failedOpErr(nil, err)
-	}
-
 	var remoteCodeState []azicliwkscosp.CodeObjectState = nil
-	if commit == azicliwksrefs.ZeroOID {
+	if headCtx.GetCommit() == azlangobjs.ZeroOID {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("The refs %s has no commits associated with it.", aziclicommon.KeywordText(headRef)), nil)
+			out(nil, "plan", fmt.Sprintf("The refs %s has no commits associated with it.", aziclicommon.KeywordText(headCtx.GetRefs())), nil, true)
 		}
 	}
 
 	localCodeState, err := m.cospMgr.ReadCodeSourceCodeState()
 	if err != nil {
-		out(nil, "", errPlanningProcessFailed, nil)
+		out(nil, "", errPlanningProcessFailed, nil, true)
 		return failedOpErr(output, err)
 	}
 	codeStateObjs, err := m.plan(localCodeState, remoteCodeState)
 	if err != nil {
-		out(nil, "", errPlanningProcessFailed, nil)
+		out(nil, "", errPlanningProcessFailed, nil, true)
 		return failedOpErr(output, err)
 	}
 
@@ -107,57 +91,57 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 	modifiedItems := []azicliwkscosp.CodeObjectState{}
 	deletedItems := []azicliwkscosp.CodeObjectState{}
 	if len(codeStateObjs) == 0 {
-		out(nil, "", "No changes detected during the planning phase. system is up to date.", nil)
+		out(nil, "", "No changes detected during the planning phase. system is up to date.", nil, true)
 	} else {
-		out(nil, "", "Planning process completed successfully.", nil)
-		out(nil, "", "The following changes have been identified and are ready to be applied:\n", nil)
+		out(nil, "", "Planning process completed successfully.", nil, true)
+		out(nil, "", "The following changes have been identified and are ready to be applied:\n", nil, true)
 		for _, codeStateObj := range codeStateObjs {
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateUnchanged {
-				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.UnchangedText("="), aziclicommon.IDText(codeStateObj.OID), aziclicommon.UnchangedText(codeStateObj.OName)), nil)
+				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.UnchangedText("="), aziclicommon.IDText(codeStateObj.OID), aziclicommon.UnchangedText(codeStateObj.OName)), nil, true)
 				unchangedItems = append(unchangedItems, codeStateObj)
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateCreate {
-				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.CreateText("+"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.CreateText(codeStateObj.OName)), nil)
+				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.CreateText("+"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.CreateText(codeStateObj.OName)), nil, true)
 				createdItems = append(createdItems, codeStateObj)
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateModify {
-				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.ModifyText("~"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.ModifyText(codeStateObj.OName)), nil)
+				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.ModifyText("~"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.ModifyText(codeStateObj.OName)), nil, true)
 				modifiedItems = append(modifiedItems, codeStateObj)
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateDelete {
-				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.DeleteText("-"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.DeleteText(codeStateObj.OName)), nil)
+				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.DeleteText("-"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.DeleteText(codeStateObj.OName)), nil, true)
 				deletedItems = append(deletedItems, codeStateObj)
 			}
 		}
-		out(nil, "", "", nil)
+		out(nil, "", "", nil, true)
 		planObjs := append(createdItems, modifiedItems...)
 		planObjs = append(planObjs, unchangedItems...)
 		refsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
 		if err != nil {
 			if m.ctx.IsVerboseTerminalOutput() {
-				out(nil, "plan", "Failed to retrieve the current head refs info.", nil)
+				out(nil, "plan", "Failed to retrieve the current head refs info.", nil, true)
 			}
-			out(nil, "", "Unable to build the plan.", nil)
+			out(nil, "", "Unable to build the plan.", nil, true)
 			return failedOpErr(output, err)
 		}
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("Remote for the plan is set to: %s.", aziclicommon.KeywordText(refsInfo.GetRemote())), nil)
-			out(nil, "plan", fmt.Sprintf("Reference ID for the plan is set to: %s", aziclicommon.IDText(refsInfo.GetRefID())), nil)
-			out(nil, "plan", "Preparing to save the plan.", nil)
+			out(nil, "plan", fmt.Sprintf("Remote for the plan is set to: %s.", aziclicommon.KeywordText(refsInfo.GetRemote())), nil, true)
+			out(nil, "plan", fmt.Sprintf("Reference ID for the plan is set to: %s", aziclicommon.IDText(refsInfo.GetRefID())), nil, true)
+			out(nil, "plan", "Preparing to save the plan.", nil, true)
 		}
 		err = m.cospMgr.SaveRemoteCodePlan(refsInfo.GetRemote(), refsInfo.GetRefID(), planObjs)
 		if err != nil {
 			if m.ctx.IsVerboseTerminalOutput() {
-				out(nil, "plan", "Failed to save the plan.", nil)
+				out(nil, "plan", "Failed to save the plan.", nil, true)
 			}
-			out(nil, "", "Unable to save the plan.", nil)
+			out(nil, "", "Unable to save the plan.", nil, true)
 			return failedOpErr(output, err)
 		}
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", "Plan saved successfully.", nil)
+			out(nil, "plan", "Plan saved successfully.", nil, true)
 		}
 		if !internal {
-			out(nil, "", "Run the 'apply' command to apply the changes.", nil)
+			out(nil, "", "Run the 'apply' command to apply the changes.", nil, true)
 		}
 	}
 	if m.ctx.IsJSONOutput() {
@@ -172,14 +156,14 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out func(map[string]a
 }
 
 // ExecApply applies the plan to the remote repo
-func (m *WorkspaceManager) ExecApply(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *WorkspaceManager) ExecApply(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	return m.execInternalApply(false, out)
 }
 
 // execInternalApply applies the plan to the remote repo
-func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to apply the plan.", nil)
+		out(nil, "", "Failed to apply the plan.", nil, true)
 		return output, err
 	}
 
@@ -187,11 +171,19 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
-	refsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
+	// Read current head settings
+	headCtx, err := m.getCurrentHeadContext()
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
 
+	// Executes the plan for the current head
+	output, err := m.execInternalPlan(true, out)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+
+	// Creates the abstraction for the language
 	lang, err := m.cfgMgr.GetLanguage()
 	if err != nil {
 		return failedOpErr(nil, err)
@@ -201,66 +193,88 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out func(map[string]
 		return failedOpErr(nil, err)
 	}
 
-	output, err := m.execInternalPlan(true, out)
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-
-	out(nil, "", fmt.Sprintf("Initiating the apply process for repo %s.", aziclicommon.KeywordText(refsInfo.GetRepoURI())), nil)
+	// Executes the apply for the current head
+	out(nil, "", fmt.Sprintf("Initiating the apply process for repo %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "apply", "Preparing to read the plan.", nil)
+		out(nil, "apply", "Preparing to read the plan.", nil, true)
 	}
 	errPlanningProcessFailed := "Apply process failed."
-	plan, err := m.cospMgr.ReadRemoteCodePlan(refsInfo.GetRemote(), refsInfo.GetRefID())
+	plan, err := m.cospMgr.ReadRemoteCodePlan(headCtx.GetRemote(), headCtx.GetRefID())
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "apply", "Failed to read the plan.", nil)
+			out(nil, "apply", "Failed to read the plan.", nil, true)
 		}
-		out(nil, "", errPlanningProcessFailed, nil)
+		out(nil, "", errPlanningProcessFailed, nil, true)
 		return failedOpErr(output, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "apply", "The plan has been read successfully.", nil)
+		out(nil, "apply", "The plan has been read successfully.", nil, true)
 	}
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "apply", "Preparing to build the tree.", nil)
+		out(nil, "apply", "Preparing to build the tree.", nil, true)
 	}
 	_, treeObj, err := m.buildPlanTree(plan, absLang)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "apply", "Failed to build the tree.", nil)
+			out(nil, "apply", "Failed to build the tree.", nil, true)
 		}
-		out(nil, "", errPlanningProcessFailed, nil)
+		out(nil, "", errPlanningProcessFailed, nil, true)
 		return failedOpErr(output, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "apply", fmt.Sprintf("The tree has been created with id: %s.", aziclicommon.IDText(treeObj.GetOID())), nil)
+		out(nil, "apply", fmt.Sprintf("The tree has been created with id: %s.", aziclicommon.IDText(treeObj.GetOID())), nil, true)
 	}
-
-	remoteInfo, err := m.cfgMgr.GetRemoteInfo(refsInfo.GetRemote())
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-	err = m.rmSrvtMgr.NOTPPush(remoteInfo.GetServer(), remoteInfo.GetPAPPort(), m)
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-
-	out(nil, "", "", nil)
-	for _, planObj := range plan {
-		if planObj.State == azicliwkscosp.CodeObjectStateUnchanged {
-			continue
+	headTreeID := azlangobjs.ZeroOID
+	if headCtx.commit != azlangobjs.ZeroOID {
+		headCommitObj, err := m.cospMgr.ReadObject(headCtx.commit)
+		if err != nil {
+			if m.ctx.IsVerboseTerminalOutput() {
+				out(nil, "apply", "Failed to read the head commit.", nil, true)
+			}
+			out(nil, "", errPlanningProcessFailed, nil, true)
+			return failedOpErr(output, err)
 		}
-		out(nil, "", fmt.Sprintf("%s object with id: %s, type %s and name: %s.", aziclicommon.RemoteOperationText("Synchronizing"),
-			aziclicommon.IDText(planObj.OID), aziclicommon.KeywordText(planObj.OType), aziclicommon.KeywordText(planObj.OName)), nil)
+		headCommit, err := absLang.GetCommiteObject(headCommitObj)
+		if err != nil {
+			if m.ctx.IsVerboseTerminalOutput() {
+				out(nil, "apply", "Failed to get the head commit.", nil, true)
+			}
+			out(nil, "", errPlanningProcessFailed, nil, true)
+			return failedOpErr(output, err)
+		}
+		headTreeID = headCommit.GetTree()
 	}
-	out(nil, "", "", nil)
+	commit, commitObj, err := m.buildPlanCommit(headTreeID, "", absLang)
+	if err != nil {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "apply", "Failed to build the commit.", nil, true)
+		}
+		out(nil, "", errPlanningProcessFailed, nil, true)
+		return failedOpErr(output, err)
+	}
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "apply", fmt.Sprintf("The commit has been created with id: %s.", aziclicommon.IDText(commitObj.GetOID())), nil, true)
+	}
 
-	out(nil, "", "Apply process completed successfully.", nil)
+	bag := map[string]any{
+		ApplyOutFuncKey: func(output string, newLine bool) {
+			out(nil, "", output, nil, newLine)
+		},
+		ApplyTreeObjectKey:   treeObj,
+		ApplyCommitKey:       commit,
+		ApplyCommitObjectKey: commitObj,
+		HeadContextKey:       headCtx,
+	}
+	err = m.rmSrvtMgr.NOTPPush(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetAccountID(), headCtx.GetRepoID(), bag, m)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+
+	out(nil, "", "Apply process completed successfully.", nil, true)
 	if !internal {
-		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repo: %s.", aziclicommon.KeywordText(refsInfo.GetRepoURI())), nil)
+		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repo: %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 	}
 	return output, nil
 }

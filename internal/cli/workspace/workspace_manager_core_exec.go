@@ -26,17 +26,17 @@ import (
 )
 
 // codeFileInfo represents info about the code file.
-func (m *WorkspaceManager) printFiles(action string, files []string, out func(map[string]any, string, any, error) map[string]any) {
-	out(nil, "", fmt.Sprintf("	- %s:", action), nil)
+func (m *WorkspaceManager) printFiles(action string, files []string, out aziclicommon.PrinterOutFunc) {
+	out(nil, "", fmt.Sprintf("	- %s:", action), nil, true)
 	for _, file := range files {
-		out(nil, "", fmt.Sprintf("	  	- %s", aziclicommon.FileText(aziclicommon.FileText(file))), nil)
+		out(nil, "", fmt.Sprintf("	  	- %s", aziclicommon.FileText(aziclicommon.FileText(file))), nil, true)
 	}
 }
 
 // ExecInitWorkspace initializes the workspace.
-func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *WorkspaceManager) ExecInitWorkspace(language string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to initialize the workspace", nil)
+		out(nil, "", "Failed to initialize the workspace", nil, true)
 		return output, err
 	}
 
@@ -52,8 +52,8 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 	}
 	defer fileLock.Unlock()
 
-	if m.ctx.IsVerboseTerminalOutput(){
-		out(nil, "init", fmt.Sprintf("Initializing PermGuard workspace in %s.", aziclicommon.FileText(homeDir)), nil)
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "init", fmt.Sprintf("Initializing Permguard workspace in %s.", aziclicommon.FileText(homeDir)), nil, true)
 	}
 	firstInit := true
 	if !res {
@@ -68,14 +68,14 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 	for _, initializer := range initializers {
 		err := initializer(language)
 		if err != nil {
-			if m.ctx.IsVerboseTerminalOutput(){
-				out(nil, "init", "Initialization failed.", nil)
+			if m.ctx.IsVerboseTerminalOutput() {
+				out(nil, "init", "Initialization failed.", nil, true)
 			}
 			return failedOpErr(nil, err)
 		}
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "init", "Initialization succeeded.", nil)
+		out(nil, "init", "Initialization succeeded.", nil, true)
 	}
 	var msg string
 	var output map[string]any
@@ -84,21 +84,21 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out func(map[strin
 	} else {
 		msg = fmt.Sprintf("Reinitialized existing permguard repository in %s.", aziclicommon.FileText(homeDir))
 	}
-	out(nil, "", msg, nil)
+	out(nil, "", msg, nil, true)
 	output = map[string]any{}
 	if m.ctx.IsJSONOutput() {
 		remoteObj := map[string]any{
 			"cwd": m.getHomeHiddenDir(),
 		}
-		output = out(nil, "workspace", remoteObj, nil)
+		output = out(nil, "workspace", remoteObj, nil, true)
 	}
 	return output, nil
 }
 
 // ExecAddRemote adds a remote.
-func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort int, papPort int, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort int, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to add remote %s.", aziclicommon.KeywordText(remote)), nil)
+		out(nil, "", fmt.Sprintf("Failed to add remote %s.", aziclicommon.KeywordText(remote)), nil, true)
 		return output, err
 	}
 
@@ -126,9 +126,9 @@ func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort i
 }
 
 // ExecRemoveRemote removes a remote.
-func (m *WorkspaceManager) ExecRemoveRemote(remote string, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *WorkspaceManager) ExecRemoveRemote(remote string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to remove remote %s.", aziclicommon.KeywordText(remote)), nil)
+		out(nil, "", fmt.Sprintf("Failed to remove remote %s.", aziclicommon.KeywordText(remote)), nil, true)
 		return output, err
 	}
 
@@ -148,7 +148,7 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out func(map[string]a
 	}
 	if refsInfo.GetRemote() == remote {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "remote", "Failed to delete remote: it is associated with the current HEAD.", nil)
+			out(nil, "remote", "Failed to delete remote: it is associated with the current HEAD.", nil, true)
 		}
 		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, fmt.Sprintf("cli: cannot remove the remote used by the currently checked out account %s", remote)))
 	}
@@ -157,9 +157,9 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out func(map[string]a
 }
 
 // ExecListRemotes lists the remotes.
-func (m *WorkspaceManager) ExecListRemotes(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *WorkspaceManager) ExecListRemotes(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to list remotes.", nil)
+		out(nil, "", "Failed to list remotes.", nil, true)
 		return output, err
 	}
 
@@ -178,9 +178,9 @@ func (m *WorkspaceManager) ExecListRemotes(out func(map[string]any, string, any,
 }
 
 // ExecListRepos lists the repos.
-func (m *WorkspaceManager) ExecListRepos(out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *WorkspaceManager) ExecListRepos(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to list repos.", nil)
+		out(nil, "", "Failed to list repos.", nil, true)
 		return output, err
 	}
 

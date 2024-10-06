@@ -39,7 +39,7 @@ func (m *ConfigManager) ExecInitialize(lang string) error {
 }
 
 // ExecAddRemote adds a remote.
-func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap int, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap int, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -63,7 +63,7 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 	}
 	cfg.Remotes[remote] = cfgRemote
 	m.saveConfig(true, cfg)
-	out(nil, "", fmt.Sprintf("Remote %s has been added.", aziclicommon.KeywordText(remote)), nil)
+	out(nil, "", fmt.Sprintf("Remote %s has been added.", aziclicommon.KeywordText(remote)), nil, true)
 	output = map[string]any{}
 	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
@@ -74,13 +74,13 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 			"pap":    cfgRemote.PAPPort,
 		}
 		remotes = append(remotes, remoteObj)
-		output = out(output, "remotes", remotes, nil)
+		output = out(output, "remotes", remotes, nil, true)
 	}
 	return output, nil
 }
 
 // ExecRemoveRemote removes a remote.
-func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -96,7 +96,7 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 		return output, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", remote))
 	}
 	cfgRemote := cfg.Remotes[remote]
-	out(nil, "", fmt.Sprintf("Remote %s has been removed.", aziclicommon.KeywordText(remote)), nil)
+	out(nil, "", fmt.Sprintf("Remote %s has been removed.", aziclicommon.KeywordText(remote)), nil, true)
 	output = map[string]any{}
 	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
@@ -107,7 +107,7 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 			"pap":    cfgRemote.PAPPort,
 		}
 		remotes = append(remotes, remoteObj)
-		output = out(output, "remotes", remotes, nil)
+		output = out(output, "remotes", remotes, nil, true)
 	}
 	delete(cfg.Remotes, remote)
 	m.saveConfig(true, cfg)
@@ -115,7 +115,7 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 }
 
 // ExecListRemotes lists the remotes.
-func (m *ConfigManager) ExecListRemotes(output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *ConfigManager) ExecListRemotes(output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -129,13 +129,13 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out func(map[stri
 			remotes = append(remotes, cfgRemote)
 		}
 		if len(remotes) == 0 {
-			out(nil, "", "Your workspace doesn't have any remote configured.", nil)
+			out(nil, "", "Your workspace doesn't have any remote configured.", nil, true)
 		} else {
-			out(nil, "", "Your workspace configured remotes:\n", nil)
+			out(nil, "", "Your workspace configured remotes:\n", nil, true)
 			for _, remote := range remotes {
-				out(nil, "", fmt.Sprintf("	- %s", aziclicommon.KeywordText(remote)), nil)
+				out(nil, "", fmt.Sprintf("	- %s", aziclicommon.KeywordText(remote)), nil, true)
 			}
-			out(nil, "", "\n", nil)
+			out(nil, "", "\n", nil, true)
 		}
 	} else if m.ctx.IsJSONOutput() {
 		remotes := []any{}
@@ -148,13 +148,13 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out func(map[stri
 			}
 			remotes = append(remotes, remoteObj)
 		}
-		output = out(output, "remotes", remotes, nil)
+		output = out(output, "remotes", remotes, nil, true)
 	}
 	return output, nil
 }
 
 // ExecAddRepo adds a repo.
-func (m *ConfigManager) ExecAddRepo(refs string, repo string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *ConfigManager) ExecAddRepo(refs string, repo string, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -178,9 +178,9 @@ func (m *ConfigManager) ExecAddRepo(refs string, repo string, output map[string]
 		m.saveConfig(true, cfg)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "repo", fmt.Sprintf("Refs successfully set to %s.", aziclicommon.KeywordText(cfgRepo.Refs)), nil)
+		out(nil, "repo", fmt.Sprintf("Refs successfully set to %s.", aziclicommon.KeywordText(cfgRepo.Refs)), nil, true)
 	}
-	out(nil, "", fmt.Sprintf("Repo %s has been added.", aziclicommon.KeywordText(repo)), nil)
+	out(nil, "", fmt.Sprintf("Repo %s has been added.", aziclicommon.KeywordText(repo)), nil, true)
 	output = map[string]any{}
 	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
@@ -188,13 +188,13 @@ func (m *ConfigManager) ExecAddRepo(refs string, repo string, output map[string]
 			"repo": repo,
 		}
 		remotes = append(remotes, remoteObj)
-		output = out(output, "repos", remotes, nil)
+		output = out(output, "repos", remotes, nil, true)
 	}
 	return output, nil
 }
 
 // ExecListRepos lists the repos.
-func (m *ConfigManager) ExecListRepos(activeRefs string, output map[string]any, out func(map[string]any, string, any, error) map[string]any) (map[string]any, error) {
+func (m *ConfigManager) ExecListRepos(activeRefs string, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -213,26 +213,26 @@ func (m *ConfigManager) ExecListRepos(activeRefs string, output map[string]any, 
 			repos = append(repos, cfgRepoTxt)
 		}
 		if len(repos) == 0 {
-			out(nil, "", "Your workspace doesn't have any repo configured.", nil)
+			out(nil, "", "Your workspace doesn't have any repo configured.", nil, true)
 		} else {
-			out(nil, "", "Your workspace configured repos:\n", nil)
+			out(nil, "", "Your workspace configured repos:\n", nil, true)
 			for _, repo := range repos {
-				out(nil, "", fmt.Sprintf("	- %s", aziclicommon.KeywordText(repo)), nil)
+				out(nil, "", fmt.Sprintf("	- %s", aziclicommon.KeywordText(repo)), nil, true)
 			}
-			out(nil, "", "\n", nil)
+			out(nil, "", "\n", nil, true)
 		}
 	} else if m.ctx.IsJSONOutput() {
 		repos := []any{}
 		for cfgRepo := range cfg.Repositories {
 			isActive := activeRefs == cfg.Repositories[cfgRepo].Refs
 			repoObj := map[string]any{
-				"refs": cfg.Repositories[cfgRepo].Refs,
+				"refs":   cfg.Repositories[cfgRepo].Refs,
 				"repo":   cfgRepo,
 				"active": isActive,
 			}
 			repos = append(repos, repoObj)
 		}
-		output = out(output, "repos", repos, nil)
+		output = out(output, "repos", repos, nil, true)
 	}
 	return output, nil
 }

@@ -19,9 +19,9 @@ seo:
   noindex: false # false (default) or true
 ---
 
-PermGuard adopts a code-first approach to managing schemas, policies and permissions. This approach ensures that all configurations are defined in code, allowing them to be versioned, reviewed, and tested.
+Permguard adopts a code-first approach to managing schemas, policies and permissions. This approach ensures that all configurations are defined in code, allowing them to be versioned, reviewed, and tested.
 
-To enhance coding efficiency and comfort, PermGuard provides several key commands:
+To enhance coding efficiency and comfort, Permguard provides several key commands:
 
 - `refresh`: Generates the local state
 - `validate`: Validates the configurations in the working directory
@@ -46,7 +46,7 @@ The `validate` command checks the configurations in the working directory for sy
 
 ## Pull
 
-The `pull` command fetches the state from the remote PermGuard server and stores it locally and finally build a remote state.
+The `pull` command fetches the state from the remote Permguard server and stores it locally and finally build a remote state.
 
 ```bash
  permguard pull

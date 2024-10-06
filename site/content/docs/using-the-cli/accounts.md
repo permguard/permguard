@@ -23,8 +23,8 @@ Using the `Accounts` commands, it is possible to Manage Accounts on the remote s
 This command manages accounts.
 
 Usage:
-  PermGuard accounts [flags]
-  PermGuard accounts [command]
+  Permguard accounts [flags]
+  Permguard accounts [command]
 
 Available Commands:
   create      Create an account
@@ -40,11 +40,11 @@ Global Flags:
   -v, --verbose          true for verbose output
   -w, --workdir string   workdir (default ".")
 
-Use "PermGuard accounts [command] --help" for more information about a command.
+Use "Permguard accounts [command] --help" for more information about a command.
 ```
 
 {{< callout context="caution" icon="alert-triangle" >}}
-The output from your current version of PermGuard may differ from the example provided on this page.
+The output from your current version of Permguard may differ from the example provided on this page.
 {{< /callout >}}
 
 ## Create an Account

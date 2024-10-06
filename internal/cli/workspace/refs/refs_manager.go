@@ -32,8 +32,6 @@ const (
 	hiddenRefsDir = "refs"
 	// hiddenHeadFile represents the hidden head file.
 	hiddenHeadFile = "HEAD"
-	// ZeroOID  represents the zero oid
-	ZeroOID = "0000000000000000000000000000000000000000000000000000000000000000"
 )
 
 // RefsManager implements the internal manager for the refs files.
@@ -75,7 +73,7 @@ func (m *RefsManager) ensureRefsFileExists(refs string) error {
 	if err != nil {
 		return err
 	}
-	_, err = m.persMgr.CreateFileIfNotExists(azicliwkspers.PermGuardDir, refsFile)
+	_, err = m.persMgr.CreateFileIfNotExists(azicliwkspers.PermguardDir, refsFile)
 	if err != nil {
 		return err
 	}
@@ -100,9 +98,9 @@ func (m *RefsManager) saveConfig(name string, override bool, cfg any) error {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
 	}
 	if override {
-		_, err = m.persMgr.WriteFile(azicliwkspers.PermGuardDir, name, data, 0644, false)
+		_, err = m.persMgr.WriteFile(azicliwkspers.PermguardDir, name, data, 0644, false)
 	} else {
-		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermGuardDir, name, data, 0644, false)
+		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermguardDir, name, data, 0644, false)
 	}
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", name))
@@ -128,12 +126,12 @@ func (m *RefsManager) SaveHeadConfig(refs string) error {
 // readHeadConfig reads the config file.
 func (m *RefsManager) readHeadConfig() (*headConfig, error) {
 	var config headConfig
-	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, m.getHeadFile(), &config)
+	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermguardDir, m.getHeadFile(), &config)
 	return &config, err
 }
 
 // SaveRefsConfig saves the refs configuration.
-func (m *RefsManager) SaveRefsConfig(refs string, commit string) error {
+func (m *RefsManager) SaveRefsConfig(repoID string, refs string, commit string) error {
 	err := m.ensureRefsFileExists(refs)
 	if err != nil {
 		return err
@@ -144,6 +142,7 @@ func (m *RefsManager) SaveRefsConfig(refs string, commit string) error {
 	}
 	refCfg := refsConfig{
 		Objects: refsObjectsConfig{
+			RepoID: repoID,
 			Commit: commit,
 		},
 	}
@@ -161,11 +160,24 @@ func (m *RefsManager) readRefsConfig(refs string) (*refsConfig, error) {
 		return nil, err
 	}
 	var config refsConfig
-	err = m.persMgr.ReadTOMLFile(azicliwkspers.PermGuardDir, refsPath, &config)
+	err = m.persMgr.ReadTOMLFile(azicliwkspers.PermguardDir, refsPath, &config)
 	if err != nil {
 		return nil, err
 	}
 	return &config, nil
+}
+
+// GetRefsRepoID reads the refs repo id.
+func (m *RefsManager) GetRefsRepoID(refs string) (string, error) {
+	refsCfg, err := m.readRefsConfig(refs)
+	if err != nil {
+		return "", err
+	}
+	if refsCfg == nil {
+		return "", azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: invalid refs config file")
+
+	}
+	return refsCfg.Objects.RepoID, nil
 }
 
 // GetRefsCommit reads the refs commit.
@@ -192,6 +204,7 @@ func (m *RefsManager) GetCurrentHead() (*HeadInfo, error) {
 	}, nil
 }
 
+
 // GetCurrentHeadRefs gets the current head ref.
 func (m *RefsManager) GetCurrentHeadRefs() (string, error) {
 	headInfo, err := m.GetCurrentHead()
@@ -199,6 +212,15 @@ func (m *RefsManager) GetCurrentHeadRefs() (string, error) {
 		return "", err
 	}
 	return headInfo.refs, nil
+}
+
+// GetCurrentHeadRepoID gets the current head repo id.
+func (m *RefsManager) GetCurrentHeadRepoID() (string, error) {
+	headInfo, err := m.GetCurrentHead()
+	if err != nil {
+		return "", err
+	}
+	return m.GetRefsRepoID(headInfo.refs)
 }
 
 // GetCurrentHeadCommit gets the current head commit.

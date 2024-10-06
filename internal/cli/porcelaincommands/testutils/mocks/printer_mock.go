@@ -31,6 +31,11 @@ func (m *PrinterMock) Print(output map[string]any) {
 	m.Called(output)
 }
 
+// Println prints the output.
+func (m *PrinterMock) Println(output map[string]any) {
+	m.Called(output)
+}
+
 // Error prints the error.
 func (m *PrinterMock) Error(err error) {
 	m.Called(err)

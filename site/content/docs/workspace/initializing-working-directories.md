@@ -19,13 +19,13 @@ seo:
   noindex: false # false (default) or true
 ---
 
-PermGuard provides a Command Line Interface (CLI) for managing authentication metadata (AuthN) and authorization metadata and configurations (AuthZ) for applications.
+Permguard provides a Command Line Interface (CLI) for managing authentication metadata (AuthN) and authorization metadata and configurations (AuthZ) for applications.
 
 Authentication is handled exclusively through the CLI, while authorization is managed via both the CLI and the Policy Language.
 
 The authorization process follows a code-first approach, and when dealing with Schemas, Policies, and Permissions, the CLI should be executed from a working directory that contains configuration files written in either YAML or PermScript.
 
-There are three methods to create a working directory and associate it with a PermGuard repo:
+There are three methods to create a working directory and associate it with a Permguard repo:
 
 - Initialize a new repo in a working directory
 - Clone an existing repo into a working directory
@@ -33,10 +33,10 @@ There are three methods to create a working directory and associate it with a Pe
 
 ## Working directory contents
 
-A `PermGuard` working directory contains the following files:
+A `Permguard` working directory contains the following files:
 
 - Configuration files in either `YAML` or `PermScript` format.
-- A hidden `.permguard` directory which PermGuard uses to store metadata and intermediate files that are automatically managed by PermGuard and should not be modified manually. This directory should be added to the `.gitignore` file to prevent it from being committed to the source code version control.
+- A hidden `.permguard` directory which Permguard uses to store metadata and intermediate files that are automatically managed by Permguard and should not be modified manually. This directory should be added to the `.gitignore` file to prevent it from being committed to the source code version control.
 
 ## Initialize a new repo
 
@@ -73,7 +73,7 @@ permguard repositories create --name magicfarmacia-v0.0 --account-id 26878670434
 }
 ```
 
-Finally, initialize the working directory and associate it with a PermGuard `remote` server:
+Finally, initialize the working directory and associate it with a Permguard `remote` server:
 
 ```bash
  permguard init
@@ -83,9 +83,9 @@ Finally, initialize the working directory and associate it with a PermGuard `rem
 
 ## Clone an existing repo
 
-There are advanced cases where a PermGuard repo has already been created and it is required to recovery the configuration files to a local working directory.
+There are advanced cases where a Permguard repo has already been created and it is required to recovery the configuration files to a local working directory.
 
-In this case, it is just necessary to clone the PermGuard repo:
+In this case, it is just necessary to clone the Permguard repo:
 
 ```bash
  permguard clone permguard@server.permguard.com/268786704340/magicfarmacia-v0.0

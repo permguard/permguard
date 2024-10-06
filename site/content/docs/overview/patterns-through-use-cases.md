@@ -19,13 +19,13 @@ seo:
   noindex: false # false (default) or true
 ---
 
-A common use case for `PermGuard` is in the context of cloud-native applications, where an identity can initiate an action via an API. This action can then be split into events that are dispatched and processed by multiple microservices.
+A common use case for `Permguard` is in the context of cloud-native applications, where an identity can initiate an action via an API. This action can then be split into events that are dispatched and processed by multiple microservices.
 
 <div style="text-align: center">
-  <img alt="PermGuard Policies" src="/images/diagrams/d2.png"/>
+  <img alt="Permguard Policies" src="/images/diagrams/d2.png"/>
 </div>
 
-PermGuard focuses on [Authz](/docs/concepts/authn-authz/authn-vs-authz/) therefore it does not provide any authentication mechanism. It is assumed that the user is already authenticated and the JWT token is available.
+Permguard focuses on [Authz](/docs/concepts/authn-authz/authn-vs-authz/) therefore it does not provide any authentication mechanism. It is assumed that the user is already authenticated and the JWT token is available.
 
 ## Use Case: Api Endpoint
 
@@ -53,12 +53,12 @@ Below a sample JWT Token:
 }
 ```
 
-`PermGuard` does not require the JWT token to contain any permission or role, as it has a copy of the applicative users and know exactly which permissions are attached to each user.
+`Permguard` does not require the JWT token to contain any permission or role, as it has a copy of the applicative users and know exactly which permissions are attached to each user.
 With this approach the previous drawbacks are mitigated:
 
 - **Increased JWT Size**: This problem is fixed as there is no need to add extra fields in the JWT token.
 - **Synchronization Challenges**: This problem is fixed as permissions are up to date.
-- **Code Duplication**: This problem is fixed as the application does not need to implement any logic to evaluate the permissions, as the policies evaluation is delegated to `PermGuard`.
+- **Code Duplication**: This problem is fixed as the application does not need to implement any logic to evaluate the permissions, as the policies evaluation is delegated to `Permguard`.
 
 ```python {title="app.py"}
 has_permissions = permguard.check(jwt.sub, "magicfarmaciav0.0", "inventory", "read")
@@ -74,10 +74,10 @@ else:
 In the context of asynchronous operations, there is no guarantee about when the operations will be executed. This can result in a scenario where permissions are revoked after the operation has already been initiated.
 
 <div style="text-align: center">
-  <img alt="PermGuard Policies" src="/images/diagrams/d3.png"/>
+  <img alt="Permguard Policies" src="/images/diagrams/d3.png"/>
 </div>
 
-By leveraging `PermGuard`, if the operation has been revoked, the policy evaluation will return false, resulting in the denial of the operation. Consequently, the operation will not be executed, contributing to a higher level of security within the application.
+By leveraging `Permguard`, if the operation has been revoked, the policy evaluation will return false, resulting in the denial of the operation. Consequently, the operation will not be executed, contributing to a higher level of security within the application.
 
 ## Use Case: Securing Asynchronous Operations and Tempered Events
 
@@ -85,10 +85,10 @@ In scenarios involving asynchronous operations, it's typical for an application 
 Storing tokens in events can pose security risks, and there's also a high likelihood that the token would expire before it's consumed.
 
 <div style="text-align: center">
-  <img alt="PermGuard Policies" src="/images/diagrams/d4.png"/>
+  <img alt="Permguard Policies" src="/images/diagrams/d4.png"/>
 </div>
 
-It is possible to publish a signed event and subsequently validate the event and finally perform permission checks with `PermGuard`.
+It is possible to publish a signed event and subsequently validate the event and finally perform permission checks with `Permguard`.
 
 ```python {title="app.py"}
 signedMessage = permguard.sign(jwt.sub, message)
