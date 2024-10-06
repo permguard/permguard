@@ -226,13 +226,25 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", fmt.Sprintf("The tree has been created with id: %s.", aziclicommon.IDText(treeObj.GetOID())), nil, true)
 	}
+	_, commitObj, err := m.buildPlanCommit("", nil, absLang)
+	if err != nil {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "apply", "Failed to build the commit.", nil, true)
+		}
+		out(nil, "", errPlanningProcessFailed, nil, true)
+		return failedOpErr(output, err)
+	}
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "apply", fmt.Sprintf("The commit has been created with id: %s.", aziclicommon.IDText(commitObj.GetOID())), nil, true)
+	}
 
 	bag := map[string]any{
 		ApplyOutFuncKey: func(output string, newLine bool) {
 			out(nil, "", output, nil, newLine)
 		},
-		ApplyTreeIDKey: treeObj,
-		HeadContextKey: headCtx,
+		ApplyTreeIDKey: 	treeObj,
+		ApplyCommitIDKey:	commitObj,
+		HeadContextKey: 	headCtx,
 	}
 	err = m.rmSrvtMgr.NOTPPush(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetAccountID(), headCtx.GetRepoID(), bag, m)
 	if err != nil {
