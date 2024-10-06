@@ -111,6 +111,7 @@ func TestCliRepositoriesDeleteWithSuccess(t *testing.T) {
 			outputPrinter["repositories"] = []*azmodels.Repository{repository}
 		}
 		printerMock.On("Print", outputPrinter).Return()
+		printerMock.On("Println", outputPrinter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 		depsMocks.On("CreateGrpcPAPClient", mock.Anything).Return(papClient, nil)

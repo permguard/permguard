@@ -111,6 +111,7 @@ func TestCliIdentitySourcesDeleteWithSuccess(t *testing.T) {
 			outputPrinter["identity_sources"] = []*azmodels.IdentitySource{identitysource}
 		}
 		printerMock.On("Print", outputPrinter).Return()
+		printerMock.On("Println", outputPrinter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)

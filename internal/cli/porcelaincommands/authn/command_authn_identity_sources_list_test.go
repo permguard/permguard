@@ -122,6 +122,7 @@ func TestCliIdentitySourcesListWithSuccess(t *testing.T) {
 			outputPrinter["identity_sources"] = identitysources
 		}
 		printerMock.On("Print", outputPrinter).Return()
+		printerMock.On("Println", outputPrinter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)

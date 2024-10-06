@@ -41,12 +41,21 @@ func TestDeleteCommandForAccountsDelete(t *testing.T) {
 
 // TestCliAccountsDeleteWithError tests the command for creating an account with an error.
 func TestCliAccountsDeleteWithError(t *testing.T) {
-	tests := []string{
-		"terminal",
-		"json",
+	tests := []struct {
+		OutputType string
+		HasError   bool
+	}{
+		{
+			OutputType: "terminal",
+			HasError:   true,
+		},
+		{
+			OutputType: "json",
+			HasError:   false,
+		},
 	}
-	for _, outputType := range tests {
-		args := []string{"accounts", "delete", "--account", "581616507495", "--output", outputType}
+	for _, test := range tests {
+		args := []string{"accounts", "delete", "--account", "581616507495", "--output", test.OutputType}
 		outputs := []string{""}
 
 		v := viper.New()
@@ -55,8 +64,8 @@ func TestCliAccountsDeleteWithError(t *testing.T) {
 		depsMocks := azmocks.NewCliDependenciesMock()
 		cmd := createCommandForAccountDelete(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
-		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
+		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, test.OutputType, "output format")
+		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		aapClient := azmocks.NewGrpcAAPClientMock()
 		aapClient.On("DeleteAccount", mock.Anything).Return(nil, azerrors.ErrClientParameter)
@@ -68,7 +77,11 @@ func TestCliAccountsDeleteWithError(t *testing.T) {
 		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
 
 		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
-		printerMock.AssertCalled(t, "Error", azerrors.ErrClientParameter)
+		if test.HasError {
+			printerMock.AssertCalled(t, "Error", azerrors.ErrClientParameter)
+		} else {
+			printerMock.AssertNotCalled(t, "Error", azerrors.ErrClientParameter)
+		}
 	}
 }
 
@@ -111,6 +124,7 @@ func TestCliAccountsDeleteWithSuccess(t *testing.T) {
 			outputPrinter["accounts"] = []*azmodels.Account{account}
 		}
 		printerMock.On("Print", outputPrinter).Return()
+		printerMock.On("Println", outputPrinter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)

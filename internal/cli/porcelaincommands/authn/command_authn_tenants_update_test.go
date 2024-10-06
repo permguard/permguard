@@ -111,6 +111,7 @@ func TestCliTenantsUpdateWithSuccess(t *testing.T) {
 			outputPrinter["tenants"] = []*azmodels.Tenant{tenant}
 		}
 		printerMock.On("Print", outputPrinter).Return()
+		printerMock.On("Println", outputPrinter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
