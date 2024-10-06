@@ -18,12 +18,15 @@ package clients
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 
 	azapiv1pap "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
 
+	azagentnotpsm "github.com/permguard/permguard/internal/agents/notp/statemachines"
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
 	notptransport "github.com/permguard/permguard-notp-protocol/pkg/notp/transport"
@@ -65,12 +68,13 @@ func (c *GrpcPAPClient) createWiredStateMachine(stream grpc.BidiStreamingClient[
 }
 
 // NOTPStream handles bidirectional stream using the NOTP protocol.
-func (c *GrpcPAPClient) NOTPStream(hostHandler notpstatemachines.HostHandler, flowType notpstatemachines.FlowType) error {
+func (c *GrpcPAPClient) NOTPStream(hostHandler notpstatemachines.HostHandler, accountID int64, repositoryID string, flowType notpstatemachines.FlowType) error {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return err
 	}
-	stream, err := client.NOTPStream(context.Background())
+	ctx := metadata.AppendToOutgoingContext(context.Background(), azagentnotpsm.AccountIDKey, strconv.FormatInt(accountID, 10), azagentnotpsm.RepositoryIDKey, repositoryID)
+	stream, err := client.NOTPStream(ctx)
 	if err != nil {
 		return err
 	}
@@ -80,7 +84,7 @@ func (c *GrpcPAPClient) NOTPStream(hostHandler notpstatemachines.HostHandler, fl
 	if err != nil {
 		return err
 	}
-	err = stateMachine.Run(flowType)
+	err = stateMachine.Run(nil, flowType)
 	if err != nil {
 		return err
 	}

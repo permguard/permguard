@@ -65,6 +65,12 @@ message RepositoryResponse {
 
 // Pack Objects
 
+// Repository stream request.
+message RepositoryStreamRequest {
+	int64 AccountID = 1;
+    string RepositoryID = 2;
+}
+
 // PackMessage is a pack message.
 message PackMessage {
   bytes data = 1;

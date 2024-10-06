@@ -18,9 +18,7 @@ package packets
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
-	"unsafe"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 )
@@ -29,8 +27,8 @@ import (
 type LocalRefStatePacket struct {
 	// RefCommit is the commit of the local ref.
 	RefCommit string
-	// RemoteRefTimestamp is the timestamp of the remote ref.
-	RemoteRefTimestamp uint64
+	// IsLocalRefAhead indicates whether the local ref is ahead of the input ref.
+	IsLocalRefAhead bool
 }
 
 // GetType returns the type of the packet.
@@ -42,12 +40,15 @@ func (p *LocalRefStatePacket) GetType() uint64 {
 func (p *LocalRefStatePacket) Serialize() ([]byte, error) {
 	commitBytes := notppackets.EncodeByteArray([]byte(p.RefCommit))
 
-	idSize := int(unsafe.Sizeof(p.RemoteRefTimestamp))
-	timestampBytes := make([]byte, idSize)
-	binary.BigEndian.PutUint64(timestampBytes, p.RemoteRefTimestamp)
+	var boolByte byte
+	if p.IsLocalRefAhead {
+		boolByte = 1
+	} else {
+		boolByte = 0
+	}
 
 	data := append(commitBytes, notppackets.PacketNullByte)
-	data = append(data, timestampBytes...)
+	data = append(data, boolByte)
 
 	return data, nil
 }
@@ -61,11 +62,10 @@ func (p *LocalRefStatePacket) Deserialize(data []byte) error {
 
 	p.RefCommit = string(data[:nullByteIndex])
 
-	idSize := int(unsafe.Sizeof(uint64(0)))
-	if nullByteIndex+1+idSize <= len(data) {
-		p.RemoteRefTimestamp = binary.BigEndian.Uint64(data[nullByteIndex+1 : nullByteIndex+9])
+	if nullByteIndex+1 < len(data) {
+		p.IsLocalRefAhead = data[nullByteIndex+1] == 1
 	} else {
-		return fmt.Errorf("missing data for RemoteTimestamp")
+		return fmt.Errorf("missing data for IsLocalRefAhead")
 	}
 
 	return nil
