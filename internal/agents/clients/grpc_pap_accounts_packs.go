@@ -68,7 +68,7 @@ func (c *GrpcPAPClient) createWiredStateMachine(stream grpc.BidiStreamingClient[
 }
 
 // NOTPStream handles bidirectional stream using the NOTP protocol.
-func (c *GrpcPAPClient) NOTPStream(hostHandler notpstatemachines.HostHandler, accountID int64, repositoryID string, flowType notpstatemachines.FlowType) error {
+func (c *GrpcPAPClient) NOTPStream(hostHandler notpstatemachines.HostHandler, accountID int64, repositoryID string, bag map[string]any, flowType notpstatemachines.FlowType) error {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return err
@@ -84,7 +84,7 @@ func (c *GrpcPAPClient) NOTPStream(hostHandler notpstatemachines.HostHandler, ac
 	if err != nil {
 		return err
 	}
-	err = stateMachine.Run(nil, flowType)
+	err = stateMachine.Run(bag, flowType)
 	if err != nil {
 		return err
 	}

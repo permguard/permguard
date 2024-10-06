@@ -68,17 +68,8 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 
 	errPlanningProcessFailed := "Planning process failed."
 
-	commit, err := m.rfsMgr.GetRefsCommit(headCtx.GetRefs())
-	if err != nil {
-		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("Unable to read the commit for refs %s.", aziclicommon.KeywordText(headCtx.GetRefs())), nil, true)
-		}
-		out(nil, "", errPlanningProcessFailed, nil, true)
-		return failedOpErr(nil, err)
-	}
-
 	var remoteCodeState []azicliwkscosp.CodeObjectState = nil
-	if commit == azlangobjs.ZeroOID {
+	if headCtx.GetCommit() == azlangobjs.ZeroOID {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "plan", fmt.Sprintf("The refs %s has no commits associated with it.", aziclicommon.KeywordText(headCtx.GetRefs())), nil, true)
 		}
@@ -187,16 +178,17 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 	}
 
 	// Executes the plan for the current head
+	output, err := m.execInternalPlan(true, out)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+
+	// Creates the abstraction for the language
 	lang, err := m.cfgMgr.GetLanguage()
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
 	absLang, err := m.langFct.CreateLanguageAbastraction(lang)
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-
-	output, err := m.execInternalPlan(true, out)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
@@ -235,7 +227,14 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		out(nil, "apply", fmt.Sprintf("The tree has been created with id: %s.", aziclicommon.IDText(treeObj.GetOID())), nil, true)
 	}
 
-	err = m.rmSrvtMgr.NOTPPush(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetAccountID(), headCtx.GetRepoID(), m)
+	bag := map[string]any{
+		ApplyOutFuncKey: func(output string, newLine bool) {
+			out(nil, "", output, nil, newLine)
+		},
+		ApplyTreeIDKey: treeObj,
+		HeadContextKey: headCtx,
+	}
+	err = m.rmSrvtMgr.NOTPPush(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetAccountID(), headCtx.GetRepoID(), bag, m)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
