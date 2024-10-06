@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"time"
 
+	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
 	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
@@ -34,19 +36,37 @@ const (
 	HeadContextKey = "headContext"
 )
 
+type workspaceHandlerContext struct {
+	outFunc func(output string, newLine bool)
+	tree  	*azlangobjs.Object
+	ctx  	*currentHeadContext
+}
+
+// createWorkspaceHandlerContext creates the workspace handler context.
+func createWorkspaceHandlerContext(h *notpstatemachines.HandlerContext) *workspaceHandlerContext {
+	outfunc, _ := h.Get(ApplyOutFuncKey)
+	tree, _ := h.Get(ApplyTreeIDKey)
+	headContext, _ := h.Get(HeadContextKey)
+	wksCtx := &workspaceHandlerContext{
+		outFunc: outfunc.(func(output string, newLine bool)),
+		tree: tree.(*azlangobjs.Object),
+		ctx: headContext.(*currentHeadContext),
+	}
+	return wksCtx
+}
+
 // OnPushSendNotifyCurrentState notifies the current state.
 func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	packet := &notppackets.Packet{
 		Data: []byte("sample data | notify current state"),
 	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: []notppackets.Packetable{packet},
 	}
-	outVal, _ := handlerCtx.Get(ApplyOutFuncKey)
-	outFunc := outVal.(func(output string, newLine bool))
-	outFunc("Transfering state", true)
+	wksCtx.outFunc("Transfering state", true)
 	for i := 0; i < 100; i++ {
-		outFunc(fmt.Sprintf("\r state %d/100", i), false)
+		wksCtx.outFunc(fmt.Sprintf("\r state %d/100", i), false)
 		time.Sleep(100 * time.Millisecond)
 	}
 	return handlerReturn, nil
