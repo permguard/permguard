@@ -66,7 +66,7 @@ func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemac
 	}
 	wksCtx.outFunc("Transfering state", true)
 	for i := 0; i < 100; i++ {
-		wksCtx.outFunc(fmt.Sprintf("\r state %d/100", i), false)
+		wksCtx.outFunc(fmt.Sprintf("\rstate %d/100", i), false)
 		time.Sleep(100 * time.Millisecond)
 	}
 	return handlerReturn, nil
