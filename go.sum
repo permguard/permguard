@@ -72,10 +72,6 @@ github.com/pelletier/go-toml v1.9.5 h1:4yBQzkHv+7BHq2PQUZF3Mx0IYxG7LsP222s7Agd3v
 github.com/pelletier/go-toml v1.9.5/go.mod h1:u1nR/EPcESfeI/szUZKdtJ0xRNbUoANCkoOuaOx1Y+c=
 github.com/pelletier/go-toml/v2 v2.2.3 h1:YmeHyLY8mFWbdkNWwpr+qIL2bEqT0o95WSdkNHvL12M=
 github.com/pelletier/go-toml/v2 v2.2.3/go.mod h1:MfCQTFTvCcUyyvvwm1+G6H/jORL20Xlb6rzQu9GuUkc=
-github.com/permguard/permguard-abs-language v0.0.0-20241005224707-66c032678b53 h1:1Yb7UxktAeu+9gkSZZo4qjmIKzd+MChe7wFt1P9w4ds=
-github.com/permguard/permguard-abs-language v0.0.0-20241005224707-66c032678b53/go.mod h1:qVNAMe9BaElsC8gKD1OjnEKJibzqN2/At8OIvZvxqf8=
-github.com/permguard/permguard-abs-language v0.0.0-20241006161809-38e5b724bef7 h1:dhNBIG3RWDCJ/CrHdHvvZw+hNpx3TEZsC1zB10XuHTk=
-github.com/permguard/permguard-abs-language v0.0.0-20241006161809-38e5b724bef7/go.mod h1:qVNAMe9BaElsC8gKD1OjnEKJibzqN2/At8OIvZvxqf8=
 github.com/permguard/permguard-abs-language v0.0.0-20241006205620-ac845985a2c4 h1:xxQ7nx+DuS46S3qOh53CODeXRwje4Z6xMXWOXmDGNBM=
 github.com/permguard/permguard-abs-language v0.0.0-20241006205620-ac845985a2c4/go.mod h1:qVNAMe9BaElsC8gKD1OjnEKJibzqN2/At8OIvZvxqf8=
 github.com/permguard/permguard-core v0.0.0-20241005220414-13209ba8eb06 h1:4S0oaLeySGdxBz5C8f+L0VMqBT9eXXXdPef/Ofbi9pw=

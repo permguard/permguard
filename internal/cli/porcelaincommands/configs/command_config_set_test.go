@@ -51,7 +51,7 @@ func TestCliConfigSetAAPTargetWithError(t *testing.T) {
 		cmd := createCommandForConfigAAPSet(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
+		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		printerMock := azmocks.NewPrinterMock()
 		printerMock.On("Error", mock.Anything).Return()
@@ -86,7 +86,7 @@ func TestCliConfigSetPAPTargetWithError(t *testing.T) {
 		cmd := createCommandForConfigPAPSet(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
+		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		printerMock := azmocks.NewPrinterMock()
 		printerMock.On("Error", mock.Anything).Return()

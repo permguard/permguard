@@ -40,12 +40,21 @@ func TestCreateCommandForTenantsCreate(t *testing.T) {
 
 // TestCliTenantsCreateWithError tests the command for creating a tenant with an error.
 func TestCliTenantsCreateWithError(t *testing.T) {
-	tests := []string{
-		"terminal",
-		"json",
+	tests := []struct {
+		OutputType string
+		HasError   bool
+	}{
+		{
+			OutputType: "terminal",
+			HasError:   true,
+		},
+		{
+			OutputType: "json",
+			HasError:   false,
+		},
 	}
-	for _, outputType := range tests {
-		args := []string{"tenants", "create", "--name", "materabranch", "--output", outputType}
+	for _, test := range tests {
+		args := []string{"tenants", "create", "--name", "materabranch", "--output", test.OutputType}
 		outputs := []string{""}
 
 		v := viper.New()
@@ -54,8 +63,8 @@ func TestCliTenantsCreateWithError(t *testing.T) {
 		depsMocks := azmocks.NewCliDependenciesMock()
 		cmd := createCommandForTenantCreate(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
-		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
+		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, test.OutputType, "output format")
+		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		aapClient := azmocks.NewGrpcAAPClientMock()
 		aapClient.On("CreateTenant", mock.Anything, mock.Anything).Return(nil, azerrors.ErrClientParameter)
@@ -67,7 +76,11 @@ func TestCliTenantsCreateWithError(t *testing.T) {
 		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
 
 		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
-		printerMock.AssertCalled(t, "Error", azerrors.ErrClientParameter)
+		if test.HasError {
+			printerMock.AssertCalled(t, "Error", azerrors.ErrClientParameter)
+		} else {
+			printerMock.AssertNotCalled(t, "Error", azerrors.ErrClientParameter)
+		}
 	}
 }
 
@@ -89,7 +102,7 @@ func TestCliTenantsCreateWithSuccess(t *testing.T) {
 		cmd := createCommandForTenantCreate(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
+		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		aapClient := azmocks.NewGrpcAAPClientMock()
 		tenant := &azmodels.Tenant{
@@ -117,6 +130,6 @@ func TestCliTenantsCreateWithSuccess(t *testing.T) {
 		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
 
 		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
-		printerMock.AssertCalled(t, "Print", outputPrinter)
+		printerMock.AssertCalled(t, "Println", outputPrinter)
 	}
 }
