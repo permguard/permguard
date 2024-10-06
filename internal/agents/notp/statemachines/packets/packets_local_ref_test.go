@@ -28,7 +28,7 @@ func TestLocalRefStatePacket(t *testing.T) {
 
 	packet := &LocalRefStatePacket{}
 	packet.RefCommit = "477161cc-83c5-4004-8901-a61727ce045a"
-	packet.IsLocalRefAhead = true
+	packet.HasConflicts = true
 
 	data, err := packet.Serialize()
 	assert.Nil(err)
@@ -38,5 +38,5 @@ func TestLocalRefStatePacket(t *testing.T) {
 
 	assert.Nil(err)
 	assert.Equal(packet.RefCommit, packet.RefCommit)
-	assert.Equal(packet.IsLocalRefAhead, packet.IsLocalRefAhead)
+	assert.Equal(packet.HasConflicts, packet.HasConflicts)
 }

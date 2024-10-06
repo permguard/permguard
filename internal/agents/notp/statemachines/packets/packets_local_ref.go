@@ -27,8 +27,8 @@ import (
 type LocalRefStatePacket struct {
 	// RefCommit is the commit of the local ref.
 	RefCommit string
-	// IsLocalRefAhead indicates whether the local ref is ahead of the input ref.
-	IsLocalRefAhead bool
+	// HasConflicts is true if the local ref has conflicts with the remote ref.
+	HasConflicts bool
 }
 
 // GetType returns the type of the packet.
@@ -41,7 +41,7 @@ func (p *LocalRefStatePacket) Serialize() ([]byte, error) {
 	commitBytes := notppackets.EncodeByteArray([]byte(p.RefCommit))
 
 	var boolByte byte
-	if p.IsLocalRefAhead {
+	if p.HasConflicts {
 		boolByte = 1
 	} else {
 		boolByte = 0
@@ -63,7 +63,7 @@ func (p *LocalRefStatePacket) Deserialize(data []byte) error {
 	p.RefCommit = string(data[:nullByteIndex])
 
 	if nullByteIndex+1 < len(data) {
-		p.IsLocalRefAhead = data[nullByteIndex+1] == 1
+		p.HasConflicts = data[nullByteIndex+1] == 1
 	} else {
 		return fmt.Errorf("missing data for IsLocalRefAhead")
 	}
