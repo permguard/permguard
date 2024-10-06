@@ -131,7 +131,7 @@ func (m *RefsManager) readHeadConfig() (*headConfig, error) {
 }
 
 // SaveRefsConfig saves the refs configuration.
-func (m *RefsManager) SaveRefsConfig(refs string, commit string) error {
+func (m *RefsManager) SaveRefsConfig(repoID string, refs string, commit string) error {
 	err := m.ensureRefsFileExists(refs)
 	if err != nil {
 		return err
@@ -142,6 +142,7 @@ func (m *RefsManager) SaveRefsConfig(refs string, commit string) error {
 	}
 	refCfg := refsConfig{
 		Objects: refsObjectsConfig{
+			RepoID: repoID,
 			Commit: commit,
 		},
 	}
@@ -164,6 +165,19 @@ func (m *RefsManager) readRefsConfig(refs string) (*refsConfig, error) {
 		return nil, err
 	}
 	return &config, nil
+}
+
+// GetRefsRepoID reads the refs repo id.
+func (m *RefsManager) GetRefsRepoID(refs string) (string, error) {
+	refsCfg, err := m.readRefsConfig(refs)
+	if err != nil {
+		return "", err
+	}
+	if refsCfg == nil {
+		return "", azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: invalid refs config file")
+
+	}
+	return refsCfg.Objects.RepoID, nil
 }
 
 // GetRefsCommit reads the refs commit.
@@ -190,6 +204,7 @@ func (m *RefsManager) GetCurrentHead() (*HeadInfo, error) {
 	}, nil
 }
 
+
 // GetCurrentHeadRefs gets the current head ref.
 func (m *RefsManager) GetCurrentHeadRefs() (string, error) {
 	headInfo, err := m.GetCurrentHead()
@@ -197,6 +212,15 @@ func (m *RefsManager) GetCurrentHeadRefs() (string, error) {
 		return "", err
 	}
 	return headInfo.refs, nil
+}
+
+// GetCurrentHeadRepoID gets the current head repo id.
+func (m *RefsManager) GetCurrentHeadRepoID() (string, error) {
+	headInfo, err := m.GetCurrentHead()
+	if err != nil {
+		return "", err
+	}
+	return m.GetRefsRepoID(headInfo.refs)
 }
 
 // GetCurrentHeadCommit gets the current head commit.

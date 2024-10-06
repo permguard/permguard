@@ -77,7 +77,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.Pri
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "checkout", "Remote repository retrieved successfully.", nil, true)
 	}
-	headInfo, output, err := m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.Refs, nil, out)
+	headInfo, output, err := m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.RepositoryID, srvRepo.Refs, nil, out)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}

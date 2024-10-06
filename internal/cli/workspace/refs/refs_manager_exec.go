@@ -38,12 +38,12 @@ func (m *RefsManager) ExecInitalize(lang string) error {
 }
 
 // ExecCheckoutHead checks out the head.
-func (m *RefsManager) ExecCheckoutHead(remote string, accountID int64, repo string, commit string, output map[string]any, out aziclicommon.PrinterOutFunc) (*HeadInfo, map[string]any, error) {
+func (m *RefsManager) ExecCheckoutHead(remote string, accountID int64, repo string, repoID string, commit string, output map[string]any, out aziclicommon.PrinterOutFunc) (*HeadInfo, map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
 	refs := generateRefs(remote, accountID, repo)
-	err := m.SaveRefsConfig(refs, commit)
+	err := m.SaveRefsConfig(repoID, refs, commit)
 	if err != nil {
 		return nil, output, err
 	}
