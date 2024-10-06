@@ -17,6 +17,8 @@
 package workspace
 
 import (
+	"time"
+
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
@@ -83,15 +85,8 @@ func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, a
 }
 
 // buildPlanCommit builds the plan commit.
-func (m *WorkspaceManager) buildPlanCommit(treeID string, parentTrees []string, absLang azlang.LanguageAbastraction) (*azlangobjs.Commit, *azlangobjs.Object, error) {
-	commit := &azlangobjs.Commit{
-		// tree: "",
-		// parents: []string{},
-		// info: &azlangobjs.CommitInfo{
-
-		// },
-		// message: "",
-	}
+func (m *WorkspaceManager) buildPlanCommit(tree string, parentTrees []string, absLang azlang.LanguageAbastraction) (*azlangobjs.Commit, *azlangobjs.Object, error) {
+	commit := azlangobjs.NewCommit(tree, parentTrees, time.Now().UTC(), "local workspace commit")
 	commitObj, err := absLang.CreateCommitObject(commit)
 	if err != nil {
 		return nil, nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: commit object cannot be created")
