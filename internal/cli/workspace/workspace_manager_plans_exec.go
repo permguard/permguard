@@ -191,6 +191,10 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
+	repoID, err := m.rfsMgr.GetCurrentHeadRepoID()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
 
 	lang, err := m.cfgMgr.GetLanguage()
 	if err != nil {
@@ -243,7 +247,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	err = m.rmSrvtMgr.NOTPPush(remoteInfo.GetServer(), remoteInfo.GetPAPPort(), refsInfo.GetAccountID(), refsInfo.GetRepo(), m)
+	err = m.rmSrvtMgr.NOTPPush(remoteInfo.GetServer(), remoteInfo.GetPAPPort(), refsInfo.GetAccountID(), repoID, m)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
