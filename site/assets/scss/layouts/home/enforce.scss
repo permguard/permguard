@@ -15,6 +15,19 @@
     margin: 0;
   }
 
+  .forced-dark &__img {
+    background: #c0c0c0 !important;
+
+    &__header {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    pre,
+    code {
+      background: #c0c0c0 !important;
+    }
+  }
+
   &__img {
     margin-top: 1.5rem;
     border-radius: 24px;
