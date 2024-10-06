@@ -57,10 +57,10 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 		out(nil, "plan", fmt.Sprintf("Repo set to %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
-			"refs": headCtx.GetRefs,
+			"refs": headCtx.GetRefs(),
 		}
 		output = out(output, "head", remoteObj, nil, true)
-		output = out(output, "repo", headCtx.GetRepoURI, nil, true)
+		output = out(output, "repo", headCtx.GetRepoURI(), nil, true)
 	}
 
 	// Executes the planning for the current head
