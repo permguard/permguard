@@ -23,6 +23,95 @@ import (
 	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
+// currentHeadContext represents the current head context.
+type currentHeadContext struct {
+	remote        string
+	accountID     int64
+	repo          string
+	repoID        string
+	repoURI       string
+	refID         string
+	refs          string
+	server        string
+	serverPAPPort int
+}
+
+// GetRemote returns the remote.
+func (h *currentHeadContext) GetRemote() string {
+	return h.remote
+}
+
+// GetAccountID returns the account id.
+func (h *currentHeadContext) GetAccountID() int64 {
+	return h.accountID
+}
+
+// GetRepo returns the repo.
+func (h *currentHeadContext) GetRepo() string {
+	return h.repo
+}
+
+// GetRepoID returns the repo id.
+func (h *currentHeadContext) GetRepoID() string {
+	return h.repoID
+}
+
+// GetRepoURI gets the repo URI.
+func (h *currentHeadContext) GetRepoURI() string {
+	return h.repoURI
+}
+
+// GetRefID returns the ref id.
+func (h *currentHeadContext) GetRefID() string {
+	return h.refID
+}
+
+// GetRefs returns the refs.
+func (h *currentHeadContext) GetRefs() string {
+	return h.refs
+}
+
+// GetServer returns the server.
+func (h *currentHeadContext) GetServer() string {
+	return h.server
+}
+
+// GetServerPAPPort returns the server PAP port.
+func (h *currentHeadContext) GetServerPAPPort() int {
+	return h.serverPAPPort
+}
+
+// getCurrentHeadContext gets the current head context.
+func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) {
+	headRefs, err := m.rfsMgr.GetCurrentHeadRefs()
+	headRefsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	remoteInfo, err := m.cfgMgr.GetRemoteInfo(headRefsInfo.GetRemote())
+	if err != nil {
+		return nil, err
+	}
+
+	headCtx := &currentHeadContext{
+		remote:        headRefsInfo.GetRemote(),
+		accountID:     headRefsInfo.GetAccountID(),
+		repo:          headRefsInfo.GetRepo(),
+		repoURI:       headRefsInfo.GetRepoURI(),
+		refID:         headRefsInfo.GetRefID(),
+		refs:          headRefs,
+		server:        remoteInfo.GetServer(),
+		serverPAPPort: remoteInfo.GetPAPPort(),
+	}
+	repoID, err := m.rfsMgr.GetRefsRepoID(headRefs)
+	if err != nil {
+		return nil, err
+	}
+	headCtx.repoID = repoID
+	return headCtx, nil
+}
+
 // plan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
 func (m *WorkspaceManager) plan(currentCodeObsStates []azicliwkscosp.CodeObjectState, remoteCodeObsStates []azicliwkscosp.CodeObjectState) ([]azicliwkscosp.CodeObjectState, error) {
 	return m.cospMgr.CalculateCodeObjectsState(currentCodeObsStates, remoteCodeObsStates), nil
