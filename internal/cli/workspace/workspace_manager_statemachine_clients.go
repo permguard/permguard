@@ -32,6 +32,8 @@ const (
 	ApplyOutFuncKey = "applyoutputfunc"
 	// ApplyTreeIDKey represents the apply tree id key.
 	ApplyTreeIDKey = "applytreeid"
+	// ApplyCommitIDKey represents the apply commit id key.
+	ApplyCommitIDKey = "applycommitid"
 	// HeadContextKey represents the head context key.
 	HeadContextKey = "headContext"
 )

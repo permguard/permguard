@@ -64,6 +64,24 @@ func (abs *YAMLLanguageAbstraction) GetFileExtensions() []string {
 	return []string{LanguageFileYml, LanguageFileYaml}
 }
 
+// CreateCommitObject creates a commit object.
+func (abs *YAMLLanguageAbstraction) CreateCommitObject(commit *azlangobjs.Commit) (*azlangobjs.Object, error) {
+	return abs.objMng.CreateCommitObject(commit)
+}
+
+// GetCommiteObject gets a commit object.
+func (abs *YAMLLanguageAbstraction) GetCommiteObject(obj *azlangobjs.Object) (*azlangobjs.Commit, error) {
+	objInfo, err := abs.objMng.GetObjectInfo(obj)
+	if err != nil {
+		return nil, err
+	}
+	value, ok := objInfo.GetInstance().(*azlangobjs.Commit)
+	if !ok {
+		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
+	}
+	return value, nil
+}
+
 // CreateTreeObject creates a tree object.
 func (abs *YAMLLanguageAbstraction) CreateTreeObject(tree *azlangobjs.Tree) (*azlangobjs.Object, error) {
 	return abs.objMng.CreateTreeObject(tree)
