@@ -41,19 +41,22 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
-	headRef, err := m.rfsMgr.GetCurrentHeadRefs()
-	if err != nil || headRef == "" {
+	// Read current head settings
+	headRefs, err := m.rfsMgr.GetCurrentHeadRefs()
+	if err != nil || headRefs == "" {
 		out(nil, "", "Please ensure a valid remote repo is checked out.", nil, true)
 		if err == nil {
 			err = azerrors.WrapSystemError(azerrors.ErrCliWorkspace, "cli: invalid head refs")
 		}
 		return failedOpErr(nil, err)
 	}
-
-	refsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
+	headRefsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
+	repoURI := headRefsInfo.GetRepoURI()
+
+	// Executes the validation for the current head
 
 	output, err := m.execInternalValidate(true, out)
 	if err != nil {
@@ -61,24 +64,26 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 	}
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "plan", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(headRef)), nil, true)
-		out(nil, "plan", fmt.Sprintf("Repo set to %s.", aziclicommon.KeywordText(refsInfo.GetRepoURI())), nil, true)
+		out(nil, "plan", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(headRefs)), nil, true)
+		out(nil, "plan", fmt.Sprintf("Repo set to %s.", aziclicommon.KeywordText(repoURI)), nil, true)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
-			"refs": headRef,
+			"refs": headRefs,
 		}
 		output = out(output, "head", remoteObj, nil, true)
-		output = out(output, "repo", refsInfo.GetRepoURI(), nil, true)
+		output = out(output, "repo", repoURI, nil, true)
 	}
 
-	out(nil, "", fmt.Sprintf("Initiating the planning process for repo %s.", aziclicommon.KeywordText(refsInfo.GetRepoURI())), nil, true)
+	// Executes the planning for the current head
+
+	out(nil, "", fmt.Sprintf("Initiating the planning process for repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
 
 	errPlanningProcessFailed := "Planning process failed."
 
-	commit, err := m.rfsMgr.GetRefsCommit(headRef)
+	commit, err := m.rfsMgr.GetRefsCommit(headRefs)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("Unable to read the commit for refs %s.", aziclicommon.KeywordText(headRef)), nil, true)
+			out(nil, "plan", fmt.Sprintf("Unable to read the commit for refs %s.", aziclicommon.KeywordText(headRefs)), nil, true)
 		}
 		out(nil, "", errPlanningProcessFailed, nil, true)
 		return failedOpErr(nil, err)
@@ -87,7 +92,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 	var remoteCodeState []azicliwkscosp.CodeObjectState = nil
 	if commit == azlangobjs.ZeroOID {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("The refs %s has no commits associated with it.", aziclicommon.KeywordText(headRef)), nil, true)
+			out(nil, "plan", fmt.Sprintf("The refs %s has no commits associated with it.", aziclicommon.KeywordText(headRefs)), nil, true)
 		}
 	}
 
@@ -187,14 +192,30 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
-	refsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
+	// Read current head settings
+	headRefs, err := m.rfsMgr.GetCurrentHeadRefs()
+	headRefsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	repoID, err := m.rfsMgr.GetCurrentHeadRepoID()
+
+	remoteInfo, err := m.cfgMgr.GetRemoteInfo(headRefsInfo.GetRemote())
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
+
+	repoURI := headRefsInfo.GetRepoURI()
+	remote := headRefsInfo.GetRemote()
+	accountID := headRefsInfo.GetAccountID()
+	refID := headRefsInfo.GetRefID()
+	repoID, err := m.rfsMgr.GetRefsRepoID(headRefs)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	server := remoteInfo.GetServer()
+	serverPAPPort := remoteInfo.GetPAPPort()
+
+	// Executes the plan for the current head
 
 	lang, err := m.cfgMgr.GetLanguage()
 	if err != nil {
@@ -210,13 +231,15 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		return failedOpErr(nil, err)
 	}
 
-	out(nil, "", fmt.Sprintf("Initiating the apply process for repo %s.", aziclicommon.KeywordText(refsInfo.GetRepoURI())), nil, true)
+	// Executes the apply for the current head
+
+	out(nil, "", fmt.Sprintf("Initiating the apply process for repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", "Preparing to read the plan.", nil, true)
 	}
 	errPlanningProcessFailed := "Apply process failed."
-	plan, err := m.cospMgr.ReadRemoteCodePlan(refsInfo.GetRemote(), refsInfo.GetRefID())
+	plan, err := m.cospMgr.ReadRemoteCodePlan(remote, refID)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "apply", "Failed to read the plan.", nil, true)
@@ -243,11 +266,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		out(nil, "apply", fmt.Sprintf("The tree has been created with id: %s.", aziclicommon.IDText(treeObj.GetOID())), nil, true)
 	}
 
-	remoteInfo, err := m.cfgMgr.GetRemoteInfo(refsInfo.GetRemote())
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-	err = m.rmSrvtMgr.NOTPPush(remoteInfo.GetServer(), remoteInfo.GetPAPPort(), refsInfo.GetAccountID(), repoID, m)
+	err = m.rmSrvtMgr.NOTPPush(server, serverPAPPort, accountID, repoID, m)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
@@ -264,7 +283,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 
 	out(nil, "", "Apply process completed successfully.", nil, true)
 	if !internal {
-		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repo: %s.", aziclicommon.KeywordText(refsInfo.GetRepoURI())), nil, true)
+		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repo: %s.", aziclicommon.KeywordText(repoURI)), nil, true)
 	}
 	return output, nil
 }
