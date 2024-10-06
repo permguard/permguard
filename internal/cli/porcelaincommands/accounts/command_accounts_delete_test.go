@@ -103,7 +103,7 @@ func TestCliAccountsDeleteWithSuccess(t *testing.T) {
 		cmd := createCommandForAccountDelete(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
+		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		aapClient := azmocks.NewGrpcAAPClientMock()
 		account := &azmodels.Account{
@@ -130,6 +130,6 @@ func TestCliAccountsDeleteWithSuccess(t *testing.T) {
 		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
 
 		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
-		printerMock.AssertCalled(t, "Print", outputPrinter)
+		printerMock.AssertCalled(t, "Println", outputPrinter)
 	}
 }

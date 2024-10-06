@@ -246,7 +246,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		}
 		headTreeID = headCommit.GetTree()
 	}
-	commit, commitObj, err := m.buildPlanCommit(headTreeID, nil, absLang)
+	commit, commitObj, err := m.buildPlanCommit(headTreeID, "", absLang)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "apply", "Failed to build the commit.", nil, true)

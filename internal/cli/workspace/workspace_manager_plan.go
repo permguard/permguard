@@ -85,7 +85,7 @@ func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, a
 }
 
 // buildPlanCommit builds the plan commit.
-func (m *WorkspaceManager) buildPlanCommit(tree string, parentTrees []string, absLang azlang.LanguageAbastraction) (*azlangobjs.Commit, *azlangobjs.Object, error) {
+func (m *WorkspaceManager) buildPlanCommit(tree string, parentTrees string, absLang azlang.LanguageAbastraction) (*azlangobjs.Commit, *azlangobjs.Object, error) {
 	commit := azlangobjs.NewCommit(tree, parentTrees, time.Now().UTC(), "local workspace commit")
 	commitObj, err := absLang.CreateCommitObject(commit)
 	if err != nil {

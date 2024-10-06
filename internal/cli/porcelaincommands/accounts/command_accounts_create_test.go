@@ -43,15 +43,15 @@ func TestCreateCommandForAccountsCreate(t *testing.T) {
 func TestCliAccountsCreateWithError(t *testing.T) {
 	tests := []struct {
 		OutputType string
-		HasError bool
+		HasError   bool
 	}{
 		{
 			OutputType: "terminal",
-			HasError: true,
+			HasError:   true,
 		},
 		{
 			OutputType: "json",
-			HasError: false,
+			HasError:   false,
 		},
 	}
 	for _, test := range tests {
@@ -103,7 +103,7 @@ func TestCliAccountsCreateWithSuccess(t *testing.T) {
 		cmd := createCommandForAccountCreate(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
+		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		aapClient := azmocks.NewGrpcAAPClientMock()
 		account := &azmodels.Account{
