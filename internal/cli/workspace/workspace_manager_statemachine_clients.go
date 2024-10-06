@@ -69,13 +69,16 @@ func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemac
 	wksCtx.outFunc("Transfering state", true)
 	for i := 0; i < 100; i++ {
 		wksCtx.outFunc(fmt.Sprintf("\rstate %d/100", i), false)
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond)
 	}
 	return handlerReturn, nil
 }
 
 // OnPushHandleNotifyCurrentStateResponse handles the current state response.
 func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	wksCtx := createWorkspaceHandlerContext(handlerCtx)
+	time.Sleep(500 * time.Millisecond)
+	wksCtx.outFunc("\rOnPushHandleNotifyCurrentStateResponse", false)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
@@ -85,6 +88,9 @@ func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *no
 
 // OnPushHandleNegotiationRequest handles the negotiation request.
 func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	wksCtx := createWorkspaceHandlerContext(handlerCtx)
+	time.Sleep(500 * time.Millisecond)
+	wksCtx.outFunc("\rOnPushHandleNegotiationRequest", false)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
@@ -94,6 +100,9 @@ func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatem
 
 // OnPushSendNegotiationResponse sends the negotiation response.
 func (m *WorkspaceManager) OnPushSendNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	wksCtx := createWorkspaceHandlerContext(handlerCtx)
+	time.Sleep(500 * time.Millisecond)
+	wksCtx.outFunc("\rOnPushSendNegotiationResponse", false)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
@@ -103,6 +112,9 @@ func (m *WorkspaceManager) OnPushSendNegotiationResponse(handlerCtx *notpstatema
 
 // OnPushExchangeDataStream exchanges the data stream.
 func (m *WorkspaceManager) OnPushExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	wksCtx := createWorkspaceHandlerContext(handlerCtx)
+	time.Sleep(500 * time.Millisecond)
+	wksCtx.outFunc("\rOnPushExchangeDataStream", true)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
