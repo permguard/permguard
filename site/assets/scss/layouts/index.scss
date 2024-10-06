@@ -13,14 +13,23 @@
 // @import "./home/community.scss";
 @import "./home/versioning.scss";
 
-.gradient-text {
+.forced-dark {
+  background: #d2d2d2 !important;
+}
+
+.text-gradient {
   background: linear-gradient(
     to bottom,
     #ffffff,
     #999999
   ); /* Top to bottom gradient */
+  background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+.forced-dark .text-gradient {
+  -webkit-text-fill-color: #ffffff;
 }
 
 .docs-toc {

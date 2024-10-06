@@ -15,6 +15,10 @@
     line-height: 1.4;
   }
 
+  .forced-dark &__text {
+    -webkit-text-fill-color: #c2c2c2;
+  }
+
   &__cards {
     padding: 0 15px;
   }
@@ -22,6 +26,10 @@
   &__card-col {
     padding-right: calc(var(--bs-gutter-x) * 0.3);
     padding-left: calc(var(--bs-gutter-x) * 0.3);
+  }
+
+  .forced-dark &__card {
+    background: #c0c0c0 !important;
   }
 
   &__card {
@@ -61,6 +69,10 @@
         font-weight: 500;
         text-align: center;
         margin-bottom: 0.916rem;
+      }
+
+      .forced-dark & > h3 {
+        -webkit-text-fill-color: #a7a7a7;
       }
 
       & > p {
