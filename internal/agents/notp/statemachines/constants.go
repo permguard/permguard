@@ -14,29 +14,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package packets
+package statemachines
 
-import (
-	"testing"
-
-	"github.com/stretchr/testify/assert"
+const (
+	// AccountIDKey is the account ID key.
+	AccountIDKey = "accountid"
+	// RepositoryIDKey is the repository ID key.
+	RepositoryIDKey = "repositoryid"
 )
-
-// TestLocalRefStatePacket tests the local ref state packet
-func TestLocalRefStatePacket(t *testing.T) {
-	assert := assert.New(t)
-
-	packet := &LocalRefStatePacket{}
-	packet.RefCommit = "477161cc-83c5-4004-8901-a61727ce045a"
-	packet.IsLocalRefAhead = true
-
-	data, err := packet.Serialize()
-	assert.Nil(err)
-
-	newPacket := &LocalRefStatePacket{}
-	err = newPacket.Deserialize(data)
-
-	assert.Nil(err)
-	assert.Equal(packet.RefCommit, packet.RefCommit)
-	assert.Equal(packet.IsLocalRefAhead, packet.IsLocalRefAhead)
-}

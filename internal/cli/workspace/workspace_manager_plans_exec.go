@@ -243,7 +243,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	err = m.rmSrvtMgr.NOTPPush(remoteInfo.GetServer(), remoteInfo.GetPAPPort(), m)
+	err = m.rmSrvtMgr.NOTPPush(remoteInfo.GetServer(), remoteInfo.GetPAPPort(), refsInfo.GetAccountID(), refsInfo.GetRepo(), m)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
