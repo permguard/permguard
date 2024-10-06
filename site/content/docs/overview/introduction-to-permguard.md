@@ -1,6 +1,6 @@
 ---
-title: "Introduction to PermGuard"
-slug: "Introduction to PermGuard"
+title: "Introduction to Permguard"
+slug: "Introduction to Permguard"
 description: ""
 summary: ""
 date: 2023-08-20T17:14:43+01:00
@@ -18,7 +18,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-`PermGuard` is an Open Source Authorization Provider for cloud-native, edge, and multi-tenant apps, decoupled from application code and leveraging `Policy-as-Code` for centralized, scalable permission management.
+`Permguard` is an Open Source Authorization Provider for cloud-native, edge, and multi-tenant apps, decoupled from application code and leveraging `Policy-as-Code` for centralized, scalable permission management.
 
 {{< callout context="note" icon="info-circle" >}}
 The decoupling between the authorization layer and the application code enables the administration of roles and permissions without requiring any changes to the application code.
@@ -35,11 +35,11 @@ Through the chosen approach, it is possible to specify who or what can access re
 - `Resources`: *Resources targeted by permissions*
 
 <div style="text-align: center">
-  <img alt="PermGuard Policies" src="/images/diagrams/d1.png"/>
+  <img alt="Permguard Policies" src="/images/diagrams/d1.png"/>
 </div>
 
 {{< callout context="note" icon="info-circle" >}}
-It's important to note that PermGuard supports tenancy, enabling each account to have multiple isolated tenants, and each tenant can, in turn, have multiple isolated
+It's important to note that Permguard supports tenancy, enabling each account to have multiple isolated tenants, and each tenant can, in turn, have multiple isolated
 resources.
 {{< /callout >}}
 
@@ -50,5 +50,5 @@ PermScript language is designed to define policies, specifying actions that can 
 {{< /callout >}}
 
 <div style="text-align: center">
-  <img alt="PermGuard Policies" src="/images/overview/vscode-screenshot.png"/>
+  <img alt="Permguard Policies" src="/images/overview/vscode-screenshot.png"/>
 </div>

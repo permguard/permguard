@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-`PermGuard` consists of several services, which can be deployed either on a single instance using the `all-in-one` distribution, or individually using separate distributions for each service."
+`Permguard` consists of several services, which can be deployed either on a single instance using the `all-in-one` distribution, or individually using separate distributions for each service."
 
 As a best practice, deploying the services in a single instance for production environments is not recommended. It is preferable to deploy the services separately in a distributed manner. This approach enables independent scaling of each service, enhancing flexibility and performance.
 

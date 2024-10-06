@@ -60,7 +60,7 @@ func runECommandForRefreshWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 		return aziclicommon.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
-		printer.Print(output)
+		printer.Println(output)
 	}
 	return nil
 }

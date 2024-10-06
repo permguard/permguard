@@ -23,8 +23,8 @@ Using the `Tenants` commands, it is possible to manage tenants.
 This command manages tenants.
 
 Usage:
-  PermGuard authn tenants [flags]
-  PermGuard authn tenants [command]
+  Permguard authn tenants [flags]
+  Permguard authn tenants [command]
 
 Available Commands:
   create      Create a tenant
@@ -42,11 +42,11 @@ Global Flags:
   -w, --workdir string   workdir (default ".")
   -v, --verbose         true for verbose output
 
-Use "PermGuard authn tenants [command] --help" for more information about a command.
+Use "Permguard authn tenants [command] --help" for more information about a command.
 ```
 
 {{< callout context="caution" icon="alert-triangle" >}}
-The output from your current version of PermGuard may differ from the example provided on this page.
+The output from your current version of Permguard may differ from the example provided on this page.
 {{< /callout >}}
 
 ## Create a Tenant

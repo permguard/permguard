@@ -20,8 +20,8 @@ import (
 	"strconv"
 	"strings"
 
-	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
 	azcrypto "github.com/permguard/permguard-core/pkg/extensions/crypto"
+	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -44,6 +44,7 @@ type headConfig struct {
 
 // refsObjectsConfig represents the configuration for the objects.
 type refsObjectsConfig struct {
+	RepoID string `toml:"repoid"`
 	Commit string `toml:"commit"`
 }
 
@@ -116,10 +117,10 @@ func convertRefsInfoToString(info *RefsInfo) string {
 
 // RefsInfo represents the refs information.
 type RefsInfo struct {
-	remote   string
+	remote    string
 	accountID int64
-	repo     string
-	refID    string
+	repo      string
+	refID     string
 }
 
 // GetRemote returns the remote.

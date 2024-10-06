@@ -73,7 +73,7 @@ func runECommandForRemoteAddWorkspace(args []string, deps azcli.CliDependenciesP
 		return aziclicommon.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
-		printer.Print(output)
+		printer.Println(output)
 	}
 	return nil
 }

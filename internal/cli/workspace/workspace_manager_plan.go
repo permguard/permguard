@@ -17,11 +17,52 @@
 package workspace
 
 import (
+	"time"
+
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
+
+// getCurrentHeadContext gets the current head context.
+func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) {
+	headRefs, err := m.rfsMgr.GetCurrentHeadRefs()
+	headRefsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	remoteInfo, err := m.cfgMgr.GetRemoteInfo(headRefsInfo.GetRemote())
+	if err != nil {
+		return nil, err
+	}
+
+	headCtx := &currentHeadContext{
+		remote:        headRefsInfo.GetRemote(),
+		accountID:     headRefsInfo.GetAccountID(),
+		repo:          headRefsInfo.GetRepo(),
+		repoURI:       headRefsInfo.GetRepoURI(),
+		refID:         headRefsInfo.GetRefID(),
+		refs:          headRefs,
+		commit: 	   azlangobjs.ZeroOID,
+		server:        remoteInfo.GetServer(),
+		serverPAPPort: remoteInfo.GetPAPPort(),
+	}
+	repoID, err := m.rfsMgr.GetRefsRepoID(headRefs)
+	if err != nil {
+		return nil, err
+	}
+	headCtx.repoID = repoID
+
+	commit, err := m.rfsMgr.GetRefsCommit(headCtx.GetRefs())
+	if err != nil {
+		return nil, err
+	}
+	headCtx.commit = commit
+
+	return headCtx, nil
+}
 
 // plan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
 func (m *WorkspaceManager) plan(currentCodeObsStates []azicliwkscosp.CodeObjectState, remoteCodeObsStates []azicliwkscosp.CodeObjectState) ([]azicliwkscosp.CodeObjectState, error) {
@@ -41,4 +82,14 @@ func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, a
 		return nil, nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree object cannot be created")
 	}
 	return tree, treeObj, nil
+}
+
+// buildPlanCommit builds the plan commit.
+func (m *WorkspaceManager) buildPlanCommit(tree string, parentTrees string, absLang azlang.LanguageAbastraction) (*azlangobjs.Commit, *azlangobjs.Object, error) {
+	commit := azlangobjs.NewCommit(tree, parentTrees, time.Now().UTC(), "local workspace commit")
+	commitObj, err := absLang.CreateCommitObject(commit)
+	if err != nil {
+		return nil, nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: commit object cannot be created")
+	}
+	return commit, commitObj, nil
 }

@@ -41,7 +41,7 @@ func runECommandForCloneWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra
 	}
 	output := map[string]any{}
 	output["workspace"] = "clone"
-	printer.Print(output)
+	printer.Println(output)
 	return nil
 }
 

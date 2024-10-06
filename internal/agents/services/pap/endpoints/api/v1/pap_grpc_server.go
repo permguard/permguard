@@ -22,11 +22,13 @@ import (
 	"time"
 
 	grpc "google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 
+	azagentnotpsm "github.com/permguard/permguard/internal/agents/notp/statemachines"
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
 	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
@@ -205,13 +207,30 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 
 // NOTPStream handles bidirectional stream using the NOTP protocol.
 func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
+	md, ok := metadata.FromIncomingContext(stream.Context())
+	if !ok {
+		return azerrors.WrapSystemError(azerrors.ErrServerGeneric, "server: notp stream missing metadata")
+
+	}
+	accountID, ok := md[azagentnotpsm.AccountIDKey]
+	if !ok || len(accountID) == 0 {
+		return azerrors.WrapSystemError(azerrors.ErrServerGeneric, "server: notp stream missing account id")
+	}
+	respositoryID, ok := md[azagentnotpsm.RepositoryIDKey]
+	if !ok || len(respositoryID) == 0 {
+		return azerrors.WrapSystemError(azerrors.ErrServerGeneric, "server: notp stream missing repository id")
+	}
+
 	stateMachine, err := s.createWiredStateMachine(stream)
 	if err != nil {
 		return err
 	}
-	err = stateMachine.Run(notpstatemachines.UnknownFlowType)
+	bag := map[string]any{}
+	bag[azagentnotpsm.AccountIDKey] = accountID[0]
+	bag[azagentnotpsm.RepositoryIDKey] = respositoryID[0]
+	err = stateMachine.Run(bag, notpstatemachines.UnknownFlowType)
 	if err != nil {
-		return err
+		return azerrors.WrapSystemError(azerrors.ErrServerGeneric, fmt.Sprintf("server: notp stream unhandled err %s", err.Error()))
 	}
 	return nil
 }

@@ -74,7 +74,7 @@ type NOTPClient interface {
 }
 
 // NOTPPush push objects using the NOTP protocol.
-func (m *RemoteServerManager) NOTPPush(server string, papPort int, clientProvider NOTPClient) error {
+func (m *RemoteServerManager) NOTPPush(server string, papPort int, accountID int64, repositoryID string, bag map[string]any, clientProvider NOTPClient) error {
 	pppServer := fmt.Sprintf("%s:%d", server, papPort)
 	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
 	if err != nil {
@@ -113,7 +113,7 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, clientProvide
 			return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid state %d", handlerCtx.GetCurrentStateID()))
 		}
 	}
-	err = papClient.NOTPStream(hostHandler, notpstatemachines.PushFlowType)
+	err = papClient.NOTPStream(hostHandler, accountID, repositoryID, bag, notpstatemachines.PushFlowType)
 	if err != nil {
 		return err
 	}

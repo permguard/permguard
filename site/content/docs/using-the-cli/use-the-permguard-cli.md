@@ -1,5 +1,5 @@
 ---
-title: "Use the PermGuard CLI"
+title: "Use the Permguard CLI"
 slug: "how-to-use"
 description: ""
 summary: ""
@@ -19,10 +19,10 @@ seo:
   noindex: false # false (default) or true
 ---
 
-`PermGuard` offers a robust Command-line Interface (CLI) designed for the administration.
+`Permguard` offers a robust Command-line Interface (CLI) designed for the administration.
 The CLI allows to Manage Accounts on the remote server, identities, tenants, repositories, schemas, domains, resources, and policies.
 
-To view a list of commands available in the current PermGuard version, users can run the `permguard` command without any additional arguments.
+To view a list of commands available in the current Permguard version, users can run the `permguard` command without any additional arguments.
 
 ```txt
   ____                      ____                     _
@@ -31,15 +31,15 @@ To view a list of commands available in the current PermGuard version, users can
  |  __/  __/ |  | | | | | | |_| | |_| | (_| | | | (_| |
  |_|   \___|_|  |_| |_| |_|\____|\__,_|\__,_|_|  \__,_|
 
-The official PermGuard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
+The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
-PermGuard is an Open Source Multi-Account and Multi-Tenant Authorization Provider.
+Permguard is an Open Source Multi-Account and Multi-Tenant Authorization Provider.
 
   Find more information at: https://www.permguard.com/docs/using-the-cli/how-to-use/
 
 Usage:
-  PermGuard Command Line Interface [flags]
-  PermGuard [command]
+  Permguard Command Line Interface [flags]
+  Permguard [command]
 
 Available Commands:
   accounts    Manage accounts on the remote server
@@ -61,16 +61,16 @@ Available Commands:
   validate    Validate the local state for consistency and correctness
 
 Flags:
-  -h, --help             help for PermGuard
+  -h, --help             help for Permguard
   -o, --output string    output format (default "terminal")
   -v, --verbose          true for verbose output
   -w, --workdir string   workdir (default ".")
 
-Use "PermGuard [command] --help" for more information about a command.
+Use "Permguard [command] --help" for more information about a command.
 ```
 
 {{< callout context="caution" icon="alert-triangle" >}}
-The output from your current version of PermGuard may differ from the example provided on this page.
+The output from your current version of Permguard may differ from the example provided on this page.
 {{< /callout >}}
 
 To obtain detailed help for a specific command, users can utilize the --help option alongside the relevant subcommand.

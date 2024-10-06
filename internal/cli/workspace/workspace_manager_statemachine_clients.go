@@ -17,50 +17,109 @@
 package workspace
 
 import (
+	"fmt"
+	"time"
+
+	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
 	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
 )
 
+const (
+	// ApplyOutFuncKey represents the apply out func key.
+	ApplyOutFuncKey = "applyoutputfunc"
+	// ApplyTreeObjectKey represents the apply tree object key.
+	ApplyTreeObjectKey = "applytreeobject"
+	// ApplyCommitKey represents the apply commit key.
+	ApplyCommitKey = "applycommit"
+	// ApplyCommitObjectKey represents the apply commit object.
+	ApplyCommitObjectKey = "applycommitobject"
+	// HeadContextKey represents the head context key.
+	HeadContextKey = "headContext"
+)
+
+type workspaceHandlerContext struct {
+	outFunc func(output string, newLine bool)
+	tree    *azlangobjs.Object
+	ctx     *currentHeadContext
+}
+
+// createWorkspaceHandlerContext creates the workspace handler context.
+func createWorkspaceHandlerContext(h *notpstatemachines.HandlerContext) *workspaceHandlerContext {
+	outfunc, _ := h.Get(ApplyOutFuncKey)
+	tree, _ := h.Get(ApplyTreeObjectKey)
+	headContext, _ := h.Get(HeadContextKey)
+	wksCtx := &workspaceHandlerContext{
+		outFunc: outfunc.(func(output string, newLine bool)),
+		tree:    tree.(*azlangobjs.Object),
+		ctx:     headContext.(*currentHeadContext),
+	}
+	return wksCtx
+}
+
 // OnPushSendNotifyCurrentState notifies the current state.
 func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	packet := &notppackets.Packet{
 		Data: []byte("sample data | notify current state"),
 	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: []notppackets.Packetable{packet},
 	}
+	wksCtx.outFunc("Transfering state", true)
+	for i := 0; i < 100; i++ {
+		wksCtx.outFunc(fmt.Sprintf("\rstate %d/100", i), false)
+		time.Sleep(20 * time.Millisecond)
+	}
 	return handlerReturn, nil
 }
 
 // OnPushHandleNotifyCurrentStateResponse handles the current state response.
 func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	wksCtx := createWorkspaceHandlerContext(handlerCtx)
+	time.Sleep(500 * time.Millisecond)
+	wksCtx.outFunc("\rOnPushHandleNotifyCurrentStateResponse", false)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
+	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
 	return handlerReturn, nil
 }
 
 // OnPushHandleNegotiationRequest handles the negotiation request.
 func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	wksCtx := createWorkspaceHandlerContext(handlerCtx)
+	time.Sleep(500 * time.Millisecond)
+	wksCtx.outFunc("\rOnPushHandleNegotiationRequest", false)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
+	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
 	return handlerReturn, nil
 }
 
 // OnPushSendNegotiationResponse sends the negotiation response.
 func (m *WorkspaceManager) OnPushSendNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	wksCtx := createWorkspaceHandlerContext(handlerCtx)
+	time.Sleep(500 * time.Millisecond)
+	wksCtx.outFunc("\rOnPushSendNegotiationResponse", false)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
+	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
 	return handlerReturn, nil
 }
 
 // OnPushExchangeDataStream exchanges the data stream.
 func (m *WorkspaceManager) OnPushExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	wksCtx := createWorkspaceHandlerContext(handlerCtx)
+	time.Sleep(500 * time.Millisecond)
+	wksCtx.outFunc("\rOnPushExchangeDataStream", true)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
+	handlerReturn.HasMore = false
 	return handlerReturn, nil
 }

@@ -53,7 +53,7 @@ var asciiArt string
 // CliLongTemplateHead is the head of the long template for the cli.
 var CliLongTemplateHead = `
 %s
-The official PermGuard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.`
+The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.`
 
 // CliLongTemplateBody is the body of the long template for the cli.
 var CliLongTemplateBody = ` %s

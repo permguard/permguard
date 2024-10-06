@@ -66,7 +66,7 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps azcli.CliDependenci
 		return aziclicommon.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
-		printer.Print(output)
+		printer.Println(output)
 	}
 	return nil
 }

@@ -34,18 +34,27 @@ import (
 // TestUpdateCommandForRepositoriesUpdate tests the updateCommandForRepositoriesUpdate function.
 func TestUpdateCommandForRepositoriesUpdate(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official PermGuard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command updates a remote repository."}
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command updates a remote repository."}
 	aztestutils.BaseCommandTest(t, createCommandForRepositoryUpdate, args, false, outputs)
 }
 
 // TestCliRepositoriesUpdateWithError tests the command for creating a repository with an error.
 func TestCliRepositoriesUpdateWithError(t *testing.T) {
-	tests := []string{
-		"terminal",
-		"json",
+	tests := []struct {
+		OutputType string
+		HasError   bool
+	}{
+		{
+			OutputType: "terminal",
+			HasError:   true,
+		},
+		{
+			OutputType: "json",
+			HasError:   false,
+		},
 	}
-	for _, outputType := range tests {
-		args := []string{"repositories", "update", "--repositoryid", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", outputType}
+	for _, test := range tests {
+		args := []string{"repositories", "update", "--repositoryid", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", test.OutputType}
 		outputs := []string{""}
 
 		v := viper.New()
@@ -54,8 +63,8 @@ func TestCliRepositoriesUpdateWithError(t *testing.T) {
 		depsMocks := azmocks.NewCliDependenciesMock()
 		cmd := createCommandForRepositoryUpdate(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
-		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
+		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, test.OutputType, "output format")
+		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		papClient := azmocks.NewGrpcPAPClientMock()
 		papClient.On("UpdateRepository", mock.Anything).Return(nil, azerrors.ErrClientParameter)
@@ -67,7 +76,11 @@ func TestCliRepositoriesUpdateWithError(t *testing.T) {
 		depsMocks.On("CreateGrpcPAPClient", mock.Anything).Return(papClient, nil)
 
 		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
-		printerMock.AssertCalled(t, "Error", azerrors.ErrClientParameter)
+		if test.HasError {
+			printerMock.AssertCalled(t, "Error", azerrors.ErrClientParameter)
+		} else {
+			printerMock.AssertNotCalled(t, "Error", azerrors.ErrClientParameter)
+		}
 	}
 }
 
@@ -89,7 +102,7 @@ func TestCliRepositoriesUpdateWithSuccess(t *testing.T) {
 		cmd := createCommandForRepositoryUpdate(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
+		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		papClient := azmocks.NewGrpcPAPClientMock()
 		repository := &azmodels.Repository{
@@ -111,11 +124,12 @@ func TestCliRepositoriesUpdateWithSuccess(t *testing.T) {
 			outputPrinter["repositories"] = []*azmodels.Repository{repository}
 		}
 		printerMock.On("Print", outputPrinter).Return()
+		printerMock.On("Println", outputPrinter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 		depsMocks.On("CreateGrpcPAPClient", mock.Anything).Return(papClient, nil)
 
 		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
-		printerMock.AssertCalled(t, "Print", outputPrinter)
+		printerMock.AssertCalled(t, "Println", outputPrinter)
 	}
 }
