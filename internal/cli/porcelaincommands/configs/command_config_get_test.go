@@ -64,6 +64,7 @@ func TestCliConfigGetAAPTarget(t *testing.T) {
 			outputPrinter["aap_target"] = "localhost:9092"
 		}
 		printerMock.On("Print", outputPrinter).Return()
+		printerMock.On("Println", outputPrinter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 
@@ -108,6 +109,7 @@ func TestCliConfigGetPAPTarget(t *testing.T) {
 			outputPrinter["pap_target"] = "localhost:9092"
 		}
 		printerMock.On("Print", outputPrinter).Return()
+		printerMock.On("Println", outputPrinter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 
