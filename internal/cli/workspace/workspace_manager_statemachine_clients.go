@@ -17,9 +17,21 @@
 package workspace
 
 import (
+	"fmt"
+	"time"
+
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
 	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
+)
+
+const (
+	// ApplyOutFuncKey represents the apply out func key.
+	ApplyOutFuncKey = "applyoutputfunc"
+	// ApplyTreeIDKey represents the apply tree id key.
+	ApplyTreeIDKey = "applytreeid"
+	// HeadContextKey represents the head context key.
+	HeadContextKey = "headContext"
 )
 
 // OnPushSendNotifyCurrentState notifies the current state.
@@ -29,6 +41,13 @@ func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemac
 	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: []notppackets.Packetable{packet},
+	}
+	outVal, _ := handlerCtx.Get(ApplyOutFuncKey)
+	outFunc := outVal.(func(output string, newLine bool))
+	outFunc("Transfering state", true)
+	for i := 0; i < 100; i++ {
+		outFunc(fmt.Sprintf("\r state %d/100", i), false)
+		time.Sleep(100 * time.Millisecond)
 	}
 	return handlerReturn, nil
 }
