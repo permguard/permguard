@@ -30,29 +30,31 @@ import (
 const (
 	// ApplyOutFuncKey represents the apply out func key.
 	ApplyOutFuncKey = "applyoutputfunc"
-	// ApplyTreeIDKey represents the apply tree id key.
-	ApplyTreeIDKey = "applytreeid"
-	// ApplyCommitIDKey represents the apply commit id key.
-	ApplyCommitIDKey = "applycommitid"
+	// ApplyTreeObjectKey represents the apply tree object key.
+	ApplyTreeObjectKey = "applytreeobject"
+	// ApplyCommitKey represents the apply commit key.
+	ApplyCommitKey = "applycommit"
+	// ApplyCommitObjectKey represents the apply commit object.
+	ApplyCommitObjectKey = "applycommitobject"
 	// HeadContextKey represents the head context key.
 	HeadContextKey = "headContext"
 )
 
 type workspaceHandlerContext struct {
 	outFunc func(output string, newLine bool)
-	tree  	*azlangobjs.Object
-	ctx  	*currentHeadContext
+	tree    *azlangobjs.Object
+	ctx     *currentHeadContext
 }
 
 // createWorkspaceHandlerContext creates the workspace handler context.
 func createWorkspaceHandlerContext(h *notpstatemachines.HandlerContext) *workspaceHandlerContext {
 	outfunc, _ := h.Get(ApplyOutFuncKey)
-	tree, _ := h.Get(ApplyTreeIDKey)
+	tree, _ := h.Get(ApplyTreeObjectKey)
 	headContext, _ := h.Get(HeadContextKey)
 	wksCtx := &workspaceHandlerContext{
 		outFunc: outfunc.(func(output string, newLine bool)),
-		tree: tree.(*azlangobjs.Object),
-		ctx: headContext.(*currentHeadContext),
+		tree:    tree.(*azlangobjs.Object),
+		ctx:     headContext.(*currentHeadContext),
 	}
 	return wksCtx
 }

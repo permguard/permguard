@@ -88,11 +88,7 @@ func (m *COSPManager) getCodeSourceConfigFile() string {
 }
 
 // getCodeSourceObjectDir returns the code source object directory.
-func (m *COSPManager) getCodeSourceObjectDir(oid string, local bool) (string, string) {
-	basePath := ""
-	if local {
-		basePath = m.getCodeSourceDir()
-	}
+func (m *COSPManager) getCodeSourceObjectDir(oid string, basePath string) (string, string) {
 	basePath = filepath.Join(basePath, m.getObjectsDir())
 	folder := oid[:2]
 	folder = filepath.Join(basePath, folder)
@@ -108,14 +104,14 @@ func (m *COSPManager) CleanCodeSource() (bool, error) {
 
 // SaveCodeSourceObject saves the object in the code source.
 func (m *COSPManager) SaveCodeSourceObject(oid string, content []byte) (bool, error) {
-	folder, name := m.getCodeSourceObjectDir(oid, true)
+	folder, name := m.getCodeSourceObjectDir(oid, m.getCodeSourceDir())
 	path := filepath.Join(folder, name)
 	return m.persMgr.WriteFile(azicliwkspers.PermguardDir, path, content, 0644, true)
 }
 
 // ReadCodeSourceObject reads the object from the code source.
 func (m *COSPManager) ReadCodeSourceObject(oid string) (*azlangobjs.Object, error) {
-	folder, name := m.getCodeSourceObjectDir(oid, true)
+	folder, name := m.getCodeSourceObjectDir(oid, m.getCodeSourceDir())
 	path := filepath.Join(folder, name)
 	data, _, err := m.persMgr.ReadFile(azicliwkspers.PermguardDir, path, true)
 	if err != nil {
@@ -361,4 +357,15 @@ func (m *COSPManager) CalculateCodeObjectsState(currentObjs []CodeObjectState, r
 		}
 	}
 	return result
+}
+
+// ReadObject reads the object from the code source.
+func (m *COSPManager) ReadObject(oid string) (*azlangobjs.Object, error) {
+	folder, name := m.getCodeSourceObjectDir(oid, "")
+	path := filepath.Join(folder, name)
+	data, _, err := m.persMgr.ReadFile(azicliwkspers.PermguardDir, path, true)
+	if err != nil {
+		return nil, err
+	}
+	return m.objMgr.CreateObjectFormData(data)
 }
