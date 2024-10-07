@@ -108,9 +108,10 @@ func LogRepositoryEntry(repository *Repository) string {
 	return fmt.Sprintf("repository id: %s, account id: %d, name: %s", repository.RepositoryID, repository.AccountID, repository.Name)
 }
 
+// KeyValue is the model for the key_value table.
 type KeyValue struct {
-	Key   string   `db:"key"`
-	Value []byte   `db:"value"`
+	Key   string   `db:"kv_key"`
+	Value []byte   `db:"kv_value"`
 }
 
 // LogKeyValueEntry returns a string representation of the key value.
