@@ -22,6 +22,7 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
@@ -130,6 +131,33 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNegotiationResponse(handlerCtx *not
 
 // OnPushHandleExchangeDataStream exchanges the data stream.
 func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error){
+	for _, packet := range packets {
+		objStatePacket := &notpagpackets.ObjectStatePacket{}
+		err := notppackets.ConvertPacketable(packet, objStatePacket)
+		if err != nil {
+			return nil, err
+		}
+		db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
+		if err != nil {
+			return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		}
+		tx, err := db.Begin()
+		if err != nil {
+			return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		}
+		keyValue := &azirepos.KeyValue{
+			Key: objStatePacket.OID,
+			Value: objStatePacket.Content,
+		}
+		_, err = s.sqlRepo.UpsertKeyValue(tx, keyValue)
+		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		}
+	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}

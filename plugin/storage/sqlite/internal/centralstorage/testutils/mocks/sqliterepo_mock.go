@@ -185,3 +185,23 @@ func (m *MockSqliteRepo) FetchRepositories(db *sqlx.DB, page int32, pageSize int
 	}
 	return r0, args.Error(1)
 }
+
+// UpsertKeyValue creates or updates a key-value pair.
+func (m *MockSqliteRepo) UpsertKeyValue(tx *sql.Tx, keyValue *azirepos.KeyValue) (*azirepos.KeyValue, error) {
+	args := m.Called(tx, keyValue)
+	var r0 *azirepos.KeyValue
+	if val, ok := args.Get(0).(*azirepos.KeyValue); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
+}
+
+// GetKeyValue retrieves a key-value pair by key.
+func (m *MockSqliteRepo) GetKeyValue(tx *sql.Tx, key string) (*azirepos.KeyValue, error) {
+	args := m.Called(tx, key)
+	var r0 *azirepos.KeyValue
+	if val, ok := args.Get(0).(*azirepos.KeyValue); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
+}

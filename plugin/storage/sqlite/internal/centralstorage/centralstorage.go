@@ -61,6 +61,11 @@ type SqliteRepo interface {
 	DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string) (*azirepos.Repository, error)
 	// FetchRepositories fetches repositories.
 	FetchRepositories(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.Repository, error)
+
+	// UpsertKeyValue creates or updates a key value.
+	UpsertKeyValue(tx *sql.Tx, keyValue *azirepos.KeyValue) (*azirepos.KeyValue, error)
+	// DeleteKeyValue deletes a key value.
+	GetKeyValue(tx *sql.Tx, key string) (*azirepos.KeyValue, error)
 }
 
 // SqliteExecutor is the interface for executing sqlite commands.
