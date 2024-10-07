@@ -18,6 +18,7 @@ package workspace
 
 import (
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
@@ -26,18 +27,38 @@ import (
 )
 
 const (
-	// ApplyOutFuncKey represents the apply out func key.
-	ApplyOutFuncKey = "applyoutputfunc"
-	// ApplyTreeObjectKey represents the apply tree object key.
-	ApplyTreeObjectKey = "applytreeobject"
-	// ApplyCommitKey represents the apply commit key.
-	ApplyCommitKey = "applycommit"
-	// ApplyCommitObjectKey represents the apply commit object.
-	ApplyCommitObjectKey = "applycommitobject"
+	// OutFuncKey represents the apply out func key.
+	OutFuncKey = "output-func"
+	// LocalCodeTreeObjectKey represents the local code tree object key.
+	LocalCodeTreeObjectKey = "local-code-tree-object"
+	// LocalCodeCommitKey represents the local code commit key.
+	LocalCodeCommitKey = "local-code-commit"
+	// LocalCodeCommitObjectKey represents the local code commit object key.
+	LocalCodeCommitObjectKey = "local-code-commit-object"
+	// RemoteCommitKey represents the remote commit key.
+	RemoteCommitKey = "remote-commit"
+	// DiffTreeIDsKey represents the diff tree ids key.
+	DiffTreeIDsKey = "diff-tree-items"
 	// HeadContextKey represents the head context key.
-	HeadContextKey = "headContext"
+	HeadContextKey = "head-context"
 )
 
+// getFromHandlerContext gets the value from the handler context.
+func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key string) (T, bool) {
+    value, ok := ctx.Get(key)
+    if !ok {
+        var zero T
+        return zero, false
+    }
+    typedValue, ok := value.(T)
+    if !ok {
+        var zero T
+        return zero, false
+    }
+    return typedValue, true
+}
+
+// workspaceHandlerContext represents the workspace handler context.
 type workspaceHandlerContext struct {
 	outFunc func(key string, output string, newLine bool)
 	tree    *azlangobjs.Object
@@ -45,14 +66,14 @@ type workspaceHandlerContext struct {
 }
 
 // createWorkspaceHandlerContext creates the workspace handler context.
-func createWorkspaceHandlerContext(h *notpstatemachines.HandlerContext) *workspaceHandlerContext {
-	outfunc, _ := h.Get(ApplyOutFuncKey)
-	tree, _ := h.Get(ApplyTreeObjectKey)
-	headContext, _ := h.Get(HeadContextKey)
+func createWorkspaceHandlerContext(ctx *notpstatemachines.HandlerContext) *workspaceHandlerContext {
+	outfunc, _ := getFromHandlerContext[func(key string, output string, newLine bool)](ctx, OutFuncKey)
+	tree, _ := getFromHandlerContext[*azlangobjs.Object](ctx, LocalCodeTreeObjectKey)
+	headContext, _ := getFromHandlerContext[*currentHeadContext](ctx, HeadContextKey)
 	wksCtx := &workspaceHandlerContext{
-		outFunc: outfunc.(func(key string, output string, newLine bool)),
-		tree:    tree.(*azlangobjs.Object),
-		ctx:     headContext.(*currentHeadContext),
+		outFunc: outfunc,
+		tree:    tree,
+		ctx:     headContext,
 	}
 	return wksCtx
 }
@@ -78,6 +99,15 @@ func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *no
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-push", "Advertising - Dispatching response to the current repository state request.", true)
 	}
+	localRefSPacket := &notpagpackets.LocalRefStatePacket{}
+	err := notppackets.ConvertPacketable(packets[0], localRefSPacket)
+	if err != nil {
+		return nil, err
+	}
+	if localRefSPacket.HasConflicts {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, "workspace: conflicts detected in the remote repository.")
+	}
+	handlerCtx.Set(RemoteCommitKey, localRefSPacket.RefCommit)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
@@ -91,6 +121,13 @@ func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatem
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-push", "Negotiation - Managing the negotiation request.", true)
 	}
+	localCommit, _ := getFromHandlerContext[string](handlerCtx, LocalCodeCommitKey)
+	remoteCommit, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitKey)
+	treeIDs := []string{}
+	if localCommit != remoteCommit {
+		//TODO implement logic to get the diff tree items
+	}
+	handlerCtx.Set(DiffTreeIDsKey, treeIDs)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
@@ -111,11 +148,32 @@ func (m *WorkspaceManager) OnPushSendNegotiationResponse(handlerCtx *notpstatema
 	return handlerReturn, nil
 }
 
+// onPushTreeExchangeData exchanges the tree data.
+func (m *WorkspaceManager) onPushTreeExchangeData(handlerCtx *notpstatemachines.HandlerContext,treeObj *azlangobjs.Object) error {
+	return nil
+}
+
 // OnPushExchangeDataStream exchanges the data stream.
 func (m *WorkspaceManager) OnPushExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-push", "Data Exchabge - Handling data exchange.", true)
+	}
+	treeIDs, _ := getFromHandlerContext[[]string](handlerCtx, DiffTreeIDsKey)
+	for _, treeID := range treeIDs {
+		treeObj, err := m.cospMgr.ReadObject(treeID)
+		if err != nil {
+			return nil, err
+		}
+		err = m.onPushTreeExchangeData(handlerCtx, treeObj)
+		if err != nil {
+			return nil, err
+		}
+	}
+	treeObj, _ := getFromHandlerContext[*azlangobjs.Object](handlerCtx, LocalCodeTreeObjectKey)
+	err := m.onPushTreeExchangeData(handlerCtx, treeObj)
+	if err != nil {
+		return nil, err
 	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,

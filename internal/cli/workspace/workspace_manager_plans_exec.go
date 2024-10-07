@@ -259,13 +259,13 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 	}
 
 	bag := map[string]any{
-		ApplyOutFuncKey: func(key string, output string, newLine bool) {
+		OutFuncKey: func(key string, output string, newLine bool) {
 			out(nil, key, output, nil, newLine)
 		},
-		ApplyTreeObjectKey:   treeObj,
-		ApplyCommitKey:       commit,
-		ApplyCommitObjectKey: commitObj,
-		HeadContextKey:       headCtx,
+		LocalCodeTreeObjectKey:   treeObj,
+		LocalCodeCommitKey:       commit,
+		LocalCodeCommitObjectKey: commitObj,
+		HeadContextKey:           headCtx,
 	}
 	err = m.rmSrvtMgr.NOTPPush(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetAccountID(), headCtx.GetRepoID(), bag, m)
 	if err != nil {

@@ -60,7 +60,7 @@ func (p *LocalRefStatePacket) Deserialize(data []byte) error {
 		return fmt.Errorf("missing null byte")
 	}
 
-	p.RefCommit = string(data[:nullByteIndex])
+	p.RefCommit = string(notppackets.DecodeByteArray(data[:nullByteIndex]))
 
 	if nullByteIndex+1 < len(data) {
 		p.HasConflicts = data[nullByteIndex+1] == 1
