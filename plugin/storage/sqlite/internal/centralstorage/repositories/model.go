@@ -107,3 +107,16 @@ func LogRepositoryEntry(repository *Repository) string {
 	}
 	return fmt.Sprintf("repository id: %s, account id: %d, name: %s", repository.RepositoryID, repository.AccountID, repository.Name)
 }
+
+type KeyValue struct {
+	Key   string   `db:"key"`
+	Value []byte   `db:"value"`
+}
+
+// LogKeyValueEntry returns a string representation of the key value.
+func LogKeyValueEntry(keyValue *KeyValue) string {
+	if keyValue == nil {
+		return "keyvalue is nil"
+	}
+	return fmt.Sprintf("keyvalue key: %s", keyValue.Key)
+}

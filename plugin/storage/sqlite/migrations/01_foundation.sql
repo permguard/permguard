@@ -16,8 +16,8 @@
 
 -- +goose Up
 CREATE TABLE keyvalues (
-    key TEXT NOT NULL PRIMARY KEY,
-    value BLOB NOT NULL
+    kv_key TEXT NOT NULL PRIMARY KEY,
+    kv_value BLOB NOT NULL
 );
 
 -- Creating the `change_streams` table
