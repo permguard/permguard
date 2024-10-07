@@ -20,6 +20,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
@@ -64,13 +65,13 @@ func (r *Repo) UpsertKeyValue(tx *sql.Tx, keyValue *KeyValue) (*KeyValue, error)
 }
 
 // GetKeyValue retrieves the value for a given key from the key-value store.
-func (r *Repo) GetKeyValue(tx *sql.Tx, key string) (*KeyValue, error) {
+func (r *Repo) GetKeyValue(db *sqlx.DB, key string) (*KeyValue, error) {
 	if key == "" {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - key is missing or empty")
 	}
 
 	var dbKeyValue KeyValue
-	err := tx.QueryRow("SELECT kv_key, kv_value FROM key_values WHERE kv_key = ?", key).Scan(
+	err := db.QueryRow("SELECT kv_key, kv_value FROM key_values WHERE kv_key = ?", key).Scan(
 		&dbKeyValue.Key,
 		&dbKeyValue.Value,
 	)
