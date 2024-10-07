@@ -17,14 +17,12 @@
 package workspace
 
 import (
-	"fmt"
-	"time"
-
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
 	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
+	notpagpackets "github.com/permguard/permguard/internal/agents/notp/statemachines/packets"
 )
 
 const (
@@ -62,16 +60,12 @@ func createWorkspaceHandlerContext(h *notpstatemachines.HandlerContext) *workspa
 // OnPushSendNotifyCurrentState notifies the current state.
 func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
-	packet := &notppackets.Packet{
-		Data: []byte("sample data | notify current state"),
+	wksCtx.outFunc("\rPush Advertising: Initiating notification dispatch for the current repository state.", false)
+	packet := &notpagpackets.RemoteRefStatePacket{
+		RefCommit: wksCtx.ctx.commit,
 	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: []notppackets.Packetable{packet},
-	}
-	wksCtx.outFunc("Transfering state", true)
-	for i := 0; i < 100; i++ {
-		wksCtx.outFunc(fmt.Sprintf("\rstate %d/100", i), false)
-		time.Sleep(20 * time.Millisecond)
 	}
 	return handlerReturn, nil
 }
@@ -79,8 +73,7 @@ func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemac
 // OnPushHandleNotifyCurrentStateResponse handles the current state response.
 func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
-	time.Sleep(500 * time.Millisecond)
-	wksCtx.outFunc("\rOnPushHandleNotifyCurrentStateResponse", false)
+	wksCtx.outFunc("\rPush Advertising: Dispatching response to the current repository state request.", false)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
@@ -91,8 +84,7 @@ func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *no
 // OnPushHandleNegotiationRequest handles the negotiation request.
 func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
-	time.Sleep(500 * time.Millisecond)
-	wksCtx.outFunc("\rOnPushHandleNegotiationRequest", false)
+	wksCtx.outFunc("\rPush Negotiation: Managing the negotiation request.", false)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
@@ -103,8 +95,7 @@ func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatem
 // OnPushSendNegotiationResponse sends the negotiation response.
 func (m *WorkspaceManager) OnPushSendNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
-	time.Sleep(500 * time.Millisecond)
-	wksCtx.outFunc("\rOnPushSendNegotiationResponse", false)
+	wksCtx.outFunc("\rPush Negotiation: Dispatching response to the active negotiation request.", false)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
@@ -115,8 +106,7 @@ func (m *WorkspaceManager) OnPushSendNegotiationResponse(handlerCtx *notpstatema
 // OnPushExchangeDataStream exchanges the data stream.
 func (m *WorkspaceManager) OnPushExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
-	time.Sleep(500 * time.Millisecond)
-	wksCtx.outFunc("\rOnPushExchangeDataStream", true)
+	wksCtx.outFunc("\rPush Data Exchabge: Handling data exchange.", false)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
