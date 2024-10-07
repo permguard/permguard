@@ -34,6 +34,11 @@ type ObjectStatePacket struct {
 	Content []byte
 }
 
+// GetType returns the type of the packet.
+func (p *ObjectStatePacket) GetType() uint64 {
+	return notppackets.CombineUint32toUint64(ObjectStatePacketType, 0)
+}
+
 // Serialize serializes the packet.
 func (p *ObjectStatePacket) Serialize() ([]byte, error) {
 	buffer := bytes.NewBuffer([]byte{})
@@ -95,6 +100,5 @@ func (p *ObjectStatePacket) Deserialize(data []byte) error {
 	} else {
 		return fmt.Errorf("missing data for Content")
 	}
-
 	return nil
 }

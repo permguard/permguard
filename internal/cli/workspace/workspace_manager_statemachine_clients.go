@@ -41,7 +41,9 @@ const (
 	// RemoteCommitKey represents the remote commit key.
 	RemoteCommitKey = "remote-commit"
 	// DiffTreeIDsKey represents the diff tree ids key.
-	DiffTreeIDsKey = "diff-tree-items"
+	DiffTreeIDsKey = "diff-tree-ids"
+	// DiffTreeIDCursorKey represents the diff tree id cursor key.
+	DiffTreeIDCursorKey = "diff-tree-id-cursor"
 	// HeadContextKey represents the head context key.
 	HeadContextKey = "head-context"
 )
@@ -131,6 +133,7 @@ func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatem
 		//TODO implement logic to get the diff tree items
 	}
 	handlerCtx.Set(DiffTreeIDsKey, treeIDs)
+	handlerCtx.Set(DiffTreeIDCursorKey, -1)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
@@ -151,22 +154,41 @@ func (m *WorkspaceManager) OnPushSendNegotiationResponse(handlerCtx *notpstatema
 	return handlerReturn, nil
 }
 
-// onPushTreeExchangeData exchanges the tree data.
-func (m *WorkspaceManager) onPushTreeExchangeData(handlerCtx *notpstatemachines.HandlerContext,treeObj *azlangobjs.Object) error {
+// buildPacketablesForTree builds the packetables for the tree.
+func (m *WorkspaceManager) buildPacketablesForTree(handlerCtx *notpstatemachines.HandlerContext, isCode bool,treeObj *azlangobjs.Object) ([]notppackets.Packetable, error) {
 	absLang, _ := getFromHandlerContext[azlang.LanguageAbastraction](handlerCtx, LanguageAbstractionKey)
 	tree, err := absLang.GetTreeeObject(treeObj)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	packetable := []notppackets.Packetable{}
+	packet := &notpagpackets.ObjectStatePacket {
+		OID: treeObj.GetOID(),
+		OType: azlangobjs.ObjectTypeTree,
+		Content: treeObj.GetContent(),
+	}
+	packetable = append(packetable, packet)
 	for _, entry := range tree.GetEntries() {
 		oid := entry.GetOID()
-		obj, err := m.cospMgr.ReadObject(oid)
-		if err != nil {
-			return err
+		oType := entry.GetType()
+		var obj *azlangobjs.Object
+		var err error
+		if isCode {
+			obj, err = m.cospMgr.ReadCodeSourceObject(oid)
+		} else {
+			obj, err = m.cospMgr.ReadObject(oid)
 		}
-		println(obj)
+		if err != nil {
+			return nil, err
+		}
+		packet := &notpagpackets.ObjectStatePacket {
+			OID: oid,
+			OType: oType,
+			Content: obj.GetContent(),
+		}
+		packetable = append(packetable, packet)
 	}
-	return nil
+	return packetable, nil
 }
 
 // OnPushExchangeDataStream exchanges the data stream.
@@ -175,26 +197,34 @@ func (m *WorkspaceManager) OnPushExchangeDataStream(handlerCtx *notpstatemachine
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-push", "Data Exchabge - Handling data exchange.", true)
 	}
+	handlerReturn := &notpstatemachines.HostHandlerRuturn{
+		Packetables: packets,
+	}
 	treeIDs, _ := getFromHandlerContext[[]string](handlerCtx, DiffTreeIDsKey)
-	for _, treeID := range treeIDs {
+	treeIDCursor, _ := getFromHandlerContext[int](handlerCtx, DiffTreeIDCursorKey)
+	treeIDCursor = treeIDCursor + 1
+	if treeIDCursor < len(treeIDs) {
+		treeID := treeIDs[treeIDCursor]
 		treeObj, err := m.cospMgr.ReadObject(treeID)
 		if err != nil {
 			return nil, err
 		}
-		err = m.onPushTreeExchangeData(handlerCtx, treeObj)
+		packetables, err := m.buildPacketablesForTree(handlerCtx, false, treeObj)
 		if err != nil {
 			return nil, err
 		}
+		handlerReturn.Packetables = packetables
+		handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.ActiveDataStreamValue)
+		handlerReturn.HasMore = true
+	} else {
+		treeObj, _ := getFromHandlerContext[*azlangobjs.Object](handlerCtx, LocalCodeTreeObjectKey)
+		packetables, err := m.buildPacketablesForTree(handlerCtx, true, treeObj)
+		if err != nil {
+			return nil, err
+		}
+		handlerReturn.Packetables = packetables
+		handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.CompletedDataStreamValue)
+		handlerReturn.HasMore = false
 	}
-	treeObj, _ := getFromHandlerContext[*azlangobjs.Object](handlerCtx, LocalCodeTreeObjectKey)
-	err := m.onPushTreeExchangeData(handlerCtx, treeObj)
-	if err != nil {
-		return nil, err
-	}
-	handlerReturn := &notpstatemachines.HostHandlerRuturn{
-		Packetables: packets,
-	}
-	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.ActiveDataStreamValue)
-	handlerReturn.HasMore = false
 	return handlerReturn, nil
 }
