@@ -262,6 +262,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		OutFuncKey: func(key string, output string, newLine bool) {
 			out(nil, key, output, nil, newLine)
 		},
+		LanguageAbstractionKey:   absLang,
 		LocalCodeTreeObjectKey:   treeObj,
 		LocalCodeCommitKey:       commit,
 		LocalCodeCommitObjectKey: commitObj,

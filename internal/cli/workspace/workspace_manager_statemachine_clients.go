@@ -17,6 +17,7 @@
 package workspace
 
 import (
+	azlang "github.com/permguard/permguard/pkg/core/languages"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 
@@ -29,6 +30,8 @@ import (
 const (
 	// OutFuncKey represents the apply out func key.
 	OutFuncKey = "output-func"
+	// LanguageAbstractionKey represents the language abstraction key.
+	LanguageAbstractionKey = "language-abstraction"
 	// LocalCodeTreeObjectKey represents the local code tree object key.
 	LocalCodeTreeObjectKey = "local-code-tree-object"
 	// LocalCodeCommitKey represents the local code commit key.
@@ -150,6 +153,19 @@ func (m *WorkspaceManager) OnPushSendNegotiationResponse(handlerCtx *notpstatema
 
 // onPushTreeExchangeData exchanges the tree data.
 func (m *WorkspaceManager) onPushTreeExchangeData(handlerCtx *notpstatemachines.HandlerContext,treeObj *azlangobjs.Object) error {
+	absLang, _ := getFromHandlerContext[azlang.LanguageAbastraction](handlerCtx, LanguageAbstractionKey)
+	tree, err := absLang.GetTreeeObject(treeObj)
+	if err != nil {
+		return err
+	}
+	for _, entry := range tree.GetEntries() {
+		oid := entry.GetOID()
+		obj, err := m.cospMgr.ReadObject(oid)
+		if err != nil {
+			return err
+		}
+		println(obj)
+	}
 	return nil
 }
 
