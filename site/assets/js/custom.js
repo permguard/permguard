@@ -179,7 +179,9 @@ function detectForcedDarkMode() {
     !window.matchMedia ||
     window.matchMedia("(prefers-color-scheme:dark)").matches
   )
-    return false;
+    return new Promise((resolve) => {
+      resolve(false);
+    });
 
   return new Promise((resolve) => {
     const ctx = document.createElement("canvas").getContext("2d");
