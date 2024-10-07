@@ -259,8 +259,8 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 	}
 
 	bag := map[string]any{
-		ApplyOutFuncKey: func(output string, newLine bool) {
-			out(nil, "", output, nil, newLine)
+		ApplyOutFuncKey: func(key string, output string, newLine bool) {
+			out(nil, key, output, nil, newLine)
 		},
 		ApplyTreeObjectKey:   treeObj,
 		ApplyCommitKey:       commit,
