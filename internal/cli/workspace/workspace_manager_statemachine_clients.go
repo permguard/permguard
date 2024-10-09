@@ -17,9 +17,9 @@
 package workspace
 
 import (
-	azlang "github.com/permguard/permguard/pkg/core/languages"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azlang "github.com/permguard/permguard/pkg/core/languages"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
@@ -34,12 +34,12 @@ const (
 	LanguageAbstractionKey = "language-abstraction"
 	// LocalCodeTreeObjectKey represents the local code tree object key.
 	LocalCodeTreeObjectKey = "local-code-tree-object"
-	// LocalCodeCommitKey represents the local code commit key.
+	// LocalCodeCommitKey represents the local code commit id key.
 	LocalCodeCommitKey = "local-code-commit"
 	// LocalCodeCommitObjectKey represents the local code commit object key.
 	LocalCodeCommitObjectKey = "local-code-commit-object"
-	// RemoteCommitKey represents the remote commit key.
-	RemoteCommitKey = "remote-commit"
+	// RemoteCommitIDKey represents the remote commit id key.
+	RemoteCommitIDKey = "remote-commit-id"
 	// DiffTreeIDsKey represents the diff tree ids key.
 	DiffTreeIDsKey = "diff-tree-ids"
 	// DiffTreeIDCursorKey represents the diff tree id cursor key.
@@ -50,17 +50,17 @@ const (
 
 // getFromHandlerContext gets the value from the handler context.
 func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key string) (T, bool) {
-    value, ok := ctx.Get(key)
-    if !ok {
-        var zero T
-        return zero, false
-    }
-    typedValue, ok := value.(T)
-    if !ok {
-        var zero T
-        return zero, false
-    }
-    return typedValue, true
+	value, ok := ctx.Get(key)
+	if !ok {
+		var zero T
+		return zero, false
+	}
+	typedValue, ok := value.(T)
+	if !ok {
+		var zero T
+		return zero, false
+	}
+	return typedValue, true
 }
 
 // workspaceHandlerContext represents the workspace handler context.
@@ -90,7 +90,7 @@ func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemac
 		wksCtx.outFunc("notp-push", "Advertising - Initiating notification dispatch for the current repository state.", true)
 	}
 	packet := &notpagpackets.RemoteRefStatePacket{
-		RefCommit: wksCtx.ctx.commit,
+		RefCommit: wksCtx.ctx.commitID,
 	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: []notppackets.Packetable{packet},
@@ -112,7 +112,7 @@ func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *no
 	if localRefSPacket.HasConflicts {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, "workspace: conflicts detected in the remote repository.")
 	}
-	handlerCtx.Set(RemoteCommitKey, localRefSPacket.RefCommit)
+	handlerCtx.Set(RemoteCommitIDKey, localRefSPacket.RefCommit)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
@@ -126,10 +126,16 @@ func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatem
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-push", "Negotiation - Managing the negotiation request.", true)
 	}
-	localCommit, _ := getFromHandlerContext[string](handlerCtx, LocalCodeCommitKey)
-	remoteCommit, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitKey)
+	absLang, _ := getFromHandlerContext[azlang.LanguageAbastraction](handlerCtx, LanguageAbstractionKey)
+	localCommit, _ := getFromHandlerContext[*azlangobjs.Commit](handlerCtx, LocalCodeCommitKey)
+	localCommitObj, err := absLang.CreateCommitObject(localCommit)
+	if err != nil {
+		return nil, err
+	}
+
+	remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDKey)
 	treeIDs := []string{}
-	if localCommit != remoteCommit {
+	if localCommitObj.GetOID() != remoteCommitID {
 		//TODO implement logic to get the diff tree items
 	}
 	handlerCtx.Set(DiffTreeIDsKey, treeIDs)
@@ -155,16 +161,16 @@ func (m *WorkspaceManager) OnPushSendNegotiationResponse(handlerCtx *notpstatema
 }
 
 // buildPacketablesForTree builds the packetables for the tree.
-func (m *WorkspaceManager) buildPacketablesForTree(handlerCtx *notpstatemachines.HandlerContext, isCode bool,treeObj *azlangobjs.Object) ([]notppackets.Packetable, error) {
+func (m *WorkspaceManager) buildPacketablesForTree(handlerCtx *notpstatemachines.HandlerContext, isCode bool, treeObj *azlangobjs.Object) ([]notppackets.Packetable, error) {
 	absLang, _ := getFromHandlerContext[azlang.LanguageAbastraction](handlerCtx, LanguageAbstractionKey)
 	tree, err := absLang.GetTreeeObject(treeObj)
 	if err != nil {
 		return nil, err
 	}
 	packetable := []notppackets.Packetable{}
-	packet := &notpagpackets.ObjectStatePacket {
-		OID: treeObj.GetOID(),
-		OType: azlangobjs.ObjectTypeTree,
+	packet := &notpagpackets.ObjectStatePacket{
+		OID:     treeObj.GetOID(),
+		OType:   azlangobjs.ObjectTypeTree,
 		Content: treeObj.GetContent(),
 	}
 	packetable = append(packetable, packet)
@@ -181,9 +187,9 @@ func (m *WorkspaceManager) buildPacketablesForTree(handlerCtx *notpstatemachines
 		if err != nil {
 			return nil, err
 		}
-		packet := &notpagpackets.ObjectStatePacket {
-			OID: oid,
-			OType: oType,
+		packet := &notpagpackets.ObjectStatePacket{
+			OID:     oid,
+			OType:   oType,
 			Content: obj.GetContent(),
 		}
 		packetable = append(packetable, packet)

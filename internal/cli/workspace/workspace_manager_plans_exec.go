@@ -227,8 +227,8 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		out(nil, "apply", fmt.Sprintf("The tree has been created with id: %s.", aziclicommon.IDText(treeObj.GetOID())), nil, true)
 	}
 	headTreeID := azlangobjs.ZeroOID
-	if headCtx.commit != azlangobjs.ZeroOID {
-		headCommitObj, err := m.cospMgr.ReadObject(headCtx.commit)
+	if headCtx.commitID != azlangobjs.ZeroOID {
+		headCommitObj, err := m.cospMgr.ReadObject(headCtx.commitID)
 		if err != nil {
 			if m.ctx.IsVerboseTerminalOutput() {
 				out(nil, "apply", "Failed to read the head commit.", nil, true)
@@ -246,7 +246,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		}
 		headTreeID = headCommit.GetTree()
 	}
-	commit, commitObj, err := m.buildPlanCommit(headTreeID, "", absLang)
+	commit, commitObj, err := m.buildPlanCommit(treeObj.GetOID(), headTreeID, absLang)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "apply", "Failed to build the commit.", nil, true)
