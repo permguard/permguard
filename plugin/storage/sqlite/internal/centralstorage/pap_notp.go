@@ -31,28 +31,29 @@ import (
 	notpagpackets "github.com/permguard/permguard/internal/agents/notp/statemachines/packets"
 )
 
+// getFromHandlerContext gets the value from the handler context.
+func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key string) (T, bool) {
+	value, ok := ctx.Get(key)
+	if !ok {
+		var zero T
+		return zero, false
+	}
+	typedValue, ok := value.(T)
+	if !ok {
+		var zero T
+		return zero, false
+	}
+	return typedValue, true
+}
+
 // extractMetaData extracts the meta data.
-func (s SQLiteCentralStoragePAP) extractMetaData(handlerCtx *notpstatemachines.HandlerContext) (int64, string) {
-	accountIDVal, ok := handlerCtx.Get(notpagstatemachines.AccountIDKey)
-	if !ok {
-		return 0, ""
-	}
-	accountIDStr, ok := accountIDVal.(string)
-	if !ok {
-		return 0, ""
-	}
+func (s SQLiteCentralStoragePAP) extractMetaData(ctx *notpstatemachines.HandlerContext) (int64, string) {
+	accountIDStr, _ := getFromHandlerContext[string](ctx, notpagstatemachines.AccountIDKey)
 	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
 	if err != nil {
 		return 0, ""
 	}
-	repoIDVal, ok := handlerCtx.Get(notpagstatemachines.RepositoryIDKey)
-	if !ok {
-		return 0, ""
-	}
-	repoID, ok := repoIDVal.(string)
-	if !ok {
-		return 0, ""
-	}
+	repoID, _ := getFromHandlerContext[string](ctx, notpagstatemachines.RepositoryIDKey)
 	return accountID, repoID
 }
 
@@ -86,14 +87,14 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 	if err != nil {
 		return nil, err
 	}
-	commit := repo.Refs
+	headCommitID := repo.Refs
 	hasConflicts := false
-	if repo.Refs != azlangobjs.ZeroOID {
+	if headCommitID != azlangobjs.ZeroOID {
 		// TODO implement logic to check if there are conflicts
 		hasConflicts = false
 	}
 	packet := &notpagpackets.LocalRefStatePacket{
-		RefCommit: commit,
+		RefCommit: headCommitID,
 		HasConflicts: hasConflicts,
 	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{

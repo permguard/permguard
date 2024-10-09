@@ -45,7 +45,7 @@ func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) 
 		repoURI:       headRefsInfo.GetRepoURI(),
 		refID:         headRefsInfo.GetRefID(),
 		refs:          headRefs,
-		commit: 	   azlangobjs.ZeroOID,
+		commitID:      azlangobjs.ZeroOID,
 		server:        remoteInfo.GetServer(),
 		serverPAPPort: remoteInfo.GetPAPPort(),
 	}
@@ -59,7 +59,7 @@ func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) 
 	if err != nil {
 		return nil, err
 	}
-	headCtx.commit = commit
+	headCtx.commitID = commit
 
 	return headCtx, nil
 }
