@@ -54,6 +54,19 @@ func formatAsUUID(s string) string {
 	)
 }
 
+// ValidateSHA256 validates a SHA256 hash.
+func ValidateSHA256(entity string, hash string) error {
+	if len(hash) != 64 {
+		return fmt.Errorf("storage: %s hash %s is not valid. %w", entity, hash, azerrors.ErrClientSHA256)
+	}
+	for _, c := range hash {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return fmt.Errorf("storage: %s hash %s contains invalid characters. %w", entity, hash, azerrors.ErrClientSHA256)
+		}
+	}
+	return nil
+}
+
 // ValidateUUID validates a UUID.
 func ValidateUUID(entity string, id string) error {
 	formattedID := formatAsUUID(id)
