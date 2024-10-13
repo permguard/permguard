@@ -236,7 +236,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 			out(nil, "", errPlanningProcessFailed, nil, true)
 			return failedOpErr(output, err)
 		}
-		headCommit, err := absLang.GetCommiteObject(headCommitObj)
+		headCommit, err := absLang.GetCommitObject(headCommitObj)
 		if err != nil {
 			if m.ctx.IsVerboseTerminalOutput() {
 				out(nil, "apply", "Failed to get the head commit.", nil, true)

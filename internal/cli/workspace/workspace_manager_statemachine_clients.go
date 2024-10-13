@@ -135,8 +135,25 @@ func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatem
 
 	remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDKey)
 	treeIDs := []string{}
-	if localCommitObj.GetOID() != remoteCommitID {
-		//TODO implement logic to get the diff tree items
+	localCommitID := localCommitObj.GetOID()
+	if localCommitID!= remoteCommitID {
+		objMng, err := azlangobjs.NewObjectManager()
+		if err != nil {
+			return nil, err
+		}
+		_, history, err := objMng.BuildCommitHistory(localCommitID, remoteCommitID, true, func(oid string) (*azlangobjs.Object, error) {
+			obj, _ := m.cospMgr.ReadCodeSourceObject(oid)
+			if obj == nil {
+				obj, _ = m.cospMgr.ReadObject(oid)
+			}
+			return obj, nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, commit := range history {
+			treeIDs = append(treeIDs, commit.GetTree())
+		}
 	}
 	handlerCtx.Set(DiffTreeIDsKey, treeIDs)
 	handlerCtx.Set(DiffTreeIDCursorKey, -1)

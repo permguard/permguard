@@ -28,8 +28,8 @@ type LanguageAbastraction interface {
 	GetFileExtensions() []string
 	// CreateCommitObject creates a commit object.
 	CreateCommitObject(commit *azlangobjs.Commit) (*azlangobjs.Object, error)
-	// GetCommiteObject gets a commit object.
-	GetCommiteObject(obj *azlangobjs.Object) (*azlangobjs.Commit, error)
+	// GetCommitObject gets a commit object.
+	GetCommitObject(obj *azlangobjs.Object) (*azlangobjs.Commit, error)
 	// CreateTreeObject creates a tree object.
 	CreateTreeObject(tree *azlangobjs.Tree) (*azlangobjs.Object, error)
 	// GetTreeeObject gets a tree object.
