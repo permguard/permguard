@@ -59,7 +59,7 @@ permguard accounts create --name magicfarmacia-dev --output json
 Next, create a repo:
 
 ```bash
-permguard repositories create --name magicfarmacia-v0.0 --account-id 268786704340  --output json
+permguard authz  repos create --account 268786704340  --name magicfarmacia-v0.0 --output json
 {
   "repositories": [
     {
