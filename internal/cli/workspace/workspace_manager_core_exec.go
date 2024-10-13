@@ -122,7 +122,10 @@ func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort i
 	defer fileLock.Unlock()
 
 	output, err := m.cfgMgr.ExecAddRemote(remote, server, aapPort, papPort, nil, out)
-	return failedOpErr(output, err)
+	if err != nil {
+		return failedOpErr(output, err)
+	}
+	return output, nil
 }
 
 // ExecRemoveRemote removes a remote.
