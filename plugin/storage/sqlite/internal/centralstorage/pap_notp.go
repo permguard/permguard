@@ -32,8 +32,8 @@ import (
 )
 
 const (
-	// RemoteCommitIDsKey is the remote commit ids key.
-	RemoteCommitIDsKey = "remote-commit-id"
+	// RemoteCommitIDKey is the remote commit id key.
+	RemoteCommitIDKey = "remote-commit-id"
 )
 
 // getFromHandlerContext gets the value from the handler context.
@@ -88,13 +88,16 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 	if err != nil {
 		return nil, err
 	}
+	if remoteRefSPacket.RefCommit == "" || remoteRefSPacket.RefPrevCommit == "" {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid remote ref state packet.")
+	}
 	repo, err := s.readRepoFromHandlerContext(handlerCtx)
 	if err != nil {
 		return nil, err
 	}
 	headCommitID := repo.Refs
 	hasConflicts := false
-	if headCommitID != azlangobjs.ZeroOID && headCommitID != remoteRefSPacket.RefCommit {
+	if headCommitID != azlangobjs.ZeroOID && headCommitID != remoteRefSPacket.RefPrevCommit {
 		objMng, err := azlangobjs.NewObjectManager()
 		if err != nil {
 			return nil, err
@@ -103,7 +106,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 		if err != nil {
 			return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 		}
-		hasMatch, _, err := objMng.BuildCommitHistory(headCommitID, remoteRefSPacket.RefCommit, false, func(oid string) (*azlangobjs.Object, error) {
+		hasMatch, _, err := objMng.BuildCommitHistory(headCommitID, remoteRefSPacket.RefPrevCommit, false, func(oid string) (*azlangobjs.Object, error) {
 			keyValue, err := s.sqlRepo.GetKeyValue(db, oid)
 			if err != nil || keyValue == nil || keyValue.Value == nil {
 				return nil, nil
@@ -113,13 +116,13 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 		hasConflicts = hasMatch
 	}
 	packet := &notpagpackets.LocalRefStatePacket{
-		RefCommit: headCommitID,
+		RefCommit:    headCommitID,
 		HasConflicts: hasConflicts,
 	}
-	handlerCtx.Set(RemoteCommitIDsKey, remoteRefSPacket.RefCommit)
+	handlerCtx.Set(RemoteCommitIDKey, remoteRefSPacket.RefCommit)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
-		Packetables: []notppackets.Packetable{packet},
+		Packetables:  []notppackets.Packetable{packet},
 	}
 	return handlerReturn, nil
 }
@@ -151,7 +154,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNegotiationResponse(handlerCtx *not
 }
 
 // OnPushHandleExchangeDataStream exchanges the data stream.
-func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error){
+func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
@@ -168,7 +171,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 			return nil, err
 		}
 		keyValue := &azirepos.KeyValue{
-			Key: objStatePacket.OID,
+			Key:   objStatePacket.OID,
 			Value: objStatePacket.Content,
 		}
 		_, err = s.sqlRepo.UpsertKeyValue(tx, keyValue)
@@ -182,7 +185,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 		if err != nil {
 			return nil, err
 		}
-		remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDsKey)
+		remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDKey)
 		err = s.sqlRepo.UpdateRepositoryRefs(tx, repo.AccountID, repo.RepositoryID, repo.Refs, remoteCommitID)
 		if err := tx.Commit(); err != nil {
 			return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
