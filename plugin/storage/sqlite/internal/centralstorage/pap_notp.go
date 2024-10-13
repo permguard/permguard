@@ -89,9 +89,23 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 	}
 	headCommitID := repo.Refs
 	hasConflicts := false
-	if headCommitID != azlangobjs.ZeroOID {
-		// TODO implement logic to check if there are conflicts
-		hasConflicts = false
+	if headCommitID != azlangobjs.ZeroOID && headCommitID != remoteRefSPacket.RefCommit {
+		objMng, err := azlangobjs.NewObjectManager()
+		if err != nil {
+			return nil, err
+		}
+		db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
+		if err != nil {
+			return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		}
+		hasMatch, _, err := objMng.BuildCommitHistory(headCommitID, remoteRefSPacket.RefCommit, false, func(oid string) (*azlangobjs.Object, error) {
+			keyValue, err := s.sqlRepo.GetKeyValue(db, oid)
+			if err != nil || keyValue == nil || keyValue.Value == nil {
+				return nil, nil
+			}
+			return azlangobjs.NewObject(keyValue.Value), nil
+		})
+		hasConflicts = hasMatch
 	}
 	packet := &notpagpackets.LocalRefStatePacket{
 		RefCommit: headCommitID,

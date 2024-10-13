@@ -17,9 +17,9 @@
 package permyaml
 
 import (
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azlangcode "github.com/permguard/permguard-abs-language/pkg/permcode"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azsrlzs "github.com/permguard/permguard/plugin/languages/permyaml/serializers"
 )
 
@@ -49,7 +49,7 @@ func NewYAMLLanguageAbstraction() (*YAMLLanguageAbstraction, error) {
 		return nil, err
 	}
 	return &YAMLLanguageAbstraction{
-		objMng: objMng,
+		objMng:      objMng,
 		permCodeMng: permCodeMng,
 	}, nil
 }
@@ -69,8 +69,8 @@ func (abs *YAMLLanguageAbstraction) CreateCommitObject(commit *azlangobjs.Commit
 	return abs.objMng.CreateCommitObject(commit)
 }
 
-// GetCommiteObject gets a commit object.
-func (abs *YAMLLanguageAbstraction) GetCommiteObject(obj *azlangobjs.Object) (*azlangobjs.Commit, error) {
+// GetCommitObject gets a commit object.
+func (abs *YAMLLanguageAbstraction) GetCommitObject(obj *azlangobjs.Object) (*azlangobjs.Commit, error) {
 	objInfo, err := abs.objMng.GetObjectInfo(obj)
 	if err != nil {
 		return nil, err
