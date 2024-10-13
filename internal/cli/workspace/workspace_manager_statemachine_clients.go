@@ -40,10 +40,10 @@ const (
 	LocalCodeCommitObjectKey = "local-code-commit-object"
 	// RemoteCommitIDKey represents the remote commit id key.
 	RemoteCommitIDKey = "remote-commit-id"
-	// DiffTreeIDsKey represents the diff tree ids key.
-	DiffTreeIDsKey = "diff-tree-ids"
-	// DiffTreeIDCursorKey represents the diff tree id cursor key.
-	DiffTreeIDCursorKey = "diff-tree-id-cursor"
+	// DiffCommitIDsKey represents the diff commit ids key.
+	DiffCommitIDsKey = "diff-commit-ids"
+	// DiffCommitIDCursorKey represents the diff commit id cursor key.
+	DiffCommitIDCursorKey = "diff-commit-id-cursor"
 	// HeadContextKey represents the head context key.
 	HeadContextKey = "head-context"
 )
@@ -122,19 +122,12 @@ func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *no
 
 // OnPushHandleNegotiationRequest handles the negotiation request.
 func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
-	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
-		wksCtx.outFunc("notp-push", "Negotiation - Managing the negotiation request.", true)
 	}
 	absLang, _ := getFromHandlerContext[azlang.LanguageAbastraction](handlerCtx, LanguageAbstractionKey)
-	localCommit, _ := getFromHandlerContext[*azlangobjs.Commit](handlerCtx, LocalCodeCommitKey)
-	localCommitObj, err := absLang.CreateCommitObject(localCommit)
-	if err != nil {
-		return nil, err
-	}
-
+	localCommitObj, _ := getFromHandlerContext[*azlangobjs.Object](handlerCtx, LocalCodeCommitObjectKey)
 	remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDKey)
-	treeIDs := []string{}
+	commitIDs := []string{}
 	localCommitID := localCommitObj.GetOID()
 	if localCommitID!= remoteCommitID {
 		objMng, err := azlangobjs.NewObjectManager()
@@ -152,11 +145,15 @@ func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatem
 			return nil, err
 		}
 		for _, commit := range history {
-			treeIDs = append(treeIDs, commit.GetTree())
+			obj, err := absLang.CreateCommitObject(&commit)
+			if err != nil {
+				return nil, err
+			}
+			commitIDs = append(commitIDs, obj.GetOID())
 		}
 	}
-	handlerCtx.Set(DiffTreeIDsKey, treeIDs)
-	handlerCtx.Set(DiffTreeIDCursorKey, -1)
+	handlerCtx.Set(DiffCommitIDsKey, commitIDs)
+	handlerCtx.Set(DiffCommitIDCursorKey, -1)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
@@ -177,20 +174,41 @@ func (m *WorkspaceManager) OnPushSendNegotiationResponse(handlerCtx *notpstatema
 	return handlerReturn, nil
 }
 
-// buildPacketablesForTree builds the packetables for the tree.
-func (m *WorkspaceManager) buildPacketablesForTree(handlerCtx *notpstatemachines.HandlerContext, isCode bool, treeObj *azlangobjs.Object) ([]notppackets.Packetable, error) {
+// buildPacketablesForCommit builds the packetables for the tree.
+func (m *WorkspaceManager) buildPacketablesForCommit(handlerCtx *notpstatemachines.HandlerContext, isCode bool, commitObj *azlangobjs.Object) ([]notppackets.Packetable, error) {
 	absLang, _ := getFromHandlerContext[azlang.LanguageAbastraction](handlerCtx, LanguageAbstractionKey)
-	tree, err := absLang.GetTreeeObject(treeObj)
+	commit, err := absLang.GetCommitObject(commitObj)
 	if err != nil {
 		return nil, err
 	}
 	packetable := []notppackets.Packetable{}
-	packet := &notpagpackets.ObjectStatePacket{
+	packetCommit := &notpagpackets.ObjectStatePacket{
+		OID:     commitObj.GetOID(),
+		OType:   azlangobjs.ObjectTypeCommit,
+		Content: commitObj.GetContent(),
+	}
+	packetable = append(packetable, packetCommit)
+
+	var treeObj *azlangobjs.Object
+	if isCode {
+		treeObj, err = m.cospMgr.ReadCodeSourceObject(commit.GetTree())
+	} else {
+		treeObj, err = m.cospMgr.ReadObject(commit.GetTree())
+	}
+	if err != nil {
+		return nil, err
+	}
+	tree, err := absLang.GetTreeeObject(treeObj)
+	if err != nil {
+		return nil, err
+	}
+	packetTree := &notpagpackets.ObjectStatePacket{
 		OID:     treeObj.GetOID(),
 		OType:   azlangobjs.ObjectTypeTree,
 		Content: treeObj.GetContent(),
 	}
-	packetable = append(packetable, packet)
+	packetable = append(packetable, packetTree)
+
 	for _, entry := range tree.GetEntries() {
 		oid := entry.GetOID()
 		oType := entry.GetType()
@@ -223,16 +241,16 @@ func (m *WorkspaceManager) OnPushExchangeDataStream(handlerCtx *notpstatemachine
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 	}
-	treeIDs, _ := getFromHandlerContext[[]string](handlerCtx, DiffTreeIDsKey)
-	treeIDCursor, _ := getFromHandlerContext[int](handlerCtx, DiffTreeIDCursorKey)
-	treeIDCursor = treeIDCursor + 1
-	if treeIDCursor < len(treeIDs) {
-		treeID := treeIDs[treeIDCursor]
-		treeObj, err := m.cospMgr.ReadObject(treeID)
+	commitIDs, _ := getFromHandlerContext[[]string](handlerCtx, DiffCommitIDsKey)
+	commitIDCursor, _ := getFromHandlerContext[int](handlerCtx, DiffCommitIDCursorKey)
+	commitIDCursor = commitIDCursor + 1
+	if commitIDCursor < len(commitIDs) {
+		commitID := commitIDs[commitIDCursor]
+		commitObj, err := m.cospMgr.ReadObject(commitID)
 		if err != nil {
 			return nil, err
 		}
-		packetables, err := m.buildPacketablesForTree(handlerCtx, false, treeObj)
+		packetables, err := m.buildPacketablesForCommit(handlerCtx, false, commitObj)
 		if err != nil {
 			return nil, err
 		}
@@ -240,8 +258,8 @@ func (m *WorkspaceManager) OnPushExchangeDataStream(handlerCtx *notpstatemachine
 		handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.ActiveDataStreamValue)
 		handlerReturn.HasMore = true
 	} else {
-		treeObj, _ := getFromHandlerContext[*azlangobjs.Object](handlerCtx, LocalCodeTreeObjectKey)
-		packetables, err := m.buildPacketablesForTree(handlerCtx, true, treeObj)
+		commitObj, _ := getFromHandlerContext[*azlangobjs.Object](handlerCtx, LocalCodeCommitObjectKey)
+		packetables, err := m.buildPacketablesForCommit(handlerCtx, true, commitObj)
 		if err != nil {
 			return nil, err
 		}
