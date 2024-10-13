@@ -46,17 +46,17 @@ Available Commands:
   apply       Apply the plan to the remote repo
   authn       Manage tenants and identities on the remote server
   authz       Manage repos on the remote server
-  checkout    Check out the contents of a remote repo to the local working directory
-  clone       Clone a remote repo to the local working directory
+  checkout    Check out the contents of a remote repository to the local working directory
+  clone       Clone a remote repository to the local working directory
   completion  Generate the autocompletion script for the specified shell
   config      Configure the command line settings
   objects     Manage the object store
   help        Help about any command
   init        Initialize a new repo in the working directory
-  plan        Generate a plan of changes to apply to the remote repo based on the differences between the local and remote states
-  pull        Fetch the latest changes from the remote repo and constructs the remote state.
+  plan        Generate a plan of changes to apply to the remote repository based on the differences between the local and remote states
+  pull        Fetch the latest changes from the remote repository and constructs the remote state.
   refresh     Scan source files in the current directory and synchronizes the local state
-  remote      Manage remote repos for tracking and interaction
+  remote      Manage remote repositories for tracking and interaction
   repo        Manage repo settings and operations
   validate    Validate the local state for consistency and correctness
 

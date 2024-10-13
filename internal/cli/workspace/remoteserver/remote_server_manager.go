@@ -41,7 +41,7 @@ func NewRemoteServerManager(ctx *aziclicommon.CliCommandContext) (*RemoteServerM
 	}, nil
 }
 
-// GetServerRemoteRepo gets the remote repo from the server.
+// GetServerRemoteRepo gets the remote repository from the server.
 func (m *RemoteServerManager) GetServerRemoteRepo(accountID int64, repo string, server string, aapPort int, papPort int) (*azmodels.Repository, error) {
 	appServer := fmt.Sprintf("%s:%d", server, aapPort)
 	aapClient, err := aziclients.NewGrpcAAPClient(appServer)
