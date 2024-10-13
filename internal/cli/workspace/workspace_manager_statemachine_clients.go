@@ -89,8 +89,10 @@ func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemac
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-push", "Advertising - Initiating notification dispatch for the current repository state.", true)
 	}
+	localCommitObj, _ := getFromHandlerContext[*azlangobjs.Object](handlerCtx, LocalCodeCommitObjectKey)
 	packet := &notpagpackets.RemoteRefStatePacket{
-		RefCommit: wksCtx.ctx.commitID,
+		RefPrevCommit: wksCtx.ctx.commitID,
+		RefCommit: localCommitObj.GetOID(),
 	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: []notppackets.Packetable{packet},
@@ -129,7 +131,7 @@ func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatem
 	remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDKey)
 	commitIDs := []string{}
 	localCommitID := localCommitObj.GetOID()
-	if localCommitID!= remoteCommitID {
+	if localCommitID != remoteCommitID {
 		objMng, err := azlangobjs.NewObjectManager()
 		if err != nil {
 			return nil, err

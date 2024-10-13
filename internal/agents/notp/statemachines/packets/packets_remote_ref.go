@@ -17,11 +17,16 @@
 package packets
 
 import (
+	"bytes"
+	"fmt"
+
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 )
 
 // RemoteRefStatePacket is the packet to advertise the remote ref state.
 type RemoteRefStatePacket struct {
+	// RefPrevCommit is the previous commit of the remote ref.
+	RefPrevCommit string
 	// RefCommit is the commit of the remote ref.
 	RefCommit string
 }
@@ -33,11 +38,33 @@ func (p *RemoteRefStatePacket) GetType() uint64 {
 
 // Serialize serializes the packet.
 func (p *RemoteRefStatePacket) Serialize() ([]byte, error) {
-	return []byte(p.RefCommit), nil
+	commitBytes := notppackets.EncodeByteArray([]byte(p.RefPrevCommit))
+	prevCommitBytes := notppackets.EncodeByteArray([]byte(p.RefCommit))
+
+	// Aggiungi i campi con byte nullo tra di loro
+	data := append(commitBytes, notppackets.PacketNullByte)
+	data = append(data, prevCommitBytes...)
+	data = append(data, notppackets.PacketNullByte)
+
+	return data, nil
 }
 
 // Deserialize deserializes the packet.
 func (p *RemoteRefStatePacket) Deserialize(data []byte) error {
-	p.RefCommit = string(data)
+	nullByteIndex := bytes.IndexByte(data, notppackets.PacketNullByte)
+	if nullByteIndex == -1 {
+		return fmt.Errorf("missing null byte after RefCommit")
+	}
+
+	p.RefPrevCommit = string(notppackets.DecodeByteArray(data[:nullByteIndex]))
+
+	secondNullByteIndex := bytes.IndexByte(data[nullByteIndex+1:], notppackets.PacketNullByte)
+	if secondNullByteIndex == -1 {
+		return fmt.Errorf("missing second null byte after RefPrevCommit")
+	}
+
+	secondNullByteIndex += nullByteIndex + 1
+	p.RefCommit = string(notppackets.DecodeByteArray(data[nullByteIndex+1 : secondNullByteIndex]))
+
 	return nil
 }
