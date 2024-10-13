@@ -29,6 +29,8 @@ type LocalRefStatePacket struct {
 	RefCommit string
 	// HasConflicts is true if the local ref has conflicts with the remote ref.
 	HasConflicts bool
+	// IsUpToDate is true if the local ref is up to date with the remote ref.
+	IsUpToDate bool
 }
 
 // GetType returns the type of the packet.
@@ -40,15 +42,24 @@ func (p *LocalRefStatePacket) GetType() uint64 {
 func (p *LocalRefStatePacket) Serialize() ([]byte, error) {
 	commitBytes := notppackets.EncodeByteArray([]byte(p.RefCommit))
 
-	var boolByte byte
+	var hasConflictsByte byte
 	if p.HasConflicts {
-		boolByte = 1
+		hasConflictsByte = 1
 	} else {
-		boolByte = 0
+		hasConflictsByte = 0
+	}
+
+	var isUpToDateByte byte
+	if p.IsUpToDate {
+		isUpToDateByte = 1
+	} else {
+		isUpToDateByte = 0
 	}
 
 	data := append(commitBytes, notppackets.PacketNullByte)
-	data = append(data, boolByte)
+	data = append(data, hasConflictsByte)
+	data = append(data, notppackets.PacketNullByte)
+	data = append(data, isUpToDateByte)
 
 	return data, nil
 }
@@ -57,16 +68,29 @@ func (p *LocalRefStatePacket) Serialize() ([]byte, error) {
 func (p *LocalRefStatePacket) Deserialize(data []byte) error {
 	nullByteIndex := bytes.IndexByte(data, notppackets.PacketNullByte)
 	if nullByteIndex == -1 {
-		return fmt.Errorf("missing null byte")
+		return fmt.Errorf("missing null byte after RefCommit")
 	}
 
 	p.RefCommit = string(notppackets.DecodeByteArray(data[:nullByteIndex]))
 
-	if nullByteIndex+1 < len(data) {
-		p.HasConflicts = data[nullByteIndex+1] == 1
-	} else {
-		return fmt.Errorf("missing data for IsLocalRefAhead")
+	if nullByteIndex+1 >= len(data) {
+		return fmt.Errorf("missing data for HasConflicts")
 	}
+
+	secondNullByteIndex := bytes.IndexByte(data[nullByteIndex+1:], notppackets.PacketNullByte)
+	if secondNullByteIndex == -1 {
+		return fmt.Errorf("missing null byte after HasConflicts")
+	}
+
+	secondNullByteIndex += nullByteIndex + 1
+
+	p.HasConflicts = data[nullByteIndex+1] == 1
+
+	if secondNullByteIndex+1 >= len(data) {
+		return fmt.Errorf("missing data for IsUpToDate")
+	}
+
+	p.IsUpToDate = data[secondNullByteIndex+1] == 1
 
 	return nil
 }

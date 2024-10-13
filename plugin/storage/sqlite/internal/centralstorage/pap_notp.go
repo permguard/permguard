@@ -97,6 +97,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 	}
 	headCommitID := repo.Refs
 	hasConflicts := false
+	isUpToDate := false
 	if headCommitID != azlangobjs.ZeroOID && headCommitID != remoteRefSPacket.RefPrevCommit {
 		objMng, err := azlangobjs.NewObjectManager()
 		if err != nil {
@@ -106,18 +107,20 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 		if err != nil {
 			return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 		}
-		hasMatch, _, err := objMng.BuildCommitHistory(headCommitID, remoteRefSPacket.RefPrevCommit, false, func(oid string) (*azlangobjs.Object, error) {
+		hasMatch, history, err := objMng.BuildCommitHistory(headCommitID, remoteRefSPacket.RefPrevCommit, false, func(oid string) (*azlangobjs.Object, error) {
 			keyValue, err := s.sqlRepo.GetKeyValue(db, oid)
 			if err != nil || keyValue == nil || keyValue.Value == nil {
 				return nil, nil
 			}
 			return azlangobjs.NewObject(keyValue.Value), nil
 		})
-		hasConflicts = hasMatch
+		hasConflicts = hasMatch && len(history) > 1
+		isUpToDate = hasMatch && len(history) == 1
 	}
 	packet := &notpagpackets.LocalRefStatePacket{
 		RefCommit:    headCommitID,
 		HasConflicts: hasConflicts,
+		IsUpToDate:   isUpToDate,
 	}
 	handlerCtx.Set(RemoteCommitIDKey, remoteRefSPacket.RefCommit)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
