@@ -89,7 +89,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.Pri
 	return output, nil
 }
 
-// ExecPull fetches the latest changes from the remote repo and constructs the remote state.
+// ExecPull fetches the latest changes from the remote repository and constructs the remote state.
 func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to pull the repo.", nil, true)
@@ -108,7 +108,7 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 
 	headRef, err := m.rfsMgr.GetCurrentHeadRefs()
 	if err != nil || headRef == "" {
-		out(nil, "", "Please ensure a valid remote repo is checked out.", nil, true)
+		out(nil, "", "Please ensure a valid remote repository is checked out.", nil, true)
 		if err == nil {
 			err = azerrors.WrapSystemError(azerrors.ErrCliWorkspace, "cli: invalid head refs")
 		}

@@ -24,12 +24,12 @@ import (
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 )
 
-// ExecPlan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
+// ExecPlan generates a plan of changes to apply to the remote repository based on the differences between the local and remote states.
 func (m *WorkspaceManager) ExecPlan(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	return m.execInternalPlan(false, out)
 }
 
-// execInternalPlan generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
+// execInternalPlan generates a plan of changes to apply to the remote repository based on the differences between the local and remote states.
 func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to build the plan.", nil, true)

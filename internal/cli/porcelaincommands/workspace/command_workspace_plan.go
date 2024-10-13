@@ -69,11 +69,11 @@ func runECommandForPlanWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 func CreateCommandForWorkspacePlan(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "plan",
-		Short: "Generate a plan of changes to apply to the remote repo based on the differences between the local and remote states",
-		Long: aziclicommon.BuildCliLongTemplate(`This command generates a plan of changes to apply to the remote repo based on the differences between the local and remote states.
+		Short: "Generate a plan of changes to apply to the remote repository based on the differences between the local and remote states",
+		Long: aziclicommon.BuildCliLongTemplate(`This command generates a plan of changes to apply to the remote repository based on the differences between the local and remote states.
 
 Examples:
-  # generate a plan of changes to apply to the remote repo based on the differences between the local and remote states
+  # generate a plan of changes to apply to the remote repository based on the differences between the local and remote states
   permguard plan`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForPlanWorkspace(deps, cmd, v)
