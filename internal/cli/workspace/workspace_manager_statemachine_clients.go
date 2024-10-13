@@ -177,11 +177,12 @@ func (m *WorkspaceManager) OnPushSendNegotiationResponse(handlerCtx *notpstatema
 // buildPacketablesForCommit builds the packetables for the tree.
 func (m *WorkspaceManager) buildPacketablesForCommit(handlerCtx *notpstatemachines.HandlerContext, isCode bool, commitObj *azlangobjs.Object) ([]notppackets.Packetable, error) {
 	absLang, _ := getFromHandlerContext[azlang.LanguageAbastraction](handlerCtx, LanguageAbstractionKey)
+	packetable := []notppackets.Packetable{}
+
 	commit, err := absLang.GetCommitObject(commitObj)
 	if err != nil {
 		return nil, err
 	}
-	packetable := []notppackets.Packetable{}
 	packetCommit := &notpagpackets.ObjectStatePacket{
 		OID:     commitObj.GetOID(),
 		OType:   azlangobjs.ObjectTypeCommit,
