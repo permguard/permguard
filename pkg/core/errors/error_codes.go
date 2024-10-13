@@ -38,6 +38,9 @@ var errorCodes = map[string]string{
 	"04111": "client: invalid ID",
 	"04112": "client: invalid UUID",
 	"04113": "client: invalid name",
+	"04114": "client: entity not found",
+	"04115": "client: update conflict",
+	"04116": "client: invalid SHA256 hash",
 
 	// 05xxx: Server Errors
 	"05000": "server: generic error",
@@ -100,13 +103,16 @@ var (
 	// 01xxx configuration errors.
 	ErrConfigurationGeneric error = NewSystemError("01000")
 	// 04xxx client errors.
-	ErrClientGeneric    error = NewSystemError("04000")
-	ErrClientParameter  error = NewSystemError("04100")
-	ErrClientPagination error = NewSystemError("04101")
-	ErrClientEntity     error = NewSystemError("04110")
-	ErrClientID         error = NewSystemError("04111")
-	ErrClientUUID       error = NewSystemError("04112")
-	ErrClientName       error = NewSystemError("04113")
+	ErrClientGeneric    	error = NewSystemError("04000")
+	ErrClientParameter  	error = NewSystemError("04100")
+	ErrClientPagination 	error = NewSystemError("04101")
+	ErrClientEntity     	error = NewSystemError("04110")
+	ErrClientID         	error = NewSystemError("04111")
+	ErrClientUUID       	error = NewSystemError("04112")
+	ErrClientName       	error = NewSystemError("04113")
+	ErrClientNotFound       error = NewSystemError("04114")
+	ErrClientUpdateConflict error = NewSystemError("04115")
+	ErrClientSHA256		 	error = NewSystemError("04116")
 	// 05xxx server errors.
 	ErrServerGeneric               error = NewSystemError("05000")
 	ErrServerInfrastructure        error = NewSystemError("05001")

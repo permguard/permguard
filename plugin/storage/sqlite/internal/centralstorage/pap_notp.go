@@ -19,9 +19,9 @@ package centralstorage
 import (
 	"strconv"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
@@ -29,6 +29,11 @@ import (
 	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
 	notpagstatemachines "github.com/permguard/permguard/internal/agents/notp/statemachines"
 	notpagpackets "github.com/permguard/permguard/internal/agents/notp/statemachines/packets"
+)
+
+const (
+	// RemoteCommitIDsKey is the remote commit ids key.
+	RemoteCommitIDsKey = "remote-commit-id"
 )
 
 // getFromHandlerContext gets the value from the handler context.
@@ -111,6 +116,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 		RefCommit: headCommitID,
 		HasConflicts: hasConflicts,
 	}
+	handlerCtx.Set(RemoteCommitIDsKey, remoteRefSPacket.RefCommit)
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 		Packetables: []notppackets.Packetable{packet},
@@ -166,13 +172,21 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 			Value: objStatePacket.Content,
 		}
 		_, err = s.sqlRepo.UpsertKeyValue(tx, keyValue)
+		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
 	}
-	if err != nil {
-		tx.Rollback()
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+	if statePacket.HasCompletedDataStream() {
+		repo, err := s.readRepoFromHandlerContext(handlerCtx)
+		if err != nil {
+			return nil, err
+		}
+		remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDsKey)
+		err = s.sqlRepo.UpdateRepositoryRefs(tx, repo.AccountID, repo.RepositoryID, repo.Refs, remoteCommitID)
+		if err := tx.Commit(); err != nil {
+			return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		}
 	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,

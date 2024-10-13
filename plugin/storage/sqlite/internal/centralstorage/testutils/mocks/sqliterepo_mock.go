@@ -166,6 +166,12 @@ func (m *MockSqliteRepo) UpsertRepository(tx *sql.Tx, isCreate bool, repository 
 	return r0, args.Error(1)
 }
 
+// UpsertRepository creates or updates a repository.
+func (m *MockSqliteRepo) UpdateRepositoryRefs(tx *sql.Tx, accountID int64, repositoryID, currentRef, newRef string) error {
+	args := m.Called(tx, accountID, repositoryID, currentRef, newRef)
+	return args.Error(1)
+}
+
 // DeleteRepository deletes a repository.
 func (m *MockSqliteRepo) DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string) (*azirepos.Repository, error) {
 	args := m.Called(tx, accountID, repositoryID)
