@@ -71,6 +71,7 @@ type NOTPClient interface {
 	OnPushHandleNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
 	OnPushSendNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
 	OnPushExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	OnPushHandleCommitResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
 }
 
 // NOTPPush push objects using the NOTP protocol.
@@ -106,6 +107,14 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, accountID int
 			switch statePacket.MessageCode {
 			case notpsmpackets.ExchangeDataStreamMessage:
 				return clientProvider.OnPushExchangeDataStream(handlerCtx, statePacket, packets)
+			default:
+				return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid message code %d", statePacket.MessageCode))
+			}
+
+		case notpstatemachines.PublisherCommitStateID:
+			switch statePacket.MessageCode {
+			case notpsmpackets.CommitMessage:
+				return clientProvider.OnPushHandleCommitResponse(handlerCtx, statePacket, packets)
 			default:
 				return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid message code %d", statePacket.MessageCode))
 			}
