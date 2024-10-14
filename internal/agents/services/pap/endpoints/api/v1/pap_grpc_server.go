@@ -61,6 +61,8 @@ type PAPService interface {
 	OnPushHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
 	// OnPushHandleExchangeDataStream exchanges the data stream.
 	OnPushHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPushSendCommit sends the commit.
+	OnPushSendCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
 }
 
 // NewV1PAPServer creates a new PAP server.
@@ -191,6 +193,14 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			switch statePacket.MessageCode {
 			case notpsmpackets.ExchangeDataStreamMessage:
 				return s.service.OnPushHandleExchangeDataStream(handlerCtx, statePacket, packets)
+			default:
+				return nil, azerrors.WrapSystemError(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid message code %d", statePacket.MessageCode))
+			}
+
+		case notpstatemachines.SubscriberCommitStateID:
+			switch statePacket.MessageCode {
+			case notpsmpackets.CommitMessage:
+				return s.service.OnPushSendCommit(handlerCtx, statePacket, packets)
 			default:
 				return nil, azerrors.WrapSystemError(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid message code %d", statePacket.MessageCode))
 			}

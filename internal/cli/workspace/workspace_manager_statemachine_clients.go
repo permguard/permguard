@@ -92,7 +92,7 @@ func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemac
 	localCommitObj, _ := getFromHandlerContext[*azlangobjs.Object](handlerCtx, LocalCodeCommitObjectKey)
 	packet := &notpagpackets.RemoteRefStatePacket{
 		RefPrevCommit: wksCtx.ctx.commitID,
-		RefCommit: localCommitObj.GetOID(),
+		RefCommit:     localCommitObj.GetOID(),
 	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: []notppackets.Packetable{packet},
@@ -243,7 +243,7 @@ func (m *WorkspaceManager) buildPacketablesForCommit(handlerCtx *notpstatemachin
 func (m *WorkspaceManager) OnPushExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
-		wksCtx.outFunc("notp-push", "Data Exchabge - Handling data exchange.", true)
+		wksCtx.outFunc("notp-push", "Data Exchange - Handling data exchange.", true)
 	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
@@ -273,6 +273,27 @@ func (m *WorkspaceManager) OnPushExchangeDataStream(handlerCtx *notpstatemachine
 		handlerReturn.Packetables = packetables
 		handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.CompletedDataStreamValue)
 		handlerReturn.HasMore = false
+	}
+	return handlerReturn, nil
+}
+
+// OnPushHandleCommitResponse handles the commit response.
+func (m *WorkspaceManager) OnPushHandleCommitResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	wksCtx := createWorkspaceHandlerContext(handlerCtx)
+	if m.ctx.IsVerboseTerminalOutput() {
+		wksCtx.outFunc("notp-commit", "Commit - Commited the state machine.", true)
+	}
+	// localCommitObj, _ := getFromHandlerContext[*azlangobjs.Object](handlerCtx, LocalCodeCommitObjectKey)
+	// packet := &notpagpackets.RemoteRefStatePacket{
+	// 	RefPrevCommit: wksCtx.ctx.commitID,
+	// 	RefCommit:     localCommitObj.GetOID(),
+	// }
+	// handlerReturn := &notpstatemachines.HostHandlerRuturn{
+	// 	Packetables: []notppackets.Packetable{packet},
+	// }
+	handlerReturn := &notpstatemachines.HostHandlerRuturn{
+		Packetables: packets,
+		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 	}
 	return handlerReturn, nil
 }

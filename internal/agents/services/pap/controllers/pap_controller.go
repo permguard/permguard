@@ -87,3 +87,8 @@ func (s PAPController) OnPushHandleNegotiationResponse(handlerCtx *notpstatemach
 func (s PAPController) OnPushHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
 	return s.storage.OnPushHandleExchangeDataStream(handlerCtx, statePacket, packets)
 }
+
+// OnPushSendCommit sends the commit.
+func (s PAPController) OnPushSendCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	return s.storage.OnPushSendCommit(handlerCtx, statePacket, packets)
+}

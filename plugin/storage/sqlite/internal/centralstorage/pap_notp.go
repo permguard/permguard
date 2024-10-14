@@ -204,3 +204,12 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 	}
 	return handlerReturn, nil
 }
+
+// OnPushSendCommit sends the commit.
+func (s SQLiteCentralStoragePAP) OnPushSendCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	handlerReturn := &notpstatemachines.HostHandlerRuturn{
+		Packetables: packets,
+	}
+	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
+	return handlerReturn, nil
+}
