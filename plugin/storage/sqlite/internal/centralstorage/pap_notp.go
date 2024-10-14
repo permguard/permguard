@@ -34,6 +34,8 @@ import (
 const (
 	// RemoteCommitIDKey is the remote commit id key.
 	RemoteCommitIDKey = "remote-commit-id"
+	// TerminationKey is the termination key.
+	TerminationKey = "termination"
 )
 
 // getFromHandlerContext gets the value from the handler context.
@@ -126,8 +128,8 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 		Packetables:  []notppackets.Packetable{packet},
-		Terminate: 	  isUpToDate,
 	}
+	handlerCtx.Set(TerminationKey, isUpToDate)
 	return handlerReturn, nil
 }
 
@@ -137,6 +139,8 @@ func (s SQLiteCentralStoragePAP) OnPushSendNotifyCurrentStateResponse(handlerCtx
 		Packetables: packets,
 	}
 	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
+	terminate, _ := getFromHandlerContext[bool](handlerCtx, TerminationKey)
+	handlerReturn.Terminate = terminate
 	return handlerReturn, nil
 }
 
