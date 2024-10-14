@@ -117,7 +117,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 			return azlangobjs.NewObject(keyValue.Value), nil
 		})
 		hasConflicts = hasMatch && len(history) > 1
-		isUpToDate = hasMatch && len(history) == 1
+		isUpToDate = headCommitID == remoteRefSPacket.RefCommit
 	}
 	packet := &notpagpackets.LocalRefStatePacket{
 		RefCommit:    headCommitID,
