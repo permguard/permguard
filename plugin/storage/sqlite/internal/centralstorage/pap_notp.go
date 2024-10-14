@@ -126,6 +126,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 		Packetables:  []notppackets.Packetable{packet},
+		Terminate: 	  isUpToDate,
 	}
 	return handlerReturn, nil
 }

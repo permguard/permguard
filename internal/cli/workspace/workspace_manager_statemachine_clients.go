@@ -111,13 +111,17 @@ func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *no
 	if err != nil {
 		return nil, err
 	}
+	handlerReturn := &notpstatemachines.HostHandlerRuturn{
+		Packetables: packets,
+	}
+	if localRefSPacket.IsUpToDate {
+		handlerReturn.Terminate = true
+		return handlerReturn, nil
+	}
 	if localRefSPacket.HasConflicts {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, "workspace: conflicts detected in the remote repository.")
 	}
 	handlerCtx.Set(RemoteCommitIDKey, localRefSPacket.RefCommit)
-	handlerReturn := &notpstatemachines.HostHandlerRuturn{
-		Packetables: packets,
-	}
 	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
 	return handlerReturn, nil
 }
