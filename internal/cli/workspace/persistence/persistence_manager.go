@@ -64,6 +64,19 @@ func (p *PersistenceManager) GetRelativeDir(relative RelativeDir, name string) s
 	return p.rootDir
 }
 
+// GetContext gets the context.
+func (p *PersistenceManager) GetContext() map[string]string {
+	absRootDir, _ := filepath.Abs(p.rootDir)
+	absPermguardDir, _ := filepath.Abs(p.permguardDir)
+
+	return map[string]string{
+		"root path":				p.rootDir,
+		"root absolute path":      	absRootDir,
+		"permguard path": 		  	p.permguardDir,
+		"permguard absolute path": 	absPermguardDir,
+	}
+}
+
 // CheckPathIfExists checks if a file exists.
 func (p *PersistenceManager) CheckPathIfExists(relative RelativeDir, name string) (bool, error) {
 	name = p.GetRelativeDir(relative, name)

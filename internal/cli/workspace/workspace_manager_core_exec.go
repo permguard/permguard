@@ -33,12 +33,26 @@ func (m *WorkspaceManager) printFiles(action string, files []string, out aziclic
 	}
 }
 
+// ExecPrintContext prints the context.
+func (m *WorkspaceManager) ExecPrintContext(output map[string]any, out aziclicommon.PrinterOutFunc) map[string]any {
+	if !m.ctx.IsVerboseTerminalOutput() {
+		return output
+	}
+	context := m.persMgr.GetContext()
+	for key, value := range context {
+		out(nil, "context", fmt.Sprintf("%s %s.", key, aziclicommon.FileText(value)), nil, true)
+
+	}
+	return output
+}
+
 // ExecInitWorkspace initializes the workspace.
 func (m *WorkspaceManager) ExecInitWorkspace(language string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to initialize the workspace", nil, true)
 		return output, err
 	}
+	output := m.ExecPrintContext(nil, out)
 
 	homeDir := m.getHomeHiddenDir()
 	res, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.WorkDir, homeDir)
@@ -78,7 +92,6 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out aziclicommon.P
 		out(nil, "init", "Initialization succeeded.", nil, true)
 	}
 	var msg string
-	var output map[string]any
 	if firstInit {
 		msg = fmt.Sprintf("Initialized empty permguard repository in %s.", aziclicommon.FileText(homeDir))
 	} else {
@@ -101,6 +114,7 @@ func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort i
 		out(nil, "", fmt.Sprintf("Failed to add remote %s.", aziclicommon.KeywordText(remote)), nil, true)
 		return output, err
 	}
+	output := m.ExecPrintContext(nil, out)
 
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
@@ -121,7 +135,7 @@ func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort i
 	}
 	defer fileLock.Unlock()
 
-	output, err := m.cfgMgr.ExecAddRemote(remote, server, aapPort, papPort, nil, out)
+	output, err = m.cfgMgr.ExecAddRemote(remote, server, aapPort, papPort, nil, out)
 	if err != nil {
 		return failedOpErr(output, err)
 	}
@@ -134,6 +148,7 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out aziclicommon.Prin
 		out(nil, "", fmt.Sprintf("Failed to remove remote %s.", aziclicommon.KeywordText(remote)), nil, true)
 		return output, err
 	}
+	output := m.ExecPrintContext(nil, out)
 
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
@@ -155,7 +170,7 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out aziclicommon.Prin
 		}
 		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, fmt.Sprintf("cli: cannot remove the remote used by the currently checked out account %s", remote)))
 	}
-	output, err := m.cfgMgr.ExecRemoveRemote(remote, nil, out)
+	output, err = m.cfgMgr.ExecRemoveRemote(remote, nil, out)
 	return failedOpErr(output, err)
 }
 
@@ -165,6 +180,7 @@ func (m *WorkspaceManager) ExecListRemotes(out aziclicommon.PrinterOutFunc) (map
 		out(nil, "", "Failed to list remotes.", nil, true)
 		return output, err
 	}
+	output := m.ExecPrintContext(nil, out)
 
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
@@ -176,7 +192,7 @@ func (m *WorkspaceManager) ExecListRemotes(out aziclicommon.PrinterOutFunc) (map
 	}
 	defer fileLock.Unlock()
 
-	output, err := m.cfgMgr.ExecListRemotes(nil, out)
+	output, err = m.cfgMgr.ExecListRemotes(nil, out)
 	return failedOpErr(output, err)
 }
 
@@ -186,6 +202,7 @@ func (m *WorkspaceManager) ExecListRepos(out aziclicommon.PrinterOutFunc) (map[s
 		out(nil, "", "Failed to list repos.", nil, true)
 		return output, err
 	}
+	output := m.ExecPrintContext(nil, out)
 
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
@@ -201,6 +218,6 @@ func (m *WorkspaceManager) ExecListRepos(out aziclicommon.PrinterOutFunc) (map[s
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	output, err := m.cfgMgr.ExecListRepos(refID, nil, out)
+	output, err = m.cfgMgr.ExecListRepos(refID, nil, out)
 	return failedOpErr(output, err)
 }
