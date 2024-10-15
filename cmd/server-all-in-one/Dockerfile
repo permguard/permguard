@@ -41,7 +41,8 @@ RUN echo '#!/bin/sh' > /opt/permguard/startup.sh \
     && echo '/opt/permguard/server-all-in-one' >> /opt/permguard/startup.sh \
     && chmod +x /opt/permguard/startup.sh
 
-ENV PERMGUARD_LOG_LEVEL="DEBUG"
+ENV PERMGUARD_DEBUG="FALSE"
+ENV PERMGUARD_LOG_LEVEL="INFO"
 ENV PERMGUARD_SERVER_APPDATA="/opt/permguard/volume"
 
 EXPOSE 9091
