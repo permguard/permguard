@@ -70,6 +70,8 @@ func TestCliTenantsCreateWithError(t *testing.T) {
 		aapClient.On("CreateTenant", mock.Anything, mock.Anything).Return(nil, azerrors.ErrClientParameter)
 
 		printerMock := azmocks.NewPrinterMock()
+		printerMock.On("Println", mock.Anything).Return()
+		printerMock.On("PrintlnMap", mock.Anything).Return()
 		printerMock.On("Error", azerrors.ErrClientParameter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
@@ -123,13 +125,13 @@ func TestCliTenantsCreateWithSuccess(t *testing.T) {
 		} else {
 			outputPrinter["tenants"] = []*azmodels.Tenant{tenant}
 		}
-		printerMock.On("Print", outputPrinter).Return()
-		printerMock.On("Println", outputPrinter).Return()
+		printerMock.On("PrintMap", outputPrinter).Return()
+		printerMock.On("PrintlnMap", outputPrinter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
 
 		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
-		printerMock.AssertCalled(t, "Println", outputPrinter)
+		printerMock.AssertCalled(t, "PrintlnMap", outputPrinter)
 	}
 }

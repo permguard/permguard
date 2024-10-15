@@ -63,13 +63,13 @@ func TestCliConfigGetAAPTarget(t *testing.T) {
 		} else {
 			outputPrinter["aap_target"] = "localhost:9092"
 		}
-		printerMock.On("Print", outputPrinter).Return()
-		printerMock.On("Println", outputPrinter).Return()
+		printerMock.On("PrintMap", outputPrinter).Return()
+		printerMock.On("PrintlnMap", outputPrinter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 
 		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
-		printerMock.AssertCalled(t, "Println", outputPrinter)
+		printerMock.AssertCalled(t, "PrintlnMap", outputPrinter)
 	}
 }
 
@@ -108,12 +108,12 @@ func TestCliConfigGetPAPTarget(t *testing.T) {
 		} else {
 			outputPrinter["pap_target"] = "localhost:9092"
 		}
-		printerMock.On("Print", outputPrinter).Return()
-		printerMock.On("Println", outputPrinter).Return()
+		printerMock.On("PrintMap", outputPrinter).Return()
+		printerMock.On("PrintlnMap", outputPrinter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 
 		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
-		printerMock.AssertCalled(t, "Println", outputPrinter)
+		printerMock.AssertCalled(t, "PrintlnMap", outputPrinter)
 	}
 }

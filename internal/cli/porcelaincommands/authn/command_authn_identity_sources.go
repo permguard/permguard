@@ -63,8 +63,11 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 		identitySource, err = client.UpdateIdentitySource(identitySource)
 	}
 	if err != nil {
-		if ctx.IsVerboseTerminalOutput() {
-			printer.Error(err)
+		if ctx.IsTerminalOutput() {
+			printer.Println("Operation failed to complete successfully.")
+			if ctx.IsVerboseTerminalOutput() {
+				printer.Error(err)
+			}
 		}
 		return aziclicommon.ErrCommandSilent
 	}
@@ -76,7 +79,7 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 	} else if ctx.IsJSONOutput() {
 		output["identity_sources"] = []*azmodels.IdentitySource{identitySource}
 	}
-	printer.Println(output)
+	printer.PrintlnMap(output)
 	return nil
 }
 

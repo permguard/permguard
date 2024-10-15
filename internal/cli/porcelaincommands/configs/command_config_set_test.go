@@ -54,6 +54,8 @@ func TestCliConfigSetAAPTargetWithError(t *testing.T) {
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		printerMock := azmocks.NewPrinterMock()
+		printerMock.On("Println", mock.Anything).Return()
+		printerMock.On("PrintlnMap", mock.Anything).Return()
 		printerMock.On("Error", mock.Anything).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
@@ -89,6 +91,8 @@ func TestCliConfigSetPAPTargetWithError(t *testing.T) {
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		printerMock := azmocks.NewPrinterMock()
+		printerMock.On("Println", mock.Anything).Return()
+		printerMock.On("PrintlnMap", mock.Anything).Return()
 		printerMock.On("Error", mock.Anything).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)

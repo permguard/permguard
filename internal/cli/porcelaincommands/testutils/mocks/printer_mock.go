@@ -26,13 +26,23 @@ type PrinterMock struct {
 	mock.Mock
 }
 
-// Print prints the output.
-func (m *PrinterMock) Print(output map[string]any) {
+// Print prints the message.
+func (m *PrinterMock) Print(message string) {
+	m.Called(message)
+}
+
+// PrintMap prints the output.
+func (m *PrinterMock) PrintMap(output map[string]any) {
 	m.Called(output)
 }
 
-// Println prints the output.
-func (m *PrinterMock) Println(output map[string]any) {
+// Println prints the message.
+func (m *PrinterMock) Println(message string) {
+	m.Called(message)
+}
+
+// PrintlnMap prints the output.
+func (m *PrinterMock) PrintlnMap(output map[string]any) {
 	m.Called(output)
 }
 

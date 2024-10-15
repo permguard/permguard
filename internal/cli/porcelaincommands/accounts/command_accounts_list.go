@@ -54,8 +54,11 @@ func runECommandForListAccounts(deps azcli.CliDependenciesProvider, cmd *cobra.C
 
 	accounts, err := client.FetchAccountsBy(page, pageSize, accountID, name)
 	if err != nil {
-		if ctx.IsVerboseTerminalOutput() {
-			printer.Error(err)
+		if ctx.IsTerminalOutput() {
+			printer.Println("Operation failed to complete successfully.")
+			if ctx.IsVerboseTerminalOutput() {
+				printer.Error(err)
+			}
 		}
 		return aziclicommon.ErrCommandSilent
 	}
@@ -68,7 +71,7 @@ func runECommandForListAccounts(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	} else if ctx.IsJSONOutput() {
 		output["accounts"] = accounts
 	}
-	printer.Println(output)
+	printer.PrintlnMap(output)
 	return nil
 }
 

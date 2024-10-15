@@ -70,6 +70,8 @@ func TestCliRepositoriesListWithError(t *testing.T) {
 		papClient.On("FetchRepositoriesBy", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, azerrors.ErrClientParameter)
 
 		printerMock := azmocks.NewPrinterMock()
+		printerMock.On("Println", mock.Anything).Return()
+		printerMock.On("PrintlnMap", mock.Anything).Return()
 		printerMock.On("Error", azerrors.ErrClientParameter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
@@ -134,13 +136,13 @@ func TestCliRepositoriesListWithSuccess(t *testing.T) {
 		} else {
 			outputPrinter["repositories"] = repositories
 		}
-		printerMock.On("Print", outputPrinter).Return()
-		printerMock.On("Println", outputPrinter).Return()
+		printerMock.On("PrintMap", outputPrinter).Return()
+		printerMock.On("PrintlnMap", outputPrinter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 		depsMocks.On("CreateGrpcPAPClient", mock.Anything).Return(papClient, nil)
 
 		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
-		printerMock.AssertCalled(t, "Println", outputPrinter)
+		printerMock.AssertCalled(t, "PrintlnMap", outputPrinter)
 	}
 }

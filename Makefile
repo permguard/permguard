@@ -97,11 +97,17 @@ build-cli:
 build-release:
 	mkdir -p dist
 	go build -o dist/server-all-in-one ./cmd/server-all-in-one
+	chmod +x dist/server-all-in-one
 	go build -o dist/server-aap ./cmd/server-aap
+	chmod +x dist/server-aap
 	go build -o dist/server-pap ./cmd/server-pap
+	chmod +x dist/server-pap
 	go build -o dist/server-idp ./cmd/server-idp
+	chmod +x dist/server-idp
 	go build -o dist/server-pdp ./cmd/server-pdp
+	chmod +x dist/server-pdp
 	go build -o dist/permguard ./cmd/cli
+	chmod +x dist/permguard
 
 run-release:
 	go run ./cmd/server-all-in-one

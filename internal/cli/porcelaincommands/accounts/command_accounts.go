@@ -59,8 +59,11 @@ func runECommandForUpsertAccount(deps azcli.CliDependenciesProvider, cmd *cobra.
 		account, err = client.UpdateAccount(inputAccount)
 	}
 	if err != nil {
-		if ctx.IsVerboseTerminalOutput() {
-			printer.Error(err)
+		if ctx.IsTerminalOutput() {
+			printer.Println("Operation failed to complete successfully.")
+			if ctx.IsVerboseTerminalOutput() {
+				printer.Error(err)
+			}
 		}
 		return aziclicommon.ErrCommandSilent
 	}
@@ -71,7 +74,7 @@ func runECommandForUpsertAccount(deps azcli.CliDependenciesProvider, cmd *cobra.
 	} else if ctx.IsJSONOutput() {
 		output["accounts"] = []*azmodels.Account{account}
 	}
-	printer.Println(output)
+	printer.PrintlnMap(output)
 	return nil
 }
 

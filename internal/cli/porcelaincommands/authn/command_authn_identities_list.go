@@ -55,8 +55,11 @@ func runECommandForListIdentities(deps azcli.CliDependenciesProvider, cmd *cobra
 	name := v.GetString(azoptions.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonName))
 	identities, err := client.FetchIdentitiesBy(page, pageSize, accountID, identitySourceID, identityID, kind, name)
 	if err != nil {
-		if ctx.IsVerboseTerminalOutput() {
-			printer.Error(err)
+		if ctx.IsTerminalOutput() {
+			printer.Println("Operation failed to complete successfully.")
+			if ctx.IsVerboseTerminalOutput() {
+				printer.Error(err)
+			}
 		}
 		return aziclicommon.ErrCommandSilent
 	}
@@ -70,7 +73,7 @@ func runECommandForListIdentities(deps azcli.CliDependenciesProvider, cmd *cobra
 	} else if ctx.IsJSONOutput() {
 		output["identities"] = identities
 	}
-	printer.Println(output)
+	printer.PrintlnMap(output)
 	return nil
 }
 

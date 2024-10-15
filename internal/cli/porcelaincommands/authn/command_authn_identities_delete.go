@@ -51,8 +51,11 @@ func runECommandForDeleteIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 	identityID := v.GetString(azoptions.FlagName(commandNameForIdentitiesDelete, flagIdentityID))
 	identity, err := client.DeleteIdentity(accountID, identityID)
 	if err != nil {
-		if ctx.IsVerboseTerminalOutput() {
-			printer.Error(err)
+		if ctx.IsTerminalOutput() {
+			printer.Println("Operation failed to complete successfully.")
+			if ctx.IsVerboseTerminalOutput() {
+				printer.Error(err)
+			}
 		}
 		return aziclicommon.ErrCommandSilent
 	}
@@ -64,7 +67,7 @@ func runECommandForDeleteIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 	} else if ctx.IsJSONOutput() {
 		output["identities"] = []*azmodels.Identity{identity}
 	}
-	printer.Println(output)
+	printer.PrintlnMap(output)
 	return nil
 }
 

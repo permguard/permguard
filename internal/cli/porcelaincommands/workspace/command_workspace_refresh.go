@@ -54,13 +54,16 @@ func runECommandForRefreshWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 	if err != nil {
 		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
-		} else if ctx.IsVerboseTerminalOutput() {
-			printer.Error(err)
+		} else if ctx.IsTerminalOutput() {
+			printer.Println("Operation failed to complete successfully.")
+			if ctx.IsVerboseTerminalOutput() {
+				printer.Error(err)
+			}
 		}
 		return aziclicommon.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
-		printer.Println(output)
+		printer.PrintlnMap(output)
 	}
 	return nil
 }

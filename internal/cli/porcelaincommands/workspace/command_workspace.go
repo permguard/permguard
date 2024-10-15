@@ -44,12 +44,15 @@ var outFunc = func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter
 		output[key] = value
 		if ctx.IsTerminalOutput() {
 			if err != nil {
+				if ctx.IsTerminalOutput() {
+					printer.Println("Operation failed to complete successfully.")
+				}
 				printer.Error(err)
 			} else {
 				if newLine {
-					printer.Println(output)
+					printer.PrintlnMap(output)
 				} else {
-					printer.Print(output)
+					printer.PrintMap(output)
 				}
 			}
 		}
