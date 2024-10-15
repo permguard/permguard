@@ -130,9 +130,8 @@ func (p *PersistenceManager) ScanAndFilterFiles(relative RelativeDir, exts []str
 	name := p.GetRelativeDir(relative, "")
 	ignoreFile = p.GetRelativeDir(relative, ignoreFile)
 	ignoreFilePatterns, err := azfiles.ReadIgnoreFile(ignoreFile)
-	ignorePatterns = append(ignorePatterns, ignoreFilePatterns...)
-	if err != nil {
-		return nil, nil, err
+	if err == nil {
+		ignorePatterns = append(ignorePatterns, ignoreFilePatterns...)
 	}
 	return azfiles.ScanAndFilterFiles(name, exts, ignorePatterns)
 }
