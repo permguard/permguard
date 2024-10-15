@@ -63,8 +63,11 @@ func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		tenant, err = client.UpdateTenant(tenant)
 	}
 	if err != nil {
-		if ctx.IsVerboseTerminalOutput() {
-			printer.Error(err)
+		if ctx.IsTerminalOutput() {
+			printer.Println("Operation failed to complete successfully.")
+			if ctx.IsVerboseTerminalOutput() {
+				printer.Error(err)
+			}
 		}
 		return aziclicommon.ErrCommandSilent
 	}
@@ -76,7 +79,7 @@ func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	} else if ctx.IsJSONOutput() {
 		output["tenants"] = []*azmodels.Tenant{tenant}
 	}
-	printer.Println(output)
+	printer.PrintlnMap(output)
 	return nil
 }
 

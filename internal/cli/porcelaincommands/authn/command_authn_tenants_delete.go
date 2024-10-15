@@ -51,8 +51,11 @@ func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	tenantID := v.GetString(azoptions.FlagName(commandNameForTenantsDelete, flagTenantID))
 	tenant, err := client.DeleteTenant(accountID, tenantID)
 	if err != nil {
-		if ctx.IsVerboseTerminalOutput() {
-			printer.Error(err)
+		if ctx.IsTerminalOutput() {
+			printer.Println("Operation failed to complete successfully.")
+			if ctx.IsVerboseTerminalOutput() {
+				printer.Error(err)
+			}
 		}
 		return aziclicommon.ErrCommandSilent
 	}
@@ -64,7 +67,7 @@ func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	} else if ctx.IsJSONOutput() {
 		output["tenant"] = []*azmodels.Tenant{tenant}
 	}
-	printer.Println(output)
+	printer.PrintlnMap(output)
 	return nil
 }
 

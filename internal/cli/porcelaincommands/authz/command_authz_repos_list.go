@@ -53,8 +53,11 @@ func runECommandForListRepositories(deps azcli.CliDependenciesProvider, cmd *cob
 	name := v.GetString(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonName))
 	repositories, err := client.FetchRepositoriesBy(page, pageSize, accountID, repositoryID, name)
 	if err != nil {
-		if ctx.IsVerboseTerminalOutput() {
-			printer.Error(err)
+		if ctx.IsTerminalOutput() {
+			printer.Println("Operation failed to complete successfully.")
+			if ctx.IsVerboseTerminalOutput() {
+				printer.Error(err)
+			}
 		}
 		return aziclicommon.ErrCommandSilent
 	}
@@ -68,7 +71,7 @@ func runECommandForListRepositories(deps azcli.CliDependenciesProvider, cmd *cob
 	} else if ctx.IsJSONOutput() {
 		output["repositories"] = repositories
 	}
-	printer.Println(output)
+	printer.PrintlnMap(output)
 	return nil
 }
 

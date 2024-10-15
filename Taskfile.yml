@@ -92,7 +92,7 @@ tasks:
     desc: get abstraction languange dependency
     cmd: 'go get -u github.com/permguard/permguard-abs-language@{{.CLI_ARGS}}'
   # Local
-  install: make build-cli && cp ./dist/permguard ~/.apps/bin/permguard && chmod +x ~/.apps/bin/permguard
+  install: make build-cli && cp ./dist/permguard ~/.apps/bin/permguard
   # Up and Down tasks
   up:
     cmds:

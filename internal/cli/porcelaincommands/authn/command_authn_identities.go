@@ -68,8 +68,11 @@ func runECommandForUpsertIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 		identity, err = client.UpdateIdentity(identity)
 	}
 	if err != nil {
-		if ctx.IsVerboseTerminalOutput() {
-			printer.Error(err)
+		if ctx.IsTerminalOutput() {
+			printer.Println("Operation failed to complete successfully.")
+			if ctx.IsVerboseTerminalOutput() {
+				printer.Error(err)
+			}
 		}
 		return aziclicommon.ErrCommandSilent
 	}
@@ -81,7 +84,7 @@ func runECommandForUpsertIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 	} else if ctx.IsJSONOutput() {
 		output["identities"] = []*azmodels.Identity{identity}
 	}
-	printer.Println(output)
+	printer.PrintlnMap(output)
 	return nil
 }
 

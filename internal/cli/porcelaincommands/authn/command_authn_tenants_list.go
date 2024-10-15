@@ -53,8 +53,11 @@ func runECommandForListTenants(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 	name := v.GetString(azoptions.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonName))
 	tenants, err := client.FetchTenantsBy(page, pageSize, accountID, tenantID, name)
 	if err != nil {
-		if ctx.IsVerboseTerminalOutput() {
-			printer.Error(err)
+		if ctx.IsTerminalOutput() {
+			printer.Println("Operation failed to complete successfully.")
+			if ctx.IsVerboseTerminalOutput() {
+				printer.Error(err)
+			}
 		}
 		return aziclicommon.ErrCommandSilent
 	}
@@ -68,7 +71,7 @@ func runECommandForListTenants(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 	} else if ctx.IsJSONOutput() {
 		output["tenants"] = tenants
 	}
-	printer.Println(output)
+	printer.PrintlnMap(output)
 	return nil
 }
 

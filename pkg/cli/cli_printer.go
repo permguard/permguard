@@ -45,10 +45,14 @@ const (
 
 // CliPrinter is the cli printer.
 type CliPrinter interface {
-	// Print prints the output.
-	Print(output map[string]any)
+	// Print prints the message.
+	Print(message string)
+	// PrintMap prints the output.
+	PrintMap(output map[string]any)
+	// Println prints the message.
+	Println(message string)
 	// Println prints the output.
-	Println(output map[string]any)
+	PrintlnMap(output map[string]any)
 	// Error prints the error.
 	Error(err error)
 	// ErrorWithOutput prints the error with the output.
@@ -165,7 +169,7 @@ func (cp *CliPrinterTerminal) printValue(key string, value any, newLine bool) {
 }
 
 // printTerminal prints the output as terminal text.
-func (cp *CliPrinterTerminal) printTerminal(output map[string]any, isError bool, newLine bool,) {
+func (cp *CliPrinterTerminal) printTerminal(output map[string]any, isError bool, newLine bool) {
 	keys := make([]string, 0, len(output))
 	for k := range output {
 		keys = append(keys, k)
@@ -181,12 +185,22 @@ func (cp *CliPrinterTerminal) printTerminal(output map[string]any, isError bool,
 }
 
 // Print prints the output.
-func (cp *CliPrinterTerminal) Print(output map[string]any) {
+func (cp *CliPrinterTerminal) Print(message string) {
+	cp.PrintMap(map[string]any{"": message})
+}
+
+// Print prints the output.
+func (cp *CliPrinterTerminal) PrintMap(output map[string]any) {
 	cp.print(output, false)
 }
 
+// Print prints the output.
+func (cp *CliPrinterTerminal) Println(message string) {
+	cp.PrintlnMap(map[string]any{"": message})
+}
+
 // Println prints the output.
-func (cp *CliPrinterTerminal) Println(output map[string]any) {
+func (cp *CliPrinterTerminal) PrintlnMap(output map[string]any) {
 	cp.print(output, true)
 }
 

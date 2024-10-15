@@ -63,8 +63,11 @@ func runECommandForUpsertRepository(deps azcli.CliDependenciesProvider, cmd *cob
 		repository, err = client.UpdateRepository(repository)
 	}
 	if err != nil {
-		if ctx.IsVerboseTerminalOutput() {
-			printer.Error(err)
+		if ctx.IsTerminalOutput() {
+			printer.Println("Operation failed to complete successfully.")
+			if ctx.IsVerboseTerminalOutput() {
+				printer.Error(err)
+			}
 		}
 		return aziclicommon.ErrCommandSilent
 	}
@@ -76,7 +79,7 @@ func runECommandForUpsertRepository(deps azcli.CliDependenciesProvider, cmd *cob
 	} else if ctx.IsJSONOutput() {
 		output["repositories"] = []*azmodels.Repository{repository}
 	}
-	printer.Println(output)
+	printer.PrintlnMap(output)
 	return nil
 }
 

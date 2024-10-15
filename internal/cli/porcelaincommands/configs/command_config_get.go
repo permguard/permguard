@@ -34,7 +34,7 @@ func runECommandForAAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	printer.Println(map[string]any{"aap_target": ctx.GetAAPTarget()})
+	printer.PrintlnMap(map[string]any{"aap_target": ctx.GetAAPTarget()})
 	return nil
 }
 
@@ -45,7 +45,7 @@ func runECommandForPAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	printer.Println(map[string]any{"pap_target": ctx.GetPAPTarget()})
+	printer.PrintlnMap(map[string]any{"pap_target": ctx.GetPAPTarget()})
 	return nil
 }
 
