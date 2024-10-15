@@ -29,11 +29,17 @@ RUN make build-all-in-one
 # Final Stage
 FROM alpine:latest
 
+RUN mkdir -p /opt/permguard
 RUN rm -rf /opt/permguard/volume && mkdir -p /opt/permguard/volume
 
 WORKDIR /opt/permguard
 COPY --from=builder /opt/build/dist/server-all-in-one .
-COPY --from=builder /opt/build/dist/permguard.db /opt/permguard/volume/permguard.db
+COPY --from=builder /opt/build/dist/permguard.db /opt/permguard/permguard.db
+
+RUN echo '#!/bin/sh' > /opt/permguard/startup.sh \
+    && echo 'cp /opt/permguard/permguard.db /opt/permguard/volume/' >> /opt/permguard/startup.sh \
+    && echo '/opt/permguard/server-all-in-one' >> /opt/permguard/startup.sh \
+    && chmod +x /opt/permguard/startup.sh
 
 ENV PERMGUARD_LOG_LEVEL="DEBUG"
 ENV PERMGUARD_SERVER_APPDATA="/opt/permguard/volume"
@@ -44,4 +50,4 @@ EXPOSE 9096
 
 VOLUME ["/opt/permguard/volume"]
 
-ENTRYPOINT ["/opt/permguard/server-all-in-one"]
+ENTRYPOINT ["/opt/permguard/startup.sh"]
