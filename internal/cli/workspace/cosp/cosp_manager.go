@@ -250,6 +250,12 @@ func (m *COSPManager) ReadRemoteCodePlan(remote string, refID string) ([]CodeObj
 	return m.readCodeObjectStates(path)
 }
 
+// ReadRemoteCodePlan reads the code plan from the input remote.
+func (m *COSPManager) CleanCode(remote string, refID string)  (bool, error) {
+	path := filepath.Join(m.getCodeDir(), strings.ToLower(remote), strings.ToLower(refID))
+	return m.persMgr.DeletePath(azicliwkspers.PermguardDir, path)
+}
+
 // convertCodeFileToCodeObjectState converts the code file to the code object.
 func (m *COSPManager) convertCodeFileToCodeObjectState(codeFile CodeFile) (*CodeObjectState, error) {
 	if codeFile.OName == "" {
