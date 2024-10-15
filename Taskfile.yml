@@ -93,6 +93,9 @@ tasks:
     cmd: 'go get -u github.com/permguard/permguard-abs-language@{{.CLI_ARGS}}'
   # Local
   install: make build-cli && cp ./dist/permguard ~/.apps/bin/permguard
+  docker:
+    - docker build -t permguard-all-in-one:latest -f ./cmd/server-all-in-one/Dockerfile .
+    - docker run --rm -it -v ./samples/volume:/opt/permguard/volume-data -p 9092:9092 -p 9091:9091 -p 9096:9096 permguard-all-in-one:latest
   # Up and Down tasks
   up:
     cmds:
