@@ -81,7 +81,7 @@ tasks:
     cmds:
       - make teste2e
     silent: true
-  # Depedencies
+  # Dependencies
   dep-core:
     desc: get core dependency
     cmd: 'go get -u github.com/permguard/permguard-core@{{.CLI_ARGS}}'
@@ -91,6 +91,8 @@ tasks:
   dep-lang:
     desc: get abstraction languange dependency
     cmd: 'go get -u github.com/permguard/permguard-abs-language@{{.CLI_ARGS}}'
+  # Local
+  install: make build-cli && cp ./dist/permguard ~/.apps/bin/permguard && chmod +x ~/.apps/bin/permguard
   # Up and Down tasks
   up:
     cmds:

@@ -90,6 +90,10 @@ converage-%:
 converage-json:
 	go test -json -coverprofile=coverage.out ./... > result.json
 
+build-cli:
+	mkdir -p dist
+	go build -o dist/permguard ./cmd/cli
+
 build-release:
 	mkdir -p dist
 	go build -o dist/server-all-in-one ./cmd/server-all-in-one

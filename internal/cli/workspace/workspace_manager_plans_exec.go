@@ -283,11 +283,11 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		HeadContextKey:           headCtx,
 	}
 
-	m.logsMgr.Log(headCtx.remote, headCtx.refs, headCtx.commitID, commitObj.GetOID(), fmt.Sprintf("push: %s", headCtx.repoURI))
 	err = m.rmSrvtMgr.NOTPPush(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetAccountID(), headCtx.GetRepoID(), bag, m)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
+	m.logsMgr.Log(headCtx.remote, headCtx.refs, headCtx.commitID, commitObj.GetOID(), fmt.Sprintf("push: %s", headCtx.repoURI))
 
 	out(nil, "", "Apply process completed successfully.", nil, true)
 	if !internal {

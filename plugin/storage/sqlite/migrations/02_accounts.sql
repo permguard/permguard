@@ -60,7 +60,7 @@ BEGIN
     INSERT INTO change_streams (change_entity, change_type, change_entity_id, account_id, payload)
 		VALUES ('ACCOUNT', 'DELETE', OLD.account_id, OLD.account_id,
 				'{"account_id": ' || OLD.account_id || ', "created_at": "' || OLD.created_at ||
-				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name || ', "refs_head": "' || OLD.refs_head || '""}');
+				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name || '""}');
 END;
 -- +goose StatementEnd
 
