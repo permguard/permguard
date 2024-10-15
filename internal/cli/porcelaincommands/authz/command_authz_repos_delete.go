@@ -52,7 +52,7 @@ func runECommandForDeleteRepository(deps azcli.CliDependenciesProvider, cmd *cob
 	repository, err := client.DeleteRepository(accountID, repositoryID)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Operation failed to complete successfully.")
+			printer.Println("Failed to complete the opeartion.")
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}

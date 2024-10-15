@@ -61,7 +61,7 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps azcli.CliDependenci
 		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
 		} else if ctx.IsTerminalOutput() {
-			printer.Println("Operation failed to complete successfully.")
+			printer.Println("Failed to complete the opeartion.")
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}
