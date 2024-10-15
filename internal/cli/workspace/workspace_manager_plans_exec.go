@@ -35,7 +35,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 		out(nil, "", "Failed to build the plan.", nil, true)
 		return output, err
 	}
-	
+
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
@@ -211,6 +211,20 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", "The plan has been read successfully.", nil, true)
 	}
+	hasChanges := false
+	for _, planItem := range plan {
+		if planItem.State != azicliwkscosp.CodeObjectStateUnchanged {
+			hasChanges = true
+			break
+		}
+	}
+	if !hasChanges {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "apply", "No changes detected during the planning phase. system is up to date.", nil, true)
+		}
+		out(nil, "", "No changes detected during the planning phase. system is up to date.", nil, true)
+		return output, nil
+	}
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", "Preparing to build the tree.", nil, true)
@@ -268,6 +282,8 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		LocalCodeCommitObjectKey: commitObj,
 		HeadContextKey:           headCtx,
 	}
+
+	m.logsMgr.Log(headCtx.remote, headCtx.refs, headCtx.commitID, commitObj.GetOID(), fmt.Sprintf("push: %s", headCtx.repoURI))
 	err = m.rmSrvtMgr.NOTPPush(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetAccountID(), headCtx.GetRepoID(), bag, m)
 	if err != nil {
 		return failedOpErr(nil, err)

@@ -283,14 +283,15 @@ func (m *WorkspaceManager) OnPushHandleCommitResponse(handlerCtx *notpstatemachi
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-commit", "Commit - Handling the commit.", true)
 	}
-	// localCommitObj, _ := getFromHandlerContext[*azlangobjs.Object](handlerCtx, LocalCodeCommitObjectKey)
-	// packet := &notpagpackets.RemoteRefStatePacket{
-	// 	RefPrevCommit: wksCtx.ctx.commitID,
-	// 	RefCommit:     localCommitObj.GetOID(),
-	// }
-	// handlerReturn := &notpstatemachines.HostHandlerRuturn{
-	// 	Packetables: []notppackets.Packetable{packet},
-	// }
+	_, err := m.cospMgr.CleanCodeSource()
+	if err != nil {
+		return nil, err
+	}
+	_, err = m.cospMgr.CleanCode(wksCtx.ctx.remote, wksCtx.ctx.refID)
+	if err != nil {
+		return nil, err
+	}
+	m.cospMgr.CleanCodeSource()
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
 		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
