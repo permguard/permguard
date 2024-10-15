@@ -35,7 +35,7 @@ func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceMan
 			cFile := codeFile.Path
 			cSection := codeFile.Section + 1
 			if m.ctx.IsVerboseTerminalOutput() {
-				out(output, "refresh", fmt.Sprintf(`Error in file %s, section %s and error message %s.`, aziclicommon.FileText(cFile), aziclicommon.NumberText(cSection), aziclicommon.LogErrorText(codeFile.ErrorMessage)), nil, true)
+				out(output, "refresh", fmt.Sprintf(`Error in file %s, section %s and error message '%s'.`, aziclicommon.FileText(cFile), aziclicommon.NumberText(cSection), aziclicommon.LogErrorText(codeFile.ErrorMessage)), nil, true)
 			} else if m.ctx.IsJSONOutput() {
 				if _, ok := errorsMap[cFile]; !ok {
 					errorsMap[cFile] = map[string]any{}
@@ -210,7 +210,7 @@ func (m *WorkspaceManager) execInternalValidate(internal bool, out aziclicommon.
 			out(nil, "", "Your workspace has errors in the following files:\n", nil, true)
 		}
 		for key := range groupCodeFiles(invlsCodeFiles) {
-			out(nil, "", fmt.Sprintf("	- %s", aziclicommon.FileText(key)), nil, true)
+			out(nil, "", fmt.Sprintf("	- '%s'", aziclicommon.FileText(key)), nil, true)
 			for _, codeFile := range groupCodeFiles(invlsCodeFiles)[key] {
 				if codeFile.OID == "" {
 					out(nil, "", fmt.Sprintf("		%s: %s", aziclicommon.NumberText(codeFile.Section+1), aziclicommon.LogErrorText(codeFile.ErrorMessage)), nil, true)

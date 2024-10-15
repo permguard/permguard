@@ -29,7 +29,7 @@ import (
 func (m *WorkspaceManager) printFiles(action string, files []string, out aziclicommon.PrinterOutFunc) {
 	out(nil, "", fmt.Sprintf("	- %s:", action), nil, true)
 	for _, file := range files {
-		out(nil, "", fmt.Sprintf("	  	- %s", aziclicommon.FileText(aziclicommon.FileText(file))), nil, true)
+		out(nil, "", fmt.Sprintf("	  	- '%s'", aziclicommon.FileText(aziclicommon.FileText(file))), nil, true)
 	}
 }
 
@@ -40,7 +40,7 @@ func (m *WorkspaceManager) ExecPrintContext(output map[string]any, out aziclicom
 	}
 	context := m.persMgr.GetContext()
 	for key, value := range context {
-		out(nil, "context", fmt.Sprintf("%s %s.", key, aziclicommon.FileText(value)), nil, true)
+		out(nil, "context", fmt.Sprintf("%s '%s'.", key, aziclicommon.FileText(value)), nil, true)
 
 	}
 	return output
@@ -67,7 +67,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out aziclicommon.P
 	defer fileLock.Unlock()
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "init", fmt.Sprintf("Initializing Permguard workspace in %s.", aziclicommon.FileText(homeDir)), nil, true)
+		out(nil, "init", fmt.Sprintf("Initializing Permguard workspace in '%s'.", aziclicommon.FileText(homeDir)), nil, true)
 	}
 	firstInit := true
 	if !res {
@@ -93,9 +93,9 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out aziclicommon.P
 	}
 	var msg string
 	if firstInit {
-		msg = fmt.Sprintf("Initialized empty permguard repository in %s.", aziclicommon.FileText(homeDir))
+		msg = fmt.Sprintf("Initialized empty permguard repository in '%s'.", aziclicommon.FileText(homeDir))
 	} else {
-		msg = fmt.Sprintf("Reinitialized existing permguard repository in %s.", aziclicommon.FileText(homeDir))
+		msg = fmt.Sprintf("Reinitialized existing permguard repository in '%s'.", aziclicommon.FileText(homeDir))
 	}
 	out(nil, "", msg, nil, true)
 	output = map[string]any{}
