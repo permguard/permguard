@@ -69,6 +69,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 		out(nil, "", "Failed to refresh the current workspace.", nil, true)
 		return output, err
 	}
+	output := m.ExecPrintContext(nil, out)
 
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
@@ -109,7 +110,6 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	var output map[string]any
 	if m.ctx.IsVerboseTerminalOutput() {
 		selectedCount := len(selectedFiles)
 		ignoredCount := len(ignoredFiles)
@@ -231,6 +231,7 @@ func (m *WorkspaceManager) ExecObjects(out aziclicommon.PrinterOutFunc) (map[str
 		out(nil, "", "Failed to access objects in the current workspace.", nil, true)
 		return output, err
 	}
+	output := m.ExecPrintContext(nil, out)
 
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
@@ -245,5 +246,5 @@ func (m *WorkspaceManager) ExecObjects(out aziclicommon.PrinterOutFunc) (map[str
 
 	// TODO: Implement this method
 
-	return nil, nil
+	return output, nil
 }

@@ -30,6 +30,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.Pri
 		out(nil, "", fmt.Sprintf("Failed to checkout repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
 		return output, err
 	}
+	output := m.ExecPrintContext(nil, out)
 
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
@@ -95,6 +96,7 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 		out(nil, "", "Failed to pull the repo.", nil, true)
 		return output, err
 	}
+	output := m.ExecPrintContext(nil, out)
 
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
@@ -117,5 +119,5 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 
 	// TODO: Implement this method
 
-	return nil, nil
+	return output, nil
 }

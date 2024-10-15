@@ -35,7 +35,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 		out(nil, "", "Failed to build the plan.", nil, true)
 		return output, err
 	}
-
+	
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
