@@ -286,7 +286,7 @@ func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, Pa
 	bag := map[string]any{}
 	bag[azagentnotpsm.AccountIDKey] = accountID[0]
 	bag[azagentnotpsm.RepositoryIDKey] = respositoryID[0]
-	err = stateMachine.Run(bag, notpstatemachines.UnknownFlowType)
+	_, err = stateMachine.Run(bag, notpstatemachines.UnknownFlowType)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrServerGeneric, fmt.Sprintf("server: notp stream unhandled err %s", err.Error()))
 	}

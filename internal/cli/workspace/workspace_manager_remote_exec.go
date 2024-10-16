@@ -124,21 +124,30 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 		return failedOpErr(nil, err)
 	}
 
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "pull", "Preparing to pull from the remote repo.", nil, true)
+	}
+
 	bag := map[string]any{
 		OutFuncKey: func(key string, output string, newLine bool) {
 			out(nil, key, output, nil, newLine)
 		},
 		LanguageAbstractionKey:   absLang,
+		LocalCodeCommitIDKey:     headCtx.commitID,
 		HeadContextKey:           headCtx,
 	}
 
-	err = m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetAccountID(), headCtx.GetRepoID(), bag, m)
+	_, err = m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetAccountID(), headCtx.GetRepoID(), bag, m)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	//m.logsMgr.Log(headCtx.remote, headCtx.refs, headCtx.commitID, commitObj.GetOID(), fmt.Sprintf("push: %s", headCtx.repoURI))
+	//ltsCommitID, _ := getFromHandlerContext[string](ctx, LocalCodeCommitIDKey)
+	//m.logsMgr.Log(headCtx.remote, headCtx.refs, headCtx.commitID, ltsCommitID, fmt.Sprintf("push: %s", headCtx.repoURI))
 
-	out(nil, "", "Apply process completed successfully.", nil, true)
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "pull", "The pull has been completed successfully.", nil, true)
+	}
+	out(nil, "", "Pull process completed successfully.", nil, true)
 	out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repo: %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 	return output, nil
 }
