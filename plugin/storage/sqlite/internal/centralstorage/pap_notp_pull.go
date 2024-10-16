@@ -74,6 +74,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 		HasConflicts: hasConflicts,
 		IsUpToDate:   isUpToDate,
 	}
+	handlerCtx.Set(LocalCommitIDKey, headCommitID)
 	handlerCtx.Set(RemoteCommitIDKey, remoteRefSPacket.RefCommit)
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
@@ -94,6 +95,38 @@ func (s SQLiteCentralStoragePAP) OnPullSendNotifyCurrentStateResponse(handlerCtx
 
 // OnPullSendNegotiationRequest sends the negotiation request.
 func (s SQLiteCentralStoragePAP) OnPullSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+	localCommitID, _ := getFromHandlerContext[string](handlerCtx, LocalCommitIDKey)
+	remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDKey)
+	commitIDs := []string{}
+	if localCommitID != remoteCommitID {
+		objMng, err := azlangobjs.NewObjectManager()
+		if err != nil {
+			return nil, err
+		}
+		db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
+		if err != nil {
+			return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		}
+		_, history, err := objMng.BuildCommitHistory(localCommitID, remoteCommitID, true, func(oid string) (*azlangobjs.Object, error) {
+			keyValue, errkey := s.sqlRepo.GetKeyValue(db, oid)
+			if errkey != nil || keyValue == nil || keyValue.Value == nil {
+				return nil, nil
+			}
+			return azlangobjs.NewObject(keyValue.Value), nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, commit := range history {
+			obj, err := objMng.CreateCommitObject(&commit)
+			if err != nil {
+				return nil, err
+			}
+			commitIDs = append(commitIDs, obj.GetOID())
+		}
+	}
+	handlerCtx.Set(DiffCommitIDsKey, commitIDs)
+	handlerCtx.Set(DiffCommitIDCursorKey, -1)
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}

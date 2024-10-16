@@ -27,10 +27,16 @@ import (
 )
 
 const (
+	// LocalCommitIDKey is the local commit id key.
+	LocalCommitIDKey = "local-commit-id"
 	// RemoteCommitIDKey is the remote commit id key.
 	RemoteCommitIDKey = "remote-commit-id"
 	// TerminationKey is the termination key.
 	TerminationKey = "termination"
+	// DiffCommitIDsKey represents the diff commit ids key.
+	DiffCommitIDsKey = "diff-commit-ids"
+	// DiffCommitIDCursorKey represents the diff commit id cursor key.
+	DiffCommitIDCursorKey = "diff-commit-id-cursor"
 )
 
 // getFromHandlerContext gets the value from the handler context.

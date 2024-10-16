@@ -126,8 +126,8 @@ func (m *WorkspaceManager) OnPushSendNegotiationResponse(handlerCtx *notpstatema
 	return handlerReturn, nil
 }
 
-// buildPacketablesForCommit builds the packetables for the tree.
-func (m *WorkspaceManager) buildPacketablesForCommit(handlerCtx *notpstatemachines.HandlerContext, isCode bool, commitObj *azlangobjs.Object) ([]notppackets.Packetable, error) {
+// buildPushPacketablesForCommit builds the push packetables for the tree.
+func (m *WorkspaceManager) buildPushPacketablesForCommit(handlerCtx *notpstatemachines.HandlerContext, isCode bool, commitObj *azlangobjs.Object) ([]notppackets.Packetable, error) {
 	absLang, _ := getFromHandlerContext[azlang.LanguageAbastraction](handlerCtx, LanguageAbstractionKey)
 	packetable := []notppackets.Packetable{}
 
@@ -203,7 +203,7 @@ func (m *WorkspaceManager) OnPushExchangeDataStream(handlerCtx *notpstatemachine
 		if err != nil {
 			return nil, err
 		}
-		packetables, err := m.buildPacketablesForCommit(handlerCtx, false, commitObj)
+		packetables, err := m.buildPushPacketablesForCommit(handlerCtx, false, commitObj)
 		if err != nil {
 			return nil, err
 		}
@@ -212,7 +212,7 @@ func (m *WorkspaceManager) OnPushExchangeDataStream(handlerCtx *notpstatemachine
 		handlerReturn.HasMore = true
 	} else {
 		commitObj, _ := getFromHandlerContext[*azlangobjs.Object](handlerCtx, LocalCodeCommitObjectKey)
-		packetables, err := m.buildPacketablesForCommit(handlerCtx, true, commitObj)
+		packetables, err := m.buildPushPacketablesForCommit(handlerCtx, true, commitObj)
 		if err != nil {
 			return nil, err
 		}
