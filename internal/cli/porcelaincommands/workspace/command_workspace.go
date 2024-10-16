@@ -45,7 +45,7 @@ var outFunc = func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter
 		if ctx.IsTerminalOutput() {
 			if err != nil {
 				if ctx.IsTerminalOutput() {
-					printer.Println("Failed to complete the opeartion.")
+					printer.Println("Failed to complete the operation.")
 				}
 				printer.Error(err)
 			} else {

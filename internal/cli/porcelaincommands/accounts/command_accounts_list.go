@@ -55,7 +55,7 @@ func runECommandForListAccounts(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	accounts, err := client.FetchAccountsBy(page, pageSize, accountID, name)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to complete the opeartion.")
+			printer.Println("Failed to complete the operation.")
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}

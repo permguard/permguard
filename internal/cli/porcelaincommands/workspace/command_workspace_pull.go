@@ -24,8 +24,8 @@ import (
 	"github.com/spf13/viper"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
 	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
+	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
 const (
@@ -55,7 +55,7 @@ func runECommandForPullWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
 		} else if ctx.IsTerminalOutput() {
-			printer.Println("Failed to complete the opeartion.")
+			printer.Println("Failed to complete the operation.")
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}
