@@ -60,7 +60,7 @@ func runECommandForUpsertAccount(deps azcli.CliDependenciesProvider, cmd *cobra.
 	}
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to complete the opeartion.")
+			printer.Println("Failed to complete the operation.")
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}
