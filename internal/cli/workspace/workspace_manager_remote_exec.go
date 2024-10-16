@@ -93,7 +93,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.Pri
 // ExecPull fetches the latest changes from the remote repository and constructs the remote state.
 func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to pull the repo.", nil, true)
+		out(nil, "", "Failed to pull changes from the remote repo.", nil, true)
 		return output, err
 	}
 	output := m.ExecPrintContext(nil, out)
@@ -125,7 +125,7 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 	}
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "pull", "Preparing to pull from the remote repo.", nil, true)
+		out(nil, "pull", "Preparing to pull changes from the remote repo.", nil, true)
 	}
 
 	bag := map[string]any{
