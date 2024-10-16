@@ -28,7 +28,7 @@ import (
 )
 
 // OnPushHandleNotifyCurrentState notifies the current state.
-func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	if len(packets) == 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid input packets for notify current state.")
 	}
@@ -75,7 +75,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 		IsUpToDate:   isUpToDate,
 	}
 	handlerCtx.Set(RemoteCommitIDKey, remoteRefSPacket.RefCommit)
-	handlerReturn := &notpstatemachines.HostHandlerRuturn{
+	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 		Packetables:  []notppackets.Packetable{packet},
 	}
@@ -84,8 +84,8 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 }
 
 // OnPushSendNotifyCurrentStateResponse handles the current state response.
-func (s SQLiteCentralStoragePAP) OnPushSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
-	handlerReturn := &notpstatemachines.HostHandlerRuturn{
+func (s SQLiteCentralStoragePAP) OnPushSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}
 	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
@@ -95,16 +95,16 @@ func (s SQLiteCentralStoragePAP) OnPushSendNotifyCurrentStateResponse(handlerCtx
 }
 
 // OnPushSendNegotiationRequest sends the negotiation request.
-func (s SQLiteCentralStoragePAP) OnPushSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
-	handlerReturn := &notpstatemachines.HostHandlerRuturn{
+func (s SQLiteCentralStoragePAP) OnPushSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}
 	return handlerReturn, nil
 }
 
 // OnPushHandleNegotiationResponse handles the negotiation response.
-func (s SQLiteCentralStoragePAP) OnPushHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
-	handlerReturn := &notpstatemachines.HostHandlerRuturn{
+func (s SQLiteCentralStoragePAP) OnPushHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}
 	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
@@ -112,7 +112,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNegotiationResponse(handlerCtx *not
 }
 
 // OnPushHandleExchangeDataStream exchanges the data stream.
-func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
@@ -149,15 +149,15 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 			return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 		}
 	}
-	handlerReturn := &notpstatemachines.HostHandlerRuturn{
+	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}
 	return handlerReturn, nil
 }
 
 // OnPushSendCommit sends the commit.
-func (s SQLiteCentralStoragePAP) OnPushSendCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
-	handlerReturn := &notpstatemachines.HostHandlerRuturn{
+func (s SQLiteCentralStoragePAP) OnPushSendCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}
 	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
