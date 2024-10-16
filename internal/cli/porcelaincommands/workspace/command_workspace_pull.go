@@ -25,6 +25,7 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 )
 
 const (
@@ -34,14 +35,36 @@ const (
 
 // runECommandForPullWorkspace runs the command for creating an workspace.
 func runECommandForPullWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	_, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	output := map[string]any{}
-	output["workspace"] = "pull"
-	printer.PrintlnMap(output)
+	absLang, err := deps.GetLanguageFactory()
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return aziclicommon.ErrCommandSilent
+	}
+	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, absLang)
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return aziclicommon.ErrCommandSilent
+	}
+	output, err := wksMgr.ExecPull(outFunc(ctx, printer))
+	if err != nil {
+		if ctx.IsJSONOutput() {
+			printer.ErrorWithOutput(output, err)
+		} else if ctx.IsTerminalOutput() {
+			printer.Println("Failed to complete the opeartion.")
+			if ctx.IsVerboseTerminalOutput() {
+				printer.Error(err)
+			}
+		}
+		return aziclicommon.ErrCommandSilent
+	}
+	if ctx.IsJSONOutput() {
+		printer.PrintlnMap(output)
+	}
 	return nil
 }
 

@@ -108,16 +108,37 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 	}
 	defer fileLock.Unlock()
 
-	headRef, err := m.rfsMgr.GetCurrentHeadRefs()
-	if err != nil || headRef == "" {
-		out(nil, "", "Please ensure a valid remote repository is checked out.", nil, true)
-		if err == nil {
-			err = azerrors.WrapSystemError(azerrors.ErrCliWorkspace, "cli: invalid head refs")
-		}
+	// Creates the abstraction for the language
+	lang, err := m.cfgMgr.GetLanguage()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	absLang, err := m.langFct.CreateLanguageAbastraction(lang)
+	if err != nil {
 		return failedOpErr(nil, err)
 	}
 
-	// TODO: Implement this method
+	// Read current head settings
+	headCtx, err := m.getCurrentHeadContext()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
 
+	bag := map[string]any{
+		OutFuncKey: func(key string, output string, newLine bool) {
+			out(nil, key, output, nil, newLine)
+		},
+		LanguageAbstractionKey:   absLang,
+		HeadContextKey:           headCtx,
+	}
+
+	err = m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetAccountID(), headCtx.GetRepoID(), bag, m)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	//m.logsMgr.Log(headCtx.remote, headCtx.refs, headCtx.commitID, commitObj.GetOID(), fmt.Sprintf("push: %s", headCtx.repoURI))
+
+	out(nil, "", "Apply process completed successfully.", nil, true)
+	out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repo: %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 	return output, nil
 }
