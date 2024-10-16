@@ -57,12 +57,15 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 			return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 		}
 		hasMatch, history, err := objMng.BuildCommitHistory(headCommitID, remoteRefSPacket.RefPrevCommit, false, func(oid string) (*azlangobjs.Object, error) {
-			keyValue, err := s.sqlRepo.GetKeyValue(db, oid)
-			if err != nil || keyValue == nil || keyValue.Value == nil {
+			keyValue, errkey := s.sqlRepo.GetKeyValue(db, oid)
+			if errkey != nil || keyValue == nil || keyValue.Value == nil {
 				return nil, nil
 			}
 			return azlangobjs.NewObject(keyValue.Value), nil
 		})
+		if err != nil {
+			return nil, err
+		}
 		hasConflicts = hasMatch && len(history) > 1
 		if headCommitID != azlangobjs.ZeroOID && remoteRefSPacket.RefPrevCommit == azlangobjs.ZeroOID {
 			hasConflicts = true
