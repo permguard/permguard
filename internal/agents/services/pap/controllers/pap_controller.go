@@ -17,12 +17,12 @@
 package controllers
 
 import (
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azStorage "github.com/permguard/permguard/pkg/agents/storage"
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
 	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
+	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azservices "github.com/permguard/permguard/pkg/agents/services"
+	azStorage "github.com/permguard/permguard/pkg/agents/storage"
 )
 
 type PAPController struct {
@@ -64,61 +64,61 @@ func (s PAPController) FetchRepositories(page int32, pageSize int32, accountID i
 }
 
 // OnPullHandleRequestCurrentState handles the request for the current state.
-func (s PAPController) OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+func (s PAPController) OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	return s.storage.OnPullHandleRequestCurrentState(handlerCtx, statePacket, packets)
 }
 
 // OnPullSendNotifyCurrentStateResponse notifies the current state.
-func (s PAPController) OnPullSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+func (s PAPController) OnPullSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	return s.storage.OnPullSendNotifyCurrentStateResponse(handlerCtx, statePacket, packets)
 }
 
 // OnPullSendNegotiationRequest sends the negotiation request.
-func (s PAPController) OnPullSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+func (s PAPController) OnPullSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	return s.storage.OnPullSendNegotiationRequest(handlerCtx, statePacket, packets)
 }
 
 // OnPullHandleNegotiationResponse handles the negotiation response.
-func (s PAPController) OnPullHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+func (s PAPController) OnPullHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	return s.storage.OnPullHandleNegotiationResponse(handlerCtx, statePacket, packets)
 }
 
 // OnPullHandleExchangeDataStream exchanges the data stream.
-func (s PAPController) OnPullHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+func (s PAPController) OnPullHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	return s.storage.OnPullHandleExchangeDataStream(handlerCtx, statePacket, packets)
 }
 
 // OnPullHandleCommit handles the commit.
-func (s PAPController) OnPullHandleCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+func (s PAPController) OnPullHandleCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	return s.storage.OnPullHandleCommit(handlerCtx, statePacket, packets)
 }
 
 // OnPushHandleNotifyCurrentState notifies the current state.
-func (s PAPController) OnPushHandleNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+func (s PAPController) OnPushHandleNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	return s.storage.OnPushHandleNotifyCurrentState(handlerCtx, statePacket, packets)
 }
 
 // OnPushSendNotifyCurrentStateResponse handles the current state response.
-func (s PAPController) OnPushSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+func (s PAPController) OnPushSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	return s.storage.OnPushSendNotifyCurrentStateResponse(handlerCtx, statePacket, packets)
 }
 
 // OnPushSendNegotiationRequest handles the negotiation request.
-func (s PAPController) OnPushSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+func (s PAPController) OnPushSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	return s.storage.OnPushSendNegotiationRequest(handlerCtx, statePacket, packets)
 }
 
 // OnPushHandleNegotiationResponse sends the negotiation response.
-func (s PAPController) OnPushHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+func (s PAPController) OnPushHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	return s.storage.OnPushHandleNegotiationResponse(handlerCtx, statePacket, packets)
 }
 
 // OnPushHandleExchangeDataStream exchanges the data stream.
-func (s PAPController) OnPushHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+func (s PAPController) OnPushHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	return s.storage.OnPushHandleExchangeDataStream(handlerCtx, statePacket, packets)
 }
 
 // OnPushSendCommit sends the commit.
-func (s PAPController) OnPushSendCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+func (s PAPController) OnPushSendCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	return s.storage.OnPushSendCommit(handlerCtx, statePacket, packets)
 }
