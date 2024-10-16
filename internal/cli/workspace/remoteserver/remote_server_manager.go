@@ -82,11 +82,11 @@ type NOTPClient interface {
 }
 
 // NOTPPush push objects using the NOTP protocol.
-func (m *RemoteServerManager) NOTPPush(server string, papPort int, accountID int64, repositoryID string, bag map[string]any, clientProvider NOTPClient) error {
+func (m *RemoteServerManager) NOTPPush(server string, papPort int, accountID int64, repositoryID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
 	pppServer := fmt.Sprintf("%s:%d", server, papPort)
 	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var hostHandler notpstatemachines.HostHandler = func(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
 		switch handlerCtx.GetCurrentStateID() {
@@ -129,19 +129,15 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, accountID int
 			return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid state %d", handlerCtx.GetCurrentStateID()))
 		}
 	}
-	err = papClient.NOTPStream(hostHandler, accountID, repositoryID, bag, notpstatemachines.PushFlowType)
-	if err != nil {
-		return err
-	}
-	return nil
+	return papClient.NOTPStream(hostHandler, accountID, repositoryID, bag, notpstatemachines.PushFlowType)
 }
 
 // NOTPPull pull objects using the NOTP protocol.
-func (m *RemoteServerManager) NOTPPull(server string, papPort int, accountID int64, repositoryID string, bag map[string]any, clientProvider NOTPClient) error {
+func (m *RemoteServerManager) NOTPPull(server string, papPort int, accountID int64, repositoryID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
 	pppServer := fmt.Sprintf("%s:%d", server, papPort)
 	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var hostHandler notpstatemachines.HostHandler = func(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
 		switch handlerCtx.GetCurrentStateID() {
@@ -184,9 +180,5 @@ func (m *RemoteServerManager) NOTPPull(server string, papPort int, accountID int
 			return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid state %d", handlerCtx.GetCurrentStateID()))
 		}
 	}
-	err = papClient.NOTPStream(hostHandler, accountID, repositoryID, bag, notpstatemachines.PullFlowType)
-	if err != nil {
-		return err
-	}
-	return nil
+	return papClient.NOTPStream(hostHandler, accountID, repositoryID, bag, notpstatemachines.PullFlowType)
 }

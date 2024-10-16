@@ -97,5 +97,6 @@ func (m *WorkspaceManager) OnPullSendCommit(handlerCtx *notpstatemachines.Handle
 		Packetables: packets,
 		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 	}
+	handlerCtx.Set("ciao", "ciao")
 	return handlerReturn, nil
 }
