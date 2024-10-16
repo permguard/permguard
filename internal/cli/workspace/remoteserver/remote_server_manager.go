@@ -145,7 +145,7 @@ func (m *RemoteServerManager) NOTPPull(server string, papPort int, accountID int
 	}
 	var hostHandler notpstatemachines.HostHandler = func(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
 		switch handlerCtx.GetCurrentStateID() {
-		case notpstatemachines.NotifyObjectsStateID:
+		case notpstatemachines.RequestObjectsStateID:
 			switch statePacket.MessageCode {
 			case notpsmpackets.RequestCurrentObjectsStateMessage:
 				return clientProvider.OnPullSendRequestCurrentState(handlerCtx, statePacket, packets)
@@ -155,7 +155,7 @@ func (m *RemoteServerManager) NOTPPull(server string, papPort int, accountID int
 				return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid message code %d", statePacket.MessageCode))
 			}
 
-		case notpstatemachines.PublisherNegotiationStateID:
+		case notpstatemachines.SubscriberNegotiationStateID:
 			switch statePacket.MessageCode {
 			case notpsmpackets.NegotiationRequestMessage:
 				return clientProvider.OnPullSendNegotiationRequest(handlerCtx, statePacket, packets)
@@ -165,7 +165,7 @@ func (m *RemoteServerManager) NOTPPull(server string, papPort int, accountID int
 				return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid message code %d", statePacket.MessageCode))
 			}
 
-		case notpstatemachines.PublisherDataStreamStateID:
+		case notpstatemachines.SubscriberDataStreamStateID:
 			switch statePacket.MessageCode {
 			case notpsmpackets.ExchangeDataStreamMessage:
 				return clientProvider.OnPullHandleExchangeDataStream(handlerCtx, statePacket, packets)
@@ -173,7 +173,7 @@ func (m *RemoteServerManager) NOTPPull(server string, papPort int, accountID int
 				return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid message code %d", statePacket.MessageCode))
 			}
 
-		case notpstatemachines.PublisherCommitStateID:
+		case notpstatemachines.SubscriberCommitStateID:
 			switch statePacket.MessageCode {
 			case notpsmpackets.CommitMessage:
 				return clientProvider.OnPullSendCommit(handlerCtx, statePacket, packets)
