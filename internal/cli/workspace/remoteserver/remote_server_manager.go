@@ -72,6 +72,13 @@ type NOTPClient interface {
 	OnPushSendNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
 	OnPushExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
 	OnPushHandleCommitResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+
+	OnPullSendRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	OnPullHandleRequestCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	OnPullSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	OnPullHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	OnPullHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	OnPullSendCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
 }
 
 // NOTPPush push objects using the NOTP protocol.
@@ -123,6 +130,61 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, accountID int
 		}
 	}
 	err = papClient.NOTPStream(hostHandler, accountID, repositoryID, bag, notpstatemachines.PushFlowType)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// NOTPPull pull objects using the NOTP protocol.
+func (m *RemoteServerManager) NOTPPull(server string, papPort int, accountID int64, repositoryID string, bag map[string]any, clientProvider NOTPClient) error {
+	pppServer := fmt.Sprintf("%s:%d", server, papPort)
+	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
+	if err != nil {
+		return err
+	}
+	var hostHandler notpstatemachines.HostHandler = func(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+		switch handlerCtx.GetCurrentStateID() {
+		case notpstatemachines.NotifyObjectsStateID:
+			switch statePacket.MessageCode {
+			case notpsmpackets.RequestCurrentObjectsStateMessage:
+				return clientProvider.OnPullSendRequestCurrentState(handlerCtx, statePacket, packets)
+			case notpsmpackets.RespondCurrentStateMessage:
+				return clientProvider.OnPullHandleRequestCurrentStateResponse(handlerCtx, statePacket, packets)
+			default:
+				return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid message code %d", statePacket.MessageCode))
+			}
+
+		case notpstatemachines.PublisherNegotiationStateID:
+			switch statePacket.MessageCode {
+			case notpsmpackets.NegotiationRequestMessage:
+				return clientProvider.OnPullSendNegotiationRequest(handlerCtx, statePacket, packets)
+			case notpsmpackets.RespondNegotiationRequestMessage:
+				return clientProvider.OnPullHandleNegotiationResponse(handlerCtx, statePacket, packets)
+			default:
+				return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid message code %d", statePacket.MessageCode))
+			}
+
+		case notpstatemachines.PublisherDataStreamStateID:
+			switch statePacket.MessageCode {
+			case notpsmpackets.ExchangeDataStreamMessage:
+				return clientProvider.OnPullHandleExchangeDataStream(handlerCtx, statePacket, packets)
+			default:
+				return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid message code %d", statePacket.MessageCode))
+			}
+
+		case notpstatemachines.PublisherCommitStateID:
+			switch statePacket.MessageCode {
+			case notpsmpackets.CommitMessage:
+				return clientProvider.OnPullSendCommit(handlerCtx, statePacket, packets)
+			default:
+				return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid message code %d", statePacket.MessageCode))
+			}
+		default:
+			return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid state %d", handlerCtx.GetCurrentStateID()))
+		}
+	}
+	err = papClient.NOTPStream(hostHandler, accountID, repositoryID, bag, notpstatemachines.PullFlowType)
 	if err != nil {
 		return err
 	}

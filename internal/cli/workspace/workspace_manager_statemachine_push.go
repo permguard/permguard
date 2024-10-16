@@ -27,67 +27,11 @@ import (
 	notpagpackets "github.com/permguard/permguard/internal/agents/notp/statemachines/packets"
 )
 
-const (
-	// OutFuncKey represents the apply out func key.
-	OutFuncKey = "output-func"
-	// LanguageAbstractionKey represents the language abstraction key.
-	LanguageAbstractionKey = "language-abstraction"
-	// LocalCodeTreeObjectKey represents the local code tree object key.
-	LocalCodeTreeObjectKey = "local-code-tree-object"
-	// LocalCodeCommitKey represents the local code commit id key.
-	LocalCodeCommitKey = "local-code-commit"
-	// LocalCodeCommitObjectKey represents the local code commit object key.
-	LocalCodeCommitObjectKey = "local-code-commit-object"
-	// RemoteCommitIDKey represents the remote commit id key.
-	RemoteCommitIDKey = "remote-commit-id"
-	// DiffCommitIDsKey represents the diff commit ids key.
-	DiffCommitIDsKey = "diff-commit-ids"
-	// DiffCommitIDCursorKey represents the diff commit id cursor key.
-	DiffCommitIDCursorKey = "diff-commit-id-cursor"
-	// HeadContextKey represents the head context key.
-	HeadContextKey = "head-context"
-)
-
-// getFromHandlerContext gets the value from the handler context.
-func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key string) (T, bool) {
-	value, ok := ctx.Get(key)
-	if !ok {
-		var zero T
-		return zero, false
-	}
-	typedValue, ok := value.(T)
-	if !ok {
-		var zero T
-		return zero, false
-	}
-	return typedValue, true
-}
-
-// workspaceHandlerContext represents the workspace handler context.
-type workspaceHandlerContext struct {
-	outFunc func(key string, output string, newLine bool)
-	tree    *azlangobjs.Object
-	ctx     *currentHeadContext
-}
-
-// createWorkspaceHandlerContext creates the workspace handler context.
-func createWorkspaceHandlerContext(ctx *notpstatemachines.HandlerContext) *workspaceHandlerContext {
-	outfunc, _ := getFromHandlerContext[func(key string, output string, newLine bool)](ctx, OutFuncKey)
-	tree, _ := getFromHandlerContext[*azlangobjs.Object](ctx, LocalCodeTreeObjectKey)
-	headContext, _ := getFromHandlerContext[*currentHeadContext](ctx, HeadContextKey)
-	wksCtx := &workspaceHandlerContext{
-		outFunc: outfunc,
-		tree:    tree,
-		ctx:     headContext,
-	}
-	return wksCtx
-}
-
 // OnPushSendNotifyCurrentState notifies the current state.
 func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
-		wksCtx.outFunc("notp-push", "Advertising - Initiating notification dispatch for the current repository state.", true)
+		wksCtx.outFunc("notp-push", "Advertising - Initiating repository state notification.", true)
 	}
 	localCommitObj, _ := getFromHandlerContext[*azlangobjs.Object](handlerCtx, LocalCodeCommitObjectKey)
 	packet := &notpagpackets.RemoteRefStatePacket{
@@ -104,7 +48,7 @@ func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemac
 func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
-		wksCtx.outFunc("notp-push", "Advertising - Dispatching response to the current repository state request.", true)
+		wksCtx.outFunc("notp-push", "Advertising - Processing response to repository state notification.", true)
 	}
 	localRefSPacket := &notpagpackets.LocalRefStatePacket{}
 	err := notppackets.ConvertPacketable(packets[0], localRefSPacket)
@@ -128,7 +72,9 @@ func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *no
 
 // OnPushHandleNegotiationRequest handles the negotiation request.
 func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
+		wksCtx.outFunc("notp-commit", "Negotiation - Handling negotiation request between local and remote commit", true)
 	}
 	absLang, _ := getFromHandlerContext[azlang.LanguageAbastraction](handlerCtx, LanguageAbstractionKey)
 	localCommitObj, _ := getFromHandlerContext[*azlangobjs.Object](handlerCtx, LocalCodeCommitObjectKey)
@@ -171,7 +117,7 @@ func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatem
 func (m *WorkspaceManager) OnPushSendNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
-		wksCtx.outFunc("notp-push", "Negotiation - Dispatching response to the active negotiation request.", true)
+		wksCtx.outFunc("notp-push", "Negotiation - Dispatching response to negotiation request.", true)
 	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
@@ -281,7 +227,7 @@ func (m *WorkspaceManager) OnPushExchangeDataStream(handlerCtx *notpstatemachine
 func (m *WorkspaceManager) OnPushHandleCommitResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
-		wksCtx.outFunc("notp-commit", "Commit - Handling the commit.", true)
+		wksCtx.outFunc("notp-commit", "Commit - Handling commit response.", true)
 	}
 	_, err := m.cospMgr.CleanCodeSource()
 	if err != nil {
