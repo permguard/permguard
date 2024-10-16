@@ -51,6 +51,18 @@ type PAPService interface {
 	DeleteRepository(accountID int64, repositoryID string) (*azmodels.Repository, error)
 	// FetchRepositories gets all repositories.
 	FetchRepositories(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Repository, error)
+	// OnPullHandleRequestCurrentState handles the request for the current state.
+	OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPullSendNotifyCurrentStateResponse notifies the current state.
+	OnPullSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPullSendNegotiationRequest sends the negotiation request.
+	OnPullSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPullHandleNegotiationResponse handles the negotiation response.
+	OnPullHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPullHandleExchangeDataStream exchanges the data stream.
+	OnPullHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPullHandleCommit handles the commit.
+	OnPullHandleCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
 	// OnPushHandleNotifyCurrentState notifies the current state.
 	OnPushHandleNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
 	// OnPushSendNotifyCurrentStateResponse handles the current state response.
@@ -169,6 +181,42 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 	}
 	var hostHandler notpstatemachines.HostHandler = func(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
 		switch handlerCtx.GetCurrentStateID() {
+		case notpstatemachines.ProcessRequestObjectsStateID:
+			switch statePacket.MessageCode {
+			case notpsmpackets.RequestCurrentObjectsStateMessage:
+				return s.service.OnPullHandleRequestCurrentState(handlerCtx, statePacket, packets)
+			case notpsmpackets.RespondCurrentStateMessage:
+				return s.service.OnPullSendNotifyCurrentStateResponse(handlerCtx, statePacket, packets)
+			default:
+				return nil, azerrors.WrapSystemError(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid message code %d", statePacket.MessageCode))
+			}
+
+		case notpstatemachines.PublisherNegotiationStateID:
+			switch statePacket.MessageCode {
+			case notpsmpackets.NegotiationRequestMessage:
+				return s.service.OnPullSendNegotiationRequest(handlerCtx, statePacket, packets)
+			case notpsmpackets.RespondNegotiationRequestMessage:
+				return s.service.OnPullHandleNegotiationResponse(handlerCtx, statePacket, packets)
+			default:
+				return nil, azerrors.WrapSystemError(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid message code %d", statePacket.MessageCode))
+			}
+
+		case notpstatemachines.PublisherDataStreamStateID:
+			switch statePacket.MessageCode {
+			case notpsmpackets.ExchangeDataStreamMessage:
+				return s.service.OnPullHandleExchangeDataStream(handlerCtx, statePacket, packets)
+			default:
+				return nil, azerrors.WrapSystemError(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid message code %d", statePacket.MessageCode))
+			}
+
+		case notpstatemachines.PublisherCommitStateID:
+			switch statePacket.MessageCode {
+			case notpsmpackets.CommitMessage:
+				return s.service.OnPullHandleCommit(handlerCtx, statePacket, packets)
+			default:
+				return nil, azerrors.WrapSystemError(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid message code %d", statePacket.MessageCode))
+			}
+
 		case notpstatemachines.ProcessNotifyObjectsStateID:
 			switch statePacket.MessageCode {
 			case notpsmpackets.NotifyCurrentObjectStatesMessage:

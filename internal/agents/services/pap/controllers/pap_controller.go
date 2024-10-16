@@ -63,6 +63,36 @@ func (s PAPController) FetchRepositories(page int32, pageSize int32, accountID i
 	return s.storage.FetchRepositories(page, pageSize, accountID, fields)
 }
 
+// OnPullHandleRequestCurrentState handles the request for the current state.
+func (s PAPController) OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	return s.storage.OnPullHandleRequestCurrentState(handlerCtx, statePacket, packets)
+}
+
+// OnPullSendNotifyCurrentStateResponse notifies the current state.
+func (s PAPController) OnPullSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	return s.storage.OnPullSendNotifyCurrentStateResponse(handlerCtx, statePacket, packets)
+}
+
+// OnPullSendNegotiationRequest sends the negotiation request.
+func (s PAPController) OnPullSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	return s.storage.OnPullSendNegotiationRequest(handlerCtx, statePacket, packets)
+}
+
+// OnPullHandleNegotiationResponse handles the negotiation response.
+func (s PAPController) OnPullHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	return s.storage.OnPullHandleNegotiationResponse(handlerCtx, statePacket, packets)
+}
+
+// OnPullHandleExchangeDataStream exchanges the data stream.
+func (s PAPController) OnPullHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	return s.storage.OnPullHandleExchangeDataStream(handlerCtx, statePacket, packets)
+}
+
+// OnPullHandleCommit handles the commit.
+func (s PAPController) OnPullHandleCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
+	return s.storage.OnPullHandleCommit(handlerCtx, statePacket, packets)
+}
+
 // OnPushHandleNotifyCurrentState notifies the current state.
 func (s PAPController) OnPushHandleNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error) {
 	return s.storage.OnPushHandleNotifyCurrentState(handlerCtx, statePacket, packets)

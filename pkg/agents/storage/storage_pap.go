@@ -33,6 +33,18 @@ type PAPCentralStorage interface {
 	DeleteRepository(accountID int64, repositoryID string) (*azmodels.Repository, error)
 	// FetchRepositories gets all repositories.
 	FetchRepositories(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Repository, error)
+	// OnPullHandleRequestCurrentState handles the request for the current state.
+	OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPullSendNotifyCurrentStateResponse notifies the current state.
+	OnPullSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPullSendNegotiationRequest sends the negotiation request.
+	OnPullSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPullHandleNegotiationResponse handles the negotiation response.
+	OnPullHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPullHandleExchangeDataStream exchanges the data stream.
+	OnPullHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
+	// OnPullHandleCommit handles the commit.
+	OnPullHandleCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
 	// OnPushHandleNotifyCurrentState notifies the current state.
 	OnPushHandleNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerRuturn, error)
 	// OnPushSendNotifyCurrentStateResponse handles the current state response.
