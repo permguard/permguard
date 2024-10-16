@@ -30,6 +30,7 @@ func (m *WorkspaceManager) OnPullSendRequestCurrentState(handlerCtx *notpstatema
 	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
+		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 	}
 	return handlerReturn, nil
 }
@@ -42,6 +43,7 @@ func (m *WorkspaceManager) OnPullHandleRequestCurrentStateResponse(handlerCtx *n
 	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
+		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 	}
 	return handlerReturn, nil
 }
@@ -54,6 +56,7 @@ func (m *WorkspaceManager) OnPullSendNegotiationRequest(handlerCtx *notpstatemac
 	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
+		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 	}
 	return handlerReturn, nil
 }
@@ -66,6 +69,7 @@ func (m *WorkspaceManager) OnPullHandleNegotiationResponse(handlerCtx *notpstate
 	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
+		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 	}
 	return handlerReturn, nil
 }
@@ -78,6 +82,7 @@ func (m *WorkspaceManager) OnPullHandleExchangeDataStream(handlerCtx *notpstatem
 	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
+		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 	}
 	return handlerReturn, nil
 }
@@ -90,6 +95,7 @@ func (m *WorkspaceManager) OnPullSendCommit(handlerCtx *notpstatemachines.Handle
 	}
 	handlerReturn := &notpstatemachines.HostHandlerRuturn{
 		Packetables: packets,
+		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 	}
 	return handlerReturn, nil
 }
