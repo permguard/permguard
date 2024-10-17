@@ -61,7 +61,6 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
 		} else if ctx.IsTerminalOutput() {
-			printer.Println("Failed to complete the operation.")
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}

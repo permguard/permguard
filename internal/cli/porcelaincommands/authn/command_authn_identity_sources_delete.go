@@ -52,7 +52,7 @@ func runECommandForDeleteIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 	identitySource, err := client.DeleteIdentitySource(accountID, identitySourceID)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to complete the operation.")
+			printer.Println("Failed to delete the identity source.")
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}

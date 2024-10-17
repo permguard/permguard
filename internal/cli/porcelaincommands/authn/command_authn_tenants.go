@@ -64,7 +64,11 @@ func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	}
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to complete the operation.")
+			if isCreate {
+				printer.Println("Failed to create the tenant.")
+			} else {
+				printer.Println("Failed to update the tenant.")
+			}
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}

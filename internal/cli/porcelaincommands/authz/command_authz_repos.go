@@ -64,7 +64,11 @@ func runECommandForUpsertRepository(deps azcli.CliDependenciesProvider, cmd *cob
 	}
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to complete the operation.")
+			if isCreate {
+				printer.Println("Failed to create the repository.")
+			} else {
+				printer.Println("Failed to update the repository.")
+			}
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}

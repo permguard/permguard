@@ -64,7 +64,11 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 	}
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to complete the operation.")
+			if isCreate {
+				printer.Println("Failed to create the identity source.")
+			} else {
+				printer.Println("Failed to update the identity source.")
+			}
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}

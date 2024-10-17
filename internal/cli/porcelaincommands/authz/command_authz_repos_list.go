@@ -54,7 +54,7 @@ func runECommandForListRepositories(deps azcli.CliDependenciesProvider, cmd *cob
 	repositories, err := client.FetchRepositoriesBy(page, pageSize, accountID, repositoryID, name)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to complete the operation.")
+			printer.Println("Failed to list repositories.")
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}

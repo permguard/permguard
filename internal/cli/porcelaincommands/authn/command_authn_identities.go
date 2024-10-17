@@ -69,7 +69,11 @@ func runECommandForUpsertIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 	}
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to complete the operation.")
+			if isCreate {
+				printer.Println("Failed to create the identity.")
+			} else {
+				printer.Println("Failed to update the identity.")
+			}
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}

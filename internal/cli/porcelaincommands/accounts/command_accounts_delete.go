@@ -51,7 +51,7 @@ func runECommandForDeleteAccount(deps azcli.CliDependenciesProvider, cmd *cobra.
 	account, err := client.DeleteAccount(accountID)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to complete the operation.")
+			printer.Println("Failed to delete the account.")
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}
