@@ -19,7 +19,10 @@ package centralstorage
 import (
 	"strconv"
 
+	"github.com/jmoiron/sqlx"
+
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
@@ -52,6 +55,30 @@ func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key str
 		return zero, false
 	}
 	return typedValue, true
+}
+
+// GetObjectForType gets the object for the type.
+func GetObjectForType[T any](objMng *azlangobjs.ObjectManager, obj *azlangobjs.Object) (*T, error) {
+	objInfo, err := objMng.GetObjectInfo(obj)
+	if err != nil {
+		return nil, err
+	}
+	instance := objInfo.GetInstance()
+	value, ok := instance.(*T)
+	if !ok {
+		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
+	}
+	return value, nil
+}
+
+// readObject reads the object.
+func (s SQLiteCentralStoragePAP) readObject(db *sqlx.DB, oid string) (*azlangobjs.Object, error) {
+	keyValue, errkey := s.sqlRepo.GetKeyValue(db, oid)
+	if errkey != nil || keyValue == nil || keyValue.Value == nil {
+		return nil, nil
+	}
+	obj := azlangobjs.NewObject(keyValue.Value)
+	return obj, nil
 }
 
 // extractMetaData extracts the meta data.

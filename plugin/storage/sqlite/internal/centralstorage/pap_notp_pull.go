@@ -108,12 +108,7 @@ func (s SQLiteCentralStoragePAP) OnPullSendNegotiationRequest(handlerCtx *notpst
 			return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 		}
 		_, history, err := objMng.BuildCommitHistory(localCommitID, remoteCommitID, true, func(oid string) (*azlangobjs.Object, error) {
-			keyValue, errkey := s.sqlRepo.GetKeyValue(db, oid)
-			if errkey != nil || keyValue == nil || keyValue.Value == nil {
-				return nil, nil
-			}
-			obj := azlangobjs.NewObject(keyValue.Value)
-			return obj, nil
+			return s.readObject(db, oid)
 		})
 		if err != nil {
 			return nil, err
@@ -144,12 +139,88 @@ func (s SQLiteCentralStoragePAP) OnPullHandleNegotiationResponse(handlerCtx *not
 	return handlerReturn, nil
 }
 
+// buildPushPacketablesForCommit builds the push packetables for the tree.
+func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(commitID string) ([]notppackets.Packetable, error) {
+	objMng, err := azlangobjs.NewObjectManager()
+	if err != nil {
+		return nil, err
+	}
+	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
+	if err != nil {
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+	}
+	packetable := []notppackets.Packetable{}
+
+	commitObj, err := s.readObject(db, commitID)
+	if err != nil {
+		return nil, err
+	}
+	commit, err := GetObjectForType[azlangobjs.Commit](objMng, commitObj)
+	if err != nil {
+		return nil, err
+	}
+	packetCommit := &notpagpackets.ObjectStatePacket{
+		OID:     commitObj.GetOID(),
+		OType:   azlangobjs.ObjectTypeCommit,
+		Content: commitObj.GetContent(),
+	}
+	packetable = append(packetable, packetCommit)
+
+	treeObj, err := s.readObject(db, commit.GetTree())
+	if err != nil {
+		return nil, err
+	}
+	tree, err := GetObjectForType[azlangobjs.Tree](objMng, treeObj)
+	if err != nil {
+		return nil, err
+	}
+
+	packetTree := &notpagpackets.ObjectStatePacket{
+		OID:     treeObj.GetOID(),
+		OType:   azlangobjs.ObjectTypeTree,
+		Content: treeObj.GetContent(),
+	}
+	packetable = append(packetable, packetTree)
+
+	for _, entry := range tree.GetEntries() {
+		oid := entry.GetOID()
+		oType := entry.GetType()
+		obj, err := s.readObject(db, commitID)
+		if err != nil {
+			return nil, err
+		}
+		packet := &notpagpackets.ObjectStatePacket{
+			OID:     oid,
+			OType:   oType,
+			Content: obj.GetContent(),
+		}
+		packetable = append(packetable, packet)
+	}
+	return packetable, nil
+}
+
 // OnPullHandleExchangeDataStream exchanges the data stream.
 func (s SQLiteCentralStoragePAP) OnPullHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}
-	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
+	commitIDs, _ := getFromHandlerContext[[]string](handlerCtx, DiffCommitIDsKey)
+	commitIDCursor, _ := getFromHandlerContext[int](handlerCtx, DiffCommitIDCursorKey)
+	commitIDCursor = commitIDCursor + 1
+	if commitIDCursor < len(commitIDs) {
+		commitID := commitIDs[commitIDCursor]
+		packetables, err := s.buildPushPacketablesForCommit(commitID)
+		if err != nil {
+			return nil, err
+		}
+		handlerReturn.Packetables = packetables
+		if commitIDCursor == len(commitIDs)-1 {
+			handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.CompletedDataStreamValue)
+		} else {
+			handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.ActiveDataStreamValue)
+		}
+		handlerReturn.HasMore = true
+	}
 	return handlerReturn, nil
 }
 
