@@ -102,8 +102,19 @@ func (m *WorkspaceManager) OnPullHandleExchangeDataStream(handlerCtx *notpstatem
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-pull", "Data Exchange - Managing data exchange.", true)
 	}
+	for _, packet := range packets {
+		objStatePacket := &notpagpackets.ObjectStatePacket{}
+		err := notppackets.ConvertPacketable(packet, objStatePacket)
+		if err != nil {
+			return nil, err
+		}
+		_, err = m.cospMgr.SaveObject(objStatePacket.OID, objStatePacket.Content)
+		if err != nil {
+			return nil, err
+		}
+	}
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
-		Packetables:  packets,
+		Packetables:  []notppackets.Packetable{},
 		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 	}
 	return handlerReturn, nil
