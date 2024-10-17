@@ -365,7 +365,14 @@ func (m *COSPManager) CalculateCodeObjectsState(currentObjs []CodeObjectState, r
 	return result
 }
 
-// ReadObject reads the object from the code source.
+//SaveObject saves the object in the object store.
+func (m *COSPManager) SaveObject(oid string, content []byte) (bool, error) {
+	folder, name := m.getCodeSourceObjectDir(oid, "")
+	path := filepath.Join(folder, name)
+	return m.persMgr.WriteFile(azicliwkspers.PermguardDir, path, content, 0644, true)
+}
+
+// ReadObject reads the object from the objects store.
 func (m *COSPManager) ReadObject(oid string) (*azlangobjs.Object, error) {
 	folder, name := m.getCodeSourceObjectDir(oid, "")
 	path := filepath.Join(folder, name)
