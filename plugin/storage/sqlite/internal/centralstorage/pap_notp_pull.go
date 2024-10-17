@@ -112,7 +112,8 @@ func (s SQLiteCentralStoragePAP) OnPullSendNegotiationRequest(handlerCtx *notpst
 			if errkey != nil || keyValue == nil || keyValue.Value == nil {
 				return nil, nil
 			}
-			return azlangobjs.NewObject(keyValue.Value), nil
+			obj := azlangobjs.NewObject(keyValue.Value)
+			return obj, nil
 		})
 		if err != nil {
 			return nil, err
