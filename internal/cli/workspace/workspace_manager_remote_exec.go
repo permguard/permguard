@@ -137,12 +137,18 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 		HeadContextKey:           headCtx,
 	}
 
-	_, err = m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetAccountID(), headCtx.GetRepoID(), bag, m)
+	ctx, err := m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetAccountID(), headCtx.GetRepoID(), bag, m)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	//ltsCommitID, _ := getFromHandlerContext[string](ctx, LocalCodeCommitIDKey)
-	//m.logsMgr.Log(headCtx.remote, headCtx.refs, headCtx.commitID, ltsCommitID, fmt.Sprintf("push: %s", headCtx.repoURI))
+	committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
+	if !committed {
+		return failedOpErr(nil, err)
+	}
+
+	localCommitID, _ := getFromRuntimeContext[string](ctx, LocalCodeCommitIDKey)
+	remoteCommitID, _ := getFromRuntimeContext[string](ctx, RemoteCommitIDKey)
+	m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, fmt.Sprintf("pull: %s", headCtx.repoURI))
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "pull", "The pull has been completed successfully.", nil, true)

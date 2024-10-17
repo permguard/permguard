@@ -33,6 +33,7 @@ func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemac
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-push", "Advertising - Initiating repository state notification.", true)
 	}
+	handlerCtx.Set(CommittedKey, false)
 	localCommitObj, _ := getFromHandlerContext[*azlangobjs.Object](handlerCtx, LocalCodeCommitObjectKey)
 	packet := &notpagpackets.RemoteRefStatePacket{
 		RefPrevCommit: wksCtx.ctx.commitID,
@@ -242,5 +243,6 @@ func (m *WorkspaceManager) OnPushHandleCommitResponse(handlerCtx *notpstatemachi
 		Packetables:  packets,
 		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 	}
+	handlerCtx.Set(CommittedKey, true)
 	return handlerReturn, nil
 }

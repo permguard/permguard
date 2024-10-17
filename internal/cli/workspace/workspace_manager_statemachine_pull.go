@@ -31,6 +31,7 @@ func (m *WorkspaceManager) OnPullSendRequestCurrentState(handlerCtx *notpstatema
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-pull", "Advertising - Initiating request for repository state.", true)
 	}
+	handlerCtx.Set(CommittedKey, false)
 	packet := &notpagpackets.RemoteRefStatePacket{
 		RefPrevCommit: wksCtx.ctx.commitID,
 		RefCommit:     wksCtx.ctx.commitID,
@@ -38,6 +39,7 @@ func (m *WorkspaceManager) OnPullSendRequestCurrentState(handlerCtx *notpstatema
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: []notppackets.Packetable{packet},
 	}
+	handlerCtx.Set(LocalCodeCommitIDKey, wksCtx.ctx.commitID)
 	return handlerReturn, nil
 }
 
@@ -52,6 +54,7 @@ func (m *WorkspaceManager) OnPullHandleRequestCurrentStateResponse(handlerCtx *n
 	if err != nil {
 		return nil, err
 	}
+	handlerCtx.Set(RemoteCommitIDKey, localRefSPacket.RefCommit)
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}
@@ -116,6 +119,6 @@ func (m *WorkspaceManager) OnPullSendCommit(handlerCtx *notpstatemachines.Handle
 		Packetables:  packets,
 		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 	}
-	handlerCtx.Set("ciao", "ciao")
+	handlerCtx.Set(CommittedKey, true)
 	return handlerReturn, nil
 }
