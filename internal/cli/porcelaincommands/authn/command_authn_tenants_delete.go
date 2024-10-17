@@ -52,7 +52,7 @@ func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	tenant, err := client.DeleteTenant(accountID, tenantID)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to complete the operation.")
+			printer.Println("Failed to delete the tenant.")
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}

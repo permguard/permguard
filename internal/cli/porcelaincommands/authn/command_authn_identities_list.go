@@ -56,7 +56,7 @@ func runECommandForListIdentities(deps azcli.CliDependenciesProvider, cmd *cobra
 	identities, err := client.FetchIdentitiesBy(page, pageSize, accountID, identitySourceID, identityID, kind, name)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to complete the operation.")
+			printer.Println("Failed to list identities.")
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}
