@@ -148,12 +148,22 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 
 	localCommitID, _ := getFromRuntimeContext[string](ctx, LocalCodeCommitIDKey)
 	remoteCommitID, _ := getFromRuntimeContext[string](ctx, RemoteCommitIDKey)
+	err = m.rfsMgr.SaveRefsConfig(headCtx.repoID, headCtx.refs, remoteCommitID)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
 	m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, fmt.Sprintf("pull: %s", headCtx.repoURI))
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "pull", "The pull has been completed successfully.", nil, true)
 	}
-	out(nil, "", "Pull process completed successfully.", nil, true)
+	if localCommitID == remoteCommitID {
+		if m.ctx.IsTerminalOutput() {
+			out(nil, "", "The local workspace is already fully up to date with the remote repository.", nil, true)
+		}
+	} else {
+		out(nil, "", "Pull process completed successfully.", nil, true)
+	}
 	out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repo: %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 	return output, nil
 }
