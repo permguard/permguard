@@ -25,6 +25,8 @@ import (
 const (
 	// OutFuncKey represents the apply out func key.
 	OutFuncKey = "output-func"
+	// CommittedKey represents the committed key.
+	CommittedKey = "committed"
 	// LanguageAbstractionKey represents the language abstraction key.
 	LanguageAbstractionKey = "language-abstraction"
 	// LocalCodeTreeObjectKey represents the local code tree object key.
@@ -44,6 +46,21 @@ const (
 	// HeadContextKey represents the head context key.
 	HeadContextKey = "head-context"
 )
+
+// getFromHandlerContext gets the value from the handler context.
+func getFromRuntimeContext[T any](ctx *notpstatemachines.StateMachineRuntimeContext, key string) (T, bool) {
+	value, ok := ctx.Get(key)
+	if !ok {
+		var zero T
+		return zero, false
+	}
+	typedValue, ok := value.(T)
+	if !ok {
+		var zero T
+		return zero, false
+	}
+	return typedValue, true
+}
 
 // getFromHandlerContext gets the value from the handler context.
 func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key string) (T, bool) {
