@@ -18,6 +18,7 @@ package logs
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"path/filepath"
@@ -26,9 +27,17 @@ import (
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
 
+type LogAction string
+
 const (
 	// hiddenLogsDir represents the hidden logs directory.
 	hiddenLogsDir = "logs"
+	// LogActionCheckout represents the checkout action.
+	LogActionCheckout = "checkout"
+	// LogActionPull represents the pull action.
+	LogActionPull = "pull"
+	// LogActionPush represents the push action.
+	LogActionPush = "push"
 )
 
 // LogsManager implements the internal manager for the logs file.
@@ -51,7 +60,7 @@ func (c *LogsManager) getLogsDir() string {
 }
 
 // Log an entry
-func (c *LogsManager) Log(remote string, refs string, origin string, target string, action string) (bool, error) {
+func (c *LogsManager) Log(remote string, refs string, origin string, target string, action LogAction, actionStatus bool, actionDetail string) (bool, error) {
 	logDir := filepath.Join(c.getLogsDir(), remote)
 	_, err := c.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, logDir)
 	if err != nil {
@@ -62,7 +71,11 @@ func (c *LogsManager) Log(remote string, refs string, origin string, target stri
 	if err != nil {
 		return false, err
 	}
-	timestamp := time.Now().UTC().Format("2006-01-02 15:04:05.000Z")
-	logLine := fmt.Sprintf("%s %s %s %s\n", origin, target, timestamp, action)
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+	status := "completed"
+	if !actionStatus {
+		status = "failed"
+	}
+	logLine := strings.ToLower(fmt.Sprintf("%s %s %s %s %s %s\n", origin, target, timestamp, action, status, actionDetail))
 	return c.persMgr.AppendToFile(azicliwkspers.PermguardDir, logFile, []byte(logLine), false)
 }

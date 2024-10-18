@@ -38,7 +38,7 @@ var outFunc = func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter
 			output = make(map[string]any)
 		}
 		if key != "" && ctx.IsVerboseTerminalOutput() {
-			timestamp := time.Now().Format("15:04:05")
+			timestamp := time.Now().Format(time.TimeOnly)
 			key = fmt.Sprintf("%s %s", aziclicommon.TimeStampText(timestamp), aziclicommon.LogHeaderText(key))
 		}
 		output[key] = value
