@@ -22,6 +22,7 @@ import (
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
+	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
 )
 
 // ExecPlan generates a plan of changes to apply to the remote repository based on the differences between the local and remote states.
@@ -268,11 +269,10 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		return failedOpErr(nil, err)
 	}
 	committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
+	m.logsMgr.Log(headCtx.remote, headCtx.refs, headCtx.commitID, commitObj.GetOID(), azicliwkslogs.LogActionPush, committed, headCtx.repoURI)
 	if !committed {
 		return failedOpErr(nil, err)
 	}
-	m.logsMgr.Log(headCtx.remote, headCtx.refs, headCtx.commitID, commitObj.GetOID(), fmt.Sprintf("push: %s", headCtx.repoURI))
-
 	out(nil, "", "Apply process completed successfully.", nil, true)
 	if !internal {
 		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repo: %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)

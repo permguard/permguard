@@ -21,6 +21,7 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
+	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -86,7 +87,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.Pri
 	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
 		return failedOpErr(output, err)
 	}
-	m.logsMgr.Log(repoInfo.GetRemote(), headInfo.GetRefs(), srvRepo.Refs, srvRepo.Refs, fmt.Sprintf("checkout: %s", repoURI))
+	m.logsMgr.Log(repoInfo.GetRemote(), headInfo.GetRefs(), srvRepo.Refs, srvRepo.Refs, azicliwkslogs.LogActionCheckout, true, repoURI)
 	return output, nil
 }
 
@@ -141,21 +142,25 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
-	if !committed {
-		return failedOpErr(nil, err)
-	}
 
 	localCommitID, _ := getFromRuntimeContext[string](ctx, LocalCodeCommitIDKey)
 	remoteCommitID, _ := getFromRuntimeContext[string](ctx, RemoteCommitIDKey)
-	err = m.rfsMgr.SaveRefsConfig(headCtx.repoID, headCtx.refs, remoteCommitID)
-	if err != nil {
+	committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
+	if !committed || localCommitID == "" || remoteCommitID == "" {
+		if localCommitID != "" && remoteCommitID != "" {
+			m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.repoURI)
+		}
 		return failedOpErr(nil, err)
 	}
-	m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, fmt.Sprintf("pull: %s", headCtx.repoURI))
+	err = m.rfsMgr.SaveRefsConfig(headCtx.repoID, headCtx.refs, remoteCommitID)
+	if err != nil {
+		m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.repoURI)
+		return failedOpErr(nil, err)
+	}
+	m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, headCtx.repoURI)
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "pull", "The pull has been completed successfully.", nil, true)
+		out(nil, azicliwkslogs.LogActionPull, "The pull has been completed successfully.", nil, true)
 	}
 	if localCommitID == remoteCommitID {
 		if m.ctx.IsTerminalOutput() {
