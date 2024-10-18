@@ -240,27 +240,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", fmt.Sprintf("The tree has been created with id: %s.", aziclicommon.IDText(treeObj.GetOID())), nil, true)
 	}
-	headTreeID := azlangobjs.ZeroOID
-	if headCtx.commitID != azlangobjs.ZeroOID {
-		headCommitObj, err := m.cospMgr.ReadObject(headCtx.commitID)
-		if err != nil {
-			if m.ctx.IsVerboseTerminalOutput() {
-				out(nil, "apply", "Failed to read the head commit.", nil, true)
-			}
-			out(nil, "", errPlanningProcessFailed, nil, true)
-			return failedOpErr(output, err)
-		}
-		headCommit, err := absLang.GetCommitObject(headCommitObj)
-		if err != nil {
-			if m.ctx.IsVerboseTerminalOutput() {
-				out(nil, "apply", "Failed to get the head commit.", nil, true)
-			}
-			out(nil, "", errPlanningProcessFailed, nil, true)
-			return failedOpErr(output, err)
-		}
-		headTreeID = headCommit.GetTree()
-	}
-	commit, commitObj, err := m.buildPlanCommit(treeObj.GetOID(), headTreeID, absLang)
+	commit, commitObj, err := m.buildPlanCommit(treeObj.GetOID(), headCtx.commitID, absLang)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "apply", "Failed to build the commit.", nil, true)
