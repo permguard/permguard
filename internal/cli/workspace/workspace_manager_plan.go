@@ -85,8 +85,8 @@ func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, a
 }
 
 // buildPlanCommit builds the plan commit.
-func (m *WorkspaceManager) buildPlanCommit(tree string, parentTrees string, absLang azlang.LanguageAbastraction) (*azlangobjs.Commit, *azlangobjs.Object, error) {
-	commit := azlangobjs.NewCommit(tree, parentTrees, "", time.Now(), "", time.Now(), "cli commit")
+func (m *WorkspaceManager) buildPlanCommit(tree string, parentCommitID string, absLang azlang.LanguageAbastraction) (*azlangobjs.Commit, *azlangobjs.Object, error) {
+	commit := azlangobjs.NewCommit(tree, parentCommitID, "", time.Now(), "", time.Now(), "cli commit")
 	commitObj, err := absLang.CreateCommitObject(commit)
 	if err != nil {
 		return nil, nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: commit object cannot be created")
