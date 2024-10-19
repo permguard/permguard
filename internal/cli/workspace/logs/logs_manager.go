@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azvalidators "github.com/permguard/permguard/pkg/agents/storage/validators"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
 
@@ -61,6 +62,24 @@ func (c *LogsManager) getLogsDir() string {
 
 // Log an entry
 func (c *LogsManager) Log(remote string, refs string, origin string, target string, action LogAction, actionStatus bool, actionDetail string) (bool, error) {
+	if strings.TrimSpace(remote) == "" {
+		return false, fmt.Errorf("Invalid action")
+	}
+	if strings.TrimSpace(refs) == "" {
+		return false, fmt.Errorf("Invalid action")
+	}
+	if err := azvalidators.ValidateSHA256("logs", origin); err != nil {
+		return false, fmt.Errorf("Invalid origin sha256")
+	}
+	if err := azvalidators.ValidateSHA256("logs", target); err != nil {
+		return false, fmt.Errorf("Invalid target sha256")
+	}
+	if strings.TrimSpace(string(action)) == "" {
+		return false, fmt.Errorf("Invalid action")
+	}
+	if strings.TrimSpace(string(actionDetail)) == "" {
+		return false, fmt.Errorf("Invalid action")
+	}
 	logDir := filepath.Join(c.getLogsDir(), remote)
 	_, err := c.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, logDir)
 	if err != nil {
@@ -76,6 +95,6 @@ func (c *LogsManager) Log(remote string, refs string, origin string, target stri
 	if !actionStatus {
 		status = "failed"
 	}
-	logLine := strings.ToLower(fmt.Sprintf("%s %s %s %s %s %s\n", origin, target, timestamp, action, status, actionDetail))
+	logLine := fmt.Sprintf("%s %s %s %s %s %s\n", origin, target, timestamp, strings.ToLower(string(action)), status, strings.ToLower(actionDetail))
 	return c.persMgr.AppendToFile(azicliwkspers.PermguardDir, logFile, []byte(logLine), false)
 }

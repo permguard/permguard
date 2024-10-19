@@ -87,7 +87,10 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.Pri
 	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
 		return failedOpErr(output, err)
 	}
-	m.logsMgr.Log(repoInfo.GetRemote(), headInfo.GetRefs(), srvRepo.Refs, srvRepo.Refs, azicliwkslogs.LogActionCheckout, true, repoURI)
+	_, err = m.logsMgr.Log(repoInfo.GetRemote(), headInfo.GetRefs(), srvRepo.Refs, srvRepo.Refs, azicliwkslogs.LogActionCheckout, true, repoURI)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
 	return output, nil
 }
 
@@ -148,16 +151,25 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 	committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 	if !committed || localCommitID == "" || remoteCommitID == "" {
 		if localCommitID != "" && remoteCommitID != "" {
-			m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.repoURI)
+			_, err := m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.repoURI)
+			if err != nil {
+				return failedOpErr(nil, err)
+			}
 		}
 		return failedOpErr(nil, err)
 	}
 	err = m.rfsMgr.SaveRefsConfig(headCtx.repoID, headCtx.refs, remoteCommitID)
 	if err != nil {
-		m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.repoURI)
+		_, err = m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.repoURI)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
 		return failedOpErr(nil, err)
 	}
-	m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, headCtx.repoURI)
+	_, err = m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, headCtx.repoURI)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, azicliwkslogs.LogActionPull, "The pull has been completed successfully.", nil, true)

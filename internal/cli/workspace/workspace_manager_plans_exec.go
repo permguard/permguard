@@ -269,7 +269,10 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		return failedOpErr(nil, err)
 	}
 	committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
-	m.logsMgr.Log(headCtx.remote, headCtx.refs, headCtx.commitID, commitObj.GetOID(), azicliwkslogs.LogActionPush, committed, headCtx.repoURI)
+	_, err = m.logsMgr.Log(headCtx.remote, headCtx.refs, headCtx.commitID, commitObj.GetOID(), azicliwkslogs.LogActionPush, committed, headCtx.repoURI)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
 	if !committed {
 		return failedOpErr(nil, err)
 	}
