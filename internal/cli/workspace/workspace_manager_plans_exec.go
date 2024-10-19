@@ -115,24 +115,35 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 	} else {
 		out(nil, "", "Planning process completed successfully.", nil, true)
 		out(nil, "", "The following changes have been identified and are ready to be applied:\n", nil, true)
+		unchanged, created, modified, deleted := 0, 0, 0, 0
 		for _, codeStateObj := range codeStateObjs {
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateUnchanged {
 				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.UnchangedText("="), aziclicommon.IDText(codeStateObj.OID), aziclicommon.UnchangedText(codeStateObj.OName)), nil, true)
 				unchangedItems = append(unchangedItems, codeStateObj)
+				unchanged++
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateCreate {
 				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.CreateText("+"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.CreateText(codeStateObj.OName)), nil, true)
 				createdItems = append(createdItems, codeStateObj)
+				created++
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateModify {
 				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.ModifyText("~"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.ModifyText(codeStateObj.OName)), nil, true)
 				modifiedItems = append(modifiedItems, codeStateObj)
+				modified++
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateDelete {
 				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.DeleteText("-"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.DeleteText(codeStateObj.OName)), nil, true)
 				deletedItems = append(deletedItems, codeStateObj)
+				deleted++
 			}
 		}
+		out(nil, "", "", nil, true)
+		unchangedCountText := aziclicommon.UnchangedText(fmt.Sprint(unchanged))
+		createdCountText := aziclicommon.CreateText(fmt.Sprint(created))
+		modifiedCountText := aziclicommon.ModifyText(fmt.Sprint(modified))
+		deletedCountText := aziclicommon.DeleteText(fmt.Sprint(deleted))
+		out(nil, "", fmt.Sprintf("unchanged %s, created %s, modified %s, deleted %s", unchangedCountText, createdCountText, modifiedCountText, deletedCountText), nil, true)
 		out(nil, "", "", nil, true)
 		planObjs := append(createdItems, modifiedItems...)
 		planObjs = append(planObjs, unchangedItems...)
