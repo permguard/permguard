@@ -92,7 +92,6 @@ func (m *COSPManager) getCodeSourceObjectDir(oid string, basePath string) (strin
 	basePath = filepath.Join(basePath, m.getObjectsDir())
 	folder := oid[:2]
 	folder = filepath.Join(basePath, folder)
-	m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, folder)
 	name := oid[2:]
 	return folder, name
 }
@@ -106,6 +105,10 @@ func (m *COSPManager) CleanCodeSource() (bool, error) {
 func (m *COSPManager) SaveCodeSourceObject(oid string, content []byte) (bool, error) {
 	folder, name := m.getCodeSourceObjectDir(oid, m.getCodeSourceDir())
 	path := filepath.Join(folder, name)
+	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, folder)
+	if err != nil {
+		return false, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to save object %s", oid))
+	}
 	return m.persMgr.WriteFile(azicliwkspers.PermguardDir, path, content, 0644, true)
 }
 
@@ -369,6 +372,10 @@ func (m *COSPManager) CalculateCodeObjectsState(currentObjs []CodeObjectState, r
 func (m *COSPManager) SaveObject(oid string, content []byte) (bool, error) {
 	folder, name := m.getCodeSourceObjectDir(oid, "")
 	path := filepath.Join(folder, name)
+	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, folder)
+	if err != nil {
+		return false, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to save object %s", oid))
+	}
 	return m.persMgr.WriteFile(azicliwkspers.PermguardDir, path, content, 0644, true)
 }
 
