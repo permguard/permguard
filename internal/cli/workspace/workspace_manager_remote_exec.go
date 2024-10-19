@@ -152,6 +152,7 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", "The local workspace is already fully up to date with the remote repository.", nil, true)
 		}
+		return output, nil
 	}
 	committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 	if !committed || localCommitID == "" || remoteCommitID == "" {
