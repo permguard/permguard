@@ -236,6 +236,26 @@ func (m *COSPManager) ReadCodeSourceCodeState() ([]CodeObjectState, error) {
 	return m.readCodeObjectStates(path)
 }
 
+// BuildCodeSourceCodeStateForTree builds the code object state for the input tree.
+func (m *COSPManager) BuildCodeSourceCodeStateForTree(tree *azlangobjs.Tree) ([]CodeObjectState, error) {
+	if tree == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordMalformed, "cli: tree is nil")
+	}
+	codeObjectStates := []CodeObjectState{}
+	for _, entry := range tree.GetEntries() {
+		codeObjState := CodeObjectState{
+			CodeObject: CodeObject{
+				OName: entry.GetOName(),
+				OType: entry.GetType(),
+				OID:   entry.GetOID(),
+			},
+			State: "",
+		}
+		codeObjectStates = append(codeObjectStates, codeObjState)
+	}
+	return codeObjectStates, nil
+}
+
 // SaveRemoteCodePlan saves the code plan for the input remote.
 func (m *COSPManager) SaveRemoteCodePlan(remote string, refID string, codeObjects []CodeObjectState) error {
 	path := filepath.Join(m.getCodeDir(), strings.ToLower(remote), strings.ToLower(refID))

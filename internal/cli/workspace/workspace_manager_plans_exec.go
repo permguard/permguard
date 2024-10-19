@@ -41,6 +41,16 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
+	// Creates the abstraction for the language
+	lang, err := m.cfgMgr.GetLanguage()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	absLang, err := m.langFct.CreateLanguageAbastraction(lang)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+
 	// Read current head settings
 	headCtx, err := m.getCurrentHeadContext()
 	if err != nil {
@@ -74,7 +84,13 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 			out(nil, "plan", fmt.Sprintf("The refs %s has no commits associated with it.", aziclicommon.KeywordText(headCtx.GetRefs())), nil, true)
 		}
 	}
-	remoteCodeState, err := m.cospMgr.ReadCodeSourceCodeState()
+	remoteTree, err := m.GetCurrentHeadTree(absLang, headCtx.GetRefs())
+	if err != nil {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "plan", fmt.Sprintf("The refs %s could not read the remote tree.", aziclicommon.KeywordText(headCtx.GetRefs())), nil, true)
+		}
+	}
+	remoteCodeState, err := m.cospMgr.BuildCodeSourceCodeStateForTree(remoteTree)
 	if err != nil {
 		out(nil, "", errPlanningProcessFailed, nil, true)
 		return failedOpErr(output, err)
