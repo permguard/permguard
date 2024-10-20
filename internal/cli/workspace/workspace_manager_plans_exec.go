@@ -60,7 +60,8 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 	// Executes the validation for the current head
 	output, err := m.execInternalValidate(true, out)
 	if err != nil {
-		return failedOpErr(output, err)
+		output, err := failedOpErr(output, err)
+		return out(output, "", fmt.Sprintf("Please execute '%s' to perform a comprehensive validation check for any potential errors.", aziclicommon.CliCommandText("permguard validate")), nil, true), err
 	}
 
 	if m.ctx.IsVerboseTerminalOutput() {

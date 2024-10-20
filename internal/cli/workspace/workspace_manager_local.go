@@ -248,15 +248,29 @@ func (m *WorkspaceManager) retrieveCodeMap() ([]azicliwkscosp.CodeFile, []azicli
 	if err != nil {
 		return nil, nil, err
 	}
+
 	validFiles := []azicliwkscosp.CodeFile{}
 	invalidFiles := []azicliwkscosp.CodeFile{}
+	duplicateFiles := []azicliwkscosp.CodeFile{}
+	nameMap := make(map[string]int)
+
 	for _, codeFile := range codeFiles {
 		if codeFile.HasErrors {
 			invalidFiles = append(invalidFiles, codeFile)
-		}
-		if !codeFile.HasErrors {
+		} else {
+			nameMap[codeFile.OName]++
+			if nameMap[codeFile.OName] == 2 {
+				duplicateFiles = append(duplicateFiles, codeFile)
+			}
 			validFiles = append(validFiles, codeFile)
 		}
 	}
+
+	for _, dupFile := range duplicateFiles {
+		dupFile.HasErrors = true
+		dupFile.ErrorMessage = "permcode: duplicate object name found in the code files. please ensure that there are no duplicate object names"
+		invalidFiles = append(invalidFiles, dupFile)
+	}
+
 	return validFiles, invalidFiles, nil
 }
