@@ -216,7 +216,8 @@ func (m *WorkspaceManager) execInternalValidate(internal bool, out aziclicommon.
 					out(nil, "", fmt.Sprintf("		%s: %s", aziclicommon.NumberText(codeFile.Section+1), aziclicommon.LogErrorText(codeFile.ErrorMessage)), nil, true)
 				} else {
 					out(nil, "", fmt.Sprintf("		%s: %s %s", aziclicommon.NumberText(codeFile.Section+1),
-						aziclicommon.KeywordText(codeFile.OID), aziclicommon.LogErrorText(codeFile.ErrorMessage)), nil, true)
+						aziclicommon.IDText(codeFile.OID), aziclicommon.NameText(codeFile.OName)), nil, true)
+					out(nil, "", fmt.Sprintf("		   %s", aziclicommon.LogErrorText(codeFile.ErrorMessage)), nil, true)
 				}
 			}
 		}

@@ -58,19 +58,25 @@ func CliCommandText(text string) string {
 
 // IDText returns the ID text.
 func IDText(text string) string {
-	out := color.New(color.FgCyan)
+	out := color.New(color.FgHiCyan)
+	return out.Sprintf(text)
+}
+
+// NameText returns the name text.
+func NameText(text string) string {
+	out := color.New(color.FgHiYellow)
 	return out.Sprintf(text)
 }
 
 // RemoteOperationText returns the remote operation text.
 func RemoteOperationText(text string) string {
-	out := color.New(color.FgYellow)
+	out := color.New(color.FgHiYellow)
 	return out.Sprintf(text)
 }
 
 // FileText returns the file text.
 func FileText(text string) string {
-	out := color.New(color.FgYellow)
+	out := color.New(color.FgHiYellow)
 	return out.Sprintf(text)
 }
 
