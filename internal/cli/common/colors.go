@@ -28,7 +28,7 @@ func LogHeaderText(text string) string {
 
 // LogErrorText returns the log error text.
 func LogErrorText(text string) string {
-	out := color.New(color.FgRed)
+	out := color.New(color.FgHiRed)
 	return out.Sprintf(text)
 }
 
@@ -46,7 +46,13 @@ func NormalText(text string) string {
 
 // KeywordText returns the keyword text.
 func KeywordText(text string) string {
-	out := color.New(color.FgMagenta)
+	out := color.New(color.FgHiMagenta)
+	return out.Sprintf(text)
+}
+
+// CliCommandText returns the cli command text.
+func CliCommandText(text string) string {
+	out := color.New(color.FgHiGreen)
 	return out.Sprintf(text)
 }
 
@@ -70,13 +76,13 @@ func FileText(text string) string {
 
 // NumberText returns number text.
 func NumberText(digit int) string {
-	out := color.New(color.FgGreen)
+	out := color.New(color.FgHiGreen)
 	return out.Sprintf("%d", digit)
 }
 
 // BigNumberText returns big number text.
 func BigNumberText(digit int64) string {
-	out := color.New(color.FgGreen)
+	out := color.New(color.FgHiGreen)
 	return out.Sprintf("%d", digit)
 }
 
