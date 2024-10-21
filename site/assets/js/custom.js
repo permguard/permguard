@@ -187,7 +187,7 @@ function detectForcedDarkMode() {
     const ctx = document.createElement("canvas").getContext("2d");
     const svg = `
           <svg width="1" height="1" xmlns="http://www.w3.org/2000/svg">
-              <rect width="1" height="1" fill="white" />
+              <rect width="1" height="1" fill="white"  />
           </svg>
       `;
 
