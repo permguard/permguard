@@ -77,7 +77,10 @@ func (s SQLiteCentralStoragePAP) readObject(db *sqlx.DB, oid string) (*azlangobj
 	if errkey != nil || keyValue == nil || keyValue.Value == nil {
 		return nil, nil
 	}
-	obj := azlangobjs.NewObject(keyValue.Value)
+	obj, err := azlangobjs.NewObject(keyValue.Value)
+	if err != nil {
+		return nil, err
+	}
 	return obj, nil
 }
 
