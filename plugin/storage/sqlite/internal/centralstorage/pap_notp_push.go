@@ -61,7 +61,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 			if errkey != nil || keyValue == nil || keyValue.Value == nil {
 				return nil, nil
 			}
-			return azlangobjs.NewObject(keyValue.Value), nil
+			return azlangobjs.NewObject(keyValue.Value)
 		})
 		if err != nil {
 			return nil, err

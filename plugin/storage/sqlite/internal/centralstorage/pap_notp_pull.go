@@ -61,7 +61,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 			if err != nil || keyValue == nil || keyValue.Value == nil {
 				return nil, nil
 			}
-			return azlangobjs.NewObject(keyValue.Value), nil
+			return azlangobjs.NewObject(keyValue.Value)
 		})
 		hasConflicts = hasMatch && len(history) > 1
 		if headCommitID == azlangobjs.ZeroOID && remoteRefSPacket.RefPrevCommit != azlangobjs.ZeroOID {

@@ -71,9 +71,16 @@ func (m *WorkspaceManager) plan(currentCodeObsStates []azicliwkscosp.CodeObjectS
 
 // buildPlanTree builds the plan tree.
 func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, absLang azlang.LanguageAbastraction) (*azlangobjs.Tree, *azlangobjs.Object, error) {
-	tree := azlangobjs.NewTree()
+	tree, err := azlangobjs.NewTree()
+	if err != nil {
+		return nil, nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree cannot be created")
+	}
 	for _, planItem := range plan {
-		if err := tree.AddEntry(azlangobjs.NewTreeEntry(planItem.OType, planItem.OID, planItem.OName)); err != nil {
+		treeItem, err := azlangobjs.NewTreeEntry(planItem.OType, planItem.OID, planItem.OName)
+		if err != nil {
+			return nil, nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree item cannot be created")
+		}
+		if err := tree.AddEntry(treeItem); err != nil {
 			return nil, nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree item cannot be added to the tree because of errors in the code files")
 		}
 	}
@@ -86,7 +93,10 @@ func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, a
 
 // buildPlanCommit builds the plan commit.
 func (m *WorkspaceManager) buildPlanCommit(tree string, parentCommitID string, absLang azlang.LanguageAbastraction) (*azlangobjs.Commit, *azlangobjs.Object, error) {
-	commit := azlangobjs.NewCommit(tree, parentCommitID, "", time.Now(), "", time.Now(), "cli commit")
+	commit, err := azlangobjs.NewCommit(tree, parentCommitID, "", time.Now(), "", time.Now(), "cli commit")
+	if err != nil {
+		return nil, nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: commit cannot be created")
+	}
 	commitObj, err := absLang.CreateCommitObject(commit)
 	if err != nil {
 		return nil, nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: commit object cannot be created")

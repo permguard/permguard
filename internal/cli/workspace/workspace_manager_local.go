@@ -222,9 +222,16 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	if err := m.cospMgr.SaveCodeSourceCodeState(codeObsState); err != nil {
 		return "", blbCodeFiles, err
 	}
-	tree := azlangobjs.NewTree()
+	tree, err := azlangobjs.NewTree()
+	if err != nil {
+		return "", blbCodeFiles, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree object cannot be created")
+	}
 	for _, codeObjState := range codeObsState {
-		if err := tree.AddEntry(azlangobjs.NewTreeEntry(codeObjState.OType, codeObjState.OID, codeObjState.OName)); err != nil {
+		treeItem, err := azlangobjs.NewTreeEntry(codeObjState.OType, codeObjState.OID, codeObjState.OName)
+		if err != nil {
+			return "", nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree item cannot be created")
+		}
+		if err := tree.AddEntry(treeItem); err != nil {
 			return "", blbCodeFiles, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree item cannot be added to the tree because of errors in the code files")
 		}
 	}
