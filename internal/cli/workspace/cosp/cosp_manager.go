@@ -192,16 +192,16 @@ func (m *COSPManager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 		if len(record) < 8 {
 			return fmt.Errorf("invalid record format")
 		}
-		mode64, err := strconv.ParseUint(record[4], 10, 32)
+		mode64, err := strconv.ParseUint(record[6], 10, 32)
 		if err != nil {
 			return err
 		}
 		mode := uint32(mode64)
-		section, err := strconv.Atoi(record[5])
+		section, err := strconv.Atoi(record[7])
 		if err != nil {
 			return err
 		}
-		hasErrors, err := strconv.ParseBool(record[6])
+		hasErrors, err := strconv.ParseBool(record[8])
 		if err != nil {
 			return err
 		}
@@ -292,6 +292,12 @@ func (m *COSPManager) convertCodeFileToCodeObjectState(codeFile CodeFile) (*Code
 	}
 	if codeFile.OID == "" {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordMalformed, "cli: code file OID is empty.")
+	}
+	if codeFile.CodeID == "" {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordMalformed, "cli: code file CodeID is empty.")
+	}
+	if codeFile.CodeType == "" {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordMalformed, "cli: code file CodeType is empty.")
 	}
 	return &CodeObjectState{
 		CodeObject: CodeObject{
