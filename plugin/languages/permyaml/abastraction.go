@@ -135,7 +135,7 @@ func (abs *YAMLLanguageAbstraction) CreateMultiSectionsObjects(path string, data
 		if err != nil {
 			return nil, err
 		}
-		multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), codeID, codeType, name, i, err)
+		multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), name, codeID, codeType, i, err)
 	}
 	return multiSecObj, nil
 }
@@ -169,6 +169,6 @@ func (abs *YAMLLanguageAbstraction) CreateSchemaSectionsObject(path string, data
 	if err != nil {
 		return nil, err
 	}
-	multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), codeID, codeType, name, 0, err)
+	multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), name, codeID, codeType, 0, err)
 	return multiSecObj, nil
 }
