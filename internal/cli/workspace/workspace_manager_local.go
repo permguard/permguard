@@ -214,7 +214,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 		}
 		blbCodeFiles = append(blbCodeFiles, codeFile)
 	}
-	if err := m.cospMgr.SaveCodeSourceCodeMap(blbCodeFiles); err != nil {
+ 	if err := m.cospMgr.SaveCodeSourceCodeMap(blbCodeFiles); err != nil {
 		return "", blbCodeFiles, err
 	}
 	for _, blobCodeFile := range blbCodeFiles {
