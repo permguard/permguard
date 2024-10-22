@@ -169,6 +169,8 @@ func (m *COSPManager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 			codeFile.OID,
 			codeFile.OType,
 			codeFile.OName,
+			codeFile.CodeID,
+			codeFile.CodeType,
 			fmt.Sprintf("%d", codeFile.Mode),
 			fmt.Sprintf("%d", codeFile.Section),
 			fmt.Sprintf("%v", codeFile.HasErrors),
@@ -208,10 +210,12 @@ func (m *COSPManager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 			OID:          record[1],
 			OType:        record[2],
 			OName:        record[3],
+			CodeID:       record[4],
+			CodeType:     record[5],
 			Mode:         mode,
 			Section:      section,
 			HasErrors:    hasErrors,
-			ErrorMessage: record[7],
+			ErrorMessage: record[9],
 		}
 		codeFiles = append(codeFiles, codeFile)
 		return nil
@@ -245,9 +249,11 @@ func (m *COSPManager) BuildCodeSourceCodeStateForTree(tree *azlangobjs.Tree) ([]
 	for _, entry := range tree.GetEntries() {
 		codeObjState := CodeObjectState{
 			CodeObject: CodeObject{
-				OName: entry.GetOName(),
-				OType: entry.GetType(),
-				OID:   entry.GetOID(),
+				OName: 		entry.GetOName(),
+				OType: 		entry.GetType(),
+				OID:		entry.GetOID(),
+				CodeID: 	entry.GetCodeID(),
+				CodeType: 	entry.GetCodeType(),
 			},
 			State: "",
 		}
@@ -289,9 +295,11 @@ func (m *COSPManager) convertCodeFileToCodeObjectState(codeFile CodeFile) (*Code
 	}
 	return &CodeObjectState{
 		CodeObject: CodeObject{
-			OName: codeFile.OName,
-			OType: codeFile.OType,
-			OID:   codeFile.OID,
+			OName: 		codeFile.OName,
+			OType: 		codeFile.OType,
+			OID:   		codeFile.OID,
+			CodeID: 	codeFile.CodeID,
+			CodeType: 	codeFile.CodeType,
 		},
 	}, nil
 }
@@ -305,6 +313,8 @@ func (m *COSPManager) saveCodeObjectStates(path string, codeObjects []CodeObject
 			codeObject.OName,
 			codeObject.OType,
 			codeObject.OID,
+			codeObject.CodeID,
+			codeObject.CodeType,
 		}
 	}
 	err := m.persMgr.WriteCSVStream(azicliwkspers.PermguardDir, path, nil, codeObjects, rowFunc, true)
@@ -324,9 +334,11 @@ func (m *COSPManager) readCodeObjectStates(path string) ([]CodeObjectState, erro
 		codeObject := CodeObjectState{
 			State: record[0],
 			CodeObject: CodeObject{
-				OName: record[1],
-				OType: record[2],
-				OID:   record[3],
+				OName: 		record[1],
+				OType: 		record[2],
+				OID:   		record[3],
+				CodeID: 	record[4],
+				CodeType: 	record[5],
 			},
 		}
 		codeObjects = append(codeObjects, codeObject)

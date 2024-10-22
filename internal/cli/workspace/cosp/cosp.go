@@ -49,6 +49,8 @@ type CodeFile struct {
 	OID          string `json:"oid"`
 	OType        string `json:"otype"`
 	OName        string `json:"oname"`
+	CodeID	   	 string `json:"codeid"`
+	CodeType	 string `json:"codetype"`
 	Mode         uint32 `json:"mode"`
 	Section      int    `json:"section"`
 	HasErrors    bool   `json:"has_errors"`
@@ -66,9 +68,11 @@ func ConvertCodeFilesToPath(files []CodeFile) []string {
 
 // CodeObject represents the code object.
 type CodeObject struct {
-	OName string `json:"oname"`
-	OType string `json:"otype"`
-	OID   string `json:"oid"`
+	OName 		string `json:"oname"`
+	OType 		string `json:"otype"`
+	OID			string `json:"oid"`
+	CodeID 	 	string `json:"codeid"`
+	CodeType 	string `json:"codetype"`
 }
 
 // CodeObjectState represents the code object state.

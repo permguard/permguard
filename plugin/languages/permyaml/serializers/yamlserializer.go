@@ -97,10 +97,10 @@ func (s *YamlSerializer) UnmarshalYaml(data []byte) (any, error) {
 }
 
 // UnmarshalLangType unmarshals a language type.
-func (s *YamlSerializer) UnmarshalLangType(data []byte) (string, any, error) {
+func (s *YamlSerializer) UnmarshalLangType(data []byte) (string, any, string, string, error) {
 	instance, err := s.UnmarshalYaml(data)
 	if err != nil {
-		return "", nil, err
+		return "", nil, "", "", err
 	}
 	switch v := instance.(type) {
 	case *Permission:
@@ -113,7 +113,7 @@ func (s *YamlSerializer) UnmarshalLangType(data []byte) (string, any, error) {
 			Permit: v.Permit,
 			Forbid: v.Forbid,
 		}
-		return langPerm.Name, langPerm, nil
+		return langPerm.Name, langPerm, langPerm.Name, aztypes.ClassTypeACPermission, nil
 	case *Policy:
 		langPolicy := &aztypes.Policy{
 			Class: aztypes.Class{
@@ -127,11 +127,11 @@ func (s *YamlSerializer) UnmarshalLangType(data []byte) (string, any, error) {
 		for _, action := range v.Actions {
 			langPolicy.Actions = append(langPolicy.Actions, aztypes.ARString(action))
 		}
-		return langPolicy.Name, langPolicy, nil
+		return langPolicy.Name, langPolicy, langPolicy.Name, aztypes.ClassTypeACPolicy, nil
 	case *aztypes.Schema:
 		v.SyntaxVersion = aztypes.PermCodeSyntax
 		v.Type = aztypes.ClassTypeSchema
-		return "schema", v, nil
+		return aztypes.ClassTypeSchema, v, aztypes.ClassTypeSchema, aztypes.ClassTypeSchema, nil
 	}
-	return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, errFileMessage)
+	return "", nil, "", "", azerrors.WrapSystemError(azerrors.ErrLanguageFile, errFileMessage)
 }
