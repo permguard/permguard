@@ -116,26 +116,26 @@ func (abs *YAMLLanguageAbstraction) CreateMultiSectionsObjects(path string, data
 		return nil, err
 	}
 	for i, doc := range docs {
-		name, content, err := serializer.UnmarshalLangType(doc)
+		name, content, codeID, codeType, err := serializer.UnmarshalLangType(doc)
 		if err != nil {
-			multiSecObj.AddSectionObjectWithParams(nil, "", "", i, err)
+			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
 			continue
 		}
 		jsonType, err := abs.permCodeMng.MarshalClass(content, true, true, true)
 		if err != nil {
-			multiSecObj.AddSectionObjectWithParams(nil, "", "", i, err)
+			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
 			continue
 		}
 		obj, err := abs.objMng.CreateBlobObject(jsonType)
 		if err != nil {
-			multiSecObj.AddSectionObjectWithParams(nil, "", "", i, err)
+			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
 			continue
 		}
 		objInfo, err := abs.objMng.GetObjectInfo(obj)
 		if err != nil {
 			return nil, err
 		}
-		multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), name, i, err)
+		multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), codeID, codeType, name, i, err)
 	}
 	return multiSecObj, nil
 }
@@ -150,25 +150,25 @@ func (abs *YAMLLanguageAbstraction) CreateSchemaSectionsObject(path string, data
 	if err != nil {
 		return nil, err
 	}
-	name, content, err := serializer.UnmarshalLangType(data)
+	name, content, codeID, codeType, err := serializer.UnmarshalLangType(data)
 	if err != nil {
-		multiSecObj.AddSectionObjectWithParams(nil, "", "", 0, err)
+		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, err)
 		return multiSecObj, nil
 	}
 	jsonType, err := abs.permCodeMng.MarshalClass(content, true, true, true)
 	if err != nil {
-		multiSecObj.AddSectionObjectWithParams(nil, "", "", 0, err)
+		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, err)
 		return multiSecObj, nil
 	}
 	obj, err := abs.objMng.CreateBlobObject(jsonType)
 	if err != nil {
-		multiSecObj.AddSectionObjectWithParams(nil, "", "", 0, err)
+		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, err)
 		return multiSecObj, nil
 	}
 	objInfo, err := abs.objMng.GetObjectInfo(obj)
 	if err != nil {
 		return nil, err
 	}
-	multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), name, 0, err)
+	multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), codeID, codeType, name, 0, err)
 	return multiSecObj, nil
 }

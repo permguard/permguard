@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	aztypes "github.com/permguard/permguard-abs-language/pkg/permcode/types"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
@@ -126,6 +127,8 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 			HasErrors: secObj.GetError() != nil,
 			OType:     secObj.GetObjectType(),
 			OName:     secObj.GetObjectName(),
+			CodeID:    secObj.GetCodeID(),
+			CodeType:  secObj.GetCodeType(),
 		}
 		if codeFile.HasErrors {
 			codeFile.ErrorMessage = azerrors.GetSystemErrorMessage(secObj.GetError())
@@ -164,6 +167,8 @@ func (m *WorkspaceManager) blobifyPermCodeFile(absLang azlang.LanguageAbastracti
 			HasErrors: secObj.GetError() != nil,
 			OType:     secObj.GetObjectType(),
 			OName:     secObj.GetObjectName(),
+			CodeID:    secObj.GetCodeID(),
+			CodeType:  secObj.GetCodeType(),
 		}
 		if codeFile.HasErrors {
 			codeFile.ErrorMessage = azerrors.GetSystemErrorMessage(secObj.GetError())
@@ -203,6 +208,8 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 			Section:      0,
 			Mode:         0,
 			HasErrors:    true,
+			CodeID: 	 aztypes.ClassTypeSchema,
+			CodeType: 	 aztypes.ClassTypeSchema,
 			ErrorMessage: "permcode: the schema file 'schema.yml' is missing. please ensure there are no duplicate schema files and that the required schema file is present.",
 		}
 		blbCodeFiles = append(blbCodeFiles, codeFile)
@@ -227,7 +234,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 		return "", blbCodeFiles, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree object cannot be created")
 	}
 	for _, codeObjState := range codeObsState {
-		treeItem, err := azlangobjs.NewTreeEntry(codeObjState.OType, codeObjState.OID, codeObjState.OName)
+		treeItem, err := azlangobjs.NewTreeEntry(codeObjState.OType, codeObjState.OID, codeObjState.OName, codeObjState.CodeID, codeObjState.CodeType)
 		if err != nil {
 			return "", nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree item cannot be created")
 		}
