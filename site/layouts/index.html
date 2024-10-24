@@ -285,10 +285,7 @@
       <div class="code__img__header__btn code__img__header__btn--yellow"></div>
       <div class="code__img__header__btn code__img__header__btn--green"></div>
     </div>
-    <pre
-      slot="first"
-      class="theme-devibeans"
-    ><code class="language-go">
+    <pre slot="first" class="theme-devibeans"><code class="language-go">
 func checkPermissions(token, system, resource, action string) bool {
     payload := decodeJWT(token)
     roles, ok := payload["roles"].([]string)
@@ -322,10 +319,7 @@ hasPermissions := checkPermissions(token, system, "inventory", "view")
       <div class="code__img__header__btn code__img__header__btn--green"></div>
     </div>
     <img-comparison-slider>
-      <pre
-        slot="first"
-        class="theme-devibeans"
-      ><code class="language-go">
+      <pre slot="first" class="theme-devibeans"><code class="language-go">
 func checkPermissions(token, system, resource, action string) bool {
   payload := decodeJWT(token)
   roles, ok := payload["roles"].([]string)
