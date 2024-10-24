@@ -38,8 +38,11 @@
             id="section-{{ md5 .Title }}"
           >
             <ul class="btn-toggle-nav list-unstyled fw-normal pb-1 small">
-              {{ range .Pages }} {{ if .IsNode }} {{ $active := in
-              $currentPage.RelPermalink .RelPermalink }}
+              {{ range .Pages }} {{ if .IsNode }} {{ $normalizedCurrentPage :=
+              replaceRE "/\\d+(\\.\\d+)*/" "/" $currentPage.RelPermalink -}} {{
+              $normalizedSection := replaceRE "/\\d+(\\.\\d+)*/" "/"
+              .RelPermalink -}} {{ $active := in $normalizedCurrentPage
+              $normalizedSection }}
               <li class="my-1 ms-3">
                 <button
                   class="btn btn-toggle align-items-center rounded collapsed"
@@ -54,8 +57,11 @@
                   id="section-{{ md5 .Title }}"
                 >
                   <ul class="btn-toggle-nav list-unstyled fw-normal pb-1 small">
-                    {{ range .Pages }} {{ $active := in
-                    $currentPage.RelPermalink .RelPermalink }}
+                    {{ range .Pages }} {{ $normalizedCurrentPage := replaceRE
+                    "/\\d+(\\.\\d+)*/" "/" $currentPage.RelPermalink -}} {{
+                    $normalizedSection := replaceRE "/\\d+(\\.\\d+)*/" "/"
+                    .RelPermalink -}} {{ $active := in $normalizedCurrentPage
+                    $normalizedSection }}
                     <li>
                       <a
                         class="docs-link rounded{{ if $active }} active{{ end }}"
@@ -67,8 +73,11 @@
                   </ul>
                 </div>
               </li>
-              {{ else }} {{ $active := in $currentPage.RelPermalink
-              .RelPermalink }}
+              {{ else }} {{ $normalizedCurrentPage := replaceRE
+              "/\\d+(\\.\\d+)*/" "/" $currentPage.RelPermalink -}} {{
+              $normalizedSection := replaceRE "/\\d+(\\.\\d+)*/" "/"
+              .RelPermalink -}} {{ $active := in $normalizedCurrentPage
+              $normalizedSection }}
               <li>
                 <a
                   class="docs-link rounded{{ if $active }} active{{ end }}"
@@ -80,7 +89,10 @@
             </ul>
           </div>
         </li>
-        {{ else }} {{ $active := in $currentPage.RelPermalink .RelPermalink }}
+        {{ else }} {{ $normalizedCurrentPage := replaceRE "/\\d+(\\.\\d+)*/" "/"
+        $currentPage.RelPermalink -}} {{ $normalizedSection := replaceRE
+        "/\\d+(\\.\\d+)*/" "/" .RelPermalink -}} {{ $active := in
+        $normalizedCurrentPage $normalizedSection }}
         <li>
           <a
             class="docs-link rounded{{ if $active }} active{{ end }}"
