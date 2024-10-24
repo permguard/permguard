@@ -170,7 +170,9 @@ languageElements.forEach((el) => {
   el.addEventListener("click", () => handleSelectedLanguageChange(el));
 });
 
-switchInput.addEventListener("change", toggleIsPermguard);
+if (switchInput) {
+  switchInput.addEventListener("change", toggleIsPermguard);
+}
 
 // Detect forced dark mode
 function detectForcedDarkMode() {
