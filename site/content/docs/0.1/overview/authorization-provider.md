@@ -18,6 +18,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
+
 `Permguard` is a modern `Authorization Provider` that implements an advanced authorization layer. It delivers dynamic access control by managing user permissions, roles, and policies, ensuring secure and efficient authorization across diverse systems and applications.
 
 ## Infrastructure
@@ -59,4 +60,4 @@ There are two primary use cases for this integration:
 - **API**: An endpoint accepts an authentication token (e.g., JWT) and evaluates if the associated identity has the necessary permissions for the requested operations.
 - **Background**: A background process, such as a job or long-running worker, checks if the identity linked to the action has the required permissions. In a distributed system, this identity might be included in the message being processed.
 
-For additional use cases, see [here](/docs/overview/patterns-through-use-cases).
+For additional use cases, see [here](/docs/0.1/overview/patterns-through-use-cases).

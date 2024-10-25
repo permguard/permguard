@@ -18,18 +18,21 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
+
 In `Permguard`, multiple repositories can be created, and each of them has a single **schema**. This provides a structured method for modelling the authorization model.
 
 {{< callout context="note" icon="info-circle" >}}
-In the context of the [MagicFarmacia sample](/docs/overview/adoption-through-example#integration-use-case-pharmacy-branch-management), , the schema primarily represents two domains: the `platform` tenant, which serves as the master tenant capable of managing all branches, and the `pharmacy branch` tenant.
+In the context of the [MagicFarmacia sample](/docs/0.1/overview/adoption-through-example#integration-use-case-pharmacy-branch-management), , the schema primarily represents two domains: the `platform` tenant, which serves as the master tenant capable of managing all branches, and the `pharmacy branch` tenant.
 
 The platform implements features to create a new tenant for each branch, which can be accomplished using the internal Permguard API.
 {{< /callout >}}
 
 ## Schema
+
 A schema serves as a logical representation, organizing resources and actions, and also includes metadata annotations.
 
 ## Domain
+
 Additionally, a schema can be further subdivided into domains, offering enhanced granularity in resource management. A domain provides another level of logical representation, particularly advantageous for schemas employing a `Domain-Driven Design` (`DDD`) approach. By structuring schemas into domains, users can streamline development efforts and ensure architectural coherence.
 
 ```json
@@ -49,6 +52,7 @@ Typically, fewer Resources and Actions are modeled compared to the entities in t
 {{< /callout >}}
 
 ## Resource
+
 A **Resource** serves as the central entity within `Permguard`. It represents a logical entity within the application that must be enriched with authorization policies.
 
 When creating authorization Resources, it's essential to consider `performance` and execution time required by the application to evaluate policies. This ensures optimal performance and efficient policy evaluation within the application context.
@@ -64,6 +68,7 @@ In summary, `Resources` in Permguard provide a structured approach to managing a
 ```
 
 ## Action
+
 An **action** is a specific operation that can be performed on a resource. Actions are used to define the operations that can be performed on a resource, such as `read`, `write`, `delete`, and `list`.
 
 ```json

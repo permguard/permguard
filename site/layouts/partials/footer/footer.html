@@ -31,32 +31,34 @@
       </div>
       <nav class="col-8 col-lg-4 col-xl-3 footer__col">
         <h3 id="nav0" class="text-white text-small m-0 fw-medium">Overview</h3>
+        {{ $currentPage := . -}} {{ $versions := site.Params.doks.docsVersions
+        }} {{ $currentVersion := index $versions (sub (len $versions) 1) }}
         <ul class="d-flex flex-column gap-3 footer__links">
           <li class="mt-2">
             <a
               class="text-small color-secondary fw-medium"
-              href="/docs/overview/introduction-to-permguard/"
+              href="/docs/{{ $currentVersion }}/overview/introduction-to-permguard/"
               >Introduction to Permguard</a
             >
           </li>
           <li>
             <a
               class="text-small color-secondary fw-medium"
-              href="/docs/overview/why-permguard/"
+              href="/docs/{{ $currentVersion }}/overview/why-permguard/"
               >Why Permguard</a
             >
           </li>
           <li>
             <a
               class="text-small color-secondary fw-medium"
-              href="/docs/overview/patterns-through-use-cases/"
+              href="/docs/{{ $currentVersion }}/overview/patterns-through-use-cases/"
               >Patterns Through Use Cases</a
             >
           </li>
           <li>
             <a
               class="text-small color-secondary fw-medium"
-              href="/docs/concepts/authn-authz/authn-vs-authz/"
+              href="/docs/{{ $currentVersion }}/concepts/authn-authz/authn-vs-authz/"
               >Concepts</a
             >
           </li>
@@ -68,21 +70,21 @@
           <li class="mt-2">
             <a
               class="text-small color-secondary fw-medium"
-              href="/docs/workspace/initializing-working-directories/"
+              href="/docs/{{ $currentVersion }}/workspace/initializing-working-directories/"
               >Initializing Working Directories</a
             >
           </li>
           <li>
             <a
               class="text-small color-secondary fw-medium"
-              href="/docs/using-the-cli/how-to-use/"
+              href="/docs/{{ $currentVersion }}/using-the-cli/how-to-use/"
               >Use the Permguard CLI</a
             >
           </li>
           <li>
             <a
               class="text-small color-secondary fw-medium"
-              href="/docs/coding-language/configuration-languages/"
+              href="/docs/{{ $currentVersion }}/coding-language/configuration-languages/"
               >Configuration Languages</a
             >
           </li>
@@ -94,14 +96,14 @@
           <li class="mt-2">
             <a
               class="text-small color-secondary fw-medium"
-              href="/docs/running-the-server/configurations/"
+              href="/docs/{{ $currentVersion }}/running-the-server/configurations/"
               >Configurations</a
             >
           </li>
           <li>
             <a
               class="text-small color-secondary fw-medium"
-              href="/docs/running-the-server/cli-flags/"
+              href="/docs/{{ $currentVersion }}/running-the-server/cli-flags/"
               >Cli Flags</a
             >
           </li>
