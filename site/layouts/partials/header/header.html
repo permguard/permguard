@@ -207,27 +207,43 @@
 
         <!-- Versioning dropdown  -->
         {{ if eq site.Params.doks.docsVersioning true -}}
+<div class="dropdown mt-1 order-lg-3">
+  <button class="btn btn-dropdown dropdown-toggle" id="doks-versions" data-bs-toggle="dropdown" aria-expanded="false" data-bs-display="static" aria-label="Toggle version menu">
+    <span class="d-none">Doks</span> 
+    {{ $currentPage := . -}}
+    {{ $versions := site.Params.doks.docsVersions }}
+    {{ $currentVersion := index $versions (sub (len $versions) 1) }}
+    {{ range $index, $version := site.Params.doks.docsVersions }}
+      {{ if in $currentPage.Permalink (printf "/docs/%s/" $version) }}
+        {{ $currentVersion = $version }}
+      {{ end }}
+    {{ end }}
+    v{{ $currentVersion }}
+    <span class="dropdown-caret">
+      <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-down" width="24" height="24" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+        <path d="M6 9l6 6l6 -6"></path>
+      </svg>
+    </span>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-lg-end me-lg-2 shadow rounded border-0" aria-labelledby="doks-versions">
+    <li>
+      <a class="dropdown-item current" aria-current="true" href="/docs/{{ $currentVersion }}/overview/introduction-to-permguard/">
+        {{ if eq $currentVersion (index site.Params.doks.docsVersions (sub (len site.Params.doks.docsVersions) 1)) }} 
+          Latest v{{ $currentVersion }} 
+        {{ else }} 
+          v{{ $currentVersion }} 
+        {{ end }}
+      </a>
+    </li>
+    <li><hr class="dropdown-divider"></li>
+    {{ range site.Params.doks.docsVersions }}
+      <li><a class="dropdown-item" href="/docs/{{ . }}/overview/introduction-to-permguard/">v{{ . }}</a></li>
+    {{ end }}
+  </ul>
+</div>
+{{ end -}}
 
-        <div class="dropdown mt-1 order-lg-3">
-          <button class="btn btn-dropdown dropdown-toggle" id="doks-versions" data-bs-toggle="dropdown" aria-expanded="false" data-bs-display="static" aria-label="Toggle version menu">
-            <span class="d-none">Doks</span> v{{ site.Params.doks.docsVersion }}
-            <span class="dropdown-caret">
-              <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-down" width="24" height="24" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                <path d="M6 9l6 6l6 -6"></path>
-              </svg>
-            </span>
-          </button>
-          <ul class="dropdown-menu dropdown-menu-lg-end me-lg-2 shadow rounded border-0" aria-labelledby="doks-versions">
-            <li><a class="dropdown-item current" aria-current="true" href="/docs/{{ site.Params.doks.docsVersion }}/prologue/introduction/">Latest ({{ site.Params.doks.docsVersion }}.x)</a></li>
-            <li><hr class="dropdown-divider"></li>
-            <li><a class="dropdown-item" href="/docs/0.2/prologue/introduction/">v0.2.x</a></li>
-            <li><a class="dropdown-item" href="/docs/0.1/prologue/introduction/">v0.1.x</a></li>
-            <li><hr class="dropdown-divider"></li>
-            <li><a class="dropdown-item" href="/docs/versions/">All versions</a></li>
-          </ul>
-        </div>
-        {{ end -}}
 
         <!-- Color mode toggler -->
         {{ if and (eq site.Params.doks.colorMode "auto") site.Params.doks.colorModeToggler -}}
