@@ -161,6 +161,10 @@ func (m *COSPManager) readCodeSourceConfig() (*codeLocalConfig, error) {
 
 // SaveCodeSourceCodeMap saves the code map in the code source.
 func (m *COSPManager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
+	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, m.getCodeSourceDir())
+	if err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to create code plan")
+	}
 	path := filepath.Join(m.getCodeSourceDir(), hiddenCodeMapFile)
 	rowFunc := func(record any) []string {
 		codeFile := record.(CodeFile)
@@ -177,7 +181,7 @@ func (m *COSPManager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 			codeFile.ErrorMessage,
 		}
 	}
-	err := m.persMgr.WriteCSVStream(azicliwkspers.PermguardDir, path, nil, codeFiles, rowFunc, true)
+	err = m.persMgr.WriteCSVStream(azicliwkspers.PermguardDir, path, nil, codeFiles, rowFunc, true)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to write code map")
 	}
