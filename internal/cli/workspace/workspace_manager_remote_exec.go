@@ -20,8 +20,10 @@ import (
 	"fmt"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azlang "github.com/permguard/permguard/pkg/core/languages"
 	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
+	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -94,6 +96,48 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.Pri
 	return output, nil
 }
 
+// execInternalPullSourceCode fetches the source code from the remote repository.
+func (m *WorkspaceManager) execInternalPullSourceCode(absLang azlang.LanguageAbastraction,  commitID string, codeState []azicliwkscosp.CodeFile, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", "Failed to pull source code.", nil, true)
+		return output, err
+	}
+	output := m.ExecPrintContext(nil, out)
+
+	idMaps := make(map[string]bool)
+	for _, state := range codeState {
+		idMaps[state.OID] = true
+	}
+
+	if !m.isWorkspaceDir() {
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
+	}
+
+	commitObj, err := m.cospMgr.ReadObject(commitID)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	commit, err := absLang.GetCommitObject(commitObj)
+
+	treeObj, err := m.cospMgr.ReadObject(commit.GetTree())
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	tree, err := absLang.GetTreeeObject(treeObj)
+
+	for _, entry := range tree.GetEntries() {
+		if _, ok := idMaps[entry.GetOID()]; !ok {
+			entryObj, err := m.cospMgr.ReadObject(entry.GetOID())
+			if err != nil {
+				return failedOpErr(nil, err)
+			}
+			print(entryObj.GetOID())
+		}
+	}
+
+	return output, nil
+}
+
 // ExecPull fetches the latest changes from the remote repository and constructs the remote state.
 func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
@@ -105,12 +149,6 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
-
-	fileLock, err := m.tryLock()
-	if err != nil {
-		return nil, err
-	}
-	defer fileLock.Unlock()
 
 	// Creates the abstraction for the language
 	lang, err := m.cfgMgr.GetLanguage()
@@ -162,7 +200,6 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 				return failedOpErr(nil, err)
 			}
 		}
-		return failedOpErr(nil, err)
 	}
 	err = m.rfsMgr.SaveRefsConfig(headCtx.repoID, headCtx.refs, remoteCommitID)
 	if err != nil {

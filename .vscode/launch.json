@@ -18,7 +18,7 @@
         // "args": ["refresh", "-w", "../../../playground-yaml/", "-v", "-o", "json"],
         // "args": ["refresh", "-w", "../../../playground-yaml/", "-o", "json"],
         // "args": ["plan", "-w", "../../../playground-yaml/"],
-        "args": ["apply", "-w", "../../../playground-yaml/"],
+        "args": ["pull", "-w", "/Users/nicolagallo/source/tmp/permy"],
         // "args": ["pull", "-w", "../../../playground-yaml/"],
         // "args": ["remote"],
         // "args": ["accounts", "list"],
