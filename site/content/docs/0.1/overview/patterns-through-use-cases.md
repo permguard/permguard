@@ -25,7 +25,7 @@ A common use case for `Permguard` is in the context of cloud-native applications
   <img alt="Permguard Policies" src="/images/diagrams/d2.png"/>
 </div>
 
-Permguard focuses on [Authz](/docs/concepts/authn-authz/authn-vs-authz/) therefore it does not provide any authentication mechanism. It is assumed that the user is already authenticated and the JWT token is available.
+Permguard focuses on [Authz](/docs/0.1/concepts/authn-authz/authn-vs-authz/) therefore it does not provide any authentication mechanism. It is assumed that the user is already authenticated and the JWT token is available.
 
 ## Use Case: Api Endpoint
 
@@ -44,12 +44,8 @@ Below a sample JWT Token:
   "iat": 1516239022,
   "exp": 1516325422,
   "scope": "openid profile email",
-  "permissions": [
-    "read:inventory"
-  ],
-  "roles": [
-    "pharmacist"
-  ]
+  "permissions": ["read:inventory"],
+  "roles": ["pharmacist"]
 }
 ```
 
