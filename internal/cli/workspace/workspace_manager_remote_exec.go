@@ -204,6 +204,7 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 	for _, entry := range tree.GetEntries() {
 		if _, ok := codeMapIds[entry.GetOID()]; !ok {
 			entryObj, err := m.cospMgr.ReadObject(entry.GetOID())
+			absLang.GetCommitObject(entryObj)
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
