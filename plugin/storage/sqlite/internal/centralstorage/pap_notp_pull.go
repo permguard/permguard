@@ -185,7 +185,7 @@ func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(commitID string) 
 	for _, entry := range tree.GetEntries() {
 		oid := entry.GetOID()
 		oType := entry.GetType()
-		obj, err := s.readObject(db, commitID)
+		obj, err := s.readObject(db, oid)
 		if err != nil {
 			return nil, err
 		}
