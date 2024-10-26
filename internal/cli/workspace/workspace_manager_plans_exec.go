@@ -91,10 +91,15 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 			out(nil, "plan", fmt.Sprintf("The refs %s could not read the remote tree.", aziclicommon.KeywordText(headCtx.GetRefs())), nil, true)
 		}
 	}
-	remoteCodeState, err := m.cospMgr.BuildCodeSourceCodeStateForTree(remoteTree)
-	if err != nil {
-		out(nil, "", errPlanningProcessFailed, nil, true)
-		return failedOpErr(output, err)
+	var remoteCodeState []azicliwkscosp.CodeObjectState
+	if remoteTree != nil {
+		remoteCodeState, err = m.cospMgr.BuildCodeSourceCodeStateForTree(remoteTree)
+		if err != nil {
+			out(nil, "", errPlanningProcessFailed, nil, true)
+			return failedOpErr(output, err)
+		}
+	} else {
+		remoteCodeState = []azicliwkscosp.CodeObjectState{}
 	}
 	localCodeState, err := m.cospMgr.ReadCodeSourceCodeState()
 	if err != nil {
