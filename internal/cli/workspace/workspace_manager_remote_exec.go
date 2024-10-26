@@ -21,6 +21,7 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
+	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
@@ -81,7 +82,8 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.Pri
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "checkout", "Remote repository retrieved successfully.", nil, true)
 	}
-	headInfo, output, err := m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.RepositoryID, srvRepo.Refs, nil, out)
+	remoteRefs := azlangobjs.ZeroOID
+	headInfo, output, err := m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.RepositoryID, remoteRefs, nil, out)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
@@ -89,7 +91,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.Pri
 	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
 		return failedOpErr(output, err)
 	}
-	_, err = m.logsMgr.Log(repoInfo.GetRemote(), headInfo.GetRefs(), srvRepo.Refs, srvRepo.Refs, azicliwkslogs.LogActionCheckout, true, repoURI)
+	_, err = m.logsMgr.Log(repoInfo.GetRemote(), headInfo.GetRefs(), remoteRefs, remoteRefs, azicliwkslogs.LogActionCheckout, true, repoURI)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
