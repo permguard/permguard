@@ -114,6 +114,11 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 	}
 	defer fileLock.Unlock()
 
+	output, err = m.execInternalRefresh(true, out)
+	if err != nil {
+		return failedOpErr(output, err)
+	}
+
 	// Creates the abstraction for the language
 	lang, err := m.cfgMgr.GetLanguage()
 	if err != nil {
