@@ -60,16 +60,11 @@ func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceMan
 
 // ExecRefresh scans source files in the current directory and synchronizes the local state,
 func (m *WorkspaceManager) ExecRefresh(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
-	return m.execInternalRefresh(false, out)
-}
-
-// execInternalRefresh scans source files in the current directory and synchronizes the local state,
-func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to refresh the current workspace.", nil, true)
 		return output, err
 	}
-	output := m.ExecPrintContext(nil, out)
+	m.ExecPrintContext(nil, out)
 
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
@@ -80,6 +75,15 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 	}
 	defer fileLock.Unlock()
 
+	return m.execInternalRefresh(false, out)
+}
+
+// execInternalRefresh scans source files in the current directory and synchronizes the local state,
+func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", "Failed to refresh the current workspace.", nil, true)
+		return output, err
+	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "Initiating cleanup of the local area.", nil, true)
 	}
@@ -110,6 +114,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
+	var output map[string]any
 	if m.ctx.IsVerboseTerminalOutput() {
 		selectedCount := len(selectedFiles)
 		ignoredCount := len(ignoredFiles)
@@ -161,6 +166,21 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 
 // ExecValidate validates the local state.
 func (m *WorkspaceManager) ExecValidate(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", "Failed to validate the current workspace.", nil, true)
+		return output, err
+	}
+	m.ExecPrintContext(nil, out)
+
+	if !m.isWorkspaceDir() {
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
+	}
+	fileLock, err := m.tryLock()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	defer fileLock.Unlock()
+
 	return m.execInternalValidate(false, out)
 }
 
@@ -171,14 +191,11 @@ func (m *WorkspaceManager) execInternalValidate(internal bool, out aziclicommon.
 		return output, err
 	}
 
-	if !m.isWorkspaceDir() {
-		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
-	}
-
 	output, _ := m.execInternalRefresh(true, out)
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "validate", "Retrieving codemap.", nil, true)
 	}
+
 	_, invlsCodeFiles, err := m.retrieveCodeMap()
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
