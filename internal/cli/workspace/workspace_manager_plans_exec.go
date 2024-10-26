@@ -27,6 +27,21 @@ import (
 
 // ExecPlan generates a plan of changes to apply to the remote repository based on the differences between the local and remote states.
 func (m *WorkspaceManager) ExecPlan(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", "Failed to build the plan.", nil, true)
+		return output, err
+	}
+	m.ExecPrintContext(nil, out)
+
+	if !m.isWorkspaceDir() {
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
+	}
+	fileLock, err := m.tryLock()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	defer fileLock.Unlock()
+
 	return m.execInternalPlan(false, out)
 }
 
@@ -35,10 +50,6 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to build the plan.", nil, true)
 		return output, err
-	}
-
-	if !m.isWorkspaceDir() {
-		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
 	// Creates the abstraction for the language
@@ -194,6 +205,21 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 
 // ExecApply applies the plan to the remote repo
 func (m *WorkspaceManager) ExecApply(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", "Failed to apply the plan.", nil, true)
+		return output, err
+	}
+	m.ExecPrintContext(nil, out)
+
+	if !m.isWorkspaceDir() {
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
+	}
+	fileLock, err := m.tryLock()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	defer fileLock.Unlock()
+
 	return m.execInternalApply(false, out)
 }
 
@@ -202,10 +228,6 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to apply the plan.", nil, true)
 		return output, err
-	}
-
-	if !m.isWorkspaceDir() {
-		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
 	// Read current head settings
