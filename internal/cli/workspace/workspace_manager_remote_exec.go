@@ -114,10 +114,7 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 	}
 	defer fileLock.Unlock()
 
-	output, err = m.execInternalRefresh(true, out)
-	if err != nil {
-		return failedOpErr(output, err)
-	}
+	output, _ = m.execInternalRefresh(true, out)
 
 	// Creates the abstraction for the language
 	lang, err := m.cfgMgr.GetLanguage()
@@ -159,29 +156,63 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", "The local workspace is already fully up to date with the remote repository.", nil, true)
 		}
-		return output, nil
-	}
-	committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
-	if !committed || localCommitID == "" || remoteCommitID == "" {
-		if localCommitID != "" && remoteCommitID != "" {
-			_, err := m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.repoURI)
+	} else {
+		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
+		if !committed || localCommitID == "" || remoteCommitID == "" {
+			if localCommitID != "" && remoteCommitID != "" {
+				_, err := m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.repoURI)
+				if err != nil {
+					return failedOpErr(nil, err)
+				}
+			}
+		}
+		err = m.rfsMgr.SaveRefsConfig(headCtx.repoID, headCtx.refs, remoteCommitID)
+		if err != nil {
+			_, err = m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.repoURI)
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
+			return failedOpErr(nil, err)
 		}
-	}
-	err = m.rfsMgr.SaveRefsConfig(headCtx.repoID, headCtx.refs, remoteCommitID)
-	if err != nil {
-		_, err = m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.repoURI)
+		_, err = m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, headCtx.repoURI)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		return failedOpErr(nil, err)
 	}
-	_, err = m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, headCtx.repoURI)
+	codeMap, err := m.cospMgr.ReadCodeSourceCodeMap()
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
+	codeMapIds := make(map[string]bool)
+	for _, code := range codeMap {
+		codeMapIds[code.OID] = true
+	}
+
+	commitObj, err := m.cospMgr.ReadObject(remoteCommitID)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	commit, err := absLang.GetCommitObject(commitObj)
+
+	treeObj, err := m.cospMgr.ReadObject(commit.GetTree())
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	tree, err := absLang.GetTreeeObject(treeObj)
+
+	count := 0
+	for _, entry := range tree.GetEntries() {
+		if _, ok := codeMapIds[entry.GetOID()]; !ok {
+			entryObj, err := m.cospMgr.ReadObject(entry.GetOID())
+			if err != nil {
+				return failedOpErr(nil, err)
+			}
+			count++
+			out(nil, fmt.Sprintf("%d", count), entryObj.GetOID(), nil, true)
+		}
+	}
+
+	m.cospMgr.CleanCodeSource()
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, azicliwkslogs.LogActionPull, "The pull has been completed successfully.", nil, true)
