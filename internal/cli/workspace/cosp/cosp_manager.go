@@ -120,7 +120,7 @@ func (m *COSPManager) ReadCodeSourceObject(oid string) (*azlangobjs.Object, erro
 	if err != nil {
 		return nil, err
 	}
-	return m.objMgr.CreateObjectFormData(data)
+	return m.objMgr.DeserializeObjectFromBytes(data)
 }
 
 // saveConfig saves the config file.
@@ -429,5 +429,5 @@ func (m *COSPManager) ReadObject(oid string) (*azlangobjs.Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	return m.objMgr.CreateObjectFormData(data)
+	return m.objMgr.DeserializeObjectFromBytes(data)
 }

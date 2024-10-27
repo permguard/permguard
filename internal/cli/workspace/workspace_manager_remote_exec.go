@@ -215,7 +215,7 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 
 	for item := range msCodeMap {
 		obmgr, _ := azlangobjs.NewObjectManager()
-		obj, _ := obmgr.CreateObjectFormData(msCodeMap[item])
+		obj, _ := obmgr.DeserializeObjectFromBytes(msCodeMap[item])
 		objInfo, _ := obmgr.GetObjectInfo(obj)
 		objInstance := objInfo.GetInstance()
 		//jsonData, _ := json.Marshal(objInstance)
