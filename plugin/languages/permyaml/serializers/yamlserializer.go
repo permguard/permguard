@@ -106,7 +106,7 @@ func (s *YamlSerializer) UnmarshalLangType(data []byte) (string, any, string, st
 	case *Permission:
 		langPerm := &aztypes.Permission{
 			Class: aztypes.Class{
-				SyntaxVersion: aztypes.PermCodeSyntax,
+				SyntaxVersion: aztypes.PermCodeSyntaxLatest,
 				Type:          aztypes.ClassTypeACPermission,
 			},
 			Name:   v.Name,
@@ -117,7 +117,7 @@ func (s *YamlSerializer) UnmarshalLangType(data []byte) (string, any, string, st
 	case *Policy:
 		langPolicy := &aztypes.Policy{
 			Class: aztypes.Class{
-				SyntaxVersion: aztypes.PermCodeSyntax,
+				SyntaxVersion: aztypes.PermCodeSyntaxLatest,
 				Type:          aztypes.ClassTypeACPolicy,
 			},
 			Name:     v.Name,
@@ -129,7 +129,7 @@ func (s *YamlSerializer) UnmarshalLangType(data []byte) (string, any, string, st
 		}
 		return langPolicy.Name, langPolicy, langPolicy.Name, aztypes.ClassTypeACPolicy, nil
 	case *aztypes.Schema:
-		v.SyntaxVersion = aztypes.PermCodeSyntax
+		v.SyntaxVersion = aztypes.PermCodeSyntaxLatest
 		v.Type = aztypes.ClassTypeSchema
 		return aztypes.ClassTypeSchema, v, aztypes.ClassTypeSchema, aztypes.ClassTypeSchema, nil
 	}
