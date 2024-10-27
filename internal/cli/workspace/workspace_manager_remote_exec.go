@@ -17,12 +17,13 @@
 package workspace
 
 import (
+	//"encoding/json"
 	"fmt"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
-	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
+	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -200,7 +201,7 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 	}
 	tree, err := absLang.GetTreeeObject(treeObj)
 
-	count := 0
+	msCodeMap := make(map[string][]byte)
 	for _, entry := range tree.GetEntries() {
 		if _, ok := codeMapIds[entry.GetOID()]; !ok {
 			entryObj, err := m.cospMgr.ReadObject(entry.GetOID())
@@ -208,9 +209,17 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
-			count++
-			out(nil, fmt.Sprintf("%d", count), entryObj.GetOID(), nil, true)
+			msCodeMap[entry.GetOID()] = entryObj.GetContent()
 		}
+	}
+
+	for item := range msCodeMap {
+		obmgr, _ := azlangobjs.NewObjectManager()
+		obj, _ := obmgr.CreateObjectFormData(msCodeMap[item])
+		objInfo, _ := obmgr.GetObjectInfo(obj)
+		objInstance := objInfo.GetInstance()
+		//jsonData, _ := json.Marshal(objInstance)
+		out(nil, "", fmt.Sprintf("%s",objInstance), nil, true)
 	}
 
 	m.cospMgr.CleanCodeSource()
