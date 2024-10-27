@@ -121,12 +121,12 @@ func (abs *YAMLLanguageAbstraction) CreateMultiSectionsObjects(path string, data
 			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
 			continue
 		}
-		jsonType, err := abs.permCodeMng.MarshalClass(content, true, true, true)
+		classInstance, err := abs.permCodeMng.MarshalClass(content, true, true, true)
 		if err != nil {
 			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
 			continue
 		}
-		obj, err := abs.objMng.CreateBlobObject(jsonType)
+		obj, err := abs.objMng.CreateBlobObject(classInstance)
 		if err != nil {
 			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
 			continue
@@ -155,12 +155,12 @@ func (abs *YAMLLanguageAbstraction) CreateSchemaSectionsObject(path string, data
 		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, err)
 		return multiSecObj, nil
 	}
-	jsonType, err := abs.permCodeMng.MarshalClass(content, true, true, true)
+	classInstance, err := abs.permCodeMng.MarshalClass(content, true, true, true)
 	if err != nil {
 		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, err)
 		return multiSecObj, nil
 	}
-	obj, err := abs.objMng.CreateBlobObject(jsonType)
+	obj, err := abs.objMng.CreateBlobObject(classInstance)
 	if err != nil {
 		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, err)
 		return multiSecObj, nil
