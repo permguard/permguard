@@ -1,19 +1,28 @@
-# Permguard Doks
+# Permguard Documentation
 
-# Adding a new version
+## Adding a New Version
 
-The default version in the base project is 0.1, but in case of need you may adjust this value and add other versions.
+The base project uses version `0.1` by default. If needed, you can update this value and add additional versions.
 
-## Create a new version
+### Steps to Create a New Version
 
-Let's add a new 0.2 version,
-For creation of a new version, follow next steps:
+To create a new version (e.g., `0.2`), follow these steps:
 
-1. Add new version into `docsVersions` in the `config\_default\params.toml` file
+1. **Update the `docsVersions` in the `config_default/params.toml` file**  
+   Add the new version to the `docsVersions` array as shown below:
 
+   ```toml
    docsVersions = ["0.1", "0.2"]
+   ```
 
-2. Add new folder with version (ex. `0.2`) in the `content\docs` folder and fill it with markdown files
-3. Adjust the value of docs enry page `url = "/docs/0.3/overview/introduction-to-permguard/"` in file `config\_default\menus\menus.en.toml`
+2. **Create a new folder for the new version**  
+   In the `content/docs` directory, create a new folder with the version number (e.g., `0.2`). Populate this folder with the necessary Markdown files.
 
-App will select automatically latest value from `docsVersions` array as the docs last version
+3. **Update the docs entry page**  
+   Modify the `url` in the `config_default/menus/menus.en.toml` file to point to the new version, for example:
+
+   ```toml
+   url = "/docs/0.2/overview/introduction-to-permguard/"
+   ```
+
+The application will automatically select the latest version from the docsVersions array as the default version of the documentation.
