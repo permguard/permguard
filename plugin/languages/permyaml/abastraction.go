@@ -126,7 +126,12 @@ func (abs *YAMLLanguageAbstraction) CreateMultiSectionsObjects(path string, data
 			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
 			continue
 		}
-		obj, err := abs.objMng.CreateBlobObject(classInstance)
+		header, err := azlangobjs.NewObjectHeader(true, 0, 0, 0)
+		if err != nil {
+			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
+			continue
+		}
+		obj, err := abs.objMng.CreateBlobObject(header, classInstance)
 		if err != nil {
 			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
 			continue
@@ -160,7 +165,12 @@ func (abs *YAMLLanguageAbstraction) CreateSchemaSectionsObject(path string, data
 		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, err)
 		return multiSecObj, nil
 	}
-	obj, err := abs.objMng.CreateBlobObject(classInstance)
+	header, err := azlangobjs.NewObjectHeader(true, 0, 0, 0)
+	if err != nil {
+		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, err)
+		return multiSecObj, nil
+	}
+	obj, err := abs.objMng.CreateBlobObject(header, classInstance)
 	if err != nil {
 		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, err)
 		return multiSecObj, nil
