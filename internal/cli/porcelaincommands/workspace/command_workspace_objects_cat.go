@@ -29,12 +29,12 @@ import (
 )
 
 const (
-	// commandNameForWorkspacesObjects is the command name for workspaces objects.
-	commandNameForWorkspacesObjects = "workspaces.objects"
+	// commandNameForWorkspacesObjectsCat is the command to cat the object content.
+	commandNameForWorkspacesObjectsCat = "workspaces.objects.cat"
 )
 
-// runECommandForObjectsWorkspace run the command for listing objects in the workspace.
-func runECommandForObjectsWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+// runECommandForObjectsCatWorkspace runs the command for catting the object content.
+func runECommandForObjectsCatWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -67,22 +67,19 @@ func runECommandForObjectsWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 	return nil
 }
 
-// CreateCommandForWorkspaceObjects creates a command for diffializing a working directory.
-func CreateCommandForWorkspaceObjects(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+// CreateCommandForWorkspaceObjectsCat creates the command for catting the object content.
+func CreateCommandForWorkspaceObjectsCat(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "objects",
-		Short: "Manage the object store",
-		Long: aziclicommon.BuildCliLongTemplate(`This command manages the object store.
+		Use:   "cat",
+		Short: "Cat the object content",
+		Long: aziclicommon.BuildCliLongTemplate(`This command cats the object content.
 
 Examples:
-  # list the objects in the workspace
-  permguard objects`),
+  # cat the object content
+  permguard objects cat 4d5f28519a7e1174ced863971b7db039299ff34560aed145c9f50bbb2481cc0c`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForObjectsWorkspace(deps, cmd, v)
+			return runECommandForObjectsCatWorkspace(deps, cmd, v)
 		},
 	}
-	command.AddCommand(CreateCommandForWorkspaceObjectsCat(deps, v))
-	command.AddCommand(CreateCommandForWorkspaceObjectsShow(deps, v))
-	command.AddCommand(CreateCommandForWorkspaceObjectsDiff(deps, v))
 	return command
 }

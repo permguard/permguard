@@ -32,10 +32,10 @@ func (m *WorkspaceManager) ExecPlan(out aziclicommon.PrinterOutFunc) (map[string
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
-
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
+
 	fileLock, err := m.tryLock()
 	if err != nil {
 		return failedOpErr(nil, err)
@@ -210,10 +210,10 @@ func (m *WorkspaceManager) ExecApply(out aziclicommon.PrinterOutFunc) (map[strin
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
-
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
+	
 	fileLock, err := m.tryLock()
 	if err != nil {
 		return failedOpErr(nil, err)

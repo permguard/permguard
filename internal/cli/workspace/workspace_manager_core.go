@@ -18,6 +18,7 @@ package workspace
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/gofrs/flock"
@@ -120,6 +121,18 @@ func (m *WorkspaceManager) getLockFile() string {
 
 // isWorkspaceDir checks if the directory is a workspace directory.
 func (m *WorkspaceManager) isWorkspaceDir() bool {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	currentDir := m.persMgr.GetPath(azicliwkspers.WorkspaceDir, "")
+	currentDir, err = filepath.Abs(currentDir)
+	if err != nil {
+		return false
+	}
+	if homeDir ==  currentDir{
+		return false
+	}
 	isValid, _ := m.persMgr.CheckPathIfExists(azicliwkspers.PermguardDir, "")
 	return isValid
 }
