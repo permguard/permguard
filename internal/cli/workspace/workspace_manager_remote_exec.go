@@ -218,8 +218,8 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 		obj, _ := obmgr.DeserializeObjectFromBytes(msCodeMap[item])
 		objInfo, _ := obmgr.GetObjectInfo(obj)
 		objInstance := objInfo.GetInstance()
-		//jsonData, _ := json.Marshal(objInstance)
 		out(nil, "", fmt.Sprintf("%s",objInstance), nil, true)
+		//out(nil, "", fmt.Sprintf("%s",string(msCodeMap[item])), nil, true)
 	}
 
 	m.cospMgr.CleanCodeSource()

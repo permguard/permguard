@@ -126,7 +126,7 @@ func (abs *YAMLLanguageAbstraction) CreateMultiSectionsObjects(path string, data
 			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
 			continue
 		}
-		header, err := azlangobjs.NewObjectHeader(true, 0, 0, 0)
+		header, err := azlangobjs.NewObjectHeader(true, 1, 2, 3)
 		if err != nil {
 			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
 			continue
@@ -165,7 +165,7 @@ func (abs *YAMLLanguageAbstraction) CreateSchemaSectionsObject(path string, data
 		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, err)
 		return multiSecObj, nil
 	}
-	header, err := azlangobjs.NewObjectHeader(true, 0, 0, 0)
+	header, err := azlangobjs.NewObjectHeader(true, 1, 2, 3)
 	if err != nil {
 		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, err)
 		return multiSecObj, nil
