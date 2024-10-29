@@ -77,6 +77,12 @@ func (p *PersistenceManager) GetContext() map[string]string {
 	}
 }
 
+// GetPath gets the path.
+func (p *PersistenceManager) GetPath(relative RelativeDir, name string)string {
+	name = p.GetRelativeDir(relative, name)
+	return name
+}
+
 // CheckPathIfExists checks if a file exists.
 func (p *PersistenceManager) CheckPathIfExists(relative RelativeDir, name string) (bool, error) {
 	name = p.GetRelativeDir(relative, name)

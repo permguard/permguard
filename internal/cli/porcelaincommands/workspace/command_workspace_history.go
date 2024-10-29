@@ -29,12 +29,12 @@ import (
 )
 
 const (
-	// commandNameForWorkspacesObjects is the command name for workspaces objects.
-	commandNameForWorkspacesObjects = "workspaces.objects"
+	// commandNameForWorkspacesHistory is the command name for workspaces history.
+	commandNameForWorkspacesHistory = "workspaces.history"
 )
 
-// runECommandForObjectsWorkspace run the command for listing objects in the workspace.
-func runECommandForObjectsWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+// runECommandForHistoryWorkspace run the command for listing history in the workspace.
+func runECommandForHistoryWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -50,7 +50,7 @@ func runECommandForObjectsWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	output, err := wksMgr.ExecObjects(outFunc(ctx, printer))
+	output, err := wksMgr.ExecHistory(outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
@@ -67,22 +67,19 @@ func runECommandForObjectsWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 	return nil
 }
 
-// CreateCommandForWorkspaceObjects creates a command for diffializing a working directory.
-func CreateCommandForWorkspaceObjects(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+// CreateCommandForWorkspaceHistory creates a command for diffializing a working directory.
+func CreateCommandForWorkspaceHistory(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "objects",
-		Short: "Manage the object store",
-		Long: aziclicommon.BuildCliLongTemplate(`This command manages the object store.
+		Use:   "history",
+		Short: "Show the history",
+		Long: aziclicommon.BuildCliLongTemplate(`This command shows the history.
 
 Examples:
-  # list the objects in the workspace
-  permguard objects`),
+  # show the history
+  permguard history`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForObjectsWorkspace(deps, cmd, v)
+			return runECommandForHistoryWorkspace(deps, cmd, v)
 		},
 	}
-	command.AddCommand(CreateCommandForWorkspaceObjectsCat(deps, v))
-	command.AddCommand(CreateCommandForWorkspaceObjectsShow(deps, v))
-	command.AddCommand(CreateCommandForWorkspaceObjectsDiff(deps, v))
 	return command
 }

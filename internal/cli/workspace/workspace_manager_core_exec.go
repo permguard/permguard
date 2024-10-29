@@ -53,6 +53,9 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out aziclicommon.P
 		return output, err
 	}
 	output := m.ExecPrintContext(nil, out)
+	if !m.isWorkspaceDir() {
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
+	}
 
 	homeDir := m.getHomeHiddenDir()
 	res, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.WorkDir, homeDir)
@@ -115,10 +118,10 @@ func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort i
 		return output, err
 	}
 	output := m.ExecPrintContext(nil, out)
-
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
+
 	if !azvalidators.IsValidHostname(server) {
 		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid server %s", server)))
 	}
@@ -149,7 +152,6 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out aziclicommon.Prin
 		return output, err
 	}
 	output := m.ExecPrintContext(nil, out)
-
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
@@ -181,7 +183,6 @@ func (m *WorkspaceManager) ExecListRemotes(out aziclicommon.PrinterOutFunc) (map
 		return output, err
 	}
 	output := m.ExecPrintContext(nil, out)
-
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
@@ -203,7 +204,6 @@ func (m *WorkspaceManager) ExecListRepos(out aziclicommon.PrinterOutFunc) (map[s
 		return output, err
 	}
 	output := m.ExecPrintContext(nil, out)
-
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}

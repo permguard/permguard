@@ -68,6 +68,7 @@ func CreateCommandsForWorkspace(deps azcli.CliDependenciesProvider, v *viper.Vip
 		CreateCommandForWorkspacePull(deps, v),
 		CreateCommandForWorkspaceRefresh(deps, v),
 		CreateCommandForWorkspaceValidate(deps, v),
+		CreateCommandForWorkspaceHistory(deps, v),
 		CreateCommandForWorkspaceObjects(deps, v),
 		CreateCommandForWorkspacePlan(deps, v),
 		CreateCommandForWorkspaceApply(deps, v),

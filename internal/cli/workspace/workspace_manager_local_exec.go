@@ -65,10 +65,10 @@ func (m *WorkspaceManager) ExecRefresh(out aziclicommon.PrinterOutFunc) (map[str
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
-
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
+
 	fileLock, err := m.tryLock()
 	if err != nil {
 		return failedOpErr(nil, err)
@@ -171,10 +171,10 @@ func (m *WorkspaceManager) ExecValidate(out aziclicommon.PrinterOutFunc) (map[st
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
-
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
+
 	fileLock, err := m.tryLock()
 	if err != nil {
 		return failedOpErr(nil, err)
@@ -241,28 +241,4 @@ func (m *WorkspaceManager) execInternalValidate(internal bool, out aziclicommon.
 		out(nil, "", "\nPlease fix the errors to proceed.", nil, true)
 	}
 	return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: validation errors found in code files within the workspace. please check the logs for more details."))
-}
-
-// ExecObjects manage the object store.
-func (m *WorkspaceManager) ExecObjects(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to access objects in the current workspace.", nil, true)
-		return output, err
-	}
-	output := m.ExecPrintContext(nil, out)
-
-	if !m.isWorkspaceDir() {
-		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
-	}
-	fileLock, err := m.tryLock()
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-	defer fileLock.Unlock()
-
-	m.cospMgr.CleanCodeSource()
-
-	// TODO: Implement this method
-
-	return output, nil
 }
