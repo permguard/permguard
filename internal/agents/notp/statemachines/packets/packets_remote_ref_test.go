@@ -27,6 +27,7 @@ func TestRemoteRefStatePacket(t *testing.T) {
 	assert := assert.New(t)
 
 	packet := &RemoteRefStatePacket{}
+	packet.OpCode = 0x15
 	packet.RefPrevCommit = "477161cc-83c5-4004-8901-a61727ce045a"
 	packet.RefCommit = "952dd2f1-1ba2-44b5-92d0-1b6fb8d6f3c0"
 
@@ -37,6 +38,7 @@ func TestRemoteRefStatePacket(t *testing.T) {
 	err = newPacket.Deserialize(data)
 
 	assert.Nil(err)
-	assert.Equal(packet.RefPrevCommit, packet.RefPrevCommit)
-	assert.Equal(packet.RefCommit, packet.RefCommit)
+	assert.Equal(packet.RefPrevCommit, newPacket.RefPrevCommit)
+	assert.Equal(packet.RefCommit, newPacket.RefCommit)
+	assert.Equal(packet.OpCode, newPacket.OpCode)
 }
