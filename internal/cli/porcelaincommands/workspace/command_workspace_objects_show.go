@@ -17,14 +17,14 @@
 package workspace
 
 import (
-	"fmt"
+	//"fmt"
 
-	"github.com/fatih/color"
+	//"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
+	//azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
@@ -35,35 +35,35 @@ const (
 
 // runECommandForObjectsShowWorkspace runs the command to show the object content.
 func runECommandForObjectsShowWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
-	if err != nil {
-		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
-	}
-	absLang, err := deps.GetLanguageFactory()
-	if err != nil {
-		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
-	}
-	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, absLang)
-	if err != nil {
-		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
-	}
-	output, err := wksMgr.ExecObjects(outFunc(ctx, printer))
-	if err != nil {
-		if ctx.IsJSONOutput() {
-			printer.ErrorWithOutput(output, err)
-		} else if ctx.IsTerminalOutput() {
-			if ctx.IsVerboseTerminalOutput() {
-				printer.Error(err)
-			}
-		}
-		return aziclicommon.ErrCommandSilent
-	}
-	if ctx.IsJSONOutput() {
-		printer.PrintlnMap(output)
-	}
+	// ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+	// if err != nil {
+	// 	color.Red(fmt.Sprintf("%s", err))
+	// 	return aziclicommon.ErrCommandSilent
+	// }
+	// absLang, err := deps.GetLanguageFactory()
+	// if err != nil {
+	// 	color.Red(fmt.Sprintf("%s", err))
+	// 	return aziclicommon.ErrCommandSilent
+	// }
+	// wksMgr, err := azicliwksmanager.NewInternalManager(ctx, absLang)
+	// if err != nil {
+	// 	color.Red(fmt.Sprintf("%s", err))
+	// 	return aziclicommon.ErrCommandSilent
+	// }
+	// output, err := wksMgr.ExecObjects(outFunc(ctx, printer))
+	// if err != nil {
+	// 	if ctx.IsJSONOutput() {
+	// 		printer.ErrorWithOutput(output, err)
+	// 	} else if ctx.IsTerminalOutput() {
+	// 		if ctx.IsVerboseTerminalOutput() {
+	// 			printer.Error(err)
+	// 		}
+	// 	}
+	// 	return aziclicommon.ErrCommandSilent
+	// }
+	// if ctx.IsJSONOutput() {
+	// 	printer.PrintlnMap(output)
+	// }
 	return nil
 }
 
