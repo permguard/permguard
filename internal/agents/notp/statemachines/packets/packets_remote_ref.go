@@ -18,6 +18,7 @@ package packets
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
@@ -29,6 +30,8 @@ type RemoteRefStatePacket struct {
 	RefPrevCommit string
 	// RefCommit is the commit of the remote ref.
 	RefCommit string
+	// OpCode is the operation code of the packet.
+	OpCode uint16
 }
 
 // GetType returns the type of the packet.
@@ -40,11 +43,13 @@ func (p *RemoteRefStatePacket) GetType() uint64 {
 func (p *RemoteRefStatePacket) Serialize() ([]byte, error) {
 	commitBytes := notppackets.EncodeByteArray([]byte(p.RefPrevCommit))
 	prevCommitBytes := notppackets.EncodeByteArray([]byte(p.RefCommit))
+	opCodeBytes := make([]byte, 2)
+	binary.LittleEndian.PutUint16(opCodeBytes, p.OpCode)
 
-	// Aggiungi i campi con byte nullo tra di loro
 	data := append(commitBytes, notppackets.PacketNullByte)
 	data = append(data, prevCommitBytes...)
 	data = append(data, notppackets.PacketNullByte)
+	data = append(data, opCodeBytes...)
 
 	return data, nil
 }
@@ -65,6 +70,12 @@ func (p *RemoteRefStatePacket) Deserialize(data []byte) error {
 
 	secondNullByteIndex += nullByteIndex + 1
 	p.RefCommit = string(notppackets.DecodeByteArray(data[nullByteIndex+1 : secondNullByteIndex]))
+
+	if secondNullByteIndex+1+2 > len(data) {
+		return fmt.Errorf("missing data for OpCode")
+	}
+
+	p.OpCode = binary.LittleEndian.Uint16(data[secondNullByteIndex+1 : secondNullByteIndex+3])
 
 	return nil
 }

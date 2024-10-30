@@ -18,6 +18,7 @@ package packets
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
@@ -31,6 +32,8 @@ type LocalRefStatePacket struct {
 	HasConflicts bool
 	// IsUpToDate is true if the local ref is up to date with the remote ref.
 	IsUpToDate bool
+	// OpCode is the operation code of the packet.
+	OpCode uint16
 }
 
 // GetType returns the type of the packet.
@@ -56,10 +59,15 @@ func (p *LocalRefStatePacket) Serialize() ([]byte, error) {
 		isUpToDateByte = 0
 	}
 
+	opCodeBytes := make([]byte, 2)
+	binary.LittleEndian.PutUint16(opCodeBytes, p.OpCode)
+
 	data := append(commitBytes, notppackets.PacketNullByte)
 	data = append(data, hasConflictsByte)
 	data = append(data, notppackets.PacketNullByte)
 	data = append(data, isUpToDateByte)
+	data = append(data, notppackets.PacketNullByte)
+	data = append(data, opCodeBytes...)
 
 	return data, nil
 }
@@ -91,6 +99,20 @@ func (p *LocalRefStatePacket) Deserialize(data []byte) error {
 	}
 
 	p.IsUpToDate = data[secondNullByteIndex+1] == 1
+
+	thirdNullByteIndex := bytes.IndexByte(data[secondNullByteIndex+1:], notppackets.PacketNullByte)
+	if thirdNullByteIndex == -1 {
+		return fmt.Errorf("missing null byte after IsUpToDate")
+	}
+	thirdNullByteIndex += secondNullByteIndex + 1
+
+	p.IsUpToDate = data[secondNullByteIndex+1] == 1
+
+	if thirdNullByteIndex+1+2 > len(data) {
+		return fmt.Errorf("missing data for OpCode")
+	}
+
+	p.OpCode = binary.LittleEndian.Uint16(data[thirdNullByteIndex+1 : thirdNullByteIndex+3])
 
 	return nil
 }
