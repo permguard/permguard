@@ -31,7 +31,7 @@ import (
 
 const (
 	// commandNameForWorkspacesObjects base command name for workspace objects
-	commandNameForWorkspacesObjects = "workspaces.objects.list.objects"
+	commandNameForWorkspacesObjects = "workspaces.objects.list"
 	// commandNameForWorkspacesObjectsListObjects lists objects from the object store
 	commandNameForWorkspacesObjectsListObjects = "objects"
 	// commandNameForWorkspacesObjectsListCode lists objects from the code store
@@ -133,7 +133,5 @@ Examples:
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListAll), command.Flags().Lookup(commandNameForWorkspacesObjectsListAll))
 
 	command.AddCommand(CreateCommandForWorkspaceObjectsCat(deps, v))
-	command.AddCommand(CreateCommandForWorkspaceObjectsShow(deps, v))
-	command.AddCommand(CreateCommandForWorkspaceObjectsDiff(deps, v))
 	return command
 }

@@ -16,3 +16,39 @@
 
 package workspace
 
+import (
+	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+)
+
+// GetObjects gets the objects.
+func (m *WorkspaceManager) getObjectsInfos(includeStorage, includeCode, filterCommits, filterTrees, filterBlob bool) ([]azlangobjs.ObjectInfo, error) {
+	filteredObjects := []azlangobjs.ObjectInfo{}
+	objects, err := m.cospMgr.GetObjects(includeStorage, includeCode)
+	if err != nil {
+		return nil, err
+	}
+	if len(objects) == 0 {
+		return filteredObjects, nil
+	}
+
+	objMgr, err := azlangobjs.NewObjectManager()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, object := range objects {
+		objInfo, err := objMgr.GetObjectInfo(&object)
+		if err != nil {
+			return nil, err
+		}
+		if objInfo.GetType() == azlangobjs.ObjectTypeCommit && !filterCommits {
+			continue
+		} else if objInfo.GetType() == azlangobjs.ObjectTypeTree && !filterTrees {
+			continue
+		} else if objInfo.GetType() == azlangobjs.ObjectTypeBlob && !filterBlob {
+			continue
+		}
+		filteredObjects = append(filteredObjects, *objInfo)
+	}
+	return filteredObjects, nil
+}
