@@ -78,8 +78,15 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 		}
 		out(nil, "", "\n", nil, true)
 	} else if m.ctx.IsJSONOutput() {
-		output = out(output, "objects", objects, nil, true)
-}
+		objsMap := map[string]any{}
+		for _, object := range filteredObjects {
+			objMap := map[string]any{}
+			objMap["type"] = object.GetType()
+			objMap["size"] = len(object.GetObject().GetContent())
+			objsMap[object.GetOID()] = objMap
+		}
+		output = out(output, "objects", objsMap, nil, true)
+	}
 
 	return output, nil
 }
