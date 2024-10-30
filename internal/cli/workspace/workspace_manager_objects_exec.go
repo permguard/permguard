@@ -21,7 +21,7 @@ import (
 )
 
 // ExecObjects manage the object store.
-func (m *WorkspaceManager) ExecObjects(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecObjects(filterObjects, filterCode, filterCommits, filterTrees, filterBlob bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to access objects in the current workspace.", nil, true)
 		return output, err
