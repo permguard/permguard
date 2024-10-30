@@ -131,9 +131,21 @@ func (p *PersistenceManager) ReadFile(relative RelativeDir, name string, compres
 	return azfiles.ReadFile(name, compressed)
 }
 
+// ListDirectories lists directories.
+func (p *PersistenceManager) ListDirectories(relative RelativeDir, name string) ([]string, error) {
+	name = p.GetRelativeDir(relative, name)
+	return azfiles.ListDirectories(name)
+}
+
+// ListFiles lists files.
+func (p *PersistenceManager) ListFiles(relative RelativeDir, name string) ([]string, error) {
+	name = p.GetRelativeDir(relative, name)
+	return azfiles.ListFiles(name)
+}
+
 // ScanAndFilterFiles scans and filters files.
-func (p *PersistenceManager) ScanAndFilterFiles(relative RelativeDir, exts []string, ignorePatterns []string, ignoreFile string) ([]string, []string, error) {
-	name := p.GetRelativeDir(relative, "")
+func (p *PersistenceManager) ScanAndFilterFiles(relative RelativeDir, name string, exts []string, ignorePatterns []string, ignoreFile string) ([]string, []string, error) {
+	name = p.GetRelativeDir(relative, name)
 	ignoreFile = p.GetRelativeDir(relative, ignoreFile)
 	ignoreFilePatterns, err := azfiles.ReadIgnoreFile(ignoreFile)
 	if err == nil {

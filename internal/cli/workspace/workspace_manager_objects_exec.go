@@ -17,11 +17,14 @@
 package workspace
 
 import (
+	"fmt"
+
+	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 )
 
 // ExecObjects manage the object store.
-func (m *WorkspaceManager) ExecObjects(filterObjects, filterCode, filterCommits, filterTrees, filterBlob bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommits, filterTrees, filterBlob bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to access objects in the current workspace.", nil, true)
 		return output, err
@@ -37,9 +40,37 @@ func (m *WorkspaceManager) ExecObjects(filterObjects, filterCode, filterCommits,
 	}
 	defer fileLock.Unlock()
 
-	m.cospMgr.CleanCodeSource()
+	objects, err := m.cospMgr.GetObjects(includeStorage, includeCode)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
 
-	// TODO: Implement this method
+	if len(objects) == 0 {
+		out(nil, "", "No objects found in the current workspace.", nil, true)
+		return output, nil
+	}
+
+	objMgr, err := azlangobjs.NewObjectManager()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+
+	out(nil, "", "Your workspace objects:\n", nil, true)
+	for _, object := range objects {
+		objInfo, err := objMgr.GetObjectInfo(&object)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		if objInfo.GetType() == azlangobjs.ObjectTypeCommit && !filterCommits {
+			continue
+		} else if objInfo.GetType() == azlangobjs.ObjectTypeTree && !filterTrees {
+			continue
+		} else if objInfo.GetType() == azlangobjs.ObjectTypeBlob && !filterBlob {
+			continue
+		}
+		out(nil, "", fmt.Sprintf("	- %s %s", aziclicommon.IDText(object.GetOID()), aziclicommon.KeywordText(objInfo.GetType())), nil, true)
+	}
+	out(nil, "", "\n", nil, true)
 
 	return output, nil
 }
@@ -60,8 +91,6 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 		return failedOpErr(nil, err)
 	}
 	defer fileLock.Unlock()
-
-	m.cospMgr.CleanCodeSource()
 
 	// TODO: Implement this method
 
