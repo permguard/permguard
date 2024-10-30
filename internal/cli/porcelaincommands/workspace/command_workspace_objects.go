@@ -64,7 +64,26 @@ func runECommandForObjectsWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	output, err := wksMgr.ExecObjects(outFunc(ctx, printer))
+
+	filterObjects := v.GetBool(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListObjects))
+	filterCode := v.GetBool(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListCode))
+	if !filterObjects && !filterCode {
+		filterObjects = true
+		filterCode = false
+	}
+
+	filterCommits := v.GetBool(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListCommit))
+	filterTrees := v.GetBool(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListTree))
+	filterBlob := v.GetBool(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListBlob))
+	filterAll := v.GetBool(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListAll))
+	if filterAll {
+		filterCommits = true
+		filterTrees = true
+		filterBlob = true
+	}
+
+
+	output, err := wksMgr.ExecObjects(filterObjects, filterCode, filterCommits, filterTrees, filterBlob, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
