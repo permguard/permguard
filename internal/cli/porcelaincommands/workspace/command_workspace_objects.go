@@ -25,12 +25,26 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
 const (
-	// commandNameForWorkspacesObjects is the command name for workspaces objects.
-	commandNameForWorkspacesObjects = "workspaces.objects"
+	// commandNameForWorkspacesObjects base command name for workspace objects
+	commandNameForWorkspacesObjects = "workspaces.objects.list.objects"
+	// commandNameForWorkspacesObjectsListObjects lists objects from the object store
+	commandNameForWorkspacesObjectsListObjects = "objects"
+	// commandNameForWorkspacesObjectsListCode lists objects from the code store
+	commandNameForWorkspacesObjectsListCode = "code"
+
+	// commandNameForWorkspacesObjectsListCommit lists objects of commit type
+	commandNameForWorkspacesObjectsListCommit = "commit"
+	// commandNameForWorkspacesObjectsListTree lists objects of tree type
+	commandNameForWorkspacesObjectsListTree = "tree"
+	// commandNameForWorkspacesObjectsListTree lists objects of blob type
+	commandNameForWorkspacesObjectsListBlob = "blob"
+	// commandNameForWorkspacesObjectsListAll lists objects of all types
+	commandNameForWorkspacesObjectsListAll = "all"
 )
 
 // runECommandForObjectsWorkspace run the command for listing objects in the workspace.
@@ -81,6 +95,25 @@ Examples:
 			return runECommandForObjectsWorkspace(deps, cmd, v)
 		},
 	}
+
+	command.PersistentFlags().Bool(commandNameForWorkspacesObjectsListObjects, false, "include objects from the object store")
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListObjects), command.Flags().Lookup(commandNameForWorkspacesObjectsListObjects))
+
+	command.PersistentFlags().Bool(commandNameForWorkspacesObjectsListCode, false, "include objects from the code store")
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListCode), command.Flags().Lookup(commandNameForWorkspacesObjectsListCode))
+
+	command.Flags().Bool(commandNameForWorkspacesObjectsListCommit, false, "objects of the commit type")
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListCommit), command.Flags().Lookup(commandNameForWorkspacesObjectsListCommit))
+
+	command.Flags().Bool(commandNameForWorkspacesObjectsListTree, false, "objects of the tree type")
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListTree), command.Flags().Lookup(commandNameForWorkspacesObjectsListTree))
+
+	command.Flags().Bool(commandNameForWorkspacesObjectsListBlob, false, "objects of the blob type")
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListBlob), command.Flags().Lookup(commandNameForWorkspacesObjectsListBlob))
+
+	command.Flags().Bool(commandNameForWorkspacesObjectsListAll, false, "all object types")
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListAll), command.Flags().Lookup(commandNameForWorkspacesObjectsListAll))
+
 	command.AddCommand(CreateCommandForWorkspaceObjectsCat(deps, v))
 	command.AddCommand(CreateCommandForWorkspaceObjectsShow(deps, v))
 	command.AddCommand(CreateCommandForWorkspaceObjectsDiff(deps, v))
