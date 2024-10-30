@@ -17,6 +17,7 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -27,6 +28,14 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 )
+
+// validateArg is the function to validate the arguments.
+var validateArg = func (cmd *cobra.Command, args []string) error {
+	if len(args) != 1 {
+		return errors.New("Requires one argument")
+	}
+	return nil
+}
 
 // outFunc is the function to output the result.
 var outFunc = func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter) aziclicommon.PrinterOutFunc {

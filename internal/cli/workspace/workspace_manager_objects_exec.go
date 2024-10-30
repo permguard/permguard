@@ -23,7 +23,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 )
 
-// ExecObjects manage the object store.
+// ExecObjects list the objects.
 func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommits, filterTrees, filterBlob bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to access objects in the current workspace.", nil, true)
@@ -40,54 +40,96 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 	}
 	defer fileLock.Unlock()
 
-	objects, err := m.cospMgr.GetObjects(includeStorage, includeCode)
+	filteredObjectInfos, err := m.getObjectsInfos(includeStorage, includeCode, filterCommits, filterTrees, filterBlob)
 	if err != nil {
 		return failedOpErr(nil, err)
-	}
-
-	if len(objects) == 0 {
-		out(nil, "", "No objects found in the current workspace.", nil, true)
-		return output, nil
-	}
-
-	objMgr, err := azlangobjs.NewObjectManager()
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-
-	filteredObjects := make([]*azlangobjs.ObjectInfo, 0)
-	for _, object := range objects {
-		objInfo, err := objMgr.GetObjectInfo(&object)
-		if err != nil {
-			return failedOpErr(nil, err)
-		}
-		if objInfo.GetType() == azlangobjs.ObjectTypeCommit && !filterCommits {
-			continue
-		} else if objInfo.GetType() == azlangobjs.ObjectTypeTree && !filterTrees {
-			continue
-		} else if objInfo.GetType() == azlangobjs.ObjectTypeBlob && !filterBlob {
-			continue
-		}
-		filteredObjects = append(filteredObjects, objInfo)
 	}
 
 	if m.ctx.IsTerminalOutput() {
 		out(nil, "", "Your workspace objects:\n", nil, true)
-		for _, object := range filteredObjects {
-			out(nil, "", fmt.Sprintf("	- %s %s", aziclicommon.IDText(object.GetOID()), aziclicommon.KeywordText(object.GetType())), nil, true)
+		for _, objectInfo := range filteredObjectInfos {
+			out(nil, "", fmt.Sprintf("	- %s %s %s", aziclicommon.IDText(objectInfo.GetOID()), aziclicommon.KeywordText(objectInfo.GetType()), aziclicommon.NumberText(len(objectInfo.GetObject().GetContent()))), nil, true)
 		}
 		out(nil, "", "\n", nil, true)
 	} else if m.ctx.IsJSONOutput() {
-		objsMap := map[string]any{}
-		for _, object := range filteredObjects {
+		objMaps := []map[string]any{}
+		for _, object := range filteredObjectInfos {
 			objMap := map[string]any{}
 			objMap["type"] = object.GetType()
 			objMap["size"] = len(object.GetObject().GetContent())
-			objsMap[object.GetOID()] = objMap
+			objMaps = append(objMaps, objMap)
 		}
-		output = out(output, "objects", objsMap, nil, true)
+		output = out(output, "objects", objMaps, nil, true)
 	}
 
+	return output, nil
+}
+
+// ExecObjectsCat cat the object.
+func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showType, showSize, printContent bool, oid string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", "Failed to access objects in the current workspace.", nil, true)
+		return output, err
+	}
+	output := m.ExecPrintContext(nil, out)
+	if !m.isWorkspaceDir() {
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
+	}
+
+	fileLock, err := m.tryLock()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	defer fileLock.Unlock()
+
+	filteredObjectsInfos, err := m.getObjectsInfos(includeStorage, includeCode, true, true, true)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	var objectInfo *azlangobjs.ObjectInfo
+	for _, objInfo := range filteredObjectsInfos {
+		if objInfo.GetOID() == oid {
+			objectInfo = &objInfo
+			break
+		}
+	}
+	if objectInfo == nil {
+		return failedOpErr(nil, fmt.Errorf("object not found"))
+	}
+
+	if m.ctx.IsTerminalOutput() {
+		anyOutput := false
+		out(nil, "", "Your workspace object:\n", nil, true)
+		if showType {
+			out(nil, "", fmt.Sprintf("	- Type %s", aziclicommon.KeywordText(objectInfo.GetType())), nil, true)
+			anyOutput = true
+		}
+		if showSize {
+			out(nil, "", fmt.Sprintf("	- Size %s", aziclicommon.NumberText(len(objectInfo.GetObject().GetContent()))), nil, true)
+			anyOutput = true
+		}
+		if printContent {
+			if anyOutput {
+				out(nil, "", "\n", nil, true)
+			}
+			out(nil, "", string(objectInfo.GetObject().GetContent()), nil, true)
+		}
+		out(nil, "", "\n", nil, true)
+	} else if m.ctx.IsJSONOutput() {
+		objMaps := []map[string]any{}
+		objMap := map[string]any{}
+		if showType {
+			objMap["type"] = objectInfo.GetType()
+		}
+		if showSize {
+			objMap["size"] = len(objectInfo.GetObject().GetContent())
+		}
+		if printContent {
+			objMap["content"] = string(objectInfo.GetObject().GetContent())
+		}
+		objMaps = append(objMaps, objMap)
+		output = out(output, "objects", objMaps, nil, true)
+	}
 	return output, nil
 }
 
