@@ -25,11 +25,12 @@ The CLI allows to Manage Accounts on the remote server, identities, tenants, rep
 To view a list of commands available in the current Permguard version, users can run the `permguard` command without any additional arguments.
 
 ```txt
-  ____                      ____                     _
- |  _ \ ___ _ __ _ __ ___  / ___|_   _  __ _ _ __ __| |
- | |_) / _ \ '__| '_ ` _ \| |  _| | | |/ _` | '__/ _` |
- |  __/  __/ |  | | | | | | |_| | |_| | (_| | | | (_| |
- |_|   \___|_|  |_| |_| |_|\____|\__,_|\__,_|_|  \__,_|
+  ____                                               _
+ |  _ \ ___ _ __ _ __ ___   __ _ _   _  __ _ _ __ __| |
+ | |_) / _ \ '__| '_ ` _ \ / _` | | | |/ _` | '__/ _` |
+ |  __/  __/ |  | | | | | | (_| | |_| | (_| | | | (_| |
+ |_|   \___|_|  |_| |_| |_|\__, |\__,_|\__,_|_|  \__,_|
+                           |___/
 
 The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
