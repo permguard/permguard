@@ -55,7 +55,7 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 		return failedOpErr(nil, err)
 	}
 
-	out(nil, "", "Your workspace objects:\n", nil, true)
+	filteredObjects := make([]*azlangobjs.ObjectInfo, 0)
 	for _, object := range objects {
 		objInfo, err := objMgr.GetObjectInfo(&object)
 		if err != nil {
@@ -68,9 +68,18 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 		} else if objInfo.GetType() == azlangobjs.ObjectTypeBlob && !filterBlob {
 			continue
 		}
-		out(nil, "", fmt.Sprintf("	- %s %s", aziclicommon.IDText(object.GetOID()), aziclicommon.KeywordText(objInfo.GetType())), nil, true)
+		filteredObjects = append(filteredObjects, objInfo)
 	}
-	out(nil, "", "\n", nil, true)
+
+	if m.ctx.IsTerminalOutput() {
+		out(nil, "", "Your workspace objects:\n", nil, true)
+		for _, object := range filteredObjects {
+			out(nil, "", fmt.Sprintf("	- %s %s", aziclicommon.IDText(object.GetOID()), aziclicommon.KeywordText(object.GetType())), nil, true)
+		}
+		out(nil, "", "\n", nil, true)
+	} else if m.ctx.IsJSONOutput() {
+		output = out(output, "objects", objects, nil, true)
+}
 
 	return output, nil
 }
