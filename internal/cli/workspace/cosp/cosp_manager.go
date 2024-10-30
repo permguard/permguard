@@ -82,6 +82,11 @@ func (m *COSPManager) getCodeSourceDir() string {
 	return filepath.Join(m.getCodeDir(), hiddenSourceCodeDir)
 }
 
+// getCodeSourceObjectsDir returns the code source objects directory.
+func (m *COSPManager) getCodeSourceObjectsDir() string {
+	return filepath.Join(m.getCodeSourceDir(), m.getObjectsDir())
+}
+
 // getCodeSourceConfigFile returns the code source config file.
 func (m *COSPManager) getCodeSourceConfigFile() string {
 	return filepath.Join(m.getCodeSourceDir(), hiddenConfigFile)
@@ -430,4 +435,52 @@ func (m *COSPManager) ReadObject(oid string) (*azlangobjs.Object, error) {
 		return nil, err
 	}
 	return m.objMgr.DeserializeObjectFromBytes(data)
+}
+
+// GetObjects returns the objects.
+func (m *COSPManager) getObjects(path string) ([]azlangobjs.Object, error) {
+	objects := []azlangobjs.Object{}
+	dirs, err := m.persMgr.ListDirectories(azicliwkspers.PermguardDir, path)
+	if err != nil {
+		return nil, err
+	}
+	for _, dir := range dirs {
+		files, err := m.persMgr.ListFiles(azicliwkspers.PermguardDir, filepath.Join(path, dir))
+		if err != nil {
+			return nil, err
+		}
+		for _, file := range files {
+			oid := fmt.Sprintf("%s%s", dir, file)
+			obj, err := m.ReadObject(oid)
+			if err != nil {
+				return nil, err
+			}
+			objects = append(objects, *obj)
+		}
+	}
+	return objects, nil
+}
+
+// GetObjects returns the objects.
+func (m *COSPManager) GetObjects(includeStorage, includeCode bool) ([]azlangobjs.Object, error) {
+	objects := []azlangobjs.Object{}
+	if includeCode {
+		if ok, _ := m.persMgr.CheckPathIfExists(azicliwkspers.PermguardDir, m.getCodeSourceObjectsDir()); ok {
+			codeObjs, err := m.getObjects(m.getCodeSourceObjectsDir())
+			if err != nil {
+				return nil, err
+			}
+			objects = append(objects, codeObjs...)
+		}
+	}
+	if includeStorage {
+		if ok, _ := m.persMgr.CheckPathIfExists(azicliwkspers.PermguardDir, m.getObjectsDir()); ok {
+			storageObjs, err := m.getObjects(m.getObjectsDir())
+			if err != nil {
+				return nil, err
+			}
+			objects = append(objects, storageObjs...)
+		}
+	}
+	return objects, nil
 }

@@ -65,11 +65,10 @@ func runECommandForObjectsWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 		return aziclicommon.ErrCommandSilent
 	}
 
-	filterObjects := v.GetBool(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListObjects))
-	filterCode := v.GetBool(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListCode))
-	if !filterObjects && !filterCode {
-		filterObjects = true
-		filterCode = false
+	includeStorage := v.GetBool(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListObjects))
+	includeCode := v.GetBool(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListCode))
+	if !includeStorage && !includeCode {
+		includeStorage = true
 	}
 
 	filterCommits := v.GetBool(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListCommit))
@@ -77,13 +76,13 @@ func runECommandForObjectsWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 	filterBlob := v.GetBool(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListBlob))
 	filterAll := v.GetBool(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListAll))
 	if filterAll {
+		filterCommits, filterTrees, filterBlob = true, true, true
+	} else if !filterCommits && !filterTrees && !filterBlob {
 		filterCommits = true
-		filterTrees = true
-		filterBlob = true
 	}
 
 
-	output, err := wksMgr.ExecObjects(filterObjects, filterCode, filterCommits, filterTrees, filterBlob, outFunc(ctx, printer))
+	output, err := wksMgr.ExecObjects(includeStorage, includeCode, filterCommits, filterTrees, filterBlob, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
@@ -116,10 +115,10 @@ Examples:
 	}
 
 	command.PersistentFlags().Bool(commandNameForWorkspacesObjectsListObjects, false, "include objects from the object store")
-	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListObjects), command.Flags().Lookup(commandNameForWorkspacesObjectsListObjects))
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListObjects), command.PersistentFlags().Lookup(commandNameForWorkspacesObjectsListObjects))
 
 	command.PersistentFlags().Bool(commandNameForWorkspacesObjectsListCode, false, "include objects from the code store")
-	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListCode), command.Flags().Lookup(commandNameForWorkspacesObjectsListCode))
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListCode), command.PersistentFlags().Lookup(commandNameForWorkspacesObjectsListCode))
 
 	command.Flags().Bool(commandNameForWorkspacesObjectsListCommit, false, "objects of the commit type")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListCommit), command.Flags().Lookup(commandNameForWorkspacesObjectsListCommit))
