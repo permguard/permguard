@@ -17,6 +17,8 @@
 package common
 
 import (
+	"time"
+
 	"github.com/fatih/color"
 )
 
@@ -36,6 +38,12 @@ func LogErrorText(text string) string {
 func TimeStampText(text string) string {
 	out := color.New(color.FgBlue)
 	return out.Sprintf(text)
+}
+
+// DateText returns the date text.
+func DateText(date time.Time) string {
+	out := color.New(color.FgYellow)
+	return out.Sprintf("%s", date)
 }
 
 // NormalText returns the normal text.

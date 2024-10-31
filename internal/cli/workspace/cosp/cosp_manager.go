@@ -513,27 +513,21 @@ func (m *COSPManager) GetHistory(commitID string) ([]CommitInfo, error) {
         return nil, err
     }
 
-    for commit != nil && commit.GetParent() != azlangobjs.ZeroOID {
-		commitInfo := CommitInfo{
-			oid: commitID,
-			commit: commit,
-		}
+    for commit != nil {
+        commitInfo := CommitInfo{
+            oid:    commitID,
+            commit: commit,
+        }
         commits = append(commits, commitInfo)
-		commitID := commit.GetParent()
-        parentCommit, err := m.GetCommit(commitID)
+	    parentID := commit.GetParent()
+        if parentID == azlangobjs.ZeroOID {
+            break
+        }
+	   commit, err = m.GetCommit(parentID)
         if err != nil {
             return nil, err
         }
-        commit = parentCommit
+        commitID = parentID
     }
-
-    if commit != nil && commit.GetParent() == azlangobjs.ZeroOID {
-		commitInfo := CommitInfo{
-			oid: commitID,
-			commit: commit,
-		}
-        commits = append(commits, commitInfo)
-    }
-
     return commits, nil
 }
