@@ -98,24 +98,23 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showType,
 	}
 
 	if m.ctx.IsTerminalOutput() {
-		// anyOutput := false
-		// out(nil, "", fmt.Sprintf("Your workspace object %s:\n", aziclicommon.IDText(objectInfo.GetOID())), nil, true)
-		// if showType {
-		// 	out(nil, "", fmt.Sprintf("	- Type %s", aziclicommon.KeywordText(objectInfo.GetType())), nil, true)
-		// 	anyOutput = true
-		// }
-		// if showSize {
-		// 	out(nil, "", fmt.Sprintf("	- Size %s", aziclicommon.NumberText(len(objectInfo.GetObject().GetContent()))), nil, true)
-		// 	anyOutput = true
-		// }
-		// if printContent {
-		// 	if anyOutput {
-		// 		out(nil, "", "\n", nil, true)
-		// 	}
-		// 	out(nil, "", string(objectInfo.GetObject().GetContent()), nil, true)
-		// }
-		// out(nil, "", "\n", nil, true)
-		fmt.Print("%s", string(objectInfo.GetObject().GetContent()))
+		anyOutput := false
+		out(nil, "", fmt.Sprintf("Your workspace object %s:\n", aziclicommon.IDText(objectInfo.GetOID())), nil, true)
+		if showType {
+			out(nil, "", fmt.Sprintf("	- Type %s", aziclicommon.KeywordText(objectInfo.GetType())), nil, true)
+			anyOutput = true
+		}
+		if showSize {
+			out(nil, "", fmt.Sprintf("	- Size %s", aziclicommon.NumberText(len(objectInfo.GetObject().GetContent()))), nil, true)
+			anyOutput = true
+		}
+		if printContent {
+			if anyOutput {
+				out(nil, "", "\n", nil, true)
+			}
+			out(nil, "", string(objectInfo.GetObject().GetContent()), nil, true)
+		}
+		out(nil, "", "\n", nil, true)
 	} else if m.ctx.IsJSONOutput() {
 		objMaps := []map[string]any{}
 		objMap := map[string]any{}
