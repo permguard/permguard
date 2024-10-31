@@ -95,7 +95,7 @@ func CreateCommandForWorkspaceObjectsCat(deps azcli.CliDependenciesProvider, v *
 		Long: aziclicommon.BuildCliLongTemplate(`This command cats the object content.
 
 Examples:
-  # pretty-print the object content
+  # print the object content
   permguard objects cat 4d5f28519a7e1174ced863971b7db039299ff34560aed145c9f50bbb2481cc0c -p`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForObjectsCatWorkspace(deps, cmd, v, args[0])
@@ -109,7 +109,7 @@ Examples:
 	command.Flags().Bool(commandNameForWorkspacesCatSize, false, "object size")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatSize), command.Flags().Lookup(commandNameForWorkspacesCatSize))
 
-	command.Flags().Bool(commandNameForWorkspacesCatPrint, false, "pretty-print the object content")
+	command.Flags().Bool(commandNameForWorkspacesCatPrint, false, "print the object content")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatPrint), command.Flags().Lookup(commandNameForWorkspacesCatPrint))
 
 	return command
