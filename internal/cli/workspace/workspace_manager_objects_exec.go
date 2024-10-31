@@ -46,11 +46,16 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 	}
 
 	if m.ctx.IsTerminalOutput() {
-		out(nil, "", "Your workspace objects:\n", nil, true)
-		for _, objectInfo := range filteredObjectInfos {
-			out(nil, "", fmt.Sprintf("	- %s %s", aziclicommon.IDText(objectInfo.GetOID()), aziclicommon.KeywordText(objectInfo.GetType())), nil, true)
+		if len(filteredObjectInfos) == 0 {
+			out(nil, "", "No objects found in the current workspace.", nil, true)
+			return output, nil
+		} else {
+			out(nil, "", "Your workspace objects:\n", nil, true)
+			for _, objectInfo := range filteredObjectInfos {
+				out(nil, "", fmt.Sprintf("	- %s %s", aziclicommon.IDText(objectInfo.GetOID()), aziclicommon.KeywordText(objectInfo.GetType())), nil, true)
+			}
+			out(nil, "", "\n", nil, true)
 		}
-		out(nil, "", "\n", nil, true)
 	} else if m.ctx.IsJSONOutput() {
 		objMaps := []map[string]any{}
 		for _, object := range filteredObjectInfos {
@@ -150,7 +155,65 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 	}
 	defer fileLock.Unlock()
 
-	// TODO: Implement this method
+	// Read current head settings
+	headCtx, err := m.getCurrentHeadContext()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
 
+	// Get history of the current workspace
+	commitInfos, err := m.getHistory(headCtx.GetCommit())
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+
+	if m.ctx.IsTerminalOutput() {
+		if len(commitInfos) == 0 {
+			out(nil, "", "No commits found in the current workspace.", nil, true)
+			return output, nil
+		} else {
+			out(nil, "", fmt.Sprintf("Your workspace history %s:\n", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
+			for _, commitInfo := range commitInfos {
+				commit := commitInfo.GetCommit()
+				parent := commit.GetParent()
+				tree := commit.GetTree()
+				metadata := commit.GetMetaData()
+				author := metadata.GetAuthor()
+				authorTimestamp := metadata.GetAuthorTimestamp()
+
+				output := fmt.Sprintf(
+					"Commit %s:\n"+
+					"  - Parent ID: %s\n"+
+					"  - Tree: %s\n"+
+					"  - Author: %s\n"+
+					"  - Author Timestamp: %s\n",
+					aziclicommon.IDText(commitInfo.GetCommitID()),
+					aziclicommon.IDText(parent),
+					aziclicommon.IDText(tree),
+					aziclicommon.KeywordText(author),
+					authorTimestamp,
+				)
+
+				out(nil, "", output, nil, true)
+			}
+			out(nil, "", "\n", nil, true)
+		}
+	} else if m.ctx.IsJSONOutput() {
+		objMaps := []map[string]any{}
+		for _, commitInfo := range commitInfos {
+			commit := commitInfo.GetCommit()
+			objMap := map[string]any{}
+			objMap["commit_id"] = commitInfo.GetCommitID()
+			objMap["parent"] = commit.GetParent()
+			objMap["tree"] = commit.GetTree()
+			metadata := commit.GetMetaData()
+			objMap["author"] = metadata.GetAuthor()
+			objMap["author_timestamp"] = metadata.GetAuthorTimestamp()
+			objMap["committer"] = metadata.GetCommitter()
+			objMap["committer_timestamp"] = metadata.GetCommitterTimestamp()
+			objMaps = append(objMaps, objMap)
+		}
+		output = out(output, "commits", objMaps, nil, true)
+	}
 	return output, nil
 }
