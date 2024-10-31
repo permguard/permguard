@@ -48,7 +48,7 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 	if m.ctx.IsTerminalOutput() {
 		out(nil, "", "Your workspace objects:\n", nil, true)
 		for _, objectInfo := range filteredObjectInfos {
-			out(nil, "", fmt.Sprintf("	- %s %s %s", aziclicommon.IDText(objectInfo.GetOID()), aziclicommon.KeywordText(objectInfo.GetType()), aziclicommon.NumberText(len(objectInfo.GetObject().GetContent()))), nil, true)
+			out(nil, "", fmt.Sprintf("	- %s %s", aziclicommon.IDText(objectInfo.GetOID()), aziclicommon.KeywordText(objectInfo.GetType())), nil, true)
 		}
 		out(nil, "", "\n", nil, true)
 	} else if m.ctx.IsJSONOutput() {
