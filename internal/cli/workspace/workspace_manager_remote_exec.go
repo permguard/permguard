@@ -93,27 +93,21 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.Pri
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
+
+	_, err = m.execInternalPull(true, out)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+
 	return output, nil
 }
 
-// ExecPull fetches the latest changes from the remote repository and constructs the remote state.
-func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to pull changes from the remote repo.", nil, true)
 		return output, err
 	}
-	output := m.ExecPrintContext(nil, out)
-	if !m.isWorkspaceDir() {
-		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
-	}
-
-	fileLock, err := m.tryLock()
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-	defer fileLock.Unlock()
-
-	output, _ = m.execInternalRefresh(true, out)
+	output, _ := m.execInternalRefresh(true, out)
 
 	// Creates the abstraction for the language
 	lang, err := m.cfgMgr.GetLanguage()
@@ -222,10 +216,32 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 
 	m.cospMgr.CleanCodeSource()
 
-	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, azicliwkslogs.LogActionPull, "The pull has been completed successfully.", nil, true)
+	if !internal {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, azicliwkslogs.LogActionPull, "The pull has been completed successfully.", nil, true)
+		}
+		out(nil, "", "Pull process completed successfully.", nil, true)
+		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repo: %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 	}
-	out(nil, "", "Pull process completed successfully.", nil, true)
-	out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repo: %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 	return output, nil
+}
+
+// ExecPull fetches the latest changes from the remote repository and constructs the remote state.
+func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", "Failed to pull changes from the remote repo.", nil, true)
+		return output, err
+	}
+	m.ExecPrintContext(nil, out)
+	if !m.isWorkspaceDir() {
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
+	}
+
+	fileLock, err := m.tryLock()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	defer fileLock.Unlock()
+
+	return m.execInternalPull(false, out)
 }
