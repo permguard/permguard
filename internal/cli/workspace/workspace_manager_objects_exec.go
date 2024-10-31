@@ -115,7 +115,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showType,
 		// 	out(nil, "", string(objectInfo.GetObject().GetContent()), nil, true)
 		// }
 		// out(nil, "", "\n", nil, true)
-		fmt.Sprintf("%s", string(objectInfo.GetObject().GetContent()))
+		fmt.Print("%s", string(objectInfo.GetObject().GetContent()))
 	} else if m.ctx.IsJSONOutput() {
 		objMaps := []map[string]any{}
 		objMap := map[string]any{}
