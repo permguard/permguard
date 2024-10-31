@@ -438,7 +438,7 @@ func (m *COSPManager) ReadObject(oid string) (*azlangobjs.Object, error) {
 }
 
 // GetObjects returns the objects.
-func (m *COSPManager) getObjects(path string) ([]azlangobjs.Object, error) {
+func (m *COSPManager) getObjects(path string, isStore bool) ([]azlangobjs.Object, error) {
 	objects := []azlangobjs.Object{}
 	dirs, err := m.persMgr.ListDirectories(azicliwkspers.PermguardDir, path)
 	if err != nil {
@@ -451,9 +451,17 @@ func (m *COSPManager) getObjects(path string) ([]azlangobjs.Object, error) {
 		}
 		for _, file := range files {
 			oid := fmt.Sprintf("%s%s", dir, file)
-			obj, err := m.ReadObject(oid)
-			if err != nil {
-				return nil, err
+			var obj *azlangobjs.Object
+			if isStore {
+				obj, err = m.ReadObject(oid)
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				obj, err = m.ReadCodeSourceObject(oid)
+				if err != nil {
+					return nil, err
+				}
 			}
 			objects = append(objects, *obj)
 		}
@@ -466,7 +474,7 @@ func (m *COSPManager) GetObjects(includeStorage, includeCode bool) ([]azlangobjs
 	objects := []azlangobjs.Object{}
 	if includeCode {
 		if ok, _ := m.persMgr.CheckPathIfExists(azicliwkspers.PermguardDir, m.getCodeSourceObjectsDir()); ok {
-			codeObjs, err := m.getObjects(m.getCodeSourceObjectsDir())
+			codeObjs, err := m.getObjects(m.getCodeSourceObjectsDir(), false)
 			if err != nil {
 				return nil, err
 			}
@@ -475,7 +483,7 @@ func (m *COSPManager) GetObjects(includeStorage, includeCode bool) ([]azlangobjs
 	}
 	if includeStorage {
 		if ok, _ := m.persMgr.CheckPathIfExists(azicliwkspers.PermguardDir, m.getObjectsDir()); ok {
-			storageObjs, err := m.getObjects(m.getObjectsDir())
+			storageObjs, err := m.getObjects(m.getObjectsDir(), true)
 			if err != nil {
 				return nil, err
 			}

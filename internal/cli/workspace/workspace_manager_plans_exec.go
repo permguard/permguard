@@ -164,6 +164,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 		out(nil, "", "", nil, true)
 		planObjs := append(createdItems, modifiedItems...)
 		planObjs = append(planObjs, unchangedItems...)
+		planObjs = append(planObjs, deletedItems...)
 		refsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
 		if err != nil {
 			if m.ctx.IsVerboseTerminalOutput() {
@@ -213,7 +214,7 @@ func (m *WorkspaceManager) ExecApply(out aziclicommon.PrinterOutFunc) (map[strin
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
-	
+
 	fileLock, err := m.tryLock()
 	if err != nil {
 		return failedOpErr(nil, err)
