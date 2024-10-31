@@ -175,28 +175,24 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 			out(nil, "", fmt.Sprintf("Your workspace history %s:\n", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 			for _, commitInfo := range commitInfos {
 				commit := commitInfo.GetCommit()
-				parent := commit.GetParent()
 				tree := commit.GetTree()
 				metadata := commit.GetMetaData()
-				author := metadata.GetAuthor()
+				committerTimestamp := metadata.GetCommitterTimestamp()
 				authorTimestamp := metadata.GetAuthorTimestamp()
 
 				output := fmt.Sprintf(
 					"Commit %s:\n"+
-					"  - Parent ID: %s\n"+
 					"  - Tree: %s\n"+
-					"  - Author: %s\n"+
+					"  - Committer Timestamp: %s\n"+
 					"  - Author Timestamp: %s\n",
 					aziclicommon.IDText(commitInfo.GetCommitID()),
-					aziclicommon.IDText(parent),
 					aziclicommon.IDText(tree),
-					aziclicommon.KeywordText(author),
-					authorTimestamp,
+					aziclicommon.DateText(committerTimestamp),
+					aziclicommon.DateText(authorTimestamp),
 				)
 
 				out(nil, "", output, nil, true)
 			}
-			out(nil, "", "\n", nil, true)
 		}
 	} else if m.ctx.IsJSONOutput() {
 		objMaps := []map[string]any{}
