@@ -18,6 +18,7 @@ package workspace
 
 import (
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 )
 
 // GetObjects gets the objects.
@@ -51,4 +52,13 @@ func (m *WorkspaceManager) getObjectsInfos(includeStorage, includeCode, filterCo
 		filteredObjects = append(filteredObjects, *objInfo)
 	}
 	return filteredObjects, nil
+}
+
+// getHistory gets the commit history.
+func (m *WorkspaceManager) getHistory(commit string) ([]azicliwkscosp.CommitInfo, error) {
+	commitHistory, err := m.cospMgr.GetHistory(commit)
+	if err != nil {
+		return nil, err
+	}
+	return commitHistory, nil
 }

@@ -484,3 +484,56 @@ func (m *COSPManager) GetObjects(includeStorage, includeCode bool) ([]azlangobjs
 	}
 	return objects, nil
 }
+
+// GetCommit gets the commit.
+func (m *COSPManager) GetCommit(commitID string) (*azlangobjs.Commit, error) {
+	obj, err := m.ReadObject(commitID)
+	if err != nil {
+		return nil, err
+	}
+	objInfo, err := m.objMgr.GetObjectInfo(obj)
+	if err != nil {
+		return nil, err
+	}
+	if objInfo.GetType() != azlangobjs.ObjectTypeCommit {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: oid %s is not a valid commit", commitID))
+	}
+	commit, err := m.objMgr.DeserializeCommit(obj.GetContent())
+	if err != nil {
+		return nil, err
+	}
+	return commit, nil
+}
+
+// GetHistory gets the commit history.
+func (m *COSPManager) GetHistory(commitID string) ([]CommitInfo, error) {
+    var commits []CommitInfo
+    commit, err := m.GetCommit(commitID)
+    if err != nil {
+        return nil, err
+    }
+
+    for commit != nil && commit.GetParent() != azlangobjs.ZeroOID {
+		commitInfo := CommitInfo{
+			oid: commitID,
+			commit: commit,
+		}
+        commits = append(commits, commitInfo)
+		commitID := commit.GetParent()
+        parentCommit, err := m.GetCommit(commitID)
+        if err != nil {
+            return nil, err
+        }
+        commit = parentCommit
+    }
+
+    if commit != nil && commit.GetParent() == azlangobjs.ZeroOID {
+		commitInfo := CommitInfo{
+			oid: commitID,
+			commit: commit,
+		}
+        commits = append(commits, commitInfo)
+    }
+
+    return commits, nil
+}
