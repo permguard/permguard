@@ -498,10 +498,7 @@ func (m *COSPManager) GetCommit(commitID string) (*azlangobjs.Commit, error) {
 	if objInfo.GetType() != azlangobjs.ObjectTypeCommit {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: oid %s is not a valid commit", commitID))
 	}
-	commit, err := m.objMgr.DeserializeCommit(obj.GetContent())
-	if err != nil {
-		return nil, err
-	}
+	commit := objInfo.GetInstance().(*azlangobjs.Commit)
 	return commit, nil
 }
 

@@ -20,6 +20,7 @@
         // "args": ["plan", "-w", "../../../playground-yaml/"],
         // "args": ["pull", "-w", "../../../playground-yaml/"],
         "args": ["history", "-w", "../../../playground-yaml/"],
+        // "args": ["apply", "-w", "../../../playground-yaml/"],
         // "args": ["pull", "-w", "/Users/nicolagallo/source/tmp/permy"],
         // "args": ["pull", "-w", "../../../playground-yaml/"],
         // "args": ["remote"],
