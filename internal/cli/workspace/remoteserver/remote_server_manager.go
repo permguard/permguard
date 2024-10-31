@@ -61,6 +61,9 @@ func (m *RemoteServerManager) GetServerRemoteRepo(accountID int64, repo string, 
 	if err != nil || srvRepo == nil || len(srvRepo) == 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: repo %s does not exist", repo))
 	}
+	if srvRepo[0].Name != repo {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: repo %s not found", repo))
+	}
 	return &srvRepo[0], nil
 }
 

@@ -335,6 +335,12 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 	if !committed {
 		return failedOpErr(nil, err)
 	}
+
+	_, err = m.execInternalPull(true, out)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+
 	out(nil, "", "Apply process completed successfully.", nil, true)
 	if !internal {
 		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repo: %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
