@@ -21,6 +21,7 @@ import (
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 )
 
 // ExecObjects list the objects.
@@ -54,7 +55,7 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 			for _, objectInfo := range filteredObjectInfos {
 				out(nil, "", fmt.Sprintf("	- %s %s", aziclicommon.IDText(objectInfo.GetOID()), aziclicommon.KeywordText(objectInfo.GetType())), nil, true)
 			}
-			out(nil, "", "\n", nil, true)
+			out(nil, "", "\n", nil, false)
 		}
 	} else if m.ctx.IsJSONOutput() {
 		objMaps := []map[string]any{}
@@ -115,11 +116,11 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showType,
 		}
 		if showContent {
 			if anyOutput {
-				out(nil, "", "\n", nil, true)
+				out(nil, "", "\n", nil, false)
 			}
 			out(nil, "", string(objectInfo.GetObject().GetContent()), nil, true)
 		}
-		out(nil, "", "\n", nil, true)
+		out(nil, "", "\n", nil, false)
 	} else if m.ctx.IsJSONOutput() {
 		objMaps := []map[string]any{}
 		objMap := map[string]any{}
@@ -162,14 +163,18 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 	}
 
 	// Get history of the current workspace
-	commitInfos, err := m.getHistory(headCtx.GetCommit())
-	if err != nil {
-		return failedOpErr(nil, err)
+	commitInfos := []azicliwkscosp.CommitInfo{}
+	headCommit := headCtx.GetCommit()
+	if headCommit != azlangobjs.ZeroOID {
+		commitInfos, err = m.getHistory(headCommit)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
 	}
 
 	if m.ctx.IsTerminalOutput() {
 		if len(commitInfos) == 0 {
-			out(nil, "", "No commits found in the current workspace.", nil, true)
+			out(nil, "", "No history data is available in the current workspace.", nil, true)
 			return output, nil
 		} else {
 			out(nil, "", fmt.Sprintf("Your workspace history %s:\n", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
@@ -182,9 +187,9 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 
 				output := fmt.Sprintf(
 					"Commit %s:\n"+
-					"  - Tree: %s\n"+
-					"  - Committer Timestamp: %s\n"+
-					"  - Author Timestamp: %s\n",
+						"  - Tree: %s\n"+
+						"  - Committer Timestamp: %s\n"+
+						"  - Author Timestamp: %s\n",
 					aziclicommon.IDText(commitInfo.GetCommitID()),
 					aziclicommon.IDText(tree),
 					aziclicommon.DateText(committerTimestamp),

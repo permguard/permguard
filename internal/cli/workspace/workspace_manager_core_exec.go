@@ -53,10 +53,6 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out aziclicommon.P
 		return output, err
 	}
 	output := m.ExecPrintContext(nil, out)
-	if !m.isWorkspaceDir() {
-		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
-	}
-
 	homeDir := m.getHomeHiddenDir()
 	res, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.WorkDir, homeDir)
 	if err != nil {

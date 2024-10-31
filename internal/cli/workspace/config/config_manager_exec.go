@@ -135,7 +135,7 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out aziclicommon.
 			for _, remote := range remotes {
 				out(nil, "", fmt.Sprintf("	- %s", aziclicommon.KeywordText(remote)), nil, true)
 			}
-			out(nil, "", "\n", nil, true)
+			out(nil, "", "\n", nil, false)
 		}
 	} else if m.ctx.IsJSONOutput() {
 		remotes := []any{}
@@ -219,7 +219,7 @@ func (m *ConfigManager) ExecListRepos(activeRefs string, output map[string]any, 
 			for _, repo := range repos {
 				out(nil, "", fmt.Sprintf("	- %s", aziclicommon.KeywordText(repo)), nil, true)
 			}
-			out(nil, "", "\n", nil, true)
+			out(nil, "", "\n", nil, false)
 		}
 	} else if m.ctx.IsJSONOutput() {
 		repos := []any{}
