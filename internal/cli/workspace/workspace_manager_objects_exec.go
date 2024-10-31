@@ -66,7 +66,7 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 }
 
 // ExecObjectsCat cat the object.
-func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showType, showSize, printContent bool, oid string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showType, showSize, showContent bool, oid string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to access objects in the current workspace.", nil, true)
 		return output, err
@@ -108,7 +108,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showType,
 			out(nil, "", fmt.Sprintf("	- Size %s", aziclicommon.NumberText(len(objectInfo.GetObject().GetContent()))), nil, true)
 			anyOutput = true
 		}
-		if printContent {
+		if showContent {
 			if anyOutput {
 				out(nil, "", "\n", nil, true)
 			}
@@ -124,7 +124,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showType,
 		if showSize {
 			objMap["size"] = len(objectInfo.GetObject().GetContent())
 		}
-		if printContent {
+		if showContent {
 			objMap["content"] = string(objectInfo.GetObject().GetContent())
 		}
 		objMaps = append(objMaps, objMap)
