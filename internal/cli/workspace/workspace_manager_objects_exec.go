@@ -99,7 +99,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showType,
 
 	if m.ctx.IsTerminalOutput() {
 		anyOutput := false
-		out(nil, "", "Your workspace object:\n", nil, true)
+		out(nil, "", fmt.Sprintf("Your workspace object %s:\n", aziclicommon.IDText(objectInfo.GetOID())), nil, true)
 		if showType {
 			out(nil, "", fmt.Sprintf("	- Type %s", aziclicommon.KeywordText(objectInfo.GetType())), nil, true)
 			anyOutput = true
