@@ -132,6 +132,8 @@ github.com/permguard/permguard-notp-protocol v0.0.0-20241017212614-364d5c3f4af0 
 github.com/permguard/permguard-notp-protocol v0.0.0-20241017212614-364d5c3f4af0/go.mod h1:4NXf0HzTXMD2Fm8uq5F6n/tOte0UV8m1us9bnxYS6xI=
 github.com/permguard/permguard-notp-protocol v0.0.0-20241030214128-ceb3168d96ea h1:yAPR+F4XWwgMD0m0wxrFYUpteglieeqYSvMycPQmgSU=
 github.com/permguard/permguard-notp-protocol v0.0.0-20241030214128-ceb3168d96ea/go.mod h1:yLK9lxLyJSj45rYcXEXDoo/KOrw4DTqU6yp+gWteLDQ=
+github.com/permguard/permguard-notp-protocol v0.0.0-20241101163601-2558a2593f59 h1:oSvSo5XkHUdraZ1rVn4gSLww+bKFjbvyvESu8+7eq8E=
+github.com/permguard/permguard-notp-protocol v0.0.0-20241101163601-2558a2593f59/go.mod h1:yLK9lxLyJSj45rYcXEXDoo/KOrw4DTqU6yp+gWteLDQ=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pressly/goose/v3 v3.22.1 h1:2zICEfr1O3yTP9BRZMGPj7qFxQ+ik6yeo+z1LMuioLc=
