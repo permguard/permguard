@@ -18,6 +18,7 @@ package workspace
 
 import (
 	"fmt"
+	"strings"
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
@@ -52,10 +53,44 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 			return output, nil
 		} else {
 			out(nil, "", "Your workspace objects:\n", nil, true)
+			total, commits, trees, blobs := 0, 0, 0, 0
 			for _, objectInfo := range filteredObjectInfos {
 				out(nil, "", fmt.Sprintf("	- %s %s", aziclicommon.IDText(objectInfo.GetOID()), aziclicommon.KeywordText(objectInfo.GetType())), nil, true)
+				switch objectInfo.GetType() {
+				case azlangobjs.ObjectTypeCommit:
+					commits = commits + 1
+					if filterCommits {
+						total += 1
+					}
+				case azlangobjs.ObjectTypeTree:
+					trees = trees + 1
+					if filterTrees {
+						total += 1
+					}
+				case azlangobjs.ObjectTypeBlob:
+					blobs = blobs + 1
+					if filterBlob {
+						total += 1
+					}
+				}
 			}
 			out(nil, "", "\n", nil, false)
+			var sb strings.Builder
+			if filterCommits || filterTrees || filterBlob {
+				sb.WriteString("total " + aziclicommon.NumberText(total))
+
+				if filterCommits {
+					sb.WriteString(", commit " + aziclicommon.NumberText(commits))
+				}
+				if filterTrees {
+					sb.WriteString(", tree " + aziclicommon.NumberText(trees))
+				}
+				if filterBlob {
+					sb.WriteString(", blob " + aziclicommon.NumberText(blobs))
+				}
+				out(nil, "", sb.String(), nil, true)
+			}
+			out(nil, "", "", nil, true)
 		}
 	} else if m.ctx.IsJSONOutput() {
 		objMaps := []map[string]any{}
