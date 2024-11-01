@@ -144,14 +144,14 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 	}
 
 	localCommitID, _ := getFromRuntimeContext[string](ctx, LocalCodeCommitIDKey)
-	localCommitsCount, _ := getFromRuntimeContext[int32](ctx, LocalCommitsCountKey)
+	localCommitsCount, _ := getFromRuntimeContext[uint32](ctx, LocalCommitsCountKey)
 	remoteCommitID, _ := getFromRuntimeContext[string](ctx, RemoteCommitIDKey)
-	remoteCommitCound, _ := getFromRuntimeContext[int32](ctx, RemoteCommitsCountKey)
+	remoteCommitCount, _ := getFromRuntimeContext[uint32](ctx, RemoteCommitsCountKey)
 	if localCommitID == remoteCommitID {
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", "The local workspace is already fully up to date with the remote repository.", nil, true)
 		}
-	} else if localCommitsCount != remoteCommitCound {
+	} else if localCommitsCount != remoteCommitCount {
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", "Not all commits were successfully pulled. Please retry the operation.", nil, true)
 		}
@@ -188,37 +188,39 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		codeMapIds[code.OID] = true
 	}
 
-	commitObj, err := m.cospMgr.ReadObject(remoteCommitID)
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-	commit, err := absLang.GetCommitObject(commitObj)
-
-	treeObj, err := m.cospMgr.ReadObject(commit.GetTree())
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-	tree, err := absLang.GetTreeeObject(treeObj)
-
-	msCodeMap := make(map[string][]byte)
-	for _, entry := range tree.GetEntries() {
-		if _, ok := codeMapIds[entry.GetOID()]; !ok {
-			entryObj, err := m.cospMgr.ReadObject(entry.GetOID())
-			absLang.GetCommitObject(entryObj)
-			if err != nil {
-				return failedOpErr(nil, err)
-			}
-			msCodeMap[entry.GetOID()] = entryObj.GetContent()
+	if remoteCommitID != azlangobjs.ZeroOID {
+		commitObj, err := m.cospMgr.ReadObject(remoteCommitID)
+		if err != nil {
+			return failedOpErr(nil, err)
 		}
-	}
+		commit, err := absLang.GetCommitObject(commitObj)
 
-	for item := range msCodeMap {
-		obmgr, _ := azlangobjs.NewObjectManager()
-		obj, _ := obmgr.DeserializeObjectFromBytes(msCodeMap[item])
-		objInfo, _ := obmgr.GetObjectInfo(obj)
-		objInstance := objInfo.GetInstance()
-		out(nil, "", fmt.Sprintf("%s",objInstance), nil, true)
-		//out(nil, "", fmt.Sprintf("%s",string(msCodeMap[item])), nil, true)
+		treeObj, err := m.cospMgr.ReadObject(commit.GetTree())
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		tree, err := absLang.GetTreeeObject(treeObj)
+
+		msCodeMap := make(map[string][]byte)
+		for _, entry := range tree.GetEntries() {
+			if _, ok := codeMapIds[entry.GetOID()]; !ok {
+				entryObj, err := m.cospMgr.ReadObject(entry.GetOID())
+				absLang.GetCommitObject(entryObj)
+				if err != nil {
+					return failedOpErr(nil, err)
+				}
+				msCodeMap[entry.GetOID()] = entryObj.GetContent()
+			}
+		}
+
+		for item := range msCodeMap {
+			obmgr, _ := azlangobjs.NewObjectManager()
+			obj, _ := obmgr.DeserializeObjectFromBytes(msCodeMap[item])
+			objInfo, _ := obmgr.GetObjectInfo(obj)
+			objInstance := objInfo.GetInstance()
+			out(nil, "", fmt.Sprintf("%s",objInstance), nil, true)
+			//out(nil, "", fmt.Sprintf("%s",string(msCodeMap[item])), nil, true)
+		}
 	}
 
 	m.cospMgr.CleanCodeSource()
