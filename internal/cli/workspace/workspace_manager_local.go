@@ -92,7 +92,6 @@ func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastracti
 	return normalizedCodeFiles, normalizedIgnoredCodeFiles, nil
 }
 
-
 // blobifyPermSchemaFile blobify a permguard schema file.
 func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path string, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile, absLang azlang.LanguageAbastraction, data []byte, file azicliwkscosp.CodeFile) []azicliwkscosp.CodeFile {
 	if schemaFileCount > 1 {
