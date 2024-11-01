@@ -12,7 +12,7 @@ require (
 	github.com/pelletier/go-toml v1.9.5
 	github.com/permguard/permguard-abs-language v0.0.0-20241101000921-162c637a6a90
 	github.com/permguard/permguard-core v0.0.0-20241030214048-272f3f40cbc7
-	github.com/permguard/permguard-notp-protocol v0.0.0-20241101163601-2558a2593f59
+	github.com/permguard/permguard-notp-protocol v0.0.0-20241101174734-8b8901390652
 	github.com/pressly/goose/v3 v3.22.1
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
