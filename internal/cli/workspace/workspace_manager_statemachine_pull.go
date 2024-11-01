@@ -115,7 +115,7 @@ func (m *WorkspaceManager) OnPullHandleExchangeDataStream(handlerCtx *notpstatem
 	}
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables:  []notppackets.Packetable{},
-		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
+		MessageValue: statePacket.MessageValue,
 	}
 	return handlerReturn, nil
 }

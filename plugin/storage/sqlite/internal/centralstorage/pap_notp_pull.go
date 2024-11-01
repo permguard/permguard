@@ -207,6 +207,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleExchangeDataStream(handlerCtx *notp
 	commitIDs, _ := getFromHandlerContext[[]string](handlerCtx, DiffCommitIDsKey)
 	commitIDCursor, _ := getFromHandlerContext[int](handlerCtx, DiffCommitIDCursorKey)
 	commitIDCursor = commitIDCursor + 1
+	handlerCtx.Set(DiffCommitIDCursorKey, commitIDCursor)
 	if commitIDCursor < len(commitIDs) {
 		commitID := commitIDs[commitIDCursor]
 		packetables, err := s.buildPushPacketablesForCommit(commitID)
@@ -215,11 +216,12 @@ func (s SQLiteCentralStoragePAP) OnPullHandleExchangeDataStream(handlerCtx *notp
 		}
 		handlerReturn.Packetables = packetables
 		if commitIDCursor == len(commitIDs)-1 {
+			handlerReturn.HasMore = false
 			handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.CompletedDataStreamValue)
 		} else {
+			handlerReturn.HasMore = true
 			handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.ActiveDataStreamValue)
 		}
-		handlerReturn.HasMore = true
 	}
 	return handlerReturn, nil
 }
