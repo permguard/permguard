@@ -44,7 +44,7 @@ func (p *RemoteRefStatePacket) Serialize() ([]byte, error) {
 	commitBytes := notppackets.EncodeByteArray([]byte(p.RefPrevCommit))
 	prevCommitBytes := notppackets.EncodeByteArray([]byte(p.RefCommit))
 	opCodeBytes := make([]byte, 2)
-	binary.LittleEndian.PutUint16(opCodeBytes, p.OpCode)
+	binary.BigEndian.PutUint16(opCodeBytes, p.OpCode)
 
 	data := append(commitBytes, notppackets.PacketNullByte)
 	data = append(data, prevCommitBytes...)
@@ -75,7 +75,7 @@ func (p *RemoteRefStatePacket) Deserialize(data []byte) error {
 		return fmt.Errorf("missing data for OpCode")
 	}
 
-	p.OpCode = binary.LittleEndian.Uint16(data[secondNullByteIndex+1 : secondNullByteIndex+3])
+	p.OpCode = binary.BigEndian.Uint16(data[secondNullByteIndex+1 : secondNullByteIndex+3])
 
 	return nil
 }

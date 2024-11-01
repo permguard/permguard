@@ -17,10 +17,6 @@
 package packets
 
 import (
-	"bytes"
-	"encoding/binary"
-	"fmt"
-
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 )
 
@@ -32,6 +28,8 @@ type LocalRefStatePacket struct {
 	HasConflicts bool
 	// IsUpToDate is true if the local ref is up to date with the remote ref.
 	IsUpToDate bool
+	// NumberOfCommits is the number of commits between the local ref and the remote ref.
+	NumberOfCommits uint32
 	// OpCode is the operation code of the packet.
 	OpCode uint16
 }
@@ -43,76 +41,36 @@ func (p *LocalRefStatePacket) GetType() uint64 {
 
 // Serialize serializes the packet.
 func (p *LocalRefStatePacket) Serialize() ([]byte, error) {
-	commitBytes := notppackets.EncodeByteArray([]byte(p.RefCommit))
-
-	var hasConflictsByte byte
-	if p.HasConflicts {
-		hasConflictsByte = 1
-	} else {
-		hasConflictsByte = 0
-	}
-
-	var isUpToDateByte byte
-	if p.IsUpToDate {
-		isUpToDateByte = 1
-	} else {
-		isUpToDateByte = 0
-	}
-
-	opCodeBytes := make([]byte, 2)
-	binary.LittleEndian.PutUint16(opCodeBytes, p.OpCode)
-
-	data := append(commitBytes, notppackets.PacketNullByte)
-	data = append(data, hasConflictsByte)
-	data = append(data, notppackets.PacketNullByte)
-	data = append(data, isUpToDateByte)
-	data = append(data, notppackets.PacketNullByte)
-	data = append(data, opCodeBytes...)
-
+	data := notppackets.SerializeString(nil, p.RefCommit, notppackets.PacketNullByte)
+	data = notppackets.SerializeBool(data, p.HasConflicts, notppackets.PacketNullByte)
+	data = notppackets.SerializeBool(data, p.IsUpToDate, notppackets.PacketNullByte)
+	data = notppackets.SerializeUint32(data, p.NumberOfCommits, notppackets.PacketNullByte)
+	data = notppackets.SerializeUint16(data, p.OpCode, notppackets.PacketNullByte)
 	return data, nil
 }
 
 // Deserialize deserializes the packet.
 func (p *LocalRefStatePacket) Deserialize(data []byte) error {
-	nullByteIndex := bytes.IndexByte(data, notppackets.PacketNullByte)
-	if nullByteIndex == -1 {
-		return fmt.Errorf("missing null byte after RefCommit")
+	var err error
+	p.RefCommit, data, err = notppackets.DeserializeString(data, notppackets.PacketNullByte)
+	if err != nil {
+		return err
 	}
-
-	p.RefCommit = string(notppackets.DecodeByteArray(data[:nullByteIndex]))
-
-	if nullByteIndex+1 >= len(data) {
-		return fmt.Errorf("missing data for HasConflicts")
+	p.HasConflicts, data, err = notppackets.DeserializeBool(data, notppackets.PacketNullByte)
+	if err != nil {
+		return err
 	}
-
-	secondNullByteIndex := bytes.IndexByte(data[nullByteIndex+1:], notppackets.PacketNullByte)
-	if secondNullByteIndex == -1 {
-		return fmt.Errorf("missing null byte after HasConflicts")
+	p.IsUpToDate, data, err = notppackets.DeserializeBool(data, notppackets.PacketNullByte)
+	if err != nil {
+		return err
 	}
-
-	secondNullByteIndex += nullByteIndex + 1
-
-	p.HasConflicts = data[nullByteIndex+1] == 1
-
-	if secondNullByteIndex+1 >= len(data) {
-		return fmt.Errorf("missing data for IsUpToDate")
+	p.NumberOfCommits, data, err = notppackets.DeserializeUint32(data, notppackets.PacketNullByte)
+	if err != nil {
+		return err
 	}
-
-	p.IsUpToDate = data[secondNullByteIndex+1] == 1
-
-	thirdNullByteIndex := bytes.IndexByte(data[secondNullByteIndex+1:], notppackets.PacketNullByte)
-	if thirdNullByteIndex == -1 {
-		return fmt.Errorf("missing null byte after IsUpToDate")
+	p.OpCode, data, err = notppackets.DeserializeUint16(data, notppackets.PacketNullByte)
+	if err != nil {
+		return err
 	}
-	thirdNullByteIndex += secondNullByteIndex + 1
-
-	p.IsUpToDate = data[secondNullByteIndex+1] == 1
-
-	if thirdNullByteIndex+1+2 > len(data) {
-		return fmt.Errorf("missing data for OpCode")
-	}
-
-	p.OpCode = binary.LittleEndian.Uint16(data[thirdNullByteIndex+1 : thirdNullByteIndex+3])
-
 	return nil
 }

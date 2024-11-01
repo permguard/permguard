@@ -30,6 +30,7 @@ func TestLocalRefStatePacket(t *testing.T) {
 	packet.RefCommit = "477161cc-83c5-4004-8901-a61727ce045a"
 	packet.HasConflicts = true
 	packet.IsUpToDate = true
+	packet.NumberOfCommits = 10
 	packet.OpCode = 0x15
 
 	data, err := packet.Serialize()
@@ -42,5 +43,6 @@ func TestLocalRefStatePacket(t *testing.T) {
 	assert.Equal(packet.RefCommit, newPacket.RefCommit)
 	assert.Equal(packet.HasConflicts, newPacket.HasConflicts)
 	assert.Equal(packet.IsUpToDate, newPacket.IsUpToDate)
+	assert.Equal(packet.NumberOfCommits, newPacket.NumberOfCommits)
 	assert.Equal(packet.OpCode, newPacket.OpCode)
 }
