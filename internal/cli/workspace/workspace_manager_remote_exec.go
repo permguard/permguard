@@ -29,6 +29,10 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
+const (
+	CodeGenFileName = "codegen"
+)
+
 // ExecCheckoutRepo checks out a repository.
 func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
@@ -221,7 +225,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		fileName, err := azfiles.GenerateUniqueFile("codegen", ext)
+		fileName, err := azfiles.GenerateUniqueFile(CodeGenFileName, ext)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
