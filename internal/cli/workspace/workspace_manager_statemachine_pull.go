@@ -67,7 +67,7 @@ func (m *WorkspaceManager) OnPullHandleRequestCurrentStateResponse(handlerCtx *n
 	}
 	handlerCtx.Set(RemoteCommitIDKey, localRefSPacket.RefCommit)
 	handlerCtx.Set(RemoteCommitsCountKey, localRefSPacket.NumberOfCommits)
-	handlerCtx.Set(LocalCommitsCountKey, 0)
+	handlerCtx.Set(LocalCommitsCountKey, uint32(0))
 	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
 	return handlerReturn, nil
 }
@@ -115,7 +115,7 @@ func (m *WorkspaceManager) OnPullHandleExchangeDataStream(handlerCtx *notpstatem
 			return nil, err
 		}
 	}
-	commitsCount, _ := getFromHandlerContext[int32](handlerCtx, LocalCommitsCountKey)
+	commitsCount, _ := getFromHandlerContext[uint32](handlerCtx, LocalCommitsCountKey)
 	commitsCount = commitsCount + 1
 	handlerCtx.Set(LocalCommitsCountKey, commitsCount)
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
