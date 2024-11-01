@@ -21,8 +21,10 @@ import (
 	"fmt"
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azfiles "github.com/permguard/permguard-core/pkg/extensions/files"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
+	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
@@ -133,9 +135,9 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		OutFuncKey: func(key string, output string, newLine bool) {
 			out(nil, key, output, nil, newLine)
 		},
-		LanguageAbstractionKey:   absLang,
-		LocalCodeCommitIDKey:     headCtx.commitID,
-		HeadContextKey:           headCtx,
+		LanguageAbstractionKey: absLang,
+		LocalCodeCommitIDKey:   headCtx.commitID,
+		HeadContextKey:         headCtx,
 	}
 
 	ctx, err := m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetAccountID(), headCtx.GetRepoID(), bag, m)
@@ -201,26 +203,29 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		}
 		tree, err := absLang.GetTreeeObject(treeObj)
 
-		msCodeMap := make(map[string][]byte)
+		codeBlocks := [][]byte{}
 		for _, entry := range tree.GetEntries() {
 			if _, ok := codeMapIds[entry.GetOID()]; !ok {
 				entryObj, err := m.cospMgr.ReadObject(entry.GetOID())
-				absLang.GetCommitObject(entryObj)
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
-				msCodeMap[entry.GetOID()] = entryObj.GetContent()
+				codeBlock, err := absLang.TranslateFromPermCodeToLanguage(entryObj)
+				if err != nil {
+					return failedOpErr(nil, err)
+				}
+				codeBlocks = append(codeBlocks, codeBlock)
 			}
 		}
-
-		for item := range msCodeMap {
-			obmgr, _ := azlangobjs.NewObjectManager()
-			obj, _ := obmgr.DeserializeObjectFromBytes(msCodeMap[item])
-			objInfo, _ := obmgr.GetObjectInfo(obj)
-			objInstance := objInfo.GetInstance()
-			out(nil, "", fmt.Sprintf("%s",objInstance), nil, true)
-			//out(nil, "", fmt.Sprintf("%s",string(msCodeMap[item])), nil, true)
+		codeBlock, ext, err := absLang.CreateLanguageFile(codeBlocks)
+		if err != nil {
+			return failedOpErr(nil, err)
 		}
+		fileName, err := azfiles.GenerateUniqueFile("codegen", ext)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, fileName, codeBlock, 0644, false)
 	}
 
 	m.cospMgr.CleanCodeSource()

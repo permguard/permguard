@@ -17,6 +17,8 @@
 package permyaml
 
 import (
+	"strings"
+
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azlangcode "github.com/permguard/permguard-abs-language/pkg/permcode"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
@@ -181,4 +183,33 @@ func (abs *YAMLLanguageAbstraction) CreateSchemaSectionsObject(path string, data
 	}
 	multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), name, codeID, codeType, 0, err)
 	return multiSecObj, nil
+}
+
+// TranslateFromPermCodeToLanguage translates from permcode to language.
+func (abs *YAMLLanguageAbstraction) TranslateFromPermCodeToLanguage(obj *azlangobjs.Object) ([]byte, error) {
+	// serializer, err := azsrlzs.NewYamlSerializer()
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// objInfo, err := abs.objMng.GetObjectInfo(obj)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// code, _, _, _, err := serializer.UnmarshalLangType(objInfo.GetInstance().([]byte))
+	// if err != nil {
+	// 	return nil, err
+	// }
+	return []byte(string("sample")), nil
+}
+
+// CreateLanguageFile combines the blocks for the language.
+func (abs *YAMLLanguageAbstraction) CreateLanguageFile(blocks [][]byte) ([]byte, string, error) {
+	var sb strings.Builder
+	for i, block := range blocks {
+		if i > 0 {
+			sb.WriteString("\n---\n")
+		}
+		sb.Write(block)
+	}
+	return []byte(sb.String()), LanguageFileYml, nil
 }
