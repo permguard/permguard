@@ -66,6 +66,8 @@ func (m *WorkspaceManager) OnPullHandleRequestCurrentStateResponse(handlerCtx *n
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, "workspace: conflicts detected in the remote repository.")
 	}
 	handlerCtx.Set(RemoteCommitIDKey, localRefSPacket.RefCommit)
+	handlerCtx.Set(RemoteCommitsCountKey, localRefSPacket.NumberOfCommits)
+	handlerCtx.Set(LocalCommitsCountKey, 0)
 	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
 	return handlerReturn, nil
 }
@@ -113,6 +115,9 @@ func (m *WorkspaceManager) OnPullHandleExchangeDataStream(handlerCtx *notpstatem
 			return nil, err
 		}
 	}
+	commitsCount, _ := getFromHandlerContext[int32](handlerCtx, LocalCommitsCountKey)
+	commitsCount = commitsCount + 1
+	handlerCtx.Set(LocalCommitsCountKey, commitsCount)
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables:  []notppackets.Packetable{},
 		MessageValue: statePacket.MessageValue,

@@ -144,11 +144,18 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 	}
 
 	localCommitID, _ := getFromRuntimeContext[string](ctx, LocalCodeCommitIDKey)
+	localCommitsCount, _ := getFromRuntimeContext[int32](ctx, LocalCommitsCountKey)
 	remoteCommitID, _ := getFromRuntimeContext[string](ctx, RemoteCommitIDKey)
+	remoteCommitCound, _ := getFromRuntimeContext[int32](ctx, RemoteCommitsCountKey)
 	if localCommitID == remoteCommitID {
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", "The local workspace is already fully up to date with the remote repository.", nil, true)
 		}
+	} else if localCommitsCount != remoteCommitCound {
+		if m.ctx.IsTerminalOutput() {
+			out(nil, "", "Not all commits were successfully pulled. Please retry the operation.", nil, true)
+		}
+		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, "Not all commits were successfully pulled."))
 	} else {
 		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 		if !committed || localCommitID == "" || remoteCommitID == "" {
