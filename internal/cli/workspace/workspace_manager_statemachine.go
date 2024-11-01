@@ -37,8 +37,12 @@ const (
 	LocalCodeCommitObjectKey = "local-code-commit-object"
 	// LocalCodeCommitIDKey represents the local code commit id key.
 	LocalCodeCommitIDKey = "local-code-commit-id"
+	// LocalCommitsCountKey represents the local commits count key.
+	LocalCommitsCountKey = "local-commits-count"
 	// RemoteCommitIDKey represents the remote commit id key.
 	RemoteCommitIDKey = "remote-commit-id"
+	// RemoteCommitsCountKey represents the remote commits count key.
+	RemoteCommitsCountKey = "remote-commits-count"
 	// DiffCommitIDsKey represents the diff commit ids key.
 	DiffCommitIDsKey = "diff-commit-ids"
 	// DiffCommitIDCursorKey represents the diff commit id cursor key.
