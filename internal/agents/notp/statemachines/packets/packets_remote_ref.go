@@ -17,10 +17,6 @@
 package packets
 
 import (
-	"bytes"
-	"encoding/binary"
-	"fmt"
-
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 )
 
@@ -41,41 +37,26 @@ func (p *RemoteRefStatePacket) GetType() uint64 {
 
 // Serialize serializes the packet.
 func (p *RemoteRefStatePacket) Serialize() ([]byte, error) {
-	commitBytes := notppackets.EncodeByteArray([]byte(p.RefPrevCommit))
-	prevCommitBytes := notppackets.EncodeByteArray([]byte(p.RefCommit))
-	opCodeBytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(opCodeBytes, p.OpCode)
-
-	data := append(commitBytes, notppackets.PacketNullByte)
-	data = append(data, prevCommitBytes...)
-	data = append(data, notppackets.PacketNullByte)
-	data = append(data, opCodeBytes...)
-
+	data := notppackets.SerializeString(nil, p.RefPrevCommit, notppackets.PacketNullByte)
+	data = notppackets.SerializeString(data, p.RefCommit, notppackets.PacketNullByte)
+	data = notppackets.SerializeUint16(data, p.OpCode, notppackets.PacketNullByte)
 	return data, nil
 }
 
 // Deserialize deserializes the packet.
 func (p *RemoteRefStatePacket) Deserialize(data []byte) error {
-	nullByteIndex := bytes.IndexByte(data, notppackets.PacketNullByte)
-	if nullByteIndex == -1 {
-		return fmt.Errorf("missing null byte after RefCommit")
+	var err error
+	p.RefPrevCommit, data, err = notppackets.DeserializeString(data, notppackets.PacketNullByte)
+	if err != nil {
+		return err
 	}
-
-	p.RefPrevCommit = string(notppackets.DecodeByteArray(data[:nullByteIndex]))
-
-	secondNullByteIndex := bytes.IndexByte(data[nullByteIndex+1:], notppackets.PacketNullByte)
-	if secondNullByteIndex == -1 {
-		return fmt.Errorf("missing second null byte after RefPrevCommit")
+	p.RefCommit, data, err = notppackets.DeserializeString(data, notppackets.PacketNullByte)
+	if err != nil {
+		return err
 	}
-
-	secondNullByteIndex += nullByteIndex + 1
-	p.RefCommit = string(notppackets.DecodeByteArray(data[nullByteIndex+1 : secondNullByteIndex]))
-
-	if secondNullByteIndex+1+2 > len(data) {
-		return fmt.Errorf("missing data for OpCode")
+	p.OpCode, data, err = notppackets.DeserializeUint16(data, notppackets.PacketNullByte)
+	if err != nil {
+		return err
 	}
-
-	p.OpCode = binary.BigEndian.Uint16(data[secondNullByteIndex+1 : secondNullByteIndex+3])
-
 	return nil
 }
