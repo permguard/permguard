@@ -48,7 +48,9 @@ func (m *WorkspaceManager) ExecPlan(out aziclicommon.PrinterOutFunc) (map[string
 // execInternalPlan generates a plan of changes to apply to the remote repository based on the differences between the local and remote states.
 func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to build the plan.", nil, true)
+		if !internal {
+			out(nil, "", "Failed to build the plan.", nil, true)
+		}
 		return output, err
 	}
 
@@ -227,7 +229,9 @@ func (m *WorkspaceManager) ExecApply(out aziclicommon.PrinterOutFunc) (map[strin
 // execInternalApply applies the plan to the remote repo
 func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to apply the plan.", nil, true)
+		if !internal {
+			out(nil, "", "Failed to apply the plan.", nil, true)
+		}
 		return output, err
 	}
 
