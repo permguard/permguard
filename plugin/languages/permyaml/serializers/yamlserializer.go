@@ -18,6 +18,7 @@ package serializers
 
 import (
 	"bytes"
+	"errors"
 
 	"gopkg.in/yaml.v2"
 
@@ -138,4 +139,85 @@ func (s *YamlSerializer) UnmarshalPermCodeFromPermYaml(data []byte) (string, any
 		return aztypes.ClassTypeSchema, v, aztypes.ClassTypeSchema, aztypes.ClassTypeSchema, nil
 	}
 	return "", nil, "", "", azerrors.WrapSystemError(azerrors.ErrLanguageFile, errFileMessage)
+}
+
+// Marshal marshals data to a byte array.
+func (s *YamlSerializer) Marshal(data any) ([]byte, error) {
+	return yaml.Marshal(data)
+}
+
+// Unmarshal unmarshals data to an object.
+func (s *YamlSerializer) Unmarshal(data []byte) (any, error) {
+    var result any
+    err := yaml.Unmarshal(data, &result)
+    if err != nil {
+        return nil, err
+    }
+    return result, nil
+}
+
+// ConvertSchemaFromPermCode converts a schema from a permcode object.
+func (s *YamlSerializer) ConvertSchemaFromPermCode(schema *aztypes.Schema) (*Schema, error) {
+	if schema == nil {
+		return nil, errors.New("permyaml: schema is nil")
+	}
+
+	sch := &Schema{
+		Domains: make([]Domain, 0),
+	}
+	for _, domain := range schema.Domains {
+		dom := Domain{
+			Name:        domain.Name,
+			Description: domain.Description,
+			Resources:   make([]DomainResource, 0),
+		}
+		for _, resource := range domain.Resources {
+			res := DomainResource{
+				Name:    resource.Name,
+				Actions: make([]DomainAction, 0),
+			}
+			for _, action := range resource.Actions {
+				act := DomainAction{
+					Name:        action.Name,
+					Description: action.Description,
+				}
+				res.Actions = append(res.Actions, act)
+			}
+			dom.Resources = append(dom.Resources, res)
+		}
+		sch.Domains = append(sch.Domains, dom)
+	}
+	return sch, nil
+}
+
+// ConvertPermissionFromPermCode converts a permission from a permcode object.
+func (s *YamlSerializer) ConvertPermissionFromPermCode(permission *aztypes.Permission) (*Permission, error) {
+	if permission == nil {
+		return nil, errors.New("permyaml: permission is nil")
+	}
+
+	perm := &Permission{
+		Name:   permission.Name,
+		Permit: permission.Permit,
+		Forbid: permission.Forbid,
+	}
+	return perm, nil
+}
+
+// ConvertPolicyFromPermCode converts a policy from a permcode object.
+func (s *YamlSerializer) ConvertPolicyFromPermCode(policy *aztypes.Policy) (*Policy, error) {
+	if policy == nil {
+		return nil, errors.New("permyaml: policy is nil")
+	}
+
+	pol := &Policy{
+		Name:      policy.Name,
+		Actions:   make([]string, 0),
+		Resources: make([]string, 0),
+	}
+	for _, action := range policy.Actions {
+		pol.Actions = append(pol.Actions, string(action))
+	}
+	pol.Resources = append(pol.Resources, string(policy.Resource))
+	return pol, nil
 }

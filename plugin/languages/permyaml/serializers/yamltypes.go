@@ -34,3 +34,27 @@ type Policy struct {
 	Actions   []string `yaml:"actions"`
 	Resources []string	`yaml:"resources"`
 }
+
+// DomainAction represents the domain action.
+type DomainAction struct {
+	Name        string `yaml:"name"`
+	Description string `yaml:"description"`
+}
+
+// DomainResource represents the domain resource.
+type DomainResource struct {
+	Name    string   		`yaml:"name"`
+	Actions []DomainAction	`yaml:"actions"`
+}
+
+// Domain represents the domain.
+type Domain struct {
+	Name        string				`yaml:"name"`
+	Description string     			`yaml:"description"`
+	Resources   []DomainResource 	`yaml:"resources"`
+}
+
+// Schema represents the schema for the domains.
+type Schema struct {
+	Domains []Domain `yaml:"domains"`
+}
