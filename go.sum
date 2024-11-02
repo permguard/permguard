@@ -122,6 +122,14 @@ github.com/permguard/permguard-abs-language v0.0.0-20241101220559-633be6820a55 h
 github.com/permguard/permguard-abs-language v0.0.0-20241101220559-633be6820a55/go.mod h1:J0lxCPWdr7BnhVE3Sxge5f8pAQsEVB0qM92OXEGW3Gg=
 github.com/permguard/permguard-abs-language v0.0.0-20241101233134-1710fdf591be h1:SN5sw4QA5EMDBc0aCp4aIsSEcJqMrfaB+SEk2GFhO0g=
 github.com/permguard/permguard-abs-language v0.0.0-20241101233134-1710fdf591be/go.mod h1:r7R18bt5Y6/3ndChlc6Mmyi8CKy01Aun3/Fs1pmzy2k=
+github.com/permguard/permguard-abs-language v0.0.0-20241102162018-437a04c4d9ec h1:+zPPZBadjQ0ey3gSc/GTmLTnbAY15sLPdw+XlS0KU0A=
+github.com/permguard/permguard-abs-language v0.0.0-20241102162018-437a04c4d9ec/go.mod h1:r7R18bt5Y6/3ndChlc6Mmyi8CKy01Aun3/Fs1pmzy2k=
+github.com/permguard/permguard-abs-language v0.0.0-20241102162742-10fa00eb86b4 h1:NEKQrmoZkKAcsbzHI9f7WpZNgIDQ9035UDNZllGy6Go=
+github.com/permguard/permguard-abs-language v0.0.0-20241102162742-10fa00eb86b4/go.mod h1:r7R18bt5Y6/3ndChlc6Mmyi8CKy01Aun3/Fs1pmzy2k=
+github.com/permguard/permguard-abs-language v0.0.0-20241102163323-aaa25c26d80b h1:TvdYpeVp9uAb7qyO1g1tx1bLB8QZxt+i1uLzYuZsuOE=
+github.com/permguard/permguard-abs-language v0.0.0-20241102163323-aaa25c26d80b/go.mod h1:r7R18bt5Y6/3ndChlc6Mmyi8CKy01Aun3/Fs1pmzy2k=
+github.com/permguard/permguard-abs-language v0.0.0-20241102164308-2850836fd1c4 h1:V/6dxvFPnb+nAM6uJcNg0ApaeHEBV+yF68IHiXS/u6M=
+github.com/permguard/permguard-abs-language v0.0.0-20241102164308-2850836fd1c4/go.mod h1:r7R18bt5Y6/3ndChlc6Mmyi8CKy01Aun3/Fs1pmzy2k=
 github.com/permguard/permguard-core v0.0.0-20241005220414-13209ba8eb06 h1:4S0oaLeySGdxBz5C8f+L0VMqBT9eXXXdPef/Ofbi9pw=
 github.com/permguard/permguard-core v0.0.0-20241005220414-13209ba8eb06/go.mod h1:L/xLAgPizYnmnSZ/UIPFeel4p/s6856k5QMcyLauaF8=
 github.com/permguard/permguard-core v0.0.0-20241030214048-272f3f40cbc7 h1:J4m0CqJHVaphSCca6RUZePT/YtGNzUGFDmqzge4jJCA=

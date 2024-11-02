@@ -17,10 +17,12 @@
 package permyaml
 
 import (
+	"fmt"
 	"strings"
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azlangcode "github.com/permguard/permguard-abs-language/pkg/permcode"
+	aztypes "github.com/permguard/permguard-abs-language/pkg/permcode/types"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azsrlzs "github.com/permguard/permguard/plugin/languages/permyaml/serializers"
 )
@@ -128,7 +130,16 @@ func (abs *YAMLLanguageAbstraction) CreateMultiSectionsObjects(path string, data
 			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
 			continue
 		}
-		header, err := azlangobjs.NewObjectHeader(true, 1, 2, 3)
+		langID, langVersionID, langTypeID, err := aztypes.GetClassTypeID(codeType)
+		if err != nil {
+			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
+			continue
+		}
+		if langID == 0 {
+			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid class type"))
+			continue
+		}
+		header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, langTypeID)
 		if err != nil {
 			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
 			continue
@@ -167,7 +178,15 @@ func (abs *YAMLLanguageAbstraction) CreateSchemaSectionsObject(path string, data
 		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, err)
 		return multiSecObj, nil
 	}
-	header, err := azlangobjs.NewObjectHeader(true, 1, 2, 3)
+	langID, langVersionID, langTypeID, err := aztypes.GetClassTypeID(codeType)
+	if err != nil {
+		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, err)
+	}
+	if langID == 0 {
+		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid class type"))
+		return multiSecObj, nil
+	}
+	header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, langTypeID)
 	if err != nil {
 		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, err)
 		return multiSecObj, nil
@@ -187,11 +206,19 @@ func (abs *YAMLLanguageAbstraction) CreateSchemaSectionsObject(path string, data
 
 // TranslateFromPermCodeToLanguage translates from permcode to language.
 func (abs *YAMLLanguageAbstraction) TranslateFromPermCodeToLanguage(obj *azlangobjs.Object) ([]byte, error) {
+	objInfo, err := abs.objMng.GetObjectInfo(obj)
+	if err != nil {
+		return nil, err
+	}
+	objHeader := objInfo.GetHeader()
+	if !objHeader.IsNativeLanguage() {
+		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
+	}
+	lang, syntax, classType, err := aztypes.GetClassType(objHeader.GetLanguageID(), objHeader.GetLanguageVersionID(), objHeader.GetClassID())
+	if err != nil {
+		return nil, err
+	}
 	// serializer, err := azsrlzs.NewYamlSerializer()
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// objInfo, err := abs.objMng.GetObjectInfo(obj)
 	// if err != nil {
 	// 	return nil, err
 	// }
@@ -199,7 +226,7 @@ func (abs *YAMLLanguageAbstraction) TranslateFromPermCodeToLanguage(obj *azlango
 	// if err != nil {
 	// 	return nil, err
 	// }
-	return []byte(string("sample")), nil
+	return []byte(fmt.Sprintf("lang: %s syntax: %s classtype: %s", lang, syntax, classType)), nil
 }
 
 // CreateLanguageFile combines the blocks for the language.
