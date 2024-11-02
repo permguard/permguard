@@ -32,17 +32,20 @@ import (
 )
 
 const (
+	// CodeGenFileName is the name of the codegen file.
 	CodeGenFileName = "codegen"
+	// OriginRemoteName is the name of the origin remote.
+	OriginRemoteName = "origin"
 )
 
-// execInternalCloneRepo clones a repository.
-func (m *WorkspaceManager) execInternalCloneRepo(internal bool,repoURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+// ExecCloneRepo clones a repository.
+func (m *WorkspaceManager) ExecCloneRepo(language, repoURI string, aapPort, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		if !internal {
-			out(nil, "", fmt.Sprintf("Failed to clone the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
-		}
+		out(nil, "", fmt.Sprintf("Failed to clone the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
 		return output, err
 	}
+	m.ExecPrintContext(nil, out)
+
 	var output map[string]any
 	repoURI = strings.ToLower(repoURI)
 	if !strings.HasPrefix(repoURI, "permguard@") {
@@ -53,31 +56,32 @@ func (m *WorkspaceManager) execInternalCloneRepo(internal bool,repoURI string, o
 	if len(elements) != 3 {
 		return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository URI"))
 	}
+
 	uriServer := elements[0]
 	uriAccountID := elements[1]
 	uriRepo := elements[2]
-	fmt.Printf("uriServer: %s, uriAccountID: %s, uriRepo: %s", uriServer, uriAccountID, uriRepo)
+
+	output, err := m.ExecInitWorkspace(language, out)
+	aborted := false
+	if err == nil {
+		fileLock, err := m.tryLock()
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		defer fileLock.Unlock()
+		output, err = m.execInternalAddRemote(true, OriginRemoteName, uriServer, aapPort, papPort, out)
+		if err == nil {
+			repoURI := fmt.Sprintf("%s/%s/%s", OriginRemoteName, uriAccountID, uriRepo)
+			output, err = m.execInternalCheckoutRepo(true, repoURI, out)
+			if err == nil {
+				aborted = true
+			}
+		}
+	}
+	if aborted {
+		return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: operation has been aborted"))
+	}
 	return output, nil
-}
-
-// ExecCloneRepo clones a repository.
-func (m *WorkspaceManager) ExecCloneRepo(repoURI string, aapPort, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to clone the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
-		return output, err
-	}
-	m.ExecPrintContext(nil, out)
-	if !m.isWorkspaceDir() {
-		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
-	}
-
-	fileLock, err := m.tryLock()
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-	defer fileLock.Unlock()
-
-	return m.execInternalCloneRepo(false, repoURI, out)
 }
 
 // execInternalCheckoutRepo checks out a repository.

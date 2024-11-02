@@ -28,6 +28,7 @@ import (
 	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azlangpermyaml "github.com/permguard/permguard/plugin/languages/permyaml"
 )
 
 const (
@@ -59,7 +60,7 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 	repo := args[0]
 	aapPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagAAP))
 	papPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagPAP))
-	output, err := wksMgr.ExecCloneRepo(repo, aapPort, papPort, outFunc(ctx, printer))
+	output, err := wksMgr.ExecCloneRepo(azlangpermyaml.LanguageName, repo, aapPort, papPort, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)

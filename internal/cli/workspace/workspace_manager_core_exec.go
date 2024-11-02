@@ -107,15 +107,13 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out aziclicommon.P
 	return output, nil
 }
 
-// ExecAddRemote adds a remote.
-func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort int, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+// execInternalAddRemote adds a remote.
+func (m *WorkspaceManager) execInternalAddRemote(internal bool, remote string, server string, aapPort int, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to add remote %s.", aziclicommon.KeywordText(remote)), nil, true)
+		if !internal {
+			out(nil, "", fmt.Sprintf("Failed to add remote %s.", aziclicommon.KeywordText(remote)), nil, true)
+		}
 		return output, err
-	}
-	output := m.ExecPrintContext(nil, out)
-	if !m.isWorkspaceDir() {
-		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
 	if !azvalidators.IsValidHostname(server) {
@@ -128,17 +126,31 @@ func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort i
 		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid pap port %d", papPort)))
 	}
 
+	output, err := m.cfgMgr.ExecAddRemote(remote, server, aapPort, papPort, nil, out)
+	if err != nil {
+		return failedOpErr(output, err)
+	}
+	return output, nil
+}
+
+// ExecAddRemote adds a remote.
+func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort int, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", fmt.Sprintf("Failed to add remote %s.", aziclicommon.KeywordText(remote)), nil, true)
+		return output, err
+	}
+	m.ExecPrintContext(nil, out)
+	if !m.isWorkspaceDir() {
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
+	}
+
 	fileLock, err := m.tryLock()
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
 	defer fileLock.Unlock()
 
-	output, err = m.cfgMgr.ExecAddRemote(remote, server, aapPort, papPort, nil, out)
-	if err != nil {
-		return failedOpErr(output, err)
-	}
-	return output, nil
+	return m.execInternalAddRemote(false, remote, server, aapPort, papPort, out)
 }
 
 // ExecRemoveRemote removes a remote.
