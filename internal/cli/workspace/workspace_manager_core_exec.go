@@ -169,7 +169,7 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out aziclicommon.Prin
 		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, fmt.Sprintf("cli: cannot remove the remote used by the currently checked out account %s", remote)))
 	}
 	output, err = m.cfgMgr.ExecRemoveRemote(remote, nil, out)
-	return failedOpErr(output, err)
+	return output, err
 }
 
 // ExecListRemotes lists the remotes.
@@ -190,7 +190,7 @@ func (m *WorkspaceManager) ExecListRemotes(out aziclicommon.PrinterOutFunc) (map
 	defer fileLock.Unlock()
 
 	output, err = m.cfgMgr.ExecListRemotes(nil, out)
-	return failedOpErr(output, err)
+	return output, err
 }
 
 // ExecListRepos lists the repos.
@@ -215,5 +215,5 @@ func (m *WorkspaceManager) ExecListRepos(out aziclicommon.PrinterOutFunc) (map[s
 		return failedOpErr(nil, err)
 	}
 	output, err = m.cfgMgr.ExecListRepos(refID, nil, out)
-	return failedOpErr(output, err)
+	return output, err
 }
