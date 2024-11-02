@@ -58,8 +58,8 @@ func (s *YamlSerializer) SplitYAMLDocuments(data []byte) ([][]byte, error) {
 	return documents, nil
 }
 
-// UnmarshalYaml unmarshals a YAML byte array.
-func (s *YamlSerializer) UnmarshalYaml(data []byte) (any, error) {
+// UnmarshalPermYaml unmarshals to a permyaml object.
+func (s *YamlSerializer) UnmarshalPermYaml(data []byte) (any, error) {
 	var tempMap map[string]any
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	err := decoder.Decode(&tempMap)
@@ -96,9 +96,9 @@ func (s *YamlSerializer) UnmarshalYaml(data []byte) (any, error) {
 	return nil, azerrors.WrapSystemError(azerrors.ErrLanguageSyntax, errSyntaxMessage)
 }
 
-// UnmarshalLangType unmarshals a language type.
-func (s *YamlSerializer) UnmarshalLangType(data []byte) (string, any, string, string, error) {
-	instance, err := s.UnmarshalYaml(data)
+// UnmarshalPermCodeFromUnmarshalPermYaml unmarshals to a permcode object from a permyaml content.
+func (s *YamlSerializer) UnmarshalPermCodeFromUnmarshalPermYaml(data []byte) (string, any, string, string, error) {
+	instance, err := s.UnmarshalPermYaml(data)
 	if err != nil {
 		return "", nil, "", "", err
 	}
@@ -107,9 +107,9 @@ func (s *YamlSerializer) UnmarshalLangType(data []byte) (string, any, string, st
 		langPerm := &aztypes.Permission{
 			Class: aztypes.Class{
 				SyntaxVersion: aztypes.PermCodeSyntaxLatest,
-				Type: aztypes.ClassTypeACPermission,
+				Type:          aztypes.ClassTypeACPermission,
 			},
-			Name: v.Name,
+			Name:   v.Name,
 			Permit: v.Permit,
 			Forbid: v.Forbid,
 		}
@@ -118,10 +118,10 @@ func (s *YamlSerializer) UnmarshalLangType(data []byte) (string, any, string, st
 		langPolicy := &aztypes.Policy{
 			Class: aztypes.Class{
 				SyntaxVersion: aztypes.PermCodeSyntaxLatest,
-				Type: aztypes.ClassTypeACPolicy,
+				Type:          aztypes.ClassTypeACPolicy,
 			},
-			Name: v.Name,
-			Actions: make([]aztypes.ARString, 0),
+			Name:     v.Name,
+			Actions:  make([]aztypes.ARString, 0),
 			Resource: aztypes.UURString(v.Resources[0]),
 		}
 		for _, action := range v.Actions {

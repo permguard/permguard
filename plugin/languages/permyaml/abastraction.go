@@ -120,7 +120,7 @@ func (abs *YAMLLanguageAbstraction) CreateMultiSectionsObjects(path string, data
 		return nil, err
 	}
 	for i, doc := range docs {
-		name, content, codeID, codeType, err := serializer.UnmarshalLangType(doc)
+		name, content, codeID, codeType, err := serializer.UnmarshalPermCodeFromUnmarshalPermYaml(doc)
 		if err != nil {
 			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
 			continue
@@ -168,7 +168,7 @@ func (abs *YAMLLanguageAbstraction) CreateSchemaSectionsObject(path string, data
 	if err != nil {
 		return nil, err
 	}
-	name, content, codeID, codeType, err := serializer.UnmarshalLangType(data)
+	name, content, codeID, codeType, err := serializer.UnmarshalPermCodeFromUnmarshalPermYaml(data)
 	if err != nil {
 		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, err)
 		return multiSecObj, nil
