@@ -110,9 +110,12 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.Pri
 
 func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to pull changes from the remote repo.", nil, true)
+		if !internal {
+			out(nil, "", "Failed to pull changes from the remote repo.", nil, true)
+		}
 		return output, err
 	}
+	
 	output, _ := m.execInternalRefresh(true, out)
 
 	// Creates the abstraction for the language

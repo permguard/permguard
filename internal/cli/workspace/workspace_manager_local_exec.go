@@ -81,9 +81,12 @@ func (m *WorkspaceManager) ExecRefresh(out aziclicommon.PrinterOutFunc) (map[str
 // execInternalRefresh scans source files in the current directory and synchronizes the local state,
 func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to refresh the current workspace.", nil, true)
+		if !internal {
+			out(nil, "", "Failed to refresh the current workspace.", nil, true)
+		}
 		return output, err
 	}
+	
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "Initiating cleanup of the local area.", nil, true)
 	}
@@ -187,7 +190,9 @@ func (m *WorkspaceManager) ExecValidate(out aziclicommon.PrinterOutFunc) (map[st
 // execInternalValidate validates the local state.
 func (m *WorkspaceManager) execInternalValidate(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to validate the current workspace.", nil, true)
+		if !internal {
+			out(nil, "", "Failed to validate the current workspace.", nil, true)
+		}
 		return output, err
 	}
 
