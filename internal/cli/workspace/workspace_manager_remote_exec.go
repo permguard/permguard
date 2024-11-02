@@ -20,8 +20,9 @@ import (
 	//"encoding/json"
 	"fmt"
 
-	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azfiles "github.com/permguard/permguard-core/pkg/extensions/files"
+	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	aztypes "github.com/permguard/permguard-abs-language/pkg/permcode/types"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
@@ -115,7 +116,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		}
 		return output, err
 	}
-	
+
 	output, _ := m.execInternalRefresh(true, out)
 
 	// Creates the abstraction for the language
@@ -210,6 +211,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		}
 		tree, err := absLang.GetTreeeObject(treeObj)
 
+		var schemaBlock []byte
 		codeBlocks := [][]byte{}
 		for _, entry := range tree.GetEntries() {
 			if _, ok := codeMapIds[entry.GetOID()]; !ok {
@@ -217,22 +219,32 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
-				codeBlock, err := absLang.TranslateFromPermCodeToLanguage(entryObj)
+				classType, codeBlock, err := absLang.TranslateFromPermCodeToLanguage(entryObj)
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
-				codeBlocks = append(codeBlocks, codeBlock)
+				switch classType {
+				case aztypes.ClassTypeSchema:
+					schemaBlock = codeBlock
+				default:
+					codeBlocks = append(codeBlocks, codeBlock)
+				}
 			}
 		}
-		codeBlock, ext, err := absLang.CreateLanguageFile(codeBlocks)
-		if err != nil {
-			return failedOpErr(nil, err)
+		if len(schemaBlock) > 0 {
+			codeBlock, ext, err := absLang.CreateLanguageFile(codeBlocks)
+			if err != nil {
+				return failedOpErr(nil, err)
+			}
+			fileName, err := azfiles.GenerateUniqueFile(CodeGenFileName, ext)
+			if err != nil {
+				return failedOpErr(nil, err)
+			}
+			m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, fileName, codeBlock, 0644, false)
 		}
-		fileName, err := azfiles.GenerateUniqueFile(CodeGenFileName, ext)
-		if err != nil {
-			return failedOpErr(nil, err)
+		if schemaBlock != nil {
+			m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, schemaYMLFile, schemaBlock, 0644, false)
 		}
-		m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, fileName, codeBlock, 0644, false)
 	}
 
 	m.cospMgr.CleanCodeSource()

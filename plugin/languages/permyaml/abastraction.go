@@ -204,23 +204,23 @@ func (abs *YAMLLanguageAbstraction) CreateSchemaSectionsObject(path string, data
 }
 
 // TranslateFromPermCodeToLanguage translates from permcode to language.
-func (abs *YAMLLanguageAbstraction) TranslateFromPermCodeToLanguage(obj *azlangobjs.Object) ([]byte, error) {
+func (abs *YAMLLanguageAbstraction) TranslateFromPermCodeToLanguage(obj *azlangobjs.Object) (string, []byte, error) {
 	objInfo, err := abs.objMng.GetObjectInfo(obj)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	objHeader := objInfo.GetHeader()
 	if !objHeader.IsNativeLanguage() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
+		return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
 	}
 	_, _, classType, err := aztypes.GetClassType(objHeader.GetLanguageID(), objHeader.GetLanguageVersionID(), objHeader.GetClassID())
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	content := objInfo.GetInstance().([]byte)
 	instance, err := abs.permCodeMng.UnmarshalClass(content, classType, false, false, false)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	serializer, err := azsrlzs.NewYamlSerializer()
 	var permYamlContent []byte
@@ -229,36 +229,36 @@ func (abs *YAMLLanguageAbstraction) TranslateFromPermCodeToLanguage(obj *azlango
 	case aztypes.ClassTypeACPermission:
 		permission, ok := instance.Instance.(*aztypes.Permission)
 		if !ok {
-			return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
+			return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
 		}
 		permYamlObj, err = serializer.ConvertPermissionFromPermCode(permission)
 		if err != nil {
-			return nil, err
+			return "", nil, err
 		}
 	case aztypes.ClassTypeACPolicy:
 		policy, ok := instance.Instance.(*aztypes.Policy)
 		if !ok {
-			return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
+			return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
 		}
 		permYamlObj, err = serializer.ConvertPolicyFromPermCode(policy)
 		if err != nil {
-			return nil, err
+			return "", nil, err
 		}
 	case aztypes.ClassTypeSchema:
 		schema, ok := instance.Instance.(*aztypes.Schema)
 		if !ok {
-			return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
+			return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
 		}
 		permYamlObj, err = serializer.ConvertSchemaFromPermCode(schema)
 		if err != nil {
-			return nil, err
+			return "", nil, err
 		}
 	}
 	permYamlContent, err = serializer.Marshal(permYamlObj)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
-	return permYamlContent, nil
+	return classType, permYamlContent, nil
 }
 
 // CreateLanguageFile combines the blocks for the language.
