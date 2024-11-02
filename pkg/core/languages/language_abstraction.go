@@ -39,7 +39,7 @@ type LanguageAbastraction interface {
 	// CreateSchemaSectionsObject create blobs for multi sections schema objects.
 	CreateSchemaSectionsObject(path string, data []byte) (*azlangobjs.MultiSectionsObject, error)
 	// TranslateFromPermCodeToLanguage translates from permcode to language.
-	TranslateFromPermCodeToLanguage(obj *azlangobjs.Object) ([]byte, error)
+	TranslateFromPermCodeToLanguage(obj *azlangobjs.Object) (string, []byte, error)
 	// CreateLanguageFile combines the blocks for the language.
 	CreateLanguageFile(blocks [][]byte) ([]byte, string, error)
 }
