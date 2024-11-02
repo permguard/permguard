@@ -35,31 +35,23 @@ const (
 	CodeGenFileName = "codegen"
 )
 
-// ExecCloneRepo clones a repository.
-func (m *WorkspaceManager) ExecCloneRepo(repoURI string, aapPort, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+// execInternalCloneRepo clones a repository.
+func (m *WorkspaceManager) execInternalCloneRepo(internal bool,repoURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to clone the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
+		if !internal {
+			out(nil, "", fmt.Sprintf("Failed to clone the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
+		}
 		return output, err
 	}
-	output := m.ExecPrintContext(nil, out)
-	if !m.isWorkspaceDir() {
-		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
-	}
-
-	fileLock, err := m.tryLock()
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-	defer fileLock.Unlock()
-
+	var output map[string]any
 	repoURI = strings.ToLower(repoURI)
 	if !strings.HasPrefix(repoURI, "permguard@") {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository URI")
+		return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository URI"))
 	}
 	repoURI = strings.TrimPrefix(repoURI, "permguard@")
 	elements := strings.Split(repoURI, "/")
 	if len(elements) != 3 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository URI")
+		return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository URI"))
 	}
 	uriServer := elements[0]
 	uriAccountID := elements[1]
@@ -68,20 +60,15 @@ func (m *WorkspaceManager) ExecCloneRepo(repoURI string, aapPort, papPort int, o
 	return output, nil
 }
 
-// ExecCheckoutRepo checks out a repository.
-func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+// ExecCloneRepo clones a repository.
+func (m *WorkspaceManager) ExecCloneRepo(repoURI string, aapPort, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to checkout the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
+		out(nil, "", fmt.Sprintf("Failed to clone the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
 		return output, err
 	}
-	output := m.ExecPrintContext(nil, out)
+	m.ExecPrintContext(nil, out)
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
-	}
-
-	repoInfo, err := azicliwksrepos.GetRepoInfoFromURI(repoURI)
-	if err != nil {
-		return failedOpErr(nil, err)
 	}
 
 	fileLock, err := m.tryLock()
@@ -89,6 +76,22 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.Pri
 		return failedOpErr(nil, err)
 	}
 	defer fileLock.Unlock()
+
+	return m.execInternalCloneRepo(false, repoURI, out)
+}
+
+// execInternalCheckoutRepo checks out a repository.
+func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool,repoURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		if !internal {
+			out(nil, "", fmt.Sprintf("Failed to checkout the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
+		}
+		return output, err
+	}
+	repoInfo, err := azicliwksrepos.GetRepoInfoFromURI(repoURI)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "checkout", "Initiating remote verification process.", nil, true)
@@ -141,6 +144,26 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.Pri
 	}
 
 	return output, nil
+}
+
+// ExecCheckoutRepo checks out a repository.
+func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", fmt.Sprintf("Failed to checkout the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
+		return output, err
+	}
+	m.ExecPrintContext(nil, out)
+	if !m.isWorkspaceDir() {
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
+	}
+
+	fileLock, err := m.tryLock()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	defer fileLock.Unlock()
+
+	return m.execInternalCheckoutRepo(false, repoURI, out)
 }
 
 func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
