@@ -115,6 +115,10 @@ func (s *YamlSerializer) UnmarshalPermCodeFromPermYaml(data []byte) (string, any
 		}
 		return langPerm.Name, langPerm, langPerm.Name, aztypes.ClassTypeACPermission, nil
 	case *Policy:
+		resource := ""
+		if len(v.Resources) > 0 {
+			resource = v.Resources[0]
+		}
 		langPolicy := &aztypes.Policy{
 			Class: aztypes.Class{
 				SyntaxVersion: aztypes.PermCodeSyntaxLatest,
@@ -122,7 +126,7 @@ func (s *YamlSerializer) UnmarshalPermCodeFromPermYaml(data []byte) (string, any
 			},
 			Name:     v.Name,
 			Actions:  make([]aztypes.ARString, 0),
-			Resource: aztypes.UURString(v.Resources[0]),
+			Resource: aztypes.UURString(resource),
 		}
 		for _, action := range v.Actions {
 			langPolicy.Actions = append(langPolicy.Actions, aztypes.ARString(action))
