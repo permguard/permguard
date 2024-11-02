@@ -17,7 +17,6 @@
 package permyaml
 
 import (
-	"fmt"
 	"strings"
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
@@ -120,7 +119,7 @@ func (abs *YAMLLanguageAbstraction) CreateMultiSectionsObjects(path string, data
 		return nil, err
 	}
 	for i, doc := range docs {
-		name, content, codeID, codeType, err := serializer.UnmarshalPermCodeFromUnmarshalPermYaml(doc)
+		name, content, codeID, codeType, err := serializer.UnmarshalPermCodeFromPermYaml(doc)
 		if err != nil {
 			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
 			continue
@@ -168,7 +167,7 @@ func (abs *YAMLLanguageAbstraction) CreateSchemaSectionsObject(path string, data
 	if err != nil {
 		return nil, err
 	}
-	name, content, codeID, codeType, err := serializer.UnmarshalPermCodeFromUnmarshalPermYaml(data)
+	name, content, codeID, codeType, err := serializer.UnmarshalPermCodeFromPermYaml(data)
 	if err != nil {
 		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, err)
 		return multiSecObj, nil
@@ -214,19 +213,20 @@ func (abs *YAMLLanguageAbstraction) TranslateFromPermCodeToLanguage(obj *azlango
 	if !objHeader.IsNativeLanguage() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
 	}
-	lang, syntax, classType, err := aztypes.GetClassType(objHeader.GetLanguageID(), objHeader.GetLanguageVersionID(), objHeader.GetClassID())
+	_, _, classType, err := aztypes.GetClassType(objHeader.GetLanguageID(), objHeader.GetLanguageVersionID(), objHeader.GetClassID())
 	if err != nil {
 		return nil, err
 	}
-	// serializer, err := azsrlzs.NewYamlSerializer()
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// code, _, _, _, err := serializer.UnmarshalLangType(objInfo.GetInstance().([]byte))
-	// if err != nil {
-	// 	return nil, err
-	// }
-	return []byte(fmt.Sprintf("lang: %s syntax: %s classtype: %s", lang, syntax, classType)), nil
+	content := objInfo.GetInstance().([]byte)
+	instance, err := abs.permCodeMng.UnmarshalClass(content, classType, false, false, false)
+	if err != nil {
+		return nil, err
+	}
+	permYamlContent, err := abs.permCodeMng.MarshalClass(instance.Instance, false, false, false)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(permYamlContent), nil
 }
 
 // CreateLanguageFile combines the blocks for the language.
