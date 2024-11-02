@@ -96,8 +96,8 @@ func (s *YamlSerializer) UnmarshalPermYaml(data []byte) (any, error) {
 	return nil, azerrors.WrapSystemError(azerrors.ErrLanguageSyntax, errSyntaxMessage)
 }
 
-// UnmarshalPermCodeFromUnmarshalPermYaml unmarshals to a permcode object from a permyaml content.
-func (s *YamlSerializer) UnmarshalPermCodeFromUnmarshalPermYaml(data []byte) (string, any, string, string, error) {
+// UnmarshalPermCodeFromPermYaml unmarshals to a permcode object from a permyaml content.
+func (s *YamlSerializer) UnmarshalPermCodeFromPermYaml(data []byte) (string, any, string, string, error) {
 	instance, err := s.UnmarshalPermYaml(data)
 	if err != nil {
 		return "", nil, "", "", err
