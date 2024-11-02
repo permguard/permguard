@@ -54,6 +54,8 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 	for rmt := range cfg.Remotes {
 		if remote == rmt {
 			return output, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: remote %s already exists", remote))
+		} else if server == cfg.Remotes[rmt].Server {
+			return output, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: server %s already exists", server))
 		}
 	}
 	cfgRemote := remoteConfig{

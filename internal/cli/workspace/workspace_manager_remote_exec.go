@@ -19,10 +19,11 @@ package workspace
 import (
 	//"encoding/json"
 	"fmt"
+	"strings"
 
-	azfiles "github.com/permguard/permguard-core/pkg/extensions/files"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	aztypes "github.com/permguard/permguard-abs-language/pkg/permcode/types"
+	azfiles "github.com/permguard/permguard-core/pkg/extensions/files"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
@@ -34,10 +35,43 @@ const (
 	CodeGenFileName = "codegen"
 )
 
+// ExecCloneRepo clones a repository.
+func (m *WorkspaceManager) ExecCloneRepo(repoURI string, aapPort, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", fmt.Sprintf("Failed to clone the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
+		return output, err
+	}
+	output := m.ExecPrintContext(nil, out)
+	if !m.isWorkspaceDir() {
+		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
+	}
+
+	fileLock, err := m.tryLock()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	defer fileLock.Unlock()
+
+	repoURI = strings.ToLower(repoURI)
+	if !strings.HasPrefix(repoURI, "permguard@") {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository URI")
+	}
+	repoURI = strings.TrimPrefix(repoURI, "permguard@")
+	elements := strings.Split(repoURI, "/")
+	if len(elements) != 3 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository URI")
+	}
+	uriServer := elements[0]
+	uriAccountID := elements[1]
+	uriRepo := elements[2]
+	fmt.Printf("uriServer: %s, uriAccountID: %s, uriRepo: %s", uriServer, uriAccountID, uriRepo)
+	return output, nil
+}
+
 // ExecCheckoutRepo checks out a repository.
 func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to checkout repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
+		out(nil, "", fmt.Sprintf("Failed to checkout the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
 		return output, err
 	}
 	output := m.ExecPrintContext(nil, out)

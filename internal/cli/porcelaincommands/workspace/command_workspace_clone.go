@@ -23,8 +23,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -33,15 +36,43 @@ const (
 )
 
 // runECommandForCloneWorkspace runs the command for creating an workspace.
-func runECommandForCloneWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	_, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	output := map[string]any{}
-	output["workspace"] = "clone"
-	printer.PrintlnMap(output)
+	if len(args) < 1 {
+		printer.Error(azerrors.ErrCliArguments)
+		return aziclicommon.ErrCommandSilent
+	}
+	langFct, err := deps.GetLanguageFactory()
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return aziclicommon.ErrCommandSilent
+	}
+	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, langFct)
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return aziclicommon.ErrCommandSilent
+	}
+	repo := args[0]
+	aapPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagAAP))
+	papPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagPAP))
+	output, err := wksMgr.ExecCloneRepo(repo, aapPort, papPort, outFunc(ctx, printer))
+	if err != nil {
+		if ctx.IsJSONOutput() {
+			printer.ErrorWithOutput(output, err)
+		} else if ctx.IsTerminalOutput() {
+			if ctx.IsVerboseTerminalOutput() {
+				printer.Error(err)
+			}
+		}
+		return aziclicommon.ErrCommandSilent
+	}
+	if ctx.IsJSONOutput() {
+		printer.PrintlnMap(output)
+	}
 	return nil
 }
 
@@ -56,8 +87,13 @@ Examples:
   # clone a remote repository to the local working directory
   permguard clone 268786704340/magicfarmacia-v0.0`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForCloneWorkspace(deps, cmd, v)
+			return runECommandForCloneWorkspace(args, deps, cmd, v)
 		},
 	}
+
+	command.Flags().Int(flagAAP, 9091, "aap port")
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesClone, flagAAP), command.Flags().Lookup(flagAAP))
+	command.Flags().Int(flagPAP, 9092, "pap port")
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesClone, flagPAP), command.Flags().Lookup(flagPAP))
 	return command
 }
