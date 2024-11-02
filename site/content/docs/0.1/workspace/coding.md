@@ -54,7 +54,7 @@ The `pull` command fetches the state from the remote Permguard server and stores
 
 ## Objects
 
-The `objects` command manages the object store, allowing users to display the contents of an object and calculate differences (diffs) between versions.
+The `objects` command manages the object store, allowing users to display the contents of an object.
 This command focuses solely on the local workspace and the source code, without interacting with any remote repositories.
 
 ```bash
