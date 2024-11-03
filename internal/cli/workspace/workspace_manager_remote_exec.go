@@ -135,7 +135,7 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool,repoURI string
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	output, err = m.cfgMgr.ExecAddRepo(headInfo.GetRefs(), repoURI, output, out)
+	output, err = m.cfgMgr.ExecAddRepo(headInfo.GetRefs(), repoInfo.GetRemote(), repoURI, output, out)
 	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
 		return failedOpErr(output, err)
 	}
