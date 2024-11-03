@@ -50,9 +50,8 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 		color.Red("Invalid arguments")
 		return aziclicommon.ErrCommandSilent
 	}
-	repoURI = strings.TrimPrefix(repoURI, "permguard@")
-	repo := repoURI
-	elements := strings.Split(repoURI, "/")
+	repo := strings.TrimPrefix(repoURI, "permguard@")
+	elements := strings.Split(repo, "/")
 	if len(elements) < 3 {
 		color.Red("Invalid arguments")
 		return aziclicommon.ErrCommandSilent
@@ -88,7 +87,7 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 	}
 	aapPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagAAP))
 	papPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagPAP))
-	output, err := wksMgr.ExecCloneRepo(azlangpermyaml.LanguageName, repo, aapPort, papPort, outFunc(ctx, printer))
+	output, err := wksMgr.ExecCloneRepo(azlangpermyaml.LanguageName, repoURI, aapPort, papPort, outFunc(ctx, printer))
 	if err != nil {
 		azfiles.DeletePath(repoFolder)
 		if ctx.IsJSONOutput() {
