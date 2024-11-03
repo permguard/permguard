@@ -18,15 +18,18 @@ package workspace
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	azfiles "github.com/permguard/permguard-core/pkg/extensions/files"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlangpermyaml "github.com/permguard/permguard/plugin/languages/permyaml"
 )
@@ -38,6 +41,32 @@ const (
 
 // runECommandForCloneWorkspace runs the command for creating an workspace.
 func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	if len(args) < 1 {
+		color.Red("Invalid arguments")
+		return aziclicommon.ErrCommandSilent
+	}
+	repoURI := strings.ToLower(args[0])
+	if !strings.HasPrefix(repoURI, "permguard@") {
+		color.Red("Invalid arguments")
+		return aziclicommon.ErrCommandSilent
+	}
+	repoURI = strings.TrimPrefix(repoURI, "permguard@")
+	repo := repoURI
+	elements := strings.Split(repoURI, "/")
+	if len(elements) < 3 {
+		color.Red("Invalid arguments")
+		return aziclicommon.ErrCommandSilent
+	}
+	folder := elements[2]
+	workDir, err := cmd.Flags().GetString(aziclicommon.FlagWorkingDirectory)
+	repoFolder := filepath.Join(workDir, folder)
+	cmd.Flags().Set(aziclicommon.FlagWorkingDirectory, repoFolder)
+	if ok, _ := azfiles.CheckPathIfExists(repoFolder); ok {
+		color.Red(fmt.Sprintf("The repository %s already exists", repoFolder))
+		return aziclicommon.ErrCommandSilent
+	}
+	azfiles.CreateDirIfNotExists(repoFolder)
+
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -57,11 +86,11 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	repo := args[0]
 	aapPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagAAP))
 	papPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagPAP))
 	output, err := wksMgr.ExecCloneRepo(azlangpermyaml.LanguageName, repo, aapPort, papPort, outFunc(ctx, printer))
 	if err != nil {
+		azfiles.DeletePath(repoFolder)
 		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
 		} else if ctx.IsTerminalOutput() {
