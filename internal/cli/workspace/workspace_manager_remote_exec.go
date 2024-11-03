@@ -73,9 +73,11 @@ func (m *WorkspaceManager) ExecCloneRepo(language, repoURI string, aapPort, papP
 		if err == nil {
 			repoURI := fmt.Sprintf("%s/%s/%s", OriginRemoteName, uriAccountID, uriRepo)
 			output, err = m.execInternalCheckoutRepo(true, repoURI, out)
-			if err == nil {
+			if err != nil {
 				aborted = true
 			}
+		} else {
+			aborted = true
 		}
 	}
 	if aborted {
