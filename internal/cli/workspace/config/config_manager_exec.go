@@ -97,6 +97,11 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 	if _, ok := cfg.Remotes[remote]; !ok {
 		return output, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", remote))
 	}
+	for repository := range cfg.Repositories {
+		if cfg.Repositories[repository].Remote == remote {
+			return output, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: remote %s is used by repository %s", remote, repository))
+		}
+	}
 	cfgRemote := cfg.Remotes[remote]
 	out(nil, "", fmt.Sprintf("Remote %s has been removed.", aziclicommon.KeywordText(remote)), nil, true)
 	output = map[string]any{}
@@ -156,7 +161,7 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out aziclicommon.
 }
 
 // ExecAddRepo adds a repo.
-func (m *ConfigManager) ExecAddRepo(refs string, repo string, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *ConfigManager) ExecAddRepo(refs, remote, repo string, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -175,6 +180,7 @@ func (m *ConfigManager) ExecAddRepo(refs string, repo string, output map[string]
 	if !exists {
 		cfgRepo = repositoryConfig{
 			Refs: refs,
+			Remote: remote,
 		}
 		cfg.Repositories[repo] = cfgRepo
 		m.saveConfig(true, cfg)
