@@ -141,22 +141,11 @@
         </ul>
       </nav>
 
-        <!-- FlexSearch desktop -->
-        {{ partial "main/showFlexSearch" . }}
-        {{ $showFlexSearch := .Scratch.Get "showFlexSearch" -}}
-        {{ if $showFlexSearch -}}
-        <button type="button" id="searchToggleDesktop" class="btn btn-link nav-link p-2 d-none d-lg-block" aria-label="Search website">
-          <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-            <circle cx="10" cy="10" r="7"></circle>
-            <line x1="21" y1="21" x2="15" y2="15"></line>
-          </svg>
-        </button>
-        {{ end -}}
+
 
         <!-- Language dropdown -->
-        {{ if eq site.Params.doks.multilingualMode true -}}
-
+    {{ if eq site.Params.doks.multilingualMode true -}}
+    
         <div class="dropdown mt-1 order-lg-2">
           <button class="btn btn-dropdown dropdown-toggle" id="doks-languages" data-bs-toggle="dropdown" aria-expanded="false" data-bs-display="static">
             <span class="dropdown-caret">
@@ -203,45 +192,47 @@
               -->
           </ul>
         </div>
-        {{ end -}}
+    {{ end -}}
 
         <!-- Versioning dropdown  -->
+        {{ if (in site.Params.doks.sectionNav .Section) -}}
         {{ if eq site.Params.doks.docsVersioning true -}}
-<div class="dropdown mt-1 order-lg-3">
-  <button class="btn btn-dropdown dropdown-toggle" id="doks-versions" data-bs-toggle="dropdown" aria-expanded="false" data-bs-display="static" aria-label="Toggle version menu">
-    <span class="d-none">Doks</span> 
-    {{ $currentPage := . -}}
-    {{ $versions := site.Params.doks.docsVersions }}
-    {{ $currentVersion := index $versions (sub (len $versions) 1) }}
-    {{ range $index, $version := site.Params.doks.docsVersions }}
-      {{ if in $currentPage.Permalink (printf "/docs/%s/" $version) }}
-        {{ $currentVersion = $version }}
-      {{ end }}
-    {{ end }}
-    v{{ $currentVersion }}
-    <span class="dropdown-caret">
-      <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-down" width="24" height="24" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-        <path d="M6 9l6 6l6 -6"></path>
-      </svg>
-    </span>
-  </button>
-  <ul class="dropdown-menu dropdown-menu-lg-end me-lg-2 shadow rounded border-0" aria-labelledby="doks-versions">
-    <li>
-      <a class="dropdown-item current" aria-current="true" href="/docs/{{ $currentVersion }}/overview/introduction-to-permguard/">
-        {{ if eq $currentVersion (index site.Params.doks.docsVersions (sub (len site.Params.doks.docsVersions) 1)) }} 
-          Latest v{{ $currentVersion }} 
-        {{ else }} 
-          v{{ $currentVersion }} 
-        {{ end }}
-      </a>
-    </li>
-    <li><hr class="dropdown-divider"></li>
-    {{ range site.Params.doks.docsVersions }}
-      <li><a class="dropdown-item" href="/docs/{{ . }}/overview/introduction-to-permguard/">v{{ . }}</a></li>
-    {{ end }}
-  </ul>
-</div>
+        <div class="dropdown mt-1 order-lg-0">
+          <button class="btn btn-dropdown dropdown-toggle me-0" id="doks-versions" data-bs-toggle="dropdown" aria-expanded="false" data-bs-display="static" aria-label="Toggle version menu">
+            <span class="d-none">Doks</span> 
+            {{ $currentPage := . -}}
+            {{ $versions := site.Params.doks.docsVersions }}
+            {{ $currentVersion := index $versions (sub (len $versions) 1) }}
+            {{ range $index, $version := site.Params.doks.docsVersions }}
+              {{ if in $currentPage.Permalink (printf "/docs/%s/" $version) }}
+                {{ $currentVersion = $version }}
+              {{ end }}
+            {{ end }}
+            v{{ $currentVersion }}
+            <span class="dropdown-caret">
+              <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-down" width="24" height="24" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                <path d="M6 9l6 6l6 -6"></path>
+              </svg>
+            </span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-lg-end me-lg-2 shadow rounded border-0" aria-labelledby="doks-versions">
+            <li>
+              <a class="dropdown-item current" aria-current="true" href="/docs/{{ $currentVersion }}/overview/introduction-to-permguard/">
+                {{ if eq $currentVersion (index site.Params.doks.docsVersions (sub (len site.Params.doks.docsVersions) 1)) }} 
+                  Latest v{{ $currentVersion }} 
+                {{ else }} 
+                  v{{ $currentVersion }} 
+                {{ end }}
+              </a>
+            </li>
+            <li><hr class="dropdown-divider"></li>
+            {{ range site.Params.doks.docsVersions }}
+              <li><a class="dropdown-item" href="/docs/{{ . }}/overview/introduction-to-permguard/">v{{ . }}</a></li>
+            {{ end }}
+          </ul>
+        </div>
+{{ end -}}
 {{ end -}}
 
 
@@ -270,6 +261,19 @@
         </ul>
         {{ end -}}
 
+                <!-- FlexSearch desktop -->
+                {{ partial "main/showFlexSearch" . }}
+                {{ $showFlexSearch := .Scratch.Get "showFlexSearch" -}}
+                {{ if $showFlexSearch -}}
+                <button type="button" id="searchToggleDesktop" class="btn btn-link nav-link p-2 d-none d-lg-block" aria-label="Search website">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                    <circle cx="10" cy="10" r="7"></circle>
+                    <line x1="21" y1="21" x2="15" y2="15"></line>
+                  </svg>
+                </button>
+                {{ end -}}
+
 
         <!-- Navbar button mobile -->
         {{ if site.Params.doks.navBarButton -}}
@@ -277,11 +281,13 @@
         {{ end -}}
       </div>
     </div>
+    
 
     <!-- Navbar button desktop -->
     {{ if site.Params.doks.navBarButton -}}
       <a class="btn btn-primary rounded-pill ms-3 me-2 px-4 order-lg-3 d-none d-lg-block" href="{{ site.Params.doks.navBarButtonUrl | absURL }}" role="button">{{ site.Params.doks.navBarButtonText }}</a>
     {{ end -}}
+    
 
   </div>
 </header>
