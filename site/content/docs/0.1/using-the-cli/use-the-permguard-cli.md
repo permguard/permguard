@@ -36,11 +36,11 @@ The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility 
 
 Permguard is an Open Source Multi-Account and Multi-Tenant Authorization Provider.
 
-  Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
+	Find more information at: https://www.permguard.com/docs/using-the-cli/how-to-use/
 
 Usage:
-  Permguard Command Line Interface [flags]
-  Permguard [command]
+  permguard [flags]
+  permguard [command]
 
 Available Commands:
   accounts    Manage accounts on the remote server
@@ -51,23 +51,24 @@ Available Commands:
   clone       Clone a remote repository to the local working directory
   completion  Generate the autocompletion script for the specified shell
   config      Configure the command line settings
-  objects     Manage the object store
   help        Help about any command
+  history     Show the history
   init        Initialize a new repo in the working directory
+  objects     Manage the object store
   plan        Generate a plan of changes to apply to the remote repository based on the differences between the local and remote states
   pull        Fetch the latest changes from the remote repository and constructs the remote state.
   refresh     Scan source files in the current directory and synchronizes the local state
   remote      Manage remote repositories for tracking and interaction
-  repo        Manage repo settings and operations
+  repos       Manage repos settings and operations
   validate    Validate the local state for consistency and correctness
 
 Flags:
-  -h, --help             help for Permguard
+  -h, --help             help for permguard
   -o, --output string    output format (default "terminal")
   -v, --verbose          true for verbose output
   -w, --workdir string   workdir (default ".")
 
-Use "Permguard [command] --help" for more information about a command.
+Use "permguard [command] --help" for more information about a command.
 ```
 
 {{< callout context="caution" icon="alert-triangle" >}}
