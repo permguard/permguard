@@ -238,5 +238,8 @@ func (m *RefsManager) GetCurrentHeadRefsInfo() (*RefsInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	if headInfo == nil || len(headInfo.refs) == 0 {
+		return nil, nil
+	}
 	return convertStringToRefsInfo(headInfo.refs)
 }
