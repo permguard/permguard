@@ -34,7 +34,7 @@ const (
 
 // headReferenceConfig represents the configuration for the head.
 type headReferenceConfig struct {
-	Refs string `toml:"refs"`
+	Refs string `toml:"ref"`
 }
 
 // headConfig represents the configuration for the head.
