@@ -42,7 +42,7 @@ func (m *RefsManager) ExecCheckoutHead(remote string, accountID int64, repo stri
 	if output == nil {
 		output = map[string]any{}
 	}
-	refs := generateRefs(remote, accountID, repo)
+	refs := generateRef(remote, accountID, repo)
 	err := m.SaveRefsConfig(repoID, refs, commit)
 	if err != nil {
 		return nil, output, err
