@@ -23,7 +23,7 @@ type currentHeadContext struct {
 	repo          string
 	repoID        string
 	repoURI       string
-	refID         string
+	ref           string
 	refs          string
 	commitID      string
 	server        string
@@ -55,9 +55,9 @@ func (h *currentHeadContext) GetRepoURI() string {
 	return h.repoURI
 }
 
-// GetRefID returns the ref id.
-func (h *currentHeadContext) GetRefID() string {
-	return h.refID
+// GetRef returns the ref.
+func (h *currentHeadContext) GetRef() string {
+	return h.ref
 }
 
 // GetRefs returns the refs.

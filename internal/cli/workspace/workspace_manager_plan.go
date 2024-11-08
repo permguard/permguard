@@ -27,7 +27,7 @@ import (
 
 // getCurrentHeadContext gets the current head context.
 func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) {
-	headRefs, err := m.rfsMgr.GetCurrentHeadRefs()
+	headRefs, err := m.rfsMgr.GetCurrentHeadRef()
 	headRefsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
 	if err != nil {
 		return nil, err
@@ -43,7 +43,7 @@ func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) 
 		accountID:     headRefsInfo.GetAccountID(),
 		repo:          headRefsInfo.GetRepo(),
 		repoURI:       headRefsInfo.GetRepoURI(),
-		refID:         headRefsInfo.GetRefID(),
+		ref:           headRefsInfo.GetRef(),
 		refs:          headRefs,
 		commitID:      azlangobjs.ZeroOID,
 		server:        remoteInfo.GetServer(),

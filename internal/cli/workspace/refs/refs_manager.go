@@ -64,7 +64,7 @@ func (m *RefsManager) getRefsFile(refs string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(hiddenRefsDir, refsInfo.remote, refsInfo.refID), nil
+	return filepath.Join(hiddenRefsDir, refsInfo.remote, refsInfo.ref), nil
 }
 
 // ensureRefsFileExists ensures the refs file exists.
@@ -81,7 +81,7 @@ func (m *RefsManager) ensureRefsFileExists(refs string) error {
 }
 
 // GenerateRefs generates the refs.
-func (m *RefsManager) GenerateRefs(remote string, accountID int64, repo string, refID string) string {
+func (m *RefsManager) GenerateRefs(remote string, accountID int64, repo string, ref string) string {
 	refsInfo := &RefsInfo{
 		remote:    remote,
 		accountID: accountID,
@@ -204,9 +204,8 @@ func (m *RefsManager) GetCurrentHead() (*HeadInfo, error) {
 	}, nil
 }
 
-
-// GetCurrentHeadRefs gets the current head ref.
-func (m *RefsManager) GetCurrentHeadRefs() (string, error) {
+// GetCurrentHeadRef gets the current head ref.
+func (m *RefsManager) GetCurrentHeadRef() (string, error) {
 	headInfo, err := m.GetCurrentHead()
 	if err != nil {
 		return "", err

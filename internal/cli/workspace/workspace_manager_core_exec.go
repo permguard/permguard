@@ -222,10 +222,10 @@ func (m *WorkspaceManager) ExecListRepos(out aziclicommon.PrinterOutFunc) (map[s
 	}
 	defer fileLock.Unlock()
 
-	refID, err := m.rfsMgr.GetCurrentHeadRefs()
+	ref, err := m.rfsMgr.GetCurrentHeadRef()
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	output, err = m.cfgMgr.ExecListRepos(refID, nil, out)
+	output, err = m.cfgMgr.ExecListRepos(ref, nil, out)
 	return output, err
 }

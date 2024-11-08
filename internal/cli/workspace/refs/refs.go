@@ -68,22 +68,22 @@ func (i *HeadInfo) GetRefsInfo() (*RefsInfo, error) {
 	return convertStringToRefsInfo(i.refs)
 }
 
-// computeRefID computes the refid
-func computeRefID(remote string, accountID int64, repo string) string {
+// computeRef computes the ref
+func computeRef(remote string, accountID int64, repo string) string {
 	repoURI := strings.Join([]string{remote, strconv.FormatInt(accountID, 10), repo}, refsSeparator)
-	refID := azcrypto.ComputeStringSHA256(repoURI)
-	return refID
+	ref := azcrypto.ComputeStringSHA256(repoURI)
+	return ref
 }
 
-// generateRefsWithRefID generates the refs with refid.
-func generateRefsWithRefID(remote string, accountID int64, repo string, refID string) string {
-	return strings.Join([]string{refsPrefix, remote, strconv.FormatInt(accountID, 10), repo, refID}, refsSeparator)
+// generateRefsWithRef generates the refs with ref.
+func generateRefsWithRef(remote string, accountID int64, repo string, ref string) string {
+	return strings.Join([]string{refsPrefix, remote, strconv.FormatInt(accountID, 10), repo, ref}, refsSeparator)
 }
 
-// generateRefs generates the refs.
-func generateRefs(remote string, accountID int64, repo string) string {
-	refID := computeRefID(remote, accountID, repo)
-	return generateRefsWithRefID(remote, accountID, repo, refID)
+// generateRef generates the ref.
+func generateRef(remote string, accountID int64, repo string) string {
+	ref := computeRef(remote, accountID, repo)
+	return generateRefsWithRef(remote, accountID, repo, ref)
 }
 
 // convertStringToRefsInfo converts the string to refs information.
@@ -101,18 +101,18 @@ func convertStringToRefsInfo(refs string) (*RefsInfo, error) {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to parse account ID")
 	}
 	repo := refsObs[3]
-	refID := refsObs[4]
+	ref := refsObs[4]
 	return &RefsInfo{
 		remote:    remote,
 		accountID: accountID,
 		repo:      repo,
-		refID:     refID,
+		ref:       ref,
 	}, nil
 }
 
 // convertRefsInfoToString converts the refs information to string.
 func convertRefsInfoToString(info *RefsInfo) string {
-	return generateRefsWithRefID(info.GetRemote(), info.GetAccountID(), info.GetRepo(), info.GetRefID())
+	return generateRefsWithRef(info.GetRemote(), info.GetAccountID(), info.GetRepo(), info.GetRef())
 }
 
 // RefsInfo represents the refs information.
@@ -120,7 +120,7 @@ type RefsInfo struct {
 	remote    string
 	accountID int64
 	repo      string
-	refID     string
+	ref       string
 }
 
 // GetRemote returns the remote.
@@ -138,9 +138,9 @@ func (i *RefsInfo) GetRepo() string {
 	return i.repo
 }
 
-// GetRefID returns the ref ID.
-func (i *RefsInfo) GetRefID() string {
-	return i.refID
+// GetRef returns the ref ID.
+func (i *RefsInfo) GetRef() string {
+	return i.ref
 }
 
 // GetRepoURI returns the repo uri.
