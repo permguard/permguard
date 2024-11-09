@@ -67,15 +67,10 @@ func (i *HeadInfo) GetRefInfo() (*RefInfo, error) {
 	return convertStringToRefInfo(i.ref)
 }
 
-// generateRef generates the ref.
-func generateRef(remote string, accountID int64, repo string) string {
-	return strings.Join([]string{refPrefix, remote, strconv.FormatInt(accountID, 10), repo}, refSeparator)
-}
-
 // convertStringToRefInfo converts the string to ref information.
 func convertStringToRefInfo(ref string) (*RefInfo, error) {
 	refObs := strings.Split(ref, refSeparator)
-	if len(refObs) != 5 {
+	if len(refObs) != 4 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: malformed ref")
 	}
 	if refObs[0] != refPrefix {
@@ -94,6 +89,11 @@ func convertStringToRefInfo(ref string) (*RefInfo, error) {
 		repoID:    repoID,
 		ref:       ref,
 	}, nil
+}
+
+// generateRef generates the ref.
+func generateRef(remote string, accountID int64, repo string) string {
+	return strings.Join([]string{refPrefix, remote, strconv.FormatInt(accountID, 10), repo}, refSeparator)
 }
 
 // convertRefInfoToString converts the ref information to string.
