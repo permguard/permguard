@@ -39,7 +39,7 @@ func registerRepositoryForUpsertMocking(isCreate bool) (*Repository, string, *sq
 		Name:         "rent-a-car",
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
-		Refs:         "0000000000000000000000000000000000000000000000000000000000000000",
+		Ref:          "0000000000000000000000000000000000000000000000000000000000000000",
 	}
 	var sql string
 	if isCreate {
@@ -47,7 +47,7 @@ func registerRepositoryForUpsertMocking(isCreate bool) (*Repository, string, *sq
 	} else {
 		sql = `UPDATE repositories SET name = \? WHERE account_id = \? and repository_id = \?`
 	}
-	sqlRows := sqlmock.NewRows([]string{"account_id", "repository_id", "created_at", "updated_at", "name", "refs"}).
+	sqlRows := sqlmock.NewRows([]string{"account_id", "repository_id", "created_at", "updated_at", "name", "ref"}).
 		AddRow(repository.AccountID, repository.RepositoryID, repository.CreatedAt, repository.UpdatedAt, repository.Name, repository.Name)
 	return repository, sql, sqlRows
 }
@@ -60,12 +60,12 @@ func registerRepositoryForDeleteMocking() (string, *Repository, *sqlmock.Rows, s
 		Name:         "rent-a-car",
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
-		Refs:         "0000000000000000000000000000000000000000000000000000000000000000",
+		Ref:          "0000000000000000000000000000000000000000000000000000000000000000",
 	}
-	var sqlSelect = `SELECT account_id, repository_id, created_at, updated_at, name, refs FROM repositories WHERE account_id = \? and repository_id = \?`
+	var sqlSelect = `SELECT account_id, repository_id, created_at, updated_at, name, ref FROM repositories WHERE account_id = \? and repository_id = \?`
 	var sqlDelete = `DELETE FROM repositories WHERE account_id = \? and repository_id = \?`
-	sqlRows := sqlmock.NewRows([]string{"account_id", "repository_id", "created_at", "updated_at", "name", "refs"}).
-		AddRow(repository.AccountID, repository.RepositoryID, repository.CreatedAt, repository.UpdatedAt, repository.Name, repository.Refs)
+	sqlRows := sqlmock.NewRows([]string{"account_id", "repository_id", "created_at", "updated_at", "name", "ref"}).
+		AddRow(repository.AccountID, repository.RepositoryID, repository.CreatedAt, repository.UpdatedAt, repository.Name, repository.Ref)
 	return sqlSelect, repository, sqlRows, sqlDelete
 }
 
@@ -78,12 +78,12 @@ func registerRepositoryForFetchMocking() (string, []Repository, *sqlmock.Rows) {
 			Name:         "rent-a-car",
 			CreatedAt:    time.Now(),
 			UpdatedAt:    time.Now(),
-			Refs:         "0000000000000000000000000000000000000000000000000000000000000000",
+			Ref:          "0000000000000000000000000000000000000000000000000000000000000000",
 		},
 	}
 	var sqlSelect = "SELECT * FROM repositories WHERE account_id = ? AND repository_id = ? AND name LIKE ? ORDER BY repository_id ASC LIMIT ? OFFSET ?"
-	sqlRows := sqlmock.NewRows([]string{"account_id", "repository_id", "created_at", "updated_at", "name", "refs"}).
-		AddRow(repositories[0].AccountID, repositories[0].RepositoryID, repositories[0].CreatedAt, repositories[0].UpdatedAt, repositories[0].Name, repositories[0].Refs)
+	sqlRows := sqlmock.NewRows([]string{"account_id", "repository_id", "created_at", "updated_at", "name", "ref"}).
+		AddRow(repositories[0].AccountID, repositories[0].RepositoryID, repositories[0].CreatedAt, repositories[0].UpdatedAt, repositories[0].Name, repositories[0].Ref)
 	return sqlSelect, repositories, sqlRows
 }
 
@@ -185,7 +185,7 @@ func TestRepoUpsertRepositoryWithSuccess(t *testing.T) {
 				WillReturnResult(sqlmock.NewResult(1, 1))
 		}
 
-		sqlDBMock.ExpectQuery(`SELECT account_id, repository_id, created_at, updated_at, name, refs FROM repositories WHERE account_id = \? and repository_id = \?`).
+		sqlDBMock.ExpectQuery(`SELECT account_id, repository_id, created_at, updated_at, name, ref FROM repositories WHERE account_id = \? and repository_id = \?`).
 			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
 			WillReturnRows(sqlRepositoryRows)
 

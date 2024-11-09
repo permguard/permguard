@@ -44,7 +44,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 	if err != nil {
 		return nil, err
 	}
-	headCommitID := repo.Refs
+	headCommitID := repo.Ref
 	hasConflicts := false
 	isUpToDate := false
 	objMng, err := azlangobjs.NewObjectManager()
@@ -77,10 +77,10 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 		return s.readObject(db, oid)
 	})
 	packet := &notpagpackets.LocalRefStatePacket{
-		RefCommit:    		headCommitID,
-		NumberOfCommits: 	uint32(len(commits)),
-		HasConflicts:	 	hasConflicts,
-		IsUpToDate:   		isUpToDate,
+		RefCommit:       headCommitID,
+		NumberOfCommits: uint32(len(commits)),
+		HasConflicts:    hasConflicts,
+		IsUpToDate:      isUpToDate,
 	}
 	handlerCtx.Set(LocalCommitIDKey, headCommitID)
 	handlerCtx.Set(RemoteCommitIDKey, remoteRefSPacket.RefCommit)

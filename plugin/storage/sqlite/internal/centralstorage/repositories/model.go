@@ -97,7 +97,7 @@ type Repository struct {
 	UpdatedAt    time.Time `db:"updated_at"`
 	AccountID    int64     `db:"account_id"`
 	Name         string    `db:"name"`
-	Refs         string    `db:"refs"`
+	Ref          string    `db:"ref"`
 }
 
 // LogRepositoryEntry returns a string representation of the repository.
@@ -110,8 +110,8 @@ func LogRepositoryEntry(repository *Repository) string {
 
 // KeyValue is the model for the key_value table.
 type KeyValue struct {
-	Key   string   `db:"kv_key"`
-	Value []byte   `db:"kv_value"`
+	Key   string `db:"kv_key"`
+	Value []byte `db:"kv_value"`
 }
 
 // LogKeyValueEntry returns a string representation of the key value.

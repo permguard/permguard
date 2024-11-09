@@ -61,8 +61,8 @@ type SqliteRepo interface {
 	DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string) (*azirepos.Repository, error)
 	// FetchRepositories fetches repositories.
 	FetchRepositories(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.Repository, error)
-	// UpdateRepositoryRefs updates the repository refs.
-	UpdateRepositoryRefs(tx *sql.Tx, accountID int64, repositoryID, currentRef, newRef string) error
+	// UpdateRepositoryRef updates the repository ref.
+	UpdateRepositoryRef(tx *sql.Tx, accountID int64, repositoryID, currentRef, newRef string) error
 
 	// UpsertKeyValue creates or updates a key value.
 	UpsertKeyValue(tx *sql.Tx, keyValue *azirepos.KeyValue) (*azirepos.KeyValue, error)

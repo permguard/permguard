@@ -60,7 +60,7 @@ type WorkspaceManager struct {
 	rmSrvtMgr *azicliwksremotesrv.RemoteServerManager
 	cfgMgr    *azicliwkscfg.ConfigManager
 	logsMgr   *azicliwkslogs.LogsManager
-	rfsMgr    *azicliwksrefs.RefsManager
+	rfsMgr    *azicliwksrefs.RefManager
 	cospMgr   *azicliwkscosp.COSPManager
 }
 
@@ -83,7 +83,7 @@ func NewInternalManager(ctx *aziclicommon.CliCommandContext, langFct azlang.Lang
 	if err != nil {
 		return nil, err
 	}
-	rfsMgr, err := azicliwksrefs.NewRefsManager(ctx, persMgr)
+	rfsMgr, err := azicliwksrefs.NewRefManager(ctx, persMgr)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +130,7 @@ func (m *WorkspaceManager) isWorkspaceDir() bool {
 	if err != nil {
 		return false
 	}
-	if homeDir ==  currentDir{
+	if homeDir == currentDir {
 		return false
 	}
 	isValid, _ := m.persMgr.CheckPathIfExists(azicliwkspers.PermguardDir, "")
@@ -159,7 +159,7 @@ func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out aziclicommon.PrinterO
 // getCurrentHeadInfo returns the current head info.
 func (m *WorkspaceManager) getCurrentHeadInfo(out aziclicommon.PrinterOutFunc) (*azicliwksrefs.HeadInfo, error) {
 	headInfo, err := m.rfsMgr.GetCurrentHead()
-	if err != nil || headInfo.GetRefs() == "" {
+	if err != nil || headInfo.GetRef() == "" {
 		out(nil, "", "No repository is configured in the current workspace.", nil, true)
 		out(nil, "", "Please checkout a repository and try again.", nil, true)
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceInvaliHead, "cli: invalid head configuration")

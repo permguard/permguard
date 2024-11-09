@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package refs
+package ref
 
 import (
 	"fmt"
@@ -28,71 +28,71 @@ import (
 )
 
 const (
-	// hiddenRefsDir represents the hidden refs directory.
-	hiddenRefsDir = "refs"
+	// hiddenRefDir represents the hidden ref directory.
+	hiddenRefDir = "ref"
 	// hiddenHeadFile represents the hidden head file.
 	hiddenHeadFile = "HEAD"
 )
 
-// RefsManager implements the internal manager for the refs files.
-type RefsManager struct {
+// RefManager implements the internal manager for the ref files.
+type RefManager struct {
 	ctx     *aziclicommon.CliCommandContext
 	persMgr *azicliwkspers.PersistenceManager
 }
 
-// NewRefsManager creates a new refsuration manager.
-func NewRefsManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.PersistenceManager) (*RefsManager, error) {
-	return &RefsManager{
+// NewRefManager creates a new refuration manager.
+func NewRefManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.PersistenceManager) (*RefManager, error) {
+	return &RefManager{
 		ctx:     ctx,
 		persMgr: persMgr,
 	}, nil
 }
 
-// getRefsDir returns the refs directory.
-func (m *RefsManager) getRefsDir() string {
-	return hiddenRefsDir
+// getRefDir returns the ref directory.
+func (m *RefManager) getRefDir() string {
+	return hiddenRefDir
 }
 
 // getHeadFile returns the head file.
-func (m *RefsManager) getHeadFile() string {
+func (m *RefManager) getHeadFile() string {
 	return hiddenHeadFile
 }
 
-// getRefsFile returns the refs file.
-func (m *RefsManager) getRefsFile(refs string) (string, error) {
-	refsInfo, err := convertStringToRefsInfo(refs)
+// getRefFile returns the ref file.
+func (m *RefManager) getRefFile(ref string) (string, error) {
+	refInfo, err := convertStringToRefInfo(ref)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(hiddenRefsDir, refsInfo.remote, refsInfo.ref), nil
+	return filepath.Join(hiddenRefDir, refInfo.remote, refInfo.ref), nil
 }
 
-// ensureRefsFileExists ensures the refs file exists.
-func (m *RefsManager) ensureRefsFileExists(refs string) error {
-	refsFile, err := m.getRefsFile(refs)
+// ensureRefFileExists ensures the ref file exists.
+func (m *RefManager) ensureRefFileExists(ref string) error {
+	refFile, err := m.getRefFile(ref)
 	if err != nil {
 		return err
 	}
-	_, err = m.persMgr.CreateFileIfNotExists(azicliwkspers.PermguardDir, refsFile)
+	_, err = m.persMgr.CreateFileIfNotExists(azicliwkspers.PermguardDir, refFile)
 	if err != nil {
 		return err
 	}
 	return err
 }
 
-// GenerateRefs generates the refs.
-func (m *RefsManager) GenerateRefs(remote string, accountID int64, repo string, ref string) string {
-	refsInfo := &RefsInfo{
+// GenerateRef generates the ref.
+func (m *RefManager) GenerateRef(remote string, accountID int64, repo string) string {
+	refInfo := &RefInfo{
 		remote:    remote,
 		accountID: accountID,
-		repo:      repo,
+		repoID:    repo,
 	}
-	refs := convertRefsInfoToString(refsInfo)
-	return refs
+	ref := convertRefInfoToString(refInfo)
+	return ref
 }
 
 // saveConfig saves the config file.
-func (m *RefsManager) saveConfig(name string, override bool, cfg any) error {
+func (m *RefManager) saveConfig(name string, override bool, cfg any) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
@@ -109,11 +109,11 @@ func (m *RefsManager) saveConfig(name string, override bool, cfg any) error {
 }
 
 // SaveHeadConfig saves the head config file.
-func (m *RefsManager) SaveHeadConfig(refs string) error {
+func (m *RefManager) SaveHeadConfig(ref string) error {
 	headFile := m.getHeadFile()
 	headCfg := headConfig{
 		Reference: headReferenceConfig{
-			Refs: refs,
+			Ref: ref,
 		},
 	}
 	err := m.saveConfig(headFile, true, &headCfg)
@@ -124,121 +124,121 @@ func (m *RefsManager) SaveHeadConfig(refs string) error {
 }
 
 // readHeadConfig reads the config file.
-func (m *RefsManager) readHeadConfig() (*headConfig, error) {
+func (m *RefManager) readHeadConfig() (*headConfig, error) {
 	var config headConfig
 	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermguardDir, m.getHeadFile(), &config)
 	return &config, err
 }
 
-// SaveRefsConfig saves the refs configuration.
-func (m *RefsManager) SaveRefsConfig(repoID string, refs string, commit string) error {
-	err := m.ensureRefsFileExists(refs)
+// SaveRefConfig saves the ref configuration.
+func (m *RefManager) SaveRefConfig(repoID string, ref string, commit string) error {
+	err := m.ensureRefFileExists(ref)
 	if err != nil {
 		return err
 	}
-	refsPath, err := m.getRefsFile(refs)
+	refPath, err := m.getRefFile(ref)
 	if err != nil {
 		return err
 	}
-	refCfg := refsConfig{
-		Objects: refsObjectsConfig{
+	refCfg := refConfig{
+		Objects: refObjectsConfig{
 			RepoID: repoID,
 			Commit: commit,
 		},
 	}
-	err = m.saveConfig(refsPath, true, &refCfg)
+	err = m.saveConfig(refPath, true, &refCfg)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-// readRefsConfig reads the refs configuration.
-func (m *RefsManager) readRefsConfig(refs string) (*refsConfig, error) {
-	refsPath, err := m.getRefsFile(refs)
+// readRefConfig reads the ref configuration.
+func (m *RefManager) readRefConfig(ref string) (*refConfig, error) {
+	refPath, err := m.getRefFile(ref)
 	if err != nil {
 		return nil, err
 	}
-	var config refsConfig
-	err = m.persMgr.ReadTOMLFile(azicliwkspers.PermguardDir, refsPath, &config)
+	var config refConfig
+	err = m.persMgr.ReadTOMLFile(azicliwkspers.PermguardDir, refPath, &config)
 	if err != nil {
 		return nil, err
 	}
 	return &config, nil
 }
 
-// GetRefsRepoID reads the refs repo id.
-func (m *RefsManager) GetRefsRepoID(refs string) (string, error) {
-	refsCfg, err := m.readRefsConfig(refs)
+// GetRefRepoID reads the ref repo id.
+func (m *RefManager) GetRefRepoID(ref string) (string, error) {
+	refCfg, err := m.readRefConfig(ref)
 	if err != nil {
 		return "", err
 	}
-	if refsCfg == nil {
-		return "", azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: invalid refs config file")
+	if refCfg == nil {
+		return "", azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: invalid ref config file")
 
 	}
-	return refsCfg.Objects.RepoID, nil
+	return refCfg.Objects.RepoID, nil
 }
 
-// GetRefsCommit reads the refs commit.
-func (m *RefsManager) GetRefsCommit(refs string) (string, error) {
-	refsCfg, err := m.readRefsConfig(refs)
+// GetRefCommit reads the ref commit.
+func (m *RefManager) GetRefCommit(ref string) (string, error) {
+	refCfg, err := m.readRefConfig(ref)
 	if err != nil {
 		return "", err
 	}
-	if refsCfg == nil {
-		return "", azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: invalid refs config file")
+	if refCfg == nil {
+		return "", azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: invalid ref config file")
 
 	}
-	return refsCfg.Objects.Commit, nil
+	return refCfg.Objects.Commit, nil
 }
 
 // GetCurrentHead gets the current head.
-func (m *RefsManager) GetCurrentHead() (*HeadInfo, error) {
+func (m *RefManager) GetCurrentHead() (*HeadInfo, error) {
 	cfgHead, err := m.readHeadConfig()
 	if err != nil {
 		return nil, err
 	}
 	return &HeadInfo{
-		refs: cfgHead.Reference.Refs,
+		ref: cfgHead.Reference.Ref,
 	}, nil
 }
 
 // GetCurrentHeadRef gets the current head ref.
-func (m *RefsManager) GetCurrentHeadRef() (string, error) {
+func (m *RefManager) GetCurrentHeadRef() (string, error) {
 	headInfo, err := m.GetCurrentHead()
 	if err != nil {
 		return "", err
 	}
-	return headInfo.refs, nil
+	return headInfo.ref, nil
 }
 
 // GetCurrentHeadRepoID gets the current head repo id.
-func (m *RefsManager) GetCurrentHeadRepoID() (string, error) {
+func (m *RefManager) GetCurrentHeadRepoID() (string, error) {
 	headInfo, err := m.GetCurrentHead()
 	if err != nil {
 		return "", err
 	}
-	return m.GetRefsRepoID(headInfo.refs)
+	return m.GetRefRepoID(headInfo.ref)
 }
 
 // GetCurrentHeadCommit gets the current head commit.
-func (m *RefsManager) GetCurrentHeadCommit() (string, error) {
+func (m *RefManager) GetCurrentHeadCommit() (string, error) {
 	headInfo, err := m.GetCurrentHead()
 	if err != nil {
 		return "", err
 	}
-	return m.GetRefsCommit(headInfo.refs)
+	return m.GetRefCommit(headInfo.ref)
 }
 
-// GetCurrentHeadRefsInfo gets the current head refs information.
-func (m *RefsManager) GetCurrentHeadRefsInfo() (*RefsInfo, error) {
+// GetCurrentHeadRefInfo gets the current head ref information.
+func (m *RefManager) GetCurrentHeadRefInfo() (*RefInfo, error) {
 	headInfo, err := m.GetCurrentHead()
 	if err != nil {
 		return nil, err
 	}
-	if headInfo == nil || len(headInfo.refs) == 0 {
+	if headInfo == nil || len(headInfo.ref) == 0 {
 		return nil, nil
 	}
-	return convertStringToRefsInfo(headInfo.refs)
+	return convertStringToRefInfo(headInfo.ref)
 }
