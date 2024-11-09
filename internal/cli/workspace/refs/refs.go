@@ -25,8 +25,8 @@ import (
 )
 
 const (
-	// refPrefix represents the prefix for the ref.
-	refPrefix = "refs"
+	// refsPrefix represents the prefix for the ref.
+	refsPrefix = "refs"
 	// refSeparator represents the separator for the ref.
 	refSeparator = "/"
 )
@@ -73,7 +73,7 @@ func convertStringToRefInfo(ref string) (*RefInfo, error) {
 	if len(refObs) != 4 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: malformed ref")
 	}
-	if refObs[0] != refPrefix {
+	if refObs[0] != refsPrefix {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: invalid ref")
 	}
 	remote := refObs[1]
@@ -82,7 +82,6 @@ func convertStringToRefInfo(ref string) (*RefInfo, error) {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to parse account ID")
 	}
 	repoID := refObs[3]
-	ref = refObs[4]
 	return &RefInfo{
 		remote:    remote,
 		accountID: accountID,
@@ -93,12 +92,12 @@ func convertStringToRefInfo(ref string) (*RefInfo, error) {
 
 // generateRef generates the ref.
 func generateRef(remote string, accountID int64, repo string) string {
-	return strings.Join([]string{refPrefix, remote, strconv.FormatInt(accountID, 10), repo}, refSeparator)
+	return strings.Join([]string{refsPrefix, remote, strconv.FormatInt(accountID, 10), repo}, refSeparator)
 }
 
 // convertRefInfoToString converts the ref information to string.
 func convertRefInfoToString(info *RefInfo) string {
-	return generateRef(info.GetRemote(), info.GetAccountID(), info.GetRepo())
+	return generateRef(info.GetRemote(), info.GetAccountID(), info.GetRepoID())
 }
 
 // RefInfo represents the ref information.
@@ -119,8 +118,8 @@ func (i *RefInfo) GetAccountID() int64 {
 	return i.accountID
 }
 
-// GetRepo returns the repo.
-func (i *RefInfo) GetRepo() string {
+// GetRepoID returns the repo id.
+func (i *RefInfo) GetRepoID() string {
 	return i.repoID
 }
 

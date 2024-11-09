@@ -25,7 +25,7 @@ import (
 
 // ExecInitalize the ref resources.
 func (m *RefManager) ExecInitalize(lang string) error {
-	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, m.getRefDir())
+	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, m.getRefsDir())
 	if err != nil {
 		return err
 	}

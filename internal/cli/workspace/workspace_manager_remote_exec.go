@@ -61,7 +61,7 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 		}
 		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: repo %s already exists", repoURI)))
 	}
-	
+
 	// Retrieves the remote information
 	remoteInfo, err := m.cfgMgr.GetRemoteInfo(repoInfo.GetRemote())
 	if err != nil {
@@ -89,13 +89,17 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
 		return failedOpErr(output, err)
 	}
+	repositoryInfo, err := m.cfgMgr.GetRepositoryInfo(repoURI)
+	if err != nil {
+		return failedOpErr(output, err)
+	}
 	// Checkout the head
 	remoteRef := azlangobjs.ZeroOID
-	headInfo, output, err := m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.RepositoryID, remoteRef, nil, out)
+	headInfo, output, err := m.rfsMgr.ExecCheckoutHead(repositoryInfo.GetRemote(), repositoryInfo.GetAccount(), repositoryInfo.GetRepo(), repositoryInfo.GetRepoID(), remoteRef, nil, out)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	_, err = m.logsMgr.Log(repoInfo.GetRemote(), headInfo.GetRef(), remoteRef, remoteRef, azicliwkslogs.LogActionCheckout, true, repoURI)
+	_, err = m.logsMgr.Log(repoInfo.GetRemote(), headInfo.GetRef(), remoteRef, remoteRef, azicliwkslogs.LogActionCheckout, true, repositoryInfo.GetRef())
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
