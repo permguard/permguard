@@ -20,14 +20,13 @@ import (
 	"strconv"
 	"strings"
 
-	azcrypto "github.com/permguard/permguard-core/pkg/extensions/crypto"
 	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
 	// refPrefix represents the prefix for the ref.
-	refPrefix = "ref"
+	refPrefix = "refs"
 	// refSeparator represents the separator for the ref.
 	refSeparator = "/"
 )
@@ -66,13 +65,6 @@ func (i *HeadInfo) GetRef() string {
 // GetRefInfo returns the ref information.
 func (i *HeadInfo) GetRefInfo() (*RefInfo, error) {
 	return convertStringToRefInfo(i.ref)
-}
-
-// computeRef computes the ref
-func computeRef(remote string, accountID int64, repo string) string {
-	repoURI := strings.Join([]string{remote, strconv.FormatInt(accountID, 10), repo}, refSeparator)
-	ref := azcrypto.ComputeStringSHA256(repoURI)
-	return ref
 }
 
 // generateRef generates the ref.
