@@ -160,7 +160,7 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out aziclicommon.
 }
 
 // ExecAddRepo adds a repo.
-func (m *ConfigManager) ExecAddRepo(ref, remote, repo, repoID string, account int64, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, repo, repoID string, account int64, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -171,14 +171,14 @@ func (m *ConfigManager) ExecAddRepo(ref, remote, repo, repoID string, account in
 	var cfgRepo repositoryConfig
 	exists := false
 	for repository := range cfg.Repositories {
-		if repository == repo && cfg.Repositories[repo].Remote == remote {
-			cfgRepo = cfg.Repositories[repo]
+		if repository == repo && cfg.Repositories[repoURI].Remote == remote {
+			cfgRepo = cfg.Repositories[repoURI]
 			exists = true
 		}
 	}
 	if !exists {
 		for key, repo := range cfg.Repositories {
-			repo.IsHead = true
+			repo.IsHead = false
 			cfg.Repositories[key] = repo
 		}
 		cfgRepo = repositoryConfig{
@@ -189,7 +189,7 @@ func (m *ConfigManager) ExecAddRepo(ref, remote, repo, repoID string, account in
 			RepoID:  repoID,
 			IsHead:  true,
 		}
-		cfg.Repositories[repo] = cfgRepo
+		cfg.Repositories[repoURI] = cfgRepo
 		m.saveConfig(true, cfg)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {

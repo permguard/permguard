@@ -46,13 +46,14 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 		}
 		return output, err
 	}
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "checkout", "Initiating remote verification process.", nil, true)
+	}
+
+	// Verifies the repository URI and check if it already exists
 	repoInfo, err := azicliwksrepos.GetRepoInfoFromURI(repoURI)
 	if err != nil {
 		return failedOpErr(nil, err)
-	}
-
-	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "checkout", "Initiating remote verification process.", nil, true)
 	}
 	exist, _ := m.cfgMgr.CheckRepoIfExists(repoURI)
 	if exist {
@@ -61,10 +62,7 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 		}
 		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: repo %s already exists", repoURI)))
 	}
-	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "checkout", "Remote verified successfully.", nil, true)
-	}
-
+	// Retrieves the remote information
 	remoteInfo, err := m.cfgMgr.GetRemoteInfo(repoInfo.GetRemote())
 	if err != nil {
 		return failedOpErr(nil, err)
@@ -82,14 +80,20 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "checkout", "Remote repository retrieved successfully.", nil, true)
 	}
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "checkout", "Remote verified successfully.", nil, true)
+	}
+	// Add the repository
+	ref := m.rfsMgr.GenerateRef(repoInfo.GetRemote(), repoInfo.GetAccountID(), srvRepo.RepositoryID)
+	output, err := m.cfgMgr.ExecAddRepo(repoURI, ref, repoInfo.GetRemote(), repoInfo.GetRepo(), srvRepo.RepositoryID, repoInfo.GetAccountID(), nil, out)
+	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
+		return failedOpErr(output, err)
+	}
+	// Checkout the head
 	remoteRef := azlangobjs.ZeroOID
 	headInfo, output, err := m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.RepositoryID, remoteRef, nil, out)
 	if err != nil {
 		return failedOpErr(nil, err)
-	}
-	output, err = m.cfgMgr.ExecAddRepo(headInfo.GetRef(), repoInfo.GetRemote(), repoInfo.GetRepo(), srvRepo.RepositoryID, repoInfo.GetAccountID(), output, out)
-	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
-		return failedOpErr(output, err)
 	}
 	_, err = m.logsMgr.Log(repoInfo.GetRemote(), headInfo.GetRef(), remoteRef, remoteRef, azicliwkslogs.LogActionCheckout, true, repoURI)
 	if err != nil {
