@@ -28,8 +28,10 @@ import (
 )
 
 const (
-	// hiddenRefDir represents the hidden ref directory.
-	hiddenRefDir = "ref"
+	// hiddenRefsDir represents the hidden refs directory.
+	hiddenRefsDir = "refs"
+	// hiddenRefsRemoteDir represents the hidden refs remote directory.
+	hiddenRefsRemoteDir = "remotes"
 	// hiddenHeadFile represents the hidden head file.
 	hiddenHeadFile = "HEAD"
 )
@@ -48,9 +50,9 @@ func NewRefManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.P
 	}, nil
 }
 
-// getRefDir returns the ref directory.
-func (m *RefManager) getRefDir() string {
-	return hiddenRefDir
+// getRefsDir returns the refs directory.
+func (m *RefManager) getRefsDir() string {
+	return hiddenRefsDir
 }
 
 // getHeadFile returns the head file.
@@ -59,17 +61,17 @@ func (m *RefManager) getHeadFile() string {
 }
 
 // getRefFile returns the ref file.
-func (m *RefManager) getRefFile(ref string) (string, error) {
+func (m *RefManager) getRefFile(refType string, ref string) (string, error) {
 	refInfo, err := convertStringToRefInfo(ref)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(hiddenRefDir, refInfo.remote, refInfo.ref), nil
+	return filepath.Join(hiddenRefsDir, refType, refInfo.remote, fmt.Sprintf("%d", refInfo.accountID), refInfo.repoID), nil
 }
 
 // ensureRefFileExists ensures the ref file exists.
 func (m *RefManager) ensureRefFileExists(ref string) error {
-	refFile, err := m.getRefFile(ref)
+	refFile, err := m.getRefFile(hiddenRefsRemoteDir, ref)
 	if err != nil {
 		return err
 	}
@@ -136,7 +138,7 @@ func (m *RefManager) SaveRefConfig(repoID string, ref string, commit string) err
 	if err != nil {
 		return err
 	}
-	refPath, err := m.getRefFile(ref)
+	refPath, err := m.getRefFile(hiddenRefsRemoteDir, ref)
 	if err != nil {
 		return err
 	}
@@ -155,7 +157,7 @@ func (m *RefManager) SaveRefConfig(repoID string, ref string, commit string) err
 
 // readRefConfig reads the ref configuration.
 func (m *RefManager) readRefConfig(ref string) (*refConfig, error) {
-	refPath, err := m.getRefFile(ref)
+	refPath, err := m.getRefFile(hiddenRefsRemoteDir, ref)
 	if err != nil {
 		return nil, err
 	}

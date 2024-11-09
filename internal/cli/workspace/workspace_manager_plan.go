@@ -41,7 +41,7 @@ func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) 
 	headCtx := &currentHeadContext{
 		remote:        headRefInfo.GetRemote(),
 		accountID:     headRefInfo.GetAccountID(),
-		repo:          headRefInfo.GetRepo(),
+		repo:          headRefInfo.GetRepoID(),
 		repoURI:       headRefInfo.GetRepoURI(),
 		ref:           headRefInfo.GetRef(),
 		commitID:      azlangobjs.ZeroOID,
