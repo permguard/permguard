@@ -107,17 +107,14 @@ func (m *ConfigManager) GetRemoteInfo(remote string) (*RemoteInfo, error) {
 }
 
 // CheckRepoIfExists checks if a repository exists.
-func (m *ConfigManager) CheckRepoIfExists(repoURI string) (bool, error) {
-	repoURI, err := azicliwksrepos.SanitizeRepo(repoURI)
-	if err != nil {
-		return false, err
-	}
+func (m *ConfigManager) CheckRepoIfExists(repoURI string) bool {
+	repoURI, _ = azicliwksrepos.SanitizeRepo(repoURI)
 	cfg, err := m.readConfig()
 	if err != nil {
-		return false, err
+		return false
 	}
 	if _, ok := cfg.Repositories[repoURI]; !ok {
-		return false, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: repo %s does not exist", repoURI))
+		return false
 	}
-	return true, nil
+	return true
 }

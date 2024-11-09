@@ -55,13 +55,13 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	exist, _ := m.cfgMgr.CheckRepoIfExists(repoURI)
-	if exist {
+	if ok := m.cfgMgr.CheckRepoIfExists(repoURI); ok {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "checkout", "Remote verification failed: repository already exists.", nil, true)
 		}
 		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: repo %s already exists", repoURI)))
 	}
+	
 	// Retrieves the remote information
 	remoteInfo, err := m.cfgMgr.GetRemoteInfo(repoInfo.GetRemote())
 	if err != nil {
