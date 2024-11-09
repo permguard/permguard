@@ -29,7 +29,7 @@ func MapGrpcRepositoryResponseToAgentRepository(repository *RepositoryResponse) 
 		UpdatedAt:    repository.UpdatedAt.AsTime(),
 		AccountID:    repository.AccountID,
 		Name:         repository.Name,
-		Refs:         repository.Refs,
+		Ref:          repository.Ref,
 	}, nil
 }
 
@@ -41,7 +41,7 @@ func MapAgentRepositoryToGrpcRepositoryResponse(repository *azmodels.Repository)
 		UpdatedAt:    timestamppb.New(repository.UpdatedAt),
 		AccountID:    repository.AccountID,
 		Name:         repository.Name,
-		Refs:         repository.Refs,
+		Ref:          repository.Ref,
 	}, nil
 }
 

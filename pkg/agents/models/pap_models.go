@@ -35,7 +35,7 @@ type Repository struct {
 	UpdatedAt    time.Time `json:"updated_at" validate:"required"`
 	AccountID    int64     `json:"account_id" validate:"required,gt=0"`
 	Name         string    `json:"name"`
-	Refs         string    `json:"refs"`
+	Ref          string    `json:"ref"`
 }
 
 // Schema is the schema.

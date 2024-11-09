@@ -61,11 +61,11 @@ func (c *LogsManager) getLogsDir() string {
 }
 
 // Log an entry
-func (c *LogsManager) Log(remote string, refs string, origin string, target string, action LogAction, actionStatus bool, actionDetail string) (bool, error) {
+func (c *LogsManager) Log(remote string, ref string, origin string, target string, action LogAction, actionStatus bool, actionDetail string) (bool, error) {
 	if strings.TrimSpace(remote) == "" {
 		return false, fmt.Errorf("Invalid action")
 	}
-	if strings.TrimSpace(refs) == "" {
+	if strings.TrimSpace(ref) == "" {
 		return false, fmt.Errorf("Invalid action")
 	}
 	if err := azvalidators.ValidateSHA256("logs", origin); err != nil {
@@ -85,7 +85,7 @@ func (c *LogsManager) Log(remote string, refs string, origin string, target stri
 	if err != nil {
 		return false, err
 	}
-	logFile := filepath.Join(logDir, refs)
+	logFile := filepath.Join(logDir, ref)
 	_, err = c.persMgr.CreateFileIfNotExists(azicliwkspers.PermguardDir, logFile)
 	if err != nil {
 		return false, err

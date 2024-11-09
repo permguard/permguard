@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package refs
+package ref
 
 import (
 	"strconv"
@@ -26,15 +26,15 @@ import (
 )
 
 const (
-	// refsPrefix represents the prefix for the refs.
-	refsPrefix = "refs"
-	// refsSeparator represents the separator for the refs.
-	refsSeparator = "/"
+	// refPrefix represents the prefix for the ref.
+	refPrefix = "ref"
+	// refSeparator represents the separator for the ref.
+	refSeparator = "/"
 )
 
 // headReferenceConfig represents the configuration for the head.
 type headReferenceConfig struct {
-	Refs string `toml:"ref"`
+	Ref string `toml:"ref"`
 }
 
 // headConfig represents the configuration for the head.
@@ -42,110 +42,104 @@ type headConfig struct {
 	Reference headReferenceConfig `toml:"reference"`
 }
 
-// refsObjectsConfig represents the configuration for the objects.
-type refsObjectsConfig struct {
+// refObjectsConfig represents the configuration for the objects.
+type refObjectsConfig struct {
 	RepoID string `toml:"repoid"`
 	Commit string `toml:"commit"`
 }
 
-// refsConfig represents the configuration for the refs.
-type refsConfig struct {
-	Objects refsObjectsConfig `toml:"objects"`
+// refConfig represents the configuration for the ref.
+type refConfig struct {
+	Objects refObjectsConfig `toml:"objects"`
 }
 
 // HeadInfo represents the head information.
 type HeadInfo struct {
-	refs string
+	ref string
 }
 
-// GetRefs returns the refs.
-func (i *HeadInfo) GetRefs() string {
-	return i.refs
+// GetRef returns the ref.
+func (i *HeadInfo) GetRef() string {
+	return i.ref
 }
 
-// GetRefsInfo returns the refs information.
-func (i *HeadInfo) GetRefsInfo() (*RefsInfo, error) {
-	return convertStringToRefsInfo(i.refs)
+// GetRefInfo returns the ref information.
+func (i *HeadInfo) GetRefInfo() (*RefInfo, error) {
+	return convertStringToRefInfo(i.ref)
 }
 
 // computeRef computes the ref
 func computeRef(remote string, accountID int64, repo string) string {
-	repoURI := strings.Join([]string{remote, strconv.FormatInt(accountID, 10), repo}, refsSeparator)
+	repoURI := strings.Join([]string{remote, strconv.FormatInt(accountID, 10), repo}, refSeparator)
 	ref := azcrypto.ComputeStringSHA256(repoURI)
 	return ref
 }
 
-// generateRefsWithRef generates the refs with ref.
-func generateRefsWithRef(remote string, accountID int64, repo string, ref string) string {
-	return strings.Join([]string{refsPrefix, remote, strconv.FormatInt(accountID, 10), repo, ref}, refsSeparator)
-}
-
 // generateRef generates the ref.
 func generateRef(remote string, accountID int64, repo string) string {
-	ref := computeRef(remote, accountID, repo)
-	return generateRefsWithRef(remote, accountID, repo, ref)
+	return strings.Join([]string{refPrefix, remote, strconv.FormatInt(accountID, 10), repo}, refSeparator)
 }
 
-// convertStringToRefsInfo converts the string to refs information.
-func convertStringToRefsInfo(refs string) (*RefsInfo, error) {
-	refsObs := strings.Split(refs, refsSeparator)
-	if len(refsObs) != 5 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: malformed refs")
+// convertStringToRefInfo converts the string to ref information.
+func convertStringToRefInfo(ref string) (*RefInfo, error) {
+	refObs := strings.Split(ref, refSeparator)
+	if len(refObs) != 5 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: malformed ref")
 	}
-	if refsObs[0] != refsPrefix {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: invalid refs")
+	if refObs[0] != refPrefix {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: invalid ref")
 	}
-	remote := refsObs[1]
-	accountID, err := strconv.ParseInt(refsObs[2], 10, 64)
+	remote := refObs[1]
+	accountID, err := strconv.ParseInt(refObs[2], 10, 64)
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to parse account ID")
 	}
-	repo := refsObs[3]
-	ref := refsObs[4]
-	return &RefsInfo{
+	repoID := refObs[3]
+	ref = refObs[4]
+	return &RefInfo{
 		remote:    remote,
 		accountID: accountID,
-		repo:      repo,
+		repoID:    repoID,
 		ref:       ref,
 	}, nil
 }
 
-// convertRefsInfoToString converts the refs information to string.
-func convertRefsInfoToString(info *RefsInfo) string {
-	return generateRefsWithRef(info.GetRemote(), info.GetAccountID(), info.GetRepo(), info.GetRef())
+// convertRefInfoToString converts the ref information to string.
+func convertRefInfoToString(info *RefInfo) string {
+	return generateRef(info.GetRemote(), info.GetAccountID(), info.GetRepo())
 }
 
-// RefsInfo represents the refs information.
-type RefsInfo struct {
+// RefInfo represents the ref information.
+type RefInfo struct {
 	remote    string
 	accountID int64
-	repo      string
+	repoID    string
 	ref       string
 }
 
 // GetRemote returns the remote.
-func (i *RefsInfo) GetRemote() string {
+func (i *RefInfo) GetRemote() string {
 	return i.remote
 }
 
 // GetAccountID returns the account ID.
-func (i *RefsInfo) GetAccountID() int64 {
+func (i *RefInfo) GetAccountID() int64 {
 	return i.accountID
 }
 
 // GetRepo returns the repo.
-func (i *RefsInfo) GetRepo() string {
-	return i.repo
+func (i *RefInfo) GetRepo() string {
+	return i.repoID
 }
 
 // GetRef returns the ref ID.
-func (i *RefsInfo) GetRef() string {
+func (i *RefInfo) GetRef() string {
 	return i.ref
 }
 
 // GetRepoURI returns the repo uri.
-func (i *RefsInfo) GetRepoURI() string {
-	repoURI, err := azicliwksrepos.GetRepoURI(i.remote, i.accountID, i.repo)
+func (i *RefInfo) GetRepoURI() string {
+	repoURI, err := azicliwksrepos.GetRepoURI(i.remote, i.accountID, i.repoID)
 	if err != nil {
 		return ""
 	}

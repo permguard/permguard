@@ -170,11 +170,11 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out aziclicommon.Prin
 	}
 	defer fileLock.Unlock()
 
-	refsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
+	refInfo, err := m.rfsMgr.GetCurrentHeadRefInfo()
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	if refsInfo != nil && refsInfo.GetRemote() == remote {
+	if refInfo != nil && refInfo.GetRemote() == remote {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "remote", "Failed to delete remote: it is associated with the current HEAD.", nil, true)
 		}

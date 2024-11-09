@@ -24,7 +24,6 @@ type currentHeadContext struct {
 	repoID        string
 	repoURI       string
 	ref           string
-	refs          string
 	commitID      string
 	server        string
 	serverPAPPort int
@@ -58,11 +57,6 @@ func (h *currentHeadContext) GetRepoURI() string {
 // GetRef returns the ref.
 func (h *currentHeadContext) GetRef() string {
 	return h.ref
-}
-
-// GetRefs returns the refs.
-func (h *currentHeadContext) GetRefs() string {
-	return h.refs
 }
 
 // GetCommit returns the commit.

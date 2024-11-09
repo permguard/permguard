@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package refs
+package ref
 
 import (
 	"fmt"
@@ -23,9 +23,9 @@ import (
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
 
-// ExecInitalize the refs resources.
-func (m *RefsManager) ExecInitalize(lang string) error {
-	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, m.getRefsDir())
+// ExecInitalize the ref resources.
+func (m *RefManager) ExecInitalize(lang string) error {
+	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, m.getRefDir())
 	if err != nil {
 		return err
 	}
@@ -38,24 +38,24 @@ func (m *RefsManager) ExecInitalize(lang string) error {
 }
 
 // ExecCheckoutHead checks out the head.
-func (m *RefsManager) ExecCheckoutHead(remote string, accountID int64, repo string, repoID string, commit string, output map[string]any, out aziclicommon.PrinterOutFunc) (*HeadInfo, map[string]any, error) {
+func (m *RefManager) ExecCheckoutHead(remote string, accountID int64, repo string, repoID string, commit string, output map[string]any, out aziclicommon.PrinterOutFunc) (*HeadInfo, map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
-	refs := generateRef(remote, accountID, repo)
-	err := m.SaveRefsConfig(repoID, refs, commit)
+	ref := generateRef(remote, accountID, repoID)
+	err := m.SaveRefConfig(repoID, ref, commit)
 	if err != nil {
 		return nil, output, err
 	}
-	err = m.SaveHeadConfig(refs)
+	err = m.SaveHeadConfig(ref)
 	if err != nil {
 		return nil, output, err
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "head", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(refs)), nil, true)
+		out(nil, "head", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(ref)), nil, true)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
-			"refs": refs,
+			"ref": ref,
 		}
 		output = out(output, "head", remoteObj, nil, true)
 	}

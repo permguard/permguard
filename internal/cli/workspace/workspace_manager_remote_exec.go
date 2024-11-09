@@ -38,56 +38,8 @@ const (
 	OriginRemoteName = "origin"
 )
 
-// ExecCloneRepo clones a repository.
-func (m *WorkspaceManager) ExecCloneRepo(language, repoURI string, aapPort, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to clone the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
-		return output, err
-	}
-	m.ExecPrintContext(nil, out)
-
-	var output map[string]any
-	repoURI = strings.ToLower(repoURI)
-	if !strings.HasPrefix(repoURI, "permguard@") {
-		return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository URI"))
-	}
-	repoURI = strings.TrimPrefix(repoURI, "permguard@")
-	elements := strings.Split(repoURI, "/")
-	if len(elements) != 3 {
-		return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository URI"))
-	}
-
-	uriServer := elements[0]
-	uriAccountID := elements[1]
-	uriRepo := elements[2]
-
-	output, err := m.ExecInitWorkspace(language, out)
-	aborted := false
-	if err == nil {
-		fileLock, err := m.tryLock()
-		if err != nil {
-			return failedOpErr(nil, err)
-		}
-		defer fileLock.Unlock()
-		output, err = m.execInternalAddRemote(true, OriginRemoteName, uriServer, aapPort, papPort, out)
-		if err == nil {
-			repoURI := fmt.Sprintf("%s/%s/%s", OriginRemoteName, uriAccountID, uriRepo)
-			output, err = m.execInternalCheckoutRepo(true, repoURI, out)
-			if err != nil {
-				aborted = true
-			}
-		} else {
-			aborted = true
-		}
-	}
-	if aborted {
-		return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: operation has been aborted"))
-	}
-	return output, nil
-}
-
 // execInternalCheckoutRepo checks out a repository.
-func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool,repoURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
 			out(nil, "", fmt.Sprintf("Failed to checkout the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
@@ -130,16 +82,16 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool,repoURI string
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "checkout", "Remote repository retrieved successfully.", nil, true)
 	}
-	remoteRefs := azlangobjs.ZeroOID
-	headInfo, output, err := m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.RepositoryID, remoteRefs, nil, out)
+	remoteRef := azlangobjs.ZeroOID
+	headInfo, output, err := m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.RepositoryID, remoteRef, nil, out)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	output, err = m.cfgMgr.ExecAddRepo(headInfo.GetRefs(), repoInfo.GetRemote(), repoURI, output, out)
+	output, err = m.cfgMgr.ExecAddRepo(headInfo.GetRef(), repoInfo.GetRemote(), repoInfo.GetRepo(), srvRepo.RepositoryID, repoInfo.GetAccountID(), output, out)
 	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
 		return failedOpErr(output, err)
 	}
-	_, err = m.logsMgr.Log(repoInfo.GetRemote(), headInfo.GetRefs(), remoteRefs, remoteRefs, azicliwkslogs.LogActionCheckout, true, repoURI)
+	_, err = m.logsMgr.Log(repoInfo.GetRemote(), headInfo.GetRef(), remoteRef, remoteRef, azicliwkslogs.LogActionCheckout, true, repoURI)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
@@ -233,21 +185,21 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 		if !committed || localCommitID == "" || remoteCommitID == "" {
 			if localCommitID != "" && remoteCommitID != "" {
-				_, err := m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.repoURI)
+				_, err := m.logsMgr.Log(headCtx.remote, headCtx.ref, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.repoURI)
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
 			}
 		}
-		err = m.rfsMgr.SaveRefsConfig(headCtx.repoID, headCtx.refs, remoteCommitID)
+		err = m.rfsMgr.SaveRefConfig(headCtx.repoID, headCtx.ref, remoteCommitID)
 		if err != nil {
-			_, err = m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.repoURI)
+			_, err = m.logsMgr.Log(headCtx.remote, headCtx.ref, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.repoURI)
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
 			return failedOpErr(nil, err)
 		}
-		_, err = m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, headCtx.repoURI)
+		_, err = m.logsMgr.Log(headCtx.remote, headCtx.ref, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, headCtx.repoURI)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -340,4 +292,52 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 	defer fileLock.Unlock()
 
 	return m.execInternalPull(false, out)
+}
+
+// ExecCloneRepo clones a repository.
+func (m *WorkspaceManager) ExecCloneRepo(language, repoURI string, aapPort, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", fmt.Sprintf("Failed to clone the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
+		return output, err
+	}
+	m.ExecPrintContext(nil, out)
+
+	var output map[string]any
+	repoURI = strings.ToLower(repoURI)
+	if !strings.HasPrefix(repoURI, "permguard@") {
+		return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository URI"))
+	}
+	repoURI = strings.TrimPrefix(repoURI, "permguard@")
+	elements := strings.Split(repoURI, "/")
+	if len(elements) != 3 {
+		return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository URI"))
+	}
+
+	uriServer := elements[0]
+	uriAccountID := elements[1]
+	uriRepo := elements[2]
+
+	output, err := m.ExecInitWorkspace(language, out)
+	aborted := false
+	if err == nil {
+		fileLock, err := m.tryLock()
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		defer fileLock.Unlock()
+		output, err = m.execInternalAddRemote(true, OriginRemoteName, uriServer, aapPort, papPort, out)
+		if err == nil {
+			repoURI := fmt.Sprintf("%s/%s/%s", OriginRemoteName, uriAccountID, uriRepo)
+			output, err = m.execInternalCheckoutRepo(true, repoURI, out)
+			if err != nil {
+				aborted = true
+			}
+		} else {
+			aborted = true
+		}
+	}
+	if aborted {
+		return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: operation has been aborted"))
+	}
+	return output, nil
 }
