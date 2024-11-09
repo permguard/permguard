@@ -174,6 +174,7 @@ func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, repo, repoID string, a
 		if repository == repo && cfg.Repositories[repoURI].Remote == remote {
 			cfgRepo = cfg.Repositories[repoURI]
 			exists = true
+			break
 		}
 	}
 	if !exists {
@@ -209,7 +210,7 @@ func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, repo, repoID string, a
 }
 
 // ExecListRepos lists the repos.
-func (m *ConfigManager) ExecListRepos(activeRef string, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *ConfigManager) ExecListRepos(output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -220,9 +221,9 @@ func (m *ConfigManager) ExecListRepos(activeRef string, output map[string]any, o
 	if m.ctx.IsTerminalOutput() {
 		repos := []string{}
 		for cfgRepo := range cfg.Repositories {
-			isActive := activeRef == cfg.Repositories[cfgRepo].Ref
 			cfgRepoTxt := cfgRepo
-			if isActive {
+			isHead := cfg.Repositories[cfgRepo].IsHead
+			if isHead {
 				cfgRepoTxt = fmt.Sprintf("*%s", cfgRepo)
 			}
 			repos = append(repos, cfgRepoTxt)
@@ -239,11 +240,11 @@ func (m *ConfigManager) ExecListRepos(activeRef string, output map[string]any, o
 	} else if m.ctx.IsJSONOutput() {
 		repos := []any{}
 		for cfgRepo := range cfg.Repositories {
-			isActive := activeRef == cfg.Repositories[cfgRepo].Ref
+			isHead := cfg.Repositories[cfgRepo].IsHead
 			repoObj := map[string]any{
 				"ref":   cfg.Repositories[cfgRepo].Ref,
 				"repo":   cfgRepo,
-				"active": isActive,
+				"is_head": isHead,
 			}
 			repos = append(repos, repoObj)
 		}
