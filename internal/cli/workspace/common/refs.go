@@ -21,7 +21,6 @@ import (
 	"strconv"
 	"strings"
 
-	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -135,7 +134,7 @@ func (i *RefInfo) GetRepoFilePath(includeFileName bool) string {
 
 // GetRepoURI returns the repo uri.
 func (i *RefInfo) GetRepoURI() string {
-	repoURI, err := azicliwksrepos.GetRepoURI(i.remote, i.accountID, i.repoID)
+	repoURI, err := GetRepoURI(i.remote, i.accountID, i.repoID)
 	if err != nil {
 		return ""
 	}
