@@ -90,16 +90,16 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 		return failedOpErr(output, err)
 	}
 	// Checkout the head
-	remoteRef := azlangobjs.ZeroOID
-	headInfo, output, err := m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccount(), repoInfo.GetRepo(), repoInfo.GetRepoID(), remoteRef, nil, out)
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-	_, err = m.logsMgr.Log(repoInfo, headInfo.GetRef(), remoteRef, remoteRef, azicliwkslogs.LogActionCheckout, true, repositoryInfo.GetRef())
-
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
+	// TODO: FIX BROKEN BUILD
+	// remoteRef := azlangobjs.ZeroOID
+	// headInfo, output, err := m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccount(), repoInfo.GetRepo(), repoInfo.GetRepoID(), remoteRef, nil, out)
+	// if err != nil {
+	// 	return failedOpErr(nil, err)
+	// }
+	// _, err = m.logsMgr.Log(repoInfo, remoteRef, remoteRef, azicliwkslogs.LogActionCheckout, true, headInfo.GetRef())
+	// if err != nil {
+	// 	return failedOpErr(nil, err)
+	// }
 
 	_, err = m.execInternalPull(true, out)
 	if err != nil {
