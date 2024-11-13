@@ -47,6 +47,9 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 	if err != nil {
 		return output, err
 	}
+	if azicliwkscommon.IsReservedKeyword(remote) {
+		return output, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: remote %s is a reserved keyword", remote))
+	}
 	server = strings.ToLower(server)
 	cfg, err := m.readConfig()
 	if err != nil {
