@@ -118,23 +118,3 @@ func (m *ConfigManager) CheckRepoIfExists(repoURI string) bool {
 	}
 	return true
 }
-
-// GetRepositoryInfo gets the repository info.
-func (m *ConfigManager) GetRepositoryInfo(repoURI string) (*RepositoryInfo, error) {
-	repoURI, _ = azicliwksrepos.SanitizeRepo(repoURI)
-	cfg, err := m.readConfig()
-	if err != nil {
-		return nil,  azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: repository %s does not exist", repoURI))
-	}
-	if _, ok := cfg.Repositories[repoURI]; !ok {
-		return nil,  azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: repository %s does not exist", repoURI))
-	}
-	cfgRepo := cfg.Repositories[repoURI]
-	return &RepositoryInfo{
-		Ref:     cfgRepo.Ref,
-		Remote:  cfgRepo.Remote,
-		Account: cfgRepo.Account,
-		Repo:    cfgRepo.Repo,
-		RepoID:  cfgRepo.RepoID,
-	}, nil
-}

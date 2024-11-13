@@ -23,6 +23,7 @@ import (
 	"github.com/pelletier/go-toml"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
@@ -62,11 +63,11 @@ func (m *RefManager) getHeadFile() string {
 
 // getRefFile returns the ref file.
 func (m *RefManager) getRefFile(refType string, ref string) (string, error) {
-	refInfo, err := convertStringToRefInfo(ref)
+	refInfo, err := azicliwkscommon.ConvertStringToRefInfo(ref)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(hiddenRefsDir, refType, refInfo.remote, fmt.Sprintf("%d", refInfo.accountID), refInfo.repoID), nil
+	return filepath.Join(hiddenRefsDir, refType, refInfo.GetRemote(), fmt.Sprintf("%d", refInfo.GetAccountID()), refInfo.GetRepoID()), nil
 }
 
 // ensureRefFileExists ensures the ref file exists.
@@ -83,13 +84,9 @@ func (m *RefManager) ensureRefFileExists(ref string) error {
 }
 
 // GenerateRef generates the ref.
-func (m *RefManager) GenerateRef(remote string, accountID int64, repo string) string {
-	refInfo := &RefInfo{
-		remote:    remote,
-		accountID: accountID,
-		repoID:    repo,
-	}
-	ref := convertRefInfoToString(refInfo)
+func (m *RefManager) GenerateRef(remote string, accountID int64, repoID string) string {
+	refInfo, _ := azicliwkscommon.NewRefInfoFromRepoName(remote, accountID, repoID)
+	ref := azicliwkscommon.ConvertRefInfoToString(refInfo)
 	return ref
 }
 
@@ -234,7 +231,7 @@ func (m *RefManager) GetCurrentHeadCommit() (string, error) {
 }
 
 // GetCurrentHeadRefInfo gets the current head ref information.
-func (m *RefManager) GetCurrentHeadRefInfo() (*RefInfo, error) {
+func (m *RefManager) GetCurrentHeadRefInfo() (*azicliwkscommon.RefInfo, error) {
 	headInfo, err := m.GetCurrentHead()
 	if err != nil {
 		return nil, err
@@ -242,5 +239,5 @@ func (m *RefManager) GetCurrentHeadRefInfo() (*RefInfo, error) {
 	if headInfo == nil || len(headInfo.ref) == 0 {
 		return nil, nil
 	}
-	return convertStringToRefInfo(headInfo.ref)
+	return azicliwkscommon.ConvertStringToRefInfo(headInfo.ref)
 }

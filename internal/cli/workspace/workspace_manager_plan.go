@@ -20,6 +20,7 @@ import (
 	"time"
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
@@ -39,20 +40,19 @@ func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) 
 	}
 
 	headCtx := &currentHeadContext{
-		remote:        headRefInfo.GetRemote(),
-		accountID:     headRefInfo.GetAccountID(),
-		repo:          headRefInfo.GetRepoID(),
-		repoURI:       headRefInfo.GetRepoURI(),
-		ref:           headRefInfo.GetRef(),
-		commitID:      azlangobjs.ZeroOID,
-		server:        remoteInfo.GetServer(),
-		serverPAPPort: remoteInfo.GetPAPPort(),
+		refInfo: 	 	headRefInfo,
+		commitID:      	azlangobjs.ZeroOID,
+		server:        	remoteInfo.GetServer(),
+		serverPAPPort: 	remoteInfo.GetPAPPort(),
 	}
 	repoID, err := m.rfsMgr.GetRefRepoID(headRef)
 	if err != nil {
 		return nil, err
 	}
-	headCtx.repoID = repoID
+	headCtx.refInfo, err = azicliwkscommon.BuuildRefInfoFromRepoID(headRefInfo, repoID)
+	if err != nil {
+		return nil, err
+	}
 
 	commit, err := m.rfsMgr.GetRefCommit(headCtx.GetRef())
 	if err != nil {

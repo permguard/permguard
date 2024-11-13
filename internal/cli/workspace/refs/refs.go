@@ -17,21 +17,7 @@
 package ref
 
 import (
-	"path/filepath"
-	"strconv"
-	"strings"
-
-	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-)
-
-const (
-	// refsPrefix represents the prefix for the ref.
-	refsPrefix = "refs"
-	// remotePrefix represents the prefix for the remote.
-	remotePrefix = "remotes"
-	// refSeparator represents the separator for the ref.
-	refSeparator = "/"
+	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 )
 
 // headReferenceConfig represents the configuration for the head.
@@ -66,80 +52,6 @@ func (i *HeadInfo) GetRef() string {
 }
 
 // GetRefInfo returns the ref information.
-func (i *HeadInfo) GetRefInfo() (*RefInfo, error) {
-	return convertStringToRefInfo(i.ref)
-}
-
-// convertStringToRefInfo converts the string to ref information.
-func convertStringToRefInfo(ref string) (*RefInfo, error) {
-	refObs := strings.Split(ref, refSeparator)
-	if len(refObs) != 4 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: malformed ref")
-	}
-	if refObs[0] != refsPrefix {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: invalid ref")
-	}
-	remote := refObs[1]
-	accountID, err := strconv.ParseInt(refObs[2], 10, 64)
-	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to parse account ID")
-	}
-	repoID := refObs[3]
-	return &RefInfo{
-		remote:    remote,
-		accountID: accountID,
-		repoID:    repoID,
-		ref:       ref,
-	}, nil
-}
-
-// generateRef generates the ref.
-func generateRef(remote string, accountID int64, repo string) string {
-	return strings.Join([]string{refsPrefix, remote, strconv.FormatInt(accountID, 10), repo}, refSeparator)
-}
-
-// convertRefInfoToString converts the ref information to string.
-func convertRefInfoToString(info *RefInfo) string {
-	return generateRef(info.GetRemote(), info.GetAccountID(), info.GetRepoID())
-}
-
-// RefInfo represents the ref information.
-type RefInfo struct {
-	remote    string
-	accountID int64
-	repoID    string
-	ref       string
-}
-
-// GetRemote returns the remote.
-func (i *RefInfo) GetRemote() string {
-	return i.remote
-}
-
-// GetAccountID returns the account ID.
-func (i *RefInfo) GetAccountID() int64 {
-	return i.accountID
-}
-
-// GetRepoID returns the repo id.
-func (i *RefInfo) GetRepoID() string {
-	return i.repoID
-}
-
-// GetRepoFilePath returns the repo file path.
-func (i *RefInfo) GetRepoFilePath(includeFileName bool) string {
-	path := filepath.Join(remotePrefix, i.remote, strconv.FormatInt(i.accountID, 10), i.repoID)
-	if includeFileName {
-		path = filepath.Join(path, i.repoID)
-	}
-	return path
-}
-
-// GetRepoURI returns the repo uri.
-func (i *RefInfo) GetRepoURI() string {
-	repoURI, err := azicliwksrepos.GetRepoURI(i.remote, i.accountID, i.repoID)
-	if err != nil {
-		return ""
-	}
-	return repoURI
+func (i *HeadInfo) GetRefInfo() (*azicliwkscommon.RefInfo, error) {
+	return azicliwkscommon.ConvertStringToRefInfo(i.ref)
 }
