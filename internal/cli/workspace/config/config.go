@@ -67,37 +67,3 @@ func (i *RemoteInfo) GetAAPPort() int {
 func (i *RemoteInfo) GetPAPPort() int {
 	return i.papPort
 }
-
-// RepositoryInfo represents the repository information.
-type RepositoryInfo struct {
-	Ref     string
-	Remote  string
-	Account int64
-	Repo    string
-	RepoID  string
-}
-
-// GetRef returns the ref.
-func (i *RepositoryInfo) GetRef() string {
-	return i.Ref
-}
-
-// GetRemote returns the remote.
-func (i *RepositoryInfo) GetRemote() string {
-	return i.Remote
-}
-
-// GetAccount returns the account.
-func (i *RepositoryInfo) GetAccount() int64 {
-	return i.Account
-}
-
-// GetRepo returns the repo.
-func (i *RepositoryInfo) GetRepo() string {
-	return i.Repo
-}
-
-// GetRepoID returns the repo ID.
-func (i *RepositoryInfo) GetRepoID() string {
-	return i.RepoID
-}

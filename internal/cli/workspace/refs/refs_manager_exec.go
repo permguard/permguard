@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
 
@@ -42,7 +43,7 @@ func (m *RefManager) ExecCheckoutHead(remote string, accountID int64, repo strin
 	if output == nil {
 		output = map[string]any{}
 	}
-	ref := generateRef(remote, accountID, repoID)
+	ref := azicliwkscommon.GenerateRef(remote, accountID, repoID)
 	err := m.SaveRefConfig(repoID, ref, commit)
 	if err != nil {
 		return nil, output, err
