@@ -17,6 +17,7 @@
 package ref
 
 import (
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -27,6 +28,8 @@ import (
 const (
 	// refsPrefix represents the prefix for the ref.
 	refsPrefix = "refs"
+	// remotePrefix represents the prefix for the remote.
+	remotePrefix = "remotes"
 	// refSeparator represents the separator for the ref.
 	refSeparator = "/"
 )
@@ -123,9 +126,13 @@ func (i *RefInfo) GetRepoID() string {
 	return i.repoID
 }
 
-// GetRef returns the ref ID.
-func (i *RefInfo) GetRef() string {
-	return i.ref
+// GetRepoFilePath returns the repo file path.
+func (i *RefInfo) GetRepoFilePath(includeFileName bool) string {
+	path := filepath.Join(remotePrefix, i.remote, strconv.FormatInt(i.accountID, 10), i.repoID)
+	if includeFileName {
+		path = filepath.Join(path, i.repoID)
+	}
+	return path
 }
 
 // GetRepoURI returns the repo uri.
