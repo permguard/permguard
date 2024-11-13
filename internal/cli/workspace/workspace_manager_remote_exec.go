@@ -26,8 +26,8 @@ import (
 	azfiles "github.com/permguard/permguard-core/pkg/extensions/files"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
+	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
-	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -51,7 +51,7 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 	}
 
 	// Verifies the repository URI and check if it already exists
-	repoInfo, err := azicliwksrepos.GetRepoInfoFromURI(repoURI)
+	repoInfo, err := azicliwkscommon.GetRepoInfoFromURI(repoURI)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}

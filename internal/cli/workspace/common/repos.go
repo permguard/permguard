@@ -27,9 +27,9 @@ import (
 
 // RepoInfo contains the repo information.
 type RepoInfo struct {
-	remote    	string
-	accountID 	int64
-	repo      	string
+	remote    string
+	accountID int64
+	repo      string
 }
 
 // GetRemote returns the remote.

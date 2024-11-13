@@ -14,25 +14,32 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package ref
+package common
 
-// headReferenceConfig represents the configuration for the head.
-type headReferenceConfig struct {
-	Ref string `toml:"ref"`
+import(
+	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+)
+
+// CommitInfo
+type CommitInfo struct {
+	oid 	string
+	commit 	*azlangobjs.Commit
 }
 
-// headConfig represents the configuration for the head.
-type headConfig struct {
-	Reference headReferenceConfig `toml:"reference"`
+// NewCommitInfo creates a new CommitInfo.
+func NewCommitInfo(oid string, commit *azlangobjs.Commit) (*CommitInfo, error) {
+	return &CommitInfo{
+		oid: oid,
+		commit: commit,
+	}, nil
 }
 
-// refObjectsConfig represents the configuration for the objects.
-type refObjectsConfig struct {
-	RepoID string `toml:"repoid"`
-	Commit string `toml:"commit"`
+// GetOID returns the OID of the commit.
+func (c *CommitInfo) GetCommitID() string {
+	return c.oid
 }
 
-// refConfig represents the configuration for the ref.
-type refConfig struct {
-	Objects refObjectsConfig `toml:"objects"`
+// GetCommit returns the commit.
+func (c *CommitInfo) GetCommit() *azlangobjs.Commit {
+	return c.commit
 }

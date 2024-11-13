@@ -63,7 +63,7 @@ func (m *RefManager) getHeadFile() string {
 
 // getRefFile returns the ref file.
 func (m *RefManager) getRefFile(refType string, ref string) (string, error) {
-	refInfo, err := azicliwkscommon.ConvertStringToRefInfo(ref)
+	refInfo, err := azicliwkscommon.ConvertStringWithRepoIDToRefInfo(ref)
 	if err != nil {
 		return "", err
 	}
@@ -193,14 +193,12 @@ func (m *RefManager) GetRefCommit(ref string) (string, error) {
 }
 
 // GetCurrentHead gets the current head.
-func (m *RefManager) GetCurrentHead() (*HeadInfo, error) {
+func (m *RefManager) GetCurrentHead() (*azicliwkscommon.HeadInfo, error) {
 	cfgHead, err := m.readHeadConfig()
 	if err != nil {
 		return nil, err
 	}
-	return &HeadInfo{
-		ref: cfgHead.Reference.Ref,
-	}, nil
+	return azicliwkscommon.NewHeadInfo(cfgHead.Reference.Ref)
 }
 
 // GetCurrentHeadRef gets the current head ref.
@@ -209,7 +207,7 @@ func (m *RefManager) GetCurrentHeadRef() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return headInfo.ref, nil
+	return headInfo.GetRef(), nil
 }
 
 // GetCurrentHeadRepoID gets the current head repo id.
@@ -218,7 +216,7 @@ func (m *RefManager) GetCurrentHeadRepoID() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return m.GetRefRepoID(headInfo.ref)
+	return m.GetRefRepoID(headInfo.GetRef())
 }
 
 // GetCurrentHeadCommit gets the current head commit.
@@ -227,7 +225,7 @@ func (m *RefManager) GetCurrentHeadCommit() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return m.GetRefCommit(headInfo.ref)
+	return m.GetRefCommit(headInfo.GetRef())
 }
 
 // GetCurrentHeadRefInfo gets the current head ref information.
@@ -236,8 +234,8 @@ func (m *RefManager) GetCurrentHeadRefInfo() (*azicliwkscommon.RefInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	if headInfo == nil || len(headInfo.ref) == 0 {
+	if headInfo == nil || len(headInfo.GetRef()) == 0 {
 		return nil, nil
 	}
-	return azicliwkscommon.ConvertStringToRefInfo(headInfo.ref)
+	return azicliwkscommon.ConvertStringWithRepoIDToRefInfo(headInfo.GetRef())
 }

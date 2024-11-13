@@ -26,6 +26,7 @@ import (
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
@@ -511,19 +512,19 @@ func (m *COSPManager) GetCommit(commitID string) (*azlangobjs.Commit, error) {
 }
 
 // GetHistory gets the commit history.
-func (m *COSPManager) GetHistory(commitID string) ([]CommitInfo, error) {
-    var commits []CommitInfo
+func (m *COSPManager) GetHistory(commitID string) ([]azicliwkscommon.CommitInfo, error) {
+    var commits []azicliwkscommon.CommitInfo
     commit, err := m.GetCommit(commitID)
     if err != nil {
         return nil, err
     }
 
     for commit != nil {
-        commitInfo := CommitInfo{
-            oid:    commitID,
-            commit: commit,
-        }
-        commits = append(commits, commitInfo)
+        commitInfo, err := azicliwkscommon.NewCommitInfo(commitID, commit)
+		if err != nil {
+			return nil, err
+		}
+        commits = append(commits, *commitInfo)
 	    parentID := commit.GetParent()
         if parentID == azlangobjs.ZeroOID {
             break
