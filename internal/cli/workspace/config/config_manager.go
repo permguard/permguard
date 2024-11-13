@@ -22,8 +22,8 @@ import (
 	"github.com/pelletier/go-toml"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
-	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -86,8 +86,8 @@ func (m *ConfigManager) GetLanguage() (string, error) {
 }
 
 // GetRemoteInfo gets the remote info.
-func (m *ConfigManager) GetRemoteInfo(remote string) (*RemoteInfo, error) {
-	remote, err := azicliwksrepos.SanitizeRemote(remote)
+func (m *ConfigManager) GetRemoteInfo(remote string) (*azicliwkscommon.RemoteInfo, error) {
+	remote, err := azicliwkscommon.SanitizeRemote(remote)
 	if err != nil {
 		return nil, err
 	}
@@ -99,16 +99,12 @@ func (m *ConfigManager) GetRemoteInfo(remote string) (*RemoteInfo, error) {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", remote))
 	}
 	cfgRemote := cfg.Remotes[remote]
-	return &RemoteInfo{
-		server:  cfgRemote.Server,
-		aapPort: cfgRemote.AAPPort,
-		papPort: cfgRemote.PAPPort,
-	}, nil
+	return azicliwkscommon.NewRemoteInfo(cfgRemote.Server, cfgRemote.AAPPort, cfgRemote.PAPPort)
 }
 
 // CheckRepoIfExists checks if a repository exists.
 func (m *ConfigManager) CheckRepoIfExists(repoURI string) bool {
-	repoURI, _ = azicliwksrepos.SanitizeRepo(repoURI)
+	repoURI, _ = azicliwkscommon.SanitizeRepo(repoURI)
 	cfg, err := m.readConfig()
 	if err != nil {
 		return false

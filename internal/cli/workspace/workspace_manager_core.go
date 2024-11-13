@@ -27,6 +27,7 @@ import (
 	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
+	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
 	azicliwksremotesrv "github.com/permguard/permguard/internal/cli/workspace/remoteserver"
@@ -157,7 +158,7 @@ func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out aziclicommon.PrinterO
 }
 
 // getCurrentHeadInfo returns the current head info.
-func (m *WorkspaceManager) getCurrentHeadInfo(out aziclicommon.PrinterOutFunc) (*azicliwksrefs.HeadInfo, error) {
+func (m *WorkspaceManager) getCurrentHeadInfo(out aziclicommon.PrinterOutFunc) (*azicliwkscommon.HeadInfo, error) {
 	headInfo, err := m.rfsMgr.GetCurrentHead()
 	if err != nil || headInfo.GetRef() == "" {
 		out(nil, "", "No repository is configured in the current workspace.", nil, true)

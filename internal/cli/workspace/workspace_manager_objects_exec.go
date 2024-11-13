@@ -22,7 +22,7 @@ import (
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
+	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 )
 
 // ExecObjects list the objects.
@@ -198,7 +198,7 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 	}
 
 	// Get history of the current workspace
-	commitInfos := []azicliwkscosp.CommitInfo{}
+	commitInfos := []azicliwkscommon.CommitInfo{}
 	headCommit := headCtx.GetCommit()
 	if headCommit != azlangobjs.ZeroOID {
 		commitInfos, err = m.getHistory(headCommit)

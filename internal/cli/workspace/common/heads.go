@@ -14,25 +14,26 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package ref
+package common
 
-// headReferenceConfig represents the configuration for the head.
-type headReferenceConfig struct {
-	Ref string `toml:"ref"`
+// HeadInfo represents the head information.
+type HeadInfo struct {
+	ref string
 }
 
-// headConfig represents the configuration for the head.
-type headConfig struct {
-	Reference headReferenceConfig `toml:"reference"`
+// NewHeadInfo creates a new HeadInfo.
+func NewHeadInfo(ref string) (*HeadInfo, error) {
+	return &HeadInfo{
+		ref: ref,
+	}, nil
 }
 
-// refObjectsConfig represents the configuration for the objects.
-type refObjectsConfig struct {
-	RepoID string `toml:"repoid"`
-	Commit string `toml:"commit"`
+// GetRef returns the ref.
+func (i *HeadInfo) GetRef() string {
+	return i.ref
 }
 
-// refConfig represents the configuration for the ref.
-type refConfig struct {
-	Objects refObjectsConfig `toml:"objects"`
+// GetRefInfo returns the ref information.
+func (i *HeadInfo) GetRefInfo() (*RefInfo, error) {
+	return ConvertStringWithRepoIDToRefInfo(i.GetRef())
 }

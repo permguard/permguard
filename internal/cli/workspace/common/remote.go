@@ -24,6 +24,37 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
+// RemoteInfo represents the remote information.
+type RemoteInfo struct {
+	server  string
+	aapPort int
+	papPort int
+}
+
+// NewRemoteInfo creates a new remote info.
+func NewRemoteInfo(server string, aapPort, papPort int) (*RemoteInfo, error) {
+	return &RemoteInfo{
+		server:  server,
+		aapPort: aapPort,
+		papPort: papPort,
+	}, nil
+}
+
+// GetServer returns the server.
+func (i *RemoteInfo) GetServer() string {
+	return i.server
+}
+
+// GetAAPPort returns the aap port.
+func (i *RemoteInfo) GetAAPPort() int {
+	return i.aapPort
+}
+
+// GetPAPPort returns the pap port.
+func (i *RemoteInfo) GetPAPPort() int {
+	return i.papPort
+}
+
 // SanitizeRemote sanitizes the remote name.
 func SanitizeRemote(remote string) (string, error) {
 	remote = strings.ToLower(remote)

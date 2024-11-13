@@ -39,7 +39,7 @@ func (m *RefManager) ExecInitalize(lang string) error {
 }
 
 // ExecCheckoutHead checks out the head.
-func (m *RefManager) ExecCheckoutHead(remote string, accountID int64, repo string, repoID string, commit string, output map[string]any, out aziclicommon.PrinterOutFunc) (*HeadInfo, map[string]any, error) {
+func (m *RefManager) ExecCheckoutHead(remote string, accountID int64, repo string, repoID string, commit string, output map[string]any, out aziclicommon.PrinterOutFunc) (*azicliwkscommon.HeadInfo, map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}

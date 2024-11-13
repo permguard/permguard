@@ -45,25 +45,3 @@ type repositoryConfig struct {
 	RepoID  string `toml:"repoid"`
 	IsHead  bool   `toml:"head"`
 }
-
-// RemoteInfo represents the remote information.
-type RemoteInfo struct {
-	server  string
-	aapPort int
-	papPort int
-}
-
-// GetServer returns the server.
-func (i *RemoteInfo) GetServer() string {
-	return i.server
-}
-
-// GetAAPPort returns the aap port.
-func (i *RemoteInfo) GetAAPPort() int {
-	return i.aapPort
-}
-
-// GetPAPPort returns the pap port.
-func (i *RemoteInfo) GetPAPPort() int {
-	return i.papPort
-}
