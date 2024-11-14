@@ -93,7 +93,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 
 	errPlanningProcessFailed := "Planning process failed."
 
-	if headCtx.GetCommit() == azlangobjs.ZeroOID {
+	if headCtx.GetRemoteCommitID() == azlangobjs.ZeroOID {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "plan", fmt.Sprintf("The ref %s has no commits associated with it.", aziclicommon.KeywordText(headCtx.GetRef())), nil, true)
 		}
@@ -304,7 +304,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", fmt.Sprintf("The tree has been created with id: %s.", aziclicommon.IDText(treeObj.GetOID())), nil, true)
 	}
-	commit, commitObj, err := m.buildPlanCommit(treeObj.GetOID(), headCtx.commitID, absLang)
+	commit, commitObj, err := m.buildPlanCommit(treeObj.GetOID(), headCtx.remoteCommitID, absLang)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "apply", "Failed to build the commit.", nil, true)
@@ -332,7 +332,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		return failedOpErr(nil, err)
 	}
 	committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
-	_, err = m.logsMgr.Log(headCtx.refInfo, headCtx.commitID, commitObj.GetOID(), azicliwkslogs.LogActionPush, committed, headCtx.GetRepoURI())
+	_, err = m.logsMgr.Log(headCtx.headRefInfo, headCtx.remoteCommitID, commitObj.GetOID(), azicliwkslogs.LogActionPush, committed, headCtx.GetRepoURI())
 
 	if err != nil {
 		return failedOpErr(nil, err)

@@ -199,7 +199,7 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 
 	// Get history of the current workspace
 	commitInfos := []azicliwkscommon.CommitInfo{}
-	headCommit := headCtx.GetCommit()
+	headCommit := headCtx.GetRemoteCommitID()
 	if headCommit != azlangobjs.ZeroOID {
 		commitInfos, err = m.getHistory(headCommit)
 		if err != nil {

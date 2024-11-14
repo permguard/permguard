@@ -184,7 +184,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			out(nil, key, output, nil, newLine)
 		},
 		LanguageAbstractionKey: absLang,
-		LocalCodeCommitIDKey:   headCtx.commitID,
+		LocalCodeCommitIDKey:   headCtx.remoteCommitID,
 		HeadContextKey:         headCtx,
 	}
 
@@ -210,7 +210,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 		if !committed || localCommitID == "" || remoteCommitID == "" {
 			if localCommitID != "" && remoteCommitID != "" {
-				_, err := m.logsMgr.Log(headCtx.refInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.GetRepoURI())
+				_, err := m.logsMgr.Log(headCtx.headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.GetRepoURI())
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
@@ -218,13 +218,13 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		}
 		err = m.rfsMgr.SaveRefConfig(headCtx.GetRepoID(), headCtx.GetRef(), remoteCommitID)
 		if err != nil {
-			_, err = m.logsMgr.Log(headCtx.refInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.GetRepoURI())
+			_, err = m.logsMgr.Log(headCtx.headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.GetRepoURI())
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
 			return failedOpErr(nil, err)
 		}
-		_, err = m.logsMgr.Log(headCtx.refInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, headCtx.GetRepoURI())
+		_, err = m.logsMgr.Log(headCtx.headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, headCtx.GetRepoURI())
 		if err != nil {
 			return failedOpErr(nil, err)
 		}

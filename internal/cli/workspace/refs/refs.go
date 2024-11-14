@@ -28,8 +28,9 @@ type headConfig struct {
 
 // refObjectsConfig represents the configuration for the objects.
 type refObjectsConfig struct {
-	RepoID string `toml:"repoid"`
-	Commit string `toml:"commit"`
+	UpstreamRef string `toml:"upstreamref"`
+	RepoID      string `toml:"repoid"`
+	Commit      string `toml:"commit"`
 }
 
 // refConfig represents the configuration for the ref.

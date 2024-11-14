@@ -16,46 +16,63 @@
 
 package workspace
 
-import(
+import (
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 )
 
 // currentHeadContext represents the current head context.
 type currentHeadContext struct {
-	refInfo 		*azicliwkscommon.RefInfo
-	commitID      	string
-	server        	string
-	serverPAPPort 	int
+	headRefInfo    *azicliwkscommon.RefInfo
+	remoteRefInfo  *azicliwkscommon.RefInfo
+	headCommitID   string
+	remoteCommitID string
+	server         string
+	serverPAPPort  int
 }
 
 // GetRemote returns the remote.
 func (h *currentHeadContext) GetRemote() string {
-	return h.refInfo.GetRemote()
+	return h.headRefInfo.GetRemote()
 }
 
 // GetAccountID returns the account id.
 func (h *currentHeadContext) GetAccountID() int64 {
-	return h.refInfo.GetAccountID()
+	return h.headRefInfo.GetAccountID()
 }
 
 // GetRepoID returns the repo id.
 func (h *currentHeadContext) GetRepoID() string {
-	return h.refInfo.GetRepoID()
+	return h.headRefInfo.GetRepoID()
 }
 
 // GetRepoURI gets the repo URI.
 func (h *currentHeadContext) GetRepoURI() string {
-	return h.refInfo.GetRepoURI()
+	return h.headRefInfo.GetRepoURI()
 }
 
 // GetRef returns the ref.
 func (h *currentHeadContext) GetRef() string {
-	return h.refInfo.GetRef()
+	return h.headRefInfo.GetRef()
 }
 
-// GetCommit returns the commit.
-func (h *currentHeadContext) GetCommit() string {
-	return h.commitID
+// GetHeadRefInfo returns the head ref information.
+func (h *currentHeadContext) GetHeadRefInfo() *azicliwkscommon.RefInfo {
+	return h.headRefInfo
+}
+
+// GetHeadRef returns the head ref information.
+func (h *currentHeadContext) GetRemoteRefInfo() *azicliwkscommon.RefInfo {
+	return h.remoteRefInfo
+}
+
+// GetRemoteCommitID returns the head commit id.
+func (h *currentHeadContext) GetHeadCommitID() string {
+	return h.headCommitID
+}
+
+// GetRemoteCommitID returns the remote commit id.
+func (h *currentHeadContext) GetRemoteCommitID() string {
+	return h.remoteCommitID
 }
 
 // GetServer returns the server.
