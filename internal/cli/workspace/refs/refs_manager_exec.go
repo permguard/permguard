@@ -38,17 +38,30 @@ func (m *RefManager) ExecInitalize(lang string) error {
 	return nil
 }
 
-// ExecCheckoutHead checks out the head.
-func (m *RefManager) ExecCheckoutHead(remote string, accountID int64, repo string, repoID string, commit string, output map[string]any, out aziclicommon.PrinterOutFunc) (*azicliwkscommon.HeadInfo, map[string]any, error) {
+// ExecCheckoutRefFilesForRemote checks out the remote refs files for the remote.
+func (m *RefManager) ExecCheckoutRefFilesForRemote(remote string, accountID int64, repo string, repoID string, commit string, output map[string]any, out aziclicommon.PrinterOutFunc) (string, string, map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
-	ref := azicliwkscommon.GenerateRef(false, remote, accountID, repoID)
-	err := m.SaveRefConfig(repoID, ref, commit)
+	remoteRef := azicliwkscommon.GenerateRemoteRef(remote, accountID, repoID)
+	err := m.SaveRefConfig(repoID, remoteRef, commit)
 	if err != nil {
-		return nil, output, err
+		return "", "", output, err
 	}
-	err = m.SaveHeadConfig(ref)
+	headRef := azicliwkscommon.GenerateHeadRef(accountID, repoID)
+	err = m.SaveRefConfig(repoID, headRef, commit)
+	if err != nil {
+		return "", "", output, err
+	}
+	return remoteRef, headRef, output, nil
+}
+
+// ExecCheckoutHead checks out the head.
+func (m *RefManager) ExecCheckoutHead(ref string, output map[string]any, out aziclicommon.PrinterOutFunc) (*azicliwkscommon.HeadInfo, map[string]any, error) {
+	if output == nil {
+		output = map[string]any{}
+	}
+	err := m.SaveHeadConfig(ref)
 	if err != nil {
 		return nil, output, err
 	}
