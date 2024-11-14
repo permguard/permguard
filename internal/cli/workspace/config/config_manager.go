@@ -102,6 +102,23 @@ func (m *ConfigManager) GetRemoteInfo(remote string) (*azicliwkscommon.RemoteInf
 	return azicliwkscommon.NewRemoteInfo(cfgRemote.Server, cfgRemote.AAPPort, cfgRemote.PAPPort)
 }
 
+// GetRefInfo gets the ref info.
+func (m *ConfigManager) GetRefInfo(repoURI string) (*azicliwkscommon.RefInfo, error) {
+	cfg, err := m.readConfig()
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := cfg.Repositories[repoURI]; !ok {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", repoURI))
+	}
+	cfgRepository := cfg.Repositories[repoURI]
+	refInfo, err := azicliwkscommon.NewRefInfoFromRepoName(cfgRepository.Remote, cfgRepository.AccountID, cfgRepository.RepoName)
+	if err != nil {
+		return nil, err
+	}
+	return azicliwkscommon.BuildRefInfoFromRepoID(refInfo, cfgRepository.RepoID)
+}
+
 // CheckRepoIfExists checks if a repository exists.
 func (m *ConfigManager) CheckRepoIfExists(repoURI string) bool {
 	repoURI, _ = azicliwkscommon.SanitizeRepo(repoURI)

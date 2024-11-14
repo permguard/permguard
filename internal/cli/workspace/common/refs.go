@@ -63,13 +63,19 @@ func ConvertStringWithRepoIDToRefInfo(ref string) (*RefInfo, error) {
 }
 
 // GenerateRef generates the ref.
-func GenerateRef(remote string, accountID int64, repo string) string {
-	return strings.Join([]string{refsPrefix, remotePrefix, remote, strconv.FormatInt(accountID, 10), repo}, refSeparator)
+func GenerateRef(isHead bool, remote string, accountID int64, repo string) string {
+	var sourceType string
+	if isHead {
+		sourceType = headPrefix
+	} else {
+		sourceType = remotePrefix
+	}
+	return strings.Join([]string{refsPrefix, sourceType, remote, strconv.FormatInt(accountID, 10), repo}, refSeparator)
 }
 
 // convertRefInfoToString converts the ref information to string.
-func ConvertRefInfoToString(info *RefInfo) string {
-	return GenerateRef(info.GetRemote(), info.GetAccountID(), info.GetRepo())
+func ConvertRefInfoToString(refInfo *RefInfo) string {
+	return GenerateRef(refInfo.IsSourceHead(), refInfo.GetRemote(), refInfo.GetAccountID(), refInfo.GetRepo())
 }
 
 // RefInfo represents the ref information.
@@ -123,6 +129,11 @@ func (i *RefInfo) GetSourceType() string {
 	return i.sourceType
 }
 
+// IsSourceRemote returns true if the source is remote.
+func (i *RefInfo) IsSourceHead() bool {
+	return i.sourceType == headPrefix
+}
+
 // GetRemote returns the remote.
 func (i *RefInfo) GetRemote() string {
 	return i.remote
@@ -153,12 +164,12 @@ func (i *RefInfo) GetRepo() string {
 
 // GetRef returns the ref.
 func (i *RefInfo) GetRef() string {
-	return GenerateRef(i.remote, i.accountID, i.GetRepo())
+	return GenerateRef(i.IsSourceHead(), i.GetRemote(), i.GetAccountID(), i.GetRepo())
 }
 
 // GetRepoFilePath returns the repo file path.
 func (i *RefInfo) GetRepoFilePath(includeFileName bool) string {
-	path := filepath.Join(refsPrefix, remotePrefix, i.remote, strconv.FormatInt(i.accountID, 10))
+	path := filepath.Join(refsPrefix, i.sourceType, i.remote, strconv.FormatInt(i.accountID, 10))
 	if includeFileName {
 		path = filepath.Join(path, i.GetRepo())
 	}

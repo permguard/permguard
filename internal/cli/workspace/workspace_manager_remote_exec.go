@@ -100,6 +100,9 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
+	} else {
+		remoteRef, _ := m.rfsMgr.GetRefCommit(repoURI)
+		println(remoteRef)
 	}
 
 	_, err = m.execInternalPull(true, out)
