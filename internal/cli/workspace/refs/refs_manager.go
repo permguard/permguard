@@ -187,7 +187,6 @@ func (m *RefManager) GetRefCommit(ref string) (string, error) {
 	}
 	if refCfg == nil {
 		return "", azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: invalid ref config file")
-
 	}
 	return refCfg.Objects.Commit, nil
 }

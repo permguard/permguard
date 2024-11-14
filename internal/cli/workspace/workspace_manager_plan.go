@@ -40,16 +40,16 @@ func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) 
 	}
 
 	headCtx := &currentHeadContext{
-		refInfo: 	 	headRefInfo,
-		commitID:      	azlangobjs.ZeroOID,
-		server:        	remoteInfo.GetServer(),
-		serverPAPPort: 	remoteInfo.GetPAPPort(),
+		refInfo:       headRefInfo,
+		commitID:      azlangobjs.ZeroOID,
+		server:        remoteInfo.GetServer(),
+		serverPAPPort: remoteInfo.GetPAPPort(),
 	}
 	repoID, err := m.rfsMgr.GetRefRepoID(headRef)
 	if err != nil {
 		return nil, err
 	}
-	headCtx.refInfo, err = azicliwkscommon.BuuildRefInfoFromRepoID(headRefInfo, repoID)
+	headCtx.refInfo, err = azicliwkscommon.BuildRefInfoFromRepoID(headRefInfo, repoID)
 	if err != nil {
 		return nil, err
 	}

@@ -21,6 +21,7 @@ import (
 
 	aziclients "github.com/permguard/permguard/internal/agents/clients"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 
@@ -42,17 +43,25 @@ func NewRemoteServerManager(ctx *aziclicommon.CliCommandContext) (*RemoteServerM
 }
 
 // GetServerRemoteRepo gets the remote repository from the server.
-func (m *RemoteServerManager) GetServerRemoteRepo(accountID int64, repo string, server string, aapPort int, papPort int) (*azmodels.Repository, error) {
-	appServer := fmt.Sprintf("%s:%d", server, aapPort)
+func (m *RemoteServerManager) GetServerRemoteRepo(remoteInfo *azicliwkscommon.RemoteInfo, repoInfo *azicliwkscommon.RepoInfo) (*azmodels.Repository, error) {
+	if remoteInfo == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: remote info is nil")
+	}
+	if repoInfo == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: repo info is nil")
+	}
+	appServer := fmt.Sprintf("%s:%d", remoteInfo.GetServer(), remoteInfo.GetAAPPort())
 	aapClient, err := aziclients.NewGrpcAAPClient(appServer)
 	if err != nil {
 		return nil, err
 	}
-	pppServer := fmt.Sprintf("%s:%d", server, papPort)
+	pppServer := fmt.Sprintf("%s:%d", remoteInfo.GetServer(), remoteInfo.GetPAPPort())
 	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
 	if err != nil {
 		return nil, err
 	}
+	accountID := repoInfo.GetAccountID()
+	repo := repoInfo.GetRepo()
 	srvAccounts, err := aapClient.FetchAccountsByID(1, 1, accountID)
 	if err != nil || srvAccounts == nil || len(srvAccounts) == 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: account %d does not exist", accountID))

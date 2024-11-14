@@ -31,34 +31,33 @@ const (
 	refSeparator = "/"
 	// remotePrefix represents the prefix for the remote.
 	remotePrefix = "remotes"
-
 )
 
 // ConvertStringWithRepoIDToRefInfo converts the string with the repo ID to ref information.
 func ConvertStringWithRepoIDToRefInfo(ref string) (*RefInfo, error) {
 	refObs := strings.Split(ref, refSeparator)
-	if len(refObs) != 4 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: malformed ref")
+	if len(refObs) != 5 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: malformed ref")
 	}
 	if refObs[0] != refsPrefix {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: invalid ref")
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid ref")
 	}
-	remote := refObs[1]
-	accountID, err := strconv.ParseInt(refObs[2], 10, 64)
+	remote := refObs[2]
+	accountID, err := strconv.ParseInt(refObs[3], 10, 64)
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to parse account ID")
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: failed to parse account ID")
 	}
-	repo := refObs[3]
+	repo := refObs[4]
 	return &RefInfo{
-		remote:    	remote,
-		accountID: 	accountID,
-		repoID:		repo,
+		remote:    remote,
+		accountID: accountID,
+		repoID:    repo,
 	}, nil
 }
 
 // GenerateRef generates the ref.
 func GenerateRef(remote string, accountID int64, repo string) string {
-	return strings.Join([]string{refsPrefix, remote, strconv.FormatInt(accountID, 10), repo}, refSeparator)
+	return strings.Join([]string{refsPrefix, remotePrefix, remote, strconv.FormatInt(accountID, 10), repo}, refSeparator)
 }
 
 // convertRefInfoToString converts the ref information to string.
@@ -76,6 +75,15 @@ type RefInfo struct {
 
 // NewRefInfo creates a new ref information.
 func NewRefInfoFromRepoName(remote string, accountID int64, repoName string) (*RefInfo, error) {
+	if len(remote) == 0 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid remote")
+	}
+	if accountID <= 0 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid account ID")
+	}
+	if len(repoName) == 0 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repo name")
+	}
 	return &RefInfo{
 		remote:    remote,
 		accountID: accountID,
@@ -83,10 +91,10 @@ func NewRefInfoFromRepoName(remote string, accountID int64, repoName string) (*R
 	}, nil
 }
 
-// BuuildRefInfoFromRepoID builds the ref information from the repo ID.
-func BuuildRefInfoFromRepoID(refInfo *RefInfo, repoID string) (*RefInfo, error) {
+// BuildRefInfoFromRepoID builds the ref information from the repo ID.
+func BuildRefInfoFromRepoID(refInfo *RefInfo, repoID string) (*RefInfo, error) {
 	if refInfo == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: invalid ref info")
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid ref info")
 	}
 	szRemote, err := SanitizeRemote(refInfo.remote)
 	if err != nil {
@@ -135,7 +143,7 @@ func (i *RefInfo) GetRef() string {
 
 // GetRepoFilePath returns the repo file path.
 func (i *RefInfo) GetRepoFilePath(includeFileName bool) string {
-	path := filepath.Join(remotePrefix, i.remote, strconv.FormatInt(i.accountID, 10))
+	path := filepath.Join(refsPrefix, remotePrefix, i.remote, strconv.FormatInt(i.accountID, 10))
 	if includeFileName {
 		path = filepath.Join(path, i.GetRepo())
 	}
