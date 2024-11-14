@@ -14,5 +14,33 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package repos implements the repos.
-package repos
+package common
+
+import (
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
+)
+
+// HeadInfo represents the head information.
+type HeadInfo struct {
+	ref string
+}
+
+// NewHeadInfo creates a new HeadInfo.
+func NewHeadInfo(ref string) (*HeadInfo, error) {
+	if len(ref) == 0 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid ref")
+	}
+	return &HeadInfo{
+		ref: ref,
+	}, nil
+}
+
+// GetRef returns the ref.
+func (i *HeadInfo) GetRef() string {
+	return i.ref
+}
+
+// GetRefInfo returns the ref information.
+func (i *HeadInfo) GetRefInfo() (*RefInfo, error) {
+	return ConvertStringWithRepoIDToRefInfo(i.GetRef())
+}
