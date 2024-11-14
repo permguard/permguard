@@ -70,13 +70,13 @@ func (r *Repo) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Repositor
 	}
 
 	var dbRepository Repository
-	err = tx.QueryRow("SELECT account_id, repository_id, created_at, updated_at, name, refs FROM repositories WHERE account_id = ? and repository_id = ?", accountID, repositoryID).Scan(
+	err = tx.QueryRow("SELECT account_id, repository_id, created_at, updated_at, name, ref FROM repositories WHERE account_id = ? and repository_id = ?", accountID, repositoryID).Scan(
 		&dbRepository.AccountID,
 		&dbRepository.RepositoryID,
 		&dbRepository.CreatedAt,
 		&dbRepository.UpdatedAt,
 		&dbRepository.Name,
-		&dbRepository.Refs,
+		&dbRepository.Ref,
 	)
 	if err != nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve repository - operation 'retrieve-created-repository' encountered an issue (%s)", LogRepositoryEntry(repository)), err)
@@ -84,47 +84,47 @@ func (r *Repo) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Repositor
 	return &dbRepository, nil
 }
 
-// UpdateRepositoryRefs updates the refs of a repository.
-func (r *Repo) UpdateRepositoryRefs(tx *sql.Tx, accountID int64, repositoryID, currentRef, newRef string) error {
-    if err := azvalidators.ValidateAccountID("repository", accountID); err != nil {
-        return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidAccountID, accountID))
-    }
-    if err := azvalidators.ValidateUUID("repository", repositoryID); err != nil {
-        return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (id: %s)", repositoryID))
-    }
-    if err := azvalidators.ValidateSHA256("repository", currentRef); err != nil {
-        return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - current ref is not valid (ref: %s)", currentRef))
-    }
-    if err := azvalidators.ValidateSHA256("repository", newRef); err != nil {
-        return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - new ref is not valid (ref: %s)", newRef))
-    }
+// UpdateRepositoryRef updates the ref of a repository.
+func (r *Repo) UpdateRepositoryRef(tx *sql.Tx, accountID int64, repositoryID, currentRef, newRef string) error {
+	if err := azvalidators.ValidateAccountID("repository", accountID); err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidAccountID, accountID))
+	}
+	if err := azvalidators.ValidateUUID("repository", repositoryID); err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (id: %s)", repositoryID))
+	}
+	if err := azvalidators.ValidateSHA256("repository", currentRef); err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - current ref is not valid (ref: %s)", currentRef))
+	}
+	if err := azvalidators.ValidateSHA256("repository", newRef); err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - new ref is not valid (ref: %s)", newRef))
+	}
 
-    var dbCurrentRef string
-    err := tx.QueryRow("SELECT refs FROM repositories WHERE account_id = ? AND repository_id = ?", accountID, repositoryID).Scan(&dbCurrentRef)
-    if err != nil {
-        if err == sql.ErrNoRows {
-            return azerrors.WrapSystemError(azerrors.ErrClientNotFound, fmt.Sprintf("repository not found (account_id: %d, repository_id: %s)", accountID, repositoryID))
-        }
-        return WrapSqlite3Error("failed to retrieve current ref for repository", err)
-    }
+	var dbCurrentRef string
+	err := tx.QueryRow("SELECT ref FROM repositories WHERE account_id = ? AND repository_id = ?", accountID, repositoryID).Scan(&dbCurrentRef)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return azerrors.WrapSystemError(azerrors.ErrClientNotFound, fmt.Sprintf("repository not found (account_id: %d, repository_id: %s)", accountID, repositoryID))
+		}
+		return WrapSqlite3Error("failed to retrieve current ref for repository", err)
+	}
 
-    if dbCurrentRef != currentRef {
-        return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("current ref mismatch (expected: %s, got: %s)", dbCurrentRef, currentRef))
-    }
+	if dbCurrentRef != currentRef {
+		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("current ref mismatch (expected: %s, got: %s)", dbCurrentRef, currentRef))
+	}
 
-    result, err := tx.Exec("UPDATE repositories SET refs = ? WHERE account_id = ? AND repository_id = ?", newRef, accountID, repositoryID)
-    if err != nil {
-        return WrapSqlite3Error("failed to update repository refs", err)
-    }
+	result, err := tx.Exec("UPDATE repositories SET ref = ? WHERE account_id = ? AND repository_id = ?", newRef, accountID, repositoryID)
+	if err != nil {
+		return WrapSqlite3Error("failed to update repository ref", err)
+	}
 
-    rows, err := result.RowsAffected()
-    if err != nil {
-        return WrapSqlite3Error("failed to get rows affected for update refs", err)
-    }
-    if rows != 1 {
-        return azerrors.WrapSystemError(azerrors.ErrClientUpdateConflict, fmt.Sprintf("update failed, no rows affected (account_id: %d, repository_id: %s)", accountID, repositoryID))
-    }
-    return nil
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return WrapSqlite3Error("failed to get rows affected for update ref", err)
+	}
+	if rows != 1 {
+		return azerrors.WrapSystemError(azerrors.ErrClientUpdateConflict, fmt.Sprintf("update failed, no rows affected (account_id: %d, repository_id: %s)", accountID, repositoryID))
+	}
+	return nil
 }
 
 // DeleteRepository deletes a repository.
@@ -137,13 +137,13 @@ func (r *Repo) DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string
 	}
 
 	var dbRepository Repository
-	err := tx.QueryRow("SELECT account_id, repository_id, created_at, updated_at, name, refs FROM repositories WHERE account_id = ? and repository_id = ?", accountID, repositoryID).Scan(
+	err := tx.QueryRow("SELECT account_id, repository_id, created_at, updated_at, name, ref FROM repositories WHERE account_id = ? and repository_id = ?", accountID, repositoryID).Scan(
 		&dbRepository.AccountID,
 		&dbRepository.RepositoryID,
 		&dbRepository.CreatedAt,
 		&dbRepository.UpdatedAt,
 		&dbRepository.Name,
-		&dbRepository.Refs,
+		&dbRepository.Ref,
 	)
 	if err != nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - repository id is not valid (id: %s)", repositoryID), err)

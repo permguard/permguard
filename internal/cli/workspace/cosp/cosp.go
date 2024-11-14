@@ -16,9 +16,6 @@
 
 package cosp
 
-import(
-	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
-)
 
 const (
 	// CodeFileTypePermCode represents the code file type.
@@ -83,21 +80,4 @@ type CodeObject struct {
 type CodeObjectState struct {
 	CodeObject
 	State string `json:"state"`
-}
-
-
-// CommitInfo
-type CommitInfo struct {
-	oid 	string
-	commit 	*azlangobjs.Commit
-}
-
-// GetOID returns the OID of the commit.
-func (c *CommitInfo) GetCommitID() string {
-	return c.oid
-}
-
-// GetCommit returns the commit.
-func (c *CommitInfo) GetCommit() *azlangobjs.Commit {
-	return c.commit
 }

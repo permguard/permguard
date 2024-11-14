@@ -14,21 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package repos
-
-import (
-	"fmt"
-	"strings"
-
-	azvalidators "github.com/permguard/permguard-core/pkg/extensions/validators"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-)
-
-// SanitizeRemote sanitizes the remote name.
-func SanitizeRemote(remote string) (string, error) {
-	remote = strings.ToLower(remote)
-	if !azvalidators.ValidateSimpleName(remote) {
-		return "", azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid remote name %s", remote))
-	}
-	return remote, nil
-}
+// Package common manage the common items for the workspace.
+package common

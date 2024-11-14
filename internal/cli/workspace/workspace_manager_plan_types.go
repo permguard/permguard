@@ -16,53 +16,41 @@
 
 package workspace
 
+import(
+	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+)
+
 // currentHeadContext represents the current head context.
 type currentHeadContext struct {
-	remote        string
-	accountID     int64
-	repo          string
-	repoID        string
-	repoURI       string
-	refID         string
-	refs          string
-	commitID      string
-	server        string
-	serverPAPPort int
+	refInfo 		*azicliwkscommon.RefInfo
+	commitID      	string
+	server        	string
+	serverPAPPort 	int
 }
 
 // GetRemote returns the remote.
 func (h *currentHeadContext) GetRemote() string {
-	return h.remote
+	return h.refInfo.GetRemote()
 }
 
 // GetAccountID returns the account id.
 func (h *currentHeadContext) GetAccountID() int64 {
-	return h.accountID
-}
-
-// GetRepo returns the repo.
-func (h *currentHeadContext) GetRepo() string {
-	return h.repo
+	return h.refInfo.GetAccountID()
 }
 
 // GetRepoID returns the repo id.
 func (h *currentHeadContext) GetRepoID() string {
-	return h.repoID
+	return h.refInfo.GetRepoID()
 }
 
 // GetRepoURI gets the repo URI.
 func (h *currentHeadContext) GetRepoURI() string {
-	return h.repoURI
+	return h.refInfo.GetRepoURI()
 }
 
-// GetRefID returns the ref id.
-func (h *currentHeadContext) GetRefID() string {
-	return h.refID
-}
-
-// GetRefs returns the refs.
-func (h *currentHeadContext) GetRefs() string {
-	return h.refs
+// GetRef returns the ref.
+func (h *currentHeadContext) GetRef() string {
+	return h.refInfo.GetRef()
 }
 
 // GetCommit returns the commit.

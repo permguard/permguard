@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package repos
+package common
 
 import (
 	"fmt"
@@ -64,6 +64,9 @@ func GetRepoURIFromRepoInfo(repoInfo *RepoInfo) (string, error) {
 
 // GetRepoInfoFromURI gets the repo information from the URI.
 func GetRepoInfoFromURI(repoURI string) (*RepoInfo, error) {
+	if len(repoURI) == 0 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repo uri")
+	}
 	result := &RepoInfo{}
 	repoURI = strings.ToLower(repoURI)
 	items := strings.Split(repoURI, "/")
@@ -99,6 +102,9 @@ func GetRepoInfoFromURI(repoURI string) (*RepoInfo, error) {
 
 // SanitizeRepo sanitizes the remote name.
 func SanitizeRepo(repoURI string) (string, error) {
+	if len(repoURI) == 0 {
+		return "", azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repo uri")
+	}
 	repoURI = strings.ToLower(repoURI)
 	if _, err := GetRepoInfoFromURI(repoURI); err != nil {
 		return "", err
