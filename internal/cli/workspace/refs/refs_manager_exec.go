@@ -49,7 +49,7 @@ func (m *RefManager) ExecCheckoutRefFilesForRemote(remote string, accountID int6
 		return "", "", output, err
 	}
 	headRef := azicliwkscommon.GenerateHeadRef(accountID, repoID)
-	err = m.SaveRefConfig(repoID, headRef, commit)
+	err = m.SaveRefWithRemoteConfig(repoID, headRef, remoteRef, commit)
 	if err != nil {
 		return "", "", output, err
 	}

@@ -129,6 +129,11 @@ func (m *RefManager) readHeadConfig() (*headConfig, error) {
 
 // SaveRefConfig saves the ref configuration.
 func (m *RefManager) SaveRefConfig(repoID string, ref string, commit string) error {
+	return m.SaveRefWithRemoteConfig(repoID, ref, "", commit)
+}
+
+// SaveRefWithRemoteConfig saves the ref with remote configuration.
+func (m *RefManager) SaveRefWithRemoteConfig(repoID string, ref, upstreamRef string, commit string) error {
 	err := m.ensureRefFileExists(ref)
 	if err != nil {
 		return err
@@ -139,8 +144,9 @@ func (m *RefManager) SaveRefConfig(repoID string, ref string, commit string) err
 	}
 	refCfg := refConfig{
 		Objects: refObjectsConfig{
-			RepoID: repoID,
-			Commit: commit,
+			UpstreamRef: upstreamRef,
+			RepoID:      repoID,
+			Commit:      commit,
 		},
 	}
 	err = m.saveConfig(refPath, true, &refCfg)
@@ -162,6 +168,19 @@ func (m *RefManager) readRefConfig(ref string) (*refConfig, error) {
 		return nil, err
 	}
 	return &config, nil
+}
+
+// GetRefUpstreamRef reads the ref upstream ref.
+func (m *RefManager) GetRefUpstreamRef(ref string) (string, error) {
+	refCfg, err := m.readRefConfig(ref)
+	if err != nil {
+		return "", err
+	}
+	if refCfg == nil {
+		return "", azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: invalid ref config file")
+
+	}
+	return refCfg.Objects.UpstreamRef, nil
 }
 
 // GetRefRepoID reads the ref repo id.
