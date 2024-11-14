@@ -35,7 +35,7 @@ const (
 	// Hidden directories for code.
 	hiddenCodeDir = "code"
 	// Hidden directories for source code.
-	hiddenSourceCodeDir = "@source"
+	hiddenSourceCodeDir = "@workspace"
 	// Hidden directories for objects.
 	hiddenObjectsDir = "objects"
 	// Hidden config file.
@@ -273,8 +273,8 @@ func (m *COSPManager) BuildCodeSourceCodeStateForTree(tree *azlangobjs.Tree) ([]
 }
 
 // SaveRemoteCodePlan saves the code plan for the input remote.
-func (m *COSPManager) SaveRemoteCodePlan(remote string, ref string, codeObjects []CodeObjectState) error {
-	path := filepath.Join(m.getCodeDir(), strings.ToLower(remote), strings.ToLower(ref))
+func (m *COSPManager) SaveRemoteCodePlan(ref string, codeObjects []CodeObjectState) error {
+	path := filepath.Join(m.getCodeDir(), strings.ToLower(ref))
 	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, path)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to create code plan")
@@ -284,14 +284,14 @@ func (m *COSPManager) SaveRemoteCodePlan(remote string, ref string, codeObjects 
 }
 
 // ReadRemoteCodePlan reads the code plan from the input remote.
-func (m *COSPManager) ReadRemoteCodePlan(remote string, ref string) ([]CodeObjectState, error) {
-	path := filepath.Join(m.getCodeDir(), strings.ToLower(remote), strings.ToLower(ref), hiddenCodePlanFile)
+func (m *COSPManager) ReadRemoteCodePlan(ref string) ([]CodeObjectState, error) {
+	path := filepath.Join(m.getCodeDir(), strings.ToLower(ref), hiddenCodePlanFile)
 	return m.readCodeObjectStates(path)
 }
 
 // ReadRemoteCodePlan reads the code plan from the input remote.
-func (m *COSPManager) CleanCode(remote string, ref string)  (bool, error) {
-	path := filepath.Join(m.getCodeDir(), strings.ToLower(remote), strings.ToLower(ref))
+func (m *COSPManager) CleanCode(ref string)  (bool, error) {
+	path := filepath.Join(m.getCodeDir(), strings.ToLower(ref))
 	return m.persMgr.DeletePath(azicliwkspers.PermguardDir, path)
 }
 
