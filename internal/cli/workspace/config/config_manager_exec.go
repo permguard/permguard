@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
+	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -43,10 +43,14 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 	if output == nil {
 		output = map[string]any{}
 	}
-	remote, err := azicliwksrepos.SanitizeRemote(remote)
+	remote, err := azicliwkscommon.SanitizeRemote(remote)
 	if err != nil {
 		return output, err
 	}
+	if azicliwkscommon.IsReservedKeyword(remote) {
+		return output, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: remote %s is a reserved keyword", remote))
+	}
+	server = strings.ToLower(server)
 	cfg, err := m.readConfig()
 	if err != nil {
 		return output, err
@@ -54,8 +58,6 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 	for rmt := range cfg.Remotes {
 		if remote == rmt {
 			return output, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: remote %s already exists", remote))
-		} else if server == cfg.Remotes[rmt].Server {
-			return output, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: server %s already exists", server))
 		}
 	}
 	cfgRemote := remoteConfig{
@@ -86,7 +88,7 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 	if output == nil {
 		output = map[string]any{}
 	}
-	remote, err := azicliwksrepos.SanitizeRemote(remote)
+	remote, err := azicliwkscommon.SanitizeRemote(remote)
 	if err != nil {
 		return output, err
 	}
@@ -161,7 +163,7 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out aziclicommon.
 }
 
 // ExecAddRepo adds a repo.
-func (m *ConfigManager) ExecAddRepo(refs, remote, repo string, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, repo, repoID string, account int64, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -172,21 +174,30 @@ func (m *ConfigManager) ExecAddRepo(refs, remote, repo string, output map[string
 	var cfgRepo repositoryConfig
 	exists := false
 	for repository := range cfg.Repositories {
-		if repository == repo {
-			cfgRepo = cfg.Repositories[repo]
+		if repository == repo && cfg.Repositories[repoURI].Remote == remote {
+			cfgRepo = cfg.Repositories[repoURI]
 			exists = true
+			break
 		}
 	}
 	if !exists {
-		cfgRepo = repositoryConfig{
-			Refs: refs,
-			Remote: remote,
+		for key, repo := range cfg.Repositories {
+			repo.IsHead = false
+			cfg.Repositories[key] = repo
 		}
-		cfg.Repositories[repo] = cfgRepo
+		cfgRepo = repositoryConfig{
+			Ref:      ref,
+			Remote:   remote,
+			Account:  account,
+			RepoName: repo,
+			RepoID:   repoID,
+			IsHead:   true,
+		}
+		cfg.Repositories[repoURI] = cfgRepo
 		m.saveConfig(true, cfg)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "repo", fmt.Sprintf("Refs successfully set to %s.", aziclicommon.KeywordText(cfgRepo.Refs)), nil, true)
+		out(nil, "repo", fmt.Sprintf("Ref successfully set to %s.", aziclicommon.KeywordText(cfgRepo.Ref)), nil, true)
 	}
 	out(nil, "", fmt.Sprintf("Repo %s has been added.", aziclicommon.KeywordText(repo)), nil, true)
 	output = map[string]any{}
@@ -202,7 +213,7 @@ func (m *ConfigManager) ExecAddRepo(refs, remote, repo string, output map[string
 }
 
 // ExecListRepos lists the repos.
-func (m *ConfigManager) ExecListRepos(activeRefs string, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *ConfigManager) ExecListRepos(output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -213,9 +224,9 @@ func (m *ConfigManager) ExecListRepos(activeRefs string, output map[string]any, 
 	if m.ctx.IsTerminalOutput() {
 		repos := []string{}
 		for cfgRepo := range cfg.Repositories {
-			isActive := activeRefs == cfg.Repositories[cfgRepo].Refs
 			cfgRepoTxt := cfgRepo
-			if isActive {
+			isHead := cfg.Repositories[cfgRepo].IsHead
+			if isHead {
 				cfgRepoTxt = fmt.Sprintf("*%s", cfgRepo)
 			}
 			repos = append(repos, cfgRepoTxt)
@@ -232,11 +243,11 @@ func (m *ConfigManager) ExecListRepos(activeRefs string, output map[string]any, 
 	} else if m.ctx.IsJSONOutput() {
 		repos := []any{}
 		for cfgRepo := range cfg.Repositories {
-			isActive := activeRefs == cfg.Repositories[cfgRepo].Refs
+			isHead := cfg.Repositories[cfgRepo].IsHead
 			repoObj := map[string]any{
-				"refs":   cfg.Repositories[cfgRepo].Refs,
-				"repo":   cfgRepo,
-				"active": isActive,
+				"ref":     cfg.Repositories[cfgRepo].Ref,
+				"repo":    cfgRepo,
+				"is_head": isHead,
 			}
 			repos = append(repos, repoObj)
 		}

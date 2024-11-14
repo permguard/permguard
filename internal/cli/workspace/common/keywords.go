@@ -14,21 +14,20 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package centralstorage
+package common
 
-import (
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+const (
+	// Remote keywords.
+	RemoteKeyword = "remote"
+	// Remote sub keywords.
+	RemotesKeyword = "remotes"
+	// Remote sub sub keywords.
+	HeadKeyword = "head"
+	// Remote sub sub sub keywords.
+	HeadsKeyword = "heads"
 )
 
-// mapRepositoryToAgentRepository maps a Repository to a model Repository.
-func mapRepositoryToAgentRepository(repository *azirepos.Repository) (*azmodels.Repository, error) {
-	return &azmodels.Repository{
-		RepositoryID: repository.RepositoryID,
-		CreatedAt:    repository.CreatedAt,
-		UpdatedAt:    repository.UpdatedAt,
-		AccountID:    repository.AccountID,
-		Name:         repository.Name,
-		Ref:          repository.Ref,
-	}, nil
+// IsReservedKeyword checks if the keyword is reserved.
+func IsReservedKeyword(keyword string) bool {
+	return keyword == RemoteKeyword || keyword == RemotesKeyword || keyword == HeadKeyword || keyword == HeadsKeyword
 }

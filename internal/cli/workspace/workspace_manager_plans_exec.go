@@ -78,11 +78,11 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 	}
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "plan", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(headCtx.GetRefs())), nil, true)
+		out(nil, "plan", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(headCtx.GetRef())), nil, true)
 		out(nil, "plan", fmt.Sprintf("Repo set to %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
-			"refs": headCtx.GetRefs(),
+			"ref": headCtx.GetRef(),
 		}
 		output = out(output, "head", remoteObj, nil, true)
 		output = out(output, "repo", headCtx.GetRepoURI(), nil, true)
@@ -95,13 +95,13 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 
 	if headCtx.GetCommit() == azlangobjs.ZeroOID {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("The refs %s has no commits associated with it.", aziclicommon.KeywordText(headCtx.GetRefs())), nil, true)
+			out(nil, "plan", fmt.Sprintf("The ref %s has no commits associated with it.", aziclicommon.KeywordText(headCtx.GetRef())), nil, true)
 		}
 	}
-	remoteTree, err := m.GetCurrentHeadTree(absLang, headCtx.GetRefs())
+	remoteTree, err := m.GetCurrentHeadTree(absLang, headCtx.GetRef())
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("The refs %s could not read the remote tree.", aziclicommon.KeywordText(headCtx.GetRefs())), nil, true)
+			out(nil, "plan", fmt.Sprintf("The ref %s could not read the remote tree.", aziclicommon.KeywordText(headCtx.GetRef())), nil, true)
 		}
 	}
 	var remoteCodeState []azicliwkscosp.CodeObjectState
@@ -167,20 +167,20 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 		planObjs := append(createdItems, modifiedItems...)
 		planObjs = append(planObjs, unchangedItems...)
 		planObjs = append(planObjs, deletedItems...)
-		refsInfo, err := m.rfsMgr.GetCurrentHeadRefsInfo()
+		refInfo, err := m.rfsMgr.GetCurrentHeadRefInfo()
 		if err != nil {
 			if m.ctx.IsVerboseTerminalOutput() {
-				out(nil, "plan", "Failed to retrieve the current head refs info.", nil, true)
+				out(nil, "plan", "Failed to retrieve the current head ref info.", nil, true)
 			}
 			out(nil, "", "Unable to build the plan.", nil, true)
 			return failedOpErr(output, err)
 		}
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("Remote for the plan is set to: %s.", aziclicommon.KeywordText(refsInfo.GetRemote())), nil, true)
-			out(nil, "plan", fmt.Sprintf("Reference ID for the plan is set to: %s", aziclicommon.IDText(refsInfo.GetRefID())), nil, true)
+			out(nil, "plan", fmt.Sprintf("Remote for the plan is set to: %s.", aziclicommon.KeywordText(refInfo.GetRemote())), nil, true)
+			out(nil, "plan", fmt.Sprintf("Reference ID for the plan is set to: %s", aziclicommon.IDText(refInfo.GetRef())), nil, true)
 			out(nil, "plan", "Preparing to save the plan.", nil, true)
 		}
-		err = m.cospMgr.SaveRemoteCodePlan(refsInfo.GetRemote(), refsInfo.GetRefID(), planObjs)
+		err = m.cospMgr.SaveRemoteCodePlan(refInfo.GetRef(), planObjs)
 		if err != nil {
 			if m.ctx.IsVerboseTerminalOutput() {
 				out(nil, "plan", "Failed to save the plan.", nil, true)
@@ -264,7 +264,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		out(nil, "apply", "Preparing to read the plan.", nil, true)
 	}
 	errPlanningProcessFailed := "Apply process failed."
-	plan, err := m.cospMgr.ReadRemoteCodePlan(headCtx.GetRemote(), headCtx.GetRefID())
+	plan, err := m.cospMgr.ReadRemoteCodePlan(headCtx.GetRef())
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "apply", "Failed to read the plan.", nil, true)
@@ -332,7 +332,8 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		return failedOpErr(nil, err)
 	}
 	committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
-	_, err = m.logsMgr.Log(headCtx.remote, headCtx.refs, headCtx.commitID, commitObj.GetOID(), azicliwkslogs.LogActionPush, committed, headCtx.repoURI)
+	_, err = m.logsMgr.Log(headCtx.refInfo, headCtx.commitID, commitObj.GetOID(), azicliwkslogs.LogActionPush, committed, headCtx.GetRepoURI())
+
 	if err != nil {
 		return failedOpErr(nil, err)
 	}

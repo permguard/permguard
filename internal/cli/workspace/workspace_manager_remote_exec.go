@@ -26,8 +26,8 @@ import (
 	azfiles "github.com/permguard/permguard-core/pkg/extensions/files"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
+	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
-	azicliwksrepos "github.com/permguard/permguard/internal/cli/workspace/repos"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -38,110 +38,68 @@ const (
 	OriginRemoteName = "origin"
 )
 
-// ExecCloneRepo clones a repository.
-func (m *WorkspaceManager) ExecCloneRepo(language, repoURI string, aapPort, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to clone the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
-		return output, err
-	}
-	m.ExecPrintContext(nil, out)
-
-	var output map[string]any
-	repoURI = strings.ToLower(repoURI)
-	if !strings.HasPrefix(repoURI, "permguard@") {
-		return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository URI"))
-	}
-	repoURI = strings.TrimPrefix(repoURI, "permguard@")
-	elements := strings.Split(repoURI, "/")
-	if len(elements) != 3 {
-		return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository URI"))
-	}
-
-	uriServer := elements[0]
-	uriAccountID := elements[1]
-	uriRepo := elements[2]
-
-	output, err := m.ExecInitWorkspace(language, out)
-	aborted := false
-	if err == nil {
-		fileLock, err := m.tryLock()
-		if err != nil {
-			return failedOpErr(nil, err)
-		}
-		defer fileLock.Unlock()
-		output, err = m.execInternalAddRemote(true, OriginRemoteName, uriServer, aapPort, papPort, out)
-		if err == nil {
-			repoURI := fmt.Sprintf("%s/%s/%s", OriginRemoteName, uriAccountID, uriRepo)
-			output, err = m.execInternalCheckoutRepo(true, repoURI, out)
-			if err != nil {
-				aborted = true
-			}
-		} else {
-			aborted = true
-		}
-	}
-	if aborted {
-		return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: operation has been aborted"))
-	}
-	return output, nil
-}
-
 // execInternalCheckoutRepo checks out a repository.
-func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool,repoURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
 			out(nil, "", fmt.Sprintf("Failed to checkout the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
 		}
 		return output, err
 	}
-	repoInfo, err := azicliwksrepos.GetRepoInfoFromURI(repoURI)
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "checkout", "Initiating remote verification process.", nil, true)
 	}
-	exist, _ := m.cfgMgr.CheckRepoIfExists(repoURI)
-	if exist {
-		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "checkout", "Remote verification failed: repository already exists.", nil, true)
-		}
-		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: repo %s already exists", repoURI)))
-	}
-	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "checkout", "Remote verified successfully.", nil, true)
-	}
 
-	remoteInfo, err := m.cfgMgr.GetRemoteInfo(repoInfo.GetRemote())
+	// Verifies the repository URI and check if it already exists
+	repoInfo, err := azicliwkscommon.GetRepoInfoFromURI(repoURI)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "checkout", "Retrieving remote repository information.", nil, true)
-	}
-	srvRepo, err := m.rmSrvtMgr.GetServerRemoteRepo(repoInfo.GetAccountID(), repoInfo.GetRepo(), remoteInfo.GetServer(), remoteInfo.GetAAPPort(), remoteInfo.GetPAPPort())
-	if err != nil {
-		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "checkout", "Failed to retrieve remote repository information.", nil, true)
+	var output map[string]any
+	if ok := m.cfgMgr.CheckRepoIfExists(repoURI); !ok {
+		// Retrieves the remote information
+		remoteInfo, err := m.cfgMgr.GetRemoteInfo(repoInfo.GetRemote())
+		if err != nil {
+			return failedOpErr(nil, err)
 		}
-		return failedOpErr(nil, err)
-	}
-	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "checkout", "Remote repository retrieved successfully.", nil, true)
-	}
-	remoteRefs := azlangobjs.ZeroOID
-	headInfo, output, err := m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.RepositoryID, remoteRefs, nil, out)
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-	output, err = m.cfgMgr.ExecAddRepo(headInfo.GetRefs(), repoInfo.GetRemote(), repoURI, output, out)
-	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
-		return failedOpErr(output, err)
-	}
-	_, err = m.logsMgr.Log(repoInfo.GetRemote(), headInfo.GetRefs(), remoteRefs, remoteRefs, azicliwkslogs.LogActionCheckout, true, repoURI)
-	if err != nil {
-		return failedOpErr(nil, err)
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "checkout", "Retrieving remote repository information.", nil, true)
+		}
+		srvRepo, err := m.rmSrvtMgr.GetServerRemoteRepo(remoteInfo, repoInfo)
+		if err != nil {
+			if m.ctx.IsVerboseTerminalOutput() {
+				out(nil, "checkout", "Failed to retrieve remote repository information.", nil, true)
+			}
+			return failedOpErr(nil, err)
+		}
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "checkout", "Remote repository retrieved successfully.", nil, true)
+		}
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "checkout", "Remote verified successfully.", nil, true)
+		}
+		// Add the repository
+		ref := m.rfsMgr.GenerateRef(repoInfo.GetRemote(), repoInfo.GetAccountID(), srvRepo.RepositoryID)
+		output, err = m.cfgMgr.ExecAddRepo(repoURI, ref, repoInfo.GetRemote(), repoInfo.GetRepo(), srvRepo.RepositoryID, repoInfo.GetAccountID(), nil, out)
+		if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
+			return failedOpErr(output, err)
+		}
+		// Checkout the head
+		remoteRef := azlangobjs.ZeroOID
+		var headInfo *azicliwkscommon.HeadInfo
+		headInfo, output, err = m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.RepositoryID, remoteRef, nil, out)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		// Read current head settings
+		headCtx, err := m.getCurrentHeadContext()
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		_, err = m.logsMgr.Log(headCtx.refInfo, remoteRef, remoteRef, azicliwkslogs.LogActionCheckout, true, headInfo.GetRef())
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
 	}
 
 	_, err = m.execInternalPull(true, out)
@@ -233,21 +191,21 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 		if !committed || localCommitID == "" || remoteCommitID == "" {
 			if localCommitID != "" && remoteCommitID != "" {
-				_, err := m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.repoURI)
+				_, err := m.logsMgr.Log(headCtx.refInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.GetRepoURI())
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
 			}
 		}
-		err = m.rfsMgr.SaveRefsConfig(headCtx.repoID, headCtx.refs, remoteCommitID)
+		err = m.rfsMgr.SaveRefConfig(headCtx.GetRepoID(), headCtx.GetRef(), remoteCommitID)
 		if err != nil {
-			_, err = m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.repoURI)
+			_, err = m.logsMgr.Log(headCtx.refInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.GetRepoURI())
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
 			return failedOpErr(nil, err)
 		}
-		_, err = m.logsMgr.Log(headCtx.remote, headCtx.refs, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, headCtx.repoURI)
+		_, err = m.logsMgr.Log(headCtx.refInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, headCtx.GetRepoURI())
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -340,4 +298,52 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 	defer fileLock.Unlock()
 
 	return m.execInternalPull(false, out)
+}
+
+// ExecCloneRepo clones a repository.
+func (m *WorkspaceManager) ExecCloneRepo(language, repoURI string, aapPort, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		out(nil, "", fmt.Sprintf("Failed to clone the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
+		return output, err
+	}
+	m.ExecPrintContext(nil, out)
+
+	var output map[string]any
+	repoURI = strings.ToLower(repoURI)
+	if !strings.HasPrefix(repoURI, "permguard@") {
+		return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository URI"))
+	}
+	repoURI = strings.TrimPrefix(repoURI, "permguard@")
+	elements := strings.Split(repoURI, "/")
+	if len(elements) != 3 {
+		return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository URI"))
+	}
+
+	uriServer := elements[0]
+	uriAccountID := elements[1]
+	uriRepo := elements[2]
+
+	output, err := m.ExecInitWorkspace(language, out)
+	aborted := false
+	if err == nil {
+		fileLock, err := m.tryLock()
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		defer fileLock.Unlock()
+		output, err = m.execInternalAddRemote(true, OriginRemoteName, uriServer, aapPort, papPort, out)
+		if err == nil {
+			repoURI := fmt.Sprintf("%s/%s/%s", OriginRemoteName, uriAccountID, uriRepo)
+			output, err = m.execInternalCheckoutRepo(true, repoURI, out)
+			if err != nil {
+				aborted = true
+			}
+		} else {
+			aborted = true
+		}
+	}
+	if aborted {
+		return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: operation has been aborted"))
+	}
+	return output, nil
 }

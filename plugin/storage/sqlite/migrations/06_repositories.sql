@@ -20,7 +20,7 @@ CREATE TABLE repositories (
     created_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
     updated_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
     name TEXT NOT NULL,
-	refs  TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000',
+	ref  TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000',
 	-- REFERENCES
 	account_id INTEGER NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
 	-- CONSTRAINTS
@@ -40,7 +40,7 @@ BEGIN
 		VALUES ('REPOSITORY', 'INSERT', NEW.repository_id, NEW.account_id,
 				'{"repository_id": "' || NEW.repository_id || '", "created_at": "' || NEW.created_at ||
 				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name ||
-				'", "account_id": ' || NEW.account_id || ', "refs": "' || NEW.refs || '"}');
+				'", "account_id": ' || NEW.account_id || ', "ref": "' || NEW.ref || '"}');
 END;
 -- +goose StatementEnd
 
@@ -55,7 +55,7 @@ BEGIN
 		VALUES ('REPOSITORY', 'UPDATE', NEW.repository_id, NEW.account_id,
 				'{"repository_id": "' || NEW.repository_id || '", "created_at": "' || NEW.created_at ||
 				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name ||
-				'", "account_id": ' || NEW.account_id || ', "refs": "' || NEW.refs || '"}');
+				'", "account_id": ' || NEW.account_id || ', "ref": "' || NEW.ref || '"}');
 END;
 -- +goose StatementEnd
 
@@ -69,7 +69,7 @@ BEGIN
 		VALUES ('REPOSITORY', 'DELETE', OLD.repository_id, OLD.account_id,
 				'{"repository_id": "' || OLD.repository_id || '", "created_at": "' || OLD.created_at ||
 				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name ||
-				'", "account_id": ' || OLD.account_id || ', "refs": "' || OLD.refs || '"}');
+				'", "account_id": ' || OLD.account_id || ', "ref": "' || OLD.ref || '"}');
 END;
 -- +goose StatementEnd
 

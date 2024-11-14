@@ -26,6 +26,7 @@ import (
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
@@ -34,7 +35,7 @@ const (
 	// Hidden directories for code.
 	hiddenCodeDir = "code"
 	// Hidden directories for source code.
-	hiddenSourceCodeDir = "@source"
+	hiddenSourceCodeDir = "@workspace"
 	// Hidden directories for objects.
 	hiddenObjectsDir = "objects"
 	// Hidden config file.
@@ -272,8 +273,8 @@ func (m *COSPManager) BuildCodeSourceCodeStateForTree(tree *azlangobjs.Tree) ([]
 }
 
 // SaveRemoteCodePlan saves the code plan for the input remote.
-func (m *COSPManager) SaveRemoteCodePlan(remote string, refID string, codeObjects []CodeObjectState) error {
-	path := filepath.Join(m.getCodeDir(), strings.ToLower(remote), strings.ToLower(refID))
+func (m *COSPManager) SaveRemoteCodePlan(ref string, codeObjects []CodeObjectState) error {
+	path := filepath.Join(m.getCodeDir(), strings.ToLower(ref))
 	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, path)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to create code plan")
@@ -283,14 +284,14 @@ func (m *COSPManager) SaveRemoteCodePlan(remote string, refID string, codeObject
 }
 
 // ReadRemoteCodePlan reads the code plan from the input remote.
-func (m *COSPManager) ReadRemoteCodePlan(remote string, refID string) ([]CodeObjectState, error) {
-	path := filepath.Join(m.getCodeDir(), strings.ToLower(remote), strings.ToLower(refID), hiddenCodePlanFile)
+func (m *COSPManager) ReadRemoteCodePlan(ref string) ([]CodeObjectState, error) {
+	path := filepath.Join(m.getCodeDir(), strings.ToLower(ref), hiddenCodePlanFile)
 	return m.readCodeObjectStates(path)
 }
 
 // ReadRemoteCodePlan reads the code plan from the input remote.
-func (m *COSPManager) CleanCode(remote string, refID string)  (bool, error) {
-	path := filepath.Join(m.getCodeDir(), strings.ToLower(remote), strings.ToLower(refID))
+func (m *COSPManager) CleanCode(ref string)  (bool, error) {
+	path := filepath.Join(m.getCodeDir(), strings.ToLower(ref))
 	return m.persMgr.DeletePath(azicliwkspers.PermguardDir, path)
 }
 
@@ -511,19 +512,19 @@ func (m *COSPManager) GetCommit(commitID string) (*azlangobjs.Commit, error) {
 }
 
 // GetHistory gets the commit history.
-func (m *COSPManager) GetHistory(commitID string) ([]CommitInfo, error) {
-    var commits []CommitInfo
+func (m *COSPManager) GetHistory(commitID string) ([]azicliwkscommon.CommitInfo, error) {
+    var commits []azicliwkscommon.CommitInfo
     commit, err := m.GetCommit(commitID)
     if err != nil {
         return nil, err
     }
 
     for commit != nil {
-        commitInfo := CommitInfo{
-            oid:    commitID,
-            commit: commit,
-        }
-        commits = append(commits, commitInfo)
+        commitInfo, err := azicliwkscommon.NewCommitInfo(commitID, commit)
+		if err != nil {
+			return nil, err
+		}
+        commits = append(commits, *commitInfo)
 	    parentID := commit.GetParent()
         if parentID == azlangobjs.ZeroOID {
             break
