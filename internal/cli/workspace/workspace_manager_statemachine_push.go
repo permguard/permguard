@@ -36,7 +36,7 @@ func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemac
 	handlerCtx.Set(CommittedKey, false)
 	localCommitObj, _ := getFromHandlerContext[*azlangobjs.Object](handlerCtx, LocalCodeCommitObjectKey)
 	packet := &notpagpackets.RemoteRefStatePacket{
-		RefPrevCommit: wksCtx.ctx.commitID,
+		RefPrevCommit: wksCtx.ctx.remoteCommitID,
 		RefCommit:     localCommitObj.GetOID(),
 	}
 	handlerReturn := &notpstatemachines.HostHandlerReturn{

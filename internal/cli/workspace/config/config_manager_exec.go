@@ -186,12 +186,12 @@ func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, repo, repoID string, a
 			cfg.Repositories[key] = repo
 		}
 		cfgRepo = repositoryConfig{
-			Ref:      ref,
-			Remote:   remote,
-			Account:  account,
-			RepoName: repo,
-			RepoID:   repoID,
-			IsHead:   true,
+			Ref:       ref,
+			Remote:    remote,
+			AccountID: account,
+			RepoName:  repo,
+			RepoID:    repoID,
+			IsHead:    true,
 		}
 		cfg.Repositories[repoURI] = cfgRepo
 		m.saveConfig(true, cfg)

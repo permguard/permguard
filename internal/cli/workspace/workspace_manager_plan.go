@@ -20,48 +20,10 @@ import (
 	"time"
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
-	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
-
-// getCurrentHeadContext gets the current head context.
-func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) {
-	headRef, err := m.rfsMgr.GetCurrentHeadRef()
-	headRefInfo, err := m.rfsMgr.GetCurrentHeadRefInfo()
-	if err != nil {
-		return nil, err
-	}
-
-	remoteInfo, err := m.cfgMgr.GetRemoteInfo(headRefInfo.GetRemote())
-	if err != nil {
-		return nil, err
-	}
-
-	headCtx := &currentHeadContext{
-		refInfo:       headRefInfo,
-		commitID:      azlangobjs.ZeroOID,
-		server:        remoteInfo.GetServer(),
-		serverPAPPort: remoteInfo.GetPAPPort(),
-	}
-	repoID, err := m.rfsMgr.GetRefRepoID(headRef)
-	if err != nil {
-		return nil, err
-	}
-	headCtx.refInfo, err = azicliwkscommon.BuildRefInfoFromRepoID(headRefInfo, repoID)
-	if err != nil {
-		return nil, err
-	}
-
-	commit, err := m.rfsMgr.GetRefCommit(headCtx.GetRef())
-	if err != nil {
-		return nil, err
-	}
-	headCtx.commitID = commit
-
-	return headCtx, nil
-}
 
 // plan generates a plan of changes to apply to the remote repository based on the differences between the local and remote states.
 func (m *WorkspaceManager) plan(currentCodeObsStates []azicliwkscosp.CodeObjectState, remoteCodeObsStates []azicliwkscosp.CodeObjectState) ([]azicliwkscosp.CodeObjectState, error) {

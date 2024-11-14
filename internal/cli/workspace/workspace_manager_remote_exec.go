@@ -25,8 +25,8 @@ import (
 	aztypes "github.com/permguard/permguard-abs-language/pkg/permcode/types"
 	azfiles "github.com/permguard/permguard-core/pkg/extensions/files"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
@@ -85,21 +85,40 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 			return failedOpErr(output, err)
 		}
 		// Checkout the head
-		remoteRef := azlangobjs.ZeroOID
-		var headInfo *azicliwkscommon.HeadInfo
-		headInfo, output, err = m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.RepositoryID, remoteRef, nil, out)
+		remoteCommitID := azlangobjs.ZeroOID
+		var remoteRef, headRef string
+		remoteRef, headRef, output, err = m.rfsMgr.ExecCheckoutRefFilesForRemote(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.RepositoryID, remoteCommitID, output, out)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		// Read current head settings
-		headCtx, err := m.getCurrentHeadContext()
+		// Read current remote ref info
+		remoteRefInfo, err := m.rfsMgr.GetRefInfo(remoteRef)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		_, err = m.logsMgr.Log(headCtx.refInfo, remoteRef, remoteRef, azicliwkslogs.LogActionCheckout, true, headInfo.GetRef())
+		_, err = m.logsMgr.Log(remoteRefInfo, remoteCommitID, remoteCommitID, azicliwkslogs.LogActionCheckout, true, remoteRef)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
+		// Read current head ref info
+		headRefInfo, err := m.rfsMgr.GetRefInfo(headRef)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		_, err = m.logsMgr.Log(headRefInfo, remoteCommitID, remoteCommitID, azicliwkslogs.LogActionCheckout, true, remoteRef)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+	}
+
+	refInfo, err := m.cfgMgr.GetRepoInfo(repoURI)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	remoteRef := azicliwkscommon.GenerateHeadRef(refInfo.GetAccountID(), refInfo.GetRepo())
+	_, output, err = m.rfsMgr.ExecCheckoutHead(remoteRef, output, out)
+	if err != nil {
+		return failedOpErr(nil, err)
 	}
 
 	_, err = m.execInternalPull(true, out)
@@ -152,6 +171,8 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 
 	// Read current head settings
 	headCtx, err := m.getCurrentHeadContext()
+	headRefInfo := headCtx.headRefInfo
+	remoteRefInfo := headCtx.remoteRefInfo
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
@@ -165,7 +186,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			out(nil, key, output, nil, newLine)
 		},
 		LanguageAbstractionKey: absLang,
-		LocalCodeCommitIDKey:   headCtx.commitID,
+		LocalCodeCommitIDKey:   headCtx.remoteCommitID,
 		HeadContextKey:         headCtx,
 	}
 
@@ -191,21 +212,33 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 		if !committed || localCommitID == "" || remoteCommitID == "" {
 			if localCommitID != "" && remoteCommitID != "" {
-				_, err := m.logsMgr.Log(headCtx.refInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.GetRepoURI())
+				_, err := m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetRepoURI())
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
 			}
 		}
-		err = m.rfsMgr.SaveRefConfig(headCtx.GetRepoID(), headCtx.GetRef(), remoteCommitID)
+		err = m.rfsMgr.SaveRefConfig(remoteRefInfo.GetRepoID(), remoteRefInfo.GetRef(), remoteCommitID)
 		if err != nil {
-			_, err = m.logsMgr.Log(headCtx.refInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.GetRepoURI())
+			_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetRepoURI())
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
 			return failedOpErr(nil, err)
 		}
-		_, err = m.logsMgr.Log(headCtx.refInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, headCtx.GetRepoURI())
+		err = m.rfsMgr.SaveRefWithRemoteConfig(headRefInfo.GetRepoID(), headRefInfo.GetRef(), remoteRefInfo.GetRef(), remoteCommitID)
+		if err != nil {
+			_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetRepoURI())
+			if err != nil {
+				return failedOpErr(nil, err)
+			}
+			return failedOpErr(nil, err)
+		}
+		_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, remoteRefInfo.GetRepoURI())
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, remoteRefInfo.GetRepoURI())
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
