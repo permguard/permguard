@@ -105,7 +105,7 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		_, err = m.logsMgr.Log(headRefInfo, remoteCommitID, remoteCommitID, azicliwkslogs.LogActionCheckout, true, headRef)
+		_, err = m.logsMgr.Log(headRefInfo, remoteCommitID, remoteCommitID, azicliwkslogs.LogActionCheckout, true, remoteRef)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -121,10 +121,10 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 		return failedOpErr(nil, err)
 	}
 
-	// _, err = m.execInternalPull(true, out)
-	// if err != nil {
-	// 	return failedOpErr(nil, err)
-	// }
+	_, err = m.execInternalPull(true, out)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
 
 	return output, nil
 }
