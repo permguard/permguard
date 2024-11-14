@@ -22,7 +22,7 @@ import (
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
+	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 )
 
 // ExecObjects list the objects.
@@ -198,7 +198,7 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 	}
 
 	// Get history of the current workspace
-	commitInfos := []azicliwkscosp.CommitInfo{}
+	commitInfos := []azicliwkscommon.CommitInfo{}
 	headCommit := headCtx.GetCommit()
 	if headCommit != azlangobjs.ZeroOID {
 		commitInfos, err = m.getHistory(headCommit)
@@ -225,7 +225,7 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 						"  - Tree: %s\n"+
 						"  - Committer Timestamp: %s\n"+
 						"  - Author Timestamp: %s\n",
-					aziclicommon.IDText(commitInfo.GetCommitID()),
+					aziclicommon.IDText(commitInfo.GetCommitOID()),
 					aziclicommon.IDText(tree),
 					aziclicommon.DateText(committerTimestamp),
 					aziclicommon.DateText(authorTimestamp),
@@ -239,7 +239,7 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 		for _, commitInfo := range commitInfos {
 			commit := commitInfo.GetCommit()
 			objMap := map[string]any{}
-			objMap["commit_id"] = commitInfo.GetCommitID()
+			objMap["commit_id"] = commitInfo.GetCommitOID()
 			objMap["parent"] = commit.GetParent()
 			objMap["tree"] = commit.GetTree()
 			metadata := commit.GetMetaData()
