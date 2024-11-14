@@ -171,6 +171,8 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 
 	// Read current head settings
 	headCtx, err := m.getCurrentHeadContext()
+	headRefInfo := headCtx.headRefInfo
+	remoteRefInfo := headCtx.remoteRefInfo
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
@@ -210,21 +212,33 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 		if !committed || localCommitID == "" || remoteCommitID == "" {
 			if localCommitID != "" && remoteCommitID != "" {
-				_, err := m.logsMgr.Log(headCtx.headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.GetRepoURI())
+				_, err := m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetRepoURI())
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
 			}
 		}
-		err = m.rfsMgr.SaveRefConfig(headCtx.GetRepoID(), headCtx.GetRef(), remoteCommitID)
+		err = m.rfsMgr.SaveRefConfig(remoteRefInfo.GetRepoID(), remoteRefInfo.GetRef(), remoteCommitID)
 		if err != nil {
-			_, err = m.logsMgr.Log(headCtx.headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, headCtx.GetRepoURI())
+			_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetRepoURI())
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
 			return failedOpErr(nil, err)
 		}
-		_, err = m.logsMgr.Log(headCtx.headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, headCtx.GetRepoURI())
+		err = m.rfsMgr.SaveRefWithRemoteConfig(headRefInfo.GetRepoID(), headRefInfo.GetRef(), remoteRefInfo.GetRef(), remoteCommitID)
+		if err != nil {
+			_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetRepoURI())
+			if err != nil {
+				return failedOpErr(nil, err)
+			}
+			return failedOpErr(nil, err)
+		}
+		_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, remoteRefInfo.GetRepoURI())
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, remoteRefInfo.GetRepoURI())
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
