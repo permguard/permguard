@@ -234,7 +234,7 @@ func (m *WorkspaceManager) OnPushHandleCommitResponse(handlerCtx *notpstatemachi
 	if err != nil {
 		return nil, err
 	}
-	_, err = m.cospMgr.CleanCode(wksCtx.ctx.GetRemote(), wksCtx.ctx.GetRef())
+	_, err = m.cospMgr.CleanCode(wksCtx.ctx.GetRef())
 	if err != nil {
 		return nil, err
 	}

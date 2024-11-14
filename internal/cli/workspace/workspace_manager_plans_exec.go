@@ -180,7 +180,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 			out(nil, "plan", fmt.Sprintf("Reference ID for the plan is set to: %s", aziclicommon.IDText(refInfo.GetRef())), nil, true)
 			out(nil, "plan", "Preparing to save the plan.", nil, true)
 		}
-		err = m.cospMgr.SaveRemoteCodePlan(refInfo.GetRemote(), refInfo.GetRef(), planObjs)
+		err = m.cospMgr.SaveRemoteCodePlan(refInfo.GetRef(), planObjs)
 		if err != nil {
 			if m.ctx.IsVerboseTerminalOutput() {
 				out(nil, "plan", "Failed to save the plan.", nil, true)
@@ -264,7 +264,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		out(nil, "apply", "Preparing to read the plan.", nil, true)
 	}
 	errPlanningProcessFailed := "Apply process failed."
-	plan, err := m.cospMgr.ReadRemoteCodePlan(headCtx.GetRemote(), headCtx.GetRef())
+	plan, err := m.cospMgr.ReadRemoteCodePlan(headCtx.GetRef())
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "apply", "Failed to read the plan.", nil, true)
