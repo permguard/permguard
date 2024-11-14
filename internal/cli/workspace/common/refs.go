@@ -62,8 +62,8 @@ func ConvertStringWithRepoIDToRefInfo(ref string) (*RefInfo, error) {
 	}, nil
 }
 
-// GenerateRef generates the ref.
-func GenerateRef(isHead bool, remote string, accountID int64, repo string) string {
+// generateRef generates the ref.
+func generateRef(isHead bool, remote string, accountID int64, repo string) string {
 	var sourceType string
 	if isHead {
 		sourceType = headPrefix
@@ -73,9 +73,19 @@ func GenerateRef(isHead bool, remote string, accountID int64, repo string) strin
 	return strings.Join([]string{refsPrefix, sourceType, remote, strconv.FormatInt(accountID, 10), repo}, refSeparator)
 }
 
+// GenerateRemoteRef generates the remote ref.
+func GenerateRemoteRef(remote string, accountID int64, repo string) string {
+	return generateRef(false, remote, accountID, repo)
+}
+
+// GenerateRemoteRef generates the remote ref.
+func GenerateHeadRef(accountID int64, repo string) string {
+	return generateRef(true, HeadKeyword, accountID, repo)
+}
+
 // convertRefInfoToString converts the ref information to string.
 func ConvertRefInfoToString(refInfo *RefInfo) string {
-	return GenerateRef(refInfo.IsSourceHead(), refInfo.GetRemote(), refInfo.GetAccountID(), refInfo.GetRepo())
+	return generateRef(refInfo.IsSourceHead(), refInfo.GetRemote(), refInfo.GetAccountID(), refInfo.GetRepo())
 }
 
 // RefInfo represents the ref information.
@@ -164,7 +174,7 @@ func (i *RefInfo) GetRepo() string {
 
 // GetRef returns the ref.
 func (i *RefInfo) GetRef() string {
-	return GenerateRef(i.IsSourceHead(), i.GetRemote(), i.GetAccountID(), i.GetRepo())
+	return generateRef(i.IsSourceHead(), i.GetRemote(), i.GetAccountID(), i.GetRepo())
 }
 
 // GetRepoFilePath returns the repo file path.

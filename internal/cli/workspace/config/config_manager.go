@@ -102,8 +102,8 @@ func (m *ConfigManager) GetRemoteInfo(remote string) (*azicliwkscommon.RemoteInf
 	return azicliwkscommon.NewRemoteInfo(cfgRemote.Server, cfgRemote.AAPPort, cfgRemote.PAPPort)
 }
 
-// GetRefInfo gets the ref info.
-func (m *ConfigManager) GetRefInfo(repoURI string) (*azicliwkscommon.RefInfo, error) {
+// GetRepoInfo gets the ref info.
+func (m *ConfigManager) GetRepoInfo(repoURI string) (*azicliwkscommon.RefInfo, error) {
 	cfg, err := m.readConfig()
 	if err != nil {
 		return nil, err

@@ -225,6 +225,14 @@ func (m *RefManager) GetCurrentHeadCommit() (string, error) {
 	return m.GetRefCommit(headInfo.GetRef())
 }
 
+// GetRefInfo gets the ref information.
+func (m *RefManager) GetRefInfo(ref string) (*azicliwkscommon.RefInfo, error) {
+	if len(ref) == 0 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid ref")
+	}
+	return azicliwkscommon.ConvertStringWithRepoIDToRefInfo(ref)
+}
+
 // GetCurrentHeadRefInfo gets the current head ref information.
 func (m *RefManager) GetCurrentHeadRefInfo() (*azicliwkscommon.RefInfo, error) {
 	headInfo, err := m.GetCurrentHead()
@@ -234,5 +242,5 @@ func (m *RefManager) GetCurrentHeadRefInfo() (*azicliwkscommon.RefInfo, error) {
 	if headInfo == nil || len(headInfo.GetRef()) == 0 {
 		return nil, nil
 	}
-	return azicliwkscommon.ConvertStringWithRepoIDToRefInfo(headInfo.GetRef())
+	return m.GetRefInfo(headInfo.GetRef())
 }
