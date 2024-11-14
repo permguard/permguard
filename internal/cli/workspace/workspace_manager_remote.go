@@ -18,13 +18,62 @@ package workspace
 
 import (
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
-// fetchRemote fetches the latest changes from the remote repo.
-func (m *WorkspaceManager) fetchRemote() error {
-	// TODO: Implement this method
-	return nil
+// getCurrentHeadContext gets the current head context.
+func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) {
+	headRef, err := m.rfsMgr.GetCurrentHeadRef()
+	headRefInfo, err := m.rfsMgr.GetCurrentHeadRefInfo()
+	if err != nil {
+		return nil, err
+	}
+	headRefCommitID, err := m.rfsMgr.GetRefCommit(headRef)
+	if err != nil {
+		return nil, err
+	}
+	remoteRef, err := m.rfsMgr.GetRefUpstreamRef(headRef)
+	if err != nil {
+		return nil, err
+	}
+	remoteRefInfo, err := m.rfsMgr.GetRefInfo(remoteRef)
+	if err != nil {
+		return nil, err
+	}
+	remoteRefCommitID, err := m.rfsMgr.GetRefCommit(remoteRef)
+	if err != nil {
+		return nil, err
+	}
+	remoteInfo, err := m.cfgMgr.GetRemoteInfo(remoteRefInfo.GetRemote())
+	if err != nil {
+		return nil, err
+	}
+
+	headCtx := &currentHeadContext{
+		headRefInfo:    headRefInfo,
+		remoteRefInfo:  remoteRefInfo,
+		headCommitID: 	headRefCommitID,
+		remoteCommitID: remoteRefCommitID,
+		server:         remoteInfo.GetServer(),
+		serverPAPPort:  remoteInfo.GetPAPPort(),
+	}
+	repoID, err := m.rfsMgr.GetRefRepoID(headRef)
+	if err != nil {
+		return nil, err
+	}
+	headCtx.headRefInfo, err = azicliwkscommon.BuildRefInfoFromRepoID(headRefInfo, repoID)
+	if err != nil {
+		return nil, err
+	}
+
+	commit, err := m.rfsMgr.GetRefCommit(headCtx.GetRef())
+	if err != nil {
+		return nil, err
+	}
+	headCtx.remoteCommitID = commit
+
+	return headCtx, nil
 }
 
 // GetCurrentHeadCommit gets the current head commit.
