@@ -43,7 +43,7 @@ func (m *RefManager) ExecCheckoutHead(remote string, accountID int64, repo strin
 	if output == nil {
 		output = map[string]any{}
 	}
-	ref := azicliwkscommon.GenerateRef(remote, accountID, repoID)
+	ref := azicliwkscommon.GenerateRef(false, remote, accountID, repoID)
 	err := m.SaveRefConfig(repoID, ref, commit)
 	if err != nil {
 		return nil, output, err
