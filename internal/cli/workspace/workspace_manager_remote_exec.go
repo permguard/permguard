@@ -55,54 +55,51 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	if ok := m.cfgMgr.CheckRepoIfExists(repoURI); ok {
-		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "checkout", "Remote verification failed: repository already exists.", nil, true)
+	var output map[string]any
+	if ok := m.cfgMgr.CheckRepoIfExists(repoURI); !ok {
+		// Retrieves the remote information
+		remoteInfo, err := m.cfgMgr.GetRemoteInfo(repoInfo.GetRemote())
+		if err != nil {
+			return failedOpErr(nil, err)
 		}
-		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: repo %s already exists", repoURI)))
-	}
-
-	// Retrieves the remote information
-	remoteInfo, err := m.cfgMgr.GetRemoteInfo(repoInfo.GetRemote())
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "checkout", "Retrieving remote repository information.", nil, true)
-	}
-	srvRepo, err := m.rmSrvtMgr.GetServerRemoteRepo(remoteInfo, repoInfo)
-	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "checkout", "Failed to retrieve remote repository information.", nil, true)
+			out(nil, "checkout", "Retrieving remote repository information.", nil, true)
 		}
-		return failedOpErr(nil, err)
-	}
-	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "checkout", "Remote repository retrieved successfully.", nil, true)
-	}
-	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "checkout", "Remote verified successfully.", nil, true)
-	}
-	// Add the repository
-	ref := m.rfsMgr.GenerateRef(repoInfo.GetRemote(), repoInfo.GetAccountID(), srvRepo.RepositoryID)
-	output, err := m.cfgMgr.ExecAddRepo(repoURI, ref, repoInfo.GetRemote(), repoInfo.GetRepo(), srvRepo.RepositoryID, repoInfo.GetAccountID(), nil, out)
-	if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
-		return failedOpErr(output, err)
-	}
-	// Checkout the head
-	remoteRef := azlangobjs.ZeroOID
-	headInfo, output, err := m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.RepositoryID, remoteRef, nil, out)
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-	// Read current head settings
-	headCtx, err := m.getCurrentHeadContext()
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-	_, err = m.logsMgr.Log(headCtx.refInfo, remoteRef, remoteRef, azicliwkslogs.LogActionCheckout, true, headInfo.GetRef())
-	if err != nil {
-		return failedOpErr(nil, err)
+		srvRepo, err := m.rmSrvtMgr.GetServerRemoteRepo(remoteInfo, repoInfo)
+		if err != nil {
+			if m.ctx.IsVerboseTerminalOutput() {
+				out(nil, "checkout", "Failed to retrieve remote repository information.", nil, true)
+			}
+			return failedOpErr(nil, err)
+		}
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "checkout", "Remote repository retrieved successfully.", nil, true)
+		}
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "checkout", "Remote verified successfully.", nil, true)
+		}
+		// Add the repository
+		ref := m.rfsMgr.GenerateRef(repoInfo.GetRemote(), repoInfo.GetAccountID(), srvRepo.RepositoryID)
+		output, err = m.cfgMgr.ExecAddRepo(repoURI, ref, repoInfo.GetRemote(), repoInfo.GetRepo(), srvRepo.RepositoryID, repoInfo.GetAccountID(), nil, out)
+		if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
+			return failedOpErr(output, err)
+		}
+		// Checkout the head
+		remoteRef := azlangobjs.ZeroOID
+		var headInfo *azicliwkscommon.HeadInfo
+		headInfo, output, err = m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.RepositoryID, remoteRef, nil, out)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		// Read current head settings
+		headCtx, err := m.getCurrentHeadContext()
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		_, err = m.logsMgr.Log(headCtx.refInfo, remoteRef, remoteRef, azicliwkslogs.LogActionCheckout, true, headInfo.GetRef())
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
 	}
 
 	_, err = m.execInternalPull(true, out)

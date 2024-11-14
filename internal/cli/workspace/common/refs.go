@@ -31,6 +31,8 @@ const (
 	refSeparator = "/"
 	// remotePrefix represents the prefix for the remote.
 	remotePrefix = "remotes"
+	// headPrefix represents the prefix for the head.
+	headPrefix = "heads"
 )
 
 // ConvertStringWithRepoIDToRefInfo converts the string with the repo ID to ref information.
@@ -42,6 +44,10 @@ func ConvertStringWithRepoIDToRefInfo(ref string) (*RefInfo, error) {
 	if refObs[0] != refsPrefix {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid ref")
 	}
+	sourceType := refObs[1]
+	if sourceType != remotePrefix && sourceType != headPrefix {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid source type")
+	}
 	remote := refObs[2]
 	accountID, err := strconv.ParseInt(refObs[3], 10, 64)
 	if err != nil {
@@ -49,9 +55,10 @@ func ConvertStringWithRepoIDToRefInfo(ref string) (*RefInfo, error) {
 	}
 	repo := refObs[4]
 	return &RefInfo{
-		remote:    remote,
-		accountID: accountID,
-		repoID:    repo,
+		sourceType: sourceType,
+		remote:    	remote,
+		accountID: 	accountID,
+		repoID:    	repo,
 	}, nil
 }
 
@@ -67,10 +74,11 @@ func ConvertRefInfoToString(info *RefInfo) string {
 
 // RefInfo represents the ref information.
 type RefInfo struct {
-	remote    string
-	accountID int64
-	repoName  string
-	repoID    string
+	sourceType 	string
+	remote    	string
+	accountID 	int64
+	repoName  	string
+	repoID    	string
 }
 
 // NewRefInfo creates a new ref information.
@@ -85,9 +93,10 @@ func NewRefInfoFromRepoName(remote string, accountID int64, repoName string) (*R
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repo name")
 	}
 	return &RefInfo{
-		remote:    remote,
-		accountID: accountID,
-		repoName:  repoName,
+		sourceType: remotePrefix,
+		remote:    	remote,
+		accountID: 	accountID,
+		repoName:  	repoName,
 	}, nil
 }
 
@@ -101,11 +110,17 @@ func BuildRefInfoFromRepoID(refInfo *RefInfo, repoID string) (*RefInfo, error) {
 		return nil, err
 	}
 	return &RefInfo{
-		remote:    szRemote,
-		accountID: refInfo.accountID,
-		repoName:  refInfo.repoName,
-		repoID:    repoID,
+		sourceType: refInfo.sourceType,
+		remote:    	szRemote,
+		accountID: 	refInfo.accountID,
+		repoName:  	refInfo.repoName,
+		repoID:   	repoID,
 	}, nil
+}
+
+// GetSourceType returns the source type.
+func (i *RefInfo) GetSourceType() string {
+	return i.sourceType
 }
 
 // GetRemote returns the remote.

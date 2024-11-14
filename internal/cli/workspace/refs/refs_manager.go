@@ -31,8 +31,6 @@ import (
 const (
 	// hiddenRefsDir represents the hidden refs directory.
 	hiddenRefsDir = "refs"
-	// hiddenRefsRemoteDir represents the hidden refs remote directory.
-	hiddenRefsRemoteDir = "remotes"
 	// hiddenHeadFile represents the hidden head file.
 	hiddenHeadFile = "HEAD"
 )
@@ -62,17 +60,17 @@ func (m *RefManager) getHeadFile() string {
 }
 
 // getRefFile returns the ref file.
-func (m *RefManager) getRefFile(refType string, ref string) (string, error) {
+func (m *RefManager) getRefFile(ref string) (string, error) {
 	refInfo, err := azicliwkscommon.ConvertStringWithRepoIDToRefInfo(ref)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(hiddenRefsDir, refType, refInfo.GetRemote(), fmt.Sprintf("%d", refInfo.GetAccountID()), refInfo.GetRepoID()), nil
+	return filepath.Join(hiddenRefsDir, refInfo.GetSourceType(), refInfo.GetRemote(), fmt.Sprintf("%d", refInfo.GetAccountID()), refInfo.GetRepoID()), nil
 }
 
 // ensureRefFileExists ensures the ref file exists.
 func (m *RefManager) ensureRefFileExists(ref string) error {
-	refFile, err := m.getRefFile(hiddenRefsRemoteDir, ref)
+	refFile, err := m.getRefFile(ref)
 	if err != nil {
 		return err
 	}
@@ -135,7 +133,7 @@ func (m *RefManager) SaveRefConfig(repoID string, ref string, commit string) err
 	if err != nil {
 		return err
 	}
-	refPath, err := m.getRefFile(hiddenRefsRemoteDir, ref)
+	refPath, err := m.getRefFile(ref)
 	if err != nil {
 		return err
 	}
@@ -154,7 +152,7 @@ func (m *RefManager) SaveRefConfig(repoID string, ref string, commit string) err
 
 // readRefConfig reads the ref configuration.
 func (m *RefManager) readRefConfig(ref string) (*refConfig, error) {
-	refPath, err := m.getRefFile(hiddenRefsRemoteDir, ref)
+	refPath, err := m.getRefFile(ref)
 	if err != nil {
 		return nil, err
 	}
