@@ -186,12 +186,12 @@ func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, repo, repoID string, a
 			cfg.Repositories[key] = repo
 		}
 		cfgRepo = repositoryConfig{
-			Ref:     ref,
-			Remote:  remote,
-			Account: account,
-			Repo:    repo,
-			RepoID:  repoID,
-			IsHead:  true,
+			Ref:      ref,
+			Remote:   remote,
+			Account:  account,
+			RepoName: repo,
+			RepoID:   repoID,
+			IsHead:   true,
 		}
 		cfg.Repositories[repoURI] = cfgRepo
 		m.saveConfig(true, cfg)
@@ -245,8 +245,8 @@ func (m *ConfigManager) ExecListRepos(output map[string]any, out aziclicommon.Pr
 		for cfgRepo := range cfg.Repositories {
 			isHead := cfg.Repositories[cfgRepo].IsHead
 			repoObj := map[string]any{
-				"ref":   cfg.Repositories[cfgRepo].Ref,
-				"repo":   cfgRepo,
+				"ref":     cfg.Repositories[cfgRepo].Ref,
+				"repo":    cfgRepo,
 				"is_head": isHead,
 			}
 			repos = append(repos, repoObj)

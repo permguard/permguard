@@ -70,7 +70,7 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "checkout", "Retrieving remote repository information.", nil, true)
 	}
-	srvRepo, err := m.rmSrvtMgr.GetServerRemoteRepo(repoInfo.GetAccountID(), repoInfo.GetRepo(), remoteInfo.GetServer(), remoteInfo.GetAAPPort(), remoteInfo.GetPAPPort())
+	srvRepo, err := m.rmSrvtMgr.GetServerRemoteRepo(remoteInfo, repoInfo)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "checkout", "Failed to retrieve remote repository information.", nil, true)
@@ -90,16 +90,20 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 		return failedOpErr(output, err)
 	}
 	// Checkout the head
-	// TODO: FIX BROKEN BUILD
-	// remoteRef := azlangobjs.ZeroOID
-	// headInfo, output, err := m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccount(), repoInfo.GetRepo(), repoInfo.GetRepoID(), remoteRef, nil, out)
-	// if err != nil {
-	// 	return failedOpErr(nil, err)
-	// }
-	// _, err = m.logsMgr.Log(repoInfo, remoteRef, remoteRef, azicliwkslogs.LogActionCheckout, true, headInfo.GetRef())
-	// if err != nil {
-	// 	return failedOpErr(nil, err)
-	// }
+	remoteRef := azlangobjs.ZeroOID
+	headInfo, output, err := m.rfsMgr.ExecCheckoutHead(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.RepositoryID, remoteRef, nil, out)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	// Read current head settings
+	headCtx, err := m.getCurrentHeadContext()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	_, err = m.logsMgr.Log(headCtx.refInfo, remoteRef, remoteRef, azicliwkslogs.LogActionCheckout, true, headInfo.GetRef())
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
 
 	_, err = m.execInternalPull(true, out)
 	if err != nil {

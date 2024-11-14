@@ -83,7 +83,7 @@ func (c *LogsManager) Log(refInfo *azicliwkscommon.RefInfo, origin string, targe
 	if err != nil {
 		return false, err
 	}
-	logFile := filepath.Join(logDir, refInfo.GetRepoID())
+	logFile := filepath.Join(c.getLogsDir(), logDir, refInfo.GetRepoID())
 	_, err = c.persMgr.CreateFileIfNotExists(azicliwkspers.PermguardDir, logFile)
 	if err != nil {
 		return false, err
