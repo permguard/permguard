@@ -33,13 +33,13 @@ func (m *WorkspaceManager) OnPullSendRequestCurrentState(handlerCtx *notpstatema
 	}
 	handlerCtx.Set(CommittedKey, false)
 	packet := &notpagpackets.RemoteRefStatePacket{
-		RefPrevCommit: wksCtx.ctx.commitID,
-		RefCommit:     wksCtx.ctx.commitID,
+		RefPrevCommit: wksCtx.ctx.remoteCommitID,
+		RefCommit:     wksCtx.ctx.remoteCommitID,
 	}
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: []notppackets.Packetable{packet},
 	}
-	handlerCtx.Set(LocalCodeCommitIDKey, wksCtx.ctx.commitID)
+	handlerCtx.Set(LocalCodeCommitIDKey, wksCtx.ctx.remoteCommitID)
 	return handlerReturn, nil
 }
 
