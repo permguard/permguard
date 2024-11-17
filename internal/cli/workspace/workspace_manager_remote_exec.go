@@ -243,15 +243,6 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			return failedOpErr(nil, err)
 		}
 	}
-	codeMap, err := m.cospMgr.ReadCodeSourceCodeMap()
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-	codeMapIds := make(map[string]bool)
-	for _, code := range codeMap {
-		codeMapIds[code.OID] = true
-	}
-
 	if remoteCommitID != azlangobjs.ZeroOID {
 		commitObj, err := m.cospMgr.ReadObject(remoteCommitID)
 		if err != nil {
@@ -264,6 +255,15 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			return failedOpErr(nil, err)
 		}
 		tree, err := absLang.GetTreeeObject(treeObj)
+
+		codeMap, err := m.cospMgr.ReadCodeSourceCodeMap()
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		codeMapIds := make(map[string]bool)
+		for _, code := range codeMap {
+			codeMapIds[code.OID] = true
+		}
 
 		var schemaBlock []byte
 		codeBlocks := [][]byte{}
@@ -285,7 +285,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 				}
 			}
 		}
-		if len(schemaBlock) > 0 {
+		if len(codeBlocks) > 0 {
 			codeBlock, ext, err := absLang.CreateLanguageFile(codeBlocks)
 			if err != nil {
 				return failedOpErr(nil, err)

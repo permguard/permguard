@@ -24,7 +24,7 @@
         // "args": ["checkout", "local/904802724239/v1.0", "-w", "/Users/nicolagallo/source/tmp/permy"],
         // "args": ["checkout", "origin/404343079159/v1.0", "-w", "/Users/nicolagallo/source/tmp/permy"],
         // "args": ["remote", "remove", "local", "-w", "../../../playground-yaml/"],
-        "args": ["checkout", "nitro/642457750617/v1.0", "-w", "../../../playground-yaml/"],
+        "args": ["checkout", "origin/625508409684/v1.0", "-w", "../../../playground-yaml/"],
         // "args": ["clone", "permguard@localhost/404343079159/v1.0", "-w", "/Users/nicolagallo/source/tmp/permy"],
         // "args": ["apply", "-w", "/Users/nicolagallo/source/tmp/permy"],
         // "args": ["pull", "-w", "../../../playground-yaml/"],
