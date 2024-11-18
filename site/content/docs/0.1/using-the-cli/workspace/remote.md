@@ -39,7 +39,7 @@ Usage:
 
 Available Commands:
   add         add a new remote repository to track and interact with
-  remove      Remove a remote repository from the configuration
+  remove      remove a remote repository from the configuration
 
 Flags:
   -h, --help   help for remote

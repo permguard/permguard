@@ -77,7 +77,7 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps azcli.CliDependenci
 func CreateCommandForWorkspaceRemoteRemove(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "remove",
-		Short: `Remove a remote repository from the configuration`,
+		Short: `remove a remote repository from the configuration`,
 		Long: aziclicommon.BuildCliLongTemplate(`This command removes a remote repository from the configuration.
 
 Examples:
