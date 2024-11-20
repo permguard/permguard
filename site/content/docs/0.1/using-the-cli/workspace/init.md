@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `Init` commands, it is possible to initialize a new repo in the working directory.
+Using the `Init` commands, it is possible to initialize a new working directory.
 
 ```text
   ____                                               _
@@ -29,10 +29,10 @@ Using the `Init` commands, it is possible to initialize a new repo in the workin
 
 The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
-This command initializes a new repo in the working directory.
+This command initializes a working directory.
 
 Examples:
-  # initialize a new repo in the working directory
+  # initialize a new working directory
   permguard init
 
 	Find more information at: https://www.permguard.com/docs/using-the-cli/how-to-use/
@@ -55,7 +55,7 @@ The output from your current version of Permguard may differ from the example pr
 
 ## Initialize a workspace
 
-The `permguard init` command initializes a new repo in the working directory.
+The `permguard init` command initializes a working directory.
 
 ```bash
 permguard init
