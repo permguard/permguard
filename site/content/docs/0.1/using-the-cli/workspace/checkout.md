@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `Checkout` command, it is possible to check out the contents of a remote repository.
+Using the `Checkout` command, it is possible to checkout a remote repository locally..
 
 ```text
   ____                                               _
@@ -55,7 +55,7 @@ The output from your current version of Permguard may differ from the example pr
 
 ## Checkout a repository
 
-The `permguard checkout` command allows you to check out a remote repository.
+The `permguard checkout` command allows you to check out a remote repository locally.
 
 ```bash
 permguard checkout origin/273165098782/v1.0
