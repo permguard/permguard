@@ -51,7 +51,7 @@ The output from your current version of Permguard may differ from the example pr
 
 ## Get All Repos
 
-The `permguard repo` command allows for the retrieval of all repo.
+The `permguard repo` command allows for the retrieval of all repos.
 
 ```bash
 permguard repo
