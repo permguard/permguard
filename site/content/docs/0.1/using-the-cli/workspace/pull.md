@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `Pull` command, it is possible to fetch the latest changes from the remote repository and construct the remote state
+Using the `Pull` command, it is possible to fetch the latest changes from the remote repository and construct the remote state.
 
 ```text
   ____                                               _
