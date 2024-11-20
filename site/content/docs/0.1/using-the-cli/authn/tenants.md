@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `Tenants` commands, it is possible to manage tenants.
+Using the `Tenants` command, it is possible to manage tenants.
 
 ```text
 This command manages tenants.

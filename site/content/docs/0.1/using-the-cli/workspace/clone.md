@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `Clone` commands, it is possible to clone a remote repository.
+Using the `Clone` command, it is possible to clone a remote repository.
 
 ```text
   ____                                               _

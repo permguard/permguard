@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `Identities` commands, it is possible to manage identity.
+Using the `Identities` command, it is possible to manage identity.
 
 ```text
 This command manages identities.
