@@ -71,8 +71,8 @@ func runECommandForRefreshWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 func CreateCommandForWorkspaceRefresh(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "refresh",
-		Short: "Scan source files in the current directory and synchronizes the local state",
-		Long: aziclicommon.BuildCliLongTemplate(`This command scans source files in the current directory and synchronizes the local state.
+		Short: "Scan source files in the current workspace and synchronizes the local state",
+		Long: aziclicommon.BuildCliLongTemplate(`This command scans source files in the current workspace and synchronizes the local state.
 
 Examples:
   # scan source files in the current directory and synchronizes the local state

@@ -1,5 +1,5 @@
 ---
-title: "Validate"
+title: "Refresh"
 description: ""
 summary: ""
 date: 2023-08-17T11:47:15+01:00
@@ -8,8 +8,8 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "validate-87643cd6-ef51-4711-840d-fac78b9210c5"
-weight: 5310
+    identifier: "refresh-5602911d-77a0-434a-93b5-2c36bd9877c2"
+weight: 5309
 toc: true
 seo:
   title: "" # custom title (optional)
@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `validate` command, it is possible to validate the local state for consistency and correctness.
+Using the `refresh` command, it is possible to scan source files in the current workspace and synchronize the local state.
 
 ```text
   ____                                               _
@@ -29,19 +29,19 @@ Using the `validate` command, it is possible to validate the local state for con
 
 The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
-This command validates the local state for consistency and correctness.
+This command scans source files in the current workspace and synchronizes the local state.
 
 Examples:
-  # validate the local state for consistency and correctness",
-  permguard validate
+  # scan source files in the current directory and synchronizes the local state
+  permguard refresh
 
 	Find more information at: https://www.permguard.com/docs/using-the-cli/how-to-use/
 
 Usage:
-  permguard validate [flags]
+  permguard refresh [flags]
 
 Flags:
-  -h, --help   help for validate
+  -h, --help   help for refresh
 
 Global Flags:
   -o, --output string    output format (default "terminal")
@@ -53,24 +53,20 @@ Global Flags:
 The output from your current version of Permguard may differ from the example provided on this page.
 {{< /callout >}}
 
-## Validate the local state
+## Refresh the workspace state
 
-The `permguard validate` command allows you to validate the local state for consistency and correctness.
+The `permguard refresh` command allows you to scan source files in the current workspace and synchronize the local state.
 
 ```bash
-permguard validate
+permguard refresh
 ```
 
 output:
 
 ```bash
-Your workspace has on error in the following file:
-
-	- 'codegen-96452-2dee167e..yml'
-		1: permcode: invalid name 'pharmacy-branch-mana@gement'
-
-Please fix the errors to proceed.
-Failed to validate the current workspace.
+Your workspace has errors.
+Please validate and fix the errors to proceed.
+Failed to refresh the current workspace.
 ```
 
 <details>
@@ -79,7 +75,7 @@ Failed to validate the current workspace.
   </summary>
 
 ```bash
-permguard validate --output json
+permguard refresh --output json
 ```
 
 output:
