@@ -92,15 +92,15 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out aziclicommon.P
 	}
 	var msg string
 	if firstInit {
-		msg = fmt.Sprintf("Initialized empty permguard repository in '%s'.", aziclicommon.FileText(homeDir))
+		msg = fmt.Sprintf("Initialized empty permguard repository in '%s'.", aziclicommon.FileText(m.getHomeDir()))
 	} else {
-		msg = fmt.Sprintf("Reinitialized existing permguard repository in '%s'.", aziclicommon.FileText(homeDir))
+		msg = fmt.Sprintf("Reinitialized existing permguard repository in '%s'.", aziclicommon.FileText(m.getHomeDir()))
 	}
 	out(nil, "", msg, nil, true)
 	output = map[string]any{}
 	if m.ctx.IsJSONOutput() {
 		remoteObj := map[string]any{
-			"cwd": m.getHomeHiddenDir(),
+			"cwd": m.getHomeDir(),
 		}
 		output = out(nil, "workspace", remoteObj, nil, true)
 	}
