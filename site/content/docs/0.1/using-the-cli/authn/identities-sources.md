@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `IdentitySources` command, it is possible to manage identity sources.
+Using the `identitysources` command, it is possible to manage identity sources.
 
 ```text
 This command manages identity sources.
