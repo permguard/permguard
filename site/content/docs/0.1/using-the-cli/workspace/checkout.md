@@ -35,7 +35,7 @@ Examples:
   # check out the contents of a remote repository to the local working directory
   permguard checkout dev/268786704340/magicfarmacia-v0.0
 
-	Find more information at: https://www.permguard.com/docs/using-the-cli/how-to-use/
+	Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
 
 Usage:
   permguard checkout [flags]

@@ -44,7 +44,7 @@ Copyright © 2022 Nitro Agility S.r.l.
 
 %s
 
-  Find more information at: https://www.permguard.com/docs/devops/deployment/cli-flags/`
+  Find more information at: https://www.permguard.com/docs/0.1/devops/deployment/cli-flags/`
 	hostInfos := map[azservices.HostKind]*azservices.HostInfo{
 		azservices.HostAllInOne: {Name: "AllInOne", Use: "all-in-one", Short: "The official Permguard Server - Start all services", Long: fmt.Sprintf(template, "Using this option all services are started.")},
 		azservices.HostAAP:      {Name: "AAP (Account Administration Point)", Use: "pdp", Short: "The official Permguard Server - Start the AAP service", Long: fmt.Sprintf(template, "Using this option the Account Administration Point (AAP) service is started.")},
