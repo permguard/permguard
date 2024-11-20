@@ -35,7 +35,7 @@ Examples:
   # generate a plan of changes to apply to the remote repository based on the differences between the local and remote states
   permguard plan
 
-	Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
+  Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
 
 Usage:
   permguard plan [flags]
@@ -68,8 +68,8 @@ Initiating the planning process for repo head/273165098782/9b3de5272b0447f2a8d10
 Planning process completed successfully.
 The following changes have been identified and are ready to be applied:
 
-	= 95b32cd25a53e657667c38975c53e2d4a9ad7e8d6f130078cb1ec616b25e506d pharmacy-branch-management
-	= 0a0b9ef638c0ea0e93cf92d6a257dbb4226e42c3eefaba86090870ab2505440a schema
+  = 95b32cd25a53e657667c38975c53e2d4a9ad7e8d6f130078cb1ec616b25e506d pharmacy-branch-management
+  = 0a0b9ef638c0ea0e93cf92d6a257dbb4226e42c3eefaba86090870ab2505440a schema
 
 unchanged 2, created 0, modified 0, deleted 0
 

@@ -31,7 +31,7 @@ The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility 
 
 This command manages remote server for tracking and interaction
 
-	Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
+  Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
 
 Usage:
   permguard remote [flags]
@@ -108,7 +108,7 @@ output:
 
 ```bash
 Your workspace configured remotes:
-	- origin
+  - origin
 ```
 
 <details>

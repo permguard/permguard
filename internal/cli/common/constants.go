@@ -63,7 +63,7 @@ var CliLongTemplateBody = ` %s
 
 // CliLongTemplateFooter is the footer of the long template for the cli.
 var CliLongTemplateFooter = `%s
-	Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
+  Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
 	`
 
 // BuildCliLongTemplate builds the long template for the cli.
