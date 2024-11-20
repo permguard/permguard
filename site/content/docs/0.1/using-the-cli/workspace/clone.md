@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `Clone` command, it is possible to clone a remote repository locally.
+Using the `clone` command, it is possible to clone a remote repository locally.
 
 ```text
   ____                                               _

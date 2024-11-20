@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `History` command, it is possible to show the history of the current checked-out repository.
+Using the `history` command, it is possible to show the history of the current checked-out repository.
 
 ```text
   ____                                               _
@@ -53,7 +53,7 @@ Global Flags:
 The output from your current version of Permguard may differ from the example provided on this page.
 {{< /callout >}}
 
-## Show th History
+## Show the History
 
 The `permguard history` command allows you to show the history of the current checked-out repository.
 

@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `Repo` command, it is possible to manage ocally checked-out repositories.
+Using the `repo` command, it is possible to manage ocally checked-out repositories.
 
 ```text
   ____                                               _
