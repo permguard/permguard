@@ -35,7 +35,7 @@ Examples:
   # apply the plan to the remote repo
   permguard apply
 
-	Find more information at: https://www.permguard.com/docs/using-the-cli/how-to-use/
+	Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
 
 Usage:
   permguard apply [flags]
