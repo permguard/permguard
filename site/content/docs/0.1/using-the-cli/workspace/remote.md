@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `Remote` commands, it is possible to manage remote server.
+Using the `Remote` command, it is possible to manage remote server.
 
 ```text
   ____                                               _

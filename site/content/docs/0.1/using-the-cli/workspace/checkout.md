@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `Checkout` commands, it is possible to check out the contents of a remote repository.
+Using the `Checkout` command, it is possible to check out the contents of a remote repository.
 
 ```text
   ____                                               _

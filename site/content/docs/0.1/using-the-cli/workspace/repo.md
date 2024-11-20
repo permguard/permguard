@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `Repo` commands, it is possible to manage local repos.
+Using the `Repo` command, it is possible to manage local repos.
 
 ```text
   ____                                               _

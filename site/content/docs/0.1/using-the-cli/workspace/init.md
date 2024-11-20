@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `Init` commands, it is possible to initialize a new working directory.
+Using the `Init` command, it is possible to initialize a new working directory.
 
 ```text
   ____                                               _
