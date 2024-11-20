@@ -1,5 +1,5 @@
 ---
-title: "Repositories Management"
+title: "Repositories"
 description: ""
 summary: ""
 date: 2023-08-17T11:47:15+01:00
