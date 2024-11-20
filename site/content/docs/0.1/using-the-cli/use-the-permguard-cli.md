@@ -58,7 +58,7 @@ Available Commands:
   plan        Generate a plan of changes to apply to the remote repository based on the differences between the local and remote states
   pull        Fetch the latest changes from the remote repository and constructs the remote state.
   refresh     Scan source files in the current directory and synchronizes the local state
-  remote      Manage remote repositories for tracking and interaction
+  remote      Manage remote server for tracking and interaction
   repos       Manage repos settings and operations
   validate    Validate the local state for consistency and correctness
 

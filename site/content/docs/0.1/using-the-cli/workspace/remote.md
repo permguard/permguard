@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `Remote` commands, it is possible to manage remote repositories.
+Using the `Remote` commands, it is possible to manage remote server.
 
 ```text
   ____                                               _
@@ -29,7 +29,7 @@ Using the `Remote` commands, it is possible to manage remote repositories.
 
 The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
-This command manages remote repositories for tracking and interaction
+This command manages remote server for tracking and interaction
 
 	Find more information at: https://www.permguard.com/docs/using-the-cli/how-to-use/
 
