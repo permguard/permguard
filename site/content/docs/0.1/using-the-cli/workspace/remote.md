@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `Remote` command, it is possible to manage remote server.
+Using the `Remote` command, it is possible to manage remote servers.
 
 ```text
   ____                                               _
@@ -58,7 +58,7 @@ The output from your current version of Permguard may differ from the example pr
 
 ## Create a Remote
 
-The `permguard remote add` command allows to create a remote.
+The `permguard remote add` command allows to add a remote server.
 
 ```bash
 permguard remote add origin localhost
@@ -98,7 +98,7 @@ output:
 
 ## Get All Remotes
 
-The `permguard remote` command allows for the retrieval of all remotes.
+The `permguard remote` command allows for the retrieval of all remote servers.
 
 ```bash
 permguard remote

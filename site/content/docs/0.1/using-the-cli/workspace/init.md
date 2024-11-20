@@ -64,7 +64,7 @@ permguard init
 output:
 
 ```bash
-Initialized empty permguard repository in '.permguard'.
+Initialized empty permguard repository in '.'.
 ```
 
 <details>
@@ -73,7 +73,7 @@ Initialized empty permguard repository in '.permguard'.
   </summary>
 
 ```bash
-permguard checkout origin/273165098782/v1.0 --output json
+permguard init --output json
 ```
 
 output:
@@ -81,7 +81,7 @@ output:
 ```bash
 {
   "workspace": {
-    "cwd": ".permguard"
+    "cwd": "."
   }
 }
 ```
