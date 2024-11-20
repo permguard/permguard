@@ -1,5 +1,5 @@
 ---
-title: "Accounts Management"
+title: "Accounts"
 description: ""
 summary: ""
 date: 2023-08-10T20:39:08+01:00
