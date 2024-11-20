@@ -35,7 +35,7 @@ Examples:
   # scan source files in the current directory and synchronizes the local state
   permguard refresh
 
-	Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
+  Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
 
 Usage:
   permguard refresh [flags]

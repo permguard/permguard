@@ -35,7 +35,7 @@ Examples:
   # validate the local state for consistency and correctness",
   permguard validate
 
-	Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
+  Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
 
 Usage:
   permguard validate [flags]
@@ -66,8 +66,8 @@ output:
 ```bash
 Your workspace has on error in the following file:
 
-	- 'codegen-96452-2dee167e..yml'
-		1: permcode: invalid name 'pharmacy-branch-mana@gement'
+  - 'codegen-96452-2dee167e..yml'
+    1: permcode: invalid name 'pharmacy-branch-mana@gement'
 
 Please fix the errors to proceed.
 Failed to validate the current workspace.
