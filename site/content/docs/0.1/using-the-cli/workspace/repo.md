@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `Repo` command, it is possible to manage local repos.
+Using the `Repo` command, it is possible to manage ocally checked-out repositories.
 
 ```text
   ____                                               _
@@ -51,7 +51,7 @@ The output from your current version of Permguard may differ from the example pr
 
 ## Get All Repos
 
-The `permguard repo` command allows for the retrieval of all repos.
+The `permguard repo` command allows for the retrieval of all ocally checked-out repositories.
 
 ```bash
 permguard repo

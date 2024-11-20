@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `Clone` command, it is possible to clone a remote repository.
+Using the `Clone` command, it is possible to clone a remote repository locally.
 
 ```text
   ____                                               _
@@ -57,7 +57,7 @@ The output from your current version of Permguard may differ from the example pr
 
 ## Clone a repository
 
-The `permguard clone` command allows you to clone a remote repository.
+The `permguard clone` command allows you to clone a remote repository locally.
 
 ```bash
 permguard clone permguard@localhost/273165098782/v1.0
