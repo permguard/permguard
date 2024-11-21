@@ -97,7 +97,7 @@ func createCommandForRepositories(deps azcli.CliDependenciesProvider, v *viper.V
 	command := &cobra.Command{
 		Use:   "repos",
 		Short: "Manage repos on the remote server",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages repos on the remote server.`),
+		Long:  aziclicommon.BuildCliLongTemplate(`This command manages repositories on the remote server.`),
 		RunE:  runECommandForRepositories,
 	}
 
