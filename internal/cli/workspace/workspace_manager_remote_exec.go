@@ -42,7 +42,7 @@ const (
 func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
-			out(nil, "", fmt.Sprintf("Failed to checkout the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
+			out(nil, "", fmt.Sprintf("Failed to check out the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
 		}
 		return output, err
 	}
