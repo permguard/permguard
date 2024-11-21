@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `checkout` command, it is possible to checkout a remote repository locally.
+Using the `checkout` command, it is possible to checkout out a remote repository locally.
 
 ```text
   ____                                               _
