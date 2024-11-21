@@ -66,7 +66,7 @@ output:
 ```bash
 The local workspace is already fully up to date with the remote repository.
 Pull process completed successfully.
-Your workspace is synchronized with the remote repo: head/273165098782/9b3de5272b0447f2a8d1024937bdef11.
+Your workspace is synchronized with the remote repository: head/273165098782/9b3de5272b0447f2a8d1024937bdef11.
 ```
 
 <details>

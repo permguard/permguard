@@ -206,7 +206,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 	return output, nil
 }
 
-// ExecApply applies the plan to the remote repo
+// ExecApply applies the plan to the remote repository
 func (m *WorkspaceManager) ExecApply(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to apply the plan.", nil, true)
@@ -226,7 +226,7 @@ func (m *WorkspaceManager) ExecApply(out aziclicommon.PrinterOutFunc) (map[strin
 	return m.execInternalApply(false, out)
 }
 
-// execInternalApply applies the plan to the remote repo
+// execInternalApply applies the plan to the remote repository
 func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
@@ -348,7 +348,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 
 	out(nil, "", "Apply process completed successfully.", nil, true)
 	if !internal {
-		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repo: %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
+		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repository: %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 	}
 	return output, nil
 }

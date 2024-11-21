@@ -152,7 +152,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.Pri
 func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
-			out(nil, "", "Failed to pull changes from the remote repo.", nil, true)
+			out(nil, "", "Failed to pull changes from the remote repository.", nil, true)
 		}
 		return output, err
 	}
@@ -178,7 +178,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 	}
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "pull", "Preparing to pull changes from the remote repo.", nil, true)
+		out(nil, "pull", "Preparing to pull changes from the remote repository.", nil, true)
 	}
 
 	bag := map[string]any{
@@ -308,7 +308,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			out(nil, azicliwkslogs.LogActionPull, "The pull has been completed successfully.", nil, true)
 		}
 		out(nil, "", "Pull process completed successfully.", nil, true)
-		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repo: %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
+		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repository: %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 	}
 	return output, nil
 }
@@ -316,7 +316,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 // ExecPull fetches the latest changes from the remote repository and constructs the remote state.
 func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to pull changes from the remote repo.", nil, true)
+		out(nil, "", "Failed to pull changes from the remote repository.", nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
