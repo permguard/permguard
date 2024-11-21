@@ -29,10 +29,10 @@ Using the `clone` command, it is possible to clone a remote repository locally.
 
 The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
-This command clones a remote repository to the local working directory.
+This command clones a remote repository to the local permguard workspace.
 
 Examples:
-  # clone a remote repository to the local working directory
+  # clone a remote repository to the local permguard workspace
   permguard clone 268786704340/magicfarmacia-v0.0
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/

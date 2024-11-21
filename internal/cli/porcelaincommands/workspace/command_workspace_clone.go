@@ -109,11 +109,11 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 func CreateCommandForWorkspaceClone(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "clone",
-		Short: "Clone a remote repository to the local working directory",
-		Long: aziclicommon.BuildCliLongTemplate(`This command clones a remote repository to the local working directory.
+		Short: "Clone a remote repository to the local permguard workspace",
+		Long: aziclicommon.BuildCliLongTemplate(`This command clones a remote repository to the local permguard workspace.
 
 Examples:
-  # clone a remote repository to the local working directory
+  # clone a remote repository to the local permguard workspace
   permguard clone 268786704340/magicfarmacia-v0.0`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCloneWorkspace(args, deps, cmd, v)
