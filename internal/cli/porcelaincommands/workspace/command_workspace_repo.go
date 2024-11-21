@@ -33,7 +33,7 @@ const (
 	commandNameForWorkspacesRepo = "workspaces.repo"
 )
 
-// runECommandForRepoWorkspace runs the command for the local repo.
+// runECommandForRepoWorkspace runs the command for the local repository.
 func runECommandForRepoWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {

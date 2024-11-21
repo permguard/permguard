@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `apply` command, it is possible to apply the plan to the remote repo.
+Using the `apply` command, it is possible to apply the plan to the remote repository.
 
 ```text
   ____                                               _
@@ -29,10 +29,10 @@ Using the `apply` command, it is possible to apply the plan to the remote repo.
 
 The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
-This command applies the plan to the remote repo.
+This command applies the plan to the remote repository.
 
 Examples:
-  # apply the plan to the remote repo
+  # apply the plan to the remote repository
   permguard apply
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
@@ -55,7 +55,7 @@ The output from your current version of Permguard may differ from the example pr
 
 ## Apply the local state
 
-The `permguard apply` command allows you to apply the plan to the remote repo.
+The `permguard apply` command allows you to apply the plan to the remote repository.
 
 ```bash
 permguard apply
@@ -76,7 +76,7 @@ unchanged 1, created 1, modified 0, deleted 1
 
 Initiating the apply process for repo head/273165098782/9b3de5272b0447f2a8d1024937bdef11.
 Apply process completed successfully.
-Your workspace is synchronized with the remote repo: head/273165098782/9b3de5272b0447f2a8d1024937bdef11.
+Your workspace is synchronized with the remote repository: head/273165098782/9b3de5272b0447f2a8d1024937bdef11.
 ```
 
 <details>

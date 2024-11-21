@@ -71,11 +71,11 @@ func runECommandForApplyWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra
 func CreateCommandForWorkspaceApply(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "apply",
-		Short: "Apply the plan to the remote repo",
-		Long: aziclicommon.BuildCliLongTemplate(`This command applies the plan to the remote repo.
+		Short: "Apply the plan to the remote repository",
+		Long: aziclicommon.BuildCliLongTemplate(`This command applies the plan to the remote repository.
 
 Examples:
-  # apply the plan to the remote repo
+  # apply the plan to the remote repository
   permguard apply`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForApplyWorkspace(deps, cmd, v)
