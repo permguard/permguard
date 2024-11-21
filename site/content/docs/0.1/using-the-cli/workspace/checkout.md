@@ -29,10 +29,10 @@ Using the `checkout` command, it is possible to checkout out a remote repository
 
 The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
-This command checks out the contents of a remote repository to the local working directory.
+This command checks out the contents of a remote repository to the local permguard workspace.
 
 Examples:
-  # check out the contents of a remote repository to the local working directory
+  # check out the contents of a remote repository to the local permguard workspace
   permguard checkout dev/268786704340/magicfarmacia-v0.0
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/

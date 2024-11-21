@@ -83,7 +83,7 @@ Finally, initialize the working directory and associate it with a Permguard `rem
 
 ## Clone an existing repo
 
-There are advanced cases where a Permguard repo has already been created and it is required to recovery the configuration files to a local working directory.
+There are advanced cases where a Permguard repo has already been created and it is required to recovery the configuration files to a local permguard workspace.
 
 In this case, it is just necessary to clone the Permguard repo:
 

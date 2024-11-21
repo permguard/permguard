@@ -50,8 +50,8 @@ Available Commands:
   apply       Apply the plan to the remote repo
   authn       Manage tenants and identities on the remote server
   authz       Manage repos on the remote server
-  checkout    Check out the contents of a remote repository to the local working directory
-  clone       Clone a remote repository to the local working directory
+  checkout    Check out the contents of a remote repository to the local permguard workspace
+  clone       Clone a remote repository to the local permguard workspace
   completion  Generate the autocompletion script for the specified shell
   config      Configure the command line settings
   help        Help about any command
