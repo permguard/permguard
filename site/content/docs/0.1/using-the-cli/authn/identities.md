@@ -60,7 +60,7 @@ permguard authn identities create --account 268786704340 --kind user --name nico
 output:
 
 ```bash
-7e43160f-d4a3-4301-9139-6e2b78b9290b: nicolagallo
+e151cba136214be98b2d1a02e797db60: nicolagallo
 ```
 
 <details>
