@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `init` command, it is possible to initialize a new working directory.
+Using the `init` command, it is possible to initialize a new permguard workspace.
 
 ```text
   ____                                               _
@@ -29,7 +29,7 @@ Using the `init` command, it is possible to initialize a new working directory.
 
 The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
-This command initializes a working directory.
+This command initializes a permguard workspace.
 
 Examples:
   # initialize a new working directory
@@ -55,7 +55,7 @@ The output from your current version of Permguard may differ from the example pr
 
 ## Initialize a workspace
 
-The `permguard init` command initializes a working directory.
+The `permguard init` command initializes a new permguard workspace.
 
 ```bash
 permguard init

@@ -23,12 +23,12 @@ Permguard provides a Command Line Interface (CLI) for managing authentication me
 
 Authentication is handled exclusively through the CLI, while authorization is managed via both the CLI and the Policy Language.
 
-The authorization process follows a code-first approach, and when dealing with Schemas, Policies, and Permissions, the CLI should be executed from a working directory that contains configuration files written in either YAML or PermScript.
+The authorization process follows a code-first approach, and when dealing with Schemas, Policies, and Permissions, the CLI should be executed from a permguard workspace that contains configuration files written in either YAML or PermScript.
 
-There are three methods to create a working directory and associate it with a Permguard repo:
+There are three methods to create a permguard workspace and associate it with a Permguard repo:
 
-- Initialize a new repo in a working directory
-- Clone an existing repo into a working directory
+- Initialize a new repo in a permguard workspace
+- Clone an existing repo into a permguard workspace
 - Fork an existing repo into a working direct.
 
 ## Working directory contents

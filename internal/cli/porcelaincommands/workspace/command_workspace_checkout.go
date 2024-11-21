@@ -73,7 +73,7 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 	return nil
 }
 
-// CreateCommandForWorkspaceCheckout creates a command for checkoutializing a working directory.
+// CreateCommandForWorkspaceCheckout creates a command for checkoutializing a permguard workspace.
 func CreateCommandForWorkspaceCheckout(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "checkout",

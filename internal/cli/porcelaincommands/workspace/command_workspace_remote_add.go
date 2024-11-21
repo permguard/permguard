@@ -80,7 +80,7 @@ func runECommandForRemoteAddWorkspace(args []string, deps azcli.CliDependenciesP
 	return nil
 }
 
-// CreateCommandForWorkspaceRemoteAdd creates a command for remoteaddializing a working directory.
+// CreateCommandForWorkspaceRemoteAdd creates a command for remoteaddializing a permguard workspace.
 func CreateCommandForWorkspaceRemoteAdd(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "add",

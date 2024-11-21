@@ -67,7 +67,7 @@ func runECommandForRefreshWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 	return nil
 }
 
-// CreateCommandForWorkspaceRefresh creates a command for refreshializing a working directory.
+// CreateCommandForWorkspaceRefresh creates a command for refreshializing a permguard workspace.
 func CreateCommandForWorkspaceRefresh(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "refresh",

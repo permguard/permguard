@@ -67,7 +67,7 @@ func runECommandForValidateWorkspace(deps azcli.CliDependenciesProvider, cmd *co
 	return nil
 }
 
-// CreateCommandForWorkspaceValidate creates a command for validateializing a working directory.
+// CreateCommandForWorkspaceValidate creates a command for validateializing a permguard workspace.
 func CreateCommandForWorkspaceValidate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "validate",

@@ -67,7 +67,7 @@ func runECommandForRepoWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 	return nil
 }
 
-// CreateCommandForWorkspaceRepo creates a command for repoializing a working directory.
+// CreateCommandForWorkspaceRepo creates a command for repoializing a permguard workspace.
 func CreateCommandForWorkspaceRepo(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "repo",

@@ -56,7 +56,7 @@ Available Commands:
   config      Configure the command line settings
   help        Help about any command
   history     Show the history
-  init        Initialize a working directory
+  init        Initialize a permguard workspace
   objects     Manage the object store
   plan        Generate a plan of changes to apply to the remote repository based on the differences between the local and remote states
   pull        Fetch the latest changes from the remote repository and constructs the remote state.
