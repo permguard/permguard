@@ -87,9 +87,13 @@ permguard --help
 
 It's important to note that the output of the command line can be either in the default `TERMINAL` or `JSON` format by setting the output flag.
 
+For instance to list all accounts in the default terminal format, users can execute the following command:
+
 ```bash
 permguard accounts list
 ```
+
+To list all accounts in JSON format, users can execute the following command:
 
 ```bash
 permguard accounts list --output json
