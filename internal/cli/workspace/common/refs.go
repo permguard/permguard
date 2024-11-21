@@ -106,7 +106,7 @@ func NewRefInfoFromRepoName(remote string, accountID int64, repoName string) (*R
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid account ID")
 	}
 	if len(repoName) == 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repo name")
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository name")
 	}
 	return &RefInfo{
 		sourceType: remotePrefix,

@@ -25,11 +25,11 @@ Authentication is handled exclusively through the CLI, while authorization is ma
 
 The authorization process follows a code-first approach, and when dealing with Schemas, Policies, and Permissions, the CLI should be executed from a permguard workspace that contains configuration files written in either YAML or PermScript.
 
-There are three methods to create a permguard workspace and associate it with a Permguard repo:
+There are three methods to create a permguard workspace and associate it with a Permguard repository:
 
-- Initialize a new repo in a permguard workspace
-- Clone an existing repo into a permguard workspace
-- Fork an existing repo into a working direct.
+- Initialize a new repository in a permguard workspace
+- Clone an existing repository into a permguard workspace
+- Fork an existing repository into a working direct.
 
 ## Working directory contents
 
@@ -38,7 +38,7 @@ A `Permguard` working directory contains the following files:
 - Configuration files in either `YAML` or `PermScript` format.
 - A hidden `.permguard` directory which Permguard uses to store metadata and intermediate files that are automatically managed by Permguard and should not be modified manually. This directory should be added to the `.gitignore` file to prevent it from being committed to the source code version control.
 
-## Initialize a new repo
+## Initialize a new repository
 
 When starting a new project, the first step is to create an account:
 
@@ -56,7 +56,7 @@ permguard accounts create --name magicfarmacia-dev --output json
 }
 ```
 
-Next, create a repo:
+Next, create a repository:
 
 ```bash
 permguard authz  repos create --account 268786704340  --name magicfarmacia-v0.0 --output json
@@ -81,11 +81,11 @@ Finally, initialize the working directory and associate it with a Permguard `rem
  permguard checkout dev/268786704340/magicfarmacia-v0.0
 ```
 
-## Clone an existing repo
+## Clone an existing repository
 
-There are advanced cases where a Permguard repo has already been created and it is required to recovery the configuration files to a local permguard workspace.
+There are advanced cases where a Permguard repository has already been created and it is required to recovery the configuration files to a local permguard workspace.
 
-In this case, it is just necessary to clone the Permguard repo:
+In this case, it is just necessary to clone the Permguard repository:
 
 ```bash
  permguard clone permguard@server.permguard.com/268786704340/magicfarmacia-v0.0

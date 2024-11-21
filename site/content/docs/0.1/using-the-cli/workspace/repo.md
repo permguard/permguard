@@ -29,7 +29,7 @@ Using the `repo` command, it is possible to manage locally checked out repositor
 
 The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
-This command manages repo settings and operations.
+This command manages repository settings and operations.
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
 

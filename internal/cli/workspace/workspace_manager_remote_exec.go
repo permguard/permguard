@@ -42,7 +42,7 @@ const (
 func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
-			out(nil, "", fmt.Sprintf("Failed to check out the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
+			out(nil, "", fmt.Sprintf("Failed to check out the repository %s.", aziclicommon.KeywordText(repoURI)), nil, true)
 		}
 		return output, err
 	}
@@ -132,7 +132,7 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 // ExecCheckoutRepo checks out a repository.
 func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to checkout the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
+		out(nil, "", fmt.Sprintf("Failed to checkout the repository %s.", aziclicommon.KeywordText(repoURI)), nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
@@ -336,7 +336,7 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 // ExecCloneRepo clones a repository.
 func (m *WorkspaceManager) ExecCloneRepo(language, repoURI string, aapPort, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to clone the repo %s.", aziclicommon.KeywordText(repoURI)), nil, true)
+		out(nil, "", fmt.Sprintf("Failed to clone the repository %s.", aziclicommon.KeywordText(repoURI)), nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)

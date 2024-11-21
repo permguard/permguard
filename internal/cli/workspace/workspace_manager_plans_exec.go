@@ -89,7 +89,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 	}
 
 	// Executes the planning for the current head
-	out(nil, "", fmt.Sprintf("Initiating the planning process for repo %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
+	out(nil, "", fmt.Sprintf("Initiating the planning process for repository %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 
 	errPlanningProcessFailed := "Planning process failed."
 
@@ -258,7 +258,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 	}
 
 	// Executes the apply for the current head
-	out(nil, "", fmt.Sprintf("Initiating the apply process for repo %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
+	out(nil, "", fmt.Sprintf("Initiating the apply process for repository %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", "Preparing to read the plan.", nil, true)
