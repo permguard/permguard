@@ -22,8 +22,8 @@ The **Permguard CLI** provides a robust toolset for interacting with Permguard s
 
 The CLI is designed for two primary scenarios.
 
-- In the context of **Permguard Server Administration**: it enables the management of `accounts`, `identities`, `tenants`, and `repositories` directly on the remote server. This allows administrators to maintain and configure the system efficiently.
-- For developers: the CLI supports a complete **Policy-as-Code Workspace**. It facilitates the local development of `schemas`, `domains`, `resources`, `policies`, and `permissions`, integrating the essential toolchain required for the development lifecycle. These locally created configurations can then be seamlessly applied to the remote server, ensuring a consistent and scalable approach to policy deployment across environments.
+- In the context of **Permguard Server Administration**: it enables the management of `accounts`, `identity sources`, `identities`, `tenants`, and `repositories` directly on the remote server. This allows administrators to maintain and configure the system efficiently.
+- For developers, the CLI supports a complete **Policy-as-Code Workspace**. It facilitates the local development of configuration artifacts such as `schemas`, `domains`, `resources`, `policies`, and `permissions`, integrating the essential toolchain required for the development lifecycle. These locally created artifacts can then be seamlessly applied to the remote server, ensuring a consistent and scalable approach to policy deployment across environments.
 
 To view a list of commands available in the current Permguard version, users can run the `permguard` command without any additional arguments.
 
@@ -82,7 +82,7 @@ To obtain detailed help for a specific command, users can utilize the --help opt
 For instance, to access help information about the `accounts` subcommand, users can execute the following command:
 
 ```bash
-permguard --help
+permguard accounts --help
 ```
 
 It's important to note that the output of the command line can be either in the default `TERMINAL` or `JSON` format by setting the output flag.
