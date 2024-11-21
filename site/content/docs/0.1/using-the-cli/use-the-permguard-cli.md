@@ -62,7 +62,7 @@ Available Commands:
   pull        Fetch the latest changes from the remote repository and constructs the remote state.
   refresh     Scan source files in the current directory and synchronizes the local state
   remote      Manage remote server for tracking and interaction
-  repo        Manage repo settings and operations
+  repo        Manage repository settings and operations
   validate    Validate the local state for consistency and correctness
 
 Flags:

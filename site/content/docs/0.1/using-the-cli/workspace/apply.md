@@ -64,7 +64,7 @@ permguard apply
 output:
 
 ```bash
-Initiating the planning process for repo head/273165098782/9b3de5272b0447f2a8d1024937bdef11.
+Initiating the planning process for repository head/273165098782/9b3de5272b0447f2a8d1024937bdef11.
 Planning process completed successfully.
 The following changes have been identified and are ready to be applied:
 
@@ -74,7 +74,7 @@ The following changes have been identified and are ready to be applied:
 
 unchanged 1, created 1, modified 0, deleted 1
 
-Initiating the apply process for repo head/273165098782/9b3de5272b0447f2a8d1024937bdef11.
+Initiating the apply process for repository head/273165098782/9b3de5272b0447f2a8d1024937bdef11.
 Apply process completed successfully.
 Your workspace is synchronized with the remote repository: head/273165098782/9b3de5272b0447f2a8d1024937bdef11.
 ```

@@ -232,7 +232,7 @@ func (m *ConfigManager) ExecListRepos(output map[string]any, out aziclicommon.Pr
 			repos = append(repos, cfgRepoTxt)
 		}
 		if len(repos) == 0 {
-			out(nil, "", "Your workspace doesn't have any repo configured.", nil, true)
+			out(nil, "", "Your workspace doesn't have any repository configured.", nil, true)
 		} else {
 			out(nil, "", "Your workspace configured repos:\n", nil, true)
 			for _, repo := range repos {

@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	// commandNameForWorkspacesRepo is the command name for a workspace repo.
+	// commandNameForWorkspacesRepo is the command name for a workspace repository.
 	commandNameForWorkspacesRepo = "workspaces.repo"
 )
 
@@ -71,8 +71,8 @@ func runECommandForRepoWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 func CreateCommandForWorkspaceRepo(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "repo",
-		Short: `Manage repo settings and operations`,
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages repo settings and operations.`),
+		Short: `Manage repository settings and operations`,
+		Long:  aziclicommon.BuildCliLongTemplate(`This command manages repository settings and operations.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForRepoWorkspace(deps, cmd, v)
 		},

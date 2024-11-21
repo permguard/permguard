@@ -48,7 +48,7 @@ func (m *RemoteServerManager) GetServerRemoteRepo(remoteInfo *azicliwkscommon.Re
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: remote info is nil")
 	}
 	if repoInfo == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: repo info is nil")
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: repository info is nil")
 	}
 	appServer := fmt.Sprintf("%s:%d", remoteInfo.GetServer(), remoteInfo.GetAAPPort())
 	aapClient, err := aziclients.NewGrpcAAPClient(appServer)
@@ -68,10 +68,10 @@ func (m *RemoteServerManager) GetServerRemoteRepo(remoteInfo *azicliwkscommon.Re
 	}
 	srvRepo, err := papClient.FetchRepositoriesByName(1, 1, accountID, repo)
 	if err != nil || srvRepo == nil || len(srvRepo) == 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: repo %s does not exist", repo))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: repository %s does not exist", repo))
 	}
 	if srvRepo[0].Name != repo {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: repo %s not found", repo))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: repository %s not found", repo))
 	}
 	return &srvRepo[0], nil
 }
