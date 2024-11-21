@@ -205,10 +205,10 @@ func (m *WorkspaceManager) ExecListRemotes(out aziclicommon.PrinterOutFunc) (map
 	return output, err
 }
 
-// ExecListRepos lists the repos.
+// ExecListRepos lists the repositories.
 func (m *WorkspaceManager) ExecListRepos(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to list repos.", nil, true)
+		out(nil, "", "Failed to list repositories.", nil, true)
 		return output, err
 	}
 	output := m.ExecPrintContext(nil, out)

@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-Permguard supports multiple repos for each remote, providing flexible management for both coding and provisioning tasks. When making changes, it is crucial to specify the remote where these changes will be pushed.
+Permguard supports multiple repositories for each remote, providing flexible management for both coding and provisioning tasks. When making changes, it is crucial to specify the remote where these changes will be pushed.
 
 To ensure that changes are provisioned correctly, you must first check out the appropriate repository. This repository will then serve as the target for provisioning and deploying the updates.
 

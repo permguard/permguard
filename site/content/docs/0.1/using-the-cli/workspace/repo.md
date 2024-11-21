@@ -60,7 +60,7 @@ permguard repo
 output:
 
 ```bash
-Your workspace configured repos:
+Your workspace configured repositories:
 
   - *origin/273165098782/v1.0
 

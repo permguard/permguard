@@ -49,7 +49,7 @@ Available Commands:
   accounts    Manage accounts on the remote server
   apply       Apply the plan to the remote repository
   authn       Manage tenants and identities on the remote server
-  authz       Manage repos on the remote server
+  authz       Manage repositories on the remote server
   checkout    Check out the contents of a remote repository to the local permguard workspace
   clone       Clone a remote repository to the local permguard workspace
   completion  Generate the autocompletion script for the specified shell

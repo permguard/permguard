@@ -234,7 +234,7 @@ func (m *ConfigManager) ExecListRepos(output map[string]any, out aziclicommon.Pr
 		if len(repos) == 0 {
 			out(nil, "", "Your workspace doesn't have any repository configured.", nil, true)
 		} else {
-			out(nil, "", "Your workspace configured repos:\n", nil, true)
+			out(nil, "", "Your workspace configured repositories:\n", nil, true)
 			for _, repo := range repos {
 				out(nil, "", fmt.Sprintf("	- %s", aziclicommon.KeywordText(repo)), nil, true)
 			}
