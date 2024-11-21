@@ -67,7 +67,7 @@ func runECommandForHistoryWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 	return nil
 }
 
-// CreateCommandForWorkspaceHistory creates a command for diffializing a working directory.
+// CreateCommandForWorkspaceHistory creates a command for diffializing a permguard workspace.
 func CreateCommandForWorkspaceHistory(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "history",

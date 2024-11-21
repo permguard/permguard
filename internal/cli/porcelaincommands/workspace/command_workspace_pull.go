@@ -67,7 +67,7 @@ func runECommandForPullWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 	return nil
 }
 
-// CreateCommandForWorkspacePull creates a command for pullializing a working directory.
+// CreateCommandForWorkspacePull creates a command for pullializing a permguard workspace.
 func CreateCommandForWorkspacePull(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pull",

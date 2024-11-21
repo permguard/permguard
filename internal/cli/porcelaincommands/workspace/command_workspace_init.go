@@ -68,12 +68,12 @@ func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 	return nil
 }
 
-// CreateCommandForWorkspaceInit creates a command for initializing a working directory.
+// CreateCommandForWorkspaceInit creates a command for initializing a permguard workspace.
 func CreateCommandForWorkspaceInit(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "init",
-		Short: "Initialize a working directory",
-		Long: aziclicommon.BuildCliLongTemplate(`This command initializes a working directory.
+		Short: "Initialize a permguard workspace",
+		Long: aziclicommon.BuildCliLongTemplate(`This command initializes a permguard workspace.
 
 Examples:
   # initialize a new working directory

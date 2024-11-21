@@ -73,7 +73,7 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps azcli.CliDependenci
 	return nil
 }
 
-// CreateCommandForWorkspaceRemoteRemove creates a command for remoteremoveializing a working directory.
+// CreateCommandForWorkspaceRemoteRemove creates a command for remoteremoveializing a permguard workspace.
 func CreateCommandForWorkspaceRemoteRemove(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "remove",

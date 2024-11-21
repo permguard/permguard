@@ -67,7 +67,7 @@ func runECommandForPlanWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 	return nil
 }
 
-// CreateCommandForWorkspacePlan creates a command for planializing a working directory.
+// CreateCommandForWorkspacePlan creates a command for planializing a permguard workspace.
 func CreateCommandForWorkspacePlan(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "plan",

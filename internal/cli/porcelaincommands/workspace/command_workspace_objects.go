@@ -25,8 +25,8 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -81,7 +81,6 @@ func runECommandForObjectsWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 		filterCommits = true
 	}
 
-
 	output, err := wksMgr.ExecObjects(includeStorage, includeCode, filterCommits, filterTrees, filterBlob, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsJSONOutput() {
@@ -99,7 +98,7 @@ func runECommandForObjectsWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 	return nil
 }
 
-// CreateCommandForWorkspaceObjects creates a command for diffializing a working directory.
+// CreateCommandForWorkspaceObjects creates a command for diffializing a permguard workspace.
 func CreateCommandForWorkspaceObjects(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "objects",

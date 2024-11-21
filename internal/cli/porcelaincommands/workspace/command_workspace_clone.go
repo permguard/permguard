@@ -105,7 +105,7 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 	return nil
 }
 
-// CreateCommandForWorkspaceClone creates a command for cloneializing a working directory.
+// CreateCommandForWorkspaceClone creates a command for cloneializing a permguard workspace.
 func CreateCommandForWorkspaceClone(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "clone",

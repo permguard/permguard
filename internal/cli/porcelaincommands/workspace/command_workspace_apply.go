@@ -67,7 +67,7 @@ func runECommandForApplyWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra
 	return nil
 }
 
-// CreateCommandForWorkspaceApply creates a command for applyializing a working directory.
+// CreateCommandForWorkspaceApply creates a command for applyializing a permguard workspace.
 func CreateCommandForWorkspaceApply(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "apply",
