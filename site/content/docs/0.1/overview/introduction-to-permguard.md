@@ -18,7 +18,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-`Permguard` is an Open Source Authorization Provider for cloud-native, edge, and multi-tenant apps, decoupled from application code and leveraging `Policy-as-Code` for centralized, scalable permission management.
+`Permguard` is an Open Source Zero-Trust Auth* Provider for cloud-native, edge, and multi-tenant apps, decoupled from application code and leveraging `Policy-as-Code` for centralized, scalable permission management.
 
 {{< callout context="note" icon="info-circle" >}}
 The decoupling between the authorization layer and the application code enables the administration of roles and permissions without requiring any changes to the application code.

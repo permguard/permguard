@@ -37,7 +37,7 @@ To view a list of commands available in the current Permguard version, users can
 
 The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
-Permguard is an Open Source Multi-Account and Multi-Tenant Authorization Provider.
+Permguard is an Open Source Multi-Account, Multi-Tenant, Zero-Trust Auth* Provider.
 
   Find more information at: https://www.permguard.com/docs/using-the-cli/how-to-use/
 

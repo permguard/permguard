@@ -20,7 +20,7 @@ seo:
 ---
 Companies and software solutions commonly adopt an `Authentication Provider` as a `central point to manage users`. By centrally managing users, different applications can avoid the need for custom authentication implementations and delegate authentication to the Authentication Provider.
 
-Similarly, software often necessitates a centralized solution for authorization. `Permguard` emerges as an `Authorization Provider` by implementing a `central point to manage authorizations`.
+Similarly, software often necessitates a centralized solution for authorization. `Permguard` emerges as an `Zero-Trust Auth* Provider` by implementing a `central point to manage authorizations`.
 
 {{< callout context="note" icon="info-circle" >}}
 Authorization is a complex aspect that should not be implemented separately in each application, similar to authentication. Building an authentication layer compliant with the latest security standards isn't a simple task, and the same applies to the authorization layer.

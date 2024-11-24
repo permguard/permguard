@@ -1,6 +1,6 @@
 ---
-title: "Authorization Provider"
-slug: "Authorization Provider"
+title: "Zero-Trust Auth* Provider"
+slug: "Zero-Trust Auth* Provider"
 description: ""
 summary: ""
 date: 2023-08-15T14:47:57+01:00
@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-`Permguard` is a modern `Authorization Provider` that implements an advanced authorization layer. It delivers dynamic access control by managing user permissions, roles, and policies, ensuring secure and efficient authorization across diverse systems and applications.
+`Permguard` is a modern `Zero-Trust Auth* Provider` that implements an advanced authorization layer. It delivers dynamic access control by managing user permissions, roles, and policies, ensuring secure and efficient authorization across diverse systems and applications.
 
 ## Infrastructure
 
