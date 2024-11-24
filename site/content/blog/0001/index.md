@@ -1,8 +1,8 @@
 ---
 title: "Welcome to Permguard"
 slug: "Welcome to Permguard"
-description: "Permguard is an Open Source Multi-Account and Multi-Tenant Authorization Provider."
-summary: "Permguard is an Open Source Multi-Account and Multi-Tenant Authorization Provider."
+description: "Permguard is an Open Source Multi-Account, Multi-Tenant, Zero-Trust Auth* Provider."
+summary: "Permguard is an Open Source Multi-Account, Multi-Tenant, Zero-Trust Auth* Provider."
 date: 2023-08-20T17:33:41+01:00
 lastmod: 2023-08-20T17:33:41+01:00
 draft: false
