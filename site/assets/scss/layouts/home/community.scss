@@ -1,6 +1,11 @@
 .community {
   padding-top: 10rem;
 
+  &__community-img {
+    min-width: 80px;
+    height: 32px;
+  }
+
   &__card {
     padding: 5.5rem 4rem;
     padding-bottom: 4.5rem;
@@ -52,8 +57,11 @@
     font-size: 16px;
     gap: 15px;
     border: none;
-    display: flex;
     align-items: center;
+    display: inline;
+    margin-right: auto;
+    color: white !important;
+    text-decoration: none !important;
 
     & img {
       margin-left: 8px;
@@ -88,8 +96,17 @@
       max-width: 100%;
     }
 
+    &__col {
+      &--right {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+    }
+
     &__btn {
       margin: 0 auto;
+      text-align: center;
     }
   }
 }
