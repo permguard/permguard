@@ -636,16 +636,19 @@ async def view_inventory(token: str = Depends(oauth2_scheme)):
   </div>
 </section>
 
-<!-- Section -->
-<!-- <section class="section pb-3 community">
+<section class="section pb-3 community">
   <div class="community__card row row-cols-2">
     <div class="col-16 col-lg-9 col-xl-8 community__col">
       <h5 class="text-gradient community__title text-center text-lg-start">
         Join our community
       </h5>
       <div class="community__description text-center text-lg-start">
-        <img src="/images/home/community.webp" alt="" />
-        <p>Join with more than 3k members</p>
+        <img
+          class="community__community-img"
+          src="/images/home/community.webp"
+          alt="community"
+        />
+        <p>Join a growing community of like-minded professionals</p>
       </div>
     </div>
     <div class="col-16 col-lg-7 col-xl-8 community__col community__col--right">
@@ -654,12 +657,16 @@ async def view_inventory(token: str = Depends(oauth2_scheme)):
       >
         Get support from our experts, learn from fellow devs
       </p>
-      <button class="community__btn">
+      <a
+        target="_blank"
+        href="https://join.slack.com/t/permguard/shared_invite/zt-2vbork9n4-QTNeAgkxkU2Almfd_PlDsg"
+        class="community__btn"
+      >
         <img src="/images/home/slack.webp" alt="Slack" />
         <span>Join Permguard’s Slack</span>
-      </button>
+      </a>
     </div>
   </div>
-</section> -->
+</section>
 
 {{ end }}
