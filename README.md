@@ -10,9 +10,7 @@
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=permguard_permguard&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=permguard_permguard)
 [![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=permguard_permguard&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=permguard_permguard)
 
-<p align="left">
-  <img src="https://raw.githubusercontent.com/permguard/permguard-assets/main/pink-txt//1line.svg" class="center" width="400px" height="auto"/>
-</p>
+[![Watch the video on YouTube](https://raw.githubusercontent.com/permguard/permguard-assets/refs/heads/main/video/permguard-thumbnail-preview.png)](https://www.youtube.com/watch?v=x2hRB2b59yc)
 
 `Permguard` is an Open Source Zero-Trust Auth* Provider for cloud-native, edge, and multi-tenant apps, decoupled from application code and leveraging `Policy-as-Code` for centralized, scalable permission management.
 
