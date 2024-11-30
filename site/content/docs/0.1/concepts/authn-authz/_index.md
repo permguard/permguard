@@ -1,6 +1,6 @@
 ---
-title: "Authn vs Authz"
-slug: "Authn vs Authz"
+title: "AuthN vs AuthZ"
+slug: "AuthN vs AuthZ"
 description: ""
 summary: ""
 date: 2023-08-01T00:16:04+01:00

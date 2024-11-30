@@ -1,6 +1,6 @@
 ---
-title: "Zero-Trust Auth* Provider"
-slug: "Zero-Trust Auth* Provider"
+title: "Authorization Provider"
+slug: "Authorization Provider"
 description: ""
 summary: ""
 date: 2023-08-15T14:47:57+01:00
@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-`Permguard` is a modern `Zero-Trust Auth* Provider` that implements an advanced authorization layer. It delivers dynamic access control by managing user permissions, roles, and policies, ensuring secure and efficient authorization across diverse systems and applications.
+`Permguard` is a modern `Authorization Provider` that implements an advanced authorization layer. It delivers dynamic access control by managing identities permissions and policies, ensuring secure and efficient authorization across diverse systems and applications.
 
 ## Infrastructure
 
@@ -51,7 +51,7 @@ Permguard adopts a `Policy as Code` approach, enabling users to define and manag
 Permguard integrates seamlessly with any application, whether deployed on **servers**, **containers**, or in **serverless** environments. Integration is facilitated through gRPC requests to the `Policy Decision Point`, and SDKs are available for various programming languages to ensure smooth implementation.
 
 {{< callout context="note" icon="info-circle" >}}
-A Policy Decision Point can be deployed close to the node, such as in a sidecar container. These proximity services synchronize with the remote Permguard instance, ensuring low latency and high availability. `Permission evaluation` is performed in `approximately 1ms`.
+A Policy Decision Point can be deployed close to the node, such as in a sidecar container. These proximity PDPD synchronize with the remote Permguard instance, ensuring low latency and high availability. `Permission evaluation` is performed in `approximately 1ms`.
 
 {{< /callout >}}
 
