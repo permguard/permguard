@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-Permguard strictly enforces naming conventions across all schemas, policies, and permissions to ensure consistency.
+Permguard strictly enforces naming conventions across all schemas and policies to ensure consistency.
 
 A key requirement is that everything must be in lowercase. To enhance the user experience during provisioning, all files will be automatically converted to lowercase before being provisioned to the Permguard server.
 
