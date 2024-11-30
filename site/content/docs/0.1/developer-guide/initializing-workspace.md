@@ -31,9 +31,9 @@ There are three methods to create a permguard workspace and associate it with a 
 - Clone an existing repository into a permguard workspace
 - Fork an existing repository into a working direct.
 
-## Working directory contents
+## Workspace
 
-A `Permguard` working directory contains the following files:
+A `Permguard` workspace contains the following files:
 
 - Policy files in `PermYAML` format.
 - A hidden `.permguard` directory which Permguard uses to store metadata and intermediate files that are automatically managed by Permguard and should not be modified manually. This directory should be added to the `.gitignore` file to prevent it from being committed to the source code version control.
@@ -73,7 +73,7 @@ permguard authz  repos create --account 268786704340  --name magicfarmacia-v0.0 
 }
 ```
 
-Finally, initialize the working directory and associate it with a Permguard `remote` server:
+Finally, initialize the workspace and associate it with a Permguard `remote` server:
 
 ```bash
  permguard init
