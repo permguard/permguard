@@ -28,45 +28,11 @@ Below is a specific scenario where an identity representing a pharmacy manager r
 
 The first step is to define a policy and associate it with a role by specifying the required permissions.
 
-{{< tabs "permguard-policies-permissions-definition" >}}
-{{< tab "permscript" >}}
-
-```python
-# This is a base policy to abstract the pharmacy branch.
-policy BranchOrder {
-  resources = uur::::pharmacy-branch:order/*
-}
-
-#  This policy covers operations related to the management of orders within a pharmacy branch.
-policy ManageBranchOrder extends BranchOrder {
-  actions = ra:order:*
-}
-
-# This policy covers operations related to the auditing of orders within a pharmacy branch.
-policy AuditBranchOrder extends BranchOrder {
-  actions = ra:order:view
-}
-
-#  This policy covers operations related to the management of inventory within a pharmacy branch.
-policy ViewBranchInventory {
-  resources = uur::::pharmacy-branch:inventory/*
-  actions = ra:inventory:view
-}
-
-# This permission covers operations related to the activities of the pharmacist within a pharmacy branch.
-permission BranchPharmacist {
-  permit = [ ViewBranchInventory, ManageBranchOrders ],
-  forbid = []
-}
-```
-
-{{< /tab >}}
-{{< tab "yaml" >}}
-
 ```yaml
 ---
 # This policy covers operations related to the management of orders within a pharmacy branch.
 name: manage-branch-order
+effect: permit
 actions:
   - ra:order:*
 resources:
@@ -74,6 +40,7 @@ resources:
 ---
 # This policy covers operations related to the auditing of orders within a pharmacy branch.
 name: audit-branch-order
+effect: permit
 actions:
   - ra:order:view
 resources:
@@ -81,6 +48,7 @@ resources:
 ---
 # This policy covers operations related to the management of inventory within a pharmacy branch.
 name: view-branch-inventory
+effect: permit
 actions:
   - ra:inventory:view
 resources:
@@ -88,21 +56,17 @@ resources:
 ---
 # This is a base policy to abstract the pharmacy branch.
 name: branch-pharmacist
-permit:
+policies:
   - view-branch-inventory
-  - manage-branch-orders
-forbid:
+  - manage-branch-order
 ```
-
-{{< /tab >}}
-{{< /tabs >}}
 
 ### Performing Permission Evaluation
 
 After creating and associating the policy with the role, the next step is to perform the permission evaluation within the application.
 
 ```python  {title="app.py"}
-has_permissions = permguard.check("uur::581616507495::iam:identity/google/pharmacist", "magicfarmacia-v0.0", "inventory", "view")
+has_permissions = permguard.check("uur::581616507495::iam:identity/google/pharmacist", "magicfarmacia", "inventory", "view")
 
 if has_permissions:
     print("Role can view inventory")
