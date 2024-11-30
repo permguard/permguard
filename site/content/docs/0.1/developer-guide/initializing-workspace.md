@@ -1,6 +1,6 @@
 ---
-title: "Initializing Working Directories"
-slug: "Initializing Working Directories"
+title: "Initializing Workspace"
+slug: "Initializing Workspace"
 description: ""
 summary: ""
 date: 2023-08-01T00:56:12+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "initializing-working-directories-8ef0d6939efb49d495094dd500a3f6bb"
+    identifier: "initializing-workspace-8ef0d6939efb49d495094dd500a3f6bb"
 weight: 3010
 toc: true
 seo:
@@ -21,9 +21,9 @@ seo:
 
 Permguard provides a Command Line Interface (CLI) for managing authentication metadata (AuthN) and authorization metadata and configurations (AuthZ) for applications.
 
-Authentication is handled exclusively through the CLI, while authorization is managed via both the CLI and the Policy Language.
+AuthZ administration is handled exclusively through the CLI, while AuthZ administration is managed via both the CLI and the Policy Language.
 
-The authorization process follows a code-first approach, and when dealing with Schemas, Policies, and Permissions, the CLI should be executed from a permguard workspace that contains configuration files written in either YAML or PermScript.
+The authorization process follows a code-first approach, and when dealing with Schemas and Policies, the CLI should be executed from a permguard workspace that contains configuration files written in PermYAML.
 
 There are three methods to create a permguard workspace and associate it with a Permguard repository:
 
@@ -35,7 +35,7 @@ There are three methods to create a permguard workspace and associate it with a 
 
 A `Permguard` working directory contains the following files:
 
-- Configuration files in either `YAML` or `PermScript` format.
+- Policy files in `PermYAML` format.
 - A hidden `.permguard` directory which Permguard uses to store metadata and intermediate files that are automatically managed by Permguard and should not be modified manually. This directory should be added to the `.gitignore` file to prevent it from being committed to the source code version control.
 
 ## Initialize a new repository

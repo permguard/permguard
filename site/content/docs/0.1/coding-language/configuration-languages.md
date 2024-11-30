@@ -19,12 +19,5 @@ seo:
   noindex: false # false (default) or true
 ---
 
-`Permguard` fully supports YAML as the primary configuration language for defining policies and permissions.
+`Permguard` fully supports PermYAML as the primary configuration language for defining policies.
 It is important to note that the definition of schemas is exclusively supported in YAML format.
-
-Additionally, while support for PermScript is planned, it is currently under development and not yet available for use.
-This ensures that users can rely on a stable and standardized approach for configuration while anticipating future enhancements.
-
-{{< callout context="caution" icon="alert-triangle" >}}
-PermScript is currently under development. Please stay tuned for future updates and announcements regarding its availability.
-{{< /callout >}}
