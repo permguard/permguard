@@ -36,6 +36,7 @@ Policies can be defined using either PermScript or YAML.
 ```json
 {
   "name": "view-branch-inventory",
+  "effect": "permit",
   "actions": ["inventory:view"],
   "resources": ["uur::::pharmacy-branch:inventory/*"]
 }

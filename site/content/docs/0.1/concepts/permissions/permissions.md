@@ -18,24 +18,6 @@ seo:
   noindex: false # false (default) or true
 ---
 
-In `Permguard`, multiple repositories can be created, and each of them can have multiple **permissions**.
+In `PermGuard`, the concept of permissions implies that multiple `policies` can be associated with an `identity`, allowing `fine-grained control` over what `actions` and `resources` the identity can access.
 
-{{< callout context="note" icon="info-circle" >}}
-In the context of the [MagicFarmacia sample](/docs/0.1/overview/adoption-through-example#integration-use-case-pharmacy-branch-management), the permission `branch-pharmacist` permission would be used to grant the ability to view the inventory and manage orders for a pharmacy branch.
-{{< /callout >}}
-
-## Permission
-
-A permission serves as a logical representation of a list of policies that can either be permitted or forbidden in an authorization model. Permissions are created to be ultimately associated with identities.
-
-{{< callout context="caution" icon="alert-triangle" >}}
-Permissions can be defined using either PermScript or YAML.
-{{< /callout >}}
-
-```json
-{
-  "name": "branch-pharmacist",
-  "permit": ["view-branch-inventory", "manage-branch-orders"],
-  "forbid": null
-}
-```
+Each policy defines specific actions and resources, enabling modular and scalable permission management.
