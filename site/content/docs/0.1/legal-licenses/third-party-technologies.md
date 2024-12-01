@@ -65,8 +65,11 @@ As our project evolves, we may integrate or reference additional technologies an
 ## Additional Disclaimer
 
 While we strive to include accurate disclaimers for every technology and product mentioned, we remind users that:
+
 - Any reference to a technology, product, or company is made for descriptive purposes only.
+
 - Ownership of all intellectual property remains with the respective owners.
+
 - **Permguard Project**, its creator **Nitro Agility**, and all contributors disclaim any liability for misunderstandings, omissions, or misinterpretations related to third-party affiliations.
 
 If you believe there are errors, omissions, or unclear references in this documentation, please contact us at **opensource@nitroagility.com**, and we will review and correct any inaccuracies promptly.

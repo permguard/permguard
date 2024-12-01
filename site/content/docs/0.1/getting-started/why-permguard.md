@@ -57,8 +57,11 @@ Using **APIs** or **CLI tools**, organizations can import identity data from the
 ### A Future of Simplified Authorization
 
 Permguard envisions a future where authorization is no longer an afterthought. By establishing a dedicated layer, it empowers organizations to:
+
 - Build systems that are secure and scalable.
+
 - Simplify governance and compliance.
+
 - Ensure consistent access control across different applications and environments.
 
 **Authorization** deserves the same focus and innovation that authentication has received. With Permguard, organizations have a reliable, flexible, and future-ready solution to manage permissions effectively.
