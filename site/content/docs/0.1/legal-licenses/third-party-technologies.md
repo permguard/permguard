@@ -20,8 +20,12 @@ seo:
 ---
 This page provides an overview of the technologies and languages used or referenced in our project. For each, we outline their source, licensing terms, and relevant disclaimers to ensure full transparency.
 
+---
+
 {{< callout context="caution" icon="alert-triangle" >}}
-When reviewing licenses, ensure that you are referencing the correct version of the documentation, related websites, or other materials for Permguard. These resources may change over time, and it is important to verify that the information aligns with the specific version of the software or materials you are using.
+When reviewing licenses, please ensure you are referencing the appropriate version of the documentation, related websites, or other materials for Permguard. Over time, these resources may be updated to reflect changes or improvements, particularly for third-party technologies outside our control. Verifying the correct version ensures that the information aligns with the specific software or materials you are using.
+
+If any part of this page contains content that references trademarks, technologies, or intellectual property of third parties, please note that **Permguard Project**, **Nitro Agility**, and all contributors are not affiliated with, endorsed, or sponsored by such entities, unless explicitly stated otherwise. For any doubts or corrections, please contact us at **opensource@nitroagility.com**, and we will promptly address potential inaccuracies.
 {{< /callout >}}
 
 ---
@@ -64,3 +68,5 @@ While we strive to include accurate disclaimers for every technology and product
 - Any reference to a technology, product, or company is made for descriptive purposes only.
 - Ownership of all intellectual property remains with the respective owners.
 - **Permguard Project**, its creator **Nitro Agility**, and all contributors disclaim any liability for misunderstandings, omissions, or misinterpretations related to third-party affiliations.
+
+If you believe there are errors, omissions, or unclear references in this documentation, please contact us at **opensource@nitroagility.com**, and we will review and correct any inaccuracies promptly.

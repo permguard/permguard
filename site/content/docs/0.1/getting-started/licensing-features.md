@@ -23,7 +23,7 @@ seo:
 For more information about legal terms and licenses, please visit [Legal & Licenses](/docs/0.1/legal-licenses).
 
 {{< callout context="caution" icon="alert-triangle" >}}
-When reviewing licenses, ensure that you are referencing the correct version of the documentation, related websites, or other materials for Permguard. These resources may change over time, and it is important to verify that the information aligns with the specific version of the software or materials you are using.
+When reviewing licenses, please ensure you are referencing the appropriate version of the documentation, related websites, or other materials for Permguard. Over time, these resources may be updated to reflect changes or improvements, particularly for third-party technologies outside our control. Verifying the correct version ensures that the information aligns with the specific software or materials you are using.
 {{< /callout >}}
 
 ## Key Goals of Permguard
