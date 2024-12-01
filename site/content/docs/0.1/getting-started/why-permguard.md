@@ -54,7 +54,7 @@ Just like authentication has matured with dedicated identity providers and stand
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d11.svg"/>
-</div><br/>
+</div>
 
 Permguard follows the **Bring Your Own Identity (BYOI)** approach, allowing you to integrate with existing identity providers. Examples include open-source solutions like **Keycloak**, as well as commercial identity platforms. This flexibility ensures that organizations can continue using their preferred authentication systems while leveraging Permguard for robust authorization management.
 

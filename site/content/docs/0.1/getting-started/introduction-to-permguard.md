@@ -42,7 +42,7 @@ Permguard may seem complex, but it’s not: its internal architecture is sophist
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d13.svg"/>
-</div><br/>
+</div>
 
 It follows a `Bring Your Own Identity (BYOI)` approach, meaning it works with your existing authentication system instead of replacing it.
 You can configure identity sources to migrate identities from your current `identity provider`, ensuring all permissions are managed consistently and centrally, no matter where you use **Permguard**.
@@ -56,14 +56,14 @@ Developers can use their preferred language from the ones integrated, while ensu
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d18.svg"/>
-</div><br/>
+</div>
 
 `PermGuard` uses a common `schema` to define `Resources`, `Actions`, and `Identities`, ensuring consistency.
 Each language is integrated with a small abstraction layer that doesn’t limit developers, except for a few reserved keywords.
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d19.svg"/>
-</div><br/>
+</div>
 
 {{< callout context="note" icon="info-circle" >}}
 To enforce the access control process, the application can integrate one of the available **SDKs** or manually integrate the native **APIs**.
@@ -73,7 +73,7 @@ This approach allows detailed permissions to specify who or what can access reso
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d14.svg"/>
-</div><br/>
+</div>
 
 - `Who`: *Identities (Users and Roles)*
 - `Can Access`: *Permissions granted by attaching policies*
