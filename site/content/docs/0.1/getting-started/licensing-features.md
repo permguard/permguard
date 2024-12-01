@@ -20,6 +20,12 @@ seo:
 ---
 **Permguard** is an open-source project licensed under the **Apache-2.0 license**. Its core objective is to act as a flexible and powerful **authorization provider** that supports policies written in various languages. In addition, it introduces an **opinionated layer** to guide how **schemas** and **models** for authorization (AuthZ) and authentication (AuthN) should be structured.
 
+For more information about legal terms and licenses, please visit [Legal & Licenses](/docs/0.1/legal-licenses).
+
+{{< callout context="caution" icon="alert-triangle" >}}
+When reviewing licenses, ensure that you are referencing the correct version of the documentation, related websites, or other materials for Permguard. These resources may change over time, and it is important to verify that the information aligns with the specific version of the software or materials you are using.
+{{< /callout >}}
+
 ## Key Goals of Permguard
 
 - **Multi-Policy Execution**: Permguard is designed to execute policies written in different languages, enabling flexibility and interoperability across various systems.
