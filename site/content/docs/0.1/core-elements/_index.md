@@ -1,6 +1,6 @@
 ---
-title: "Concepts"
-slug: "Concepts"
+title: "Core Elements"
+slug: "Core Elements"
 description: ""
 summary: ""
 date: 2023-08-21T22:48:33+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "concepts-edd12b0fb09e73751c408fdf0c1a0025"
+    identifier: "core-elements-edd12b0fb09e73751c408fdf0c1a0025"
 weight: 2000
 toc: true
 seo:
