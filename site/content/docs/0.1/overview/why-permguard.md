@@ -21,7 +21,6 @@ seo:
 
 ## Why Keycloak, Okta, and Auth0 are not Competitors to Permguard
 
-
 A common question that arises is how `Permguard` compares to `Keycloak`, `Okta`, and `Auth0`, especially since all these solutions seem to deal with access control. While it’s true that these products include some authorization capabilities, their primary focus and the depth of their functionality differ significantly from what Permguard offers.
 
 {{< callout context="note" icon="info-circle" >}}
