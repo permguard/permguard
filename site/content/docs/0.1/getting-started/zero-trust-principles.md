@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-**Permguard** is designed with Zero Trust principles at its core, leveraging the **ZTAuth*** architecture to ensure secure, scalable, and reliable authorization in modern, distributed environments.
+**Permguard** is designed with Zero Trust principles at its core, leveraging the **ZTAuth\*** architecture to ensure secure, scalable, and reliable authorization in modern, distributed environments.
 
 ---
 
@@ -36,35 +36,64 @@ seo:
 
 ---
 
-## How Permguard Implements ZTAuth*
+## How Permguard Implements ZTAuth\*
 
-**Permguard** adopts the **ZTAuth*** architecture to bring Zero Trust principles into the realm of authorization. Here's how:
+**Permguard** adopts the **ZTAuth\*** architecture to bring Zero Trust principles into the realm of authorization. To understand how this works, let’s use a comparison:
 
-- **Decoupled Authorization**
-  Permguard separates authorization from authentication, ensuring that access control is managed independently of identity verification. This enables consistent authorization policies across different systems and identity providers.
+- **ZTNA (Zero Trust Network Access)**: Ensures secure, identity-based access to networks or applications by applying least privilege at the network boundary.
 
-- **Policy-Driven Access**
-  Authorization decisions in Permguard are based on clearly defined policies that align with Zero Trust principles. These policies are versioned, auditable, and enforce least privilege access.
+- **ZTAuth\* (Zero Trust Auth\*)**: Ensures secure, identity-based execution of actions on resources by enforcing least privilege at the application boundary. Built for eventual consistency, the security model is incrementally synchronized across applicative nodes in an immutable, versioned manner.
 
-- **Proximity Nodes for Autonomy**
-  Permguard supports **proximity nodes**, allowing policies and permissions to be enforced even in partially connected or disconnected environments. This ensures continuity and security, regardless of network availability.
+{{< callout context="tip" icon="rocket" >}}
+Asynchronous by Design: Built to Mirror Reality, Not Mask It — Robust Where Synchronous Fails.
+{{< /callout >}}
 
-- **Bring Your Own Identity (BYOI)**
-  Permguard integrates seamlessly with existing identity providers, such as Keycloak or commercial solutions. This flexibility ensures that organizations can adopt Zero Trust authorization without disrupting their current authentication workflows.
+The ZTAuth\* architecture supports administrative services like:
+
+- **Account Administration Point (AAP)**: Manages accounts and related configurations.
+
+- **Policy Administration Point (PAP)**: Defines and manages policies.
+
+- **Policy Information Point (PIP):** Provides information required to make authorization decisions.
+
+- **Policy Decision Point (PDP):** Evaluates policies and makes decisions.
+
+- **Policy Enforcement Point (PEP):** Enforces decisions made by the PDP.
+
+However, **ZTAuth\*** introduces a significant difference: it defines **Auth\*** models that can be transferred to `proximity PDP`.
+These models are incrementally synchronized to application nodes as git-like commit-based snapshots. To ensure proper functionality, these models must have the following characteristics:
+
+- **Transferable and Verifiable:** Operates smoothly across systems and environments, with verifiable origins certified by the central PDP.
+
+- **Versionable and Immutable:** Ensures integrity, auditability, and backward compatibility for secure and reliable operations.
+
+- **Resilient to Disconnection:** Supports eventual consistency, allowing functionality in partially connected or disconnected environments.
 
 ---
 
-## Why ZTAuth* Matters for Authorization
+## Application Boundaries
 
-The **ZTAuth*** architecture brings key benefits to modern authorization systems:
+**ZTAuth\*** is designed to work with `eventual consistency`, supporting environments where connectivity is partial or network reliability is limited. Changes are packaged into versioned, immutable data structures and distributed asynchronously in incremental updates.
 
-- **Scalability**: Policies and permissions are designed to scale across multi-account and multi-tenant environments.
+Every resource action executed at the application boundary is verified against strict, identity-based security policies defined by an authorization schema. The **application boundary** refers not only to APIs exposed to external consumers but also to interactions between machines or services within the application ecosystem. These interactions can involve various protocols and technologies, including synchronous requests, asynchronous messaging, and event-driven architectures. By covering all these layers, **ZTAuth\*** ensures that security policies are enforced consistently across different communication methods.
 
-- **Governance-Ready**: All policies are versionable and auditable, making it easier to align with compliance requirements.
+Today, the application boundary is no longer limited to traditional ingress APIs. It also includes:
 
-- **Flexibility**: Supports integration with diverse systems and identity providers, enabling seamless adoption.
+- Event streaming,
 
-By adopting ZTAuth*, Permguard empowers organizations to implement **Zero Trust authorization** that is robust, scalable, and future-proof.
+- Messaging systems,
+
+- AI agents,
+
+- IoT sensors,
+
+and many more technologies. These components all interact within and beyond the application boundary.
+
+In the **ZTAuth\*** architecture, each application boundary—whether it represents a single microservice or a larger system—has a **Policy Decision Point (PDP)** deployed. Communication between application boundaries occurs when one boundary requests an action on a resource managed by another boundary. When the request is received, it is securely executed using identity-based policies and enforcing the principle of least privilege at the application boundary.
+
+This approach makes it easier to envision how different organizations, operating across various networks, could securely federate their systems. With each application boundary enforcing its own policies while communicating securely with others, the model offers scalability and security for distributed environments.
+
+By reviewing the diagram, you can better understand how **ZTAuth\*** compares to **Zero Trust Network Access (ZTNA)**. While ZTNA secures network boundaries, **ZTAuth\*** focuses on securing application boundaries, ensuring granular control and consistent enforcement of security policies.
 
 ---
 
@@ -82,4 +111,4 @@ To explore these concepts further, refer to the following articles:
 
 ---
 
-With Permguard and ZTAuth*, authorization is no longer an afterthought—it is a core component of modern security.
+With Permguard and ZTAuth\*, authorization is no longer an afterthought—it is a core component of modern security.
