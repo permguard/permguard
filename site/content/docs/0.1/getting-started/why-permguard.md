@@ -27,9 +27,8 @@ Permguard may seem complex, but it’s not: its internal architecture is sophist
 ### The Problem with Authorization Today
 
 <div style="text-align: center">
-  <img alt="Permguard Policies" src="/images/diagrams/d7.png"/>
+  <img alt="Permguard" src="/images/diagrams/d7.svg"/>
 </div><br/>
-
 
 Most systems treat **authorization** as a secondary concern, tightly coupled to applications or identity providers. This creates several challenges:
 
@@ -40,6 +39,10 @@ Most systems treat **authorization** as a secondary concern, tightly coupled to 
 
 ### The Need for a Dedicated Authorization Layer
 
+<div style="text-align: center">
+  <img alt="Permguard" src="/images/diagrams/d8.svg"/>
+</div><br/>
+
 Just like authentication has matured with dedicated identity providers and standardized protocols, **authorization also needs its own dedicated layer**. This layer should be:
 
 - **Standardized**: A consistent way to define, enforce, and manage permissions across systems.
@@ -49,11 +52,19 @@ Just like authentication has matured with dedicated identity providers and stand
 
 ### Integration with Your Own Identity Provider
 
+<div style="text-align: center">
+  <img alt="Permguard" src="/images/diagrams/d11.svg"/>
+</div><br/>
+
 Permguard follows the **Bring Your Own Identity (BYOI)** approach, allowing you to integrate with existing identity providers. Examples include open-source solutions like **Keycloak**, as well as commercial identity platforms. This flexibility ensures that organizations can continue using their preferred authentication systems while leveraging Permguard for robust authorization management.
 
 Using **APIs** or **CLI tools**, organizations can import identity data from their chosen provider into Permguard, such as user roles or groups. Importantly, interactions with identity providers are not built into Permguard itself. This design choice ensures that Permguard remains vendor-agnostic, focusing exclusively on authorization.
 
 ### What Permguard Brings to the Table
+
+<div style="text-align: center">
+  <img alt="Permguard" src="/images/diagrams/d9.svg"/>
+</div><br/>
 
 **Permguard** is designed to address the challenges of authorization by providing an open-source, flexible, and dedicated solution. Key features include:
 
@@ -64,6 +75,10 @@ Using **APIs** or **CLI tools**, organizations can import identity data from the
 - **Integration-First Design**: Permguard supports multiple policy languages and flexible APIs, making it easy to integrate into existing systems.
 
 ### A Future of Simplified Authorization
+
+<div style="text-align: center">
+  <img alt="Permguard" src="/images/diagrams/d12.svg"/>
+</div><br/>
 
 Permguard envisions a future where authorization is no longer an afterthought. By establishing a dedicated layer, it empowers organizations to:
 

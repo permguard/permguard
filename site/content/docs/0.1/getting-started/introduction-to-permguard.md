@@ -40,6 +40,10 @@ Permguard may seem complex, but it’s not: its internal architecture is sophist
 
 **Permguard** can be deployed anywhere: `public or private clouds`, `managed infrastructure`, `Kubernetes`, `serverless` systems, or even in `partially connected` environments where consistent connectivity is a challenge. It is also ideal for use in `edge nodes` and `IoT` ecosystems, ensuring secure and consistent permission management across diverse setups.
 
+<div style="text-align: center">
+  <img alt="Permguard" src="/images/diagrams/d13.svg"/>
+</div><br/>
+
 It follows a `Bring Your Own Identity (BYOI)` approach, meaning it works with your existing authentication system instead of replacing it.
 You can configure identity sources to migrate identities from your current `identity provider`, ensuring all permissions are managed consistently and centrally, no matter where you use **Permguard**.
 
@@ -58,6 +62,10 @@ To enforce the access control process, the application can integrate one of the 
 {{< /callout >}}
 
 This approach allows detailed permissions to specify who or what can access resources, while keeping the system flexible and easy to use.
+
+<div style="text-align: center">
+  <img alt="Permguard" src="/images/diagrams/d14.svg"/>
+</div><br/>
 
 - `Who`: *Identities (Users and Roles)*
 - `Can Access`: *Permissions granted by attaching policies*
