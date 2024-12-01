@@ -1,6 +1,6 @@
 ---
-title: "Initializing Workspace"
-slug: "Initializing Workspace"
+title: "Initializing the Workspace"
+slug: "Initializing the Workspace"
 description: ""
 summary: ""
 date: 2023-08-01T00:56:12+01:00
