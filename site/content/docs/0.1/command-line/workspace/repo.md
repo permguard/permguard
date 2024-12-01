@@ -62,7 +62,7 @@ output:
 ```bash
 Your workspace configured repositories:
 
-  - *origin/273165098782/v1.0
+  - *origin/273165098782/magicfarmacia
 
 ```
 
@@ -83,7 +83,7 @@ output:
     {
       "is_head": true,
       "ref": "refs/repos/origin/273165098782/9b3de5272b0447f2a8d1024937bdef11",
-      "repo": "origin/273165098782/v1.0"
+      "repo": "origin/273165098782/magicfarmacia"
     }
   ]
 }

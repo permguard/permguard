@@ -33,7 +33,7 @@ This command checks out the contents of a remote repository to the local permgua
 
 Examples:
   # check out the contents of a remote repository to the local permguard workspace
-  permguard checkout dev/268786704340/magicfarmacia-v0.0
+  permguard checkout dev/268786704340/magicfarmacia
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
 
@@ -58,13 +58,13 @@ The output from your current version of Permguard may differ from the example pr
 The `permguard checkout` command allows you to check out a remote repository locally.
 
 ```bash
-permguard checkout origin/273165098782/v1.0
+permguard checkout origin/273165098782/magicfarmacia
 ```
 
 output:
 
 ```bash
-Repo v1.0 has been added.
+Repo magicfarmacia has been added.
 ```
 
 <details>
@@ -73,7 +73,7 @@ Repo v1.0 has been added.
   </summary>
 
 ```bash
-permguard checkout origin/273165098782/v1.0 --output json
+permguard checkout origin/273165098782/magicfarmacia --output json
 ```
 
 output:
@@ -82,7 +82,7 @@ output:
 {
   "repos": [
     {
-      "repo": "v1.0"
+      "repo": "magicfarmacia"
     }
   ]
 }

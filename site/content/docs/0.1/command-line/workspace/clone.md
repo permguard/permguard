@@ -33,7 +33,7 @@ This command clones a remote repository to the local permguard workspace.
 
 Examples:
   # clone a remote repository to the local permguard workspace
-  permguard clone 268786704340/magicfarmacia-v0.0
+  permguard clone 268786704340/magicfarmacia
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
 
@@ -60,15 +60,15 @@ The output from your current version of Permguard may differ from the example pr
 The `permguard clone` command allows you to clone a remote repository locally.
 
 ```bash
-permguard clone permguard@localhost/273165098782/v1.0
+permguard clone permguard@localhost/273165098782/magicfarmacia
 ```
 
 output:
 
 ```bash
-Initialized empty permguard repository in 'v1.0'.
+Initialized empty permguard repository in 'magicfarmacia'.
 Remote origin has been added.
-Repo v1.0 has been added.
+Repo magicfarmacia has been added.
 ```
 
 <details>
@@ -77,7 +77,7 @@ Repo v1.0 has been added.
   </summary>
 
 ```bash
-permguard clone permguard@localhost/273165098782/v1.0 --output json
+permguard clone permguard@localhost/273165098782/magicfarmacia --output json
 ```
 
 output:
@@ -86,7 +86,7 @@ output:
 {
   "repos": [
     {
-      "repo": "v1.0"
+      "repo": "magicfarmacia"
     }
   ]
 }

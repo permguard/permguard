@@ -59,7 +59,7 @@ permguard accounts create --name magicfarmacia-dev --output json
 Next, create a repository:
 
 ```bash
-permguard authz  repos create --account 268786704340  --name magicfarmacia-v0.0 --output json
+permguard authz  repos create --account 268786704340  --name magicfarmacia --output json
 {
   "repositories": [
     {
@@ -67,7 +67,7 @@ permguard authz  repos create --account 268786704340  --name magicfarmacia-v0.0 
       "created_at": "2024-08-25T14:50:38.003Z",
       "updated_at": "2024-08-25T14:50:38.003Z",
       "account_id": 268786704340,
-      "name": "magicfarmacia-v0.0"
+      "name": "magicfarmacia"
     }
   ]
 }
@@ -78,7 +78,7 @@ Finally, initialize the workspace and associate it with a Permguard `remote` ser
 ```bash
  permguard init
  permguard remote add dev server.permguard.com
- permguard checkout dev/268786704340/magicfarmacia-v0.0
+ permguard checkout dev/268786704340/magicfarmacia
 ```
 
 ## Clone an existing repository
@@ -88,5 +88,5 @@ There are advanced cases where a Permguard repository has already been created a
 In this case, it is just necessary to clone the Permguard repository:
 
 ```bash
- permguard clone permguard@server.permguard.com/268786704340/magicfarmacia-v0.0
+ permguard clone permguard@server.permguard.com/268786704340/magicfarmacia
 ```
