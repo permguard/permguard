@@ -1,6 +1,6 @@
 ---
-title: "Adoption Through Example"
-slug: "Adoption Through Example"
+title: "Learn by Example"
+slug: "Learn by Example"
 description: ""
 summary: ""
 date: 2023-08-15T14:47:57+01:00
@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "adoption-through-example-8c89ddc8339f83444fc4b97264bd5c45"
-weight: 1004
+weight: 1005
 toc: true
 seo:
   title: "" # custom title (optional)

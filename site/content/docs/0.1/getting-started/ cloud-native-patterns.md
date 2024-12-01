@@ -1,6 +1,6 @@
 ---
-title: "Patterns Through Use Cases"
-slug: "Patterns Through Use Cases"
+title: "Cloud Native Patterns"
+slug: "Cloud Native Patterns"
 description: ""
 summary: ""
 date: 2023-08-21T22:42:17+01:00
@@ -9,8 +9,8 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "patterns-through-use-cases-ff808103155aea16d2022dd1284416bf"
-weight: 1006
+    identifier: "cloud-native-patterns-ff808103155aea16d2022dd1284416bf"
+weight: 1004
 toc: true
 seo:
   title: "" # custom title (optional)
