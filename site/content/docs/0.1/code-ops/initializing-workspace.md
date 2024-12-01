@@ -33,7 +33,7 @@ There are three methods to create a permguard workspace and associate it with a 
 
 ## Workspace
 
-A `Permguard` workspace contains the following files:
+A **Permguard** workspace contains the following files:
 
 - Policy files in `PermYAML` format.
 - A hidden `.permguard` directory which Permguard uses to store metadata and intermediate files that are automatically managed by Permguard and should not be modified manually. This directory should be added to the `.gitignore` file to prevent it from being committed to the source code version control.

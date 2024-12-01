@@ -19,14 +19,14 @@ seo:
   noindex: false # false (default) or true
 ---
 
-`Permguard` implements the concept of `multi-account`, allowing the creation of multiple **accounts**.
+**Permguard** implements the concept of `multi-account`, allowing the creation of multiple **accounts**.
 These accounts are isolated from one another, enabling each account to have its distinct set of tenants, identities, repositories, schemas, policies and permissions.
 
 {{< callout context="caution" icon="alert-triangle" >}}
 It is recommended to utilize a distinct account for each environment, such as development, staging, and production, this as a best practice to mitigate potential security risks.
 {{< /callout >}}
 
-It is important to note that the `Permguard` does not include an authentication layer. It is the responsibility of the adopter to either implement or integrate the authentication layer at the application level.
+It is important to note that the **Permguard** does not include an authentication layer. It is the responsibility of the adopter to either implement or integrate the authentication layer at the application level.
 
 {{< callout context="note" icon="info-circle" >}}
 In the context of the [MagicFarmacia sample](/docs/0.1/overview/adoption-through-example#integration-use-case-pharmacy-branch-management), the `magicfarmacia-dev` account represents the development environment, while the `magicfarmacia-prod` account represents the production environment.

@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-`Permguard` divide errors into categories based on the error code. The error code is a 5 digit number that represents the error category.
+**Permguard** divide errors into categories based on the error code. The error code is a 5 digit number that represents the error category.
 
 ## 00xxx Generic errors
 
