@@ -26,6 +26,11 @@ Permguard may seem complex, but it’s not: its internal architecture is sophist
 
 ### The Problem with Authorization Today
 
+<div style="text-align: center">
+  <img alt="Permguard Policies" src="/images/diagrams/d7.png"/>
+</div><br/>
+
+
 Most systems treat **authorization** as a secondary concern, tightly coupled to applications or identity providers. This creates several challenges:
 
 - **No Standardization**: Authorization lacks universal protocols or dedicated frameworks, unlike authentication, which is more mature.
