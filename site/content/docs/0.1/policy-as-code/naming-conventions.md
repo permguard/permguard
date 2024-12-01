@@ -23,7 +23,7 @@ Permguard strictly enforces naming conventions across all schemas and policies t
 
 A key requirement is that everything must be in lowercase. To enhance the user experience during provisioning, all files will be automatically converted to lowercase before being provisioned to the Permguard server.
 
-Additionally, all names within the schema are validated using a predefined [validators](/docs/0.1/internals/validators/common-validators) pattern.
+Additionally, all names within the schema are validated using a predefined [validators](/docs/0.1/core-stack/validators/common-validators) pattern.
 
 There are only two exceptions:
 

@@ -24,5 +24,5 @@ seo:
 As a best practice, deploying the services in a single instance for production environments is not recommended. It is preferable to deploy the services separately in a distributed manner. This approach enables independent scaling of each service, enhancing flexibility and performance.
 
 {{< callout context="note" icon="info-circle" >}}
-Services can be configured either using Environment Variables or via [CLI flags](/docs/0.1/devops/deployment/cli-flags/). Each CLI flag corresponds to an equivalent Environment Variable named `PERMGUARD_<FLAG_NAME>`. For example, the `--debug` flag has an equivalent environment variable `PERMGUARD_DEBUG`.
+Services can be configured either using Environment Variables or via [CLI flags](/docs/0.1/devops/cli-flags/). Each CLI flag corresponds to an equivalent Environment Variable named `PERMGUARD_<FLAG_NAME>`. For example, the `--debug` flag has an equivalent environment variable `PERMGUARD_DEBUG`.
 {{< /callout >}}
