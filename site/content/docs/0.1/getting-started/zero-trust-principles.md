@@ -74,6 +74,10 @@ The ZTAuth\* architecture supports administrative services like:
 
 - **Policy Enforcement Point (PEP):** Enforces decisions made by the PDP.
 
+<div style="text-align: center">
+  <img alt="Permguard Policies" src="/images/diagrams/d5.png"/>
+</div>
+
 However, **ZTAuth\*** introduces a significant difference: it defines **Auth\*** models that can be transferred to `proximity PDP`.
 These models are incrementally synchronized to application nodes as git-like commit-based snapshots.
 
@@ -99,7 +103,7 @@ Every resource action executed at the application boundary is verified against s
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d17.svg"/>
-</div><br/>
+</div>
 
 The **application boundary** refers not only to APIs exposed to external consumers but also to interactions between machines or services within the application ecosystem. These interactions can involve various protocols and technologies, including synchronous requests, asynchronous messaging, and event-driven architectures. By covering all these layers, **ZTAuth\*** ensures that security policies are enforced consistently across different communication methods.
 

@@ -24,7 +24,7 @@ For more information about legal terms and licenses, please visit [Legal & Licen
 
 {{< callout context="caution" icon="alert-triangle" >}}
 When reviewing licenses, please ensure you are referencing the appropriate version of the documentation, related websites, or other materials for Permguard. Over time, these resources may be updated to reflect changes or improvements, particularly for third-party technologies outside our control. Verifying the correct version ensures that the information aligns with the specific software or materials you are using.
-{{< /callout >}}
+{{</callout >}}
 
 ## Key Goals of Permguard
 
@@ -38,10 +38,9 @@ When reviewing licenses, please ensure you are referencing the appropriate versi
 
 - **Open Source First**: With its Apache-2.0 license, Permguard is open to the community, encouraging collaboration and innovation in access control and policy management.
 
----
+<div style="text-align: center">
+  <img alt="Permguard Policies" src="/images/diagrams/d21.png"/>
+</div><br/>
+
 
 Permguard aims to redefine how authorization providers operate by combining flexibility with strong opinions on schema and model design, giving organizations the tools they need to implement secure and scalable access control systems.
-
-<div style="text-align: center">
-  <img alt="Permguard Policies" src="/images/diagrams/d5.png"/>
-</div>
