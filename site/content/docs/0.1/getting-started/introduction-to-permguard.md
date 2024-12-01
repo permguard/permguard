@@ -54,8 +54,16 @@ The main goal of PermGuard is to provide a robust authorization provider along w
 The solution is `language-agnostic`, supporting multiple policy languages, starting with [Cedar Policy Language](https://www.cedarpolicy.com/en).
 Developers can use their preferred language from the ones integrated, while ensuring all federated PermGuard servers work seamlessly together, even if they use different languages internally.
 
+<div style="text-align: center">
+  <img alt="Permguard" src="/images/diagrams/d18.svg"/>
+</div><br/>
+
 `PermGuard` uses a common `schema` to define `Resources`, `Actions`, and `Identities`, ensuring consistency.
 Each language is integrated with a small abstraction layer that doesn’t limit developers, except for a few reserved keywords.
+
+<div style="text-align: center">
+  <img alt="Permguard" src="/images/diagrams/d19.svg"/>
+</div><br/>
 
 {{< callout context="note" icon="info-circle" >}}
 To enforce the access control process, the application can integrate one of the available **SDKs** or manually integrate the native **APIs**.
