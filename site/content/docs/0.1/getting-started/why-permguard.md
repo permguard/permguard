@@ -18,8 +18,6 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-# Why Permguard?
-
 In today’s digital ecosystem, **identity has become the foundation** of most security architectures. While significant progress has been made in standardizing authentication (e.g., Single Sign-On, OAuth, OpenID Connect), **authorization remains fragmented and underdeveloped**.
 
 ### The Problem with Authorization Today
