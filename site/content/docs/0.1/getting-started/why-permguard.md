@@ -18,47 +18,51 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
+# Why Permguard?
 
-## Why Keycloak, Okta, and Auth0 are not Competitors to Permguard
+In today’s digital ecosystem, **identity has become the foundation** of most security architectures. While significant progress has been made in standardizing authentication (e.g., Single Sign-On, OAuth, OpenID Connect), **authorization remains fragmented and underdeveloped**.
 
-A common question that arises is how **Permguard** compares to `Keycloak`, `Okta`, and `Auth0`, especially since all these solutions seem to deal with access control. While it’s true that these products include some authorization capabilities, their primary focus and the depth of their functionality differ significantly from what Permguard offers.
+### The Problem with Authorization Today
 
-{{< callout context="note" icon="info-circle" >}}
-Identity Management: Permguard adopts the **Bring Your Own Identity (BYOI)** model, syncing seamlessly with external identity sources for streamlined and secure management.
-{{< /callout >}}
+Most systems treat **authorization** as a secondary concern, tightly coupled to applications or identity providers. This creates several challenges:
 
-Here's a breakdown:
+- **No Standardization**: Authorization lacks universal protocols or dedicated frameworks, unlike authentication, which is more mature.
+- **Coupling with Identity**: Authorization is often tied to identity providers. While authentication answers *"Who are you?"*, authorization answers *"What are you allowed to do?"*. These are separate but equally important.
+- **Governance Complexity**: Without a clear and dedicated layer, managing permissions becomes inconsistent and difficult to scale.
+- **Integration Challenges**: Existing solutions are either too specific to an application or too generic, making it hard to meet the diverse needs of modern systems.
 
-### Primary Function
+### The Need for a Dedicated Authorization Layer
 
-  - `Keycloak, Okta, and Auth0` are primarily `Identity and Access Management (IAM)` solutions. Their main responsibility is to authenticate users and manage identities (e.g., providing `Single Sign-On (SSO)`, federating identities, and supporting `OAuth2` or `SAML`).
-  - **Permguard**, by contrast, is designed to manage `permissions` and `authorization policies` at a deeper, more granular level. It focuses on `Policy-as-Code`, enabling precise and scalable control over who can do what within an application or across multiple environments (multi-account, multi-tenant). While it can map identities from external IAM providers, Permguard leaves identity management entirely to these external tools.
+Just like authentication has matured with dedicated identity providers and standardized protocols, **authorization also needs its own dedicated layer**. This layer should be:
 
-### Authentication vs Authorization
+- **Standardized**: A consistent way to define, enforce, and manage permissions across systems.
+- **Decoupled from Identity**: Authorization should work independently of identity providers, focusing on "what you can do" rather than "who you are."
+- **Governance-Friendly**: Built with transparency, making it easy to audit and align with compliance requirements.
+- **Flexible and Interoperable**: Capable of integrating with various identity providers while maintaining a consistent authorization model.
 
-  - `Keycloak, Okta, and Auth0` focus primarily on `authentication` (proving who the user is).
-  - **Permguard**, however, manages `authorization` (deciding what an authenticated user is allowed to do). With `eventual consistency` and `real-time policy enforcement`, Permguard ensures that policies are synchronized and enforced efficiently across any infrastructure, including `Kubernetes`, `serverless environments`, `VMs`, `IoT`, and `edge nodes`.
+### Integration with Your Own Identity Provider
 
-### Scalability and Policy Management
+Permguard follows the **Bring Your Own Identity (BYOI)** approach, allowing you to integrate with existing identity providers. Examples include open-source solutions like **Keycloak**, as well as commercial identity platforms. This flexibility ensures that organizations can continue using their preferred authentication systems while leveraging Permguard for robust authorization management.
 
-  - **Permguard** provides a robust infrastructure for managing policies at scale. Its architecture supports `multi-account` and `multi-tenant` environments, allowing enterprises to centralize policy management across distributed systems. With `Git-like immutable storage`, it ensures security and consistency when managing policy updates.
-  - Additionally, `Permguard’s proximity nodes` allow real-time permission evaluation close to where they are needed, reducing latency and improving performance, especially in distributed and edge computing scenarios.
+Using **APIs** or **CLI tools**, organizations can import identity data from their chosen provider into Permguard, such as user roles or groups. Importantly, interactions with identity providers are not built into Permguard itself. This design choice ensures that Permguard remains vendor-agnostic, focusing exclusively on authorization.
 
-### Managing Complex Enterprise Environments
+### What Permguard Brings to the Table
 
-  - **Permguard** is purpose-built for `enterprise-grade complexity`, providing governance and compliance controls essential for large-scale operations. It handles the intricacies of modern cloud-native environments and ensures that authorizations are applied with precision, whether applications run in `containerized`, `serverless`, or `edge` architectures.
+**Permguard** is designed to address the challenges of authorization by providing an open-source, flexible, and dedicated solution. Key features include:
 
-### Why are they not competitors?
-While `Keycloak, Okta, and Auth0` focus on authentication and identity management, their `authorization features` are generally basic and not designed to handle the advanced, scalable needs of a complex, multi-environment enterprise. **Permguard**, on the other hand, is built specifically for `advanced authorization management`, offering granular control, real-time evaluation, and enterprise-level scalability. This makes Permguard the ideal solution for organizations that require detailed authorization governance across a distributed infrastructure—something IAM providers are not equipped to deliver on their own.
+- **Separation of Concerns**: Authorization is treated as its own domain, separate from authentication. This ensures clarity, scalability, and maintainability.
 
-## Centralized Policy Management and Distributed Enforcement
+- **Governance-Ready**: Permguard includes tools to define, enforce, and audit policies, making it easier to meet compliance and governance requirements.
 
-**Permguard** centralizes policy management but ensures policies are distributed efficiently across all your applications. This means each service can enforce authorization rules independently, without the latency typically introduced by relying on a single enforcement point, like at the front door.
+- **Integration-First Design**: Permguard supports multiple policy languages and flexible APIs, making it easy to integrate into existing systems.
 
-What makes this possible is our approach of deploying `proximity nodes` near the applications. These nodes come with the `policy engine embedded`, eliminating the need to integrate policy checks into the application's code. Policies are evaluated `locally and in real-time`, significantly reducing latency.
+### A Future of Simplified Authorization
 
-Policies are distributed using a `Git-like approach` that ensures `immutability` and maintains a `Zero Trust` focus, with the necessary checks applied at each layer.
+Permguard envisions a future where authorization is no longer an afterthought. By establishing a dedicated layer, it empowers organizations to:
+- Build systems that are secure and scalable.
+- Simplify governance and compliance.
+- Ensure consistent access control across different applications and environments.
 
-In practical terms, this means there’s `no need to modify your application code` to enforce policies. Rules are applied consistently across all applications, whether at a service endpoint, microservice, or any other resource. And with `centralized management`, you have a `single point of control` to audit and manage policies across the entire environment.
+**Authorization** deserves the same focus and innovation that authentication has received. With Permguard, organizations have a reliable, flexible, and future-ready solution to manage permissions effectively.
 
-This combination enables `fast, scalable, and cross-app policy enforcement` without the complexity or overhead often associated with distributed authorization systems.
+---
