@@ -26,7 +26,7 @@ To ensure that changes are provisioned correctly, you must first check out the a
 You can check out a repository using the `checkout` command:
 
 ```bash
- permguard checkout dev/268786704340/magicfarmacia-v0.0
+ permguard checkout dev/268786704340/magicfarmacia
 ```
 
 In this command, the first parameter is the remote, followed by the account ID, and finally the repository identifier. The format used is `<remote>/<account-id>/<repository-name>`.

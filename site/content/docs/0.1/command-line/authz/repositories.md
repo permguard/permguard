@@ -101,11 +101,11 @@ permguard authz repos list --account 268786704340
 output:
 
 ```bash
-295433941928473fb692f1a12b6ef660: v1.2
-4fc71b8d934a496d9347ab4a04322460: v1.1
-668f3771eacf4094ba8a80942ea5fd3f: v2.0
-a2b8df4c367940739d872bcbb157155f: v1.3
-d02af7e50a7b462cb496aa6ddeb4275e: v1.0
+295433941928473fb692f1a12b6ef660: crm
+4fc71b8d934a496d9347ab4a04322460: accounting
+668f3771eacf4094ba8a80942ea5fd3f: bookshop
+a2b8df4c367940739d872bcbb157155f: insurance
+d02af7e50a7b462cb496aa6ddeb4275e: magicfarmacia
 ```
 
 <details>
@@ -127,35 +127,35 @@ output:
       "created_at": "2024-08-25T14:50:30.248Z",
       "updated_at": "2024-08-25T14:50:30.248Z",
       "account_id": 268786704340,
-      "name": "v1.2"
+      "name": "crm"
     },
     {
       "repository_id": "4fc71b8d934a496d9347ab4a04322460",
       "created_at": "2024-08-25T14:50:26.999Z",
       "updated_at": "2024-08-25T14:50:26.999Z",
       "account_id": 268786704340,
-      "name": "v1.1"
+      "name": "accounting"
     },
     {
       "repository_id": "668f3771eacf4094ba8a80942ea5fd3f",
       "created_at": "2024-08-25T14:50:38.003Z",
       "updated_at": "2024-08-25T14:50:38.003Z",
       "account_id": 268786704340,
-      "name": "v2.0"
+      "name": "bookshop"
     },
     {
       "repository_id": "a2b8df4c367940739d872bcbb157155f",
       "created_at": "2024-08-25T14:50:33.046Z",
       "updated_at": "2024-08-25T14:50:33.046Z",
       "account_id": 268786704340,
-      "name": "v1.3"
+      "name": "insurance"
     },
     {
       "repository_id": "d02af7e50a7b462cb496aa6ddeb4275e",
       "created_at": "2024-08-25T14:50:13.705Z",
       "updated_at": "2024-08-25T14:50:13.705Z",
       "account_id": 268786704340,
-      "name": "v1.0"
+      "name": "magicfarmacia"
     }
   ]
 }
