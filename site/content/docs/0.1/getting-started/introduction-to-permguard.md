@@ -26,6 +26,10 @@ By integrating **Zero Trust**, Permguard provides a robust foundation for securi
 
 It helps you easily manage permissions by defining who can do what in your system.
 
+<div style="text-align: center">
+  <img alt="Permguard Policies" src="/images/diagrams/d1.png"/>
+</div>
+
 Designed for `cloud-native`, `edge`, and multi-tenant environments, PermGuard allows you to update your authorization policies without changing your application code, saving time and effort.
 
 These policies are centrally managed, ensuring compliance with corporate governance.
@@ -54,7 +58,3 @@ This approach allows detailed permissions to specify who or what can access reso
 - `Who`: *Identities (Users and Roles)*
 - `Can Access`: *Permissions granted by attaching policies*
 - `Resources`: *Resources targeted by permissions*
-
-<div style="text-align: center">
-  <img alt="Permguard Policies" src="/images/diagrams/d1.png"/>
-</div>
