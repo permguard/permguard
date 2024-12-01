@@ -34,7 +34,7 @@ When reviewing licenses, please ensure you are referencing the appropriate versi
 
 - **Scalability and Flexibility**: Built with a focus on scalability, Permguard supports multi-account and multi-tenant environments, empowering organizations to manage access control efficiently.
 
-- **Zero Trust Compliance**: By adopting the **Zero Trust Auth*** ([ZTAuth*](https://medium.com/ztauth)) architecture, Permguard implements versionable and composable **Auth*** models that can be replicated in **proximity nodes**. This allows it to overcome the limitations of partially connected devices and ensures seamless policy enforcement across diverse environments.
+- **Zero Trust Compliance**: By adopting the **Zero Trust Auth** ([ZTAuth*](https://medium.com/ztauth)) architecture, Permguard implements versionable and composable **Auth*** models that can be replicated in **proximity nodes**. This allows it to overcome the limitations of partially connected devices and ensures seamless policy enforcement across diverse environments.
 
 - **Open Source First**: With its Apache-2.0 license, Permguard is open to the community, encouraging collaboration and innovation in access control and policy management.
 

@@ -57,8 +57,11 @@ seo:
 ## Why ZTAuth* Matters for Authorization
 
 The **ZTAuth*** architecture brings key benefits to modern authorization systems:
+
 - **Scalability**: Policies and permissions are designed to scale across multi-account and multi-tenant environments.
+
 - **Governance-Ready**: All policies are versionable and auditable, making it easier to align with compliance requirements.
+
 - **Flexibility**: Supports integration with diverse systems and identity providers, enabling seamless adoption.
 
 By adopting ZTAuth*, Permguard empowers organizations to implement **Zero Trust authorization** that is robust, scalable, and future-proof.
