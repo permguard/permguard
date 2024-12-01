@@ -31,4 +31,4 @@ The **Permguard Terminology and Definitions** section provides clear explanation
   [Learn more about ZTAuth*](https://medium.com/ztauth).
 
 - **Application Boundaries**:
-  *Application boundaries define the logical limits of an application’s scope, typically isolating its access control and data management.
+  Application boundaries define the logical limits of an application’s scope, typically isolating its access control and data management.
