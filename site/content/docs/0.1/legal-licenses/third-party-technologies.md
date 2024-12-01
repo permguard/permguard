@@ -20,6 +20,10 @@ seo:
 ---
 This page provides an overview of the technologies and languages used or referenced in our project. For each, we outline their source, licensing terms, and relevant disclaimers to ensure full transparency.
 
+{{< callout context="caution" icon="alert-triangle" >}}
+When reviewing licenses, ensure that you are referencing the correct version of the documentation, related websites, or other materials for Permguard. These resources may change over time, and it is important to verify that the information aligns with the specific version of the software or materials you are using.
+{{< /callout >}}
+
 ---
 
 ## General Disclaimer
