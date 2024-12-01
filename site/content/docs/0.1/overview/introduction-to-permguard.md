@@ -18,17 +18,34 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-`Permguard` is an open-source `Zero-Trust Auth* Provider` designed for cloud-native, edge, and multi-tenant applications. It operates independently of application code and utilizes Policy-as-Code to provide centralized and scalable permission management.
+`PermGuard` is a modern, open-source authorization provider built on `Zero Trust` principles and the Zero Trust Auth* ([ZTAuth*](https://medium.com/ztauth)) framework.
+
+It helps you easily manage permissions by defining who can do what in your system.
+
+Designed for `cloud-native`, `edge`, and multi-tenant environments, PermGuard allows you to update your authorization policies without changing your application code, saving time and effort.
+
+These policies are centrally managed, ensuring compliance with corporate governance.
+
+`PermGuard` can be deployed anywhere: `public or private clouds`, `managed infrastructure`, `Kubernetes`, `serverless` systems, or even in `partially connected` environments where consistent connectivity is a challenge. It is also ideal for use in `edge nodes` and `IoT` ecosystems, ensuring secure and consistent permission management across diverse setups.
+
+It follows a `Bring Your Own Identity (BYOI)` approach, meaning it works with your existing authentication system instead of replacing it.
+You can configure identity sources to migrate identities from your current `identity provider`, ensuring all permissions are managed consistently and centrally, no matter where you use `PermGuard`.
 
 {{< callout context="note" icon="info-circle" >}}
-Decoupling the authorization layer from the application code allows policies to be managed without changing the application code.
-
-This approach also simplifies creating a central authorization layer to manage permissions across multiple applications, much like modern solutions centralize identity access management.
+The main goal of PermGuard is to provide a robust authorization provider along with its own administrative and authorization components. It allows the association of identity sources through ingestion APIs, but these identity sources must be integrated using bespoke solutions. This approach ensures that PermGuard remains flexible and avoids unnecessary customizations and complexity in management.
 {{< /callout >}}
 
-The platform is designed to be language-agnostic and currently uses a YAML-based language called `PermYAML`. It is built to be extensible, with plans to add support for additional languages in the future.
+The solution is `language-agnostic`, supporting multiple policy languages, starting with [Cedar Policy Language](https://www.cedarpolicy.com/en).
+Developers can use their preferred language from the ones integrated, while ensuring all federated PermGuard servers work seamlessly together, even if they use different languages internally.
 
-Through the chosen approach, it is possible to specify who or what can access resources through finely detailed permissions.
+`PermGuard `uses a common `schema` to define `Resources`, `Actions`, and `Identities`, ensuring consistency.
+Each language is integrated with a small abstraction layer that doesn’t limit developers, except for a few reserved keywords.
+
+{{< callout context="note" icon="info-circle" >}}
+To enforce the access control process, the application can integrate one of the available **SDKs** or manually integrate the native **APIs**.
+{{< /callout >}}
+
+This approach allows detailed permissions to specify who or what can access resources, while keeping the system flexible and easy to use.
 
 - `Who`: *Identities (Users and Roles)*
 - `Can Access`: *Permissions granted by attaching policies*
@@ -37,14 +54,3 @@ Through the chosen approach, it is possible to specify who or what can access re
 <div style="text-align: center">
   <img alt="Permguard Policies" src="/images/diagrams/d1.png"/>
 </div>
-
-{{< callout context="note" icon="info-circle" >}}
-Identity Management: Permguard adopts the **Bring Your Own Identity (BYOI)** model, syncing seamlessly with external identity sources for streamlined and secure management.
-{{< /callout >}}
-
-`Permguard` enables the creation of `accounts` to manage `isolated models`.
-Additionally, it supports `tenancy`, allowing each `account` to have multiple isolated tenants. Each tenant can further manage its own isolated `resources`, ensuring flexible and secure multi-tenant management.
-
-{{< callout context="note" icon="info-circle" >}}
-To enforce the access control process, the application can integrate one of the available **SDKs** or manually integrate the native **APIs**.
-{{< /callout >}}
