@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-`Permguard` is a modern `Authorization Provider` that implements an advanced authorization layer. It delivers dynamic access control by managing identities permissions and policies, ensuring secure and efficient authorization across diverse systems and applications.
+**Permguard** is a modern `Authorization Provider` that implements an advanced authorization layer. It delivers dynamic access control by managing identities permissions and policies, ensuring secure and efficient authorization across diverse systems and applications.
 
 ## Infrastructure
 

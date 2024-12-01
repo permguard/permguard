@@ -19,8 +19,8 @@ seo:
   noindex: false # false (default) or true
 ---
 
-`Permguard` implements common validators that are universally used across multiple components
+**Permguard** implements common validators that are universally used across multiple components
 
 | TYPE | VALIDATION                             | CASE   | DESCRIPTION                                                                       |
 |------|----------------------------------------|--------|-----------------------------------------------------------------------------------|
-| NAME | `^[a-z][a-z0-9\-\._]*[a-z0-9]*$`       | lower  | A valid name must satisfy the regex and cannot begin with the prefix `permguard`. |
+| NAME | `^[a-z][a-z0-9\-\._]*[a-z0-9]*$`       | lower  | A valid name must satisfy the regex and cannot begin with the prefix **permguard**. |

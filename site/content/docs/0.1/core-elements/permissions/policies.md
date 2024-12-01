@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-In `Permguard`, multiple repositories can be created, and each of them can have multiple **policies**.
+In **Permguard**, multiple repositories can be created, and each of them can have multiple **policies**.
 
 {{< callout context="note" icon="info-circle" >}}
 In the context of the [MagicFarmacia sample](/docs/0.1/overview/adoption-through-example#integration-use-case-pharmacy-branch-management), the policy `view-branch-inventory` would be used to control view access to the inventory of a pharmacy branch.

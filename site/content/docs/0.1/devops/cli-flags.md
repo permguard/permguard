@@ -61,7 +61,7 @@ Irrespective of the chosen distribution, the binary supports the following flags
 <details>
   <summary>SQLITE</summary>
 
-**--storage.engine.sqlite.dbname**: *sqlite database name (default `permguard`).*
+**--storage.engine.sqlite.dbname**: *sqlite database name (default **permguard**).*
 
 ---
 

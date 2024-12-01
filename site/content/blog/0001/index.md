@@ -29,16 +29,16 @@ Managing access to sensitive data and services across applications can be challe
 Introducing Permguard: the Zero Trust, cloud-native solution built for the future of authorization.
 {{< /callout >}}
 
-`Permguard` secures your application layer with Policy-as-Code, using its own language and extensible with other policy engines. Centralize policies and manage multi-domain resources and user actions with PBAC.
+**Permguard** secures your application layer with Policy-as-Code, using its own language and extensible with other policy engines. Centralize policies and manage multi-domain resources and user actions with PBAC.
 
-- Built for scale, `Permguard` supports multi-account and multi-tenant setups, perfect for complex environments. Developers can seamlessly plan and deploy permissions, backed by Git-like object storage that guarantees immutability and versioning out of the box to meet enterprise compliance needs.
+- Built for scale, **Permguard** supports multi-account and multi-tenant setups, perfect for complex environments. Developers can seamlessly plan and deploy permissions, backed by Git-like object storage that guarantees immutability and versioning out of the box to meet enterprise compliance needs.
 
-- Designed for enterprise use, `Permguard` includes a toolchain that helps developers manage multiple versions and authorization models. It accommodates patterns that arise in complex cloud-native or microservices architectures, yet is versatile enough to be used even with simpler applications like a "Hello World" app.
+- Designed for enterprise use, **Permguard** includes a toolchain that helps developers manage multiple versions and authorization models. It accommodates patterns that arise in complex cloud-native or microservices architectures, yet is versatile enough to be used even with simpler applications like a "Hello World" app.
 
 - With real-time evaluation and eventual consistency, policies remain synchronized across Kubernetes, serverless, VMs, IoT, or edge nodes. Proximity nodes ensure permissions are evaluated instantly where they matter most.
 
-- Simple, fast, and secure. Integrate `Permguard`’s SDK, and you’re ready to scale.
+- Simple, fast, and secure. Integrate **Permguard**’s SDK, and you’re ready to scale.
 
-This is the future of cloud-native authorization. `Permguard` is setting new standards in governance and access control.
+This is the future of cloud-native authorization. **Permguard** is setting new standards in governance and access control.
 
-Unlock a powerful authorization model with `Permguard`.
+Unlock a powerful authorization model with **Permguard**.

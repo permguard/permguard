@@ -19,5 +19,5 @@ seo:
   noindex: false # false (default) or true
 ---
 
-`Permguard` fully supports PermYAML as the primary configuration language for defining policies.
+**Permguard** fully supports PermYAML as the primary configuration language for defining policies.
 It is important to note that the definition of schemas is exclusively supported in YAML format.

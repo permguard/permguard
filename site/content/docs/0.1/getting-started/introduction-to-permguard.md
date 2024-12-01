@@ -18,7 +18,11 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-`PermGuard` is a modern, open-source authorization provider built on `Zero Trust` principles and the Zero Trust Auth* ([ZTAuth*](https://medium.com/ztauth)) framework.
+**Permguard** is a modern, open-source authorization provider designed around the core principles of **Zero Trust Security**.
+
+It leverages the **Zero Trust Auth*** ([ZTAuth*](https://medium.com/ztauth)) framework to ensure that every access request is continuously verified, regardless of application boundaries or contextual constraints.
+
+By integrating **Zero Trust**, Permguard provides a robust foundation for securing identities, resources, and actions in distributed systems, ensuring that trust is never assumed and always validated.
 
 It helps you easily manage permissions by defining who can do what in your system.
 
@@ -26,10 +30,10 @@ Designed for `cloud-native`, `edge`, and multi-tenant environments, PermGuard al
 
 These policies are centrally managed, ensuring compliance with corporate governance.
 
-`PermGuard` can be deployed anywhere: `public or private clouds`, `managed infrastructure`, `Kubernetes`, `serverless` systems, or even in `partially connected` environments where consistent connectivity is a challenge. It is also ideal for use in `edge nodes` and `IoT` ecosystems, ensuring secure and consistent permission management across diverse setups.
+**Permguard** can be deployed anywhere: `public or private clouds`, `managed infrastructure`, `Kubernetes`, `serverless` systems, or even in `partially connected` environments where consistent connectivity is a challenge. It is also ideal for use in `edge nodes` and `IoT` ecosystems, ensuring secure and consistent permission management across diverse setups.
 
 It follows a `Bring Your Own Identity (BYOI)` approach, meaning it works with your existing authentication system instead of replacing it.
-You can configure identity sources to migrate identities from your current `identity provider`, ensuring all permissions are managed consistently and centrally, no matter where you use `PermGuard`.
+You can configure identity sources to migrate identities from your current `identity provider`, ensuring all permissions are managed consistently and centrally, no matter where you use **Permguard**.
 
 {{< callout context="note" icon="info-circle" >}}
 The main goal of PermGuard is to provide a robust authorization provider along with its own administrative and authorization components. It allows the association of identity sources through ingestion APIs, but these identity sources must be integrated using bespoke solutions. This approach ensures that PermGuard remains flexible and avoids unnecessary customizations and complexity in management.

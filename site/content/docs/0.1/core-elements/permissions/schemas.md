@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-In `Permguard`, multiple repositories can be created, and each of them has a single **schema**. This provides a structured method for modelling the authorization model.
+In **Permguard**, multiple repositories can be created, and each of them has a single **schema**. This provides a structured method for modelling the authorization model.
 
 {{< callout context="note" icon="info-circle" >}}
 In the context of the [MagicFarmacia sample](/docs/0.1/overview/adoption-through-example#integration-use-case-pharmacy-branch-management), , the schema primarily represents two domains: the `platform` tenant, which serves as the master tenant capable of managing all branches, and the `pharmacy branch` tenant.
@@ -53,7 +53,7 @@ Typically, fewer Resources and Actions are modeled compared to the entities in t
 
 ## Resource
 
-A **Resource** serves as the central entity within `Permguard`. It represents a logical entity within the application that must be enriched with authorization policies.
+A **Resource** serves as the central entity within **Permguard**. It represents a logical entity within the application that must be enriched with authorization policies.
 
 When creating authorization Resources, it's essential to consider `performance` and execution time required by the application to evaluate policies. This ensures optimal performance and efficient policy evaluation within the application context.
 
