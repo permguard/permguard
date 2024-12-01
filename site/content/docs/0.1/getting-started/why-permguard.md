@@ -27,7 +27,7 @@ Permguard may seem complex, but it’s not: its internal architecture is sophist
 ### The Problem with Authorization Today
 
 <div style="text-align: center">
-  <img alt="Permguard" src="/images/diagrams/d7.svg"/>
+  <img alt="Permguard" src="/images/diagrams/d22.svg"/>
 </div><br/>
 
 Most systems treat **authorization** as a secondary concern, tightly coupled to applications or identity providers. This creates several challenges:
