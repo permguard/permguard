@@ -1,3 +1,18 @@
+.responsive-iframe {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%; /* Aspect ratio: 16:9 */
+  height: 0;
+}
+
+.responsive-iframe iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
 .hero {
   padding-top: 80px;
 
@@ -69,6 +84,8 @@
 
 @media (max-width: 575px) {
   .hero {
+    padding-bottom: 3rem;
+
     &__title {
       font-size: 38px !important;
       margin-top: -9px !important;
