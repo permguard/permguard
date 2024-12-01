@@ -1,6 +1,6 @@
 ---
-title: "Up and Running"
-slug: "Up and Running"
+title: "DevOps"
+slug: "DevOps"
 description: ""
 summary: ""
 date: 2023-08-01T00:27:20+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "up-and-running-aed2943821e4ff1fd325f6230d12c750"
+    identifier: "devops-aed2943821e4ff1fd325f6230d12c750"
 weight: 6000
 toc: true
 seo:
