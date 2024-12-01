@@ -25,7 +25,11 @@ A common use case for **Permguard** is in the context of cloud-native applicatio
   <img alt="Permguard Policies" src="/images/diagrams/d2.png"/>
 </div>
 
-Permguard focuses on [AuthN](/docs/0.1/concepts/authn-authz/authn-vs-authz/) therefore it does not provide any authentication mechanism. It is assumed that the user is already authenticated and the JWT token is available.
+Permguard focuses on [AuthN](/docs/0.1/core-elements/authn-authz/authn-vs-authz/) therefore it does not provide any authentication mechanism. It is assumed that the user is already authenticated and the JWT token is available.
+
+{{< callout context="note" icon="info-circle" >}}
+Identity Management: Permguard adopts the **Bring Your Own Identity (BYOI)** model for the AuthN, syncing seamlessly with external identity sources for streamlined and secure management.
+{{< /callout >}}
 
 ## Use Case: Api Endpoint
 
