@@ -49,14 +49,23 @@
 <script src="/js/highlightjs/languages/python.min.js"></script>
 <script src="/js/highlightjs/languages/go.min.js"></script>
 <script src="/js/highlightjs/languages/cedar.min.js"></script>
+<script src="/js/highlightjs/languages/java.min.js"></script>
+<script src="/js/highlightjs/languages/json.min.js"></script>
+<script src="/js/highlightjs/languages/yaml.min.js"></script>
 
 <script>
   window.onload = function () {
     if (window.location.pathname === "/") {
       hljs.highlightAll();
     } else {
-      document.querySelectorAll("pre code.language-cedar").forEach((block) => {
-        hljs.highlightElement(block);
+      var languages = ["python", "go", "cedar", "java", "json", "yaml"];
+
+      languages.forEach((language) => {
+        document
+          .querySelectorAll(`pre code.language-${language}`)
+          .forEach((block) => {
+            hljs.highlightElement(block);
+          });
       });
     }
   };
