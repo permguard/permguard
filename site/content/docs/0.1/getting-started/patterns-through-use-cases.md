@@ -94,3 +94,20 @@ It is possible to publish a signed event and subsequently validate the event and
 signedMessage = permguard.sign(jwt.sub, message)
 publish(signedMessage)
 ```
+
+{{< callout context="note" icon="info-circle" >}}
+This section provides a **high-level explanation** of the core patterns with minimal technical details. It is designed to give you a foundational understanding of the concepts.
+
+For a deeper dive into how these patterns operate within a **Zero Trust context**, including autonomous and disconnected environments, refer to the following articles:
+
+1. [**Resources, Actions and Accounts in the Context of Autonomous and Disconnected Challenges**](https://medium.com/ztauth/resources-actions-andaccounts-in-the-context-of-autonomous-and-disconnected-challenges-b261d37cb28a)
+   Explore the challenges and solutions for managing resources, actions, and accounts in systems with partial or no connectivity.
+
+2. [**Unlocking Zero Trust Delegation through Permissions and Policies**](https://medium.com/ztauth/unlocking-zero-trust-delegation-through-permissions-and-policies-f2952f56f79b)
+   Learn about the role of permissions and policies in enabling secure, scalable Zero Trust delegation.
+
+---
+
+For additional information or implementation details, these articles provide the necessary context and guidance.
+
+{{< /callout >}}
