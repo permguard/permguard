@@ -48,11 +48,18 @@
 <script src="/js/highlightjs/highlight.min.js"></script>
 <script src="/js/highlightjs/languages/python.min.js"></script>
 <script src="/js/highlightjs/languages/go.min.js"></script>
+<script src="/js/highlightjs/languages/cedar.min.js"></script>
 
 <script>
-  if (window.location.pathname === "/") {
-    hljs.highlightAll();
-  }
+  window.onload = function () {
+    if (window.location.pathname === "/") {
+      hljs.highlightAll();
+    } else {
+      document.querySelectorAll("pre code.language-cedar").forEach((block) => {
+        hljs.highlightElement(block);
+      });
+    }
+  };
 </script>
 
 <!-- Code compare slider -->
