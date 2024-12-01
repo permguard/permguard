@@ -61,7 +61,7 @@ With this approach the previous drawbacks are mitigated:
 - **Code Duplication**: This problem is fixed as the application does not need to implement any logic to evaluate the permissions, as the policies evaluation is delegated to **Permguard**.
 
 ```python {title="app.py"}
-has_permissions = permguard.check(jwt.sub, "magicfarmaciav0.0", "inventory", "read")
+has_permissions = permguard.check(jwt.sub, "magicfarmacia", "inventory", "read")
 
 if has_permissions:
     print("Role can read inventory")
