@@ -34,6 +34,10 @@ Designed for `cloud-native`, `edge`, and multi-tenant environments, PermGuard al
 
 These policies are centrally managed, ensuring compliance with corporate governance.
 
+{{< callout context="tip" icon="rocket" >}}
+Permguard may seem complex, but it’s not: its internal architecture is sophisticated, yet integration is simple—perfect for everything from 'Hello World' apps to enterprise solutions. Just run the server, define your policy, and integrate it.
+{{< /callout >}}
+
 **Permguard** can be deployed anywhere: `public or private clouds`, `managed infrastructure`, `Kubernetes`, `serverless` systems, or even in `partially connected` environments where consistent connectivity is a challenge. It is also ideal for use in `edge nodes` and `IoT` ecosystems, ensuring secure and consistent permission management across diverse setups.
 
 It follows a `Bring Your Own Identity (BYOI)` approach, meaning it works with your existing authentication system instead of replacing it.

@@ -21,6 +21,10 @@ seo:
 
 **Permguard** is designed with Zero Trust principles at its core, leveraging the **ZTAuth\*** architecture to ensure secure, scalable, and reliable authorization in modern, distributed environments.
 
+{{< callout context="tip" icon="rocket" >}}
+Permguard may seem complex, but it’s not: its internal architecture is sophisticated, yet integration is simple—perfect for everything from 'Hello World' apps to enterprise solutions. Just run the server, define your policy, and integrate it.
+{{< /callout >}}
+
 ---
 
 ## Three Core Principles of Zero Trust

@@ -20,6 +20,10 @@ seo:
 ---
 In today’s digital ecosystem, **identity has become the foundation** of most security architectures. While significant progress has been made in standardizing authentication (e.g., Single Sign-On, OAuth, OpenID Connect), **authorization remains fragmented and underdeveloped**.
 
+{{< callout context="tip" icon="rocket" >}}
+Permguard may seem complex, but it’s not: its internal architecture is sophisticated, yet integration is simple—perfect for everything from 'Hello World' apps to enterprise solutions. Just run the server, define your policy, and integrate it.
+{{< /callout >}}
+
 ### The Problem with Authorization Today
 
 Most systems treat **authorization** as a secondary concern, tightly coupled to applications or identity providers. This creates several challenges:
@@ -65,5 +69,3 @@ Permguard envisions a future where authorization is no longer an afterthought. B
 - Ensure consistent access control across different applications and environments.
 
 **Authorization** deserves the same focus and innovation that authentication has received. With Permguard, organizations have a reliable, flexible, and future-ready solution to manage permissions effectively.
-
----
