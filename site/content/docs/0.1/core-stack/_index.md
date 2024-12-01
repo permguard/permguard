@@ -1,16 +1,16 @@
 ---
-title: "Using the CLI"
-slug: "Using the CLI"
+title: "Core Stack"
+slug: "Core Stack"
 description: ""
 summary: ""
-date: 2023-08-01T00:42:11+01:00
-lastmod: 2023-08-01T00:42:11+01:00
+date: 2023-08-28T19:38:58+01:00
+lastmod: 2023-08-28T19:38:58+01:00
 draft: false
 menu:
   docs:
     parent: ""
-    identifier: "using-the-cli-cefa15e06e2f2285e418192ea1781e20"
-weight: 5000
+    identifier: "core-tech-6a7b0edaf27d9bc80a753502fd0eec8e"
+weight: 8000
 toc: true
 seo:
   title: "" # custom title (optional)

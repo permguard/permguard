@@ -1,16 +1,16 @@
 ---
-title: "Developer Guide"
-slug: "Developer Guide"
+title: "Getting Started"
+slug: "Getting Started"
 description: ""
 summary: ""
-date: 2023-08-01T00:27:20+01:00
-lastmod: 2023-08-01T00:27:20+01:00
+date: 2023-08-07T16:06:50+02:00
+lastmod: 2023-08-07T16:06:50+02:00
 draft: false
 menu:
   docs:
     parent: ""
-    identifier: "developerguide-7b0fcc45084c4789aabe2416dee30fef"
-weight: 3000
+    identifier: "getting-started-4e0d0e0f89f7decc11eaad4ae9193018"
+weight: 1000
 toc: true
 seo:
   title: "" # custom title (optional)

@@ -1,16 +1,17 @@
 ---
-title: "Internals"
-slug: "Internals"
+title: "Policy as Code"
+slug: "Policy as Code"
 description: ""
 summary: ""
-date: 2023-08-28T19:38:58+01:00
-lastmod: 2023-08-28T19:38:58+01:00
+date: 2023-08-21T22:49:19+01:00
+lastmod: 2023-08-21T22:49:19+01:00
 draft: false
+
 menu:
   docs:
     parent: ""
-    identifier: "internals-6a7b0edaf27d9bc80a753502fd0eec8e"
-weight: 8000
+    identifier: "policy-as-code-c2285ed5af074d6f936e55b5fa8a4812"
+weight: 4100
 toc: true
 seo:
   title: "" # custom title (optional)

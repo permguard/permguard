@@ -1,16 +1,16 @@
 ---
-title: "Overview"
-slug: "Overview"
+title:  "CLI Reference"
+slug: "CLI Reference"
 description: ""
 summary: ""
-date: 2023-08-07T16:06:50+02:00
-lastmod: 2023-08-07T16:06:50+02:00
+date: 2023-08-01T00:42:11+01:00
+lastmod: 2023-08-01T00:42:11+01:00
 draft: false
 menu:
   docs:
     parent: ""
-    identifier: "overview-4e0d0e0f89f7decc11eaad4ae9193018"
-weight: 1000
+    identifier: "cli-reference-cefa15e06e2f2285e418192ea1781e20"
+weight: 5000
 toc: true
 seo:
   title: "" # custom title (optional)
