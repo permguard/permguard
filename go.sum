@@ -72,8 +72,10 @@ github.com/pelletier/go-toml v1.9.5 h1:4yBQzkHv+7BHq2PQUZF3Mx0IYxG7LsP222s7Agd3v
 github.com/pelletier/go-toml v1.9.5/go.mod h1:u1nR/EPcESfeI/szUZKdtJ0xRNbUoANCkoOuaOx1Y+c=
 github.com/pelletier/go-toml/v2 v2.2.3 h1:YmeHyLY8mFWbdkNWwpr+qIL2bEqT0o95WSdkNHvL12M=
 github.com/pelletier/go-toml/v2 v2.2.3/go.mod h1:MfCQTFTvCcUyyvvwm1+G6H/jORL20Xlb6rzQu9GuUkc=
-github.com/permguard/permguard-abs-language v0.0.1-0.20241203110726-e124955a4c7b h1:qzhWqkDewE6v3ZpJTPhl3SBhbGy1Lk8aWqX2UZ5afm0=
-github.com/permguard/permguard-abs-language v0.0.1-0.20241203110726-e124955a4c7b/go.mod h1:mkbT8m0ZDfD4asPfh/9LVhrsu4Jm8fczW2qjHPlGark=
+github.com/permguard/permguard-abs-language v0.0.1-0.20241203142847-74d55d28d864 h1:0SLCV/KaoK1Vh1hxy3rYB6Y23hF21Z8piqi9vpmeprk=
+github.com/permguard/permguard-abs-language v0.0.1-0.20241203142847-74d55d28d864/go.mod h1:qKWd46c1Ya8ZVcc73sJ37z8uWFA0dDw3joeOhYQjZp4=
+github.com/permguard/permguard-abs-language v0.0.1-0.20241203143454-9cb63d75c9e5 h1:NOKUErwxPI6nB8ooSpCE/6PXt2/LGwv7l8gu3INw9Vs=
+github.com/permguard/permguard-abs-language v0.0.1-0.20241203143454-9cb63d75c9e5/go.mod h1:qKWd46c1Ya8ZVcc73sJ37z8uWFA0dDw3joeOhYQjZp4=
 github.com/permguard/permguard-core v0.0.1-0.20241203105114-77948207378c h1:hjQfMAA0GK0//qdccIMQWnLjXjwRjWUieXSVhBYP+UM=
 github.com/permguard/permguard-core v0.0.1-0.20241203105114-77948207378c/go.mod h1:L/xLAgPizYnmnSZ/UIPFeel4p/s6856k5QMcyLauaF8=
 github.com/permguard/permguard-notp-protocol v0.0.1-0.20241203110445-d7156560fc5b h1:1EpXHEaeQ4/r2usQPzL1l4d/sRvoOIsczdS1NY1yrN8=
@@ -142,8 +144,6 @@ gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c h1:Hei/4ADfdWqJk1ZMxUNpqntN
 gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c/go.mod h1:JHkPIbrfpd72SG/EVd6muEfDQjcINNoR0C8j2r3qZ4Q=
 gopkg.in/ini.v1 v1.67.0 h1:Dgnx+6+nfE+IfzjUEISNeydPJh9AXNNsWbGP9KzCsOA=
 gopkg.in/ini.v1 v1.67.0/go.mod h1:pNLf8WUiyNEtQjuu5G5vTm06TEv9tsIgeAvK8hOrP4k=
-gopkg.in/yaml.v2 v2.4.0 h1:D8xgwECY7CYvx+Y2n4sBz93Jn9JRvxdiyyo8CTfuKaY=
-gopkg.in/yaml.v2 v2.4.0/go.mod h1:RDklbk79AGWmwhnvt/jBztapEOGDOx6ZbXqjP6csGnQ=
 gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
 modernc.org/gc/v3 v3.0.0-20240107210532-573471604cb6 h1:5D53IMaUuA5InSeMu9eJtlQXS2NxAhyWQvkKEgXZhHI=

@@ -37,7 +37,7 @@ func NewCommunityLanguageFactory() (*CommunityLanguageFactory, error) {
 func (c *CommunityLanguageFactory) CreateLanguageAbastraction(language string) (azlang.LanguageAbastraction, error) {
 	switch language {
 	case azplangcedar.LanguageName:
-		return azplangcedar.NewYAMLLanguageAbstraction()
+		return azplangcedar.NewCedarLanguageAbstraction()
 	default:
 		return nil, azerrors.WrapSystemError(azerrors.ErrConfigurationGeneric, fmt.Sprintf("cli: %s is an invalid language", language))
 	}

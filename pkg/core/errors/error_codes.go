@@ -55,10 +55,10 @@ var errorCodes = map[string]string{
 	"05120": "storage: entity not found in storage",
 
 	// 06xxx: Language Errors
-	"06000": "language: generic error",
-	"06100": "language: generic file error",
-	"06200": "language: generic syntax error",
-	"06300": "language: generic semantic error",
+	"06000": "permcode: generic error",
+	"06100": "permcode: generic file error",
+	"06200": "permcode: generic syntax error",
+	"06300": "permcode: generic semantic error",
 
 	// 08xxx: Command Line Interface Errors
 	"08000": "cli: generic error",
@@ -103,16 +103,16 @@ var (
 	// 01xxx configuration errors.
 	ErrConfigurationGeneric error = NewSystemError("01000")
 	// 04xxx client errors.
-	ErrClientGeneric    	error = NewSystemError("04000")
-	ErrClientParameter  	error = NewSystemError("04100")
-	ErrClientPagination 	error = NewSystemError("04101")
-	ErrClientEntity     	error = NewSystemError("04110")
-	ErrClientID         	error = NewSystemError("04111")
-	ErrClientUUID       	error = NewSystemError("04112")
-	ErrClientName       	error = NewSystemError("04113")
+	ErrClientGeneric        error = NewSystemError("04000")
+	ErrClientParameter      error = NewSystemError("04100")
+	ErrClientPagination     error = NewSystemError("04101")
+	ErrClientEntity         error = NewSystemError("04110")
+	ErrClientID             error = NewSystemError("04111")
+	ErrClientUUID           error = NewSystemError("04112")
+	ErrClientName           error = NewSystemError("04113")
 	ErrClientNotFound       error = NewSystemError("04114")
 	ErrClientUpdateConflict error = NewSystemError("04115")
-	ErrClientSHA256		 	error = NewSystemError("04116")
+	ErrClientSHA256         error = NewSystemError("04116")
 	// 05xxx server errors.
 	ErrServerGeneric               error = NewSystemError("05000")
 	ErrServerInfrastructure        error = NewSystemError("05001")

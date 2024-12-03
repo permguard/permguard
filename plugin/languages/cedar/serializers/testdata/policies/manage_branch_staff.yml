@@ -1,8 +1,0 @@
-# Manage Pharmacy Branch Staff: This policy covers tenant specific operations related to the management of staff within a pharmacy branch.
-name: manage-branch-staff
-actions:
-  - staff:access
-  - staff:manage
-  - staff:assignroles
-resources:
-  - uur::::pharmacy-branch:staff/*
