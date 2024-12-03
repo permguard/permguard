@@ -35,8 +35,8 @@ def check_permissions(token: str, system: str, resource: str, action: str):
 
 has_permissions = check_permissions(token, system, "inventory", "view")`,
   after: `has_permissions = permguard.check(
-    "uur::581616507495::iam:identity/google/pharmacist",
-    "magicfarmacia-v0.0",
+    "permguard@localhost/581616507495/default/authn/identity/role/pharmacist",
+    "magicfarmacia",
     "inventory",
     "view"
 )`,
@@ -68,8 +68,8 @@ func checkPermissions(token, system, resource, action string) bool {
 
 hasPermissions := checkPermissions(token, system, "inventory", "view")`,
   after: `hasPermissions := permguard.Check(
-    "uur::581616507495::iam:identity/google/pharmacist",
-    "magicfarmacia-v0.0",
+    "permguard@localhost/581616507495/default/authn/identity/role/pharmacist",
+    "magicfarmacia",
     "inventory",
     "view",
 )`,

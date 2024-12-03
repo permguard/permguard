@@ -28,37 +28,14 @@ Below is a specific scenario where an identity representing a pharmacy manager r
 
 The first step is to define a policy and associate it with a role by specifying the required permissions.
 
-```yaml
----
-# This policy covers operations related to the management of orders within a pharmacy branch.
-name: manage-branch-order
-effect: permit
-actions:
-  - ra:order:*
-resources:
-  - uur::::pharmacy-branch:order/*
----
-# This policy covers operations related to the auditing of orders within a pharmacy branch.
-name: audit-branch-order
-effect: permit
-actions:
-  - ra:order:view
-resources:
-  - uur::::pharmacy-branch:order/*
----
-# This policy covers operations related to the management of inventory within a pharmacy branch.
-name: view-branch-inventory
-effect: permit
-actions:
-  - ra:inventory:view
-resources:
-  - uur::::pharmacy-branch:inventory/*
----
-# This is a base policy to abstract the pharmacy branch.
-name: branch-pharmacist
-policies:
-  - view-branch-inventory
-  - manage-branch-order
+```cedar  {title="magicfarmacia.cedar"}
+permit(
+    principal in Role::"administer-platform-branches",
+    action in Action::"pharmacy-branch-management",
+    resource in Resource::"pharmacy-branch"
+) when {
+    principal.account == 345
+};
 ```
 
 ### Performing Permission Evaluation
@@ -66,7 +43,7 @@ policies:
 After creating and associating the policy with the role, the next step is to perform the permission evaluation within the application.
 
 ```python  {title="app.py"}
-has_permissions = permguard.check("uur::581616507495::iam:identity/google/pharmacist", "magicfarmacia", "inventory", "view")
+has_permissions = permguard.check("permguard@localhost/581616507495/default/authn/identity/role/pharmacist", "magicfarmacia", "inventory", "view")
 
 if has_permissions:
     print("Role can view inventory")
