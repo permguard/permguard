@@ -18,7 +18,7 @@
 
 [[main]]
   name = "Docs"
-  url = "/docs/0.1/overview/introduction-to-permguard/"
+  url = "/docs/0.1/getting-started/introduction-to-permguard/"
   weight = 10
 
 [[main]]

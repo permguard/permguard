@@ -145,7 +145,7 @@
 
         <!-- Language dropdown -->
     {{ if eq site.Params.doks.multilingualMode true -}}
-    
+
         <div class="dropdown mt-1 order-lg-2">
           <button class="btn btn-dropdown dropdown-toggle" id="doks-languages" data-bs-toggle="dropdown" aria-expanded="false" data-bs-display="static">
             <span class="dropdown-caret">
@@ -199,7 +199,7 @@
         {{ if eq site.Params.doks.docsVersioning true -}}
         <div class="dropdown mt-1 order-lg-0">
           <button class="btn btn-dropdown dropdown-toggle me-0" id="doks-versions" data-bs-toggle="dropdown" aria-expanded="false" data-bs-display="static" aria-label="Toggle version menu">
-            <span class="d-none">Doks</span> 
+            <span class="d-none">Doks</span>
             {{ $currentPage := . -}}
             {{ $versions := site.Params.doks.docsVersions }}
             {{ $currentVersion := index $versions (sub (len $versions) 1) }}
@@ -218,11 +218,11 @@
           </button>
           <ul class="dropdown-menu dropdown-menu-lg-end me-lg-2 shadow rounded border-0" aria-labelledby="doks-versions">
             <li>
-              <a class="dropdown-item current" aria-current="true" href="/docs/{{ $currentVersion }}/overview/introduction-to-permguard/">
-                {{ if eq $currentVersion (index site.Params.doks.docsVersions (sub (len site.Params.doks.docsVersions) 1)) }} 
-                  Latest v{{ $currentVersion }} 
-                {{ else }} 
-                  v{{ $currentVersion }} 
+              <a class="dropdown-item current" aria-current="true" href="/docs/{{ $currentVersion }}/getting-started/introduction-to-permguard/">
+                {{ if eq $currentVersion (index site.Params.doks.docsVersions (sub (len site.Params.doks.docsVersions) 1)) }}
+                  Latest v{{ $currentVersion }}
+                {{ else }}
+                  v{{ $currentVersion }}
                 {{ end }}
               </a>
             </li>
@@ -281,13 +281,13 @@
         {{ end -}}
       </div>
     </div>
-    
+
 
     <!-- Navbar button desktop -->
     {{ if site.Params.doks.navBarButton -}}
       <a class="btn btn-primary rounded-pill ms-3 me-2 px-4 order-lg-3 d-none d-lg-block" href="{{ site.Params.doks.navBarButtonUrl | absURL }}" role="button">{{ site.Params.doks.navBarButtonText }}</a>
     {{ end -}}
-    
+
 
   </div>
 </header>
