@@ -1,3 +1,6 @@
+/* eslint-disable no-undef */
+import Clipboard from "clipboard";
+
 /**
  * Copyright 2024 Nitro Agility S.r.l.
  *
@@ -218,3 +221,67 @@ detectForcedDarkMode().then(function (isDarkModeForced) {
     document.querySelector("body").classList.add("forced-dark");
   }
 });
+
+// Cedar copy to clipboard
+function addCopyToClipboardCedar() {
+  "use strict";
+
+  var cb = document.getElementsByClassName("language-cedar");
+  console.log(cb);
+
+  for (var i = 0; i < cb.length; ++i) {
+    var element = cb[i];
+    element.insertAdjacentHTML(
+      "afterbegin",
+      '<div class="copy"><button title="Copy to clipboard" class="btn-copy" aria-label="Clipboard button"><div></div></button></div>'
+    );
+  }
+
+  var clipboard = new Clipboard(".btn-copy", {
+    target: function (trigger) {
+      return trigger.parentNode.nextElementSibling;
+    },
+  });
+
+  clipboard.on("success", function (e) {
+    /*
+      console.info('Action:', e.action);
+      console.info('Text:', e.text);
+      console.info('Trigger:', e.trigger);
+      */
+
+    e.clearSelection();
+  });
+
+  clipboard.on("error", function (e) {
+    console.error("Action:", e.action);
+    console.error("Trigger:", e.trigger);
+  });
+}
+
+window.onload = function () {
+  if (window.location.pathname === "/") {
+    hljs.highlightAll();
+  } else {
+    var languages = [
+      "python",
+      "go",
+      "cedar",
+      "java",
+      "json",
+      "yaml",
+      "rego",
+      "bash",
+    ];
+
+    languages.forEach((language) => {
+      document
+        .querySelectorAll(`pre code.language-${language}`)
+        .forEach((block) => {
+          hljs.highlightElement(block);
+        });
+    });
+
+    addCopyToClipboardCedar();
+  }
+};
