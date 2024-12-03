@@ -27,8 +27,8 @@ import (
 )
 
 const (
-	errFileMessage   = "permyaml: invalid permyaml file. please check the syntax and ensure it adheres to the permguard specification."
-	errSyntaxMessage = "permyaml: invalid permyaml syntax. please check the syntax and ensure it adheres to the permguard specification."
+	errFileMessage   = "cedar: invalid cedar file. please check the syntax and ensure it adheres to the permguard specification."
+	errSyntaxMessage = "cedar: invalid cedar syntax. please check the syntax and ensure it adheres to the permguard specification."
 )
 
 // YamlSerializer is the YAML serializer.
@@ -59,8 +59,8 @@ func (s *YamlSerializer) SplitYAMLDocuments(data []byte) ([][]byte, error) {
 	return documents, nil
 }
 
-// UnmarshalPermYaml unmarshals to a permyaml object.
-func (s *YamlSerializer) UnmarshalPermYaml(data []byte) (any, error) {
+// UnmarshalCedar unmarshals to a cedar object.
+func (s *YamlSerializer) UnmarshalCedar(data []byte) (any, error) {
 	var tempMap map[string]any
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	err := decoder.Decode(&tempMap)
@@ -97,9 +97,9 @@ func (s *YamlSerializer) UnmarshalPermYaml(data []byte) (any, error) {
 	return nil, azerrors.WrapSystemError(azerrors.ErrLanguageSyntax, errSyntaxMessage)
 }
 
-// UnmarshalPermCodeFromPermYaml unmarshals to a permcode object from a permyaml content.
-func (s *YamlSerializer) UnmarshalPermCodeFromPermYaml(data []byte) (string, any, string, string, error) {
-	instance, err := s.UnmarshalPermYaml(data)
+// UnmarshalPermCodeFromCedar unmarshals to a permcode object from a cedar content.
+func (s *YamlSerializer) UnmarshalPermCodeFromCedar(data []byte) (string, any, string, string, error) {
+	instance, err := s.UnmarshalCedar(data)
 	if err != nil {
 		return "", nil, "", "", err
 	}
@@ -148,18 +148,18 @@ func (s *YamlSerializer) Marshal(data any) ([]byte, error) {
 
 // Unmarshal unmarshals data to an object.
 func (s *YamlSerializer) Unmarshal(data []byte) (any, error) {
-    var result any
-    err := yaml.Unmarshal(data, &result)
-    if err != nil {
-        return nil, err
-    }
-    return result, nil
+	var result any
+	err := yaml.Unmarshal(data, &result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // ConvertSchemaFromPermCode converts a schema from a permcode object.
 func (s *YamlSerializer) ConvertSchemaFromPermCode(schema *aztypes.Schema) (*Schema, error) {
 	if schema == nil {
-		return nil, errors.New("permyaml: schema is nil")
+		return nil, errors.New("cedar: schema is nil")
 	}
 
 	sch := &Schema{
@@ -193,7 +193,7 @@ func (s *YamlSerializer) ConvertSchemaFromPermCode(schema *aztypes.Schema) (*Sch
 // ConvertPermissionFromPermCode converts a permission from a permcode object.
 func (s *YamlSerializer) ConvertPermissionFromPermCode(permission *aztypes.Permission) (*Permission, error) {
 	if permission == nil {
-		return nil, errors.New("permyaml: permission is nil")
+		return nil, errors.New("cedar: permission is nil")
 	}
 
 	perm := &Permission{
@@ -207,7 +207,7 @@ func (s *YamlSerializer) ConvertPermissionFromPermCode(permission *aztypes.Permi
 // ConvertPolicyFromPermCode converts a policy from a permcode object.
 func (s *YamlSerializer) ConvertPolicyFromPermCode(policy *aztypes.Policy) (*Policy, error) {
 	if policy == nil {
-		return nil, errors.New("permyaml: policy is nil")
+		return nil, errors.New("cedar: policy is nil")
 	}
 
 	pol := &Policy{

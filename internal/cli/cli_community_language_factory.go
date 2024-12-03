@@ -21,7 +21,7 @@ import (
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
-	azplangyaml "github.com/permguard/permguard/plugin/languages/permyaml"
+	azplangcedar "github.com/permguard/permguard/plugin/languages/cedar"
 )
 
 // CommunityLanguageFactory is the factory for the community language.
@@ -36,8 +36,8 @@ func NewCommunityLanguageFactory() (*CommunityLanguageFactory, error) {
 // CreateLanguageAbastraction creates a language abstraction.
 func (c *CommunityLanguageFactory) CreateLanguageAbastraction(language string) (azlang.LanguageAbastraction, error) {
 	switch language {
-	case azplangyaml.LanguageName:
-		return azplangyaml.NewYAMLLanguageAbstraction()
+	case azplangcedar.LanguageName:
+		return azplangcedar.NewYAMLLanguageAbstraction()
 	default:
 		return nil, azerrors.WrapSystemError(azerrors.ErrConfigurationGeneric, fmt.Sprintf("cli: %s is an invalid language", language))
 	}
