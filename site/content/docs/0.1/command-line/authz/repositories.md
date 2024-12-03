@@ -54,13 +54,13 @@ The output from your current version of Permguard may differ from the example pr
 The `permguard authz repos create` command allows to create a repository for the mandatory input account and name.
 
 ```bash
-permguard authz repos create --account 268786704340 --name v2.0
+permguard authz repos create --account 268786704340 --name magicfarmacia
 ```
 
 output:
 
 ```bash
-668f3771eacf4094ba8a80942ea5fd3f: v2.0
+668f3771eacf4094ba8a80942ea5fd3f: magicfarmacia
 ```
 
 <details>
@@ -69,7 +69,7 @@ output:
   </summary>
 
 ```bash
-permguard authz repos create --account 268786704340 --name v2.0 --output json
+permguard authz repos create --account 268786704340 --name magicfarmacia --output json
 ```
 
 output:
@@ -82,7 +82,7 @@ output:
       "created_at": "2024-08-25T14:50:38.003Z",
       "updated_at": "2024-08-25T14:50:38.003Z",
       "account_id": 268786704340,
-      "name": "v2.0"
+      "name": "magicfarmacia"
     }
   ]
 }
