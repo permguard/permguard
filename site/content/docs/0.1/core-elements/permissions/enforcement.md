@@ -34,7 +34,8 @@ To complete the enforcement process, the PEP queries the Policy Decision Point (
   "identity": {
     "principal": "permguard@localhost/581616507495/default/authn/identity/actor/pharmacist"
   },
-  "actions": ["$tenant:pharmacy-branch:inventory:view"],
+  "tenant": "$tenant",
+  "actions": ["pharmacy-branch:inventory:view"],
   "context": {
     "tenants": ["matera-branch", "pisa-branch"]
   }
