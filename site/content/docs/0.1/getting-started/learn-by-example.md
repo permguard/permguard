@@ -31,11 +31,9 @@ The first step is to define a policy and associate it with a role by specifying 
 ```cedar  {title="magicfarmacia.cedar"}
 permit(
     principal in Role::"administer-platform-branches",
-    action in Action::"pharmacy-branch-management",
+    action in Action::"create",
     resource in Resource::"pharmacy-branch"
-) when {
-    principal.account == 345
-};
+);
 ```
 
 ### Performing Permission Evaluation
