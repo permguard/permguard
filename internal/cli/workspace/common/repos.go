@@ -85,7 +85,7 @@ func GetRepoInfoFromURI(repoURI string) (*RepoInfo, error) {
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
 	}
-	err = azvalidators.ValidateAccountID("repo", accountID)
+	err = azvalidators.ValidateCodeID("repo", accountID)
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
 	}

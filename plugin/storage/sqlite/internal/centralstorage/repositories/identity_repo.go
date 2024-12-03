@@ -64,7 +64,7 @@ func (r *Repo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*I
 	if identity == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity data is missing or malformed (%s)", LogIdentityEntry(identity)))
 	}
-	if err := azvalidators.ValidateAccountID("identity", identity.AccountID); err != nil {
+	if err := azvalidators.ValidateCodeID("identity", identity.AccountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentityInvalidAccountID, identity.AccountID))
 	}
 	if !isCreate && azvalidators.ValidateUUID("identity", identity.IdentityID) != nil {
@@ -125,7 +125,7 @@ func (r *Repo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*I
 
 // DeleteIdentity deletes an identity.
 func (r *Repo) DeleteIdentity(tx *sql.Tx, accountID int64, identityID string) (*Identity, error) {
-	if err := azvalidators.ValidateAccountID("identity", accountID); err != nil {
+	if err := azvalidators.ValidateCodeID("identity", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentityInvalidAccountID, accountID))
 	}
 	if err := azvalidators.ValidateUUID("identity", identityID); err != nil {
@@ -160,7 +160,7 @@ func (r *Repo) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, accountI
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
-	if err := azvalidators.ValidateAccountID("identity", accountID); err != nil {
+	if err := azvalidators.ValidateCodeID("identity", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageIdentityInvalidAccountID, accountID))
 	}
 

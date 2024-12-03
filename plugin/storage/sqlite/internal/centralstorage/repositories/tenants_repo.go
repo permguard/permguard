@@ -38,7 +38,7 @@ func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant,
 	if tenant == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant data is missing or malformed (%s)", LogTenantEntry(tenant)))
 	}
-	if err := azvalidators.ValidateAccountID("tenant", tenant.AccountID); err != nil {
+	if err := azvalidators.ValidateCodeID("tenant", tenant.AccountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidAccountID, tenant.AccountID))
 	}
 	if !isCreate && azvalidators.ValidateUUID("tenant", tenant.TenantID) != nil {
@@ -85,7 +85,7 @@ func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant,
 
 // DeleteTenant deletes an tenant.
 func (r *Repo) DeleteTenant(tx *sql.Tx, accountID int64, tenantID string) (*Tenant, error) {
-	if err := azvalidators.ValidateAccountID("tenant", accountID); err != nil {
+	if err := azvalidators.ValidateCodeID("tenant", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidAccountID, accountID))
 	}
 	if err := azvalidators.ValidateUUID("tenant", tenantID); err != nil {
@@ -119,7 +119,7 @@ func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID i
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
-	if err := azvalidators.ValidateAccountID("tenant", accountID); err != nil {
+	if err := azvalidators.ValidateCodeID("tenant", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageTenantInvalidAccountID, accountID))
 	}
 

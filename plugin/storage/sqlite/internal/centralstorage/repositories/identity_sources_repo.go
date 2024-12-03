@@ -38,7 +38,7 @@ func (r *Repo) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *I
 	if identitySource == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source data is missing or malformed (%s)", LogIdentitySourceEntry(identitySource)))
 	}
-	if err := azvalidators.ValidateAccountID("identitySource", identitySource.AccountID); err != nil {
+	if err := azvalidators.ValidateCodeID("identitySource", identitySource.AccountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentitySourceInvalidAccountID, identitySource.AccountID))
 	}
 	if !isCreate && azvalidators.ValidateUUID("identitySource", identitySource.IdentitySourceID) != nil {
@@ -85,7 +85,7 @@ func (r *Repo) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *I
 
 // DeleteIdentitySource deletes an identity source.
 func (r *Repo) DeleteIdentitySource(tx *sql.Tx, accountID int64, identitySourceID string) (*IdentitySource, error) {
-	if err := azvalidators.ValidateAccountID("identitySource", accountID); err != nil {
+	if err := azvalidators.ValidateCodeID("identitySource", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentitySourceInvalidAccountID, accountID))
 	}
 	if err := azvalidators.ValidateUUID("identitySource", identitySourceID); err != nil {
@@ -119,7 +119,7 @@ func (r *Repo) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, acc
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
-	if err := azvalidators.ValidateAccountID("identitySource", accountID); err != nil {
+	if err := azvalidators.ValidateCodeID("identitySource", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageIdentitySourceInvalidAccountID, accountID))
 	}
 

@@ -24,8 +24,8 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
-// TestValidateAccountID tests the validateAccountID function.
-func TestValidateAccountID(t *testing.T) {
+// TestValidateCodeID tests the ValidateCodeID function.
+func TestValidateCodeID(t *testing.T) {
 	assert := assert.New(t)
 
 	testCases := []struct {
@@ -43,7 +43,7 @@ func TestValidateAccountID(t *testing.T) {
 		{"account", 9999999999990, true},
 	}
 	for _, tc := range testCases {
-		result := ValidateAccountID(tc.entity, int64(tc.accountID))
+		result := ValidateCodeID(tc.entity, int64(tc.accountID))
 		if tc.hasError {
 			assert.NotNil(result, "error should not be nil")
 			assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, result), "error should be ErrClientID")
