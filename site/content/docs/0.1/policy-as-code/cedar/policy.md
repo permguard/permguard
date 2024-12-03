@@ -32,7 +32,7 @@ Below is a sample directory structure that includes the schema file and sample p
 
 Here is an example of cedar policy:
 
-```cedar
+```cedar  {title="pharmacy.cedar"}
 permit(
     principal in Role::"administer-platform-branches",
     action in Action::"create",
