@@ -28,16 +28,3 @@ In the context of the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-
 ## Policy
 
 A policy serves as a logical representation of what can be permitted or forbidden in an authorization model.
-
-{{< callout context="caution" icon="alert-triangle" >}}
-Policies can be defined using either PermScript or YAML.
-{{< /callout >}}
-
-```json
-{
-  "name": "view-branch-inventory",
-  "effect": "permit",
-  "actions": ["inventory:view"],
-  "resources": ["uur::::pharmacy-branch:inventory/*"]
-}
-```
