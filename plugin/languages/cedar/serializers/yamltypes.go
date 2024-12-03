@@ -17,22 +17,22 @@
 package serializers
 
 const (
-	// PermYAMLLangPackage is the language package name.
-	PermYAMLLangPackage = "permyaml"
+	// CedarLangPackage is the language package name.
+	CedarLangPackage = "cedar"
 )
 
 // Permission is the access control permission.
 type Permission struct {
-	Name string `yaml:"name"`
+	Name   string   `yaml:"name"`
 	Permit []string `yaml:"permit,omitempty"`
 	Forbid []string `yaml:"forbid,omitempty"`
 }
 
 // Policy is the access control policy.
 type Policy struct {
-	Name string `yaml:"name"`
+	Name      string   `yaml:"name"`
 	Actions   []string `yaml:"actions"`
-	Resources []string	`yaml:"resources"`
+	Resources []string `yaml:"resources"`
 }
 
 // DomainAction represents the domain action.
@@ -43,15 +43,15 @@ type DomainAction struct {
 
 // DomainResource represents the domain resource.
 type DomainResource struct {
-	Name    string   		`yaml:"name"`
-	Actions []DomainAction	`yaml:"actions"`
+	Name    string         `yaml:"name"`
+	Actions []DomainAction `yaml:"actions"`
 }
 
 // Domain represents the domain.
 type Domain struct {
-	Name        string				`yaml:"name"`
-	Description string     			`yaml:"description"`
-	Resources   []DomainResource 	`yaml:"resources"`
+	Name        string           `yaml:"name"`
+	Description string           `yaml:"description"`
+	Resources   []DomainResource `yaml:"resources"`
 }
 
 // Schema represents the schema for the domains.

@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package permyaml contains plugins for integrating the yaml-based language with permguard.
-package permyaml
+// Package cedar contains plugins for integrating the yaml-based language with permguard.
+package cedar

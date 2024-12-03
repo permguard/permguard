@@ -23,7 +23,7 @@ Permguard provides a Command Line Interface (CLI) for managing authentication me
 
 AuthZ administration is handled exclusively through the CLI, while AuthZ administration is managed via both the CLI and the Policy Language.
 
-The authorization process follows a code-first approach, and when dealing with Schemas and Policies, the CLI should be executed from a permguard workspace that contains configuration files written in PermYAML.
+The authorization process follows a code-first approach, and when dealing with Schemas and Policies, the CLI should be executed from a permguard workspace that contains configuration files written in Cedar.
 
 There are three methods to create a permguard workspace and associate it with a Permguard repository:
 
@@ -35,7 +35,7 @@ There are three methods to create a permguard workspace and associate it with a 
 
 A **Permguard** workspace contains the following files:
 
-- Policy files in `PermYAML` format.
+- Policy files in `Cedar` language.
 - A hidden `.permguard` directory which Permguard uses to store metadata and intermediate files that are automatically managed by Permguard and should not be modified manually. This directory should be added to the `.gitignore` file to prevent it from being committed to the source code version control.
 
 ## Initialize a new repository

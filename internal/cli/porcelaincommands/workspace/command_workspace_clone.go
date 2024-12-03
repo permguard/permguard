@@ -31,7 +31,7 @@ import (
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azlangpermyaml "github.com/permguard/permguard/plugin/languages/permyaml"
+	azplangcedar "github.com/permguard/permguard/plugin/languages/cedar"
 )
 
 const (
@@ -87,7 +87,7 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 	}
 	aapPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagAAP))
 	papPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagPAP))
-	output, err := wksMgr.ExecCloneRepo(azlangpermyaml.LanguageName, repoURI, aapPort, papPort, outFunc(ctx, printer))
+	output, err := wksMgr.ExecCloneRepo(azplangcedar.LanguageName, repoURI, aapPort, papPort, outFunc(ctx, printer))
 	if err != nil {
 		azfiles.DeletePath(repoFolder)
 		if ctx.IsJSONOutput() {

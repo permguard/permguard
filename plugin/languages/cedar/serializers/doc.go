@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package serializers contains serializers for the permyaml language.
+// Package serializers contains serializers for the cedar language.
 package serializers

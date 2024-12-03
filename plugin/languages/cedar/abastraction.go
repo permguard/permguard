@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package permyaml
+package cedar
 
 import (
 	"strings"
@@ -23,19 +23,19 @@ import (
 	azlangcode "github.com/permguard/permguard-abs-language/pkg/permcode"
 	aztypes "github.com/permguard/permguard-abs-language/pkg/permcode/types"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azsrlzs "github.com/permguard/permguard/plugin/languages/permyaml/serializers"
+	azsrlzs "github.com/permguard/permguard/plugin/languages/cedar/serializers"
 )
 
 const (
-	// LanguageName is the name of the permyaml language.
-	LanguageName = "permyaml"
+	// LanguageName is the name of the cedar language.
+	LanguageName = "cedar"
 	// LanguageFileYml is the yml file extension.
 	LanguageFileYml = ".yml"
 	// LanguageFileYaml is the yaml file extension.
 	LanguageFileYaml = ".yaml"
 )
 
-// YAMLLanguageAbstraction is the abstraction for the permyaml language.
+// YAMLLanguageAbstraction is the abstraction for the cedar language.
 type YAMLLanguageAbstraction struct {
 	objMng      *azlangobjs.ObjectManager
 	permCodeMng *azlangcode.PermCodeManager
@@ -80,7 +80,7 @@ func (abs *YAMLLanguageAbstraction) GetCommitObject(obj *azlangobjs.Object) (*az
 	}
 	value, ok := objInfo.GetInstance().(*azlangobjs.Commit)
 	if !ok {
-		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
+		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid object type")
 	}
 	return value, nil
 }
@@ -98,7 +98,7 @@ func (abs *YAMLLanguageAbstraction) GetTreeeObject(obj *azlangobjs.Object) (*azl
 	}
 	value, ok := objInfo.GetInstance().(*azlangobjs.Tree)
 	if !ok {
-		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
+		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid object type")
 	}
 	return value, nil
 }
@@ -119,7 +119,7 @@ func (abs *YAMLLanguageAbstraction) CreateMultiSectionsObjects(path string, data
 		return nil, err
 	}
 	for i, doc := range docs {
-		name, content, codeID, codeType, err := serializer.UnmarshalPermCodeFromPermYaml(doc)
+		name, content, codeID, codeType, err := serializer.UnmarshalPermCodeFromCedar(doc)
 		if err != nil {
 			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
 			continue
@@ -135,7 +135,7 @@ func (abs *YAMLLanguageAbstraction) CreateMultiSectionsObjects(path string, data
 			continue
 		}
 		if langID == 0 {
-			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid class type"))
+			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid class type"))
 			continue
 		}
 		header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, langTypeID)
@@ -167,7 +167,7 @@ func (abs *YAMLLanguageAbstraction) CreateSchemaSectionsObject(path string, data
 	if err != nil {
 		return nil, err
 	}
-	name, content, codeID, codeType, err := serializer.UnmarshalPermCodeFromPermYaml(data)
+	name, content, codeID, codeType, err := serializer.UnmarshalPermCodeFromCedar(data)
 	if err != nil {
 		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, err)
 		return multiSecObj, nil
@@ -182,7 +182,7 @@ func (abs *YAMLLanguageAbstraction) CreateSchemaSectionsObject(path string, data
 		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, err)
 	}
 	if langID == 0 {
-		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid class type"))
+		multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", 0, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid class type"))
 		return multiSecObj, nil
 	}
 	header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, langTypeID)
@@ -211,7 +211,7 @@ func (abs *YAMLLanguageAbstraction) TranslateFromPermCodeToLanguage(obj *azlango
 	}
 	objHeader := objInfo.GetHeader()
 	if !objHeader.IsNativeLanguage() {
-		return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
+		return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid object type")
 	}
 	_, _, classType, err := aztypes.GetClassType(objHeader.GetLanguageID(), objHeader.GetLanguageVersionID(), objHeader.GetClassID())
 	if err != nil {
@@ -223,42 +223,42 @@ func (abs *YAMLLanguageAbstraction) TranslateFromPermCodeToLanguage(obj *azlango
 		return "", nil, err
 	}
 	serializer, err := azsrlzs.NewYamlSerializer()
-	var permYamlContent []byte
-	var permYamlObj any
+	var cedarContent []byte
+	var cedarObj any
 	switch classType {
 	case aztypes.ClassTypeACPermission:
 		permission, ok := instance.Instance.(*aztypes.Permission)
 		if !ok {
-			return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
+			return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid object type")
 		}
-		permYamlObj, err = serializer.ConvertPermissionFromPermCode(permission)
+		cedarObj, err = serializer.ConvertPermissionFromPermCode(permission)
 		if err != nil {
 			return "", nil, err
 		}
 	case aztypes.ClassTypeACPolicy:
 		policy, ok := instance.Instance.(*aztypes.Policy)
 		if !ok {
-			return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
+			return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid object type")
 		}
-		permYamlObj, err = serializer.ConvertPolicyFromPermCode(policy)
+		cedarObj, err = serializer.ConvertPolicyFromPermCode(policy)
 		if err != nil {
 			return "", nil, err
 		}
 	case aztypes.ClassTypeSchema:
 		schema, ok := instance.Instance.(*aztypes.Schema)
 		if !ok {
-			return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
+			return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid object type")
 		}
-		permYamlObj, err = serializer.ConvertSchemaFromPermCode(schema)
+		cedarObj, err = serializer.ConvertSchemaFromPermCode(schema)
 		if err != nil {
 			return "", nil, err
 		}
 	}
-	permYamlContent, err = serializer.Marshal(permYamlObj)
+	cedarContent, err = serializer.Marshal(cedarObj)
 	if err != nil {
 		return "", nil, err
 	}
-	return classType, permYamlContent, nil
+	return classType, cedarContent, nil
 }
 
 // CreateLanguageFile combines the blocks for the language.

@@ -1,6 +1,6 @@
 ---
-title: "PermYAML"
-slug: "PermYAML"
+title: "Cedar"
+slug: "Cedar"
 description: ""
 summary: ""
 date: 2023-08-21T22:49:19+01:00
@@ -10,7 +10,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "coding-language-permyaml-c2285ed5af074d6f936e55b5fa8a4812"
+    identifier: "coding-language-cedar-c2285ed5af074d6f936e55b5fa8a4812"
 weight: 4100
 toc: true
 seo:

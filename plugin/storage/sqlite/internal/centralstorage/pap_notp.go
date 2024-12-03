@@ -66,7 +66,7 @@ func GetObjectForType[T any](objMng *azlangobjs.ObjectManager, obj *azlangobjs.O
 	instance := objInfo.GetInstance()
 	value, ok := instance.(*T)
 	if !ok {
-		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "permyaml: invalid object type")
+		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "storage: invalid object type")
 	}
 	return value, nil
 }
