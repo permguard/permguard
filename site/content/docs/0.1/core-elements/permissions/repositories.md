@@ -31,6 +31,6 @@ A Repository serves as logical representations, facilitating `authz` organizatio
 
 ```json
 {
-  "name": "v2.0"
+  "name": "magicfarmacia",
 }
 ```
