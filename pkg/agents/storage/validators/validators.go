@@ -24,8 +24,8 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
-// ValidateAccountID validates an account ID.
-func ValidateAccountID(entity string, accountID int64) error {
+// ValidateCodeID validates an account ID.
+func ValidateCodeID(entity string, accountID int64) error {
 	vAccountID := struct {
 		AccountID int64 `validate:"required,gt=0"`
 	}{AccountID: accountID}

@@ -45,7 +45,7 @@ func (r *Repo) UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Acco
 	if account == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account data is missing or malformed (%s)", LogAccountEntry(account)))
 	}
-	if !isCreate && azvalidators.ValidateAccountID("account", account.AccountID) != nil {
+	if !isCreate && azvalidators.ValidateCodeID("account", account.AccountID) != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (%s)", LogAccountEntry(account)))
 	}
 	if err := azvalidators.ValidateName("account", account.Name); err != nil {
@@ -86,7 +86,7 @@ func (r *Repo) UpsertAccount(tx *sql.Tx, isCreate bool, account *Account) (*Acco
 
 // DeleteAccount deletes an account.
 func (r *Repo) DeleteAccount(tx *sql.Tx, accountID int64) (*Account, error) {
-	if err := azvalidators.ValidateAccountID("account", accountID); err != nil {
+	if err := azvalidators.ValidateCodeID("account", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (id: %d)", accountID))
 	}
 
@@ -124,7 +124,7 @@ func (r *Repo) FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *
 
 	if filterID != nil {
 		accountID := *filterID
-		if err := azvalidators.ValidateAccountID("account", accountID); err != nil {
+		if err := azvalidators.ValidateCodeID("account", accountID); err != nil {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - account id is not valid (id: %d)", accountID))
 		}
 		conditions = append(conditions, "account_id = ?")

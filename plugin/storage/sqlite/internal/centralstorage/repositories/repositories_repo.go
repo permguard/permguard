@@ -38,7 +38,7 @@ func (r *Repo) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Repositor
 	if repository == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository data is missing or malformed (%s)", LogRepositoryEntry(repository)))
 	}
-	if err := azvalidators.ValidateAccountID("repository", repository.AccountID); err != nil {
+	if err := azvalidators.ValidateCodeID("repository", repository.AccountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidAccountID, repository.AccountID))
 	}
 	if !isCreate && azvalidators.ValidateUUID("repository", repository.RepositoryID) != nil {
@@ -86,7 +86,7 @@ func (r *Repo) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Repositor
 
 // UpdateRepositoryRef updates the ref of a repository.
 func (r *Repo) UpdateRepositoryRef(tx *sql.Tx, accountID int64, repositoryID, currentRef, newRef string) error {
-	if err := azvalidators.ValidateAccountID("repository", accountID); err != nil {
+	if err := azvalidators.ValidateCodeID("repository", accountID); err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidAccountID, accountID))
 	}
 	if err := azvalidators.ValidateUUID("repository", repositoryID); err != nil {
@@ -129,7 +129,7 @@ func (r *Repo) UpdateRepositoryRef(tx *sql.Tx, accountID int64, repositoryID, cu
 
 // DeleteRepository deletes a repository.
 func (r *Repo) DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string) (*Repository, error) {
-	if err := azvalidators.ValidateAccountID("repository", accountID); err != nil {
+	if err := azvalidators.ValidateCodeID("repository", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidAccountID, accountID))
 	}
 	if err := azvalidators.ValidateUUID("repository", repositoryID); err != nil {
@@ -164,7 +164,7 @@ func (r *Repo) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, accoun
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
-	if err := azvalidators.ValidateAccountID("repository", accountID); err != nil {
+	if err := azvalidators.ValidateCodeID("repository", accountID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageRepositoryInvalidAccountID, accountID))
 	}
 
