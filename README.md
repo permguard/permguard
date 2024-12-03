@@ -27,7 +27,7 @@ All you have to do is describe your schema's `resources` within your account and
 
 **Permguard** allows to specify who or what can access resources by the means of fine-grained permissions:
 
-- `Who`: *Identities (Users and Roles) authenticated in the application*
+- `Who`: *Identities (Users and Actors) authenticated in the application*
 - `Can Access`: *Permissions granted by attaching policies*
 - `Resources`: *Resources targeted by permissions*
 

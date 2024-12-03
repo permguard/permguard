@@ -26,11 +26,11 @@ Below is a specific scenario where an identity representing a pharmacy manager r
 
 ### Policy and Permissions Definition
 
-The first step is to define a policy and associate it with a role by specifying the required permissions.
+The first step is to define a policy and associate it with an actor by specifying the required permissions.
 
 ```cedar  {title="magicfarmacia.cedar"}
 permit(
-    principal in Role::"administer-platform-branches",
+    principal in Actor::"administer-platform-branches",
     action in Action::"create",
     resource in Resource::"pharmacy-branch"
 );
@@ -38,13 +38,13 @@ permit(
 
 ### Performing Permission Evaluation
 
-After creating and associating the policy with the role, the next step is to perform the permission evaluation within the application.
+After creating and associating the policy with the actor, the next step is to perform the permission evaluation within the application.
 
 ```python  {title="app.py"}
-has_permissions = permguard.check("permguard@localhost/581616507495/default/authn/identity/role/pharmacist", "magicfarmacia", "inventory", "view")
+has_permissions = permguard.check("permguard@localhost/581616507495/default/authn/identity/actor/pharmacist", "magicfarmacia", "inventory", "view")
 
 if has_permissions:
-    print("Role can view inventory")
+    print("Actor can view inventory")
 else:
-    print("Role cannot view inventory")
+    print("Actor cannot view inventory")
 ```

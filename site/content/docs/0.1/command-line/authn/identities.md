@@ -144,7 +144,7 @@ output:
       "updated_at": "2024-08-25T14:45:27.123Z",
       "account_id": 268786704340,
       "identity_source_id": "1da1d9094501425085859c60429163c2",
-      "identity_type": "role",
+      "identity_type": "actor",
       "name": "system-administrator"
     },
     {
@@ -162,7 +162,7 @@ output:
       "updated_at": "2024-08-25T14:45:28.167Z",
       "account_id": 268786704340,
       "identity_source_id": "1da1d9094501425085859c60429163c2",
-      "identity_type": "role",
+      "identity_type": "actor",
       "name": "branch-manager"
     },
     {

@@ -62,13 +62,13 @@ type IdentitySource struct {
 	Name             string    `json:"name" validate:"required"`
 }
 
-// Identity is the entity representing the user or role
+// Identity is the entity representing the user or actor
 type Identity struct {
 	IdentityID       string    `json:"identity_id" validate:"required,isuuid"`
 	CreatedAt        time.Time `json:"created_at" validate:"required"`
 	UpdatedAt        time.Time `json:"updated_at" validate:"required"`
 	AccountID        int64     `json:"account_id" validate:"required,gt=0"`
 	IdentitySourceID string    `json:"identity_source_id" validate:"required,isuuid"`
-	Kind             string    `json:"identity_type" validate:"required,oneof='user' 'role'"`
+	Kind             string    `json:"identity_type" validate:"required,oneof='user' 'actor'"`
 	Name             string    `json:"name" validate:"required"`
 }

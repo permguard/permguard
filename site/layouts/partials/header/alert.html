@@ -1,10 +1,10 @@
 {{ if site.Params.doks.alertDismissable -}}
-  <div id="announcement" data-id="global-alert-{{ md5 site.Params.alertText }}" class="alert alert-primary alert-dismissible fade show text-center" role="alert">
+  <div id="announcement" data-id="global-alert-{{ md5 site.Params.alertText }}" class="alert alert-primary alert-dismissible fade show text-center" actor="alert">
     <span class="alert-text">{{ site.Params.alertText | safeHTML }}</span>
     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
   </div>
 {{ else -}}
-  <div class="alert alert-primary text-center" role="alert">
+  <div class="alert alert-primary text-center" actor="alert">
     {{ site.Params.alertText | safeHTML }}
   </div>
 {{ end -}}

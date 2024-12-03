@@ -92,11 +92,11 @@ devidsource=$(echo $output | cut -d ':' -f 1)
 
 go run ./cmd/cli/main.go authn identitysources create --name facebook --account $devaccount || echo "Failed to create Facebook identity source"
 
-go run ./cmd/cli/main.go authn identities create --account $devaccount --kind role --name platform-administrator --identitysourceid $devidsource
-go run ./cmd/cli/main.go authn identities create --account $devaccount --kind role --name branch-manager --identitysourceid $devidsource
-go run ./cmd/cli/main.go authn identities create --account $devaccount --kind role --name inventory-manager --identitysourceid $devidsource
-go run ./cmd/cli/main.go authn identities create --account $devaccount --kind role --name pharmacist --identitysourceid $devidsource
-go run ./cmd/cli/main.go authn identities create --account $devaccount --kind role --name customer --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --account $devaccount --kind actor --name platform-administrator --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --account $devaccount --kind actor --name branch-manager --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --account $devaccount --kind actor --name inventory-manager --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --account $devaccount --kind actor --name pharmacist --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --account $devaccount --kind actor --name customer --identitysourceid $devidsource
 
 go run ./cmd/cli/main.go authz repos create --name v0.1 --account $devaccount || echo "Failed to create v0.1 repository"
 

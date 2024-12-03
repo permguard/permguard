@@ -59,8 +59,8 @@ domains:
             description: view staff details
           - name: manage
             description: Manage staff details
-          - name: assign_roles
-            description: Assign roles to staff members
+          - name: assign_actors
+            description: Assign actors to staff members
       - name: inventory
         actions:
           - name: view
@@ -84,7 +84,7 @@ domains:
 A domain represents a broad category or functional area within the system. It is the top-level organizational unit in a schema. Domains encapsulate related resources and define the scope within which specific operations are applied.
 
 - Naming: Each domain must have a unique name that clearly reflects its purpose or the area it governs.
-- Description: Optionally, a domain can include a description that provides additional context or clarification about its role.
+- Description: Optionally, a domain can include a description that provides additional context or clarification about its actor.
 
 ```yaml
 domains:
@@ -99,7 +99,7 @@ domains:
 A resource represents an entity or object within a domain that is subject to various actions. Resources are the specific items that policies and operations are applied to within a domain.
 
 - Naming: Each resource within a domain must have a unique name. This name should accurately describe the resource.
-- Description: Like domains, resources can include an optional description to further explain their role.
+- Description: Like domains, resources can include an optional description to further explain their actor.
 
 ```yaml
 resources:

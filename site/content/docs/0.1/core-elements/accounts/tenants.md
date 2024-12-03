@@ -21,7 +21,7 @@ seo:
 
 **Permguard** implements the concept of `multi-tenants`, allowing the creation of multiple **tenants** for each account.
 
-Tenants play a crucial role in managing the authorizations and they can be used to `partition` `resources` and `actions` effectively.
+Tenants play a crucial actor in managing the authorizations and they can be used to `partition` `resources` and `actions` effectively.
 This is quite useful in scenarios where the adopter intends to use Permguard for developing a multi-tenant application, such as Software as a Service (SaaS).
 
 {{< callout context="note" icon="info-circle" >}}

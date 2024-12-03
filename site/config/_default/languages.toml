@@ -11,13 +11,13 @@
     homeAccountTitle = 'Accounts'
     homeAccountBody = 'Create and configure an <code>Account</code>, optionally including its <code>Tenants</code>.'
     homeIdentitiesTitle = "Identities"
-    homeIdentitiesBody = "Create an identity source and populate it with <code>Users</code> and <code>Roles</code> using available SDKs."
+    homeIdentitiesBody = "Create an identity source and populate it with <code>Users</code> and <code>Actors</code> using available SDKs."
     homeSchemaTitle = 'Repositories'
     homeSchemaBody = 'Create a <code>Repository</code> and configure its <code>Schema</code> (domains, resources and actions).'
     homePolicyTitle = 'Policies'
     homePolicyBody = 'Configure <code>Policies</code> to define what can be permitted or forbidden.'
     homePermissionsTitle = "Permissions"
-    homePermissionsBody = "Configure <code>Permissions</code> on policies and assign them to identities (users and roles)."
+    homePermissionsBody = "Configure <code>Permissions</code> on policies and assign them to identities (users and actors)."
     homeEnforceTitle = 'Enforce'
     homeEnforceBody = 'Enforce the permissions in the application using available SDKs.'
     docsIntroduction = 'Get Started'

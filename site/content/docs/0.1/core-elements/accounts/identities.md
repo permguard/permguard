@@ -19,10 +19,10 @@ seo:
   noindex: false # false (default) or true
 ---
 
-An `identity` is an unique entity that represents either an **user** or a **role**.
+An `identity` is an unique entity that represents either an **user** or a **actor**.
 
 {{< callout context="note" icon="info-circle" >}}
-In the context of the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management), there would be multiple users and roles representing the various branches and positions within the pharmacy, such as the `pharmacist` role.
+In the context of the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management), there would be multiple users and actors representing the various branches and positions within the pharmacy, such as the `pharmacist` actor.
 
 Moreover, in the example, there are two sample identity sources: one for `Google` and one for `Facebook`.
 {{< /callout >}}
@@ -40,8 +40,8 @@ Identities are linked to identity sources.
 A `Principal` is an human user or workload with granted permissions that authenticates and make requests, specifically:
 
 - A user
-- A role
-- An assumed role (role assumed by a user or a role assumed by a workload).
+- An actor
+- An assumed actor (actor assumed by a user or an actor assumed by a workload).
 
 ## User
 
@@ -56,14 +56,26 @@ The name of the can be either a valid PermgGuard name or an email address.
 }
 ```
 
-## Role
+## Actor
 
-A `Role` is an identity within an account with associated permissions.
-A role can be temporaraly assumed by a `Principal` identity.
+An `Actor` is a type of virtual identity that can be temporarily assumed by a Principal identity. It represents either:
+
+- A `Role`: A predefined set of permissions tailored to specific tasks, such as "Approvals Manager" or "Compliance Reviewer."
+- A `Digital Twin`: A virtual representation of a user or service account, designed to perform tasks independently while reflecting the original identity.
+
+PermGuard allows systems to **optionally** build around the concept of Actors. This approach isolates different profiles of an identity, ensuring every operation is executed under the specific permissions of the Actor rather than the broader permissions of the `Principal`.
+
+1. `Zero Trust Security`: By requiring elevation into an Actor, only the permissions needed for a specific task are used, reducing risks and ensuring complete traceability.
+
+2. `Role Isolation`: Each Actor is limited to its assigned role or context, creating clear separation between different responsibilities or operations.
+
+3. `Future Federation`: The Actor model provides a strong foundation for enabling secure collaboration across organizations. With clearly defined roles and permissions, PermGuard supports federated systems where multiple organizations can work together while maintaining security boundaries.
+
+This design enhances `security`, `flexibility`, and `scalability`, making it an ideal choice for distributed systems and multi-organization environments.
 
 ```json
 {
-  "identity_type": "role",
+  "identity_type": "actor",
   "name": "branch-manager"
 }
 ```

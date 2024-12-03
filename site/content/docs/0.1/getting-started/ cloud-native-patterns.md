@@ -33,7 +33,7 @@ Identity Management: Permguard adopts the **Bring Your Own Identity (BYOI)** mod
 
 ## Use Case: Api Endpoint
 
-One use case involves sending a JWT token to an API endpoint, where the token can contain various metadata such as permission roles and scopes. However, this approach presents several drawbacks:
+One use case involves sending a JWT token to an API endpoint, where the token can contain various metadata such as permission actors and scopes. However, this approach presents several drawbacks:
 
 - **Increased JWT Size**: Including numerous permissions within the JWT can lead to its size growing, resulting in increased network overhead when transmitting the token.
 - **Synchronization Challenges**: If the metadata, such as permissions, undergoes changes, the JWT must be reissued to reflect these modifications. Otherwise, there's a risk of permissions becoming out of sync, leading to potential security issues.
@@ -49,11 +49,11 @@ Below a sample JWT Token:
   "exp": 1516325422,
   "scope": "openid profile email",
   "permissions": ["read:inventory"],
-  "roles": ["pharmacist"]
+  "actors": ["pharmacist"]
 }
 ```
 
-**Permguard** does not require the JWT token to contain any permission or role, as it has a copy of the applicative users and know exactly which permissions are attached to each user.
+**Permguard** does not require the JWT token to contain any permission or actor, as it has a copy of the applicative users and know exactly which permissions are attached to each user.
 With this approach the previous drawbacks are mitigated:
 
 - **Increased JWT Size**: This problem is fixed as there is no need to add extra fields in the JWT token.
@@ -64,9 +64,9 @@ With this approach the previous drawbacks are mitigated:
 has_permissions = permguard.check(jwt.sub, "magicfarmacia", "inventory", "read")
 
 if has_permissions:
-    print("Role can read inventory")
+    print("Actor can read inventory")
 else:
-    print("Role cannot read inventory")
+    print("Actor cannot read inventory")
 ```
 
 ## Use Case: Asynchronous Operations and Revoked Permissions
@@ -104,7 +104,7 @@ For a deeper dive into how these patterns operate within a **Zero Trust context*
    Explore the challenges and solutions for managing resources, actions, and accounts in systems with partial or no connectivity.
 
 2. [**Unlocking Zero Trust Delegation through Permissions and Policies**](https://medium.com/ztauth/unlocking-zero-trust-delegation-through-permissions-and-policies-f2952f56f79b)
-   Learn about the role of permissions and policies in enabling secure, scalable Zero Trust delegation.
+   Learn about the actor of permissions and policies in enabling secure, scalable Zero Trust delegation.
 
 ---
 
