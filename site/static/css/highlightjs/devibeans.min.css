@@ -1,8 +1,10 @@
-pre.chroma {
+pre.chroma,
+.language-cedar {
   display: block !important;
   overflow-x: auto !important;
   padding: 0.5em !important;
   color: #dcdcdc !important;
+  box-sizing: border-box !important;
 }
 
 .hljs-keyword,

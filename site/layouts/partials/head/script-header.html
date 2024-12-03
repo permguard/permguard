@@ -55,33 +55,6 @@
 <script src="/js/highlightjs/languages/rego.min.js"></script>
 <script src="/js/highlightjs/languages/bash.min.js"></script>
 
-<script>
-  window.onload = function () {
-    if (window.location.pathname === "/") {
-      hljs.highlightAll();
-    } else {
-      var languages = [
-        "python",
-        "go",
-        "cedar",
-        "java",
-        "json",
-        "yaml",
-        "rego",
-        "bash",
-      ];
-
-      languages.forEach((language) => {
-        document
-          .querySelectorAll(`pre code.language-${language}`)
-          .forEach((block) => {
-            hljs.highlightElement(block);
-          });
-      });
-    }
-  };
-</script>
-
 <!-- Code compare slider -->
 <script defer src="/js/comparision-slider/slider.js"></script>
 <link rel="stylesheet" href="/css/comparision-slider/styles.css" />
