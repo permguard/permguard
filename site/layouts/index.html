@@ -575,9 +575,8 @@ async def view_inventory(token: str = Depends(oauth2_scheme)):
       <br />
       Proximity nodes independently pull updates via the NOTP (Negotiated Object
       Transfer Protocol), allowing each node to reference specific points in
-      time while optimizing bandwidth usage. Policies are converted to an
-      intermediate language, PermCode, and stored in immutable blobs. This
-      approach, combined with the abstract language layer, allows Permguard to
+      time while optimizing bandwidth usage. Policies are stored in immutable blobs.
+      This approach, combined with the abstract language layer, allows Permguard to
       extend seamlessly with other languages, ensuring there is no dependency on
       code-specific APIs.
     </p>

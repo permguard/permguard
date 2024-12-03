@@ -20,8 +20,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	aztypes "github.com/permguard/permguard-abs-language/pkg/permcode/types"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	aztypes "github.com/permguard/permguard-abs-language/pkg/permcode/types"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
@@ -207,13 +207,13 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 			Section:      0,
 			Mode:         0,
 			HasErrors:    true,
-			CodeID: 	 aztypes.ClassTypeSchema,
-			CodeType: 	 aztypes.ClassTypeSchema,
+			CodeID:       aztypes.ClassTypeSchema,
+			CodeType:     aztypes.ClassTypeSchema,
 			ErrorMessage: "permcode: the schema file 'schema.yml' is missing. please ensure there are no duplicate schema files and that the required schema file is present.",
 		}
 		blbCodeFiles = append(blbCodeFiles, codeFile)
 	}
- 	if err := m.cospMgr.SaveCodeSourceCodeMap(blbCodeFiles); err != nil {
+	if err := m.cospMgr.SaveCodeSourceCodeMap(blbCodeFiles); err != nil {
 		return "", blbCodeFiles, err
 	}
 	for _, blobCodeFile := range blbCodeFiles {
