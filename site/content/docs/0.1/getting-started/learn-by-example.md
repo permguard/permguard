@@ -41,7 +41,7 @@ permit(
 After creating and associating the policy with the actor, the next step is to perform the permission evaluation within the application.
 
 ```python  {title="app.py"}
-has_permissions = permguard.check(jwt, "permguard@localhost/581616507495/default/authn/identity/actor/pharmacist", "magicfarmacia", "inventory", "view")
+has_permissions = permguard.check(jwt, "permguard@localhost/581616507495/permguard/authn/identity/actor/pharmacist", "magicfarmacia", "inventory", "view")
 
 if has_permissions:
     print("Actor can view inventory")
