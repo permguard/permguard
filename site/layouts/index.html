@@ -69,7 +69,7 @@
         <div class="description__card__info-container">
           <h3>Identities</h3>
           <p>
-            Create and identity source and populate it with Users and Roles
+            Create and identity source and populate it with Users and Actors
             using available SDKs.
           </p>
         </div>
@@ -105,7 +105,7 @@
           <h3>Permissions</h3>
           <p>
             Configure Permissions on policies and assign them to identities
-            (users and roles).
+            (users and actors).
           </p>
         </div>
       </div>
@@ -302,14 +302,14 @@
     <pre slot="first" class="theme-devibeans"><code class="language-go">
 func checkPermissions(token, system, resource, action string) bool {
     payload := decodeJWT(token)
-    roles, ok := payload["roles"].([]string)
+    actors, ok := payload["actors"].([]string)
     if !ok {
         return false
     }
 
-    for _, role := range roles {
-        rolePermissions := getPermissionsForRole(role)
-        if resources, systemFound := rolePermissions[resource]; systemFound {
+    for _, actor := range actors {
+        actorPermissions := getPermissionsForActor(actor)
+        if resources, systemFound := actorPermissions[resource]; systemFound {
             if actions, resourceFound := resources[system]; resourceFound {
                 for _, allowedAction := range actions {
                     if strings.EqualFold(allowedAction, action) {
@@ -336,14 +336,14 @@ hasPermissions := checkPermissions(token, system, "inventory", "view")
       <pre slot="first" class="theme-devibeans"><code class="language-go">
 func checkPermissions(token, system, resource, action string) bool {
   payload := decodeJWT(token)
-  roles, ok := payload["roles"].([]string)
+  actors, ok := payload["actors"].([]string)
   if !ok {
     return false
   }
 
-  for _, role := range roles {
-    rolePermissions := getPermissionsForRole(role)
-    if resources, systemFound := rolePermissions[resource]; systemFound {
+  for _, actor := range actors {
+    actorPermissions := getPermissionsForActor(actor)
+    if resources, systemFound := actorPermissions[resource]; systemFound {
       if actions, resourceFound := resources[system]; resourceFound {
         for _, allowedAction := range actions {
           if strings.EqualFold(allowedAction, action) {
@@ -360,7 +360,7 @@ hasPermissions := checkPermissions(token, system, "inventory", "view")
 </code></pre>
       <pre slot="second">
 <code class="language-go">hasPermissions := permguard.Check(
-  "permguard@localhost/581616507495/default/authn/identity/role/pharmacist",
+  "permguard@localhost/581616507495/default/authn/identity/actor/pharmacist",
   "magicfarmacia",
   "inventory",
   "view",
@@ -501,7 +501,7 @@ async def view_inventory(token: str = Depends(oauth2_scheme)):
     if has_permissions:
         return get_inventory()
     else:
-        raise HTTPException(status_code=403, detail="Role cannot view inventory")
+        raise HTTPException(status_code=403, detail="Actor cannot view inventory")
     </code></pre>
       </div>
     </div>

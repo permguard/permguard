@@ -75,6 +75,6 @@ This approach allows detailed permissions to specify who or what can access reso
   <img alt="Permguard" src="/images/diagrams/d14.svg"/>
 </div>
 
-- `Who`: *Identities (Users and Roles)*
+- `Who`: *Identities (Users and Actors)*
 - `Can Access`: *Permissions granted by attaching policies*
 - `Resources`: *Resources targeted by permissions*

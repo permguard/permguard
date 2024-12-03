@@ -22,7 +22,7 @@ seo:
 In **Permguard**, enforcement is ensured by the Policy Enforcement Point (PEP). Its intent is to verify if an identity can execute certain actions on certain resources and domains.
 
 {{< callout context="note" icon="info-circle" >}}
-In the context of the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management), the application would enforce a permission check on the `pharmacist` role to determine if it has `view access` to the inventory within the context of the `matera-branch` and `pisa-branch` tenants.
+In the context of the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management), the application would enforce a permission check on the `pharmacist` actor to determine if it has `view access` to the inventory within the context of the `matera-branch` and `pisa-branch` tenants.
 {{< /callout >}}
 
 ## Enforcement
@@ -32,7 +32,7 @@ To complete the enforcement process, the PEP queries the Policy Decision Point (
 ```json
 {
   "identity": {
-    "principal": "permguard@localhost/581616507495/default/authn/identity/role/pharmacist"
+    "principal": "permguard@localhost/581616507495/default/authn/identity/actor/pharmacist"
   },
   "actions": ["$tenant:pharmacy-branch:inventory:view"],
   "context": {

@@ -25,20 +25,20 @@ const PYTHON_CODE = {
   before: `
 def check_permissions(token: str, system: str, resource: str, action: str):
     payload = decode_jwt(token)
-    roles: List[str] = payload.get("roles", [])
-    for role in roles:
-        role_permissions = get_permissions_for_role(role)
-        if system in role_permissions:
-            if resource in role_permissions[system]:
-                if action in role_permissions[system][resource]:
+    actors: List[str] = payload.get("actors", [])
+    for actor in actors:
+        actor_permissions = get_permissions_for_actor(actor)
+        if system in actor_permissions:
+            if resource in actor_permissions[system]:
+                if action in actor_permissions[system][resource]:
                     # If all conditions match, permission is granted
                     return True
-    # If no role grants permission, return False
+    # If no actor grants permission, return False
     return False
 
 has_permissions = check_permissions(token, system, "inventory", "view")`,
   after: `has_permissions = permguard.check(
-    "permguard@localhost/581616507495/default/authn/identity/role/pharmacist",
+    "permguard@localhost/581616507495/default/authn/identity/actor/pharmacist",
     "magicfarmacia",
     "inventory",
     "view"
@@ -49,14 +49,14 @@ const GO_CODE = {
   before: `
 func checkPermissions(token, system, resource, action string) bool {
     payload := decodeJWT(token)
-    roles, ok := payload["roles"].([]string)
+    actors, ok := payload["actorrs"].([]string)
     if !ok {
         return false
     }
 
-    for _, role := range roles {
-        rolePermissions := getPermissionsForRole(role)
-        if resources, systemFound := rolePermissions[resource]; systemFound {
+    for _, actor := rangaactorles {
+        actorPermissions := getPermissionsForActor(actor)
+        if resources, systemFound := actorPermissions[resource]; systemFound {
             if actions, resourceFound := resources[system]; resourceFound {
                 for _, allowedAction := range actions {
                     if strings.EqualFold(allowedAction, action) {
@@ -71,7 +71,7 @@ func checkPermissions(token, system, resource, action string) bool {
 
 hasPermissions := checkPermissions(token, system, "inventory", "view")`,
   after: `hasPermissions := permguard.Check(
-    "permguard@localhost/581616507495/default/authn/identity/role/pharmacist",
+    "permguard@localhost/581616507495/default/authn/identity/actor/pharmacist",
     "magicfarmacia",
     "inventory",
     "view",
