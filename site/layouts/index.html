@@ -361,8 +361,8 @@ hasPermissions := checkPermissions(token, system, "inventory", "view")
 </code></pre>
       <pre slot="second">
 <code class="language-go">hasPermissions := permguard.Check(
-  "uur::581616507495::iam:identity/google/pharmacist",
-  "magicfarmacia-v0.0",
+  "permguard@localhost/581616507495/default/authn/identity/role/pharmacist",
+  "magicfarmacia",
   "inventory",
   "view",
 )

@@ -114,7 +114,7 @@ func CreateCommandForWorkspaceClone(deps azcli.CliDependenciesProvider, v *viper
 
 Examples:
   # clone a remote repository to the local permguard workspace
-  permguard clone 268786704340/magicfarmacia-v0.0`),
+  permguard clone 268786704340/magicfarmacia`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCloneWorkspace(args, deps, cmd, v)
 		},
