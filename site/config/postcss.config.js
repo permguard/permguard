@@ -35,7 +35,6 @@ module.exports = {
         },
       ],
       dynamicAttributes: [
-        "aria-selected",
         "aria-expanded",
         "data-bs-popper",
         "data-bs-target",
@@ -80,7 +79,6 @@ module.exports = {
           "./node_modules/@hyas/doks-core/assets/scss/components/_code.scss",
           "./node_modules/@hyas/doks-core/assets/scss/components/_expressive-code.scss",
           "./node_modules/@hyas/doks-core/assets/scss/common/_syntax.scss",
-          "./node_modules/@docsearch/css/dist/modal.css",
         ]),
       ],
     }),
