@@ -56,3 +56,14 @@ body {
     padding-left: calc(var(--bs-gutter-x) * 0.25);
   }
 }
+
+@include color-mode(dark) {
+  .search-result:hover .card h2,
+  .search-result.selected .card h2 {
+    color: #fff !important;
+  }
+
+  .search-result:hover .card .content {
+    color: #fff !important;
+  }
+}
