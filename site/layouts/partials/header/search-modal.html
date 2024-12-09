@@ -62,15 +62,9 @@
         <template>
           <article class="search-result list-view">
             <div class="card my-3">
-              <div class="card-body">
+              <a class="card-body">
                 <header>
-                  <h2 class="h5 title title-submitted mb-0">
-                    <a
-                      class="stretched-link text-decoration-none text-reset"
-                      href="#"
-                      >Title here</a
-                    >
-                  </h2>
+                  <h2 class="h5 title title-submitted mb-0">Title here</h2>
                   <div
                     class="submitted{{ if eq site.Params.doks.showDate false }} d-none{{ end }}"
                   >
@@ -82,7 +76,7 @@
                 >
                   Summary here
                 </div>
-              </div>
+              </a>
             </div>
           </article>
         </template>
