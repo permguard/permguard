@@ -21,9 +21,9 @@ Learn:
 
 **Permguard** is an Open Source Zero-Trust Auth* Provider for cloud-native, edge, and multi-tenant apps, decoupled from application code and leveraging `Policy-as-Code` for centralized, scalable permission management.
 
-As an `Permguard administrator` you can create multiple accounts and create multiple schemas within each account.
+As a `PermGuard administrator`, you can create multiple accounts and manage multiple repositories within each account.
 
-All you have to do is describe your schema's `resources` within your account and create your own access control policies. Resources are organized into schema's domains.
+Simply define your schema's `resources` within your repository and create customized access control policies. Resources are organized into schema namespaces.
 
 **Permguard** allows to specify who or what can access resources by the means of fine-grained permissions:
 

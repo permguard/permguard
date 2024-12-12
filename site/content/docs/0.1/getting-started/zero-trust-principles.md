@@ -99,7 +99,7 @@ To ensure proper functionality, these models must have the following characteris
 
 **ZTAuth\*** is designed to work with `eventual consistency`, supporting environments where connectivity is partial or network reliability is limited. Changes are packaged into versioned, immutable data structures and distributed asynchronously in incremental updates.
 
-Every resource action executed at the application boundary is verified against strict, identity-based security policies defined by an authorization schema.
+Every resource action at the application boundary is verified against strict, identity-based security policies aligned with an authorization schema.
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d17.png"/>

@@ -42,5 +42,4 @@ When reviewing licenses, please ensure you are referencing the appropriate versi
   <img alt="Permguard Policies" src="/images/diagrams/d21.png"/>
 </div><br/>
 
-
 Permguard aims to redefine how authorization providers operate by combining flexibility with strong opinions on schema and model design, giving organizations the tools they need to implement secure and scalable access control systems.

@@ -29,7 +29,7 @@ Managing access to sensitive data and services across applications can be challe
 Introducing Permguard: the Zero Trust, cloud-native solution built for the future of authorization.
 {{< /callout >}}
 
-**Permguard** secures your application layer with Policy-as-Code, using its own language and extensible with other policy engines. Centralize policies and manage multi-domain resources and user actions with PBAC.
+**Permguard** secures your application layer with Policy-as-Code, using its own language and extensible with other policy engines. Centralize policies and manage multi-namespace resources and user actions with PBAC.
 
 - Built for scale, **Permguard** supports multi-account and multi-tenant setups, perfect for complex environments. Developers can seamlessly plan and deploy permissions, backed by Git-like object storage that guarantees immutability and versioning out of the box to meet enterprise compliance needs.
 
