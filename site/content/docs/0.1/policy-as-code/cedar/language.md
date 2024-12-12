@@ -27,9 +27,8 @@ Below is an example directory structure with a schema file and sample policy fil
 ```plaintext
 .
 ├── .permguard
-├── schema.cedar
+├── schema.json
 ├── staff_policies.cedar
-├── inventory_policies.cedar
 ```
 
 Here is an example of cedar policy:
