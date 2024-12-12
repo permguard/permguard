@@ -58,7 +58,7 @@ Developers can use their preferred language from the ones integrated, while ensu
   <img alt="Permguard" src="/images/diagrams/d18.png"/>
 </div>
 
-`PermGuard` uses a common `schema` to define `Resources`, `Actions`, and `Identities`, ensuring consistency.
+`PermGuard` uses a common `schema` to define `Namepsaces` `Resources`, and `Actions`, ensuring consistency.
 Each language is integrated with a small abstraction layer that doesn’t limit developers, except for a few reserved keywords.
 
 <div style="text-align: center">

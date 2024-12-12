@@ -22,7 +22,7 @@ seo:
 In **Permguard**, multiple repositories can be created, and each of them has a single **schema**. This provides a structured method for modelling the authorization model.
 
 {{< callout context="note" icon="info-circle" >}}
-In the context of the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management), , the schema primarily represents two domains: the `platform` tenant, which serves as the master tenant capable of managing all branches, and the `pharmacy branch` tenant.
+In the context of the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management), , the schema primarily represents two namespaces: the `platform` tenant, which serves as the master tenant capable of managing all branches, and the `pharmacy branch` tenant.
 
 The platform implements features to create a new tenant for each branch, which can be accomplished using the internal Permguard API.
 {{< /callout >}}
@@ -31,9 +31,9 @@ The platform implements features to create a new tenant for each branch, which c
 
 A schema serves as a logical representation, organizing resources and actions, and also includes metadata annotations.
 
-## Domain
+## Namespace
 
-Additionally, a schema can be further subdivided into domains, offering enhanced granularity in resource management. A domain provides another level of logical representation, particularly advantageous for schemas employing a `Domain-Driven Design` (`DDD`) approach. By structuring schemas into domains, users can streamline development efforts and ensure architectural coherence.
+Additionally, a schema can be further subdivided into namespaces, offering enhanced granularity in resource management. A namespace provides another level of logical representation, particularly advantageous for schemas employing a `Domain-Driven Design` (`DDD`) approach. By structuring schemas into namespaces, users can streamline development efforts and ensure architectural coherence.
 
 ```json
 {
@@ -43,7 +43,7 @@ Additionally, a schema can be further subdivided into domains, offering enhanced
 }
 ```
 
-In more details, each domain can define multiple **resources** and corresponding **actions** that can be performed on those resources.
+In more details, each namespace can define multiple **resources** and corresponding **actions** that can be performed on those resources.
 
 {{< callout context="caution" icon="alert-triangle" >}}
 It's important to note that creating a `Resource` for every entity within the application is not mandatory, the same concept applies for `Actions`.

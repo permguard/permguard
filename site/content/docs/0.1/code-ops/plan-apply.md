@@ -19,15 +19,15 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The primary function of the Permguard CLI is to create, modify, and destroy schemas, policies, and permissions.
+The primary function of the PermGuard CLI is to manage schemas and policies.
 
-Provisioning in Permguard involves the process of creating and managing these resources, including schemas, policies, and permissions.
+Provisioning in PermGuard involves creating and managing these elements, which include schemas and policies.
 
-This can primarily be accomplished using the `plan` and `apply` commands.
+This is primarily done using the `plan` and `apply` commands.
 
 ## Plan
 
-The `plan` command evaluates the configurations and determines the desired state of all objects (schemas, policies, permissions) to be created, modified, or destroyed on the server.
+The `plan` command evaluates the configurations and determines the desired state of all objects (schemas, policies) to be created, modified, or destroyed on the server.
 
 Essentially, this command compares the current state of the working directory with the server's state and outputs the changes that will be applied.
 
