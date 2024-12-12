@@ -37,7 +37,7 @@ Here is an example of cedar policy:
 ```cedar  {title="pharmacy.cedar"}
 permit(
     principal in Actor::"administer-platform-branches",
-    action in Action::"create",
-    resource in Resource::"pharmacy-branch"
+    action in Action::MagicFarmacia:Branch::assignRole
+    resource in MagicFarmacia::Branch::Staff
 );
 ```

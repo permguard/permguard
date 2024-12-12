@@ -34,111 +34,118 @@ Below is a sample schema:
 
 ```yaml
 {
-    "PhotoFlash": {
-        "entityTypes": {
-            "User": {
-                "memberOfTypes": [ "UserGroup" ],
-                "shape": {
-                    "type": "Record",
-                    "attributes": {
-                        "department": { "type": "String" },
-                        "jobLevel": { "type": "Long" }
-                    }
-                }
-            },
-            "UserGroup": { },
-            "Photo": {
-                "memberOfTypes": [ "Album" ],
-                "shape": {
-                    "type": "Record",
-                    "attributes": {
-                        "private": { "type": "Boolean" },
-                        "account": {
-                            "type": "Entity",
-                            "name": "Account"
-                        }
-                    }
-                }
-            },
-            "Album": {
-                "memberOfTypes": [ "Album" ],
-                "shape": {
-                    "type": "Record",
-                    "attributes": {
-                        "private": { "type": "Boolean" },
-                        "account": {
-                            "type": "Entity",
-                            "name": "Account"
-                        }
-                    }
-                }
-            },
-            "Account": {
-                "memberOfTypes": [],
-                "shape": {
-                    "type": "Record",
-                    "attributes": {
-                        "owner": {
-                            "type": "Entity",
-                            "name": "User"
-                        },
-                        "admins": {
-                            "required": false,
-                            "type": "Set",
-                            "element": {
-                                "type": "Entity",
-                                "name": "User"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "actions": {
-            "viewPhoto": {
-                "appliesTo": {
-                    "principalTypes": [ "User" ],
-                    "resourceTypes": [ "Photo" ],
-                    "context": {
-                        "type": "Record",
-                        "attributes": {
-                            "authenticated": { "type": "Boolean" }
-                        }
-                    }
-                }
-            },
-            "listAlbums": {
-                "appliesTo": {
-                    "principalTypes": [ "User" ],
-                    "resourceTypes": [ "Account" ],
-                    "context": {
-                        "type": "Record",
-                        "attributes": {
-                            "authenticated": { "type": "Boolean" }
-                        }
-                    }
-                }
-            },
-            "uploadPhoto": {
-                "appliesTo": {
-                    "principalTypes": [ "User" ],
-                    "resourceTypes": [ "Album" ],
-                    "context": {
-                        "type": "Record",
-                        "attributes": {
-                            "authenticated": { "type": "Boolean" },
-                            "photo": {
-                                "type": "Record",
-                                "attributes": {
-                                    "file_size": { "type": "Long" },
-                                    "file_type": { "type": "String" }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+  "MagicFarmacia:Platform": {
+    "entityTypes": {
+      "Branch": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "city": "String"
+          }
         }
+      }
+    },
+    "actions": {
+      "upsert": {
+        "appliesTo": {
+          "principalTypes": [
+            "Identity"
+          ],
+          "resourceTypes": [
+            "Branch"
+          ]
+        }
+      },
+      "delete": {
+        "appliesTo": {
+          "principalTypes": [
+            "Identity"
+          ],
+          "resourceTypes": [
+            "Branch"
+          ]
+        }
+      }
     }
+  },
+  "MagicFarmacia:Branch": {
+    "entityTypes": {
+      "Staff": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "id": "String"
+          }
+        }
+      },
+      "Inventory": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "id": "String"
+          }
+        }
+      },
+      "Order": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "id": "String"
+          }
+        }
+      },
+      "Report": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "id": "String"
+          }
+        }
+      }
+    },
+    "actions": {
+      "manage": {
+        "appliesTo": {
+          "principalTypes": [
+            "Identity"
+          ],
+          "resourceTypes": [
+            "Staff",
+            "Inventory",
+            "Order",
+            "Report"
+          ]
+        }
+      },
+      "assignRole": {
+        "appliesTo": {
+          "principalTypes": [
+            "Identity"
+          ],
+          "resourceTypes": [
+            "Staff"
+          ],
+          "context": {
+            "attributes": {
+              "id": "String"
+            }
+          }
+        }
+      },
+      "view": {
+        "appliesTo": {
+          "principalTypes": [
+            "Identity"
+          ],
+          "resourceTypes": [
+            "Staff",
+            "Inventory",
+            "Order",
+            "Report"
+          ]
+        }
+      }
+    }
+  }
 }
 ```
