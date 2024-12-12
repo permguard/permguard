@@ -39,5 +39,10 @@ permit(
     principal in Actor::"administer-platform-branches",
     action in Action::MagicFarmacia:Branch::assignRole
     resource in MagicFarmacia::Branch::Staff
-);
+)
+when { principal.owner == true &&
+    context.id > 0 }
+unless {
+  principal has isTerminated && principal.isTerminated
+};
 ```
