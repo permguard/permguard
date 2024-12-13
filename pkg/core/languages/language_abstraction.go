@@ -22,10 +22,12 @@ import (
 
 // LanguageAbastraction is the interface for the language abstraction.
 type LanguageAbastraction interface {
-	// GetLanguageName returns the name of the language.
-	GetLanguageName() string
-	// GetFileExtensions returns the file extensions.
-	GetFileExtensions() []string
+	// GetLanguageIdentifier returns the identifier of the language.
+	GetLanguageIdentifier() string
+	// GetSupportedFileExtensions returns the list of supported file extensions.
+	GetSupportedFileExtensions() []string
+	// GetSchemaFileNames returns the name for schema files.
+	GetSchemaFileNames() []string
 	// CreateCommitObject creates a commit object.
 	CreateCommitObject(commit *azlangobjs.Commit) (*azlangobjs.Object, error)
 	// GetCommitObject gets a commit object.

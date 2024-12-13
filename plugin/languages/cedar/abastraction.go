@@ -24,10 +24,12 @@ import (
 )
 
 const (
-	// LanguageName is the name of the cedar language.
-	LanguageName = "cedar"
-	// LanguageFileCedar is the cedar file extension.
-	LanguageFileCedar = ".cedar"
+	// LanguageIdentifier defines the identifier for the Cedar language.
+	LanguageIdentifier = "cedar"
+	// CedarFileExtension specifies the file extension for Cedar language files.
+	CedarFileExtension = ".cedar"
+	// SchemaFileName specifies the name of the schema definition file.
+	SchemaFileName = "schema.json"
 )
 
 // CedarLanguageAbstraction is the abstraction for the cedar language.
@@ -46,14 +48,19 @@ func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
 	}, nil
 }
 
-// GetLanguageName returns the name of the language.
-func (abs *CedarLanguageAbstraction) GetLanguageName() string {
-	return LanguageName
+// GetLanguageIdentifier returns the identifier of the language.
+func (abs *CedarLanguageAbstraction) GetLanguageIdentifier() string {
+	return LanguageIdentifier
 }
 
-// GetFileExtensions returns the file extensions.
-func (abs *CedarLanguageAbstraction) GetFileExtensions() []string {
-	return []string{LanguageFileCedar}
+// GetSupportedFileExtensions returns the list of supported file extensions.
+func (abs *CedarLanguageAbstraction) GetSupportedFileExtensions() []string {
+	return []string{CedarFileExtension}
+}
+
+// GetSchemaFileNames returns the name for schema files.
+func (abs *CedarLanguageAbstraction) GetSchemaFileNames() []string {
+	return []string{SchemaFileName}
 }
 
 // CreateCommitObject creates a commit object.
@@ -116,5 +123,5 @@ func (abs *CedarLanguageAbstraction) CreateLanguageFile(blocks [][]byte) ([]byte
 		}
 		sb.Write(block)
 	}
-	return []byte(sb.String()), LanguageFileCedar, nil
+	return []byte(sb.String()), CedarFileExtension, nil
 }
