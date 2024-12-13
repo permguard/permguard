@@ -19,6 +19,7 @@ package cedar
 import (
 	"strings"
 
+	azlang "github.com/permguard/permguard/pkg/core/languages"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
@@ -48,19 +49,13 @@ func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
 	}, nil
 }
 
-// GetLanguageIdentifier returns the identifier of the language.
-func (abs *CedarLanguageAbstraction) GetLanguageIdentifier() string {
-	return LanguageIdentifier
-}
-
-// GetSupportedFileExtensions returns the list of supported file extensions.
-func (abs *CedarLanguageAbstraction) GetSupportedFileExtensions() []string {
-	return []string{CedarFileExtension}
-}
-
-// GetSchemaFileNames returns the name for schema files.
-func (abs *CedarLanguageAbstraction) GetSchemaFileNames() []string {
-	return []string{SchemaFileName}
+// GetLanguageSpecification returns the specification for the language.
+func (abs *CedarLanguageAbstraction)GetLanguageSpecification() azlang.LanguageSpecification {
+	return &CedarLanguageSpecification{
+		languageIdentifier: LanguageIdentifier,
+		supportedPolicyFileExtensions: []string{CedarFileExtension},
+		supportedSchemaFileNames: []string{SchemaFileName},
+	}
 }
 
 // CreateCommitObject creates a commit object.

@@ -20,14 +20,20 @@ import (
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 )
 
-// LanguageAbastraction is the interface for the language abstraction.
-type LanguageAbastraction interface {
+// LanguageSpecification is the interface for the language specification.
+type LanguageSpecification interface {
 	// GetLanguageIdentifier returns the identifier of the language.
 	GetLanguageIdentifier() string
-	// GetSupportedFileExtensions returns the list of supported file extensions.
-	GetSupportedFileExtensions() []string
-	// GetSchemaFileNames returns the name for schema files.
-	GetSchemaFileNames() []string
+	// GetSupportedPolicyFileExtensions returns the list of supported policy file extensions.
+	GetSupportedPolicyFileExtensions() []string
+	// GetSupportedSchemaFileNames returns the list of supported schema file names.
+	GetSupportedSchemaFileNames() []string
+}
+
+// LanguageAbastraction is the interface for the language abstraction.
+type LanguageAbastraction interface {
+	// GetLanguageSpecification returns the specification for the language.
+	GetLanguageSpecification() LanguageSpecification
 	// CreateCommitObject creates a commit object.
 	CreateCommitObject(commit *azlangobjs.Commit) (*azlangobjs.Object, error)
 	// GetCommitObject gets a commit object.

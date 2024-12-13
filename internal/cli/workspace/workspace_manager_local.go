@@ -47,9 +47,10 @@ func (m *WorkspaceManager) cleanupLocalArea() (bool, error) {
 
 // scanSourceCodeFiles scans the source code files.
 func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastraction) ([]azicliwkscosp.CodeFile, []azicliwkscosp.CodeFile, error) {
-	exts := absLang.GetSupportedFileExtensions()
+	langSpec := absLang.GetLanguageSpecification()
+	suppPolicyExts := langSpec.GetSupportedPolicyFileExtensions()
 	ignorePatterns := []string{hiddenIgnoreFile, schemaYAMLFile, schemaYMLFile, hiddenDir, gitDir, gitIgnoreFile}
-	files, ignoredFiles, err := m.persMgr.ScanAndFilterFiles(azicliwkspers.WorkspaceDir, "", exts, ignorePatterns, hiddenIgnoreFile)
+	files, ignoredFiles, err := m.persMgr.ScanAndFilterFiles(azicliwkspers.WorkspaceDir, "", suppPolicyExts, ignorePatterns, hiddenIgnoreFile)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -57,9 +58,9 @@ func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastracti
 	for i, file := range files {
 		codeFiles[i] = azicliwkscosp.CodeFile{Type: azicliwkscosp.CodeFileTypePermCode, Path: file}
 	}
-	schemaFiles := absLang.GetSchemaFileNames()
+	suppSchemaFNames := langSpec.GetSupportedSchemaFileNames()
 	existingSchemaFiles := []string{}
-	for _, schemaFile := range schemaFiles {
+	for _, schemaFile := range suppSchemaFNames {
 		if exists, _ := m.persMgr.CheckPathIfExists(azicliwkspers.WorkspaceDir, schemaFile); exists {
 			schemaFileName := m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaFile)
 			existingSchemaFiles = append(existingSchemaFiles, schemaFileName)
@@ -249,7 +250,8 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 		return "", blbCodeFiles, err
 	}
 	treeID := treeObj.GetOID()
-	if err := m.cospMgr.SaveCodeSourceConfig(treeID, absLang.GetLanguageIdentifier()); err != nil {
+	langSpec := absLang.GetLanguageSpecification()
+	if err := m.cospMgr.SaveCodeSourceConfig(treeID, langSpec.GetLanguageIdentifier()); err != nil {
 		return treeID, blbCodeFiles, err
 	}
 	return treeID, blbCodeFiles, nil
