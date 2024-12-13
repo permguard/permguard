@@ -17,6 +17,7 @@
 package cedar
 
 import (
+	"bytes"
 	"strings"
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
@@ -128,5 +129,5 @@ func (abs *CedarLanguageAbstraction) ReadSchemaBlobObject(obj *azlangobjs.Object
 
 // CreateSchemaBody creates a schema body.
 func (abs *CedarLanguageAbstraction) CreateSchemaBody(blocks [][]byte) ([]byte, string, error) {
-	return nil, "", nil
+	return bytes.Join(blocks, nil), CedarFileExtension, nil
 }
