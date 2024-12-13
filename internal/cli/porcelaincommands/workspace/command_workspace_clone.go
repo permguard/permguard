@@ -87,7 +87,7 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 	}
 	aapPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagAAP))
 	papPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagPAP))
-	output, err := wksMgr.ExecCloneRepo(azplangcedar.LanguageIdentifier, repoURI, aapPort, papPort, outFunc(ctx, printer))
+	output, err := wksMgr.ExecCloneRepo(azplangcedar.LanguageName, repoURI, aapPort, papPort, outFunc(ctx, printer))
 	if err != nil {
 		azfiles.DeletePath(repoFolder)
 		if ctx.IsJSONOutput() {

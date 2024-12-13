@@ -10,7 +10,7 @@ require (
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/mattn/go-sqlite3 v1.14.23
 	github.com/pelletier/go-toml v1.9.5
-	github.com/permguard/permguard-abs-language v0.0.1-0.20241213184200-d30e66c03808
+	github.com/permguard/permguard-abs-language v0.0.1-0.20241213231157-4b69582124e7
 	github.com/permguard/permguard-core v0.0.1-0.20241203105114-77948207378c
 	github.com/permguard/permguard-notp-protocol v0.0.1-0.20241203110445-d7156560fc5b
 	github.com/pressly/goose/v3 v3.22.1
@@ -24,6 +24,7 @@ require (
 )
 
 require (
+	github.com/cedar-policy/cedar-go v1.1.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.5 // indirect
@@ -51,9 +52,9 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.27.0 // indirect
-	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0 // indirect
+	golang.org/x/exp v0.0.0-20241210194714-1829a127f884 // indirect
 	golang.org/x/net v0.29.0 // indirect
-	golang.org/x/sync v0.8.0 // indirect
+	golang.org/x/sync v0.10.0 // indirect
 	golang.org/x/sys v0.25.0 // indirect
 	golang.org/x/text v0.18.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240930140551-af27646dc61f // indirect
