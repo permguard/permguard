@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/cedar-policy/cedar-go"
+	azpermcodetypes "github.com/permguard/permguard-abs-language/pkg/permcode/types"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
@@ -121,7 +122,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(path string, data [
 		var policy cedar.Policy
 		name := ""
 		codeID := ""
-		codeType := ""
+		codeType := azpermcodetypes.ClassTypeACPolicy
 		langID := uint32(1)
 		langVersionID := uint32(1)
 		langTypeID := uint32(1)
