@@ -44,14 +44,14 @@ type LanguageAbastraction interface {
 	ConvertObjectToTree(obj *azlangobjs.Object) (*azlangobjs.Tree, error)
 	// CreatePolicyBlobObjects creates multi sections policy blob objects.
 	CreatePolicyBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error)
-	// ReadPolicyBlobObject reads the policy blob object body.
-	ReadPolicyBlobObject(obj *azlangobjs.Object) (string, []byte, error)
-	// CreateMultiPolicyBodyBody creates a multi policy body.
-	CreateMultiPolicyBody(blocks [][]byte) ([]byte, string, error)
+	// ReadPolicyBlobContentBytes reads the policy blob object content bytes.
+	ReadPolicyBlobContentBytes(obj *azlangobjs.Object) (string, []byte, error)
+	// CreateMultiPolicyContentBytesBody creates a multi policy content bytes.
+	CreateMultiPolicyContentBytes(blocks [][]byte) ([]byte, string, error)
 	// CreateSchemaBlobObjects creates multi sections schema blob objects.
 	CreateSchemaBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error)
-	// ReadSchemaBlobObject reads the schema blob object body.
-	ReadSchemaBlobObject(obj *azlangobjs.Object) (string, []byte, error)
-	// CreateSchemaBody creates a schema body.
-	CreateSchemaBody(blocks [][]byte) ([]byte, string, error)
+	// ReadSchemaBlobContentBytes reads the schema blob object content bytes.
+	ReadSchemaBlobContentBytes(obj *azlangobjs.Object) (string, []byte, error)
+	// CreateSchemaContentBytes creates a schema content bytes.
+	CreateSchemaContentBytes(blocks [][]byte) ([]byte, string, error)
 }

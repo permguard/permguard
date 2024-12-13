@@ -273,7 +273,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
-				classType, codeBlock, err := absLang.ReadPolicyBlobObject(entryObj)
+				classType, codeBlock, err := absLang.ReadPolicyBlobContentBytes(entryObj)
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
@@ -286,7 +286,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			}
 		}
 		if len(codeBlocks) > 0 {
-			codeBlock, ext, err := absLang.CreateMultiPolicyBody(codeBlocks)
+			codeBlock, ext, err := absLang.CreateMultiPolicyContentBytes(codeBlocks)
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
