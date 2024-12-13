@@ -23,24 +23,22 @@ import (
 	"strings"
 
 	"github.com/cedar-policy/cedar-go"
-	azpermcodetypes "github.com/permguard/permguard-abs-language/pkg/permcode/types"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azpermcodetypes "github.com/permguard/permguard-abs-language/pkg/permcode/types"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
 const (
-	// LanguageName defines the name for the Cedar language.
-	LanguageName = "cedar"
-	// LanguageID is the language ID.
-	LanguageID = uint32(1)
-	// PermCodeSyntaxLatest is the latest permcode syntax.
-	LanguageSyntaxLatest = "*"
-	// PermCodeSyntaxIDLatest is the latest permcode syntax ID.
-	LanguageSyntaxIDLatest = uint32(1)
-
+	// CedarLanguageName defines the name for the Cedar language.
+	CedarLanguageName = "cedar"
+	// CedarLanguageID is the language ID.
+	CedarLanguageID = uint32(1)
+	// PermCodeSyntaxLatest is the cedar syntax.
+	CeadarLanguageSyntax = "*"
 	// CedarFileExtension specifies the file extension for Cedar language files.
 	CedarFileExtension = ".cedar"
+
 	// SchemaFileName specifies the name of the schema definition file.
 	SchemaFileName = "schema.json"
 )
@@ -64,7 +62,7 @@ func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
 // GetLanguageSpecification returns the specification for the language.
 func (abs *CedarLanguageAbstraction) GetLanguageSpecification() azlang.LanguageSpecification {
 	return &CedarLanguageSpecification{
-		languageName:                  LanguageName,
+		languageName:                  CedarLanguageName,
 		supportedPolicyFileExtensions: []string{CedarFileExtension},
 		supportedSchemaFileNames:      []string{SchemaFileName},
 	}
