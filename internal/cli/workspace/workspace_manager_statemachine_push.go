@@ -132,7 +132,7 @@ func (m *WorkspaceManager) buildPushPacketablesForCommit(handlerCtx *notpstatema
 	absLang, _ := getFromHandlerContext[azlang.LanguageAbastraction](handlerCtx, LanguageAbstractionKey)
 	packetable := []notppackets.Packetable{}
 
-	commit, err := absLang.GetCommitObject(commitObj)
+	commit, err := absLang.ConvertObjectToCommit(commitObj)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +152,7 @@ func (m *WorkspaceManager) buildPushPacketablesForCommit(handlerCtx *notpstatema
 	if err != nil {
 		return nil, err
 	}
-	tree, err := absLang.GetTreeeObject(treeObj)
+	tree, err := absLang.ConvertObjectToTree(treeObj)
 	if err != nil {
 		return nil, err
 	}

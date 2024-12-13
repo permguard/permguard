@@ -53,7 +53,7 @@ func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) 
 	headCtx := &currentHeadContext{
 		headRefInfo:    headRefInfo,
 		remoteRefInfo:  remoteRefInfo,
-		headCommitID: 	headRefCommitID,
+		headCommitID:   headRefCommitID,
 		remoteCommitID: remoteRefCommitID,
 		server:         remoteInfo.GetServer(),
 		serverPAPPort:  remoteInfo.GetPAPPort(),
@@ -89,7 +89,7 @@ func (m *WorkspaceManager) GetCurrentHeadCommit(absLang azlang.LanguageAbastract
 	if err != nil {
 		return nil, err
 	}
-	remoteCommit, err := absLang.GetCommitObject(remoteCommitObj)
+	remoteCommit, err := absLang.ConvertObjectToCommit(remoteCommitObj)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func (m *WorkspaceManager) GetCurrentHeadTree(absLang azlang.LanguageAbastractio
 	if err != nil {
 		return nil, err
 	}
-	tree, err := absLang.GetTreeeObject(treeObj)
+	tree, err := absLang.ConvertObjectToTree(treeObj)
 	if err != nil {
 		return nil, err
 	}

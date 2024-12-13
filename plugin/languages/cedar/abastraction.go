@@ -19,9 +19,9 @@ package cedar
 import (
 	"strings"
 
-	azlang "github.com/permguard/permguard/pkg/core/languages"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
 const (
@@ -50,11 +50,11 @@ func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
 }
 
 // GetLanguageSpecification returns the specification for the language.
-func (abs *CedarLanguageAbstraction)GetLanguageSpecification() azlang.LanguageSpecification {
+func (abs *CedarLanguageAbstraction) GetLanguageSpecification() azlang.LanguageSpecification {
 	return &CedarLanguageSpecification{
-		languageIdentifier: LanguageIdentifier,
+		languageIdentifier:            LanguageIdentifier,
 		supportedPolicyFileExtensions: []string{CedarFileExtension},
-		supportedSchemaFileNames: []string{SchemaFileName},
+		supportedSchemaFileNames:      []string{SchemaFileName},
 	}
 }
 
@@ -63,8 +63,8 @@ func (abs *CedarLanguageAbstraction) CreateCommitObject(commit *azlangobjs.Commi
 	return abs.objMng.CreateCommitObject(commit)
 }
 
-// GetCommitObject gets a commit object.
-func (abs *CedarLanguageAbstraction) GetCommitObject(obj *azlangobjs.Object) (*azlangobjs.Commit, error) {
+// ConvertObjectToCommit converts an object to a commit.
+func (abs *CedarLanguageAbstraction) ConvertObjectToCommit(obj *azlangobjs.Object) (*azlangobjs.Commit, error) {
 	objInfo, err := abs.objMng.GetObjectInfo(obj)
 	if err != nil {
 		return nil, err
@@ -81,8 +81,8 @@ func (abs *CedarLanguageAbstraction) CreateTreeObject(tree *azlangobjs.Tree) (*a
 	return abs.objMng.CreateTreeObject(tree)
 }
 
-// GetTreeeObject gets a tree object.
-func (abs *CedarLanguageAbstraction) GetTreeeObject(obj *azlangobjs.Object) (*azlangobjs.Tree, error) {
+// ConvertObjectToTree converts an object to a tree.
+func (abs *CedarLanguageAbstraction) ConvertObjectToTree(obj *azlangobjs.Object) (*azlangobjs.Tree, error) {
 	objInfo, err := abs.objMng.GetObjectInfo(obj)
 	if err != nil {
 		return nil, err
@@ -94,23 +94,28 @@ func (abs *CedarLanguageAbstraction) GetTreeeObject(obj *azlangobjs.Object) (*az
 	return value, nil
 }
 
-// CreateMultiSectionsObjects create blobs for multi sections objects.
-func (abs *CedarLanguageAbstraction) CreateMultiSectionsObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error) {
+// CreatePolicyBlobObjects creates multi sections policy blob objects.
+func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error) {
 	return nil, nil
 }
 
-// CreateSchemaSectionsObject creates a schema section object.
-func (abs *CedarLanguageAbstraction) CreateSchemaSectionsObject(path string, data []byte) (*azlangobjs.MultiSectionsObject, error) {
-	return nil, nil
-}
-
-// TranslateFromPermCodeToLanguage translates from permcode to language.
-func (abs *CedarLanguageAbstraction) TranslateFromPermCodeToLanguage(obj *azlangobjs.Object) (string, []byte, error) {
+// ReadPolicyBlobObject reads the policy blob object body.
+func (abs *CedarLanguageAbstraction) ReadPolicyBlobObject(obj *azlangobjs.Object) (string, []byte, error) {
 	return "", nil, nil
 }
 
-// CreateLanguageFile combines the blocks for the language.
-func (abs *CedarLanguageAbstraction) CreateLanguageFile(blocks [][]byte) ([]byte, string, error) {
+// CreateSchemaBlobObjects creates multi sections schema blob objects.
+func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error) {
+	return nil, nil
+}
+
+// ReadSchemaBlobObject reads the schema blob object body.
+func (abs *CedarLanguageAbstraction) ReadSchemaBlobObject(obj *azlangobjs.Object) (string, []byte, error) {
+	return "", nil, nil
+}
+
+// CreateMultiPoliciesBodyBody creates a multi policies body.
+func (abs *CedarLanguageAbstraction) CreateMultiPoliciesBody(blocks [][]byte) ([]byte, string, error) {
 	var sb strings.Builder
 	for i, block := range blocks {
 		if i > 0 {

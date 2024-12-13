@@ -248,13 +248,13 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		commit, err := absLang.GetCommitObject(commitObj)
+		commit, err := absLang.ConvertObjectToCommit(commitObj)
 
 		treeObj, err := m.cospMgr.ReadObject(commit.GetTree())
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		tree, err := absLang.GetTreeeObject(treeObj)
+		tree, err := absLang.ConvertObjectToTree(treeObj)
 
 		codeMap, err := m.cospMgr.ReadCodeSourceCodeMap()
 		if err != nil {
@@ -273,7 +273,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
-				classType, codeBlock, err := absLang.TranslateFromPermCodeToLanguage(entryObj)
+				classType, codeBlock, err := absLang.ReadPolicyBlobObject(entryObj)
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
@@ -286,7 +286,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			}
 		}
 		if len(codeBlocks) > 0 {
-			codeBlock, ext, err := absLang.CreateLanguageFile(codeBlocks)
+			codeBlock, ext, err := absLang.CreateMultiPoliciesBody(codeBlocks)
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
