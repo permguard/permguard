@@ -34,7 +34,7 @@ Below is an example directory structure with a schema file and sample policy fil
 Here is an example of cedar policy:
 
 ```cedar  {title="pharmacy.cedar"}
-@policyId("assign-role-branch")
+@policy_id("assign-role-branch")
 permit(
     principal in Permguard::Actor::"administer-branches-staff",
     action in Action::"assignRole",
