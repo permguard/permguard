@@ -100,13 +100,13 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(path string, data [
 	return nil, nil
 }
 
-// ReadPolicyBlobObject reads the policy blob object body.
-func (abs *CedarLanguageAbstraction) ReadPolicyBlobObject(obj *azlangobjs.Object) (string, []byte, error) {
+// ReadPolicyBlobContentBytes reads the policy blob object content bytes.
+func (abs *CedarLanguageAbstraction) ReadPolicyBlobContentBytes(obj *azlangobjs.Object) (string, []byte, error) {
 	return "", nil, nil
 }
 
-// CreateMultiPolicyBodyBody creates a multi policy body.
-func (abs *CedarLanguageAbstraction) CreateMultiPolicyBody(blocks [][]byte) ([]byte, string, error) {
+// CreateMultiPolicyContentBytes creates a multi policy content bytes.
+func (abs *CedarLanguageAbstraction) CreateMultiPolicyContentBytes(blocks [][]byte) ([]byte, string, error) {
 	var sb strings.Builder
 	for i, block := range blocks {
 		if i > 0 {
@@ -122,12 +122,12 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data [
 	return nil, nil
 }
 
-// ReadSchemaBlobObject reads the schema blob object body.
-func (abs *CedarLanguageAbstraction) ReadSchemaBlobObject(obj *azlangobjs.Object) (string, []byte, error) {
+// ReadSchemaBlobContentBytes reads the schema blob object content bytes.
+func (abs *CedarLanguageAbstraction) ReadSchemaBlobContentBytes(obj *azlangobjs.Object) (string, []byte, error) {
 	return "", nil, nil
 }
 
-// CreateSchemaBody creates a schema body.
-func (abs *CedarLanguageAbstraction) CreateSchemaBody(blocks [][]byte) ([]byte, string, error) {
+// CreateSchemaContentBytes creates a schema content bytes.
+func (abs *CedarLanguageAbstraction) CreateSchemaContentBytes(blocks [][]byte) ([]byte, string, error) {
 	return bytes.Join(blocks, nil), CedarFileExtension, nil
 }
