@@ -47,7 +47,7 @@ func (m *WorkspaceManager) cleanupLocalArea() (bool, error) {
 
 // scanSourceCodeFiles scans the source code files.
 func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastraction) ([]azicliwkscosp.CodeFile, []azicliwkscosp.CodeFile, error) {
-	exts := absLang.GetFileExtensions()
+	exts := absLang.GetSupportedFileExtensions()
 	ignorePatterns := []string{hiddenIgnoreFile, schemaYAMLFile, schemaYMLFile, hiddenDir, gitDir, gitIgnoreFile}
 	files, ignoredFiles, err := m.persMgr.ScanAndFilterFiles(azicliwkspers.WorkspaceDir, "", exts, ignorePatterns, hiddenIgnoreFile)
 	if err != nil {
@@ -57,7 +57,7 @@ func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastracti
 	for i, file := range files {
 		codeFiles[i] = azicliwkscosp.CodeFile{Type: azicliwkscosp.CodeFileTypePermCode, Path: file}
 	}
-	schemaFiles := []string{schemaYMLFile, schemaYAMLFile}
+	schemaFiles := absLang.GetSchemaFileNames()
 	existingSchemaFiles := []string{}
 	for _, schemaFile := range schemaFiles {
 		if exists, _ := m.persMgr.CheckPathIfExists(azicliwkspers.WorkspaceDir, schemaFile); exists {
@@ -249,7 +249,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 		return "", blbCodeFiles, err
 	}
 	treeID := treeObj.GetOID()
-	if err := m.cospMgr.SaveCodeSourceConfig(treeID, absLang.GetLanguageName()); err != nil {
+	if err := m.cospMgr.SaveCodeSourceConfig(treeID, absLang.GetLanguageIdentifier()); err != nil {
 		return treeID, blbCodeFiles, err
 	}
 	return treeID, blbCodeFiles, nil
