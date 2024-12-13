@@ -286,7 +286,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			}
 		}
 		if len(codeBlocks) > 0 {
-			codeBlock, ext, err := absLang.CreateMultiPoliciesBody(codeBlocks)
+			codeBlock, ext, err := absLang.CreateMultiPolicyBody(codeBlocks)
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
