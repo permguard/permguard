@@ -105,7 +105,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 		}
 		blbCodeFiles = append(blbCodeFiles, codeFile)
 	} else {
-		multiSecObj, err := absLang.CreateSchemaSectionsObject(path, data)
+		multiSecObj, err := absLang.CreateSchemaBlobObjects(path, data)
 		if err != nil {
 			codeFile := &azicliwkscosp.CodeFile{
 				Type:         file.Type,
@@ -144,7 +144,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 
 // blobifyPermSchemaFile blobify a permguard code file.
 func (m *WorkspaceManager) blobifyPermCodeFile(absLang azlang.LanguageAbastraction, path string, data []byte, file azicliwkscosp.CodeFile, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile) []azicliwkscosp.CodeFile {
-	multiSecObj, err := absLang.CreateMultiSectionsObjects(path, data)
+	multiSecObj, err := absLang.CreatePolicyBlobObjects(path, data)
 	if err != nil {
 		codeFile := &azicliwkscosp.CodeFile{
 			Type:         file.Type,

@@ -36,18 +36,20 @@ type LanguageAbastraction interface {
 	GetLanguageSpecification() LanguageSpecification
 	// CreateCommitObject creates a commit object.
 	CreateCommitObject(commit *azlangobjs.Commit) (*azlangobjs.Object, error)
-	// GetCommitObject gets a commit object.
-	GetCommitObject(obj *azlangobjs.Object) (*azlangobjs.Commit, error)
+	// ConvertObjectToCommit converts an object to a commit.
+	ConvertObjectToCommit(obj *azlangobjs.Object) (*azlangobjs.Commit, error)
 	// CreateTreeObject creates a tree object.
 	CreateTreeObject(tree *azlangobjs.Tree) (*azlangobjs.Object, error)
-	// GetTreeeObject gets a tree object.
-	GetTreeeObject(obj *azlangobjs.Object) (*azlangobjs.Tree, error)
-	// CreateMultiSectionsObjects create blobs for multi sections objects.
-	CreateMultiSectionsObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error)
-	// CreateSchemaSectionsObject create blobs for multi sections schema objects.
-	CreateSchemaSectionsObject(path string, data []byte) (*azlangobjs.MultiSectionsObject, error)
-	// TranslateFromPermCodeToLanguage translates from permcode to language.
-	TranslateFromPermCodeToLanguage(obj *azlangobjs.Object) (string, []byte, error)
-	// CreateLanguageFile combines the blocks for the language.
-	CreateLanguageFile(blocks [][]byte) ([]byte, string, error)
+	// ConvertObjectToTree converts an object to a tree.
+	ConvertObjectToTree(obj *azlangobjs.Object) (*azlangobjs.Tree, error)
+	// CreatePolicyBlobObjects creates multi sections policy blob objects.
+	CreatePolicyBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error)
+	// ReadPolicyBlobObject reads the policy blob object body.
+	ReadPolicyBlobObject(obj *azlangobjs.Object) (string, []byte, error)
+	// CreateSchemaBlobObjects creates multi sections schema blob objects.
+	CreateSchemaBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error)
+	// ReadSchemaBlobObject reads the schema blob object body.
+	ReadSchemaBlobObject(obj *azlangobjs.Object) (string, []byte, error)
+	// CreateMultiPoliciesBodyBody creates a multi policies body.
+	CreateMultiPoliciesBody(blocks [][]byte) ([]byte, string, error)
 }
