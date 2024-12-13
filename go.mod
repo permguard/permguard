@@ -4,6 +4,7 @@ go 1.23.2
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/cedar-policy/cedar-go v1.1.0
 	github.com/fatih/color v1.17.0
 	github.com/gofrs/flock v0.12.1
 	github.com/google/uuid v1.6.0
@@ -24,7 +25,6 @@ require (
 )
 
 require (
-	github.com/cedar-policy/cedar-go v1.1.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.5 // indirect
