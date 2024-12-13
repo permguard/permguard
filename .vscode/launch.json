@@ -25,7 +25,7 @@
         // "args": ["checkout", "origin/404343079159/v1.0", "-w", "/Users/nicolagallo/source/tmp/playground"],
         // "args": ["remote", "remove", "local", "-w", "../../../playground-yaml/"],
         // "args": ["checkout", "origin/273165098782/v1.0", "-w", "../../../playground-yaml/"],
-        "args": ["plan",  "-w", "/Users/nicolagallo/source/tmp/localplay/"],
+        "args": ["plan",  "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar"],
         // "args": ["clone", "permguard@localhost/404343079159/v1.0", "-w", "/Users/nicolagallo/source/tmp/playground"],
         // "args": ["apply", "-w", "/Users/nicolagallo/source/tmp/playground"],
         // "args": ["pull", "-w", "../../../playground-yaml/"],
