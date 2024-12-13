@@ -17,6 +17,7 @@
 package cedar
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -34,7 +35,7 @@ func TestLanguageSpecification(t *testing.T) {
 
 	langSpec := langAbs.GetLanguageSpecification()
 	assert.NotNil(langSpec, "LanguageSpecification should not be nil")
-	assert.NotEmpty(langSpec.GetLanguageIdentifier(), "LanguageIdentifier should not be empty")
+	assert.NotEmpty(langSpec.GetLanguageName(), "LanguageName should not be empty")
 	assert.GreaterOrEqual(1, len(langSpec.GetSupportedPolicyFileExtensions()), "SupportedPolicyFileExtensions should not be empty")
 	assert.GreaterOrEqual(1, len(langSpec.GetSupportedSchemaFileNames()), "GetSupportedSchemaFileNames should not be empty")
 }
@@ -45,6 +46,7 @@ func TestCommitCreation(t *testing.T) {
 
 	langAbs, err := NewCedarLanguageAbstraction()
 	assert.Nil(err, "NewCedarLanguageAbstraction should not return an error")
+	assert.NotNil(langAbs, "Language abstraction should not be nil")
 
 	tree := "4ad3bb52786751f4b6f9839953fe3dcc2278c66648f0d0193f98088b7e4d0c1d"
 	parent := "a294ba66f45afd23f8bda3892728601bb509989a80dbb54d7b513dacb8099d76"
@@ -76,6 +78,7 @@ func TestTreeCreation(t *testing.T) {
 
 	langAbs, err := NewCedarLanguageAbstraction()
 	assert.Nil(err, "NewCedarLanguageAbstraction should not return an error")
+	assert.NotNil(langAbs, "Language abstraction should not be nil")
 
 	tree, err := azlangobjs.NewTree()
 
@@ -106,4 +109,57 @@ func TestTreeCreation(t *testing.T) {
 		assert.Equal(entry.GetCodeID(), convertedEntry.GetCodeID(), "CodeID mismatch")
 		assert.Equal(entry.GetCodeType(), convertedEntry.GetCodeType(), "CodeType mismatch")
 	}
+}
+
+// TestCreateAndReadPolicyBlobObjects tests the creation and reading of policy blob objects.
+func TestCreateAndReadPolicyBlobObjects(t *testing.T) {
+	assert := assert.New(t)
+
+	langAbs, err := NewCedarLanguageAbstraction()
+	assert.Nil(err, "NewCedarLanguageAbstraction should not return an error")
+	assert.NotNil(langAbs, "Language abstraction should not be nil")
+
+	path := "./testutils/data/create-blob-objects"
+
+	file1 := `
+@policy_id("view-inventory")
+permit(
+	principal in Permguard::Actor::"inventory-auditor",
+	action in Action::"view",
+	resource in MagicFarmacia::Branch::Inventory::"*"
+)
+unless {
+principal has isTerminated && principal.isTerminated ||
+	principal.active == false
+};`
+
+	file2 := `
+@policy_id("assign-role-branch")
+permit(
+	principal in Permguard::Actor::"administer-branches-staff",
+	action in Action::"assignRole",
+	resource in MagicFarmacia::Branch::Staff::"*"
+)
+when {
+	principal.active == true &&
+	context.id > 0
+}
+unless {
+	principal has isTerminated && principal.isTerminated
+};`
+
+	codeFiles := fmt.Sprintln(file1, file2)
+	objs, err := langAbs.CreatePolicyBlobObjects(path, []byte(codeFiles))
+	assert.Nil(err, "CreatePolicyBlobObjects should not return an error")
+	assert.NotNil(objs, "MultiSectionsObject should not be nil")
+	assert.Equal(objs.GetNumberOfSections(), 2, "Section objects count mismatch")
+	for _, obj := range objs.GetSectionObjects() {
+		assert.NotNil(obj, "Object should not be nil")
+		assert.Nil(obj.GetError(), "Object error should be nil")
+	}
+	secObjs := objs.GetSectionObjects()
+	assert.Nil(err, "GetNumberOfSections should not return an error")
+	assert.NotNil(secObjs, "Section objects should not be nil")
+	assert.Equal("view-inventory", secObjs[0].GetCodeID(), "CodeID mismatch")
+	assert.Equal("assign-role-branch", secObjs[1].GetCodeID(), "CodeID mismatch")
 }

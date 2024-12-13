@@ -22,8 +22,8 @@ import (
 
 // LanguageSpecification is the interface for the language specification.
 type LanguageSpecification interface {
-	// GetLanguageIdentifier returns the identifier of the language.
-	GetLanguageIdentifier() string
+	// GetLanguageName returns the name of the language.
+	GetLanguageName() string
 	// GetSupportedPolicyFileExtensions returns the list of supported policy file extensions.
 	GetSupportedPolicyFileExtensions() []string
 	// GetSupportedSchemaFileNames returns the list of supported schema file names.

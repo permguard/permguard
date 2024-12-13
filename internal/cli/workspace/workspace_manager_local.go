@@ -251,7 +251,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	}
 	treeID := treeObj.GetOID()
 	langSpec := absLang.GetLanguageSpecification()
-	if err := m.cospMgr.SaveCodeSourceConfig(treeID, langSpec.GetLanguageIdentifier()); err != nil {
+	if err := m.cospMgr.SaveCodeSourceConfig(treeID, langSpec.GetLanguageName()); err != nil {
 		return treeID, blbCodeFiles, err
 	}
 	return treeID, blbCodeFiles, nil

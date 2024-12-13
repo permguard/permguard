@@ -18,14 +18,14 @@ package cedar
 
 // CedarLanguageSpecification is the specification for the cedar language.
 type CedarLanguageSpecification struct {
-	languageIdentifier string
+	languageName                  string
 	supportedPolicyFileExtensions []string
-	supportedSchemaFileNames []string
+	supportedSchemaFileNames      []string
 }
 
-// GetLanguageIdentifier returns the identifier of the language.
-func (ls *CedarLanguageSpecification) GetLanguageIdentifier() string {
-	return ls.languageIdentifier
+// GetLanguageName returns the name of the language.
+func (ls *CedarLanguageSpecification) GetLanguageName() string {
+	return ls.languageName
 }
 
 // GetSupportedPolicyFileExtensions returns the list of supported policy file extensions.
