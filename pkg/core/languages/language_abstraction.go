@@ -46,10 +46,12 @@ type LanguageAbastraction interface {
 	CreatePolicyBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error)
 	// ReadPolicyBlobObject reads the policy blob object body.
 	ReadPolicyBlobObject(obj *azlangobjs.Object) (string, []byte, error)
+	// CreateMultiPolicyBodyBody creates a multi policy body.
+	CreateMultiPolicyBody(blocks [][]byte) ([]byte, string, error)
 	// CreateSchemaBlobObjects creates multi sections schema blob objects.
 	CreateSchemaBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error)
 	// ReadSchemaBlobObject reads the schema blob object body.
 	ReadSchemaBlobObject(obj *azlangobjs.Object) (string, []byte, error)
-	// CreateMultiPoliciesBodyBody creates a multi policies body.
-	CreateMultiPoliciesBody(blocks [][]byte) ([]byte, string, error)
+	// CreateSchemaBody creates a schema body.
+	CreateSchemaBody(blocks [][]byte) ([]byte, string, error)
 }

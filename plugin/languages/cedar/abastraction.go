@@ -104,6 +104,18 @@ func (abs *CedarLanguageAbstraction) ReadPolicyBlobObject(obj *azlangobjs.Object
 	return "", nil, nil
 }
 
+// CreateMultiPolicyBodyBody creates a multi policy body.
+func (abs *CedarLanguageAbstraction) CreateMultiPolicyBody(blocks [][]byte) ([]byte, string, error) {
+	var sb strings.Builder
+	for i, block := range blocks {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		sb.Write(block)
+	}
+	return []byte(sb.String()), CedarFileExtension, nil
+}
+
 // CreateSchemaBlobObjects creates multi sections schema blob objects.
 func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error) {
 	return nil, nil
@@ -114,14 +126,7 @@ func (abs *CedarLanguageAbstraction) ReadSchemaBlobObject(obj *azlangobjs.Object
 	return "", nil, nil
 }
 
-// CreateMultiPoliciesBodyBody creates a multi policies body.
-func (abs *CedarLanguageAbstraction) CreateMultiPoliciesBody(blocks [][]byte) ([]byte, string, error) {
-	var sb strings.Builder
-	for i, block := range blocks {
-		if i > 0 {
-			sb.WriteString("\n")
-		}
-		sb.Write(block)
-	}
-	return []byte(sb.String()), CedarFileExtension, nil
+// CreateSchemaBody creates a schema body.
+func (abs *CedarLanguageAbstraction) CreateSchemaBody(blocks [][]byte) ([]byte, string, error) {
+	return nil, "", nil
 }
