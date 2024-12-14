@@ -70,15 +70,15 @@ func (p *PersistenceManager) GetContext() map[string]string {
 	absPermguardDir, _ := filepath.Abs(p.permguardDir)
 
 	return map[string]string{
-		"root path":				p.rootDir,
-		"root absolute path":      	absRootDir,
-		"permguard path": 		  	p.permguardDir,
-		"permguard absolute path": 	absPermguardDir,
+		"root path":               p.rootDir,
+		"root absolute path":      absRootDir,
+		"permguard path":          p.permguardDir,
+		"permguard absolute path": absPermguardDir,
 	}
 }
 
 // GetPath gets the path.
-func (p *PersistenceManager) GetPath(relative RelativeDir, name string)string {
+func (p *PersistenceManager) GetPath(relative RelativeDir, name string) string {
 	name = p.GetRelativeDir(relative, name)
 	return name
 }

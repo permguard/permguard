@@ -20,8 +20,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
+	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
@@ -120,15 +120,18 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 		}
 		secObj := multiSecObj.GetSectionObjects()[0]
 		codeFile := &azicliwkscosp.CodeFile{
-			Type:      file.Type,
-			Path:      strings.TrimPrefix(path, wkdir),
-			Section:   secObj.GetNumberOfSection(),
-			Mode:      mode,
-			HasErrors: secObj.GetError() != nil,
-			OType:     secObj.GetObjectType(),
-			OName:     secObj.GetObjectName(),
-			CodeID:    secObj.GetCodeID(),
-			CodeType:  secObj.GetCodeType(),
+			Type:            file.Type,
+			Path:            strings.TrimPrefix(path, wkdir),
+			Section:         secObj.GetNumberOfSection(),
+			Mode:            mode,
+			HasErrors:       secObj.GetError() != nil,
+			OType:           secObj.GetObjectType(),
+			OName:           secObj.GetObjectName(),
+			CodeID:          secObj.GetCodeID(),
+			CodeType:        secObj.GetCodeType(),
+			Language:        secObj.GetLanguage(),
+			LanguageVersion: secObj.GetLanguageVersion(),
+			LanguageType:    secObj.GetLanguageType(),
 		}
 		if codeFile.HasErrors {
 			codeFile.ErrorMessage = azerrors.GetSystemErrorMessage(secObj.GetError())
@@ -160,15 +163,18 @@ func (m *WorkspaceManager) blobifyPermCodeFile(absLang azlang.LanguageAbastracti
 	secObjs := multiSecObj.GetSectionObjects()
 	for _, secObj := range secObjs {
 		codeFile := &azicliwkscosp.CodeFile{
-			Type:      file.Type,
-			Path:      strings.TrimPrefix(path, wkdir),
-			Section:   secObj.GetNumberOfSection(),
-			Mode:      mode,
-			HasErrors: secObj.GetError() != nil,
-			OType:     secObj.GetObjectType(),
-			OName:     secObj.GetObjectName(),
-			CodeID:    secObj.GetCodeID(),
-			CodeType:  secObj.GetCodeType(),
+			Type:            file.Type,
+			Path:            strings.TrimPrefix(path, wkdir),
+			Section:         secObj.GetNumberOfSection(),
+			Mode:            mode,
+			HasErrors:       secObj.GetError() != nil,
+			OType:           secObj.GetObjectType(),
+			OName:           secObj.GetObjectName(),
+			CodeID:          secObj.GetCodeID(),
+			CodeType:        secObj.GetCodeType(),
+			Language:        secObj.GetLanguage(),
+			LanguageVersion: secObj.GetLanguageVersion(),
+			LanguageType:    secObj.GetLanguageType(),
 		}
 		if codeFile.HasErrors {
 			codeFile.ErrorMessage = azerrors.GetSystemErrorMessage(secObj.GetError())
@@ -210,12 +216,13 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	}
 	if schemaFileCount == 0 {
 		codeFile := azicliwkscosp.CodeFile{
-			Path:         m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaFileName),
-			Section:      0,
-			Mode:         0,
-			HasErrors:    true,
-			CodeID:       azlangtypes.ClassTypeSchema,
-			CodeType:     azlangtypes.ClassTypeSchema,
+			Path:      m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaFileName),
+			Section:   0,
+			Mode:      0,
+			HasErrors: true,
+			CodeID:    azlangtypes.ClassTypeSchema,
+			CodeType:  azlangtypes.ClassTypeSchema,
+			//TODO: Move this part into the language abstraction
 			ErrorMessage: "permcode: the schema file 'schema.yml' is missing. please ensure there are no duplicate schema files and that the required schema file is present.",
 		}
 		blbCodeFiles = append(blbCodeFiles, codeFile)
@@ -240,7 +247,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 		return "", blbCodeFiles, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree object cannot be created")
 	}
 	for _, codeObjState := range codeObsState {
-		treeItem, err := azlangobjs.NewTreeEntry(codeObjState.OType, codeObjState.OID, codeObjState.OName, codeObjState.CodeID, codeObjState.CodeType)
+		treeItem, err := azlangobjs.NewTreeEntry(codeObjState.OType, codeObjState.OID, codeObjState.OName, codeObjState.CodeID, codeObjState.CodeType, codeObjState.Language, codeObjState.LanguageVersion, codeObjState.LanguageType)
 		if err != nil {
 			return "", nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree item cannot be created")
 		}

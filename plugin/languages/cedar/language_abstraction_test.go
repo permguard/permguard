@@ -82,13 +82,13 @@ func TestTreeCreation(t *testing.T) {
 
 	tree, err := azlangobjs.NewTree()
 
-	treeItem1, err := azlangobjs.NewTreeEntry("blob", "515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634d3def5fe", "name1", "code1", "codeType1")
+	treeItem1, err := azlangobjs.NewTreeEntry("blob", "515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634d3def5fe", "name1", "code1", "codeType1", "cedar", "*", "policy")
 	tree.AddEntry(treeItem1)
 
-	treeItem2, err := azlangobjs.NewTreeEntry("blob", "2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca12d9d6170", "name2", "code2", "codeType2")
+	treeItem2, err := azlangobjs.NewTreeEntry("blob", "2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca12d9d6170", "name2", "code2", "codeType2", "cedar", "*", "policy")
 	tree.AddEntry(treeItem2)
 
-	treeItem3, err := azlangobjs.NewTreeEntry("tree", "fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851", "name3", "code3", "codeType3")
+	treeItem3, err := azlangobjs.NewTreeEntry("tree", "fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851", "name3", "code3", "codeType3", "cedar", "*", "policy")
 	tree.AddEntry(treeItem3)
 
 	assert.Nil(err, "NewTree should not return an error")
@@ -108,6 +108,9 @@ func TestTreeCreation(t *testing.T) {
 		assert.Equal(entry.GetOName(), convertedEntry.GetOName(), "Name mismatch")
 		assert.Equal(entry.GetCodeID(), convertedEntry.GetCodeID(), "CodeID mismatch")
 		assert.Equal(entry.GetCodeType(), convertedEntry.GetCodeType(), "CodeType mismatch")
+		assert.Equal(entry.GetLanguage(), convertedEntry.GetLanguage(), "Language mismatch")
+		assert.Equal(entry.GetLanguageType(), convertedEntry.GetLanguageType(), "LanguageType mismatch")
+		assert.Equal(entry.GetLanguageVersion(), convertedEntry.GetLanguageVersion(), "LanguageVersion mismatch")
 	}
 }
 

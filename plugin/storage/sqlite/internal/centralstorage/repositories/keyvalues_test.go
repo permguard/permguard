@@ -1,9 +1,9 @@
 package repositories
 
 import (
+	"database/sql"
 	"regexp"
 	"testing"
-	"database/sql"
 
 	_ "github.com/mattn/go-sqlite3"
 

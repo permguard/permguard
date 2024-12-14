@@ -124,33 +124,36 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(path string, data [
 		codeID := ""
 		codeType := azlangtypes.ClassTypePolicy
 		langID := uint32(1)
+		lang := "cedar"
 		langVersionID := uint32(1)
+		langVersion := "*"
 		langTypeID := uint32(1)
+		langType := "policy"
 
 		if err := policy.UnmarshalCedar([]byte(codePolicy)); err != nil {
-			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
+			multiSecObj.AddSectionObjectWithError(i, err)
 			continue
 		}
 		header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, langTypeID)
 		if err != nil {
-			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
+			multiSecObj.AddSectionObjectWithError(i, err)
 			continue
 		}
 		policyJson, err := policy.MarshalJSON()
 		if err != nil {
-			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
+			multiSecObj.AddSectionObjectWithError(i, err)
 			continue
 		}
 		obj, err := abs.objMng.CreateBlobObject(header, policyJson)
 		if err != nil {
-			multiSecObj.AddSectionObjectWithParams(nil, "", "", "", "", i, err)
+			multiSecObj.AddSectionObjectWithError(i, err)
 			continue
 		}
 		objInfo, err := abs.objMng.GetObjectInfo(obj)
 		if err != nil {
 			return nil, err
 		}
-		multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), name, codeID, codeType, i, err)
+		multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), name, codeID, codeType, lang, langType, langVersion, i)
 	}
 	return multiSecObj, nil
 }

@@ -304,7 +304,7 @@ type RepositoryResponse struct {
 	CreatedAt    *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=CreatedAt,proto3" json:"CreatedAt,omitempty"`
 	UpdatedAt    *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=UpdatedAt,proto3" json:"UpdatedAt,omitempty"`
 	Name         string                 `protobuf:"bytes,5,opt,name=Name,proto3" json:"Name,omitempty"`
-	Ref         string                 `protobuf:"bytes,6,opt,name=Ref,proto3" json:"Ref,omitempty"`
+	Ref          string                 `protobuf:"bytes,6,opt,name=Ref,proto3" json:"Ref,omitempty"`
 }
 
 func (x *RepositoryResponse) Reset() {

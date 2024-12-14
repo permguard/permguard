@@ -86,7 +86,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 		}
 		return output, err
 	}
-	
+
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "Initiating cleanup of the local area.", nil, true)
 	}

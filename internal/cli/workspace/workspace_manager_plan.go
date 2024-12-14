@@ -40,7 +40,7 @@ func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, a
 		if planItem.State == azicliwkscosp.CodeObjectStateDelete {
 			continue
 		}
-		treeItem, err := azlangobjs.NewTreeEntry(planItem.OType, planItem.OID, planItem.OName, planItem.CodeID, planItem.CodeType)
+		treeItem, err := azlangobjs.NewTreeEntry(planItem.OType, planItem.OID, planItem.OName, planItem.CodeID, planItem.CodeType, planItem.Language, planItem.LanguageVersion, planItem.LanguageType)
 		if err != nil {
 			return nil, nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree item cannot be created")
 		}

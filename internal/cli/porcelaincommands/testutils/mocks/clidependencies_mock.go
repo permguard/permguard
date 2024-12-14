@@ -21,8 +21,8 @@ import (
 	mock "github.com/stretchr/testify/mock"
 
 	azclients "github.com/permguard/permguard/pkg/agents/clients"
-	azlang "github.com/permguard/permguard/pkg/core/languages"
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
 // CliDependenciesMock is a mock type for the CliDependencies type.
@@ -71,6 +71,6 @@ func (m *CliDependenciesMock) GetLanguageFactory() (azlang.LanguageFactory, erro
 }
 
 // NewCliDependenciesMock creates a new CliDependenciesMock.
-func NewCliDependenciesMock() (*CliDependenciesMock) {
+func NewCliDependenciesMock() *CliDependenciesMock {
 	return &CliDependenciesMock{}
 }
