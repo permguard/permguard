@@ -23,23 +23,25 @@ import (
 	"strings"
 
 	"github.com/cedar-policy/cedar-go"
+
+	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
-	azpermcodetypes "github.com/permguard/permguard-abs-language/pkg/permcode/types"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
 const (
-	// CedarLanguageName defines the name for the Cedar language.
-	CedarLanguageName = "cedar"
-	// CedarLanguageID is the language ID.
-	CedarLanguageID = uint32(1)
-	// PermCodeSyntaxLatest is the cedar syntax.
-	CeadarLanguageSyntax = "*"
-	// CedarFileExtension specifies the file extension for Cedar language files.
-	CedarFileExtension = ".cedar"
-
-	// SchemaFileName specifies the name of the schema definition file.
+	// LanguageName specifies the canonical name of the Cedar language.
+	LanguageName = "cedar"
+	// LanguageIDCedar represents the unique identifier for the Cedar language.
+	LanguageIDCedar = uint32(1)
+	// LanguageIDCedarJSON represents the unique identifier for the JSON-based Cedar language.
+	LanguageIDCedarJSON = uint32(2)
+	// LanguageSyntax defines the latest syntax version used by the Cedar language.
+	LanguageSyntax = "*"
+	// LanguageFileExtension specifies the standard file extension for Cedar language files.
+	LanguageFileExtension = ".cedar"
+	// SchemaFileName defines the default filename for the schema definition associated with Cedar.
 	SchemaFileName = "schema.json"
 )
 
@@ -62,8 +64,8 @@ func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
 // GetLanguageSpecification returns the specification for the language.
 func (abs *CedarLanguageAbstraction) GetLanguageSpecification() azlang.LanguageSpecification {
 	return &CedarLanguageSpecification{
-		languageName:                  CedarLanguageName,
-		supportedPolicyFileExtensions: []string{CedarFileExtension},
+		languageName:                  LanguageName,
+		supportedPolicyFileExtensions: []string{LanguageFileExtension},
 		supportedSchemaFileNames:      []string{SchemaFileName},
 	}
 }
@@ -120,7 +122,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(path string, data [
 		var policy cedar.Policy
 		name := ""
 		codeID := ""
-		codeType := azpermcodetypes.ClassTypeACPolicy
+		codeType := azlangtypes.ClassTypeACPolicy
 		langID := uint32(1)
 		langVersionID := uint32(1)
 		langTypeID := uint32(1)
@@ -167,7 +169,7 @@ func (abs *CedarLanguageAbstraction) CreateMultiPolicyContentBytes(blocks [][]by
 		}
 		sb.Write(block)
 	}
-	return []byte(sb.String()), CedarFileExtension, nil
+	return []byte(sb.String()), LanguageFileExtension, nil
 }
 
 // CreateSchemaBlobObjects creates multi sections schema blob objects.
@@ -182,5 +184,5 @@ func (abs *CedarLanguageAbstraction) ReadSchemaBlobContentBytes(obj *azlangobjs.
 
 // CreateSchemaContentBytes creates a schema content bytes.
 func (abs *CedarLanguageAbstraction) CreateSchemaContentBytes(blocks [][]byte) ([]byte, string, error) {
-	return bytes.Join(blocks, nil), CedarFileExtension, nil
+	return bytes.Join(blocks, nil), LanguageFileExtension, nil
 }

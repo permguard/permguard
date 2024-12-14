@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
-	aztypes "github.com/permguard/permguard-abs-language/pkg/permcode/types"
+	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
@@ -49,22 +49,22 @@ func (m *WorkspaceManager) cleanupLocalArea() (bool, error) {
 func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastraction) ([]azicliwkscosp.CodeFile, []azicliwkscosp.CodeFile, error) {
 	langSpec := absLang.GetLanguageSpecification()
 	suppPolicyExts := langSpec.GetSupportedPolicyFileExtensions()
-	ignorePatterns := []string{hiddenIgnoreFile, schemaYAMLFile, schemaYMLFile, hiddenDir, gitDir, gitIgnoreFile}
+	suppSchemaFNames := langSpec.GetSupportedSchemaFileNames()
+	ignorePatterns := append([]string{hiddenIgnoreFile, hiddenDir, gitDir, gitIgnoreFile}, suppSchemaFNames...)
 	files, ignoredFiles, err := m.persMgr.ScanAndFilterFiles(azicliwkspers.WorkspaceDir, "", suppPolicyExts, ignorePatterns, hiddenIgnoreFile)
 	if err != nil {
 		return nil, nil, err
 	}
 	codeFiles := make([]azicliwkscosp.CodeFile, len(files))
 	for i, file := range files {
-		codeFiles[i] = azicliwkscosp.CodeFile{Type: azicliwkscosp.CodeFileTypePermCode, Path: file}
+		codeFiles[i] = azicliwkscosp.CodeFile{Type: azicliwkscosp.CodeFileTypeOfCodeType, Path: file}
 	}
-	suppSchemaFNames := langSpec.GetSupportedSchemaFileNames()
 	existingSchemaFiles := []string{}
 	for _, schemaFile := range suppSchemaFNames {
 		if exists, _ := m.persMgr.CheckPathIfExists(azicliwkspers.WorkspaceDir, schemaFile); exists {
 			schemaFileName := m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaFile)
 			existingSchemaFiles = append(existingSchemaFiles, schemaFileName)
-			codeFiles = append(codeFiles, azicliwkscosp.CodeFile{Type: azicliwkscosp.CodeFilePermSchema, Path: schemaFileName})
+			codeFiles = append(codeFiles, azicliwkscosp.CodeFile{Type: azicliwkscosp.CodeFileOfSchemaType, Path: schemaFileName})
 		}
 	}
 	schemaFileSet := make(map[string]struct{})
@@ -185,6 +185,12 @@ func (m *WorkspaceManager) blobifyPermCodeFile(absLang azlang.LanguageAbastracti
 // blobifyLocal scans source files and creates a blob for each object.
 func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absLang azlang.LanguageAbastraction) (string, []azicliwkscosp.CodeFile, error) {
 	blbCodeFiles := []azicliwkscosp.CodeFile{}
+	langSpec := absLang.GetLanguageSpecification()
+	schemaFileNames := langSpec.GetSupportedSchemaFileNames()
+	if len(schemaFileNames) < 1 {
+		return "", nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: no schema file names are supported")
+	}
+	schemaFileName := schemaFileNames[0]
 	schemaFileCount := 0
 	for _, file := range codeFiles {
 		wkdir := m.ctx.GetWorkDir()
@@ -193,9 +199,9 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 		if err != nil {
 			return "", nil, err
 		}
-		if file.Type == azicliwkscosp.CodeFileTypePermCode {
+		if file.Type == azicliwkscosp.CodeFileTypeOfCodeType {
 			blbCodeFiles = m.blobifyPermCodeFile(absLang, path, data, file, wkdir, mode, blbCodeFiles)
-		} else if file.Type == azicliwkscosp.CodeFilePermSchema {
+		} else if file.Type == azicliwkscosp.CodeFileOfSchemaType {
 			schemaFileCount++
 			blbCodeFiles = m.blobifyPermSchemaFile(schemaFileCount, path, wkdir, mode, blbCodeFiles, absLang, data, file)
 		} else {
@@ -204,12 +210,12 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	}
 	if schemaFileCount == 0 {
 		codeFile := azicliwkscosp.CodeFile{
-			Path:         m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaYAMLFile),
+			Path:         m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaFileName),
 			Section:      0,
 			Mode:         0,
 			HasErrors:    true,
-			CodeID:       aztypes.ClassTypeSchema,
-			CodeType:     aztypes.ClassTypeSchema,
+			CodeID:       azlangtypes.ClassTypeSchema,
+			CodeType:     azlangtypes.ClassTypeSchema,
 			ErrorMessage: "permcode: the schema file 'schema.yml' is missing. please ensure there are no duplicate schema files and that the required schema file is present.",
 		}
 		blbCodeFiles = append(blbCodeFiles, codeFile)
@@ -250,7 +256,6 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 		return "", blbCodeFiles, err
 	}
 	treeID := treeObj.GetOID()
-	langSpec := absLang.GetLanguageSpecification()
 	if err := m.cospMgr.SaveCodeSourceConfig(treeID, langSpec.GetLanguageName()); err != nil {
 		return treeID, blbCodeFiles, err
 	}
