@@ -181,6 +181,9 @@ func (m *COSPManager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 			codeFile.OName,
 			codeFile.CodeID,
 			codeFile.CodeType,
+			codeFile.Language,
+			codeFile.LanguageVersion,
+			codeFile.LanguageType,
 			fmt.Sprintf("%d", codeFile.Mode),
 			fmt.Sprintf("%d", codeFile.Section),
 			fmt.Sprintf("%v", codeFile.HasErrors),
@@ -216,16 +219,19 @@ func (m *COSPManager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 			return err
 		}
 		codeFile := CodeFile{
-			Path:         record[0],
-			OID:          record[1],
-			OType:        record[2],
-			OName:        record[3],
-			CodeID:       record[4],
-			CodeType:     record[5],
-			Mode:         mode,
-			Section:      section,
-			HasErrors:    hasErrors,
-			ErrorMessage: record[9],
+			Path:            record[0],
+			OID:             record[1],
+			OType:           record[2],
+			OName:           record[3],
+			CodeID:          record[4],
+			CodeType:        record[5],
+			Language:        record[6],
+			LanguageVersion: record[7],
+			LanguageType:    record[8],
+			Mode:            mode,
+			Section:         section,
+			HasErrors:       hasErrors,
+			ErrorMessage:    record[13],
 		}
 		codeFiles = append(codeFiles, codeFile)
 		return nil
@@ -259,11 +265,14 @@ func (m *COSPManager) BuildCodeSourceCodeStateForTree(tree *azlangobjs.Tree) ([]
 	for _, entry := range tree.GetEntries() {
 		codeObjState := CodeObjectState{
 			CodeObject: CodeObject{
-				OName: 		entry.GetOName(),
-				OType: 		entry.GetType(),
-				OID:		entry.GetOID(),
-				CodeID: 	entry.GetCodeID(),
-				CodeType: 	entry.GetCodeType(),
+				OName:           entry.GetOName(),
+				OType:           entry.GetType(),
+				OID:             entry.GetOID(),
+				CodeID:          entry.GetCodeID(),
+				CodeType:        entry.GetCodeType(),
+				Language:        entry.GetLanguage(),
+				LanguageType:    entry.GetLanguageType(),
+				LanguageVersion: entry.GetLanguageVersion(),
 			},
 			State: "",
 		}
@@ -290,7 +299,7 @@ func (m *COSPManager) ReadRemoteCodePlan(ref string) ([]CodeObjectState, error) 
 }
 
 // ReadRemoteCodePlan reads the code plan from the input remote.
-func (m *COSPManager) CleanCode(ref string)  (bool, error) {
+func (m *COSPManager) CleanCode(ref string) (bool, error) {
 	path := filepath.Join(m.getCodeDir(), strings.ToLower(ref))
 	return m.persMgr.DeletePath(azicliwkspers.PermguardDir, path)
 }
@@ -309,13 +318,25 @@ func (m *COSPManager) convertCodeFileToCodeObjectState(codeFile CodeFile) (*Code
 	if codeFile.CodeType == "" {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordMalformed, "cli: code file CodeType is empty.")
 	}
+	if codeFile.Language == "" {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordMalformed, "cli: code file Language is empty.")
+	}
+	if codeFile.LanguageVersion == "" {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordMalformed, "cli: code file LanguageVersion is empty.")
+	}
+	if codeFile.LanguageType == "" {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordMalformed, "cli: code file LanguageType is empty.")
+	}
 	return &CodeObjectState{
 		CodeObject: CodeObject{
-			OName: 		codeFile.OName,
-			OType: 		codeFile.OType,
-			OID:   		codeFile.OID,
-			CodeID: 	codeFile.CodeID,
-			CodeType: 	codeFile.CodeType,
+			OName:           codeFile.OName,
+			OType:           codeFile.OType,
+			OID:             codeFile.OID,
+			CodeID:          codeFile.CodeID,
+			CodeType:        codeFile.CodeType,
+			Language:        codeFile.Language,
+			LanguageVersion: codeFile.LanguageVersion,
+			LanguageType:    codeFile.LanguageType,
 		},
 	}, nil
 }
@@ -331,6 +352,9 @@ func (m *COSPManager) saveCodeObjectStates(path string, codeObjects []CodeObject
 			codeObject.OID,
 			codeObject.CodeID,
 			codeObject.CodeType,
+			codeObject.Language,
+			codeObject.LanguageVersion,
+			codeObject.LanguageType,
 		}
 	}
 	err := m.persMgr.WriteCSVStream(azicliwkspers.PermguardDir, path, nil, codeObjects, rowFunc, true)
@@ -350,11 +374,14 @@ func (m *COSPManager) readCodeObjectStates(path string) ([]CodeObjectState, erro
 		codeObject := CodeObjectState{
 			State: record[0],
 			CodeObject: CodeObject{
-				OName: 		record[1],
-				OType: 		record[2],
-				OID:   		record[3],
-				CodeID: 	record[4],
-				CodeType: 	record[5],
+				OName:           record[1],
+				OType:           record[2],
+				OID:             record[3],
+				CodeID:          record[4],
+				CodeType:        record[5],
+				Language:        record[6],
+				LanguageVersion: record[7],
+				LanguageType:    record[8],
 			},
 		}
 		codeObjects = append(codeObjects, codeObject)
@@ -416,7 +443,7 @@ func (m *COSPManager) CalculateCodeObjectsState(currentObjs []CodeObjectState, r
 	return result
 }
 
-//SaveObject saves the object in the object store.
+// SaveObject saves the object in the object store.
 func (m *COSPManager) SaveObject(oid string, content []byte) (bool, error) {
 	folder, name := m.getCodeSourceObjectDir(oid, "")
 	path := filepath.Join(folder, name)
@@ -513,27 +540,27 @@ func (m *COSPManager) GetCommit(commitID string) (*azlangobjs.Commit, error) {
 
 // GetHistory gets the commit history.
 func (m *COSPManager) GetHistory(commitID string) ([]azicliwkscommon.CommitInfo, error) {
-    var commits []azicliwkscommon.CommitInfo
-    commit, err := m.GetCommit(commitID)
-    if err != nil {
-        return nil, err
-    }
+	var commits []azicliwkscommon.CommitInfo
+	commit, err := m.GetCommit(commitID)
+	if err != nil {
+		return nil, err
+	}
 
-    for commit != nil {
-        commitInfo, err := azicliwkscommon.NewCommitInfo(commitID, commit)
+	for commit != nil {
+		commitInfo, err := azicliwkscommon.NewCommitInfo(commitID, commit)
 		if err != nil {
 			return nil, err
 		}
-        commits = append(commits, *commitInfo)
-	    parentID := commit.GetParent()
-        if parentID == azlangobjs.ZeroOID {
-            break
-        }
-	   commit, err = m.GetCommit(parentID)
-        if err != nil {
-            return nil, err
-        }
-        commitID = parentID
-    }
-    return commits, nil
+		commits = append(commits, *commitInfo)
+		parentID := commit.GetParent()
+		if parentID == azlangobjs.ZeroOID {
+			break
+		}
+		commit, err = m.GetCommit(parentID)
+		if err != nil {
+			return nil, err
+		}
+		commitID = parentID
+	}
+	return commits, nil
 }

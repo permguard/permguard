@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"strings"
 
-	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
+	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azfiles "github.com/permguard/permguard-core/pkg/extensions/files"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"

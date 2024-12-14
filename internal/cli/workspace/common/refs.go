@@ -56,9 +56,9 @@ func ConvertStringWithRepoIDToRefInfo(ref string) (*RefInfo, error) {
 	repo := refObs[4]
 	return &RefInfo{
 		sourceType: sourceType,
-		remote:    	remote,
-		accountID: 	accountID,
-		repoID:    	repo,
+		remote:     remote,
+		accountID:  accountID,
+		repoID:     repo,
 	}, nil
 }
 
@@ -90,11 +90,11 @@ func ConvertRefInfoToString(refInfo *RefInfo) string {
 
 // RefInfo represents the ref information.
 type RefInfo struct {
-	sourceType 	string
-	remote    	string
-	accountID 	int64
-	repoName  	string
-	repoID    	string
+	sourceType string
+	remote     string
+	accountID  int64
+	repoName   string
+	repoID     string
 }
 
 // NewRefInfo creates a new ref information.
@@ -110,9 +110,9 @@ func NewRefInfoFromRepoName(remote string, accountID int64, repoName string) (*R
 	}
 	return &RefInfo{
 		sourceType: remotePrefix,
-		remote:    	remote,
-		accountID: 	accountID,
-		repoName:  	repoName,
+		remote:     remote,
+		accountID:  accountID,
+		repoName:   repoName,
 	}, nil
 }
 
@@ -127,10 +127,10 @@ func BuildRefInfoFromRepoID(refInfo *RefInfo, repoID string) (*RefInfo, error) {
 	}
 	return &RefInfo{
 		sourceType: refInfo.sourceType,
-		remote:    	szRemote,
-		accountID: 	refInfo.accountID,
-		repoName:  	refInfo.repoName,
-		repoID:   	repoID,
+		remote:     szRemote,
+		accountID:  refInfo.accountID,
+		repoName:   refInfo.repoName,
+		repoID:     repoID,
 	}, nil
 }
 

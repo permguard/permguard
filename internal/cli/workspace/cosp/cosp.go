@@ -16,7 +16,6 @@
 
 package cosp
 
-
 const (
 	// CodeFileOfCodeType represents the code file type.
 	CodeFileTypeOfCodeType = "code"
@@ -45,17 +44,20 @@ type codeLocalConfig struct {
 
 // CodeFile represents the code file.
 type CodeFile struct {
-	Type         string `json:"type"`
-	Path         string `json:"path"`
-	OID          string `json:"oid"`
-	OType        string `json:"otype"`
-	OName        string `json:"oname"`
-	CodeID	   	 string `json:"codeid"`
-	CodeType	 string `json:"codetype"`
-	Mode         uint32 `json:"mode"`
-	Section      int    `json:"section"`
-	HasErrors    bool   `json:"has_errors"`
-	ErrorMessage string `json:"error_message"`
+	Type            string `json:"type"`
+	Path            string `json:"path"`
+	OID             string `json:"oid"`
+	OType           string `json:"otype"`
+	OName           string `json:"oname"`
+	CodeID          string `json:"codeid"`
+	CodeType        string `json:"codetype"`
+	Language        string `json:"language"`
+	LanguageVersion string `json:"languagetype"`
+	LanguageType    string `json:"languagename"`
+	Mode            uint32 `json:"mode"`
+	Section         int    `json:"section"`
+	HasErrors       bool   `json:"has_errors"`
+	ErrorMessage    string `json:"error_message"`
 }
 
 // ConvertCodeFilesToPath converts code files to paths.
@@ -69,11 +71,14 @@ func ConvertCodeFilesToPath(files []CodeFile) []string {
 
 // CodeObject represents the code object.
 type CodeObject struct {
-	OName 		string `json:"oname"`
-	OType 		string `json:"otype"`
-	OID			string `json:"oid"`
-	CodeID 	 	string `json:"codeid"`
-	CodeType 	string `json:"codetype"`
+	OName           string `json:"oname"`
+	OType           string `json:"otype"`
+	OID             string `json:"oid"`
+	CodeID          string `json:"codeid"`
+	CodeType        string `json:"codetype"`
+	Language        string `json:"language"`
+	LanguageType    string `json:"languagetype"`
+	LanguageVersion string `json:"languageversion"`
 }
 
 // CodeObjectState represents the code object state.

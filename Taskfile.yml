@@ -20,6 +20,9 @@ tasks:
   # Code and Docs
   license:
     - task: addlicense  -c "Nitro Agility S.r.l." -s .
+  fmt:
+    cmds:
+      - find . -name "*.go" -exec go fmt {} \;
   push-docs:
     desc: git push for documentation
     cmd: 'git add -A && git commit -m "docs: {{.CLI_ARGS}}" && git push || echo DONE'

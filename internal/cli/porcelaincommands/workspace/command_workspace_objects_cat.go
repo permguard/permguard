@@ -25,8 +25,8 @@ import (
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (

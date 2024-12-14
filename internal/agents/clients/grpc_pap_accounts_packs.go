@@ -26,10 +26,10 @@ import (
 
 	azapiv1pap "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
 
-	azagentnotpsm "github.com/permguard/permguard/internal/agents/notp/statemachines"
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
 	notptransport "github.com/permguard/permguard-notp-protocol/pkg/notp/transport"
+	azagentnotpsm "github.com/permguard/permguard/internal/agents/notp/statemachines"
 )
 
 const (

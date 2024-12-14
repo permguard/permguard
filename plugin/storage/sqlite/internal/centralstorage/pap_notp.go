@@ -21,8 +21,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"

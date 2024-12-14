@@ -17,4 +17,4 @@
 package common
 
 // PrinterOutFunc is the function signature for the printer output function.
-type PrinterOutFunc func (map[string]any, string, any, error, bool) map[string]any
+type PrinterOutFunc func(map[string]any, string, any, error, bool) map[string]any

@@ -24,10 +24,10 @@ import (
 	"github.com/gofrs/flock"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
-	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
 	azicliwksremotesrv "github.com/permguard/permguard/internal/cli/workspace/remoteserver"

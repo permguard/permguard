@@ -30,7 +30,7 @@ import (
 )
 
 // validateArg is the function to validate the arguments.
-var validateArg = func (cmd *cobra.Command, args []string) error {
+var validateArg = func(cmd *cobra.Command, args []string) error {
 	if len(args) != 1 {
 		return errors.New("Requires one argument")
 	}

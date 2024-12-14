@@ -167,7 +167,7 @@ func (s *V1AAPServer) DeleteIdentitySource(ctx context.Context, identitySourceRe
 }
 
 // FetchIdentitySources returns all identity sources.
-func (s *V1AAPServer) FetchIdentitySources(identitySourceRequest *IdentitySourceFetchRequest, stream grpc.ServerStreamingServer[IdentitySourceResponse]) (error) {
+func (s *V1AAPServer) FetchIdentitySources(identitySourceRequest *IdentitySourceFetchRequest, stream grpc.ServerStreamingServer[IdentitySourceResponse]) error {
 	fields := map[string]any{}
 	fields[azmodels.FieldIdentitySourceAccountID] = identitySourceRequest.AccountID
 	if identitySourceRequest.Name != nil {
@@ -226,7 +226,7 @@ func (s *V1AAPServer) DeleteIdentity(ctx context.Context, identityRequest *Ident
 }
 
 // FetchIdentities returns all identities.
-func (s *V1AAPServer) FetchIdentities(identityRequest *IdentityFetchRequest, stream grpc.ServerStreamingServer[IdentityResponse]) (error) {
+func (s *V1AAPServer) FetchIdentities(identityRequest *IdentityFetchRequest, stream grpc.ServerStreamingServer[IdentityResponse]) error {
 	fields := map[string]any{}
 	fields[azmodels.FieldIdentityAccountID] = identityRequest.AccountID
 	if identityRequest.IdentitySourceID != nil {
@@ -291,7 +291,7 @@ func (s *V1AAPServer) DeleteTenant(ctx context.Context, tenantRequest *TenantDel
 }
 
 // FetchTenants returns all tenants.
-func (s *V1AAPServer) FetchTenants(tenantRequest *TenantFetchRequest, stream grpc.ServerStreamingServer[TenantResponse]) (error) {
+func (s *V1AAPServer) FetchTenants(tenantRequest *TenantFetchRequest, stream grpc.ServerStreamingServer[TenantResponse]) error {
 	fields := map[string]any{}
 	fields[azmodels.FieldTenantAccountID] = tenantRequest.AccountID
 	if tenantRequest.Name != nil {
