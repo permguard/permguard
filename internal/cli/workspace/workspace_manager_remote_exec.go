@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
-	aztypes "github.com/permguard/permguard-abs-language/pkg/permcode/types"
+	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
 	azfiles "github.com/permguard/permguard-core/pkg/extensions/files"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
@@ -278,7 +278,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 					return failedOpErr(nil, err)
 				}
 				switch classType {
-				case aztypes.ClassTypeSchema:
+				case azlangtypes.ClassTypeSchema:
 					schemaBlock = codeBlock
 				default:
 					codeBlocks = append(codeBlocks, codeBlock)
@@ -297,7 +297,13 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, fileName, codeBlock, 0644, false)
 		}
 		if schemaBlock != nil {
-			m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, schemaYMLFile, schemaBlock, 0644, false)
+			langSpec := absLang.GetLanguageSpecification()
+			schemaFileNames := langSpec.GetSupportedSchemaFileNames()
+			if len(schemaFileNames) < 1 {
+				return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: no schema file names are supported")
+			}
+			schemaFileName := schemaFileNames[0]
+			m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, schemaFileName, schemaBlock, 0644, false)
 		}
 	}
 

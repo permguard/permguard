@@ -18,10 +18,10 @@ package cosp
 
 
 const (
-	// CodeFileTypePermCode represents the code file type.
-	CodeFileTypePermCode = "permcode"
-	// CodeFileTypePermSchema represents the schema file type.
-	CodeFilePermSchema = "permschema"
+	// CodeFileOfCodeType represents the code file type.
+	CodeFileTypeOfCodeType = "code"
+	// CodeFileOfSchemaType represents the schema file type.
+	CodeFileOfSchemaType = "schema"
 	// CodeObjectStateModify represents the modify state.
 	CodeObjectStateUnchanged = "unchanged"
 	// CodeObjectStateCreate represents the create state.

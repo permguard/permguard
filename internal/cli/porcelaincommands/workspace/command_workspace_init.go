@@ -51,7 +51,7 @@ func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	output, err := wksMgr.ExecInitWorkspace(azplangcedar.CedarLanguageName, outFunc(ctx, printer))
+	output, err := wksMgr.ExecInitWorkspace(azplangcedar.LanguageName, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
