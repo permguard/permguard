@@ -122,7 +122,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(path string, data [
 		var policy cedar.Policy
 		name := ""
 		codeID := ""
-		codeType := azlangtypes.ClassTypeACPolicy
+		codeType := azlangtypes.ClassTypePolicy
 		langID := uint32(1)
 		langVersionID := uint32(1)
 		langTypeID := uint32(1)
