@@ -125,16 +125,11 @@ func TestCreateAndReadPolicyBlobObjects(t *testing.T) {
 	path := "./testutils/data/create-blob-objects"
 
 	file1 := `
-@policy_id("view-inventory")
 permit(
 	principal in Permguard::Actor::"inventory-auditor",
 	action in Action::"view",
 	resource in MagicFarmacia::Branch::Inventory::"*"
-)
-unless {
-principal has isTerminated && principal.isTerminated ||
-	principal.active == false
-};`
+);`
 
 	file2 := `
 @policy_id("assign-role-branch")
