@@ -18,11 +18,9 @@ package cedar
 
 import (
 	"bytes"
-	"regexp"
 	"strings"
 
 	"github.com/cedar-policy/cedar-go"
-	"github.com/google/uuid"
 
 	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
@@ -129,13 +127,18 @@ func (abs *CedarLanguageAbstraction) ConvertObjectToTree(obj *azlangobjs.Object)
 }
 
 // CreatePolicyBlobObjects creates multi sections policy blob objects.
-func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error) {
-	cedarCodeSanitized := strings.ReplaceAll(string(data), "\r\n", "\n")
-	cedarCodeSanitized = regexp.MustCompile(`//.*`).ReplaceAllString(cedarCodeSanitized, "")
-	policyRegex := regexp.MustCompile(`(?s)(@policy_id\(".*?"\)\s*)?permit\s*\([^)]*?\);`)
-	codePolicies := policyRegex.FindAllString(cedarCodeSanitized, -1)
-
-	multiSecObj, err := azlangobjs.NewMultiSectionsObject(path, len(codePolicies), nil)
+func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, data []byte) (*azlangobjs.MultiSectionsObject, error) {
+	policySet, err := cedar.NewPolicySetFromBytes(filePath, []byte(data))
+	if err != nil {
+		multiSecObj, err2 := azlangobjs.NewMultiSectionsObject(filePath, 0, nil)
+		if err2 != nil {
+			return nil, err2
+		}
+		multiSecObj.AddSectionObjectWithError(0, err)
+		return multiSecObj, nil
+	}
+	policiesMap := policySet.Map()
+	multiSecObj, err := azlangobjs.NewMultiSectionsObject(filePath, len(policiesMap), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -147,14 +150,11 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(path string, data [
 	langVersionID := LanguageSyntaxVersionID
 	langPolicyType := LanguagePolicyType
 	langPolicyTypeID := LanguagePolicyTypeID
-	for i, codePolicy := range codePolicies {
-		var policy cedar.Policy
-		name := uuid.New().String()
+	i := -1
+	for policyName, policy := range policiesMap {
+		i++
+		name := string(policyName)
 		codeID := name
-		if err := policy.UnmarshalCedar([]byte(codePolicy)); err != nil {
-			multiSecObj.AddSectionObjectWithError(i, err)
-			continue
-		}
 		header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, codeID, langPolicyTypeID)
 		if err != nil {
 			multiSecObj.AddSectionObjectWithError(i, err)
@@ -174,7 +174,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(path string, data [
 		if err != nil {
 			return nil, err
 		}
-		multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), name, codeID, codeType, lang, langPolicyType, langVersion, i)
+		multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), name, codeID, codeType, lang, langVersion, langPolicyType, i)
 	}
 	return multiSecObj, nil
 }
