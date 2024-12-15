@@ -36,16 +36,18 @@ const (
 
 	// LanguageCedar represents the unique identifier for the Cedar language.
 	LanguageCedar = "cedar"
-	// LanguageIDCedar represents the unique identifier for the Cedar language.
-	LanguageIDCedar = uint32(1)
+	// LanguageCedarID represents the unique identifier for the Cedar language.
+	LanguageCedarID = uint32(1)
 
 	// LanguageCedarJSON represents the unique identifier for the JSON-based Cedar language.
 	LanguageCedarJSON = "cedar-json"
-	// LanguageIDCedarJSON represents the unique identifier for the JSON-based Cedar language.
-	LanguageIDCedarJSON = uint32(2)
+	// LanguageCedarJSONID represents the unique identifier for the JSON-based Cedar language.
+	LanguageCedarJSONID = uint32(2)
 
-	// LanguageSyntax defines the latest syntax version used by the Cedar language.
-	LanguageSyntax = "*"
+	// LanguageSyntaxVersion defines the latest syntax version used by the Cedar language.
+	LanguageSyntaxVersion = "*"
+	// LanguageSyntaxVersionID defines the latest syntax version ID used by the Cedar language.
+	LanguageSyntaxVersionID = uint32(0)
 	// LanguageSchemaType specifies the schema type for Cedar language.
 	LanguageSchemaType = "schema"
 	// LanguageSchemaTypeID specifies the schema type ID for Cedar language.
@@ -82,9 +84,9 @@ func (abs *CedarLanguageAbstraction) GetLanguageSpecification() azlang.LanguageS
 	return &CedarLanguageSpecification{
 		language:                      LanguageName,
 		frontendLanguage:              LanguageCedar,
-		frontendLanguageID:            LanguageIDCedar,
+		frontendLanguageID:            LanguageCedarID,
 		backendLanguage:               LanguageCedarJSON,
-		backendLanguageID:             LanguageIDCedarJSON,
+		backendLanguageID:             LanguageCedarJSONID,
 		supportedPolicyFileExtensions: []string{LanguageFileExtension},
 		supportedSchemaFileNames:      []string{SchemaFileName},
 	}
@@ -143,12 +145,12 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(path string, data [
 		name := ""
 		codeID := ""
 		codeType := azlangtypes.ClassTypePolicy
-		langID := uint32(1)
-		lang := "cedar"
-		langVersionID := uint32(1)
-		langVersion := "*"
-		langTypeID := uint32(1)
-		langType := "policy"
+		langID := LanguageCedarJSONID
+		lang := LanguageCedarJSON
+		langVersionID := LanguageSyntaxVersionID
+		langVersion := LanguageSyntaxVersion
+		langTypeID := LanguagePolicyTypeID
+		langType := LanguagePolicyType
 
 		if err := policy.UnmarshalCedar([]byte(codePolicy)); err != nil {
 			multiSecObj.AddSectionObjectWithError(i, err)
