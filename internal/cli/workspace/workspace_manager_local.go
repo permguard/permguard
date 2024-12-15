@@ -17,6 +17,7 @@
 package workspace
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -222,8 +223,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 			HasErrors: true,
 			CodeID:    azlangtypes.ClassTypeSchema,
 			CodeType:  azlangtypes.ClassTypeSchema,
-			//TODO: Move this part into the language abstraction
-			ErrorMessage: "permcode: the schema file 'schema.yml' is missing. please ensure there are no duplicate schema files and that the required schema file is present.",
+			ErrorMessage: fmt.Sprintf("permcode: the schema file '%s' is missing. please ensure there are no duplicate schema files and that the required schema file is present.", schemaFileName),
 		}
 		blbCodeFiles = append(blbCodeFiles, codeFile)
 	}
