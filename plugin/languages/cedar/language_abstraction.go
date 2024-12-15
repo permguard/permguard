@@ -33,16 +33,28 @@ import (
 const (
 	// LanguageName specifies the canonical name of the Cedar language.
 	LanguageName = "cedar"
+
 	// LanguageCedar represents the unique identifier for the Cedar language.
 	LanguageCedar = "cedar"
 	// LanguageIDCedar represents the unique identifier for the Cedar language.
 	LanguageIDCedar = uint32(1)
+
 	// LanguageCedarJSON represents the unique identifier for the JSON-based Cedar language.
 	LanguageCedarJSON = "cedar-json"
 	// LanguageIDCedarJSON represents the unique identifier for the JSON-based Cedar language.
 	LanguageIDCedarJSON = uint32(2)
+
 	// LanguageSyntax defines the latest syntax version used by the Cedar language.
 	LanguageSyntax = "*"
+	// LanguageSchemaType specifies the schema type for Cedar language.
+	LanguageSchemaType = "schema"
+	// LanguageSchemaTypeID specifies the schema type ID for Cedar language.
+	LanguageSchemaTypeID = uint32(1)
+	// LanguagePolicyType specifies the policy type for Cedar language.
+	LanguagePolicyType = "policy"
+	// LanguagePolicyTypeID specifies the policy type ID for Cedar language.
+	LanguagePolicyTypeID = uint32(2)
+
 	// LanguageFileExtension specifies the standard file extension for Cedar language files.
 	LanguageFileExtension = ".cedar"
 	// SchemaFileName defines the default filename for the schema definition associated with Cedar.
