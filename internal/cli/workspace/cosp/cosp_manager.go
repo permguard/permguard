@@ -202,19 +202,19 @@ func (m *COSPManager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 	path := filepath.Join(m.getCodeSourceDir(), hiddenCodeMapFile)
 	var codeFiles []CodeFile
 	recordFunc := func(record []string) error {
-		if len(record) < 8 {
+		if len(record) < 12 {
 			return fmt.Errorf("invalid record format")
 		}
-		mode64, err := strconv.ParseUint(record[6], 10, 32)
+		mode64, err := strconv.ParseUint(record[9], 10, 32)
 		if err != nil {
 			return err
 		}
 		mode := uint32(mode64)
-		section, err := strconv.Atoi(record[7])
+		section, err := strconv.Atoi(record[10])
 		if err != nil {
 			return err
 		}
-		hasErrors, err := strconv.ParseBool(record[8])
+		hasErrors, err := strconv.ParseBool(record[11])
 		if err != nil {
 			return err
 		}
@@ -231,7 +231,7 @@ func (m *COSPManager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 			Mode:            mode,
 			Section:         section,
 			HasErrors:       hasErrors,
-			ErrorMessage:    record[13],
+			ErrorMessage:    record[12],
 		}
 		codeFiles = append(codeFiles, codeFile)
 		return nil
