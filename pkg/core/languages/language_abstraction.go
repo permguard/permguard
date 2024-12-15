@@ -22,8 +22,16 @@ import (
 
 // LanguageSpecification is the interface for the language specification.
 type LanguageSpecification interface {
-	// GetLanguageName returns the name of the language.
-	GetLanguageName() string
+	// GetLanguage returns the name of the language.
+	GetLanguage() string
+	// GetFrontendLanguage returns the name of the frontend language.
+	GetFrontendLanguage() string
+	// GetFrontendLanguage returns the id of the frontend language.
+	GetFrontendLanguageID() uint32
+	// GetBackendLanguage returns the name of the backend language.
+	GetBackendLanguage() string
+	// GetBackendLanguageID returns the id of the backend language.
+	GetBackendLanguageID() uint32
 	// GetSupportedPolicyFileExtensions returns the list of supported policy file extensions.
 	GetSupportedPolicyFileExtensions() []string
 	// GetSupportedSchemaFileNames returns the list of supported schema file names.
