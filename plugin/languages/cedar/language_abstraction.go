@@ -18,11 +18,11 @@ package cedar
 
 import (
 	"bytes"
-	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/cedar-policy/cedar-go"
+	"github.com/google/uuid"
 
 	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
@@ -132,31 +132,30 @@ func (abs *CedarLanguageAbstraction) ConvertObjectToTree(obj *azlangobjs.Object)
 func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error) {
 	cedarCodeSanitized := strings.ReplaceAll(string(data), "\r\n", "\n")
 	cedarCodeSanitized = regexp.MustCompile(`//.*`).ReplaceAllString(cedarCodeSanitized, "")
-	policyRegex := regexp.MustCompile(`(?s)@policy_id\(".*?"\)\s*permit\s*\([^;]+;`)
+	policyRegex := regexp.MustCompile(`(?s)(@policy_id\(".*?"\)\s*)?permit\s*\([^)]*?\);`)
 	codePolicies := policyRegex.FindAllString(cedarCodeSanitized, -1)
-	fmt.Println(cedarCodeSanitized)
 
 	multiSecObj, err := azlangobjs.NewMultiSectionsObject(path, len(codePolicies), nil)
 	if err != nil {
 		return nil, err
 	}
+
+	codeType := azlangtypes.ClassTypePolicy
+	lang := LanguageCedarJSON
+	langID := LanguageCedarJSONID
+	langVersion := LanguageSyntaxVersion
+	langVersionID := LanguageSyntaxVersionID
+	langPolicyType := LanguagePolicyType
+	langPolicyTypeID := LanguagePolicyTypeID
 	for i, codePolicy := range codePolicies {
 		var policy cedar.Policy
-		name := ""
-		codeID := ""
-		codeType := azlangtypes.ClassTypePolicy
-		langID := LanguageCedarJSONID
-		lang := LanguageCedarJSON
-		langVersionID := LanguageSyntaxVersionID
-		langVersion := LanguageSyntaxVersion
-		langTypeID := LanguagePolicyTypeID
-		langType := LanguagePolicyType
-
+		name := uuid.New().String()
+		codeID := name
 		if err := policy.UnmarshalCedar([]byte(codePolicy)); err != nil {
 			multiSecObj.AddSectionObjectWithError(i, err)
 			continue
 		}
-		header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, codeID, langTypeID)
+		header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, codeID, langPolicyTypeID)
 		if err != nil {
 			multiSecObj.AddSectionObjectWithError(i, err)
 			continue
@@ -175,14 +174,22 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(path string, data [
 		if err != nil {
 			return nil, err
 		}
-		multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), name, codeID, codeType, lang, langType, langVersion, i)
+		multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), name, codeID, codeType, lang, langPolicyType, langVersion, i)
 	}
 	return multiSecObj, nil
 }
 
 // ReadPolicyBlobContentBytes reads the policy blob object content bytes.
 func (abs *CedarLanguageAbstraction) ReadPolicyBlobContentBytes(obj *azlangobjs.Object) (string, []byte, error) {
-	return "", nil, nil
+	objInfo, err := abs.objMng.GetObjectInfo(obj)
+	if err != nil {
+		return "", nil, err
+	}
+	objHeader := objInfo.GetHeader()
+	if !objHeader.IsNativeLanguage() {
+		return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid object type")
+	}
+	return "", objInfo.GetObject().GetContent(), nil
 }
 
 // CreateMultiPolicyContentBytes creates a multi policy content bytes.
@@ -199,7 +206,33 @@ func (abs *CedarLanguageAbstraction) CreateMultiPolicyContentBytes(blocks [][]by
 
 // CreateSchemaBlobObjects creates multi sections schema blob objects.
 func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error) {
-	return nil, nil
+	codeID := azlangtypes.ClassTypeSchema
+	schemaType := azlangtypes.ClassTypeSchema
+
+	lang := LanguageCedarJSON
+	langID := LanguageCedarJSONID
+	langVersion := LanguageSyntaxVersion
+	langVersionID := LanguageSyntaxVersionID
+	langPolicyType := LanguagePolicyType
+	langPolicyTypeID := LanguagePolicyTypeID
+
+	multiSecObj, err := azlangobjs.NewMultiSectionsObject(path, 1, nil)
+	header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, codeID, langPolicyTypeID)
+	if err != nil {
+		multiSecObj.AddSectionObjectWithError(0, err)
+		return multiSecObj, nil
+	}
+	obj, err := abs.objMng.CreateBlobObject(header, data)
+	if err != nil {
+		multiSecObj.AddSectionObjectWithError(0, err)
+		return multiSecObj, nil
+	}
+	objInfo, err := abs.objMng.GetObjectInfo(obj)
+	if err != nil {
+		return nil, err
+	}
+	multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), codeID, codeID, schemaType, lang, langPolicyType, langVersion, 0)
+	return multiSecObj, nil
 }
 
 // ReadSchemaBlobContentBytes reads the schema blob object content bytes.
