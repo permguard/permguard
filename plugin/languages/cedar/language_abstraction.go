@@ -33,8 +33,12 @@ import (
 const (
 	// LanguageName specifies the canonical name of the Cedar language.
 	LanguageName = "cedar"
+	// LanguageCedar represents the unique identifier for the Cedar language.
+	LanguageCedar = "cedar"
 	// LanguageIDCedar represents the unique identifier for the Cedar language.
 	LanguageIDCedar = uint32(1)
+	// LanguageCedarJSON represents the unique identifier for the JSON-based Cedar language.
+	LanguageCedarJSON = "cedar-json"
 	// LanguageIDCedarJSON represents the unique identifier for the JSON-based Cedar language.
 	LanguageIDCedarJSON = uint32(2)
 	// LanguageSyntax defines the latest syntax version used by the Cedar language.
@@ -64,7 +68,11 @@ func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
 // GetLanguageSpecification returns the specification for the language.
 func (abs *CedarLanguageAbstraction) GetLanguageSpecification() azlang.LanguageSpecification {
 	return &CedarLanguageSpecification{
-		languageName:                  LanguageName,
+		language:                      LanguageName,
+		frontendLanguage:              LanguageCedar,
+		frontendLanguageID:            LanguageIDCedar,
+		backendLanguage:               LanguageCedarJSON,
+		backendLanguageID:             LanguageIDCedarJSON,
 		supportedPolicyFileExtensions: []string{LanguageFileExtension},
 		supportedSchemaFileNames:      []string{SchemaFileName},
 	}

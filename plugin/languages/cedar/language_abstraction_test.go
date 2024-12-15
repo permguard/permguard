@@ -35,7 +35,7 @@ func TestLanguageSpecification(t *testing.T) {
 
 	langSpec := langAbs.GetLanguageSpecification()
 	assert.NotNil(langSpec, "LanguageSpecification should not be nil")
-	assert.NotEmpty(langSpec.GetLanguageName(), "LanguageName should not be empty")
+	assert.NotEmpty(langSpec.GetFrontendLanguage(), "LanguageName should not be empty")
 	assert.GreaterOrEqual(1, len(langSpec.GetSupportedPolicyFileExtensions()), "SupportedPolicyFileExtensions should not be empty")
 	assert.GreaterOrEqual(1, len(langSpec.GetSupportedSchemaFileNames()), "GetSupportedSchemaFileNames should not be empty")
 }

@@ -18,14 +18,38 @@ package cedar
 
 // CedarLanguageSpecification is the specification for the cedar language.
 type CedarLanguageSpecification struct {
-	languageName                  string
+	language                      string
+	frontendLanguage              string
+	frontendLanguageID            uint32
+	backendLanguage               string
+	backendLanguageID             uint32
 	supportedPolicyFileExtensions []string
 	supportedSchemaFileNames      []string
 }
 
-// GetLanguageName returns the name of the language.
-func (ls *CedarLanguageSpecification) GetLanguageName() string {
-	return ls.languageName
+// GetLanguage returns the name of the language.
+func (ls *CedarLanguageSpecification) GetLanguage() string {
+	return ls.language
+}
+
+// GetFrontendLanguage returns the name of the language.
+func (ls *CedarLanguageSpecification) GetFrontendLanguage() string {
+	return ls.frontendLanguage
+}
+
+// GetFrontendLanguageID returns the id of the language.
+func (ls *CedarLanguageSpecification) GetFrontendLanguageID() uint32 {
+	return ls.frontendLanguageID
+}
+
+// GetBackendLanguage returns the name of the backend language.
+func (ls *CedarLanguageSpecification) GetBackendLanguage() string {
+	return ls.backendLanguage
+}
+
+// GetBackendLanguageID returns the id of the backend language.
+func (ls *CedarLanguageSpecification) GetBackendLanguageID() uint32 {
+	return ls.backendLanguageID
 }
 
 // GetSupportedPolicyFileExtensions returns the list of supported policy file extensions.
