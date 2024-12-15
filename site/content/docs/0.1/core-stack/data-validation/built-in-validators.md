@@ -1,6 +1,6 @@
 ---
-title: "Common Validators"
-slug: "Common Validators"
+title: "Built-in Validators"
+slug: "Built-in Validators"
 description: ""
 summary: ""
 date: 2023-08-15T14:31:58+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "common-validators-8b284f0c047942edbe62bebec794e430"
+    identifier: "built-in-validators-8b284f0c047942edbe62bebec794e430"
 weight: 8201
 toc: true
 seo:
@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-**Permguard** implements common validators that are universally used across multiple components
+**Permguard** implements built-in validators that are universally applied across multiple components.
 
 | TYPE | VALIDATION                             | CASE   | DESCRIPTION                                                                       |
 |------|----------------------------------------|--------|-----------------------------------------------------------------------------------|
