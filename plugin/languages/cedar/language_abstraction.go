@@ -154,7 +154,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(path string, data [
 			multiSecObj.AddSectionObjectWithError(i, err)
 			continue
 		}
-		header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, langTypeID)
+		header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, codeID, langTypeID)
 		if err != nil {
 			multiSecObj.AddSectionObjectWithError(i, err)
 			continue

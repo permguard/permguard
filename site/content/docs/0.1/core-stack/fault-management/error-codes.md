@@ -100,6 +100,7 @@ seo:
 | 08005      | cli: record not found                            |
 
 ## 081xx: Command Line Interface File System Errors
+
 | Error Code | Description                                      |
 |------------|--------------------------------------------------|
 | 08100      | cli: file system error                           |
