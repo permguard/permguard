@@ -37,7 +37,7 @@
         // "args": ["schemas",  "delete", "--account", "422043848373", "--name", "car-rental", "--tag", "1.0.0"],
         // "args": ["authz", "schemas", "update", "--schemaid", "3362019f-e393-48df-9f89-0e5ef09b6c6e", "-f", "../../samples/aap/car-rental/schema-001.yml", "--account", "220176525525", "--name", "car-rental", "--tag", "1.0.0", "--description", "Car Rental Schema"],
         // "args": ["authz", "schemas", "create", "-f", "../../samples/aap/car-rental/schema-001.yml", "--account", "422043848373", "--name", "car-rental", "--tag", "1.0.0", "--description", "Car Rental Schema"],
-        // "args": ["schemas",  "validate", "-f", "../../samples/aap/car-rental/schema.yml"],
+        // "args": ["schemas",  "validate", "-f", "../../samples/aap/car-rental/schema.json"],
         // "args": ["accounts",  "update", "--account", "145190630917", "--email", "pippo@nitroagility.com"],
         // "args": ["authn", "tenants",  "update", "--account", "711379867341", "--tenantid", "9e77aef4-9cba-4ee0-a351-c267732ebe54", "--name", "test2"],
         // "args": ["config",  "aap-set-target", "localhost:9091"],

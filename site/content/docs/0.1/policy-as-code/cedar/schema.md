@@ -27,7 +27,7 @@ Below is an example of a directory structure that includes the schema file:
 ```plaintext
 .
 ├── .permguard
-├── schema.yml
+├── schema.json
 ```
 
 Below is a sample schema:
