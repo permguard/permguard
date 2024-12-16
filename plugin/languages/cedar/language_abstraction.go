@@ -72,6 +72,7 @@ func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return &CedarLanguageAbstraction{
 		objMng: objMng,
 	}, nil
@@ -101,6 +102,7 @@ func (abs *CedarLanguageAbstraction) ConvertObjectToCommit(obj *azlangobjs.Objec
 	if err != nil {
 		return nil, err
 	}
+
 	value, ok := objInfo.GetInstance().(*azlangobjs.Commit)
 	if !ok {
 		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid object type")
@@ -119,6 +121,7 @@ func (abs *CedarLanguageAbstraction) ConvertObjectToTree(obj *azlangobjs.Object)
 	if err != nil {
 		return nil, err
 	}
+
 	value, ok := objInfo.GetInstance().(*azlangobjs.Tree)
 	if !ok {
 		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid object type")
@@ -128,7 +131,7 @@ func (abs *CedarLanguageAbstraction) ConvertObjectToTree(obj *azlangobjs.Object)
 
 // CreatePolicyBlobObjects creates multi sections policy blob objects.
 func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, data []byte) (*azlangobjs.MultiSectionsObject, error) {
-	policySet, err := cedar.NewPolicySetFromBytes(filePath, []byte(data))
+	policySet, err := cedar.NewPolicySetFromBytes(filePath, data)
 	if err != nil {
 		multiSecObj, err2 := azlangobjs.NewMultiSectionsObject(filePath, 0, nil)
 		if err2 != nil {
@@ -137,45 +140,55 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, da
 		multiSecObj.AddSectionObjectWithError(0, err)
 		return multiSecObj, nil
 	}
+
 	policiesMap := policySet.Map()
 	multiSecObj, err := azlangobjs.NewMultiSectionsObject(filePath, len(policiesMap), nil)
 	if err != nil {
 		return nil, err
 	}
 
-	codeType := azlangtypes.ClassTypePolicy
-	lang := LanguageCedarJSON
-	langID := LanguageCedarJSONID
-	langVersion := LanguageSyntaxVersion
-	langVersionID := LanguageSyntaxVersionID
-	langPolicyType := LanguagePolicyType
-	langPolicyTypeID := LanguagePolicyTypeID
+	const (
+		codeType         = azlangtypes.ClassTypePolicy
+		lang             = LanguageCedarJSON
+		langID           = LanguageCedarJSONID
+		langVersion      = LanguageSyntaxVersion
+		langVersionID    = LanguageSyntaxVersionID
+		langPolicyType   = LanguagePolicyType
+		langPolicyTypeID = LanguagePolicyTypeID
+	)
+
 	i := -1
 	for policyName, policy := range policiesMap {
 		i++
 		name := string(policyName)
 		codeID := name
+
 		header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, codeID, langPolicyTypeID)
 		if err != nil {
 			multiSecObj.AddSectionObjectWithError(i, err)
 			continue
 		}
+
 		policyJson, err := policy.MarshalJSON()
 		if err != nil {
 			multiSecObj.AddSectionObjectWithError(i, err)
 			continue
 		}
+
 		obj, err := abs.objMng.CreateBlobObject(header, policyJson)
 		if err != nil {
 			multiSecObj.AddSectionObjectWithError(i, err)
 			continue
 		}
+
 		objInfo, err := abs.objMng.GetObjectInfo(obj)
 		if err != nil {
 			return nil, err
 		}
+
 		multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), name, codeID, codeType, lang, langVersion, langPolicyType, i)
 	}
+
 	return multiSecObj, nil
 }
 
@@ -209,12 +222,14 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data [
 	codeID := azlangtypes.ClassTypeSchema
 	schemaType := azlangtypes.ClassTypeSchema
 
-	lang := LanguageCedarJSON
-	langID := LanguageCedarJSONID
-	langVersion := LanguageSyntaxVersion
-	langVersionID := LanguageSyntaxVersionID
-	langPolicyType := LanguagePolicyType
-	langPolicyTypeID := LanguagePolicyTypeID
+	const (
+		lang             = LanguageCedarJSON
+		langID           = LanguageCedarJSONID
+		langVersion      = LanguageSyntaxVersion
+		langVersionID    = LanguageSyntaxVersionID
+		langPolicyType   = LanguagePolicyType
+		langPolicyTypeID = LanguagePolicyTypeID
+	)
 
 	multiSecObj, err := azlangobjs.NewMultiSectionsObject(path, 1, nil)
 	header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, codeID, langPolicyTypeID)
@@ -222,15 +237,18 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data [
 		multiSecObj.AddSectionObjectWithError(0, err)
 		return multiSecObj, nil
 	}
+
 	obj, err := abs.objMng.CreateBlobObject(header, data)
 	if err != nil {
 		multiSecObj.AddSectionObjectWithError(0, err)
 		return multiSecObj, nil
 	}
+
 	objInfo, err := abs.objMng.GetObjectInfo(obj)
 	if err != nil {
 		return nil, err
 	}
+
 	multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), codeID, codeID, schemaType, lang, langPolicyType, langVersion, 0)
 	return multiSecObj, nil
 }
