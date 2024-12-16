@@ -217,12 +217,12 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	}
 	if schemaFileCount == 0 {
 		codeFile := azicliwkscosp.CodeFile{
-			Path:      m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaFileName),
-			Section:   0,
-			Mode:      0,
-			HasErrors: true,
-			CodeID:    azlangtypes.ClassTypeSchema,
-			CodeType:  azlangtypes.ClassTypeSchema,
+			Path:         m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaFileName),
+			Section:      0,
+			Mode:         0,
+			HasErrors:    true,
+			CodeID:       azlangtypes.ClassTypeSchema,
+			CodeType:     azlangtypes.ClassTypeSchema,
 			ErrorMessage: fmt.Sprintf("permcode: the schema file '%s' is missing. please ensure there are no duplicate schema files and that the required schema file is present.", schemaFileName),
 		}
 		blbCodeFiles = append(blbCodeFiles, codeFile)
