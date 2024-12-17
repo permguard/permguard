@@ -24,6 +24,10 @@ import (
 type LanguageSpecification interface {
 	// GetLanguage returns the name of the language.
 	GetLanguage() string
+	// GetLanguageVersion returns the version of the language.
+	GetLanguageVersion() string
+	// GetLanguageVersionID returns the id of the language version.
+	GetLanguageVersionID() uint32
 	// GetFrontendLanguage returns the name of the frontend language.
 	GetFrontendLanguage() string
 	// GetFrontendLanguage returns the id of the frontend language.

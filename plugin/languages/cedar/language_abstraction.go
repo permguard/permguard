@@ -57,8 +57,8 @@ const (
 
 	// LanguageFileExtension specifies the standard file extension for Cedar language files.
 	LanguageFileExtension = ".cedar"
-	// SchemaFileName defines the default filename for the schema definition associated with Cedar.
-	SchemaFileName = "schema.json"
+	// LanguageSchemaFileName defines the default filename for the schema definition associated with Cedar.
+	LanguageSchemaFileName = "schema.json"
 )
 
 // CedarLanguageAbstraction is the abstraction for the cedar language.
@@ -82,12 +82,14 @@ func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
 func (abs *CedarLanguageAbstraction) GetLanguageSpecification() azlang.LanguageSpecification {
 	return &CedarLanguageSpecification{
 		language:                      LanguageName,
+		languageVersion:               LanguageSyntaxVersion,
+		languageVersionID:             LanguageSyntaxVersionID,
 		frontendLanguage:              LanguageCedar,
 		frontendLanguageID:            LanguageCedarID,
 		backendLanguage:               LanguageCedarJSON,
 		backendLanguageID:             LanguageCedarJSONID,
 		supportedPolicyFileExtensions: []string{LanguageFileExtension},
-		supportedSchemaFileNames:      []string{SchemaFileName},
+		supportedSchemaFileNames:      []string{LanguageSchemaFileName},
 	}
 }
 
@@ -131,6 +133,11 @@ func (abs *CedarLanguageAbstraction) ConvertObjectToTree(obj *azlangobjs.Object)
 
 // CreatePolicyBlobObjects creates multi sections policy blob objects.
 func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, data []byte) (*azlangobjs.MultiSectionsObject, error) {
+	langSpec := abs.GetLanguageSpecification()
+	if langSpec.GetFrontendLanguage() != LanguageCedar {
+		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: unsupported frontend language")
+	}
+
 	policySet, err := cedar.NewPolicySetFromBytes(filePath, data)
 	if err != nil {
 		multiSecObj, err2 := azlangobjs.NewMultiSectionsObject(filePath, 0, nil)
@@ -148,22 +155,25 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, da
 	}
 
 	const (
-		codeType         = azlangtypes.ClassTypePolicy
-		lang             = LanguageCedarJSON
-		langID           = LanguageCedarJSONID
-		langVersion      = LanguageSyntaxVersion
-		langVersionID    = LanguageSyntaxVersionID
+		codeType   = azlangtypes.ClassTypePolicy
+		codeTypeID = azlangtypes.ClassTypePolicyID
+
 		langPolicyType   = LanguagePolicyType
 		langPolicyTypeID = LanguagePolicyTypeID
 	)
 
+	lang := langSpec.GetBackendLanguage()
+	langID := langSpec.GetBackendLanguageID()
+	langVersion := langSpec.GetLanguageVersion()
+	langVersionID := langSpec.GetLanguageVersionID()
+
 	i := -1
 	for policyName, policy := range policiesMap {
 		i++
-		name := string(policyName)
-		codeID := name
+		objName := string(policyName)
+		codeID := objName
 
-		header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, codeID, langPolicyTypeID)
+		header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, codeID, codeTypeID)
 		if err != nil {
 			multiSecObj.AddSectionObjectWithError(i, err)
 			continue
@@ -186,7 +196,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, da
 			return nil, err
 		}
 
-		multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), name, codeID, codeType, lang, langVersion, langPolicyType, i)
+		multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), objName, codeID, codeType, lang, langVersion, langPolicyType, i)
 	}
 
 	return multiSecObj, nil
@@ -219,20 +229,29 @@ func (abs *CedarLanguageAbstraction) CreateMultiPolicyContentBytes(blocks [][]by
 
 // CreateSchemaBlobObjects creates multi sections schema blob objects.
 func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error) {
-	codeID := azlangtypes.ClassTypeSchema
-	schemaType := azlangtypes.ClassTypeSchema
+	langSpec := abs.GetLanguageSpecification()
+	if langSpec.GetFrontendLanguage() != LanguageCedar {
+		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: unsupported frontend language")
+	}
 
 	const (
-		lang             = LanguageCedarJSON
-		langID           = LanguageCedarJSONID
-		langVersion      = LanguageSyntaxVersion
-		langVersionID    = LanguageSyntaxVersionID
-		langPolicyType   = LanguagePolicyType
-		langPolicyTypeID = LanguagePolicyTypeID
+		objName = azlangtypes.ClassTypeSchema
+
+		codeID     = azlangtypes.ClassTypeSchema
+		codeType   = azlangtypes.ClassTypeSchema
+		codeTypeID = azlangtypes.ClassTypeSchemaID
+
+		langSchemaType   = LanguageSchemaType
+		langSchemaTypeID = LanguageSchemaTypeID
 	)
 
+	lang := langSpec.GetBackendLanguage()
+	langID := langSpec.GetBackendLanguageID()
+	langVersion := langSpec.GetLanguageVersion()
+	langVersionID := langSpec.GetLanguageVersionID()
+
 	multiSecObj, err := azlangobjs.NewMultiSectionsObject(path, 1, nil)
-	header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, codeID, langPolicyTypeID)
+	header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, codeID, codeTypeID)
 	if err != nil {
 		multiSecObj.AddSectionObjectWithError(0, err)
 		return multiSecObj, nil
@@ -249,7 +268,7 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data [
 		return nil, err
 	}
 
-	multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), codeID, codeID, schemaType, lang, langPolicyType, langVersion, 0)
+	multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), objName, codeID, codeType, lang, langVersion, langSchemaType, 0)
 	return multiSecObj, nil
 }
 
