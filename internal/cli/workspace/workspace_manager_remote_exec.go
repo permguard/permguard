@@ -273,15 +273,17 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
-				classType, codeBlock, err := absLang.ReadPolicyBlobContentBytes(entryObj)
+				classType, codeBlock, err := absLang.ReadObjectContentBytes(entryObj)
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
 				switch classType {
-				case azlangtypes.ClassTypeSchema:
+				case azlangtypes.ClassTypeSchemaID:
 					schemaBlock = codeBlock
-				default:
+				case azlangtypes.ClassTypePolicyID:
 					codeBlocks = append(codeBlocks, codeBlock)
+				default:
+					return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: invalid class type"))
 				}
 			}
 		}
@@ -305,7 +307,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			langSpec := absLang.GetLanguageSpecification()
 			schemaFileNames := langSpec.GetSupportedSchemaFileNames()
 			if len(schemaFileNames) < 1 {
-				return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: no schema file names are supported")
+				return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: no schema file names are supported"))
 			}
 			schemaFileName := schemaFileNames[0]
 			m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, schemaFileName, schemaBlock, 0644, false)
