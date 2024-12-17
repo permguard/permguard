@@ -17,7 +17,6 @@
 package cedar
 
 import (
-	"bytes"
 	"strings"
 
 	"github.com/cedar-policy/cedar-go"
@@ -278,6 +277,9 @@ func (abs *CedarLanguageAbstraction) ReadSchemaBlobContentBytes(obj *azlangobjs.
 }
 
 // CreateSchemaContentBytes creates a schema content bytes.
-func (abs *CedarLanguageAbstraction) CreateSchemaContentBytes(blocks [][]byte) ([]byte, string, error) {
-	return bytes.Join(blocks, nil), LanguageFileExtension, nil
+func (abs *CedarLanguageAbstraction) CreateSchemaContentBytes(blocks []byte) ([]byte, string, error) {
+	if len(blocks) == 0 {
+		return nil, "", azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: empty schema content")
+	}
+	return blocks, LanguageSchemaFileName, nil
 }

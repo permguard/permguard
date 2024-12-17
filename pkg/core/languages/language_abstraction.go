@@ -65,5 +65,5 @@ type LanguageAbastraction interface {
 	// ReadSchemaBlobContentBytes reads the schema blob object content bytes.
 	ReadSchemaBlobContentBytes(obj *azlangobjs.Object) (string, []byte, error)
 	// CreateSchemaContentBytes creates a schema content bytes.
-	CreateSchemaContentBytes(blocks [][]byte) ([]byte, string, error)
+	CreateSchemaContentBytes(blocks []byte) ([]byte, string, error)
 }

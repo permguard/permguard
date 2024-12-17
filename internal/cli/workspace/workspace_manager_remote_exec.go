@@ -297,6 +297,11 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, fileName, codeBlock, 0644, false)
 		}
 		if schemaBlock != nil {
+			var err error
+			schemaBlock, _, err = absLang.CreateSchemaContentBytes(schemaBlock)
+			if err != nil {
+				return failedOpErr(nil, err)
+			}
 			langSpec := absLang.GetLanguageSpecification()
 			schemaFileNames := langSpec.GetSupportedSchemaFileNames()
 			if len(schemaFileNames) < 1 {
