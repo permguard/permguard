@@ -249,6 +249,8 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data [
 	langVersion := langSpec.GetLanguageVersion()
 	langVersionID := langSpec.GetLanguageVersionID()
 
+	//TODO: Implement schema validation
+
 	multiSecObj, err := azlangobjs.NewMultiSectionsObject(path, 1, nil)
 	header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, codeID, codeTypeID)
 	if err != nil {
