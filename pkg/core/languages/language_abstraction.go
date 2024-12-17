@@ -46,6 +46,8 @@ type LanguageSpecification interface {
 type LanguageAbastraction interface {
 	// GetLanguageSpecification returns the specification for the language.
 	GetLanguageSpecification() LanguageSpecification
+	// ReadObjectContentBytes reads the object content bytes.
+	ReadObjectContentBytes(obj *azlangobjs.Object) (uint32, []byte, error)
 	// CreateCommitObject creates a commit object.
 	CreateCommitObject(commit *azlangobjs.Commit) (*azlangobjs.Object, error)
 	// ConvertObjectToCommit converts an object to a commit.
@@ -56,14 +58,10 @@ type LanguageAbastraction interface {
 	ConvertObjectToTree(obj *azlangobjs.Object) (*azlangobjs.Tree, error)
 	// CreatePolicyBlobObjects creates multi sections policy blob objects.
 	CreatePolicyBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error)
-	// ReadPolicyBlobContentBytes reads the policy blob object content bytes.
-	ReadPolicyBlobContentBytes(obj *azlangobjs.Object) (string, []byte, error)
 	// CreateMultiPolicyContentBytesBody creates a multi policy content bytes.
 	CreateMultiPolicyContentBytes(blocks [][]byte) ([]byte, string, error)
 	// CreateSchemaBlobObjects creates multi sections schema blob objects.
 	CreateSchemaBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error)
-	// ReadSchemaBlobContentBytes reads the schema blob object content bytes.
-	ReadSchemaBlobContentBytes(obj *azlangobjs.Object) (string, []byte, error)
 	// CreateSchemaContentBytes creates a schema content bytes.
 	CreateSchemaContentBytes(blocks []byte) ([]byte, string, error)
 }

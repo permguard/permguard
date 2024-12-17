@@ -92,6 +92,19 @@ func (abs *CedarLanguageAbstraction) GetLanguageSpecification() azlang.LanguageS
 	}
 }
 
+// ReadObjectContentBytes reads the object content bytes.
+func (abs *CedarLanguageAbstraction) ReadObjectContentBytes(obj *azlangobjs.Object) (uint32, []byte, error) {
+	objInfo, err := abs.objMng.GetObjectInfo(obj)
+	if err != nil {
+		return 0, nil, err
+	}
+	objHeader := objInfo.GetHeader()
+	if !objHeader.IsNativeLanguage() {
+		return 0, nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid object type")
+	}
+	return objHeader.GetCodeTypeID(), objInfo.GetObject().GetContent(), nil
+}
+
 // CreateCommitObject creates a commit object.
 func (abs *CedarLanguageAbstraction) CreateCommitObject(commit *azlangobjs.Commit) (*azlangobjs.Object, error) {
 	return abs.objMng.CreateCommitObject(commit)
@@ -201,19 +214,6 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, da
 	return multiSecObj, nil
 }
 
-// ReadPolicyBlobContentBytes reads the policy blob object content bytes.
-func (abs *CedarLanguageAbstraction) ReadPolicyBlobContentBytes(obj *azlangobjs.Object) (string, []byte, error) {
-	objInfo, err := abs.objMng.GetObjectInfo(obj)
-	if err != nil {
-		return "", nil, err
-	}
-	objHeader := objInfo.GetHeader()
-	if !objHeader.IsNativeLanguage() {
-		return "", nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid object type")
-	}
-	return "", objInfo.GetObject().GetContent(), nil
-}
-
 // CreateMultiPolicyContentBytes creates a multi policy content bytes.
 func (abs *CedarLanguageAbstraction) CreateMultiPolicyContentBytes(blocks [][]byte) ([]byte, string, error) {
 	var sb strings.Builder
@@ -269,11 +269,6 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data [
 
 	multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), objName, codeID, codeType, lang, langVersion, langSchemaType, 0)
 	return multiSecObj, nil
-}
-
-// ReadSchemaBlobContentBytes reads the schema blob object content bytes.
-func (abs *CedarLanguageAbstraction) ReadSchemaBlobContentBytes(obj *azlangobjs.Object) (string, []byte, error) {
-	return "", nil, nil
 }
 
 // CreateSchemaContentBytes creates a schema content bytes.
