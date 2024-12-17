@@ -19,6 +19,8 @@ package cedar
 // CedarLanguageSpecification is the specification for the cedar language.
 type CedarLanguageSpecification struct {
 	language                      string
+	languageVersion               string
+	languageVersionID             uint32
 	frontendLanguage              string
 	frontendLanguageID            uint32
 	backendLanguage               string
@@ -30,6 +32,16 @@ type CedarLanguageSpecification struct {
 // GetLanguage returns the name of the language.
 func (ls *CedarLanguageSpecification) GetLanguage() string {
 	return ls.language
+}
+
+// GetLanguage returns the language version.
+func (abs *CedarLanguageSpecification) GetLanguageVersion() string {
+	return LanguageSyntaxVersion
+}
+
+// GetLanguageVersionID returns the language version ID.
+func (abs *CedarLanguageSpecification) GetLanguageVersionID() uint32 {
+	return LanguageSyntaxVersionID
 }
 
 // GetFrontendLanguage returns the name of the language.
