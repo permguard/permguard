@@ -21,6 +21,7 @@ import (
 
 	"github.com/cedar-policy/cedar-go"
 
+	azids "github.com/permguard/permguard-core/pkg/extensions/ids"
 	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
@@ -180,9 +181,16 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, da
 	langVersionID := langSpec.GetLanguageVersionID()
 
 	i := -1
-	for policyName, policy := range policiesMap {
+	for _, policy := range policiesMap {
 		i++
-		objName := string(policyName)
+		var policyID string
+		annPolicyID, exists := policy.Annotations()["policy_id"]
+		if !exists {
+			policyID = azids.GenerateID()
+		} else {
+			policyID = string(annPolicyID)
+		}
+		objName := policyID
 		codeID := objName
 
 		header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, codeID, codeTypeID)
