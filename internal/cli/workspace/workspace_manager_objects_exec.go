@@ -107,11 +107,12 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 			objMap := map[string]any{}
 			objMap["oid"] = objInfo.GetOID()
 			objMap["otype"] = objInfo.GetType()
-			objMap["size"] = len(objInfo.GetObject().GetContent())
+			objMap["osize"] = len(objInfo.GetObject().GetContent())
 			objHeader := objInfo.GetHeader()
 			if objHeader != nil {
 				codeID := objInfo.GetHeader().GetCodeID()
 				objMap["code_id"] = codeID
+				objMap["oname"] = objMap["code_id"]
 			}
 			objMaps = append(objMaps, objMap)
 		}
@@ -199,7 +200,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showRaw, 
 		} else {
 			objMap["oid"] = objectInfo.GetOID()
 			objMap["otype"] = objectInfo.GetType()
-			objMap["size"] = len(obj.GetContent())
+			objMap["osize"] = len(obj.GetContent())
 			if hasContent && !showRaw {
 				objMap["content"] = base64.StdEncoding.EncodeToString(content)
 			} else {
@@ -208,6 +209,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showRaw, 
 			if objHeader != nil {
 				codeID := objHeader.GetCodeID()
 				objMap["code_id"] = codeID
+				objMap["oname"] = objMap["code_id"]
 			}
 			objMaps = append(objMaps, objMap)
 			output = out(output, "objects", objMaps, nil, true)
