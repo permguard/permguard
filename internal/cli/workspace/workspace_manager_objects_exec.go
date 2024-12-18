@@ -99,7 +99,6 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 				}
 				out(nil, "", sb.String(), nil, true)
 			}
-			out(nil, "", "", nil, true)
 		}
 	} else if m.ctx.IsJSONOutput() {
 		objMaps := []map[string]any{}
@@ -120,6 +119,22 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 	}
 
 	return output, nil
+}
+
+// execPrintObjectContent prints the object content.
+func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azlangobjs.ObjectInfo, out aziclicommon.PrinterOutFunc) {
+	switch instance := objInfo.GetInstance().(type) {
+	case *azlangobjs.Commit:
+		content := m.getCommitString(oid, instance)
+		out(nil, "", content, nil, true)
+	case *azlangobjs.Tree:
+		content := m.getTreeString(oid, instance)
+		out(nil, "", content, nil, true)
+	case []byte:
+		out(nil, "", string(instance), nil, true)
+	default:
+		out(nil, "", string(objInfo.GetObject().GetContent()), nil, true)
+	}
 }
 
 // ExecObjectsCat cat the object.
@@ -155,12 +170,11 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showRaw, 
 	}
 
 	obj := objectInfo.GetObject()
-	content, hasContent := objectInfo.GetInstance().([]byte)
 	objHeader := objectInfo.GetHeader()
 	if m.ctx.IsTerminalOutput() {
 		if showContent {
-			if hasContent && !showRaw {
-				out(nil, "", string(content), nil, true)
+			if !showRaw {
+				m.execPrintObjectContent(oid, *objectInfo, out)
 			} else {
 				out(nil, "", string(obj.GetContent()), nil, true)
 			}
@@ -170,8 +184,8 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showRaw, 
 			if anyOutput {
 				out(nil, "", "\n", nil, false)
 			}
-			if hasContent && !showRaw {
-				out(nil, "", string(content), nil, true)
+			if !showRaw {
+				m.execPrintObjectContent(oid, *objectInfo, out)
 			} else {
 				out(nil, "", string(obj.GetContent()), nil, true)
 			}
@@ -184,14 +198,14 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showRaw, 
 				sb.WriteString(", code_id " + aziclicommon.IDText(codeID))
 			}
 			out(nil, "", sb.String(), nil, true)
-			out(nil, "", "", nil, true)
 		}
 	} else if m.ctx.IsJSONOutput() {
 		objMaps := []map[string]any{}
 		objMap := map[string]any{}
+		objContent, hasContent := objectInfo.GetInstance().([]byte)
 		if showContent {
 			if hasContent && (showContent && !showRaw) {
-				objMap["content"] = base64.StdEncoding.EncodeToString(content)
+				objMap["content"] = base64.StdEncoding.EncodeToString(objContent)
 			} else {
 				objMap["content"] = base64.StdEncoding.EncodeToString(obj.GetContent())
 			}
@@ -202,7 +216,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showRaw, 
 			objMap["otype"] = objectInfo.GetType()
 			objMap["osize"] = len(obj.GetContent())
 			if hasContent && !showRaw {
-				objMap["content"] = base64.StdEncoding.EncodeToString(content)
+				objMap["content"] = base64.StdEncoding.EncodeToString(objContent)
 			} else {
 				objMap["content"] = base64.StdEncoding.EncodeToString(obj.GetContent())
 			}
@@ -259,23 +273,8 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 			out(nil, "", fmt.Sprintf("Your workspace history %s:\n", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 			for _, commitInfo := range commitInfos {
 				commit := commitInfo.GetCommit()
-				tree := commit.GetTree()
-				metadata := commit.GetMetaData()
-				committerTimestamp := metadata.GetCommitterTimestamp()
-				authorTimestamp := metadata.GetAuthorTimestamp()
-
-				output := fmt.Sprintf(
-					"Commit %s:\n"+
-						"  - Tree: %s\n"+
-						"  - Committer Timestamp: %s\n"+
-						"  - Author Timestamp: %s\n",
-					aziclicommon.IDText(commitInfo.GetCommitOID()),
-					aziclicommon.IDText(tree),
-					aziclicommon.DateText(committerTimestamp),
-					aziclicommon.DateText(authorTimestamp),
-				)
-
-				out(nil, "", output, nil, true)
+				commitStr := m.getCommitString(commitInfo.GetCommitOID(), commit)
+				out(nil, "", commitStr, nil, true)
 			}
 		}
 	} else if m.ctx.IsJSONOutput() {

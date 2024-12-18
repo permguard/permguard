@@ -17,7 +17,12 @@
 package workspace
 
 import (
+	"fmt"
+	"strings"
+
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+
+	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 )
 
@@ -61,4 +66,44 @@ func (m *WorkspaceManager) getHistory(commit string) ([]azicliwkscommon.CommitIn
 		return nil, err
 	}
 	return commitHistory, nil
+}
+
+// getCommitString gets the commit string.
+func (m *WorkspaceManager) getCommitString(oid string, commit *azlangobjs.Commit) string {
+	tree := commit.GetTree()
+	metadata := commit.GetMetaData()
+	committerTimestamp := metadata.GetCommitterTimestamp()
+	authorTimestamp := metadata.GetAuthorTimestamp()
+
+	output := fmt.Sprintf(
+		"Commit %s:\n"+
+			"  - Tree: %s\n"+
+			"  - Committer Timestamp: %s\n"+
+			"  - Author Timestamp: %s",
+		aziclicommon.IDText(oid),
+		aziclicommon.IDText(tree),
+		aziclicommon.DateText(committerTimestamp),
+		aziclicommon.DateText(authorTimestamp),
+	)
+	return output
+}
+
+// getTreeString gets the tree string.
+func (m *WorkspaceManager) getTreeString(oid string, tree *azlangobjs.Tree) string {
+	var output strings.Builder
+
+	output.WriteString(fmt.Sprintf("Tree %s:", aziclicommon.IDText(oid)))
+
+	entries := tree.GetEntries()
+	for _, entry := range entries {
+		language := entry.GetLanguage()
+		languageType := entry.GetLanguageType()
+		languageVersion := entry.GetLanguageVersion()
+		oid := entry.GetOID()
+		oname := entry.GetOName()
+		entryType := entry.GetType()
+		output.WriteString(fmt.Sprintf("\n  - %s %s %s %s %s %s", aziclicommon.IDText(oid), aziclicommon.KeywordText(entryType), aziclicommon.NameText(oname), language, languageVersion, languageType))
+	}
+
+	return output.String()
 }
