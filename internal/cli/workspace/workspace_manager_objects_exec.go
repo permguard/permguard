@@ -276,7 +276,6 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 				commitStr := m.getCommitString(commitInfo.GetCommitOID(), commit)
 				out(nil, "", commitStr, nil, true)
 			}
-			out(nil, "", "\n", nil, false)
 		}
 	} else if m.ctx.IsJSONOutput() {
 		objMaps := []map[string]any{}
