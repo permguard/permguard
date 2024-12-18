@@ -59,7 +59,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	absLang, err := m.langFct.CreateLanguageAbastraction(lang)
+	absLang, err := m.langFct.GetLanguageAbastraction(lang)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
@@ -252,7 +252,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	absLang, err := m.langFct.CreateLanguageAbastraction(lang)
+	absLang, err := m.langFct.GetLanguageAbastraction(lang)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}

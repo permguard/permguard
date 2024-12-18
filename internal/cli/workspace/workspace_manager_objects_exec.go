@@ -17,6 +17,7 @@
 package workspace
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strings"
 
@@ -54,9 +55,17 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 		} else {
 			out(nil, "", "Your workspace objects:\n", nil, true)
 			total, commits, trees, blobs := 0, 0, 0, 0
-			for _, objectInfo := range filteredObjectInfos {
-				out(nil, "", fmt.Sprintf("	- %s %s", aziclicommon.IDText(objectInfo.GetOID()), aziclicommon.KeywordText(objectInfo.GetType())), nil, true)
-				switch objectInfo.GetType() {
+			for _, objInfo := range filteredObjectInfos {
+				objID := objInfo.GetOID()
+				objType := objInfo.GetType()
+				objHeader := objInfo.GetHeader()
+				if objHeader != nil && m.ctx.IsVerbose() {
+					codeID := objInfo.GetHeader().GetCodeID()
+					out(nil, "", fmt.Sprintf("	- %s %s %s", aziclicommon.IDText(objID), aziclicommon.KeywordText(objType), aziclicommon.IDText(codeID)), nil, true)
+				} else {
+					out(nil, "", fmt.Sprintf("	- %s %s", aziclicommon.IDText(objID), aziclicommon.KeywordText(objType)), nil, true)
+				}
+				switch objInfo.GetType() {
 				case azlangobjs.ObjectTypeCommit:
 					commits = commits + 1
 					if filterCommits {
@@ -94,10 +103,15 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 		}
 	} else if m.ctx.IsJSONOutput() {
 		objMaps := []map[string]any{}
-		for _, object := range filteredObjectInfos {
+		for _, objInfo := range filteredObjectInfos {
 			objMap := map[string]any{}
-			objMap["type"] = object.GetType()
-			objMap["size"] = len(object.GetObject().GetContent())
+			objMap["type"] = objInfo.GetType()
+			objMap["size"] = len(objInfo.GetObject().GetContent())
+			objHeader := objInfo.GetHeader()
+			if objHeader != nil {
+				codeID := objInfo.GetHeader().GetCodeID()
+				objMap["code_id"] = codeID
+			}
 			objMaps = append(objMaps, objMap)
 		}
 		output = out(output, "objects", objMaps, nil, true)
@@ -107,7 +121,7 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 }
 
 // ExecObjectsCat cat the object.
-func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showType, showSize, showContent bool, oid string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showRaw, showContent bool, oid string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to access objects in the current workspace.", nil, true)
 		return output, err
@@ -138,38 +152,64 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showType,
 		return failedOpErr(nil, fmt.Errorf("object not found"))
 	}
 
+	obj := objectInfo.GetObject()
+	content, hasContent := objectInfo.GetInstance().([]byte)
+	objHeader := objectInfo.GetHeader()
 	if m.ctx.IsTerminalOutput() {
-		anyOutput := false
-		out(nil, "", fmt.Sprintf("Your workspace object %s:\n", aziclicommon.IDText(objectInfo.GetOID())), nil, true)
-		if showType {
-			out(nil, "", fmt.Sprintf("	- Type %s", aziclicommon.KeywordText(objectInfo.GetType())), nil, true)
-			anyOutput = true
-		}
-		if showSize {
-			out(nil, "", fmt.Sprintf("	- Size %s", aziclicommon.NumberText(len(objectInfo.GetObject().GetContent()))), nil, true)
-			anyOutput = true
-		}
 		if showContent {
+			if hasContent && !showRaw {
+				out(nil, "", string(content), nil, true)
+			} else {
+				out(nil, "", string(obj.GetContent()), nil, true)
+			}
+		} else {
+			anyOutput := false
+			out(nil, "", fmt.Sprintf("Your workspace object %s:\n", aziclicommon.IDText(objectInfo.GetOID())), nil, true)
 			if anyOutput {
 				out(nil, "", "\n", nil, false)
 			}
-			out(nil, "", string(objectInfo.GetObject().GetContent()), nil, true)
+			if hasContent && !showRaw {
+				out(nil, "", string(content), nil, true)
+			} else {
+				out(nil, "", string(obj.GetContent()), nil, true)
+			}
+			out(nil, "", "\n", nil, false)
+			var sb strings.Builder
+			sb.WriteString("type " + aziclicommon.KeywordText(objectInfo.GetType()))
+			sb.WriteString(", size " + aziclicommon.NumberText(len(obj.GetContent())))
+			if objHeader != nil {
+				codeID := objHeader.GetCodeID()
+				sb.WriteString(", code_id " + aziclicommon.IDText(codeID))
+			}
+			out(nil, "", sb.String(), nil, true)
+			out(nil, "", "", nil, true)
 		}
-		out(nil, "", "\n", nil, false)
 	} else if m.ctx.IsJSONOutput() {
 		objMaps := []map[string]any{}
 		objMap := map[string]any{}
-		if showType {
-			objMap["type"] = objectInfo.GetType()
-		}
-		if showSize {
-			objMap["size"] = len(objectInfo.GetObject().GetContent())
-		}
 		if showContent {
-			objMap["content"] = string(objectInfo.GetObject().GetContent())
+			if hasContent && (showContent && !showRaw) {
+				objMap["content"] = base64.StdEncoding.EncodeToString(content)
+			} else {
+				objMap["content"] = base64.StdEncoding.EncodeToString(obj.GetContent())
+			}
+			objMaps = append(objMaps, objMap)
+			output = out(output, "objects", objMaps, nil, true)
+		} else {
+			objMap["type"] = objectInfo.GetType()
+			objMap["size"] = len(obj.GetContent())
+			if hasContent && !showRaw {
+				objMap["content"] = base64.StdEncoding.EncodeToString(content)
+			} else {
+				objMap["content"] = base64.StdEncoding.EncodeToString(obj.GetContent())
+			}
+			if objHeader != nil {
+				codeID := objHeader.GetCodeID()
+				objMap["code_id"] = codeID
+			}
+			objMaps = append(objMaps, objMap)
+			output = out(output, "objects", objMaps, nil, true)
 		}
-		objMaps = append(objMaps, objMap)
-		output = out(output, "objects", objMaps, nil, true)
 	}
 	return output, nil
 }

@@ -26,19 +26,27 @@ import (
 
 // CommunityLanguageFactory is the factory for the community language.
 type CommunityLanguageFactory struct {
+	languages map[string]azlang.LanguageAbastraction
 }
 
 // NewCommunityLanguageFactory creates a new community language factory.
 func NewCommunityLanguageFactory() (*CommunityLanguageFactory, error) {
-	return &CommunityLanguageFactory{}, nil
+	languageFactory := &CommunityLanguageFactory{
+		languages: map[string]azlang.LanguageAbastraction{},
+	}
+	cedarLanguageAbs, err := azplangcedar.NewCedarLanguageAbstraction()
+	if err != nil {
+		return nil, err
+	}
+	languageFactory.languages[azplangcedar.LanguageName] = cedarLanguageAbs
+	return languageFactory, nil
 }
 
-// CreateLanguageAbastraction creates a language abstraction.
-func (c *CommunityLanguageFactory) CreateLanguageAbastraction(language string) (azlang.LanguageAbastraction, error) {
-	switch language {
-	case azplangcedar.LanguageName:
-		return azplangcedar.NewCedarLanguageAbstraction()
-	default:
+// GetLanguageAbastraction gets the language abstraction for the input language.
+func (c *CommunityLanguageFactory) GetLanguageAbastraction(language string) (azlang.LanguageAbastraction, error) {
+	langAbs, exists := c.languages[language]
+	if !exists {
 		return nil, azerrors.WrapSystemError(azerrors.ErrConfigurationGeneric, fmt.Sprintf("cli: %s is an invalid language", language))
 	}
+	return langAbs, nil
 }
