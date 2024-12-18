@@ -32,11 +32,9 @@ import (
 const (
 	// commandNameForWorkspacesObjects base command name for workspace objects
 	commandNameForWorkspacesCat = "workspaces.objects.cat"
-	// commandNameForWorkspacesCatType show the type of the object
-	commandNameForWorkspacesCatType = "type"
-	// commandNameForWorkspacesCatSize show the size of the object
-	commandNameForWorkspacesCatSize = "size"
-	// commandNameForWorkspacesCatContent show the raw content of the object
+	// commandNameForWorkspacesCatRaw shows the raw content of the object
+	commandNameForWorkspacesCatRaw = "raw"
+	// commandNameForWorkspacesCatContent shows the content of the object
 	commandNameForWorkspacesCatContent = "content"
 )
 
@@ -63,14 +61,10 @@ func runECommandForObjectsCatWorkspace(deps azcli.CliDependenciesProvider, cmd *
 		includeStorage = true
 	}
 
-	showType := v.GetBool(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatType))
-	showSize := v.GetBool(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatSize))
+	showRaw := v.GetBool(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatRaw))
 	showContent := v.GetBool(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatContent))
-	if !showType && !showSize && !showContent {
-		showContent = true
-	}
 
-	output, err := wksMgr.ExecObjectsCat(includeStorage, includeCode, showType, showSize, showContent, oid, outFunc(ctx, printer))
+	output, err := wksMgr.ExecObjectsCat(includeStorage, includeCode, showRaw, showContent, oid, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
@@ -103,11 +97,8 @@ Examples:
 		Args: validateArg,
 	}
 
-	command.Flags().Bool(commandNameForWorkspacesCatType, false, "object type")
-	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatType), command.Flags().Lookup(commandNameForWorkspacesCatType))
-
-	command.Flags().Bool(commandNameForWorkspacesCatSize, false, "object size")
-	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatSize), command.Flags().Lookup(commandNameForWorkspacesCatSize))
+	command.Flags().Bool(commandNameForWorkspacesCatRaw, false, "object type")
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatRaw), command.Flags().Lookup(commandNameForWorkspacesCatRaw))
 
 	command.Flags().Bool(commandNameForWorkspacesCatContent, false, "object raw content")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatContent), command.Flags().Lookup(commandNameForWorkspacesCatContent))
