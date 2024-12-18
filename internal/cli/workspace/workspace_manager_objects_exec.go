@@ -59,9 +59,9 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 				objID := objInfo.GetOID()
 				objType := objInfo.GetType()
 				objHeader := objInfo.GetHeader()
-				if objHeader != nil && m.ctx.IsVerbose() {
+				if objHeader != nil {
 					codeID := objInfo.GetHeader().GetCodeID()
-					out(nil, "", fmt.Sprintf("	- %s %s %s", aziclicommon.IDText(objID), aziclicommon.KeywordText(objType), aziclicommon.IDText(codeID)), nil, true)
+					out(nil, "", fmt.Sprintf("	- %s %s %s", aziclicommon.IDText(objID), aziclicommon.KeywordText(objType), aziclicommon.NameText(codeID)), nil, true)
 				} else {
 					out(nil, "", fmt.Sprintf("	- %s %s", aziclicommon.IDText(objID), aziclicommon.KeywordText(objType)), nil, true)
 				}
