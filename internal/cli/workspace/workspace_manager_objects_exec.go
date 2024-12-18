@@ -105,7 +105,8 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 		objMaps := []map[string]any{}
 		for _, objInfo := range filteredObjectInfos {
 			objMap := map[string]any{}
-			objMap["type"] = objInfo.GetType()
+			objMap["oid"] = objInfo.GetOID()
+			objMap["otype"] = objInfo.GetType()
 			objMap["size"] = len(objInfo.GetObject().GetContent())
 			objHeader := objInfo.GetHeader()
 			if objHeader != nil {
@@ -196,7 +197,8 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showRaw, 
 			objMaps = append(objMaps, objMap)
 			output = out(output, "objects", objMaps, nil, true)
 		} else {
-			objMap["type"] = objectInfo.GetType()
+			objMap["oid"] = objectInfo.GetOID()
+			objMap["otype"] = objectInfo.GetType()
 			objMap["size"] = len(obj.GetContent())
 			if hasContent && !showRaw {
 				objMap["content"] = base64.StdEncoding.EncodeToString(content)
