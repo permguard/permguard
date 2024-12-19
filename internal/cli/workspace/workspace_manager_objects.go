@@ -22,6 +22,7 @@ import (
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 )
@@ -69,7 +70,11 @@ func (m *WorkspaceManager) getHistory(commit string) ([]azicliwkscommon.CommitIn
 }
 
 // getCommitString gets the commit string.
-func (m *WorkspaceManager) getCommitString(oid string, commit *azlangobjs.Commit) string {
+func (m *WorkspaceManager) getCommitString(oid string, commit *azlangobjs.Commit) (string, error) {
+	if commit == nil {
+		return "", azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: commit is nil")
+	}
+
 	tree := commit.GetTree()
 	metadata := commit.GetMetaData()
 	committerTimestamp := metadata.GetCommitterTimestamp()
@@ -85,11 +90,15 @@ func (m *WorkspaceManager) getCommitString(oid string, commit *azlangobjs.Commit
 		aziclicommon.DateText(committerTimestamp),
 		aziclicommon.DateText(authorTimestamp),
 	)
-	return output
+	return output, nil
 }
 
 // getTreeString gets the tree string.
-func (m *WorkspaceManager) getTreeString(oid string, tree *azlangobjs.Tree) string {
+func (m *WorkspaceManager) getTreeString(oid string, tree *azlangobjs.Tree) (string, error) {
+	if tree == nil {
+		return "", azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: tree is nil")
+	}
+
 	var output strings.Builder
 
 	output.WriteString(fmt.Sprintf("Tree %s:", aziclicommon.IDText(oid)))
@@ -105,5 +114,17 @@ func (m *WorkspaceManager) getTreeString(oid string, tree *azlangobjs.Tree) stri
 		output.WriteString(fmt.Sprintf("\n  - %s %s %s %s %s %s", aziclicommon.IDText(oid), aziclicommon.KeywordText(entryType), aziclicommon.NameText(oname), aziclicommon.LanguageText(language), aziclicommon.LanguageText(languageVersion), aziclicommon.LanguageKeywordText(languageType)))
 	}
 
-	return output.String()
+	return output.String(), nil
+}
+
+// getBlobString gets the blob string.
+func (m *WorkspaceManager) getBlobString(blob any) ([]byte, bool, error) {
+	if blob == nil {
+		return nil, false, azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: tree is nil")
+	}
+	content, hasContent := blob.([]byte)
+	if !hasContent {
+		return nil, false, azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: blob content is not a byte array")
+	}
+	return content, true, nil
 }
