@@ -76,6 +76,18 @@ func NameText(text string) string {
 	return out.Sprintf(text)
 }
 
+// LanguageText returns the language text.
+func LanguageText(text string) string {
+	out := color.New(color.FgHiGreen)
+	return out.Sprintf(text)
+}
+
+// LanguageText returns the language text.
+func LanguageKeywordText(text string) string {
+	out := color.New(color.FgHiWhite)
+	return out.Sprintf(text)
+}
+
 // RemoteOperationText returns the remote operation text.
 func RemoteOperationText(text string) string {
 	out := color.New(color.FgHiYellow)
