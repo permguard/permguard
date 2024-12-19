@@ -102,7 +102,7 @@ func (m *WorkspaceManager) getTreeString(oid string, tree *azlangobjs.Tree) stri
 		oid := entry.GetOID()
 		oname := entry.GetOName()
 		entryType := entry.GetType()
-		output.WriteString(fmt.Sprintf("\n  - %s %s %s %s %s %s", aziclicommon.IDText(oid), aziclicommon.KeywordText(entryType), aziclicommon.NameText(oname), language, languageVersion, languageType))
+		output.WriteString(fmt.Sprintf("\n  - %s %s %s %s %s %s", aziclicommon.IDText(oid), aziclicommon.KeywordText(entryType), aziclicommon.NameText(oname), aziclicommon.LanguageText(language), aziclicommon.LanguageText(languageVersion), aziclicommon.LanguageKeywordText(languageType)))
 	}
 
 	return output.String()
