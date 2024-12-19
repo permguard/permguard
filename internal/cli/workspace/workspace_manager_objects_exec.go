@@ -122,19 +122,26 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 }
 
 // execPrintObjectContent prints the object content.
-func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azlangobjs.ObjectInfo, out aziclicommon.PrinterOutFunc) {
+func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azlangobjs.ObjectInfo, out aziclicommon.PrinterOutFunc) error {
 	switch instance := objInfo.GetInstance().(type) {
 	case *azlangobjs.Commit:
-		content := m.getCommitString(oid, instance)
+		content, err := m.getCommitString(oid, instance)
+		if err != nil {
+			return err
+		}
 		out(nil, "", content, nil, true)
 	case *azlangobjs.Tree:
-		content := m.getTreeString(oid, instance)
+		content, err := m.getTreeString(oid, instance)
+		if err != nil {
+			return err
+		}
 		out(nil, "", content, nil, true)
 	case []byte:
 		out(nil, "", string(instance), nil, true)
 	default:
 		out(nil, "", string(objInfo.GetObject().GetContent()), nil, true)
 	}
+	return nil
 }
 
 // ExecObjectsCat cat the object.
@@ -202,7 +209,10 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showRaw, 
 	} else if m.ctx.IsJSONOutput() {
 		objMaps := []map[string]any{}
 		objMap := map[string]any{}
-		objContent, hasContent := objectInfo.GetInstance().([]byte)
+		objContent, hasContent, err := m.getBlobString( objectInfo.GetInstance())
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
 		if showContent {
 			if hasContent && (showContent && !showRaw) {
 				objMap["content"] = base64.StdEncoding.EncodeToString(objContent)
@@ -273,7 +283,10 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 			out(nil, "", fmt.Sprintf("Your workspace history %s:\n", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 			for _, commitInfo := range commitInfos {
 				commit := commitInfo.GetCommit()
-				commitStr := m.getCommitString(commitInfo.GetCommitOID(), commit)
+				commitStr, err := m.getCommitString(commitInfo.GetCommitOID(), commit)
+				if err != nil {
+					return failedOpErr(nil, err)
+				}
 				out(nil, "", commitStr, nil, true)
 			}
 		}
