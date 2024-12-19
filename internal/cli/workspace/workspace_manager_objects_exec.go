@@ -137,7 +137,11 @@ func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azlangobjs
 		}
 		out(nil, "", content, nil, true)
 	case []byte:
-		out(nil, "", string(instance), nil, true)
+		content, _, err := m.getBlobString(instance)
+		if err != nil {
+			return err
+		}
+		out(nil, "", string(content), nil, true)
 	default:
 		out(nil, "", string(objInfo.GetObject().GetContent()), nil, true)
 	}
