@@ -17,7 +17,8 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `repo` command, it is possible to manage locally checked out repositories.
+
+Using the `repos` command, it is possible to manage locally checked out repositories.
 
 ```text
   ____                                               _
@@ -34,7 +35,7 @@ This command manages repository settings and operations.
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
 
 Usage:
-  permguard repo [flags]
+  permguard repos [flags]
 
 Flags:
   -h, --help   help for repo
@@ -51,10 +52,10 @@ The output from your current version of Permguard may differ from the example pr
 
 ## Get All Repos
 
-The `permguard repo` command allows for the retrieval of all locally checked out repositories.
+The `permguard repos` command allows for the retrieval of all locally checked out repositories.
 
 ```bash
-permguard repo
+permguard repos
 ```
 
 output:
@@ -72,7 +73,7 @@ Your workspace configured repositories:
   </summary>
 
 ```bash
-permguard repo --output json
+permguard repos --output json
 ```
 
 output:
