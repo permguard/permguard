@@ -81,11 +81,13 @@ func (m *WorkspaceManager) getCommitString(oid string, commit *azlangobjs.Commit
 	authorTimestamp := metadata.GetAuthorTimestamp()
 
 	output := fmt.Sprintf(
-		"Commit %s:\n"+
-			"  - Tree: %s\n"+
-			"  - Committer Timestamp: %s\n"+
-			"  - Author Timestamp: %s",
+		"%s %s:\n"+
+			"  - %s: %s\n"+
+			"  - Committer date: %s\n"+
+			"  - Author date: %s",
+		aziclicommon.KeywordText("commit"),
 		aziclicommon.IDText(oid),
+		aziclicommon.KeywordText("tree"),
 		aziclicommon.IDText(tree),
 		aziclicommon.DateText(committerTimestamp),
 		aziclicommon.DateText(authorTimestamp),
@@ -101,7 +103,7 @@ func (m *WorkspaceManager) getTreeString(oid string, tree *azlangobjs.Tree) (str
 
 	var output strings.Builder
 
-	output.WriteString(fmt.Sprintf("Tree %s:", aziclicommon.IDText(oid)))
+	output.WriteString(fmt.Sprintf("%s %s:", aziclicommon.KeywordText("tree"), aziclicommon.IDText(oid)))
 
 	entries := tree.GetEntries()
 	for _, entry := range entries {
