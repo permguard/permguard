@@ -60,7 +60,7 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 				objType := objInfo.GetType()
 				objHeader := objInfo.GetHeader()
 				if objHeader != nil {
-					codeID := objInfo.GetHeader().GetCodeID()
+					codeID := objHeader.GetCodeID()
 					out(nil, "", fmt.Sprintf("	- %s %s %s", aziclicommon.IDText(objID), aziclicommon.KeywordText(objType), aziclicommon.NameText(codeID)), nil, true)
 				} else {
 					out(nil, "", fmt.Sprintf("	- %s %s", aziclicommon.IDText(objID), aziclicommon.KeywordText(objType)), nil, true)
@@ -109,7 +109,7 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 			objMap["osize"] = len(objInfo.GetObject().GetContent())
 			objHeader := objInfo.GetHeader()
 			if objHeader != nil {
-				codeID := objInfo.GetHeader().GetCodeID()
+				codeID := objHeader.GetCodeID()
 				objMap["code_id"] = codeID
 				objMap["oname"] = objMap["code_id"]
 			}
@@ -206,7 +206,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showRaw, 
 			sb.WriteString(", size " + aziclicommon.NumberText(len(obj.GetContent())))
 			if objHeader != nil {
 				codeID := objHeader.GetCodeID()
-				sb.WriteString(", code_id " + aziclicommon.IDText(codeID))
+				sb.WriteString(", code_id " + aziclicommon.NameText(codeID))
 			}
 			out(nil, "", sb.String(), nil, true)
 		}
@@ -293,6 +293,8 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 				}
 				out(nil, "", commitStr, nil, true)
 			}
+			out(nil, "", "\n", nil, false)
+			out(nil, "", "total " + aziclicommon.NumberText(len(commitInfos)), nil, true)
 		}
 	} else if m.ctx.IsJSONOutput() {
 		objMaps := []map[string]any{}
