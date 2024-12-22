@@ -94,13 +94,13 @@ Examples:
 			return runECommandForListRepositories(deps, cmd, v)
 		},
 	}
-	command.Flags().Int32P(aziclicommon.FlagCommonPage, aziclicommon.FlagCommonPageShort, 1, "page number")
+	command.Flags().Int32P(aziclicommon.FlagCommonPage, aziclicommon.FlagCommonPageShort, 1, "specify the page number for paginated results")
 	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonPage), command.Flags().Lookup(aziclicommon.FlagCommonPage))
-	command.Flags().Int32P(aziclicommon.FlagCommonPageSize, aziclicommon.FlagCommonPageSizeShort, 1000, "page size")
+	command.Flags().Int32P(aziclicommon.FlagCommonPageSize, aziclicommon.FlagCommonPageSizeShort, 1000, "specify the number of results per page")
 	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonPageSize), command.Flags().Lookup(aziclicommon.FlagCommonPageSize))
-	command.Flags().String(flagRepositoryID, "", "repository id filter")
+	command.Flags().String(flagRepositoryID, "", "filter results by repository id")
 	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesList, flagRepositoryID), command.Flags().Lookup(flagRepositoryID))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "repository name filter")
+	command.Flags().String(aziclicommon.FlagCommonName, "", "filter results by repository name")
 	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

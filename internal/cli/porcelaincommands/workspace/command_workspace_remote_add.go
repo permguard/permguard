@@ -95,9 +95,9 @@ Examples:
 		},
 	}
 
-	command.Flags().Int(flagAAP, 9091, "aap port")
+	command.Flags().Int(flagAAP, 9091, "specify the port number for the AAP")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesRemoteAdd, flagAAP), command.Flags().Lookup(flagAAP))
-	command.Flags().Int(flagPAP, 9092, "pap port")
+	command.Flags().Int(flagPAP, 9092, "specify the port number for the PAP")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesRemoteAdd, flagPAP), command.Flags().Lookup(flagPAP))
 	return command
 }

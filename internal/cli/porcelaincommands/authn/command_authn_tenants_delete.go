@@ -86,7 +86,7 @@ Examples:
 			return runECommandForDeleteTenant(deps, cmd, v)
 		},
 	}
-	command.Flags().String(flagTenantID, "", "tenant id")
+	command.Flags().String(flagTenantID, "", "specify the ID of the tenant to delete")
 	v.BindPFlag(azoptions.FlagName(commandNameForTenantsDelete, flagTenantID), command.Flags().Lookup(flagTenantID))
 	return command
 }

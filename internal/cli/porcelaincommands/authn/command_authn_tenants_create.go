@@ -50,7 +50,7 @@ Examples:
 			return runECommandForCreateTenant(deps, cmd, v)
 		},
 	}
-	command.Flags().String(aziclicommon.FlagCommonName, "", "tenant name")
+	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the name of the tenant to create")
 	v.BindPFlag(azoptions.FlagName(commandNameForTenantsCreate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

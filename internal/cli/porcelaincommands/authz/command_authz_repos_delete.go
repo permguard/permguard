@@ -86,7 +86,7 @@ Examples:
 			return runECommandForDeleteRepository(deps, cmd, v)
 		},
 	}
-	command.Flags().String(flagRepositoryID, "", "repository id")
+	command.Flags().String(flagRepositoryID, "", "specify the ID of the repository to delete")
 	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesDelete, flagRepositoryID), command.Flags().Lookup(flagRepositoryID))
 	return command
 }

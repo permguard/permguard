@@ -50,7 +50,7 @@ Examples:
 			return runECommandForCreateIdentitySource(deps, cmd, v)
 		},
 	}
-	command.Flags().String(aziclicommon.FlagCommonName, "", "identity source name")
+	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the name of the identity source to create")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySourcesCreate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

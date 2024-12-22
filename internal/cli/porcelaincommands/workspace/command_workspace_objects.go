@@ -113,22 +113,22 @@ Examples:
 		},
 	}
 
-	command.PersistentFlags().Bool(commandNameForWorkspacesObjectsListObjects, false, "include objects from the object store")
+	command.PersistentFlags().Bool(commandNameForWorkspacesObjectsListObjects, false, "include objects from the object store in the results")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListObjects), command.PersistentFlags().Lookup(commandNameForWorkspacesObjectsListObjects))
 
-	command.PersistentFlags().Bool(commandNameForWorkspacesObjectsListCode, false, "include objects from the code store")
+	command.PersistentFlags().Bool(commandNameForWorkspacesObjectsListCode, false, "include objects from the code store in the results")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListCode), command.PersistentFlags().Lookup(commandNameForWorkspacesObjectsListCode))
 
-	command.Flags().Bool(commandNameForWorkspacesObjectsListCommit, false, "objects of the commit type")
+	command.Flags().Bool(commandNameForWorkspacesObjectsListCommit, false, "filter results to include only objects of type 'commit'")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListCommit), command.Flags().Lookup(commandNameForWorkspacesObjectsListCommit))
 
-	command.Flags().Bool(commandNameForWorkspacesObjectsListTree, false, "objects of the tree type")
+	command.Flags().Bool(commandNameForWorkspacesObjectsListTree, false, "filter results to include only objects of type 'tree'")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListTree), command.Flags().Lookup(commandNameForWorkspacesObjectsListTree))
 
-	command.Flags().Bool(commandNameForWorkspacesObjectsListBlob, false, "objects of the blob type")
+	command.Flags().Bool(commandNameForWorkspacesObjectsListBlob, false, "filter results to include only objects of type 'blob'")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListBlob), command.Flags().Lookup(commandNameForWorkspacesObjectsListBlob))
 
-	command.Flags().Bool(commandNameForWorkspacesObjectsListAll, false, "all object types")
+	command.Flags().Bool(commandNameForWorkspacesObjectsListAll, false, "include all object types in the results")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListAll), command.Flags().Lookup(commandNameForWorkspacesObjectsListAll))
 
 	command.AddCommand(CreateCommandForWorkspaceObjectsCat(deps, v))

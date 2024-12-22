@@ -53,11 +53,11 @@ Examples:
 			return runECommandForCreateIdentity(deps, cmd, v)
 		},
 	}
-	command.Flags().String(flagIdentitySourceID, "", "identity source id")
+	command.Flags().String(flagIdentitySourceID, "", "specify the identity source id")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesCreate, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
-	command.Flags().String(flagIdentityKind, "", "identity kind")
+	command.Flags().String(flagIdentityKind, "", "specify the type of identity")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesCreate, flagIdentityKind), command.Flags().Lookup(flagIdentityKind))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "identity name")
+	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the name of the identity")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesCreate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

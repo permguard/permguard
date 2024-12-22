@@ -50,9 +50,9 @@ Examples:
 			return runECommandForUpdateTenant(deps, cmd, v)
 		},
 	}
-	command.Flags().String(flagTenantID, "", "tenant id")
+	command.Flags().String(flagTenantID, "", "specify the id of the tenant to update")
 	v.BindPFlag(azoptions.FlagName(commandNameForTenantsUpdate, flagTenantID), command.Flags().Lookup(flagTenantID))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "tenant name")
+	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the new name for the tenant")
 	v.BindPFlag(azoptions.FlagName(commandNameForTenantsUpdate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

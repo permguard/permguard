@@ -50,9 +50,9 @@ Examples:
 			return runECommandForUpdateIdentitySource(deps, cmd, v)
 		},
 	}
-	command.Flags().String(flagIdentitySourceID, "", "identity source id")
+	command.Flags().String(flagIdentitySourceID, "", "specify the id of the identity source to update")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySourcesUpdate, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "identity source name")
+	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the new name for the identity source")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySourcesUpdate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

@@ -86,7 +86,7 @@ Examples:
 			return runECommandForDeleteIdentity(deps, cmd, v)
 		},
 	}
-	command.Flags().String(flagIdentityID, "", "identity id")
+	command.Flags().String(flagIdentityID, "", "specify the id of the identity to delete")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesDelete, flagIdentityID), command.Flags().Lookup(flagIdentityID))
 	return command
 }
