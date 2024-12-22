@@ -288,3 +288,29 @@ func (abs *CedarLanguageAbstraction) CreateSchemaContentBytes(blocks []byte) ([]
 	}
 	return blocks, LanguageSchemaFileName, nil
 }
+
+// ConvertBytesToFrontend converts bytes to the frontend.
+func (abs *CedarLanguageAbstraction) ConvertBytesToFrontend(langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error) {
+	langSpec := abs.GetLanguageSpecification()
+	if langSpec.GetBackendLanguageID() != langID {
+		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid backend language")
+	}
+	if langSpec.GetLanguageVersionID() != langVersionID {
+		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid backend language version")
+	}
+	var frontendContent []byte
+	switch langTypeID {
+	case LanguagePolicyTypeID:
+		var cedarPolicy cedar.Policy
+		err := cedarPolicy.UnmarshalJSON(content)
+		if err != nil {
+			return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid policy content")
+		}
+		frontendContent = cedarPolicy.MarshalCedar()
+	case LanguageSchemaTypeID:
+		frontendContent = content
+	default:
+		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid backend language type")
+	}
+	return frontendContent, nil
+}

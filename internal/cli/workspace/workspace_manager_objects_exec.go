@@ -21,7 +21,9 @@ import (
 	"fmt"
 	"strings"
 
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azlang "github.com/permguard/permguard/pkg/core/languages"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 )
@@ -121,7 +123,7 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 }
 
 // execPrintObjectContent prints the object content.
-func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azlangobjs.ObjectInfo, out aziclicommon.PrinterOutFunc) error {
+func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azlangobjs.ObjectInfo, absLang azlang.LanguageAbastraction, showFrontendLanguage bool, out aziclicommon.PrinterOutFunc) error {
 	switch instance := objInfo.GetInstance().(type) {
 	case *azlangobjs.Commit:
 		content, err := m.getCommitString(oid, instance)
@@ -136,7 +138,22 @@ func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azlangobjs
 		}
 		out(nil, "", content, nil, true)
 	case []byte:
-		content, _, err := m.getBlobString(instance)
+		instanceBytes := instance
+		if showFrontendLanguage {
+			var err error
+			header := objInfo.GetHeader()
+			if header == nil {
+				azerrors.WrapSystemError(azerrors.ErrClientGeneric, "cli: object header is nil")
+			}
+			langID := header.GetLanguageID()
+			langVersionID := header.GetLanguageVersionID()
+			langTypeID := header.GetLanguageTypeID()
+			instanceBytes, err = absLang.ConvertBytesToFrontend(langID, langVersionID, langTypeID, instance)
+			if err != nil {
+				return err
+			}
+		}
+		content, _, err := m.getBlobString(instanceBytes)
 		if err != nil {
 			return err
 		}
@@ -148,7 +165,7 @@ func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azlangobjs
 }
 
 // execMapObjectContent returns the object content as a map.
-func (m *WorkspaceManager) execMapObjectContent(oid string, objInfo azlangobjs.ObjectInfo, outMap map[string]any) (error) {
+func (m *WorkspaceManager) execMapObjectContent(oid string, objInfo azlangobjs.ObjectInfo, absLang azlang.LanguageAbastraction, showFrontendLanguage bool, outMap map[string]any) (error) {
 	var contentMap map[string]any
 	var err error
 	switch instance := objInfo.GetInstance().(type) {
@@ -163,7 +180,22 @@ func (m *WorkspaceManager) execMapObjectContent(oid string, objInfo azlangobjs.O
 			return err
 		}
 	case []byte:
-		contentMap, err = m.getBlobMap(instance)
+		instanceBytes := instance
+		if showFrontendLanguage {
+			var err error
+			header := objInfo.GetHeader()
+			if header == nil {
+				azerrors.WrapSystemError(azerrors.ErrClientGeneric, "cli: object header is nil")
+			}
+			langID := header.GetLanguageID()
+			langTypeID := header.GetLanguageTypeID()
+			langVersionID := header.GetLanguageVersionID()
+			instanceBytes, err = absLang.ConvertBytesToFrontend(langID, langTypeID, langVersionID, instance)
+			if err != nil {
+				return err
+			}
+		}
+		contentMap, err = m.getBlobMap(instanceBytes)
 		if err != nil {
 			return err
 		}
@@ -194,6 +226,16 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 	}
 	defer fileLock.Unlock()
 
+	// Creates the abstraction for the language
+	lang, err := m.cfgMgr.GetLanguage()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	absLang, err := m.langFct.GetLanguageAbastraction(lang)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+
 	filteredObjectsInfos, err := m.getObjectsInfos(includeStorage, includeCode, true, true, true)
 	if err != nil {
 		return failedOpErr(nil, err)
@@ -214,7 +256,10 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 	if m.ctx.IsTerminalOutput() {
 		if showContent {
 			if !showRaw {
-				m.execPrintObjectContent(oid, *objectInfo, out)
+				err := m.execPrintObjectContent(oid, *objectInfo, absLang, showFrontendLanguage, out)
+				if err != nil {
+					return failedOpErr(nil, err)
+				}
 			} else {
 				out(nil, "", string(obj.GetContent()), nil, true)
 			}
@@ -225,7 +270,10 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 				out(nil, "", "\n", nil, false)
 			}
 			if !showRaw {
-				m.execPrintObjectContent(oid, *objectInfo, out)
+				err := m.execPrintObjectContent(oid, *objectInfo, absLang, showFrontendLanguage, out)
+				if err != nil {
+					return failedOpErr(nil, err)
+				}
 			} else {
 				out(nil, "", string(obj.GetContent()), nil, true)
 			}
@@ -242,7 +290,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 	} else if m.ctx.IsJSONOutput() {
 		objMap := map[string]any{}
 		if !showRaw {
-			err := m.execMapObjectContent(oid, *objectInfo, objMap)
+			err := m.execMapObjectContent(oid, *objectInfo, absLang, showFrontendLanguage, objMap)
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
