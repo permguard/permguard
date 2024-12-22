@@ -147,6 +147,33 @@ func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azlangobjs
 	return nil
 }
 
+// execMapObjectContent returns the object content as a map.
+func (m *WorkspaceManager) execMapObjectContent(oid string, objInfo azlangobjs.ObjectInfo, outMap map[string]any) (error) {
+	switch instance := objInfo.GetInstance().(type) {
+	case *azlangobjs.Commit:
+		content, err := m.getCommitString(oid, instance)
+		if err != nil {
+			return err
+		}
+		outMap["content"] = string(content)
+	case *azlangobjs.Tree:
+		content, err := m.getTreeString(oid, instance)
+		if err != nil {
+			return err
+		}
+		outMap["content"] = string(content)
+	case []byte:
+		content, _, err := m.getBlobString(instance)
+		if err != nil {
+			return err
+		}
+		outMap["content"] = string(content)
+	default:
+		outMap["raw_content"] = base64.StdEncoding.EncodeToString(objInfo.GetObject().GetContent())
+	}
+	return nil
+}
+
 // ExecObjectsCat cat the object.
 func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showRaw, showContent bool, oid string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
@@ -210,37 +237,27 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showRaw, 
 			out(nil, "", sb.String(), nil, true)
 		}
 	} else if m.ctx.IsJSONOutput() {
-		objMaps := []map[string]any{}
 		objMap := map[string]any{}
-		objContent, hasContent, err := m.getBlobString( objectInfo.GetInstance())
-		if err != nil {
-			return failedOpErr(nil, err)
-		}
-		if showContent {
-			if hasContent && (showContent && !showRaw) {
-				objMap["content"] = base64.StdEncoding.EncodeToString(objContent)
-			} else {
-				objMap["content"] = base64.StdEncoding.EncodeToString(obj.GetContent())
+		if !showRaw {
+			err := m.execMapObjectContent(oid, *objectInfo, objMap)
+			if err != nil {
+				return failedOpErr(nil, err)
 			}
-			objMaps = append(objMaps, objMap)
-			output = out(output, "objects", objMaps, nil, true)
 		} else {
+			objMap["raw_content"] = base64.StdEncoding.EncodeToString(obj.GetContent())
+		}
+		if !showContent {
 			objMap["oid"] = objectInfo.GetOID()
 			objMap["otype"] = objectInfo.GetType()
 			objMap["osize"] = len(obj.GetContent())
-			if hasContent && !showRaw {
-				objMap["content"] = base64.StdEncoding.EncodeToString(objContent)
-			} else {
-				objMap["content"] = base64.StdEncoding.EncodeToString(obj.GetContent())
-			}
 			if objHeader != nil {
 				codeID := objHeader.GetCodeID()
-				objMap["code_id"] = codeID
-				objMap["oname"] = objMap["code_id"]
+				objMap["oname"] = codeID
 			}
-			objMaps = append(objMaps, objMap)
-			output = out(output, "objects", objMaps, nil, true)
 		}
+		objMaps := []map[string]any{}
+		objMaps = append(objMaps, objMap)
+		output = out(output, "objects", objMaps, nil, true)
 	}
 	return output, nil
 }
