@@ -64,4 +64,6 @@ type LanguageAbastraction interface {
 	CreateSchemaBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error)
 	// CreateSchemaContentBytes creates a schema content bytes.
 	CreateSchemaContentBytes(blocks []byte) ([]byte, string, error)
+	// ConvertBytesToFrontend converts bytes to the frontend.
+	ConvertBytesToFrontend(langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error)
 }
