@@ -17,14 +17,16 @@
 package workspace
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // GetObjects gets the objects.
@@ -139,6 +141,33 @@ func (m *WorkspaceManager) getTreeString(oid string, tree *azlangobjs.Tree) (str
 	return output.String(), nil
 }
 
+// getTreeMap gets the tree map.
+func (m *WorkspaceManager) getTreeMap(oid string, tree *azlangobjs.Tree) (map[string]any, error) {
+	if tree == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: tree is nil")
+	}
+
+	output := make(map[string]any)
+	output["oid"] = oid
+
+	entries := tree.GetEntries()
+	entriesList := make([]map[string]any, len(entries))
+
+	for i, entry := range entries {
+		entryMap := make(map[string]any)
+		entryMap["oid"] = entry.GetOID()
+		entryMap["oname"] = entry.GetOName()
+		entryMap["type"] = entry.GetType()
+		entryMap["language"] = entry.GetLanguage()
+		entryMap["language_type"] = entry.GetLanguageType()
+		entryMap["language_version"] = entry.GetLanguageVersion()
+		entriesList[i] = entryMap
+	}
+
+	output["entries"] = entriesList
+	return output, nil
+}
+
 // getBlobString gets the blob string.
 func (m *WorkspaceManager) getBlobString(blob any) ([]byte, bool, error) {
 	if blob == nil {
@@ -149,4 +178,24 @@ func (m *WorkspaceManager) getBlobString(blob any) ([]byte, bool, error) {
 		return nil, false, azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: blob content is not a byte array")
 	}
 	return content, true, nil
+}
+
+// getBlobString gets the blob map.
+func (m *WorkspaceManager) getBlobMap(blob any) (map[string]any, error) {
+	if blob == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: tree is nil")
+	}
+	content, hasContent := blob.([]byte)
+	if !hasContent {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: blob content is not a byte array")
+	}
+	contentMap := make(map[string]any)
+	var result map[string]interface{}
+	err := json.Unmarshal(content, &result)
+	if err != nil {
+		contentMap["content"] = base64.StdEncoding.EncodeToString(content)
+	} else {
+		contentMap["content"] = result
+	}
+	return contentMap, nil
 }
