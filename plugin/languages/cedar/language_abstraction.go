@@ -184,7 +184,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, da
 	for _, policy := range policiesMap {
 		i++
 		var policyID string
-		annPolicyID, exists := policy.Annotations()["policy_id"]
+		annPolicyID, exists := policy.Annotations()["id"]
 		if !exists {
 			policyID = azids.GenerateID()
 		} else {

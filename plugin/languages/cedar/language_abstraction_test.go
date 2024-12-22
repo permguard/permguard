@@ -132,7 +132,7 @@ permit(
 );`
 
 	file2 := `
-@policy_id("assign-role-branch")
+@id("assign-role-branch")
 permit(
 	principal in Permguard::Actor::"administer-branches-staff",
 	action in Action::"assignRole",
