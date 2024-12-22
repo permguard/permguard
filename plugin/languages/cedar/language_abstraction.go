@@ -289,7 +289,7 @@ func (abs *CedarLanguageAbstraction) CreateSchemaContentBytes(blocks []byte) ([]
 	return blocks, LanguageSchemaFileName, nil
 }
 
-// ConvertBytesToFrontend converts bytes to the frontend.
+// ConvertBytesToFrontend converts bytes to the frontend language.
 func (abs *CedarLanguageAbstraction) ConvertBytesToFrontend(langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error) {
 	langSpec := abs.GetLanguageSpecification()
 	if langSpec.GetBackendLanguageID() != langID {
