@@ -50,11 +50,11 @@ Examples:
 			return runECommandForUpdateIdentity(deps, cmd, v)
 		},
 	}
-	command.Flags().String(flagIdentityID, "", "identity id")
+	command.Flags().String(flagIdentityID, "", "specify the id of the identity to update")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesUpdate, flagIdentityID), command.Flags().Lookup(flagIdentityID))
-	command.Flags().String(flagIdentityKind, "", "identity kind")
+	command.Flags().String(flagIdentityKind, "", "specify the new type of the identity")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesUpdate, flagIdentityKind), command.Flags().Lookup(flagIdentityKind))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "identity name")
+	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the new name for the identity")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesUpdate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

@@ -84,7 +84,7 @@ Examples:
 			return runECommandForDeleteAccount(deps, cmd, v)
 		},
 	}
-	command.Flags().Int64(aziclicommon.FlagCommonAccountID, 0, "account id")
+	command.Flags().Int64(aziclicommon.FlagCommonAccountID, 0, "specify the unique account id")
 	v.BindPFlag(azoptions.FlagName(commandNameForAccountsDelete, aziclicommon.FlagCommonAccountID), command.Flags().Lookup(aziclicommon.FlagCommonAccountID))
 	return command
 }

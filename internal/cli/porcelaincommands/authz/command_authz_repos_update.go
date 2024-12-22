@@ -50,9 +50,9 @@ Examples:
 			return runECommandForUpdateRepository(deps, cmd, v)
 		},
 	}
-	command.Flags().String(flagRepositoryID, "", "repository id")
+	command.Flags().String(flagRepositoryID, "", "specify the ID of the repository to update")
 	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesUpdate, flagRepositoryID), command.Flags().Lookup(flagRepositoryID))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "repository name")
+	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the new name for the repository")
 	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesUpdate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

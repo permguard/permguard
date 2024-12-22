@@ -50,9 +50,9 @@ Examples:
 			return runECommandForUpdateAccount(deps, cmd, v)
 		},
 	}
-	command.Flags().Int64(aziclicommon.FlagCommonAccountID, 0, "account id")
+	command.Flags().Int64(aziclicommon.FlagCommonAccountID, 0, "specify the account id to update")
 	v.BindPFlag(azoptions.FlagName(commandNameForAccountsUpdate, aziclicommon.FlagCommonAccountID), command.Flags().Lookup(aziclicommon.FlagCommonAccountID))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "account name")
+	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the new account name")
 	v.BindPFlag(azoptions.FlagName(commandNameForAccountsUpdate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

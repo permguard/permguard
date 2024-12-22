@@ -49,7 +49,7 @@ Examples:
 			return runECommandForCreateAccount(deps, cmd, v)
 		},
 	}
-	command.Flags().String(aziclicommon.FlagCommonName, "", "account name")
+	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the account name")
 	v.BindPFlag(azoptions.FlagName(commandNameForAccountsCreate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

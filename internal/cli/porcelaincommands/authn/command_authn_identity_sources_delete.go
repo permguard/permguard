@@ -86,7 +86,7 @@ Examples:
 			return runECommandForDeleteIdentitySource(deps, cmd, v)
 		},
 	}
-	command.Flags().String(flagIdentitySourceID, "", "identity source id")
+	command.Flags().String(flagIdentitySourceID, "", "specify the id of the identity source to delete")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySourcesDelete, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
 	return command
 }

@@ -96,17 +96,17 @@ Examples:
 			return runECommandForListIdentities(deps, cmd, v)
 		},
 	}
-	command.Flags().Int32P(aziclicommon.FlagCommonPage, aziclicommon.FlagCommonPageShort, 1, "page number")
+	command.Flags().Int32P(aziclicommon.FlagCommonPage, aziclicommon.FlagCommonPageShort, 1, "specify the page number for paginated results")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonPage), command.Flags().Lookup(aziclicommon.FlagCommonPage))
-	command.Flags().Int32P(aziclicommon.FlagCommonPageSize, aziclicommon.FlagCommonPageSizeShort, 1000, "page size")
+	command.Flags().Int32P(aziclicommon.FlagCommonPageSize, aziclicommon.FlagCommonPageSizeShort, 1000, "specify the number of results per page")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonPageSize), command.Flags().Lookup(aziclicommon.FlagCommonPageSize))
-	command.Flags().String(flagIdentitySourceID, "", "identity source id filter")
+	command.Flags().String(flagIdentitySourceID, "", "filter results by identity source id")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesList, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
-	command.Flags().String(flagIdentityKind, "", "identity kind filer")
+	command.Flags().String(flagIdentityKind, "", "filter results by type of identity")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesList, flagIdentityKind), command.Flags().Lookup(flagIdentityKind))
-	command.Flags().String(flagIdentityID, "", "identity id filter")
+	command.Flags().String(flagIdentityID, "", "filter results by identity id")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesList, flagIdentityID), command.Flags().Lookup(flagIdentityID))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "identity name filter")
+	command.Flags().String(aziclicommon.FlagCommonName, "", "filter results by identity name")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

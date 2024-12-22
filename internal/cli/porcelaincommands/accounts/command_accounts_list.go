@@ -96,13 +96,13 @@ Examples:
 			return runECommandForListAccounts(deps, cmd, v)
 		},
 	}
-	command.Flags().Int32P(aziclicommon.FlagCommonPage, aziclicommon.FlagCommonPageShort, 1, "page number")
+	command.Flags().Int32P(aziclicommon.FlagCommonPage, aziclicommon.FlagCommonPageShort, 1, "specify the page number for pagination")
 	v.BindPFlag(azoptions.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonPage), command.Flags().Lookup(aziclicommon.FlagCommonPage))
-	command.Flags().Int32P(aziclicommon.FlagCommonPageSize, aziclicommon.FlagCommonPageSizeShort, 1000, "page size")
+	command.Flags().Int32P(aziclicommon.FlagCommonPageSize, aziclicommon.FlagCommonPageSizeShort, 1000, "specify the number of items per page")
 	v.BindPFlag(azoptions.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonPageSize), command.Flags().Lookup(aziclicommon.FlagCommonPageSize))
-	command.Flags().Int64(aziclicommon.FlagCommonAccountID, 0, "account id filter")
+	command.Flags().Int64(aziclicommon.FlagCommonAccountID, 0, "filter results by account ID")
 	v.BindPFlag(azoptions.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonAccountID), command.Flags().Lookup(aziclicommon.FlagCommonAccountID))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "account name filter")
+	command.Flags().String(aziclicommon.FlagCommonName, "", "filter results by account name")
 	v.BindPFlag(azoptions.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

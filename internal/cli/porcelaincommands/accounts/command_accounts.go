@@ -96,7 +96,7 @@ func CreateCommandForAccounts(deps azcli.CliDependenciesProvider, v *viper.Viper
 		RunE:  runECommandForAccounts,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonAccountID, 0, "account id filter")
+	command.PersistentFlags().Int64(aziclicommon.FlagCommonAccountID, 0, "filter results by account ID across all subcommands")
 	v.BindPFlag(azoptions.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonAccountID), command.Flags().Lookup(aziclicommon.FlagCommonAccountID))
 
 	command.AddCommand(createCommandForAccountCreate(deps, v))

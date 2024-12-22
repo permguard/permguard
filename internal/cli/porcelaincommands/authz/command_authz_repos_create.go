@@ -50,7 +50,7 @@ Examples:
 			return runECommandForCreateRepository(deps, cmd, v)
 		},
 	}
-	command.Flags().String(aziclicommon.FlagCommonName, "", "repository name")
+	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the name of the repository to create")
 	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesCreate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }
