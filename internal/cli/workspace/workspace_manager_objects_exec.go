@@ -178,7 +178,7 @@ func (m *WorkspaceManager) execMapObjectContent(oid string, objInfo azlangobjs.O
 }
 
 // ExecObjectsCat cat the object.
-func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showRaw, showContent bool, oid string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFrontendLanguage, showRaw, showContent bool, oid string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to access objects in the current workspace.", nil, true)
 		return output, err
