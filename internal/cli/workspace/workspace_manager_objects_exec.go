@@ -149,29 +149,30 @@ func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azlangobjs
 
 // execMapObjectContent returns the object content as a map.
 func (m *WorkspaceManager) execMapObjectContent(oid string, objInfo azlangobjs.ObjectInfo, outMap map[string]any) (error) {
+	var contentMap map[string]any
+	var err error
 	switch instance := objInfo.GetInstance().(type) {
 	case *azlangobjs.Commit:
-		contentMap, err := m.getCommitMap(oid, instance)
+		contentMap, err = m.getCommitMap(oid, instance)
 		if err != nil {
 			return err
-		}
-		for key, value := range contentMap {
-			outMap[key] = value
 		}
 	case *azlangobjs.Tree:
-		content, err := m.getTreeString(oid, instance)
+		contentMap, err = m.getTreeMap(oid, instance)
 		if err != nil {
 			return err
 		}
-		outMap["content"] = string(content)
 	case []byte:
-		content, _, err := m.getBlobString(instance)
+		contentMap, err = m.getBlobMap(instance)
 		if err != nil {
 			return err
 		}
-		outMap["content"] = string(content)
 	default:
-		outMap["raw_content"] = base64.StdEncoding.EncodeToString(objInfo.GetObject().GetContent())
+		contentMap = map[string]any{}
+		contentMap["raw_content"] = base64.StdEncoding.EncodeToString(objInfo.GetObject().GetContent())
+	}
+	for key, value := range contentMap {
+		outMap[key] = value
 	}
 	return nil
 }
