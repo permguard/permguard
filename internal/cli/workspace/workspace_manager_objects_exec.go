@@ -21,11 +21,11 @@ import (
 	"fmt"
 	"strings"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
-	azlang "github.com/permguard/permguard/pkg/core/languages"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
 // ExecObjects list the objects.
@@ -148,7 +148,7 @@ func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azlangobjs
 			langID := header.GetLanguageID()
 			langVersionID := header.GetLanguageVersionID()
 			langTypeID := header.GetLanguageTypeID()
-			instanceBytes, err = absLang.ConvertBytesToFrontend(langID, langVersionID, langTypeID, instance)
+			instanceBytes, err = absLang.ConvertBytesToFrontendLanguage(langID, langVersionID, langTypeID, instance)
 			if err != nil {
 				return err
 			}
@@ -165,7 +165,7 @@ func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azlangobjs
 }
 
 // execMapObjectContent returns the object content as a map.
-func (m *WorkspaceManager) execMapObjectContent(oid string, objInfo azlangobjs.ObjectInfo, absLang azlang.LanguageAbastraction, showFrontendLanguage bool, outMap map[string]any) (error) {
+func (m *WorkspaceManager) execMapObjectContent(oid string, objInfo azlangobjs.ObjectInfo, absLang azlang.LanguageAbastraction, showFrontendLanguage bool, outMap map[string]any) error {
 	var contentMap map[string]any
 	var err error
 	switch instance := objInfo.GetInstance().(type) {
@@ -190,7 +190,7 @@ func (m *WorkspaceManager) execMapObjectContent(oid string, objInfo azlangobjs.O
 			langID := header.GetLanguageID()
 			langTypeID := header.GetLanguageTypeID()
 			langVersionID := header.GetLanguageVersionID()
-			instanceBytes, err = absLang.ConvertBytesToFrontend(langID, langTypeID, langVersionID, instance)
+			instanceBytes, err = absLang.ConvertBytesToFrontendLanguage(langID, langTypeID, langVersionID, instance)
 			if err != nil {
 				return err
 			}
@@ -361,7 +361,7 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 				out(nil, "", commitStr, nil, true)
 			}
 			out(nil, "", "\n", nil, false)
-			out(nil, "", "total " + aziclicommon.NumberText(len(commitInfos)), nil, true)
+			out(nil, "", "total "+aziclicommon.NumberText(len(commitInfos)), nil, true)
 		}
 	} else if m.ctx.IsJSONOutput() {
 		objMaps := []map[string]any{}
