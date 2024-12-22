@@ -193,7 +193,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, da
 		objName := policyID
 		codeID := objName
 
-		header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, codeID, codeTypeID)
+		header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, langPolicyTypeID, codeID, codeTypeID)
 		if err != nil {
 			multiSecObj.AddSectionObjectWithError(i, err)
 			continue
@@ -260,7 +260,7 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data [
 	//TODO: Implement schema validation
 
 	multiSecObj, err := azlangobjs.NewMultiSectionsObject(path, 1, nil)
-	header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, codeID, codeTypeID)
+	header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, langSchemaTypeID, codeID, codeTypeID)
 	if err != nil {
 		multiSecObj.AddSectionObjectWithError(0, err)
 		return multiSecObj, nil
