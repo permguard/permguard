@@ -235,7 +235,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showRaw, 
 			sb.WriteString(", size " + aziclicommon.NumberText(len(obj.GetContent())))
 			if objHeader != nil {
 				codeID := objHeader.GetCodeID()
-				sb.WriteString(", code_id " + aziclicommon.NameText(codeID))
+				sb.WriteString(", oname " + aziclicommon.NameText(codeID))
 			}
 			out(nil, "", sb.String(), nil, true)
 		}
