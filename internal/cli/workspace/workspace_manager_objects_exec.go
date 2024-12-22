@@ -110,8 +110,7 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 			objHeader := objInfo.GetHeader()
 			if objHeader != nil {
 				codeID := objHeader.GetCodeID()
-				objMap["code_id"] = codeID
-				objMap["oname"] = objMap["code_id"]
+				objMap["oname"] = codeID
 			}
 			objMaps = append(objMaps, objMap)
 		}
@@ -300,15 +299,10 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 		objMaps := []map[string]any{}
 		for _, commitInfo := range commitInfos {
 			commit := commitInfo.GetCommit()
-			objMap := map[string]any{}
-			objMap["commit_id"] = commitInfo.GetCommitOID()
-			objMap["parent"] = commit.GetParent()
-			objMap["tree"] = commit.GetTree()
-			metadata := commit.GetMetaData()
-			objMap["author"] = metadata.GetAuthor()
-			objMap["author_timestamp"] = metadata.GetAuthorTimestamp()
-			objMap["committer"] = metadata.GetCommitter()
-			objMap["committer_timestamp"] = metadata.GetCommitterTimestamp()
+			objMap, err := m.getCommitMap(commitInfo.GetCommitOID(), commit)
+			if err != nil {
+				return failedOpErr(nil, err)
+			}
 			objMaps = append(objMaps, objMap)
 		}
 		output = out(output, "commits", objMaps, nil, true)
