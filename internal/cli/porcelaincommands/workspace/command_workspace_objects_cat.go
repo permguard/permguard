@@ -36,8 +36,8 @@ const (
 	commandNameForWorkspacesCatRaw = "raw"
 	// commandNameForWorkspacesCatContent shows the content of the object
 	commandNameForWorkspacesCatContent = "content"
-	// commandNameForWorkspacesFront displays the content using the front-end language.
-	commandNameForWorkspacesFront = "front"
+	// commandNameForWorkspacesFrontendLanguage displays the content using the front-end language.
+	commandNameForWorkspacesFrontendLanguage = "frontend"
 )
 
 // runECommandForObjectsCatWorkspace runs the command for catting the object content.
@@ -63,10 +63,11 @@ func runECommandForObjectsCatWorkspace(deps azcli.CliDependenciesProvider, cmd *
 		includeStorage = true
 	}
 
+	showFrontendLanguage := v.GetBool(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesFrontendLanguage))
 	showRaw := v.GetBool(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatRaw))
 	showContent := v.GetBool(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatContent))
 
-	output, err := wksMgr.ExecObjectsCat(includeStorage, includeCode, showRaw, showContent, oid, outFunc(ctx, printer))
+	output, err := wksMgr.ExecObjectsCat(includeStorage, includeCode, showFrontendLanguage, showRaw, showContent, oid, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
@@ -105,8 +106,8 @@ Examples:
 	command.Flags().Bool(commandNameForWorkspacesCatContent, false, "display only the processed content")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatContent), command.Flags().Lookup(commandNameForWorkspacesCatContent))
 
-	command.Flags().Bool(commandNameForWorkspacesFront, false, "display the content formatted using the front-end language")
-	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesFront), command.Flags().Lookup(commandNameForWorkspacesFront))
+	command.Flags().Bool(commandNameForWorkspacesFrontendLanguage, false, "display the content formatted using the front-end language")
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesFrontendLanguage), command.Flags().Lookup(commandNameForWorkspacesFrontendLanguage))
 
 	return command
 }
