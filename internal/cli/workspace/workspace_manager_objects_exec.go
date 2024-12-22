@@ -151,11 +151,13 @@ func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azlangobjs
 func (m *WorkspaceManager) execMapObjectContent(oid string, objInfo azlangobjs.ObjectInfo, outMap map[string]any) (error) {
 	switch instance := objInfo.GetInstance().(type) {
 	case *azlangobjs.Commit:
-		content, err := m.getCommitString(oid, instance)
+		contentMap, err := m.getCommitMap(oid, instance)
 		if err != nil {
 			return err
 		}
-		outMap["content"] = string(content)
+		for key, value := range contentMap {
+			outMap[key] = value
+		}
 	case *azlangobjs.Tree:
 		content, err := m.getTreeString(oid, instance)
 		if err != nil {
