@@ -95,6 +95,26 @@ func (m *WorkspaceManager) getCommitString(oid string, commit *azlangobjs.Commit
 	return output, nil
 }
 
+// getCommitMap gets the commit map.
+func (m *WorkspaceManager) getCommitMap(oid string, commit *azlangobjs.Commit) (map[string]any, error) {
+	if commit == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: commit is nil")
+	}
+
+	output := make(map[string]any)
+	output["oid"] = oid
+	output["parent"] = commit.GetParent()
+	output["tree"] = commit.GetTree()
+	output["message"] = commit.GetMessage()
+
+	metdata := commit.GetMetaData()
+	output["author"] = metdata.GetAuthor()
+	output["author_timestamp"] = metdata.GetAuthorTimestamp()
+	output["committer"] = metdata.GetCommitter()
+	output["committer_timestamp"] = metdata.GetCommitterTimestamp()
+	return output, nil
+}
+
 // getTreeString gets the tree string.
 func (m *WorkspaceManager) getTreeString(oid string, tree *azlangobjs.Tree) (string, error) {
 	if tree == nil {
