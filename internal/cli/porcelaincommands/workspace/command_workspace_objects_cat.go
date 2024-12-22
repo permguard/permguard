@@ -36,6 +36,8 @@ const (
 	commandNameForWorkspacesCatRaw = "raw"
 	// commandNameForWorkspacesCatContent shows the content of the object
 	commandNameForWorkspacesCatContent = "content"
+	// commandNameForWorkspacesFront displays the content using the front-end language.
+	commandNameForWorkspacesFront = "front"
 )
 
 // runECommandForObjectsCatWorkspace runs the command for catting the object content.
@@ -97,11 +99,14 @@ Examples:
 		Args: validateArg,
 	}
 
-	command.Flags().Bool(commandNameForWorkspacesCatRaw, false, "object type")
+	command.Flags().Bool(commandNameForWorkspacesCatRaw, false, "display the raw, unprocessed content")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatRaw), command.Flags().Lookup(commandNameForWorkspacesCatRaw))
 
-	command.Flags().Bool(commandNameForWorkspacesCatContent, false, "object raw content")
+	command.Flags().Bool(commandNameForWorkspacesCatContent, false, "display only the processed content")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatContent), command.Flags().Lookup(commandNameForWorkspacesCatContent))
+
+	command.Flags().Bool(commandNameForWorkspacesFront, false, "display the content formatted using the front-end language")
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesFront), command.Flags().Lookup(commandNameForWorkspacesFront))
 
 	return command
 }
