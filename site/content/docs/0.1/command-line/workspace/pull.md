@@ -81,7 +81,44 @@ permguard pull --output json
 output:
 
 ```json
-{}
+{
+  "code_entries": [
+    {
+      "code_id": "schema",
+      "code_type": "schema",
+      "lanaguage_version": "*",
+      "langauge_type": "schema",
+      "language": "cedar-json",
+      "oid": "007867724d1aa801216d92d8d08ed2269a55e495575aceb1f46cded8594159ee",
+      "oname": "schema",
+      "type": "blob"
+    },
+    {
+      "code_id": "assign-role-branch",
+      "code_type": "policy",
+      "lanaguage_version": "*",
+      "langauge_type": "policy",
+      "language": "cedar-json",
+      "oid": "2597a54653b09188bf613a24e6a64100a1b14612ffed3bd8558dfc24dd63a34f",
+      "oname": "assign-role-branch",
+      "type": "blob"
+    },
+    {
+      "code_id": "view-branch-inventory-auditors",
+      "code_type": "policy",
+      "lanaguage_version": "*",
+      "langauge_type": "policy",
+      "language": "cedar-json",
+      "oid": "553e9dd55b0591930ec043bc89c1a9410d737536e9433c80845bea996d7ca169",
+      "oname": "view-branch-inventory-auditors",
+      "type": "blob"
+    }
+  ],
+  "local_commit_id": "a73798ba0dc671eac05c1df947e5c5873109117fe149ea9fc84755492e351a47",
+  "local_commits_count": 1,
+  "remote_commit_id": "a73798ba0dc671eac05c1df947e5c5873109117fe149ea9fc84755492e351a47",
+  "remote_commits_count": 1
+}
 ```
 
 </details>

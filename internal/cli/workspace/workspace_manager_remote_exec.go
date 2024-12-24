@@ -157,7 +157,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		return output, err
 	}
 
-	output, _ := m.execInternalRefresh(true, out)
+	m.execInternalRefresh(true, out)
 
 	// Creates the abstraction for the language
 	lang, err := m.cfgMgr.GetLanguage()
@@ -168,6 +168,8 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
+
+	output := map[string]any{}
 
 	// Read current head settings
 	headCtx, err := m.getCurrentHeadContext()
@@ -196,9 +198,17 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 	}
 
 	localCommitID, _ := getFromRuntimeContext[string](ctx, LocalCodeCommitIDKey)
+	output["local_commit_id"] = localCommitID
+
 	localCommitsCount, _ := getFromRuntimeContext[uint32](ctx, LocalCommitsCountKey)
+	output["local_commits_count"] = localCommitsCount
+
 	remoteCommitID, _ := getFromRuntimeContext[string](ctx, RemoteCommitIDKey)
+	output["remote_commit_id"] = remoteCommitID
+
 	remoteCommitCount, _ := getFromRuntimeContext[uint32](ctx, RemoteCommitsCountKey)
+	output["remote_commits_count"] = remoteCommitCount
+
 	if localCommitID == remoteCommitID {
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", "The local workspace is already fully up to date with the remote repository.", nil, true)
@@ -266,8 +276,19 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		}
 
 		var schemaBlock []byte
+		codeEntries:= []map[string]any{}
 		codeBlocks := [][]byte{}
 		for _, entry := range tree.GetEntries() {
+			codeEntries = append(codeEntries, map[string]any{
+				"oid": entry.GetOID(),
+				"oname": entry.GetOName(),
+				"type": entry.GetType(),
+				"code_id": entry.GetCodeID(),
+				"code_type": entry.GetCodeType(),
+				"language": entry.GetLanguage(),
+				"lanaguage_version": entry.GetLanguageVersion(),
+				"langauge_type": entry.GetLanguageType(),
+			})
 			if _, ok := codeMapIds[entry.GetOID()]; !ok {
 				entryObj, err := m.cospMgr.ReadObject(entry.GetOID())
 				if err != nil {
@@ -287,6 +308,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 				}
 			}
 		}
+		output["code_entries"] = codeEntries
 		if len(codeBlocks) > 0 {
 			codeBlock, ext, err := absLang.CreateMultiPolicyContentBytes(codeBlocks)
 			if err != nil {
