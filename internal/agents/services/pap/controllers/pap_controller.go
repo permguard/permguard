@@ -54,13 +54,13 @@ func (s PAPController) UpdateRepository(repository *azmodels.Repository) (*azmod
 }
 
 // DeleteRepository deletes an repository.
-func (s PAPController) DeleteRepository(accountID int64, repositoryID string) (*azmodels.Repository, error) {
-	return s.storage.DeleteRepository(accountID, repositoryID)
+func (s PAPController) DeleteRepository(applicationID int64, repositoryID string) (*azmodels.Repository, error) {
+	return s.storage.DeleteRepository(applicationID, repositoryID)
 }
 
 // FetchRepositories gets all repositories.
-func (s PAPController) FetchRepositories(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Repository, error) {
-	return s.storage.FetchRepositories(page, pageSize, accountID, fields)
+func (s PAPController) FetchRepositories(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Repository, error) {
+	return s.storage.FetchRepositories(page, pageSize, applicationID, fields)
 }
 
 // OnPullHandleRequestCurrentState handles the request for the current state.

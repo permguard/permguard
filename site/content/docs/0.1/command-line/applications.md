@@ -1,5 +1,5 @@
 ---
-title: "Accounts"
+title: "Applications"
 description: ""
 summary: ""
 date: 2023-08-10T20:39:08+01:00
@@ -8,7 +8,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "accounts-cc889e190a223318e9616ef4e73dea17"
+    identifier: "applications-cc889e190a223318e9616ef4e73dea17"
 weight: 5002
 toc: true
 seo:
@@ -17,42 +17,42 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `accounts` command, it is possible to manage Accounts on the remote server.
+Using the `applications` command, it is possible to manage Applications on the remote server.
 
 ```text
-This command manages accounts.
+This command manages applications.
 
 Usage:
-  Permguard accounts [flags]
-  Permguard accounts [command]
+  Permguard applications [flags]
+  Permguard applications [command]
 
 Available Commands:
-  create      Create an account
-  delete      Delete an account
-  list        List accounts
-  update      Update an account
+  create      Create an application
+  delete      Delete an application
+  list        List applications
+  update      Update an application
 
 Flags:
-  -h, --help   help for accounts
+  -h, --help   help for applications
 
 Global Flags:
   -o, --output string   output format (default "terminal")
   -v, --verbose          true for verbose output
   -w, --workdir string   workdir (default ".")
 
-Use "Permguard accounts [command] --help" for more information about a command.
+Use "Permguard applications [command] --help" for more information about a command.
 ```
 
 {{< callout context="caution" icon="alert-triangle" >}}
 The output from your current version of Permguard may differ from the example provided on this page.
 {{< /callout >}}
 
-## Create an Account
+## Create an Application
 
-The `permguard accounts create` command allows to create an account for the input name.
+The `permguard applications create` command allows to create an application for the input name.
 
 ```bash
-permguard accounts create --name magicfarmacia-dev
+permguard applications create --name magicfarmacia-dev
 ```
 
 output:
@@ -67,16 +67,16 @@ output:
   </summary>
 
 ```bash
-permguard accounts create --name magicfarmacia-dev --output json
+permguard applications create --name magicfarmacia-dev --output json
 ```
 
 output:
 
 ```bash
 {
-  "accounts": [
+  "applications": [
     {
-      "account_id": 268786704340,
+      "application_id": 268786704340,
       "created_at": "2024-08-25T14:07:59.634Z",
       "updated_at": "2024-08-25T14:07:59.634Z",
       "name": "magicfarmacia-dev"
@@ -87,12 +87,12 @@ output:
 
 </details>
 
-## Fetch Accounts
+## Fetch Applications
 
-The `permguard accounts list` command allows for the retrieval of all accounts.
+The `permguard applications list` command allows for the retrieval of all applications.
 
 ```bash
-permguard accounts list
+permguard applications list
 ```
 
 output:
@@ -109,28 +109,28 @@ output:
   </summary>
 
 ```bash
-permguard accounts list --output json
+permguard applications list --output json
 ```
 
 output:
 
 ```bash
 {
-  "accounts": [
+  "applications": [
     {
-      "account_id": 268786704340,
+      "application_id": 268786704340,
       "created_at": "2024-08-25T14:07:07.04Z",
       "updated_at": "2024-08-25T14:07:07.04Z",
       "name": "magicfarmacia-dev"
     },
     {
-      "account_id": 534434453770,
+      "application_id": 534434453770,
       "created_at": "2024-08-25T14:07:59.634Z",
       "updated_at": "2024-08-25T14:07:59.634Z",
       "name": "magicfarmacia-uat"
     },
     {
-      "account_id": 627303999986,
+      "application_id": 627303999986,
       "created_at": "2024-08-25T14:08:58.619Z",
       "updated_at": "2024-08-25T14:08:58.619Z",
       "name": "magicfarmacia-prod"

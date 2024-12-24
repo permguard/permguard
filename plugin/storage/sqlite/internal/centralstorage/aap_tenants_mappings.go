@@ -24,10 +24,10 @@ import (
 // mapTenantToAgentTenant maps a Tenant to a model Tenant.
 func mapTenantToAgentTenant(tenant *azirepos.Tenant) (*azmodels.Tenant, error) {
 	return &azmodels.Tenant{
-		TenantID:  tenant.TenantID,
-		CreatedAt: tenant.CreatedAt,
-		UpdatedAt: tenant.UpdatedAt,
-		AccountID: tenant.AccountID,
-		Name:      tenant.Name,
+		TenantID:      tenant.TenantID,
+		CreatedAt:     tenant.CreatedAt,
+		UpdatedAt:     tenant.UpdatedAt,
+		ApplicationID: tenant.ApplicationID,
+		Name:          tenant.Name,
 	}, nil
 }

@@ -21,20 +21,20 @@ import (
 	"time"
 )
 
-// Account is the model for the account table.
-type Account struct {
-	AccountID int64     `db:"account_id"`
-	CreatedAt time.Time `db:"created_at"`
-	UpdatedAt time.Time `db:"updated_at"`
-	Name      string    `db:"name"`
+// Application is the model for the application table.
+type Application struct {
+	ApplicationID int64     `db:"application_id"`
+	CreatedAt     time.Time `db:"created_at"`
+	UpdatedAt     time.Time `db:"updated_at"`
+	Name          string    `db:"name"`
 }
 
-// LogAccountEntry returns a string representation of the account.
-func LogAccountEntry(account *Account) string {
-	if account == nil {
-		return "account is nil"
+// LogApplicationEntry returns a string representation of the application.
+func LogApplicationEntry(application *Application) string {
+	if application == nil {
+		return "application is nil"
 	}
-	return fmt.Sprintf("accound id: %d, name: %s", account.AccountID, account.Name)
+	return fmt.Sprintf("accound id: %d, name: %s", application.ApplicationID, application.Name)
 }
 
 // IdentitySource is the model for the identity_source table.
@@ -42,7 +42,7 @@ type IdentitySource struct {
 	IdentitySourceID string    `db:"identity_source_id"`
 	CreatedAt        time.Time `db:"created_at"`
 	UpdatedAt        time.Time `db:"updated_at"`
-	AccountID        int64     `db:"account_id"`
+	ApplicationID    int64     `db:"application_id"`
 	Name             string    `db:"name"`
 }
 
@@ -51,7 +51,7 @@ func LogIdentitySourceEntry(identitySource *IdentitySource) string {
 	if identitySource == nil {
 		return "identity source is nil"
 	}
-	return fmt.Sprintf("identity source id: %s, account id: %d, name: %s", identitySource.IdentitySourceID, identitySource.AccountID, identitySource.Name)
+	return fmt.Sprintf("identity source id: %s, application id: %d, name: %s", identitySource.IdentitySourceID, identitySource.ApplicationID, identitySource.Name)
 }
 
 // Identity is the model for the identity table.
@@ -59,7 +59,7 @@ type Identity struct {
 	IdentityID       string    `db:"identity_id"`
 	CreatedAt        time.Time `db:"created_at"`
 	UpdatedAt        time.Time `db:"updated_at"`
-	AccountID        int64     `db:"account_id"`
+	ApplicationID    int64     `db:"application_id"`
 	IdentitySourceID string    `db:"identity_source_id"`
 	Kind             int16     `db:"kind"`
 	Name             string    `db:"name"`
@@ -70,16 +70,16 @@ func LogIdentityEntry(identity *Identity) string {
 	if identity == nil {
 		return "identity is nil"
 	}
-	return fmt.Sprintf("identity id: %s, identity source id %s, account id: %d, name: %s", identity.IdentityID, identity.IdentitySourceID, identity.AccountID, identity.Name)
+	return fmt.Sprintf("identity id: %s, identity source id %s, application id: %d, name: %s", identity.IdentityID, identity.IdentitySourceID, identity.ApplicationID, identity.Name)
 }
 
 // Tenant is the model for the tenant table.
 type Tenant struct {
-	TenantID  string    `db:"tenant_id"`
-	CreatedAt time.Time `db:"created_at"`
-	UpdatedAt time.Time `db:"updated_at"`
-	AccountID int64     `db:"account_id"`
-	Name      string    `db:"name"`
+	TenantID      string    `db:"tenant_id"`
+	CreatedAt     time.Time `db:"created_at"`
+	UpdatedAt     time.Time `db:"updated_at"`
+	ApplicationID int64     `db:"application_id"`
+	Name          string    `db:"name"`
 }
 
 // LogTenantEntry returns a string representation of the tenant.
@@ -87,17 +87,17 @@ func LogTenantEntry(tenant *Tenant) string {
 	if tenant == nil {
 		return "tenant is nil"
 	}
-	return fmt.Sprintf("tenant id: %s, account id: %d, name: %s", tenant.TenantID, tenant.AccountID, tenant.Name)
+	return fmt.Sprintf("tenant id: %s, application id: %d, name: %s", tenant.TenantID, tenant.ApplicationID, tenant.Name)
 }
 
 // Repository is the model for the schema table.
 type Repository struct {
-	RepositoryID string    `db:"repository_id"`
-	CreatedAt    time.Time `db:"created_at"`
-	UpdatedAt    time.Time `db:"updated_at"`
-	AccountID    int64     `db:"account_id"`
-	Name         string    `db:"name"`
-	Ref          string    `db:"ref"`
+	RepositoryID  string    `db:"repository_id"`
+	CreatedAt     time.Time `db:"created_at"`
+	UpdatedAt     time.Time `db:"updated_at"`
+	ApplicationID int64     `db:"application_id"`
+	Name          string    `db:"name"`
+	Ref           string    `db:"ref"`
 }
 
 // LogRepositoryEntry returns a string representation of the repository.
@@ -105,7 +105,7 @@ func LogRepositoryEntry(repository *Repository) string {
 	if repository == nil {
 		return "tenant is nil"
 	}
-	return fmt.Sprintf("repository id: %s, account id: %d, name: %s", repository.RepositoryID, repository.AccountID, repository.Name)
+	return fmt.Sprintf("repository id: %s, application id: %d, name: %s", repository.RepositoryID, repository.ApplicationID, repository.Name)
 }
 
 // KeyValue is the model for the key_value table.

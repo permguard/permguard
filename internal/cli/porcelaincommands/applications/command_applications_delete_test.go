@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package accounts
+package applications
 
 import (
 	"fmt"
@@ -32,15 +32,15 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
-// TestCreateCommandForAccountsCreate tests the createCommandForAccountsCreate function.
-func TestCreateCommandForAccountsCreate(t *testing.T) {
+// TestDeleteCommandForApplicationsDelete tests the deleteCommandForApplicationsDelete function.
+func TestDeleteCommandForApplicationsDelete(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command creates a remote account."}
-	aztestutils.BaseCommandTest(t, createCommandForAccountCreate, args, false, outputs)
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command deletes a remote application."}
+	aztestutils.BaseCommandTest(t, createCommandForApplicationDelete, args, false, outputs)
 }
 
-// TestCliAccountsCreateWithError tests the command for creating an account with an error.
-func TestCliAccountsCreateWithError(t *testing.T) {
+// TestCliApplicationsDeleteWithError tests the command for creating an application with an error.
+func TestCliApplicationsDeleteWithError(t *testing.T) {
 	tests := []struct {
 		OutputType string
 		HasError   bool
@@ -55,20 +55,20 @@ func TestCliAccountsCreateWithError(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		args := []string{"accounts", "create", "--name", "mycorporate", "--output", test.OutputType}
+		args := []string{"applications", "delete", "--application", "581616507495", "--output", test.OutputType}
 		outputs := []string{""}
 
 		v := viper.New()
 		v.Set(azconfigs.FlagName(aziclicommon.FlagPrefixAAP, aziclicommon.FlagSuffixAAPTarget), "localhost:9092")
 
 		depsMocks := azmocks.NewCliDependenciesMock()
-		cmd := createCommandForAccountCreate(depsMocks, v)
+		cmd := createCommandForApplicationDelete(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, test.OutputType, "output format")
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		aapClient := azmocks.NewGrpcAAPClientMock()
-		aapClient.On("CreateAccount", mock.Anything).Return(nil, azerrors.ErrClientParameter)
+		aapClient.On("DeleteApplication", mock.Anything).Return(nil, azerrors.ErrClientParameter)
 
 		printerMock := azmocks.NewPrinterMock()
 		printerMock.On("Println", mock.Anything).Return()
@@ -87,14 +87,14 @@ func TestCliAccountsCreateWithError(t *testing.T) {
 	}
 }
 
-// TestCliAccountsCreateWithSuccess tests the command for creating an account with an error.
-func TestCliAccountsCreateWithSuccess(t *testing.T) {
+// TestCliApplicationsDeleteWithSuccess tests the command for creating an application with an error.
+func TestCliApplicationsDeleteWithSuccess(t *testing.T) {
 	tests := []string{
 		"terminal",
 		"json",
 	}
 	for _, outputType := range tests {
-		args := []string{"accounts", "create", "--name", "mycorporate", "--output", outputType}
+		args := []string{"applications", "delete", "--application", "581616507495", "--output", outputType}
 		outputs := []string{""}
 
 		v := viper.New()
@@ -102,28 +102,28 @@ func TestCliAccountsCreateWithSuccess(t *testing.T) {
 		v.Set(azconfigs.FlagName(aziclicommon.FlagPrefixAAP, aziclicommon.FlagSuffixAAPTarget), "localhost:9092")
 
 		depsMocks := azmocks.NewCliDependenciesMock()
-		cmd := createCommandForAccountCreate(depsMocks, v)
+		cmd := createCommandForApplicationDelete(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		aapClient := azmocks.NewGrpcAAPClientMock()
-		account := &azmodels.Account{
-			AccountID: 581616507495,
-			Name:      "mycorporate",
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+		application := &azmodels.Application{
+			ApplicationID: 581616507495,
+			Name:          "mycorporate",
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
 		}
-		aapClient.On("CreateAccount", mock.Anything).Return(account, nil)
+		aapClient.On("DeleteApplication", mock.Anything).Return(application, nil)
 
 		printerMock := azmocks.NewPrinterMock()
 		outputPrinter := map[string]any{}
 
 		if outputType == "terminal" {
-			accountID := fmt.Sprintf("%d", account.AccountID)
-			outputPrinter[accountID] = account.Name
+			applicationID := fmt.Sprintf("%d", application.ApplicationID)
+			outputPrinter[applicationID] = application.Name
 		} else {
-			outputPrinter["accounts"] = []*azmodels.Account{account}
+			outputPrinter["applications"] = []*azmodels.Application{application}
 		}
 		printerMock.On("PrintMap", outputPrinter).Return()
 		printerMock.On("PrintlnMap", outputPrinter).Return()

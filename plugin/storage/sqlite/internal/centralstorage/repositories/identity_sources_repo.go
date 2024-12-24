@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	// errorMessageIdentitySourceInvalidAccountID is the error message identity source invalid account id.
-	errorMessageIdentitySourceInvalidAccountID = "storage: invalid client input - account id is not valid (id: %d)"
+	// errorMessageIdentitySourceInvalidApplicationID is the error message identity source invalid application id.
+	errorMessageIdentitySourceInvalidApplicationID = "storage: invalid client input - application id is not valid (id: %d)"
 )
 
 // UpsertIdentitySource creates or updates an identity source.
@@ -38,8 +38,8 @@ func (r *Repo) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *I
 	if identitySource == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source data is missing or malformed (%s)", LogIdentitySourceEntry(identitySource)))
 	}
-	if err := azvalidators.ValidateCodeID("identitySource", identitySource.AccountID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentitySourceInvalidAccountID, identitySource.AccountID))
+	if err := azvalidators.ValidateCodeID("identitySource", identitySource.ApplicationID); err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentitySourceInvalidApplicationID, identitySource.ApplicationID))
 	}
 	if !isCreate && azvalidators.ValidateUUID("identitySource", identitySource.IdentitySourceID) != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source id is not valid (%s)", LogIdentitySourceEntry(identitySource)))
@@ -49,29 +49,29 @@ func (r *Repo) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *I
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogIdentitySourceEntry(identitySource)))
 	}
 
-	accountID := identitySource.AccountID
+	applicationID := identitySource.ApplicationID
 	identitySourceID := identitySource.IdentitySourceID
 	identitySourceName := identitySource.Name
 	var result sql.Result
 	var err error
 	if isCreate {
 		identitySourceID = GenerateUUID()
-		result, err = tx.Exec("INSERT INTO identity_sources (account_id, identity_source_id, name) VALUES (?, ?, ?)", accountID, identitySourceID, identitySourceName)
+		result, err = tx.Exec("INSERT INTO identity_sources (application_id, identity_source_id, name) VALUES (?, ?, ?)", applicationID, identitySourceID, identitySourceName)
 	} else {
-		result, err = tx.Exec("UPDATE identity_sources SET name = ? WHERE account_id = ? and identity_source_id = ?", identitySourceName, accountID, identitySourceID)
+		result, err = tx.Exec("UPDATE identity_sources SET name = ? WHERE application_id = ? and identity_source_id = ?", identitySourceName, applicationID, identitySourceID)
 	}
 	if err != nil || result == nil {
 		action := "update"
 		if isCreate {
 			action = "create"
 		}
-		params := map[string]string{WrapSqlite3ParamForeignKey: "account id"}
+		params := map[string]string{WrapSqlite3ParamForeignKey: "application id"}
 		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s identity source - operation '%s-identity-source' encountered an issue (%s)", action, action, LogIdentitySourceEntry(identitySource)), err, params)
 	}
 
 	var dbIdentitySource IdentitySource
-	err = tx.QueryRow("SELECT account_id, identity_source_id, created_at, updated_at, name FROM identity_sources WHERE account_id = ? and identity_source_id = ?", accountID, identitySourceID).Scan(
-		&dbIdentitySource.AccountID,
+	err = tx.QueryRow("SELECT application_id, identity_source_id, created_at, updated_at, name FROM identity_sources WHERE application_id = ? and identity_source_id = ?", applicationID, identitySourceID).Scan(
+		&dbIdentitySource.ApplicationID,
 		&dbIdentitySource.IdentitySourceID,
 		&dbIdentitySource.CreatedAt,
 		&dbIdentitySource.UpdatedAt,
@@ -84,17 +84,17 @@ func (r *Repo) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *I
 }
 
 // DeleteIdentitySource deletes an identity source.
-func (r *Repo) DeleteIdentitySource(tx *sql.Tx, accountID int64, identitySourceID string) (*IdentitySource, error) {
-	if err := azvalidators.ValidateCodeID("identitySource", accountID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentitySourceInvalidAccountID, accountID))
+func (r *Repo) DeleteIdentitySource(tx *sql.Tx, applicationID int64, identitySourceID string) (*IdentitySource, error) {
+	if err := azvalidators.ValidateCodeID("identitySource", applicationID); err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentitySourceInvalidApplicationID, applicationID))
 	}
 	if err := azvalidators.ValidateUUID("identitySource", identitySourceID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source id is not valid (id: %s)", identitySourceID))
 	}
 
 	var dbIdentitySource IdentitySource
-	err := tx.QueryRow("SELECT account_id, identity_source_id, created_at, updated_at, name FROM identity_sources WHERE account_id = ? and identity_source_id = ?", accountID, identitySourceID).Scan(
-		&dbIdentitySource.AccountID,
+	err := tx.QueryRow("SELECT application_id, identity_source_id, created_at, updated_at, name FROM identity_sources WHERE application_id = ? and identity_source_id = ?", applicationID, identitySourceID).Scan(
+		&dbIdentitySource.ApplicationID,
 		&dbIdentitySource.IdentitySourceID,
 		&dbIdentitySource.CreatedAt,
 		&dbIdentitySource.UpdatedAt,
@@ -103,7 +103,7 @@ func (r *Repo) DeleteIdentitySource(tx *sql.Tx, accountID int64, identitySourceI
 	if err != nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - identity source id is not valid (id: %s)", identitySourceID), err)
 	}
-	res, err := tx.Exec("DELETE FROM identity_sources WHERE account_id = ? and identity_source_id = ?", accountID, identitySourceID)
+	res, err := tx.Exec("DELETE FROM identity_sources WHERE application_id = ? and identity_source_id = ?", applicationID, identitySourceID)
 	if err != nil || res == nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete identity source - operation 'delete-identity-source' encountered an issue (id: %s)", identitySourceID), err)
 	}
@@ -115,12 +115,12 @@ func (r *Repo) DeleteIdentitySource(tx *sql.Tx, accountID int64, identitySourceI
 }
 
 // FetchIdentitySources retrieves identity sources.
-func (r *Repo) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]IdentitySource, error) {
+func (r *Repo) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]IdentitySource, error) {
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
-	if err := azvalidators.ValidateCodeID("identitySource", accountID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageIdentitySourceInvalidAccountID, accountID))
+	if err := azvalidators.ValidateCodeID("identitySource", applicationID); err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageIdentitySourceInvalidApplicationID, applicationID))
 	}
 
 	var dbIdentitySources []IdentitySource
@@ -129,8 +129,8 @@ func (r *Repo) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, acc
 	var conditions []string
 	var args []any
 
-	conditions = append(conditions, "account_id = ?")
-	args = append(args, accountID)
+	conditions = append(conditions, "application_id = ?")
+	args = append(args, applicationID)
 
 	if filterID != nil {
 		identitySourceID := *filterID

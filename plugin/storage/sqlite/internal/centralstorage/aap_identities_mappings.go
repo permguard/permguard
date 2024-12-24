@@ -31,7 +31,7 @@ func mapIdentityToAgentIdentity(identity *azirepos.Identity) (*azmodels.Identity
 		IdentityID:       identity.IdentityID,
 		CreatedAt:        identity.CreatedAt,
 		UpdatedAt:        identity.UpdatedAt,
-		AccountID:        identity.AccountID,
+		ApplicationID:    identity.ApplicationID,
 		IdentitySourceID: identity.IdentitySourceID,
 		Kind:             kind,
 		Name:             identity.Name,

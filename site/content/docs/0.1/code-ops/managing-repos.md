@@ -29,4 +29,4 @@ You can check out a repository using the `checkout` command:
  permguard checkout dev/268786704340/magicfarmacia
 ```
 
-In this command, the first parameter is the remote, followed by the account ID, and finally the repository identifier. The format used is `<remote>/<account-id>/<repository-name>`.
+In this command, the first parameter is the remote, followed by the application ID, and finally the repository identifier. The format used is `<remote>/<application-id>/<repository-name>`.

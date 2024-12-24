@@ -75,7 +75,7 @@ Irrespective of the chosen distribution, the binary supports the following flags
 
 ### server-aap
 
-{{< callout >}} Account Administration Point. {{< /callout >}}
+{{< callout >}} Application Administration Point. {{< /callout >}}
 
 **--server.aap.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
 

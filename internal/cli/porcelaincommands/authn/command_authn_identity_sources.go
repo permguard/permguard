@@ -49,14 +49,14 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	accountID := v.GetInt64(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonAccountID))
+	applicationID := v.GetInt64(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonApplicationID))
 	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
 	identitySource := &azmodels.IdentitySource{
-		AccountID: accountID,
-		Name:      name,
+		ApplicationID: applicationID,
+		Name:          name,
 	}
 	if isCreate {
-		identitySource, err = client.CreateIdentitySource(accountID, name)
+		identitySource, err = client.CreateIdentitySource(applicationID, name)
 	} else {
 		identitySourceID := v.GetString(azoptions.FlagName(flagPrefix, flagIdentitySourceID))
 		identitySource.IdentitySourceID = identitySourceID
@@ -101,8 +101,8 @@ func createCommandForIdentitySources(deps azcli.CliDependenciesProvider, v *vipe
 		RunE:  runECommandForIdentitySources,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonAccountID, 0, "account id filter")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonAccountID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonAccountID))
+	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id filter")
+	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonApplicationID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonApplicationID))
 
 	command.AddCommand(createCommandForIdentitySourceCreate(deps, v))
 	command.AddCommand(createCommandForIdentitySourceUpdate(deps, v))

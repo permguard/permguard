@@ -27,9 +27,9 @@ import (
 
 // RepoInfo contains the repo information.
 type RepoInfo struct {
-	remote    string
-	accountID int64
-	repo      string
+	remote        string
+	applicationID int64
+	repo          string
 }
 
 // GetRemote returns the remote.
@@ -37,9 +37,9 @@ func (r *RepoInfo) GetRemote() string {
 	return r.remote
 }
 
-// GetAccountID returns the account id.
-func (r *RepoInfo) GetAccountID() int64 {
-	return r.accountID
+// GetApplicationID returns the application id.
+func (r *RepoInfo) GetApplicationID() int64 {
+	return r.applicationID
 }
 
 // GetRepo returns the repo.
@@ -48,18 +48,18 @@ func (r *RepoInfo) GetRepo() string {
 }
 
 // GetRepoURI gets the repo URI.
-func GetRepoURI(remote string, accountID int64, repo string) (string, error) {
+func GetRepoURI(remote string, applicationID int64, repo string) (string, error) {
 	repoInfo := &RepoInfo{
-		remote:    remote,
-		accountID: accountID,
-		repo:      repo,
+		remote:        remote,
+		applicationID: applicationID,
+		repo:          repo,
 	}
 	return GetRepoURIFromRepoInfo(repoInfo)
 }
 
 // GetRepoURIFromRepoInfo gets the repo URI from the repo info.
 func GetRepoURIFromRepoInfo(repoInfo *RepoInfo) (string, error) {
-	return fmt.Sprintf("%s/%d/%s", repoInfo.remote, repoInfo.accountID, repoInfo.repo), nil
+	return fmt.Sprintf("%s/%d/%s", repoInfo.remote, repoInfo.applicationID, repoInfo.repo), nil
 }
 
 // GetRepoInfoFromURI gets the repo information from the URI.
@@ -80,16 +80,16 @@ func GetRepoInfoFromURI(repoURI string) (*RepoInfo, error) {
 	}
 	result.remote = remoteName
 
-	accountIDStr := items[1]
-	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
+	applicationIDStr := items[1]
+	applicationID, err := strconv.ParseInt(applicationIDStr, 10, 64)
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid application id %s", applicationIDStr))
 	}
-	err = azvalidators.ValidateCodeID("repo", accountID)
+	err = azvalidators.ValidateCodeID("repo", applicationID)
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid account id %s", accountIDStr))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid application id %s", applicationIDStr))
 	}
-	result.accountID = accountID
+	result.applicationID = applicationID
 
 	repoName := items[2]
 	err = azvalidators.ValidateName("repo", repoName)

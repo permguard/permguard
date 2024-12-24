@@ -24,10 +24,10 @@ import (
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
-// CreateAccount creates a new account.
-func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmodels.Account, error) {
-	if account == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - account is nil")
+// CreateApplication creates a new application.
+func (s SQLiteCentralStorageAAP) CreateApplication(application *azmodels.Application) (*azmodels.Application, error) {
+	if application == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - application is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -37,30 +37,30 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbInAccount := &azirepos.Account{
-		AccountID: account.AccountID,
-		Name:      account.Name,
+	dbInApplication := &azirepos.Application{
+		ApplicationID: application.ApplicationID,
+		Name:          application.Name,
 	}
-	dbOutAccount, err := s.sqlRepo.UpsertAccount(tx, true, dbInAccount)
+	dbOutApplication, err := s.sqlRepo.UpsertApplication(tx, true, dbInApplication)
 	if s.config.GetEnabledDefaultCreation() {
 		if err == nil {
 			tenant := &azirepos.Tenant{
-				AccountID: dbOutAccount.AccountID,
-				Name:      TenantDefaultName,
+				ApplicationID: dbOutApplication.ApplicationID,
+				Name:          TenantDefaultName,
 			}
 			_, err = s.sqlRepo.UpsertTenant(tx, true, tenant)
 		}
 		if err == nil {
 			identitySource := &azirepos.IdentitySource{
-				AccountID: dbOutAccount.AccountID,
-				Name:      IdentitySourceDefaultName,
+				ApplicationID: dbOutApplication.ApplicationID,
+				Name:          IdentitySourceDefaultName,
 			}
 			_, err = s.sqlRepo.UpsertIdentitySource(tx, true, identitySource)
 		}
 		if err == nil {
 			repository := &azirepos.Repository{
-				AccountID: dbOutAccount.AccountID,
-				Name:      RepositoryDefaultName,
+				ApplicationID: dbOutApplication.ApplicationID,
+				Name:          RepositoryDefaultName,
 			}
 			_, err = s.sqlRepo.UpsertRepository(tx, true, repository)
 		}
@@ -72,13 +72,13 @@ func (s SQLiteCentralStorageAAP) CreateAccount(account *azmodels.Account) (*azmo
 	if err := tx.Commit(); err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
-	return mapAccountToAgentAccount(dbOutAccount)
+	return mapApplicationToAgentApplication(dbOutApplication)
 }
 
-// UpdateAccount updates an account.
-func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmodels.Account, error) {
-	if account == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - account is nil")
+// UpdateApplication updates an application.
+func (s SQLiteCentralStorageAAP) UpdateApplication(application *azmodels.Application) (*azmodels.Application, error) {
+	if application == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - application is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -88,11 +88,11 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbInAccount := &azirepos.Account{
-		AccountID: account.AccountID,
-		Name:      account.Name,
+	dbInApplication := &azirepos.Application{
+		ApplicationID: application.ApplicationID,
+		Name:          application.Name,
 	}
-	dbOutaccount, err := s.sqlRepo.UpsertAccount(tx, false, dbInAccount)
+	dbOutapplication, err := s.sqlRepo.UpsertApplication(tx, false, dbInApplication)
 	if err != nil {
 		tx.Rollback()
 		return nil, err
@@ -100,11 +100,11 @@ func (s SQLiteCentralStorageAAP) UpdateAccount(account *azmodels.Account) (*azmo
 	if err := tx.Commit(); err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
-	return mapAccountToAgentAccount(dbOutaccount)
+	return mapApplicationToAgentApplication(dbOutapplication)
 }
 
-// DeleteAccount deletes an account.
-func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Account, error) {
+// DeleteApplication deletes an application.
+func (s SQLiteCentralStorageAAP) DeleteApplication(applicationID int64) (*azmodels.Application, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
@@ -113,7 +113,7 @@ func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Accou
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbOutaccount, err := s.sqlRepo.DeleteAccount(tx, accountID)
+	dbOutapplication, err := s.sqlRepo.DeleteApplication(tx, applicationID)
 	if err != nil {
 		tx.Rollback()
 		return nil, err
@@ -121,11 +121,11 @@ func (s SQLiteCentralStorageAAP) DeleteAccount(accountID int64) (*azmodels.Accou
 	if err := tx.Commit(); err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
-	return mapAccountToAgentAccount(dbOutaccount)
+	return mapApplicationToAgentApplication(dbOutapplication)
 }
 
-// FetchAccounts returns all accounts.
-func (s SQLiteCentralStorageAAP) FetchAccounts(page int32, pageSize int32, fields map[string]any) ([]azmodels.Account, error) {
+// FetchApplications returns all applications.
+func (s SQLiteCentralStorageAAP) FetchApplications(page int32, pageSize int32, fields map[string]any) ([]azmodels.Application, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
@@ -134,32 +134,32 @@ func (s SQLiteCentralStorageAAP) FetchAccounts(page int32, pageSize int32, field
 		return nil, err
 	}
 	var filterID *int64
-	if _, ok := fields[azmodels.FieldAccountAccountID]; ok {
-		accountID, ok := fields[azmodels.FieldAccountAccountID].(int64)
+	if _, ok := fields[azmodels.FieldApplicationApplicationID]; ok {
+		applicationID, ok := fields[azmodels.FieldApplicationApplicationID].(int64)
 		if !ok {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account id is not valid (account id: %d)", accountID))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - application id is not valid (application id: %d)", applicationID))
 		}
-		filterID = &accountID
+		filterID = &applicationID
 	}
 	var filterName *string
-	if _, ok := fields[azmodels.FieldAccountName]; ok {
-		accountName, ok := fields[azmodels.FieldAccountName].(string)
+	if _, ok := fields[azmodels.FieldApplicationName]; ok {
+		applicationName, ok := fields[azmodels.FieldApplicationName].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - account name is not valid (account name: %s)", accountName))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - application name is not valid (application name: %s)", applicationName))
 		}
-		filterName = &accountName
+		filterName = &applicationName
 	}
-	dbAccounts, err := s.sqlRepo.FetchAccounts(db, page, pageSize, filterID, filterName)
+	dbApplications, err := s.sqlRepo.FetchApplications(db, page, pageSize, filterID, filterName)
 	if err != nil {
 		return nil, err
 	}
-	accounts := make([]azmodels.Account, len(dbAccounts))
-	for i, a := range dbAccounts {
-		account, err := mapAccountToAgentAccount(&a)
+	applications := make([]azmodels.Application, len(dbApplications))
+	for i, a := range dbApplications {
+		application, err := mapApplicationToAgentApplication(&a)
 		if err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert account entity (%s)", azirepos.LogAccountEntry(&a)))
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert application entity (%s)", azirepos.LogApplicationEntry(&a)))
 		}
-		accounts[i] = *account
+		applications[i] = *application
 	}
-	return accounts, nil
+	return applications, nil
 }

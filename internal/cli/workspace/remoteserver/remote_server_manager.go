@@ -60,13 +60,13 @@ func (m *RemoteServerManager) GetServerRemoteRepo(remoteInfo *azicliwkscommon.Re
 	if err != nil {
 		return nil, err
 	}
-	accountID := repoInfo.GetAccountID()
+	applicationID := repoInfo.GetApplicationID()
 	repo := repoInfo.GetRepo()
-	srvAccounts, err := aapClient.FetchAccountsByID(1, 1, accountID)
-	if err != nil || srvAccounts == nil || len(srvAccounts) == 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: account %d does not exist", accountID))
+	srvApplications, err := aapClient.FetchApplicationsByID(1, 1, applicationID)
+	if err != nil || srvApplications == nil || len(srvApplications) == 0 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: application %d does not exist", applicationID))
 	}
-	srvRepo, err := papClient.FetchRepositoriesByName(1, 1, accountID, repo)
+	srvRepo, err := papClient.FetchRepositoriesByName(1, 1, applicationID, repo)
 	if err != nil || srvRepo == nil || len(srvRepo) == 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: repository %s does not exist", repo))
 	}
@@ -94,7 +94,7 @@ type NOTPClient interface {
 }
 
 // NOTPPush push objects using the NOTP protocol.
-func (m *RemoteServerManager) NOTPPush(server string, papPort int, accountID int64, repositoryID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
+func (m *RemoteServerManager) NOTPPush(server string, papPort int, applicationID int64, repositoryID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
 	pppServer := fmt.Sprintf("%s:%d", server, papPort)
 	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
 	if err != nil {
@@ -141,11 +141,11 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, accountID int
 			return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid state %d", handlerCtx.GetCurrentStateID()))
 		}
 	}
-	return papClient.NOTPStream(hostHandler, accountID, repositoryID, bag, notpstatemachines.PushFlowType)
+	return papClient.NOTPStream(hostHandler, applicationID, repositoryID, bag, notpstatemachines.PushFlowType)
 }
 
 // NOTPPull pull objects using the NOTP protocol.
-func (m *RemoteServerManager) NOTPPull(server string, papPort int, accountID int64, repositoryID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
+func (m *RemoteServerManager) NOTPPull(server string, papPort int, applicationID int64, repositoryID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
 	pppServer := fmt.Sprintf("%s:%d", server, papPort)
 	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
 	if err != nil {
@@ -192,5 +192,5 @@ func (m *RemoteServerManager) NOTPPull(server string, papPort int, accountID int
 			return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid state %d", handlerCtx.GetCurrentStateID()))
 		}
 	}
-	return papClient.NOTPStream(hostHandler, accountID, repositoryID, bag, notpstatemachines.PullFlowType)
+	return papClient.NOTPStream(hostHandler, applicationID, repositoryID, bag, notpstatemachines.PullFlowType)
 }

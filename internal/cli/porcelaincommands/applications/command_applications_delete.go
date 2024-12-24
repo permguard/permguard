@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package accounts
+package applications
 
 import (
 	"fmt"
@@ -30,12 +30,12 @@ import (
 )
 
 const (
-	// commandNameForAccountsCreate is the command name for accounts create.
-	commandNameForAccountsDelete = "accounts.delete"
+	// commandNameForApplicationsCreate is the command name for applications create.
+	commandNameForApplicationsDelete = "applications.delete"
 )
 
-// runECommandForDeleteAccount runs the command for creating an account.
-func runECommandForDeleteAccount(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+// runECommandForDeleteApplication runs the command for creating an application.
+func runECommandForDeleteApplication(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -47,11 +47,11 @@ func runECommandForDeleteAccount(deps azcli.CliDependenciesProvider, cmd *cobra.
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	accountID := v.GetInt64(azoptions.FlagName(commandNameForAccountsDelete, aziclicommon.FlagCommonAccountID))
-	account, err := client.DeleteAccount(accountID)
+	applicationID := v.GetInt64(azoptions.FlagName(commandNameForApplicationsDelete, aziclicommon.FlagCommonApplicationID))
+	application, err := client.DeleteApplication(applicationID)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to delete the account.")
+			printer.Println("Failed to delete the application.")
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}
@@ -60,31 +60,31 @@ func runECommandForDeleteAccount(deps azcli.CliDependenciesProvider, cmd *cobra.
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
-		accountID := fmt.Sprintf("%d", account.AccountID)
-		output[accountID] = account.Name
+		applicationID := fmt.Sprintf("%d", application.ApplicationID)
+		output[applicationID] = application.Name
 	} else if ctx.IsJSONOutput() {
-		output["accounts"] = []*azmodels.Account{account}
+		output["applications"] = []*azmodels.Application{application}
 	}
 	printer.PrintlnMap(output)
 	return nil
 }
 
-// createCommandForAccountDelete creates a command for managing accountdelete.
-func createCommandForAccountDelete(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+// createCommandForApplicationDelete creates a command for managing applicationdelete.
+func createCommandForApplicationDelete(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
-		Short: "Delete a remote account",
-		Long: aziclicommon.BuildCliLongTemplate(`This command deletes a remote account.
+		Short: "Delete a remote application",
+		Long: aziclicommon.BuildCliLongTemplate(`This command deletes a remote application.
 
 Examples:
-  # delete an account and output the result in json format
-  permguard accounts delete --account 268786704340 --output json
+  # delete an application and output the result in json format
+  permguard applications delete --application 268786704340 --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForDeleteAccount(deps, cmd, v)
+			return runECommandForDeleteApplication(deps, cmd, v)
 		},
 	}
-	command.Flags().Int64(aziclicommon.FlagCommonAccountID, 0, "specify the unique account id")
-	v.BindPFlag(azoptions.FlagName(commandNameForAccountsDelete, aziclicommon.FlagCommonAccountID), command.Flags().Lookup(aziclicommon.FlagCommonAccountID))
+	command.Flags().Int64(aziclicommon.FlagCommonApplicationID, 0, "specify the unique application id")
+	v.BindPFlag(azoptions.FlagName(commandNameForApplicationsDelete, aziclicommon.FlagCommonApplicationID), command.Flags().Lookup(aziclicommon.FlagCommonApplicationID))
 	return command
 }

@@ -25,13 +25,13 @@ seo:
   <img alt="Permguard Policies" src="/images/diagrams/d6.png"/>
 </div>
 
-## Account Administration Point (AAP)
+## Application Administration Point (AAP)
 
-The `Account Administration Point (AAP)` serves as the central repository for managing account information and configurations. Furthermore, it provides an administration API.
+The `Application Administration Point (AAP)` serves as the central repository for managing application information and configurations. Furthermore, it provides an administration API.
 
 ## Policy Administration Point (PAP)
 
-The `Policy Administration Point (PAP)`  serves as the central repository for managing the account policies. Furthermore, it provides an administration API.
+The `Policy Administration Point (PAP)`  serves as the central repository for managing the application policies. Furthermore, it provides an administration API.
 
 ## Policy Decision Point (PDP)
 

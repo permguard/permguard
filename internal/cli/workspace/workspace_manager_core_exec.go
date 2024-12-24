@@ -186,7 +186,7 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out aziclicommon.Prin
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "remote", "Failed to delete remote: it is associated with the current HEAD.", nil, true)
 		}
-		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, fmt.Sprintf("cli: cannot remove the remote used by the currently checked out account %s", remote)))
+		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, fmt.Sprintf("cli: cannot remove the remote used by the currently checked out application %s", remote)))
 	}
 	output, err = m.cfgMgr.ExecRemoveRemote(remote, nil, out)
 	return output, err

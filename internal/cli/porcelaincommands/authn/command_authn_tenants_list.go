@@ -48,10 +48,10 @@ func runECommandForListTenants(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 	}
 	page := v.GetInt32(azoptions.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonPage))
 	pageSize := v.GetInt32(azoptions.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonPageSize))
-	accountID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonAccountID))
+	applicationID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonApplicationID))
 	tenantID := v.GetString(azoptions.FlagName(commandNameForTenantsList, flagTenantID))
 	name := v.GetString(azoptions.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonName))
-	tenants, err := client.FetchTenantsBy(page, pageSize, accountID, tenantID, name)
+	tenants, err := client.FetchTenantsBy(page, pageSize, applicationID, tenantID, name)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
 			printer.Println("Failed to list tenants.")
@@ -84,11 +84,11 @@ func createCommandForTenantList(deps azcli.CliDependenciesProvider, v *viper.Vip
 
 Examples:
   # list all tenants amd output in json format
-  permguard authn tenants list --account 268786704340
+  permguard authn tenants list --application 268786704340
   # lista all tenants and filter by name
-  permguard authn tenants list --account 268786704340 --name matera
+  permguard authn tenants list --application 268786704340 --name matera
   # list all tenants and filter by tenant id
-  permguard authn tenants list --account 268786704340 --tenantid 2e190ee712494838bb54d67e2a0c496a
+  permguard authn tenants list --application 268786704340 --tenantid 2e190ee712494838bb54d67e2a0c496a
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListTenants(deps, cmd, v)

@@ -49,70 +49,70 @@ func ConvertStringWithRepoIDToRefInfo(ref string) (*RefInfo, error) {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid source type")
 	}
 	remote := refObs[2]
-	accountID, err := strconv.ParseInt(refObs[3], 10, 64)
+	applicationID, err := strconv.ParseInt(refObs[3], 10, 64)
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: failed to parse account ID")
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: failed to parse application ID")
 	}
 	repo := refObs[4]
 	return &RefInfo{
-		sourceType: sourceType,
-		remote:     remote,
-		accountID:  accountID,
-		repoID:     repo,
+		sourceType:    sourceType,
+		remote:        remote,
+		applicationID: applicationID,
+		repoID:        repo,
 	}, nil
 }
 
 // generateRef generates the ref.
-func generateRef(isHead bool, remote string, accountID int64, repo string) string {
+func generateRef(isHead bool, remote string, applicationID int64, repo string) string {
 	var sourceType string
 	if isHead {
 		sourceType = headPrefix
 	} else {
 		sourceType = remotePrefix
 	}
-	return strings.Join([]string{refsPrefix, sourceType, remote, strconv.FormatInt(accountID, 10), repo}, refSeparator)
+	return strings.Join([]string{refsPrefix, sourceType, remote, strconv.FormatInt(applicationID, 10), repo}, refSeparator)
 }
 
 // GenerateRemoteRef generates the remote ref.
-func GenerateRemoteRef(remote string, accountID int64, repo string) string {
-	return generateRef(false, remote, accountID, repo)
+func GenerateRemoteRef(remote string, applicationID int64, repo string) string {
+	return generateRef(false, remote, applicationID, repo)
 }
 
 // GenerateRemoteRef generates the remote ref.
-func GenerateHeadRef(accountID int64, repo string) string {
-	return generateRef(true, HeadKeyword, accountID, repo)
+func GenerateHeadRef(applicationID int64, repo string) string {
+	return generateRef(true, HeadKeyword, applicationID, repo)
 }
 
 // convertRefInfoToString converts the ref information to string.
 func ConvertRefInfoToString(refInfo *RefInfo) string {
-	return generateRef(refInfo.IsSourceHead(), refInfo.GetRemote(), refInfo.GetAccountID(), refInfo.GetRepo())
+	return generateRef(refInfo.IsSourceHead(), refInfo.GetRemote(), refInfo.GetApplicationID(), refInfo.GetRepo())
 }
 
 // RefInfo represents the ref information.
 type RefInfo struct {
-	sourceType string
-	remote     string
-	accountID  int64
-	repoName   string
-	repoID     string
+	sourceType    string
+	remote        string
+	applicationID int64
+	repoName      string
+	repoID        string
 }
 
 // NewRefInfo creates a new ref information.
-func NewRefInfoFromRepoName(remote string, accountID int64, repoName string) (*RefInfo, error) {
+func NewRefInfoFromRepoName(remote string, applicationID int64, repoName string) (*RefInfo, error) {
 	if len(remote) == 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid remote")
 	}
-	if accountID <= 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid account ID")
+	if applicationID <= 0 {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid application ID")
 	}
 	if len(repoName) == 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository name")
 	}
 	return &RefInfo{
-		sourceType: remotePrefix,
-		remote:     remote,
-		accountID:  accountID,
-		repoName:   repoName,
+		sourceType:    remotePrefix,
+		remote:        remote,
+		applicationID: applicationID,
+		repoName:      repoName,
 	}, nil
 }
 
@@ -126,11 +126,11 @@ func BuildRefInfoFromRepoID(refInfo *RefInfo, repoID string) (*RefInfo, error) {
 		return nil, err
 	}
 	return &RefInfo{
-		sourceType: refInfo.sourceType,
-		remote:     szRemote,
-		accountID:  refInfo.accountID,
-		repoName:   refInfo.repoName,
-		repoID:     repoID,
+		sourceType:    refInfo.sourceType,
+		remote:        szRemote,
+		applicationID: refInfo.applicationID,
+		repoName:      refInfo.repoName,
+		repoID:        repoID,
 	}, nil
 }
 
@@ -149,9 +149,9 @@ func (i *RefInfo) GetRemote() string {
 	return i.remote
 }
 
-// GetAccountID returns the account ID.
-func (i *RefInfo) GetAccountID() int64 {
-	return i.accountID
+// GetApplicationID returns the application ID.
+func (i *RefInfo) GetApplicationID() int64 {
+	return i.applicationID
 }
 
 // GetRepoName returns the repo name.
@@ -174,12 +174,12 @@ func (i *RefInfo) GetRepo() string {
 
 // GetRef returns the ref.
 func (i *RefInfo) GetRef() string {
-	return generateRef(i.IsSourceHead(), i.GetRemote(), i.GetAccountID(), i.GetRepo())
+	return generateRef(i.IsSourceHead(), i.GetRemote(), i.GetApplicationID(), i.GetRepo())
 }
 
 // GetRepoFilePath returns the repo file path.
 func (i *RefInfo) GetRepoFilePath(includeFileName bool) string {
-	path := filepath.Join(refsPrefix, i.sourceType, i.remote, strconv.FormatInt(i.accountID, 10))
+	path := filepath.Join(refsPrefix, i.sourceType, i.remote, strconv.FormatInt(i.applicationID, 10))
 	if includeFileName {
 		path = filepath.Join(path, i.GetRepo())
 	}
@@ -188,7 +188,7 @@ func (i *RefInfo) GetRepoFilePath(includeFileName bool) string {
 
 // GetRepoURI returns the repo uri.
 func (i *RefInfo) GetRepoURI() string {
-	repoURI, err := GetRepoURI(i.remote, i.accountID, i.GetRepo())
+	repoURI, err := GetRepoURI(i.remote, i.applicationID, i.GetRepo())
 	if err != nil {
 		return ""
 	}

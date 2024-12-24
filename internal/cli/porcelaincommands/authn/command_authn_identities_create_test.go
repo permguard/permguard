@@ -108,11 +108,11 @@ func TestCliIdentitiesCreateWithSuccess(t *testing.T) {
 
 		aapClient := azmocks.NewGrpcAAPClientMock()
 		identity := &azmodels.Identity{
-			IdentityID: "c3160a533ab24fbcb1eab7a09fd85f36",
-			AccountID:  581616507495,
-			Name:       "nicola.gallo",
-			CreatedAt:  time.Now(),
-			UpdatedAt:  time.Now(),
+			IdentityID:    "c3160a533ab24fbcb1eab7a09fd85f36",
+			ApplicationID: 581616507495,
+			Name:          "nicola.gallo",
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
 		}
 		aapClient.On("CreateIdentity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(identity, nil)
 

@@ -89,11 +89,11 @@ func TestCreateTenantWithSuccess(t *testing.T) {
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
 	dbOutTenant := &azirepos.Tenant{
-		AccountID: 232956849236,
-		TenantID:  azirepos.GenerateUUID(),
-		Name:      "rent-a-car1",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ApplicationID: 232956849236,
+		TenantID:      azirepos.GenerateUUID(),
+		Name:          "rent-a-car1",
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
@@ -171,11 +171,11 @@ func TestUpdateTenantWithSuccess(t *testing.T) {
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
 	dbOutTenant := &azirepos.Tenant{
-		AccountID: 232956849236,
-		TenantID:  azirepos.GenerateUUID(),
-		Name:      "rent-a-car1",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ApplicationID: 232956849236,
+		TenantID:      azirepos.GenerateUUID(),
+		Name:          "rent-a-car1",
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
@@ -228,7 +228,7 @@ func TestDeleteTenantWithErrors(t *testing.T) {
 		}
 
 		inTenantID := azirepos.GenerateUUID()
-		outTenants, err := storage.DeleteTenant(azirepos.GenerateAccountID(), inTenantID)
+		outTenants, err := storage.DeleteTenant(azirepos.GenerateApplicationID(), inTenantID)
 		assert.Nil(outTenants, "tenants should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
@@ -246,11 +246,11 @@ func TestDeleteTenantWithSuccess(t *testing.T) {
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
 	dbOutTenant := &azirepos.Tenant{
-		AccountID: 232956849236,
-		TenantID:  azirepos.GenerateUUID(),
-		Name:      "rent-a-car1",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ApplicationID: 232956849236,
+		TenantID:      azirepos.GenerateUUID(),
+		Name:          "rent-a-car1",
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
@@ -259,7 +259,7 @@ func TestDeleteTenantWithSuccess(t *testing.T) {
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
 	inTenantID := azirepos.GenerateUUID()
-	outTenants, err := storage.DeleteTenant(azirepos.GenerateAccountID(), inTenantID)
+	outTenants, err := storage.DeleteTenant(azirepos.GenerateApplicationID(), inTenantID)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outTenants, "tenants should not be nil")
 	assert.Equal(dbOutTenant.TenantID, outTenants.TenantID, "tenant id should be equal")
@@ -330,18 +330,18 @@ func TestFetchTenantWithSuccess(t *testing.T) {
 
 	dbOutTenants := []azirepos.Tenant{
 		{
-			AccountID: 232956849236,
-			TenantID:  azirepos.GenerateUUID(),
-			Name:      "rent-a-car1",
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			ApplicationID: 232956849236,
+			TenantID:      azirepos.GenerateUUID(),
+			Name:          "rent-a-car1",
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
 		},
 		{
-			AccountID: 232956849236,
-			TenantID:  azirepos.GenerateUUID(),
-			Name:      "rent-a-car2",
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			ApplicationID: 232956849236,
+			TenantID:      azirepos.GenerateUUID(),
+			Name:          "rent-a-car2",
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
 		},
 	}
 

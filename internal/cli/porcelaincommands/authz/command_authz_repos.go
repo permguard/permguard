@@ -49,14 +49,14 @@ func runECommandForUpsertRepository(deps azcli.CliDependenciesProvider, cmd *cob
 		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	accountID := v.GetInt64(azoptions.FlagName(commandNameForRepository, aziclicommon.FlagCommonAccountID))
+	applicationID := v.GetInt64(azoptions.FlagName(commandNameForRepository, aziclicommon.FlagCommonApplicationID))
 	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
 	repository := &azmodels.Repository{
-		AccountID: accountID,
-		Name:      name,
+		ApplicationID: applicationID,
+		Name:          name,
 	}
 	if isCreate {
-		repository, err = client.CreateRepository(accountID, name)
+		repository, err = client.CreateRepository(applicationID, name)
 	} else {
 		repositoryID := v.GetString(azoptions.FlagName(flagPrefix, flagRepositoryID))
 		repository.RepositoryID = repositoryID
@@ -101,8 +101,8 @@ func createCommandForRepositories(deps azcli.CliDependenciesProvider, v *viper.V
 		RunE:  runECommandForRepositories,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonAccountID, 0, "account id filter")
-	v.BindPFlag(azoptions.FlagName(commandNameForRepository, aziclicommon.FlagCommonAccountID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonAccountID))
+	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id filter")
+	v.BindPFlag(azoptions.FlagName(commandNameForRepository, aziclicommon.FlagCommonApplicationID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonApplicationID))
 
 	command.AddCommand(createCommandForRepositoryCreate(deps, v))
 	command.AddCommand(createCommandForRepositoryUpdate(deps, v))

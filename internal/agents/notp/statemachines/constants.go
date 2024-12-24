@@ -17,8 +17,8 @@
 package statemachines
 
 const (
-	// AccountIDKey is the account ID key.
-	AccountIDKey = "accountid"
+	// ApplicationIDKey is the application ID key.
+	ApplicationIDKey = "applicationid"
 	// RepositoryIDKey is the repository ID key.
 	RepositoryIDKey = "repositoryid"
 )

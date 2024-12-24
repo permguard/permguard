@@ -44,7 +44,7 @@ func createCommandForRepositoryCreate(deps azcli.CliDependenciesProvider, v *vip
 
 Examples:
   # create a repository and output the result in json format
-  permguard authz repos create --account 268786704340 --name magicfarmacia --output json
+  permguard authz repos create --application 268786704340 --name magicfarmacia --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCreateRepository(deps, cmd, v)

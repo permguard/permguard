@@ -27,42 +27,42 @@ import (
 )
 
 type SqliteRepo interface {
-	// UpsertAccount creates or updates an account.
-	UpsertAccount(tx *sql.Tx, isCreate bool, account *azirepos.Account) (*azirepos.Account, error)
-	// DeleteAccount deletes an account.
-	DeleteAccount(tx *sql.Tx, accountID int64) (*azirepos.Account, error)
-	// FetchAccount fetches an account.
-	FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]azirepos.Account, error)
+	// UpsertApplication creates or updates an application.
+	UpsertApplication(tx *sql.Tx, isCreate bool, application *azirepos.Application) (*azirepos.Application, error)
+	// DeleteApplication deletes an application.
+	DeleteApplication(tx *sql.Tx, applicationID int64) (*azirepos.Application, error)
+	// FetchApplication fetches an application.
+	FetchApplications(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]azirepos.Application, error)
 
 	// UpsertIdentitySource creates or updates an identity source.
 	UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *azirepos.IdentitySource) (*azirepos.IdentitySource, error)
 	// DeleteIdentitySource deletes an identity source.
-	DeleteIdentitySource(tx *sql.Tx, accountID int64, identitySourceID string) (*azirepos.IdentitySource, error)
+	DeleteIdentitySource(tx *sql.Tx, applicationID int64, identitySourceID string) (*azirepos.IdentitySource, error)
 	// FetchIdentitySources fetches identity sources.
-	FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.IdentitySource, error)
+	FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]azirepos.IdentitySource, error)
 
 	// UpsertIdentity creates or updates an identity.
 	UpsertIdentity(tx *sql.Tx, isCreate bool, identity *azirepos.Identity) (*azirepos.Identity, error)
 	// DeleteIdentity deletes an identity.
-	DeleteIdentity(tx *sql.Tx, accountID int64, identityID string) (*azirepos.Identity, error)
+	DeleteIdentity(tx *sql.Tx, applicationID int64, identityID string) (*azirepos.Identity, error)
 	// FetchIdentities fetches identities.
-	FetchIdentities(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.Identity, error)
+	FetchIdentities(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]azirepos.Identity, error)
 
 	// UpsertTenant creates or updates an tenant.
 	UpsertTenant(tx *sql.Tx, isCreate bool, tenant *azirepos.Tenant) (*azirepos.Tenant, error)
 	// DeleteTenant deletes an tenant.
-	DeleteTenant(tx *sql.Tx, accountID int64, tenantID string) (*azirepos.Tenant, error)
+	DeleteTenant(tx *sql.Tx, applicationID int64, tenantID string) (*azirepos.Tenant, error)
 	// FetchTenant fetches an tenant.
-	FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.Tenant, error)
+	FetchTenants(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]azirepos.Tenant, error)
 
 	// UpsertRepository creates or updates a repository.
 	UpsertRepository(tx *sql.Tx, isCreate bool, repository *azirepos.Repository) (*azirepos.Repository, error)
 	// DeleteRepository deletes a repository.
-	DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string) (*azirepos.Repository, error)
+	DeleteRepository(tx *sql.Tx, applicationID int64, repositoryID string) (*azirepos.Repository, error)
 	// FetchRepositories fetches repositories.
-	FetchRepositories(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.Repository, error)
+	FetchRepositories(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]azirepos.Repository, error)
 	// UpdateRepositoryRef updates the repository ref.
-	UpdateRepositoryRef(tx *sql.Tx, accountID int64, repositoryID, currentRef, newRef string) error
+	UpdateRepositoryRef(tx *sql.Tx, applicationID int64, repositoryID, currentRef, newRef string) error
 
 	// UpsertKeyValue creates or updates a key value.
 	UpsertKeyValue(tx *sql.Tx, keyValue *azirepos.KeyValue) (*azirepos.KeyValue, error)

@@ -29,21 +29,21 @@ func TestValidateCodeID(t *testing.T) {
 	assert := assert.New(t)
 
 	testCases := []struct {
-		entity    string
-		accountID int
-		hasError  bool
+		entity        string
+		applicationID int
+		hasError      bool
 	}{
-		{"account", -15000, true},
-		{"account", -1, true},
-		{"account", 0, true},
-		{"account", 1, true},
-		{"account", 99999999999, true},
-		{"account", 100000000000, false},
-		{"account", 999999999999, false},
-		{"account", 9999999999990, true},
+		{"application", -15000, true},
+		{"application", -1, true},
+		{"application", 0, true},
+		{"application", 1, true},
+		{"application", 99999999999, true},
+		{"application", 100000000000, false},
+		{"application", 999999999999, false},
+		{"application", 9999999999990, true},
 	}
 	for _, tc := range testCases {
-		result := ValidateCodeID(tc.entity, int64(tc.accountID))
+		result := ValidateCodeID(tc.entity, int64(tc.applicationID))
 		if tc.hasError {
 			assert.NotNil(result, "error should not be nil")
 			assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, result), "error should be ErrClientID")
@@ -62,14 +62,14 @@ func TestValidateUUID(t *testing.T) {
 		UUID     string
 		hasError bool
 	}{
-		{"account", "", true},
-		{"account", " ", true},
-		{"account", "-15000", true},
-		{"account", "15000", true},
-		{"account", "5e6c75ca-caeb-4f85-8007-Zdcf6bb1beff", true},
-		{"account", "d3967c8f54dc4a28bf3ca1dZca94fa95", true},
-		{"account", "f12bf1c12da44a9a97043650824b0a0b", false},
-		{"account", "ddd0e6a0-956b-4967-84a0-15c5e54b0b50", false},
+		{"application", "", true},
+		{"application", " ", true},
+		{"application", "-15000", true},
+		{"application", "15000", true},
+		{"application", "5e6c75ca-caeb-4f85-8007-Zdcf6bb1beff", true},
+		{"application", "d3967c8f54dc4a28bf3ca1dZca94fa95", true},
+		{"application", "f12bf1c12da44a9a97043650824b0a0b", false},
+		{"application", "ddd0e6a0-956b-4967-84a0-15c5e54b0b50", false},
 		{"", "ddd0e6a0-956b-4967-84a0-15c5e54b0b50", false},
 	}
 	for _, tc := range testCases {
@@ -92,17 +92,17 @@ func TestValidateName(t *testing.T) {
 		name     string
 		hasError bool
 	}{
-		{"account", "", true},
-		{"account", " s s d  ", true},
-		{"account", "132465", true},
-		{"account", "13a2aa465", true},
-		{"account", "nome-@nonvalido", true},
-		{"account", "nome/nonvalido", true},
-		{"account", "nome", false},
-		{"account", "nome-valido", false},
-		{"account", "nome-Non-Valido", true},
-		{"account", "permguard", true},
-		{"account", "permguardpippo", true},
+		{"application", "", true},
+		{"application", " s s d  ", true},
+		{"application", "132465", true},
+		{"application", "13a2aa465", true},
+		{"application", "nome-@nonvalido", true},
+		{"application", "nome/nonvalido", true},
+		{"application", "nome", false},
+		{"application", "nome-valido", false},
+		{"application", "nome-Non-Valido", true},
+		{"application", "permguard", true},
+		{"application", "permguardpippo", true},
 		{"", "nome-valido", false},
 	}
 	for _, tc := range testCases {

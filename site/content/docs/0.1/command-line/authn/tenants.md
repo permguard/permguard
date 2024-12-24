@@ -33,7 +33,7 @@ Available Commands:
   update      Update a tenant
 
 Flags:
-      --account int   account id filter
+      --application int   application id filter
   -h, --help          help for tenants
 
 Global Flags:
@@ -51,10 +51,10 @@ The output from your current version of Permguard may differ from the example pr
 
 ## Create a Tenant
 
-The `permguard authn tenants create` command allows to create a tenant for the mandatory input account and name.
+The `permguard authn tenants create` command allows to create a tenant for the mandatory input application and name.
 
 ```bash
-permguard authn tenants create --account 268786704340 --name matera-branch
+permguard authn tenants create --application 268786704340 --name matera-branch
 
 ```
 
@@ -70,7 +70,7 @@ output:
   </summary>
 
 ```bash
-permguard authn tenants create --account 268786704340 --name matera-branch --output json
+permguard authn tenants create --application 268786704340 --name matera-branch --output json
 ```
 
 output:
@@ -82,7 +82,7 @@ output:
       "tenant_id": "2e190ee712494838bb54d67e2a0c496a",
       "created_at": "2024-08-25T14:14:33.794Z",
       "updated_at": "2024-08-25T14:14:33.794Z",
-      "account_id": 268786704340,
+      "application_id": 268786704340,
       "name": "matera-branch"
     }
   ]
@@ -96,7 +96,7 @@ output:
 The `permguard authn tenants list` command allows for the retrieval of all tenants.
 
 ```bash
-permguard authn tenants list --account 268786704340
+permguard authn tenants list --application 268786704340
 
 ```
 
@@ -118,7 +118,7 @@ ec40fe0ce651404a8cc0e4ab1e386053: birmingham-branch
   </summary>
 
 ```bash
-permguard authn tenants list --account 268786704340 --output json
+permguard authn tenants list --application 268786704340 --output json
 ```
 
 output:
@@ -130,49 +130,49 @@ output:
       "tenant_id": "0f85cbd14e3f462882f0e09d9f64ff40",
       "created_at": "2024-08-25T14:16:43.778Z",
       "updated_at": "2024-08-25T14:16:43.778Z",
-      "account_id": 268786704340,
+      "application_id": 268786704340,
       "name": "london-branch"
     },
     {
       "tenant_id": "1fb7c545dce74cb18b2e4896d3e9a96e",
       "created_at": "2024-08-25T14:16:44.802Z",
       "updated_at": "2024-08-25T14:16:44.802Z",
-      "account_id": 268786704340,
+      "application_id": 268786704340,
       "name": "leeds-branch"
     },
     {
       "tenant_id": "2e190ee712494838bb54d67e2a0c496a",
       "created_at": "2024-08-25T14:14:33.794Z",
       "updated_at": "2024-08-25T14:14:33.794Z",
-      "account_id": 268786704340,
+      "application_id": 268786704340,
       "name": "matera-branch"
     },
     {
       "tenant_id": "51548dac972c4df183b312a3b665e8e2",
       "created_at": "2024-08-25T14:16:41.657Z",
       "updated_at": "2024-08-25T14:16:41.657Z",
-      "account_id": 268786704340,
+      "application_id": 268786704340,
       "name": "pisa-branch"
     },
     {
       "tenant_id": "59c3f233d0a0447fb2a977ad9605d12c",
       "created_at": "2024-08-25T14:16:42.753Z",
       "updated_at": "2024-08-25T14:16:42.753Z",
-      "account_id": 268786704340,
+      "application_id": 268786704340,
       "name": "bari-branch"
     },
     {
       "tenant_id": "aca65c4dea4d488ab5a52b63b0ba25ef",
       "created_at": "2024-08-25T14:16:40.585Z",
       "updated_at": "2024-08-25T14:16:40.585Z",
-      "account_id": 268786704340,
+      "application_id": 268786704340,
       "name": "milan-branch"
     },
     {
       "tenant_id": "ec40fe0ce651404a8cc0e4ab1e386053",
       "created_at": "2024-08-25T14:16:45.815Z",
       "updated_at": "2024-08-25T14:16:45.815Z",
-      "account_id": 268786704340,
+      "application_id": 268786704340,
       "name": "birmingham-branch"
     }
   ]

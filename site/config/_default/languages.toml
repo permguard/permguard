@@ -8,8 +8,8 @@
     footer = 'Brought to you by <a class="text-muted" href="https://www.nitroagility.com/" target="_blank">Nitro Agility S.r.l.</a>'
     alertText = '<a class="alert-link stretched-link fw-normal" href="/blog/example-post/">Doks version 1.0 just shipped!</a>'
     homeDescription = '<b>Permguard</b> is an Open Source Zero-Trust Auth* Provider for cloud-native, edge, and multi-tenant apps, <code>decoupled</code> from <code>application code</code>. It implements a centralized authorization layer using <code>Policy-as-Code</code>, enabling enforcement of permissions from anywhere, including <code>VMs</code>, <code>Containers</code>, and <code>Serverless.</code>'
-    homeAccountTitle = 'Accounts'
-    homeAccountBody = 'Create and configure an <code>Account</code>, optionally including its <code>Tenants</code>.'
+    homeApplicationTitle = 'Applications'
+    homeApplicationBody = 'Create and configure an <code>Application</code>, optionally including its <code>Tenants</code>.'
     homeIdentitiesTitle = "Identities"
     homeIdentitiesBody = "Create an identity source and populate it with <code>Users</code> and <code>Actors</code> using available SDKs."
     homeSchemaTitle = 'Repositories'

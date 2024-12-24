@@ -42,8 +42,8 @@ func (s SQLiteCentralStorageAAP) CreateTenant(tenant *azmodels.Tenant) (*azmodel
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	dbInTenant := &azirepos.Tenant{
-		AccountID: tenant.AccountID,
-		Name:      tenant.Name,
+		ApplicationID: tenant.ApplicationID,
+		Name:          tenant.Name,
 	}
 	dbOutTenant, err := s.sqlRepo.UpsertTenant(tx, true, dbInTenant)
 	if err != nil {
@@ -70,9 +70,9 @@ func (s SQLiteCentralStorageAAP) UpdateTenant(tenant *azmodels.Tenant) (*azmodel
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	dbInTenant := &azirepos.Tenant{
-		TenantID:  tenant.TenantID,
-		AccountID: tenant.AccountID,
-		Name:      tenant.Name,
+		TenantID:      tenant.TenantID,
+		ApplicationID: tenant.ApplicationID,
+		Name:          tenant.Name,
 	}
 	dbOutTenant, err := s.sqlRepo.UpsertTenant(tx, false, dbInTenant)
 	if err != nil {
@@ -86,7 +86,7 @@ func (s SQLiteCentralStorageAAP) UpdateTenant(tenant *azmodels.Tenant) (*azmodel
 }
 
 // DeleteTenant deletes a tenant.
-func (s SQLiteCentralStorageAAP) DeleteTenant(accountID int64, tenantID string) (*azmodels.Tenant, error) {
+func (s SQLiteCentralStorageAAP) DeleteTenant(applicationID int64, tenantID string) (*azmodels.Tenant, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
@@ -95,7 +95,7 @@ func (s SQLiteCentralStorageAAP) DeleteTenant(accountID int64, tenantID string) 
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbOutTenant, err := s.sqlRepo.DeleteTenant(tx, accountID, tenantID)
+	dbOutTenant, err := s.sqlRepo.DeleteTenant(tx, applicationID, tenantID)
 	if err != nil {
 		tx.Rollback()
 		return nil, err
@@ -107,7 +107,7 @@ func (s SQLiteCentralStorageAAP) DeleteTenant(accountID int64, tenantID string) 
 }
 
 // FetchTenants returns all tenants.
-func (s SQLiteCentralStorageAAP) FetchTenants(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Tenant, error) {
+func (s SQLiteCentralStorageAAP) FetchTenants(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Tenant, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
@@ -131,7 +131,7 @@ func (s SQLiteCentralStorageAAP) FetchTenants(page int32, pageSize int32, accoun
 		}
 		filterName = &tenantName
 	}
-	dbTenants, err := s.sqlRepo.FetchTenants(db, page, pageSize, accountID, filterID, filterName)
+	dbTenants, err := s.sqlRepo.FetchTenants(db, page, pageSize, applicationID, filterID, filterName)
 	if err != nil {
 		return nil, err
 	}

@@ -35,9 +35,9 @@ func (h *currentHeadContext) GetRemote() string {
 	return h.headRefInfo.GetRemote()
 }
 
-// GetAccountID returns the account id.
-func (h *currentHeadContext) GetAccountID() int64 {
-	return h.headRefInfo.GetAccountID()
+// GetApplicationID returns the application id.
+func (h *currentHeadContext) GetApplicationID() int64 {
+	return h.headRefInfo.GetApplicationID()
 }
 
 // GetRepoID returns the repo id.

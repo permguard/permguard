@@ -42,8 +42,8 @@ func (s SQLiteCentralStorageAAP) CreateIdentitySource(identitySource *azmodels.I
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	dbInIdentitySource := &azirepos.IdentitySource{
-		AccountID: identitySource.AccountID,
-		Name:      identitySource.Name,
+		ApplicationID: identitySource.ApplicationID,
+		Name:          identitySource.Name,
 	}
 	dbOutIdentitySource, err := s.sqlRepo.UpsertIdentitySource(tx, true, dbInIdentitySource)
 	if err != nil {
@@ -71,7 +71,7 @@ func (s SQLiteCentralStorageAAP) UpdateIdentitySource(identitySource *azmodels.I
 	}
 	dbInIdentitySource := &azirepos.IdentitySource{
 		IdentitySourceID: identitySource.IdentitySourceID,
-		AccountID:        identitySource.AccountID,
+		ApplicationID:    identitySource.ApplicationID,
 		Name:             identitySource.Name,
 	}
 	dbOutIdentitySource, err := s.sqlRepo.UpsertIdentitySource(tx, false, dbInIdentitySource)
@@ -86,7 +86,7 @@ func (s SQLiteCentralStorageAAP) UpdateIdentitySource(identitySource *azmodels.I
 }
 
 // DeleteIdentitySource deletes an identity source.
-func (s SQLiteCentralStorageAAP) DeleteIdentitySource(accountID int64, identitySourceID string) (*azmodels.IdentitySource, error) {
+func (s SQLiteCentralStorageAAP) DeleteIdentitySource(applicationID int64, identitySourceID string) (*azmodels.IdentitySource, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
@@ -95,7 +95,7 @@ func (s SQLiteCentralStorageAAP) DeleteIdentitySource(accountID int64, identityS
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbOutIdentitySource, err := s.sqlRepo.DeleteIdentitySource(tx, accountID, identitySourceID)
+	dbOutIdentitySource, err := s.sqlRepo.DeleteIdentitySource(tx, applicationID, identitySourceID)
 	if err != nil {
 		tx.Rollback()
 		return nil, err
@@ -107,7 +107,7 @@ func (s SQLiteCentralStorageAAP) DeleteIdentitySource(accountID int64, identityS
 }
 
 // FetchIdentitySources returns all identity sources.
-func (s SQLiteCentralStorageAAP) FetchIdentitySources(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error) {
+func (s SQLiteCentralStorageAAP) FetchIdentitySources(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.IdentitySource, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
@@ -131,7 +131,7 @@ func (s SQLiteCentralStorageAAP) FetchIdentitySources(page int32, pageSize int32
 		}
 		filterName = &identitySourceName
 	}
-	dbIdentitySources, err := s.sqlRepo.FetchIdentitySources(db, page, pageSize, accountID, filterID, filterName)
+	dbIdentitySources, err := s.sqlRepo.FetchIdentitySources(db, page, pageSize, applicationID, filterID, filterName)
 	if err != nil {
 		return nil, err
 	}

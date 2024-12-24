@@ -51,17 +51,17 @@ func runECommandForUpsertIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	accountID := v.GetInt64(azoptions.FlagName(commandNameForIdentity, aziclicommon.FlagCommonAccountID))
+	applicationID := v.GetInt64(azoptions.FlagName(commandNameForIdentity, aziclicommon.FlagCommonApplicationID))
 	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
 	kind := v.GetString(azoptions.FlagName(flagPrefix, flagIdentityKind))
 	identity := &azmodels.Identity{
-		AccountID: accountID,
-		Kind:      kind,
-		Name:      name,
+		ApplicationID: applicationID,
+		Kind:          kind,
+		Name:          name,
 	}
 	if isCreate {
 		identitySourceID := v.GetString(azoptions.FlagName(flagPrefix, flagIdentitySourceID))
-		identity, err = client.CreateIdentity(accountID, identitySourceID, kind, name)
+		identity, err = client.CreateIdentity(applicationID, identitySourceID, kind, name)
 	} else {
 		identityID := v.GetString(azoptions.FlagName(flagPrefix, flagIdentityID))
 		identity.IdentityID = identityID
@@ -106,8 +106,8 @@ func createCommandForIdentities(deps azcli.CliDependenciesProvider, v *viper.Vip
 		RunE:  runECommandForIdentities,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonAccountID, 0, "account id filter")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentity, aziclicommon.FlagCommonAccountID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonAccountID))
+	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id filter")
+	v.BindPFlag(azoptions.FlagName(commandNameForIdentity, aziclicommon.FlagCommonApplicationID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonApplicationID))
 
 	command.AddCommand(createCommandForIdentityCreate(deps, v))
 	command.AddCommand(createCommandForIdentityUpdate(deps, v))

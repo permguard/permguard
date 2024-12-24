@@ -22,39 +22,39 @@ import (
 
 // AAPCentralStorage is the interface for the AAP central storage.
 type AAPCentralStorage interface {
-	// CreateAccount creates a new account.
-	CreateAccount(account *azmodels.Account) (*azmodels.Account, error)
-	// UpdateAccount updates an account.
-	UpdateAccount(account *azmodels.Account) (*azmodels.Account, error)
-	// DeleteAccount deletes an account.
-	DeleteAccount(accountID int64) (*azmodels.Account, error)
-	// FetchAccounts returns all accounts filtering by search criteria.
-	FetchAccounts(page int32, pageSize int32, fields map[string]any) ([]azmodels.Account, error)
+	// CreateApplication creates a new application.
+	CreateApplication(application *azmodels.Application) (*azmodels.Application, error)
+	// UpdateApplication updates an application.
+	UpdateApplication(application *azmodels.Application) (*azmodels.Application, error)
+	// DeleteApplication deletes an application.
+	DeleteApplication(applicationID int64) (*azmodels.Application, error)
+	// FetchApplications returns all applications filtering by search criteria.
+	FetchApplications(page int32, pageSize int32, fields map[string]any) ([]azmodels.Application, error)
 
 	// CreateIdentitySource creates a new identity source.
 	CreateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error)
 	// UpdateIdentitySource updates an identity source.
 	UpdateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error)
 	// DeleteIdentitySource deletes an identity source.
-	DeleteIdentitySource(accountID int64, identitySourceID string) (*azmodels.IdentitySource, error)
+	DeleteIdentitySource(applicationID int64, identitySourceID string) (*azmodels.IdentitySource, error)
 	// FetchIdentitySources gets all identity sources.
-	FetchIdentitySources(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error)
+	FetchIdentitySources(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.IdentitySource, error)
 
 	// CreateIdentity creates a new identity.
 	CreateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error)
 	// UpdateIdentity updates an identity.
 	UpdateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error)
 	// DeleteIdentity deletes an identity.
-	DeleteIdentity(accountID int64, identityID string) (*azmodels.Identity, error)
+	DeleteIdentity(applicationID int64, identityID string) (*azmodels.Identity, error)
 	// FetchIdentities gets all identities.
-	FetchIdentities(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Identity, error)
+	FetchIdentities(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Identity, error)
 
 	// CreateTenant creates a new tenant.
 	CreateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error)
 	// UpdateTenant updates a tenant.
 	UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error)
 	// DeleteTenant deletes a tenant.
-	DeleteTenant(accountID int64, tenantID string) (*azmodels.Tenant, error)
+	DeleteTenant(applicationID int64, tenantID string) (*azmodels.Tenant, error)
 	// FetchTenants gets all tenants.
-	FetchTenants(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Tenant, error)
+	FetchTenants(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Tenant, error)
 }

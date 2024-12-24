@@ -48,9 +48,9 @@ type PAPService interface {
 	// UpdateRepository updates an repository.
 	UpdateRepository(repository *azmodels.Repository) (*azmodels.Repository, error)
 	// DeleteRepository deletes an repository.
-	DeleteRepository(accountID int64, repositoryID string) (*azmodels.Repository, error)
+	DeleteRepository(applicationID int64, repositoryID string) (*azmodels.Repository, error)
 	// FetchRepositories gets all repositories.
-	FetchRepositories(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Repository, error)
+	FetchRepositories(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Repository, error)
 	// OnPullHandleRequestCurrentState handles the request for the current state.
 	OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPullSendNotifyCurrentStateResponse notifies the current state.
@@ -94,7 +94,7 @@ type V1PAPServer struct {
 
 // CreateRepository creates a new repository.
 func (s *V1PAPServer) CreateRepository(ctx context.Context, repositoryRequest *RepositoryCreateRequest) (*RepositoryResponse, error) {
-	repository, err := s.service.CreateRepository(&azmodels.Repository{AccountID: repositoryRequest.AccountID, Name: repositoryRequest.Name})
+	repository, err := s.service.CreateRepository(&azmodels.Repository{ApplicationID: repositoryRequest.ApplicationID, Name: repositoryRequest.Name})
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (s *V1PAPServer) CreateRepository(ctx context.Context, repositoryRequest *R
 
 // UpdateRepository updates a repository.
 func (s *V1PAPServer) UpdateRepository(ctx context.Context, repositoryRequest *RepositoryUpdateRequest) (*RepositoryResponse, error) {
-	repository, err := s.service.UpdateRepository((&azmodels.Repository{RepositoryID: repositoryRequest.RepositoryID, AccountID: repositoryRequest.AccountID, Name: repositoryRequest.Name}))
+	repository, err := s.service.UpdateRepository((&azmodels.Repository{RepositoryID: repositoryRequest.RepositoryID, ApplicationID: repositoryRequest.ApplicationID, Name: repositoryRequest.Name}))
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func (s *V1PAPServer) UpdateRepository(ctx context.Context, repositoryRequest *R
 
 // DeleteRepository deletes a repository.
 func (s *V1PAPServer) DeleteRepository(ctx context.Context, repositoryRequest *RepositoryDeleteRequest) (*RepositoryResponse, error) {
-	repository, err := s.service.DeleteRepository(repositoryRequest.AccountID, repositoryRequest.RepositoryID)
+	repository, err := s.service.DeleteRepository(repositoryRequest.ApplicationID, repositoryRequest.RepositoryID)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +122,7 @@ func (s *V1PAPServer) DeleteRepository(ctx context.Context, repositoryRequest *R
 // FetchRepositories returns all repositories.
 func (s *V1PAPServer) FetchRepositories(repositoryRequest *RepositoryFetchRequest, stream grpc.ServerStreamingServer[RepositoryResponse]) error {
 	fields := map[string]any{}
-	fields[azmodels.FieldRepositoryAccountID] = repositoryRequest.AccountID
+	fields[azmodels.FieldRepositoryApplicationID] = repositoryRequest.ApplicationID
 	if repositoryRequest.Name != nil {
 		fields[azmodels.FieldRepositoryName] = *repositoryRequest.Name
 	}
@@ -137,7 +137,7 @@ func (s *V1PAPServer) FetchRepositories(repositoryRequest *RepositoryFetchReques
 	if repositoryRequest.PageSize != nil {
 		pageSize = int32(*repositoryRequest.PageSize)
 	}
-	repositories, err := s.service.FetchRepositories(page, pageSize, repositoryRequest.AccountID, fields)
+	repositories, err := s.service.FetchRepositories(page, pageSize, repositoryRequest.ApplicationID, fields)
 	if err != nil {
 		return err
 	}
@@ -270,9 +270,9 @@ func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, Pa
 		return azerrors.WrapSystemError(azerrors.ErrServerGeneric, "server: notp stream missing metadata")
 
 	}
-	accountID, ok := md[azagentnotpsm.AccountIDKey]
-	if !ok || len(accountID) == 0 {
-		return azerrors.WrapSystemError(azerrors.ErrServerGeneric, "server: notp stream missing account id")
+	applicationID, ok := md[azagentnotpsm.ApplicationIDKey]
+	if !ok || len(applicationID) == 0 {
+		return azerrors.WrapSystemError(azerrors.ErrServerGeneric, "server: notp stream missing application id")
 	}
 	respositoryID, ok := md[azagentnotpsm.RepositoryIDKey]
 	if !ok || len(respositoryID) == 0 {
@@ -284,7 +284,7 @@ func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, Pa
 		return err
 	}
 	bag := map[string]any{}
-	bag[azagentnotpsm.AccountIDKey] = accountID[0]
+	bag[azagentnotpsm.ApplicationIDKey] = applicationID[0]
 	bag[azagentnotpsm.RepositoryIDKey] = respositoryID[0]
 	_, err = stateMachine.Run(bag, notpstatemachines.UnknownFlowType)
 	if err != nil {

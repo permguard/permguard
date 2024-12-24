@@ -47,9 +47,9 @@ func runECommandForDeleteIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	accountID := v.GetInt64(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonAccountID))
+	applicationID := v.GetInt64(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonApplicationID))
 	identitySourceID := v.GetString(azoptions.FlagName(commandNameForIdentitySourcesDelete, flagIdentitySourceID))
-	identitySource, err := client.DeleteIdentitySource(accountID, identitySourceID)
+	identitySource, err := client.DeleteIdentitySource(applicationID, identitySourceID)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
 			printer.Println("Failed to delete the identity source.")
@@ -80,7 +80,7 @@ func createCommandForIdentitySourceDelete(deps azcli.CliDependenciesProvider, v 
 
 Examples:
   # delete an identity source and output the result in json format
-  permguard authn identitysources delete --account 268786704340 --identitysourceid 1da1d9094501425085859c60429163c2 --output json
+  permguard authn identitysources delete --application 268786704340 --identitysourceid 1da1d9094501425085859c60429163c2 --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteIdentitySource(deps, cmd, v)
