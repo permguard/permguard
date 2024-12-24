@@ -80,14 +80,8 @@ permguard pull --output json
 
 output:
 
-```bash
-{
-  "pull": [
-    {
-      "ref": "head/273165098782/9b3de5272b0447f2a8d1024937bdef11"
-    }
-  ]
-}
+```json
+{}
 ```
 
 </details>

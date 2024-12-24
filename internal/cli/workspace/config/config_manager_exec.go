@@ -72,10 +72,11 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{
-			"remote": remote,
-			"server": cfgRemote.Server,
-			"aap":    cfgRemote.AAPPort,
-			"pap":    cfgRemote.PAPPort,
+			"remote":     remote,
+			"aap_server": cfgRemote.Server,
+			"aap_port":   cfgRemote.AAPPort,
+			"pap_server": cfgRemote.Server,
+			"pap_port":   cfgRemote.PAPPort,
 		}
 		remotes = append(remotes, remoteObj)
 		output = out(output, "remotes", remotes, nil, true)
@@ -110,10 +111,11 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{
-			"remote": remote,
-			"server": cfgRemote.Server,
-			"aap":    cfgRemote.AAPPort,
-			"pap":    cfgRemote.PAPPort,
+			"remote":     remote,
+			"aap_server": cfgRemote.Server,
+			"aap_port":   cfgRemote.AAPPort,
+			"pap_server": cfgRemote.Server,
+			"pap_port":   cfgRemote.PAPPort,
 		}
 		remotes = append(remotes, remoteObj)
 		output = out(output, "remotes", remotes, nil, true)
@@ -151,9 +153,10 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out aziclicommon.
 		for cfgRemote := range cfg.Remotes {
 			remoteObj := map[string]any{
 				"remote": cfgRemote,
-				"server": cfg.Remotes[cfgRemote].Server,
-				"aap":    cfg.Remotes[cfgRemote].AAPPort,
-				"pap":    cfg.Remotes[cfgRemote].PAPPort,
+				"aap_server": cfg.Remotes[cfgRemote].Server,
+				"aap_port":    cfg.Remotes[cfgRemote].AAPPort,
+				"pap_server": cfg.Remotes[cfgRemote].Server,
+				"pap_port":    cfg.Remotes[cfgRemote].PAPPort,
 			}
 			remotes = append(remotes, remoteObj)
 		}
@@ -204,7 +207,10 @@ func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, repo, repoID string, a
 	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{
-			"repo": repo,
+			"ref":     cfgRepo.Ref,
+			"repo_uri": repoURI,
+			"repo_id": cfgRepo.RepoID,
+			"is_head": cfgRepo.IsHead,
 		}
 		remotes = append(remotes, remoteObj)
 		output = out(output, "repos", remotes, nil, true)
@@ -246,7 +252,8 @@ func (m *ConfigManager) ExecListRepos(output map[string]any, out aziclicommon.Pr
 			isHead := cfg.Repositories[cfgRepo].IsHead
 			repoObj := map[string]any{
 				"ref":     cfg.Repositories[cfgRepo].Ref,
-				"repo":    cfgRepo,
+				"repo_uri":    cfgRepo,
+				"repo_id": cfg.Repositories[cfgRepo].RepoID,
 				"is_head": isHead,
 			}
 			repos = append(repos, repoObj)

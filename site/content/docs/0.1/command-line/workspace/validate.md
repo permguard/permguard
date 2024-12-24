@@ -66,8 +66,8 @@ output:
 ```bash
 Your workspace has on error in the following file:
 
-  - 'codegen-96452-2dee167e..yml'
-    1: permcode: invalid name 'pharmacy-branch-mana@gement'
+	- 'platform/platform-policies.cedar'
+		1: parser error: parse error at <input>:15:5 "n": exact got whe want ;
 
 Please fix the errors to proceed.
 Failed to validate the current workspace.
@@ -84,15 +84,15 @@ permguard validate --output json
 
 output:
 
-```bash
+```json
 {
   "error_code": "08102",
   "error_message": "cli: operation on file failed",
   "validation_errors": {
-    "codegen-96452-2dee167e..yml": {
+    "platform/platform-policies.cedar": {
       "1": {
-        "path": "codegen-96452-2dee167e..yml",
-        "section": "permcode: invalid name 'pharmacy-branch-mana@gement'"
+        "path": "platform/platform-policies.cedar",
+        "section": "parser error: parse error at <input>:15:5 \"n\": exact got whe want ;"
       }
     }
   }

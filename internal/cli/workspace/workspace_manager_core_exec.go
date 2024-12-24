@@ -18,6 +18,7 @@ package workspace
 
 import (
 	"fmt"
+	"path/filepath"
 
 	azvalidators "github.com/permguard/permguard-core/pkg/extensions/validators"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
@@ -98,9 +99,16 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out aziclicommon.P
 	}
 	out(nil, "", msg, nil, true)
 	output = map[string]any{}
+	absPath := m.getHomeDir()
+	if !filepath.IsAbs(absPath) {
+		absPath, _ = filepath.Abs(absPath)
+	}
 	if m.ctx.IsJSONOutput() {
 		remoteObj := map[string]any{
-			"cwd": m.getHomeDir(),
+			"root": absPath,
+			"policy_engine": map[string]any{
+				"language": language,
+			},
 		}
 		output = out(nil, "workspace", remoteObj, nil, true)
 	}

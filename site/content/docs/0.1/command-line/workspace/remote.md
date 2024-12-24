@@ -81,17 +81,18 @@ permguard remote add origin localhost --output json
 
 output:
 
-```bash
+```json
 {
   "remotes": [
     {
-      "aap": 9091,
-      "pap": 9092,
-      "remote": "origin4",
-      "server": "localhost"
+      "aap_port": 9091,
+      "aap_server": "localhost",
+      "pap_port": 9092,
+      "pap_server": "localhost",
+      "remote": "origin"
     }
   ]
-}}
+}
 ```
 
 </details>
@@ -122,14 +123,15 @@ permguard remote --output json
 
 output:
 
-```bash
+```json
 {
   "remotes": [
     {
-      "aap": 9091,
-      "pap": 9092,
-      "remote": "origin",
-      "server": "localhost"
+      "aap_port": 9091,
+      "aap_server": "localhost",
+      "pap_port": 9092,
+      "pap_server": "localhost",
+      "remote": "origin"
     }
   ]
 }

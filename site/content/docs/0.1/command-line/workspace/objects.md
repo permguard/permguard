@@ -78,20 +78,17 @@ output:
 ```bash
 Your workspace objects:
 
-  - 0a0b9ef638c0ea0e93cf92d6a257dbb4226e42c3eefaba86090870ab2505440a blob
-  - 16ff0a36c04c4bd186f821033e3f2c91d192728b13e78d63d3f38f17fec422f2 blob
-  - 233ff1755c54987bd640f6b11748698e30d64b115a8c9ac1d74da9499c6fd94d tree
-  - 28fb0c9ff09dbd908c58314daebb246a1634733f424234a4ef5f25c9f7e22780 tree
-  - 515e419b374c50ca44f0dd49cc83b7e52def3cc54ee6b6fb3a02d45007b13562 blob
-  - 5d0e9cc5af16ae7e1cd2895bb411fe96b90a825538e64fc14ff889df05b62d59 blob
-  - 92dabde1bf3cae4472e72cfac8986c474bd3cbdb7468b36ab70f6b5cad9cb030 commit
-  - 941322d193e08109f9f8c1c7073698d5b6aa1c9a00b40e927f3c23a14ed6e614 commit
-  - 95b32cd25a53e657667c38975c53e2d4a9ad7e8d6f130078cb1ec616b25e506d blob
-  - c123402fcbf4520921df03b884325a2228c31abb5924e1b9f240ab866bf2ca11 blob
-  - c1d036a1afedb800b1dd0b89d1d4c3a4b070358765754f2ebc547ed0dcf0dc1b commit
-  - c7ed1a6a5be1b03460d47dfa6cee369384dbfc80644841da2ab9a74575ba12ff tree
-  - eb28e2d5bae9092855b0497c0a39b564b27922d20c6f8f58dd44b4654d93a584 blob
-  - ee1d3e9c9fb25ada345d8942c9f8ebe84de0139bfd53d61df0a4ce597b2dccc8 blob
+  - 007867724d1aa801216d92d8d08ed2269a55e495575aceb1f46cded8594159ee blob schema
+  - 06e28881c876e9b08c3afb6430b18e85bb2491bf567a40607bd8a57befe82e99 commit
+  - 2597a54653b09188bf613a24e6a64100a1b14612ffed3bd8558dfc24dd63a34f blob assign-role-branch
+  - 77a0af3b0189a2bc6e650aa6b0e6ea079b3e96a42290622b608267ca9d57249e commit
+  - 8a169320102ba429b4f7c0a5a9cde6e9bf2ace6335af3b57b11970718c05aa80 blob view-branch-inventory-auditor
+  - b68cc9766a0fa2568ffe9dfd90e8704bfdadd8ef03207a105d515a4c25d3f4e4 blob assign-role-branch
+  - c4107182d88b021fcc36245535e3fdf6a7610374acdcb5b588395912389de5b5 tree
+  - c813fc8680f0bfc2dc721b383152e163b1afbe5566ef73e1cf6c79862f5e1367 commit
+  - d8a1946ee2c6d16e6b30a16e761d766c46f7ad77a90db2d2522394905184198a tree
+
+total 9, commit 3, tree 2, blob 4
 ```
 
 <details>
@@ -105,64 +102,57 @@ permguard objects --all --output json
 
 output:
 
-```bash
+```json
 {
   "objects": [
     {
-      "size": 1321,
-      "type": "blob"
+      "oid": "007867724d1aa801216d92d8d08ed2269a55e495575aceb1f46cded8594159ee",
+      "oname": "schema",
+      "osize": 2364,
+      "otype": "blob"
     },
     {
-      "size": 164,
-      "type": "blob"
+      "oid": "06e28881c876e9b08c3afb6430b18e85bb2491bf567a40607bd8a57befe82e99",
+      "osize": 248,
+      "otype": "commit"
     },
     {
-      "size": 739,
-      "type": "tree"
+      "oid": "2597a54653b09188bf613a24e6a64100a1b14612ffed3bd8558dfc24dd63a34f",
+      "oname": "assign-role-branch",
+      "osize": 777,
+      "otype": "blob"
     },
     {
-      "size": 739,
-      "type": "tree"
+      "oid": "77a0af3b0189a2bc6e650aa6b0e6ea079b3e96a42290622b608267ca9d57249e",
+      "osize": 248,
+      "otype": "commit"
     },
     {
-      "size": 200,
-      "type": "blob"
+      "oid": "8a169320102ba429b4f7c0a5a9cde6e9bf2ace6335af3b57b11970718c05aa80",
+      "oname": "view-branch-inventory-auditor",
+      "osize": 372,
+      "otype": "blob"
     },
     {
-      "size": 157,
-      "type": "blob"
+      "oid": "b68cc9766a0fa2568ffe9dfd90e8704bfdadd8ef03207a105d515a4c25d3f4e4",
+      "oname": "assign-role-branch",
+      "osize": 778,
+      "otype": "blob"
     },
     {
-      "size": 248,
-      "type": "commit"
+      "oid": "c4107182d88b021fcc36245535e3fdf6a7610374acdcb5b588395912389de5b5",
+      "osize": 411,
+      "otype": "tree"
     },
     {
-      "size": 248,
-      "type": "commit"
+      "oid": "c813fc8680f0bfc2dc721b383152e163b1afbe5566ef73e1cf6c79862f5e1367",
+      "osize": 248,
+      "otype": "commit"
     },
     {
-      "size": 202,
-      "type": "blob"
-    },
-    {
-      "size": 178,
-      "type": "blob"
-    },
-    {
-      "size": 248,
-      "type": "commit"
-    },
-    {
-      "size": 233,
-      "type": "tree"
-    },
-    {
-      "size": 149,
-      "type": "blob"
-    },
-    {
-      "size": 182,
-      "type": "blob"
+      "oid": "d8a1946ee2c6d16e6b30a16e761d766c46f7ad77a90db2d2522394905184198a",
+      "osize": 411,
+      "otype": "tree"
     }
   ]
 }
