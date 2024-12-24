@@ -50,8 +50,8 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 		color.Red("Invalid arguments")
 		return aziclicommon.ErrCommandSilent
 	}
-	repo := strings.TrimPrefix(repoURI, "permguard@")
-	elements := strings.Split(repo, "/")
+	ledger := strings.TrimPrefix(repoURI, "permguard@")
+	elements := strings.Split(ledger, "/")
 	if len(elements) < 3 {
 		color.Red("Invalid arguments")
 		return aziclicommon.ErrCommandSilent

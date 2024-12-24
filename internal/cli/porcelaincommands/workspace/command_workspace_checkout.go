@@ -55,8 +55,8 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	repo := args[0]
-	output, err := wksMgr.ExecCheckoutRepo(repo, outFunc(ctx, printer))
+	ledger := args[0]
+	output, err := wksMgr.ExecCheckoutRepo(ledger, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)

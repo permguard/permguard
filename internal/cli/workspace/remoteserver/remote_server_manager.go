@@ -61,17 +61,17 @@ func (m *RemoteServerManager) GetServerRemoteRepo(remoteInfo *azicliwkscommon.Re
 		return nil, err
 	}
 	applicationID := repoInfo.GetApplicationID()
-	repo := repoInfo.GetRepo()
+	ledger := repoInfo.GetRepo()
 	srvApplications, err := aapClient.FetchApplicationsByID(1, 1, applicationID)
 	if err != nil || srvApplications == nil || len(srvApplications) == 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: application %d does not exist", applicationID))
 	}
-	srvRepo, err := papClient.FetchLedgersByName(1, 1, applicationID, repo)
+	srvRepo, err := papClient.FetchLedgersByName(1, 1, applicationID, ledger)
 	if err != nil || srvRepo == nil || len(srvRepo) == 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: ledger %s does not exist", repo))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: ledger %s does not exist", ledger))
 	}
-	if srvRepo[0].Name != repo {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: ledger %s not found", repo))
+	if srvRepo[0].Name != ledger {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: ledger %s not found", ledger))
 	}
 	return &srvRepo[0], nil
 }

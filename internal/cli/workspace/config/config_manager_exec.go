@@ -165,8 +165,8 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out aziclicommon.
 	return output, nil
 }
 
-// ExecAddRepo adds a repo.
-func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, repo, repoID string, application int64, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+// ExecAddRepo adds a ledger.
+func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, ledger, repoID string, application int64, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -177,22 +177,22 @@ func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, repo, repoID string, a
 	var cfgRepo ledgerConfig
 	exists := false
 	for ledger := range cfg.Ledgers {
-		if ledger == repo && cfg.Ledgers[repoURI].Remote == remote {
+		if ledger == ledger && cfg.Ledgers[repoURI].Remote == remote {
 			cfgRepo = cfg.Ledgers[repoURI]
 			exists = true
 			break
 		}
 	}
 	if !exists {
-		for key, repo := range cfg.Ledgers {
-			repo.IsHead = false
-			cfg.Ledgers[key] = repo
+		for key, ledger := range cfg.Ledgers {
+			ledger.IsHead = false
+			cfg.Ledgers[key] = ledger
 		}
 		cfgRepo = ledgerConfig{
 			Ref:           ref,
 			Remote:        remote,
 			ApplicationID: application,
-			RepoName:      repo,
+			RepoName:      ledger,
 			RepoID:        repoID,
 			IsHead:        true,
 		}
@@ -200,9 +200,9 @@ func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, repo, repoID string, a
 		m.saveConfig(true, cfg)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "repo", fmt.Sprintf("Ref successfully set to %s.", aziclicommon.KeywordText(cfgRepo.Ref)), nil, true)
+		out(nil, "ledger", fmt.Sprintf("Ref successfully set to %s.", aziclicommon.KeywordText(cfgRepo.Ref)), nil, true)
 	}
-	out(nil, "", fmt.Sprintf("Repo %s has been added.", aziclicommon.KeywordText(repo)), nil, true)
+	out(nil, "", fmt.Sprintf("Ledger %s has been added.", aziclicommon.KeywordText(ledger)), nil, true)
 	output = map[string]any{}
 	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
@@ -213,12 +213,12 @@ func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, repo, repoID string, a
 			"is_head":  cfgRepo.IsHead,
 		}
 		remotes = append(remotes, remoteObj)
-		output = out(output, "repos", remotes, nil, true)
+		output = out(output, "ledgers", remotes, nil, true)
 	}
 	return output, nil
 }
 
-// ExecListRepos lists the repos.
+// ExecListRepos lists the ledgers.
 func (m *ConfigManager) ExecListRepos(output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
@@ -228,26 +228,26 @@ func (m *ConfigManager) ExecListRepos(output map[string]any, out aziclicommon.Pr
 		return output, err
 	}
 	if m.ctx.IsTerminalOutput() {
-		repos := []string{}
+		ledgers := []string{}
 		for cfgRepo := range cfg.Ledgers {
 			cfgRepoTxt := cfgRepo
 			isHead := cfg.Ledgers[cfgRepo].IsHead
 			if isHead {
 				cfgRepoTxt = fmt.Sprintf("*%s", cfgRepo)
 			}
-			repos = append(repos, cfgRepoTxt)
+			ledgers = append(ledgers, cfgRepoTxt)
 		}
-		if len(repos) == 0 {
+		if len(ledgers) == 0 {
 			out(nil, "", "Your workspace doesn't have any ledger configured.", nil, true)
 		} else {
 			out(nil, "", "Your workspace configured ledgers:\n", nil, true)
-			for _, repo := range repos {
-				out(nil, "", fmt.Sprintf("	- %s", aziclicommon.KeywordText(repo)), nil, true)
+			for _, ledger := range ledgers {
+				out(nil, "", fmt.Sprintf("	- %s", aziclicommon.KeywordText(ledger)), nil, true)
 			}
 			out(nil, "", "\n", nil, false)
 		}
 	} else if m.ctx.IsJSONOutput() {
-		repos := []any{}
+		ledgers := []any{}
 		for cfgRepo := range cfg.Ledgers {
 			isHead := cfg.Ledgers[cfgRepo].IsHead
 			repoObj := map[string]any{
@@ -256,9 +256,9 @@ func (m *ConfigManager) ExecListRepos(output map[string]any, out aziclicommon.Pr
 				"repo_id":  cfg.Ledgers[cfgRepo].RepoID,
 				"is_head":  isHead,
 			}
-			repos = append(repos, repoObj)
+			ledgers = append(ledgers, repoObj)
 		}
-		output = out(output, "repos", repos, nil, true)
+		output = out(output, "ledgers", ledgers, nil, true)
 	}
 	return output, nil
 }

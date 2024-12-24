@@ -101,12 +101,12 @@ func (s SQLiteCentralStoragePAP) readRepoFromHandlerContext(handlerCtx *notpstat
 	fields := map[string]any{
 		azmodels.FieldLedgerLedgerID: repoID,
 	}
-	repos, err := s.FetchLedgers(1, 1, applicationID, fields)
+	ledgers, err := s.FetchLedgers(1, 1, applicationID, fields)
 	if err != nil {
 		return nil, err
 	}
-	if len(repos) == 0 {
+	if len(ledgers) == 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: ledger not found.")
 	}
-	return &repos[0], nil
+	return &ledgers[0], nil
 }

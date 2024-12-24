@@ -35,7 +35,7 @@ const (
 	headPrefix = "heads"
 )
 
-// ConvertStringWithRepoIDToRefInfo converts the string with the repo ID to ref information.
+// ConvertStringWithRepoIDToRefInfo converts the string with the ledger ID to ref information.
 func ConvertStringWithRepoIDToRefInfo(ref string) (*RefInfo, error) {
 	refObs := strings.Split(ref, refSeparator)
 	if len(refObs) != 5 {
@@ -53,34 +53,34 @@ func ConvertStringWithRepoIDToRefInfo(ref string) (*RefInfo, error) {
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: failed to parse application ID")
 	}
-	repo := refObs[4]
+	ledger := refObs[4]
 	return &RefInfo{
 		sourceType:    sourceType,
 		remote:        remote,
 		applicationID: applicationID,
-		repoID:        repo,
+		repoID:        ledger,
 	}, nil
 }
 
 // generateRef generates the ref.
-func generateRef(isHead bool, remote string, applicationID int64, repo string) string {
+func generateRef(isHead bool, remote string, applicationID int64, ledger string) string {
 	var sourceType string
 	if isHead {
 		sourceType = headPrefix
 	} else {
 		sourceType = remotePrefix
 	}
-	return strings.Join([]string{refsPrefix, sourceType, remote, strconv.FormatInt(applicationID, 10), repo}, refSeparator)
+	return strings.Join([]string{refsPrefix, sourceType, remote, strconv.FormatInt(applicationID, 10), ledger}, refSeparator)
 }
 
 // GenerateRemoteRef generates the remote ref.
-func GenerateRemoteRef(remote string, applicationID int64, repo string) string {
-	return generateRef(false, remote, applicationID, repo)
+func GenerateRemoteRef(remote string, applicationID int64, ledger string) string {
+	return generateRef(false, remote, applicationID, ledger)
 }
 
 // GenerateRemoteRef generates the remote ref.
-func GenerateHeadRef(applicationID int64, repo string) string {
-	return generateRef(true, HeadKeyword, applicationID, repo)
+func GenerateHeadRef(applicationID int64, ledger string) string {
+	return generateRef(true, HeadKeyword, applicationID, ledger)
 }
 
 // convertRefInfoToString converts the ref information to string.
@@ -116,7 +116,7 @@ func NewRefInfoFromRepoName(remote string, applicationID int64, repoName string)
 	}, nil
 }
 
-// BuildRefInfoFromRepoID builds the ref information from the repo ID.
+// BuildRefInfoFromRepoID builds the ref information from the ledger ID.
 func BuildRefInfoFromRepoID(refInfo *RefInfo, repoID string) (*RefInfo, error) {
 	if refInfo == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid ref info")
@@ -154,17 +154,17 @@ func (i *RefInfo) GetApplicationID() int64 {
 	return i.applicationID
 }
 
-// GetRepoName returns the repo name.
+// GetRepoName returns the ledger name.
 func (i *RefInfo) GetRepoName() string {
 	return i.repoName
 }
 
-// GetRepoID returns the repo id.
+// GetRepoID returns the ledger id.
 func (i *RefInfo) GetRepoID() string {
 	return i.repoID
 }
 
-// GetRepo returns the repo.
+// GetRepo returns the ledger.
 func (i *RefInfo) GetRepo() string {
 	if len(i.repoID) > 0 {
 		return i.repoID
@@ -177,7 +177,7 @@ func (i *RefInfo) GetRef() string {
 	return generateRef(i.IsSourceHead(), i.GetRemote(), i.GetApplicationID(), i.GetRepo())
 }
 
-// GetRepoFilePath returns the repo file path.
+// GetRepoFilePath returns the ledger file path.
 func (i *RefInfo) GetRepoFilePath(includeFileName bool) string {
 	path := filepath.Join(refsPrefix, i.sourceType, i.remote, strconv.FormatInt(i.applicationID, 10))
 	if includeFileName {
@@ -186,7 +186,7 @@ func (i *RefInfo) GetRepoFilePath(includeFileName bool) string {
 	return path
 }
 
-// GetRepoURI returns the repo uri.
+// GetRepoURI returns the ledger uri.
 func (i *RefInfo) GetRepoURI() string {
 	repoURI, err := GetRepoURI(i.remote, i.applicationID, i.GetRepo())
 	if err != nil {

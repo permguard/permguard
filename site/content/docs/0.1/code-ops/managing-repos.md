@@ -1,6 +1,6 @@
 ---
-title: "Managing Repos"
-slug: "Managing Repos"
+title: "Managing Ledgers"
+slug: "Managing Ledgers"
 description: ""
 summary: ""
 date: 2023-08-01T00:56:12+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "managing-repos-877e4c04952b438fb838d3ceff1aedff"
+    identifier: "managing-ledgers-877e4c04952b438fb838d3ceff1aedff"
 weight: 3012
 toc: true
 seo:

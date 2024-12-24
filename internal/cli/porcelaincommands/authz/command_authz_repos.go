@@ -95,8 +95,8 @@ func runECommandForLedgers(cmd *cobra.Command, args []string) error {
 // createCommandForLedgers creates a command for managing ledgers.
 func createCommandForLedgers(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "repos",
-		Short: "Manage repos on the remote server",
+		Use:   "ledgers",
+		Short: "Manage ledgers on the remote server",
 		Long:  aziclicommon.BuildCliLongTemplate(`This command manages ledgers on the remote server.`),
 		RunE:  runECommandForLedgers,
 	}

@@ -1,5 +1,5 @@
 ---
-title: "Repo"
+title: "Ledger"
 description: ""
 summary: ""
 date: 2023-08-17T11:47:15+01:00
@@ -8,7 +8,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "repo-f801b840-8650-43e7-90e4-d9344e3f6e06"
+    identifier: "ledger-f801b840-8650-43e7-90e4-d9344e3f6e06"
 weight: 5304
 toc: true
 seo:
@@ -18,7 +18,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-Using the `repos` command, it is possible to manage locally checked out ledgers.
+Using the `ledgers` command, it is possible to manage locally checked out ledgers.
 
 ```text
   ____                                               _
@@ -35,10 +35,10 @@ This command manages ledger settings and operations.
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
 
 Usage:
-  permguard repos [flags]
+  permguard ledgers [flags]
 
 Flags:
-  -h, --help   help for repo
+  -h, --help   help for ledger
 
 Global Flags:
   -o, --output string    output format (default "terminal")
@@ -50,12 +50,12 @@ Global Flags:
 The output from your current version of Permguard may differ from the example provided on this page.
 {{< /callout >}}
 
-## Get All Repos
+## Get All Ledgers
 
-The `permguard repos` command allows for the retrieval of all locally checked out ledgers.
+The `permguard ledgers` command allows for the retrieval of all locally checked out ledgers.
 
 ```bash
-permguard repos
+permguard ledgers
 ```
 
 output:
@@ -73,14 +73,14 @@ Your workspace configured ledgers:
   </summary>
 
 ```bash
-permguard repos --output json
+permguard ledgers --output json
 ```
 
 output:
 
 ```json
 {
-  "repos": [
+  "ledgers": [
     {
       "is_head": true,
       "ref": "refs/remotes/origin/676095239339/fd1ac44e4afa4fc4beec622494d3175a",

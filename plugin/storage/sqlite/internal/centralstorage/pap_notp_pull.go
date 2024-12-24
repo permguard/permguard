@@ -40,11 +40,11 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 	if remoteRefSPacket.RefCommit == "" || remoteRefSPacket.RefPrevCommit == "" {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid remote ref state packet.")
 	}
-	repo, err := s.readRepoFromHandlerContext(handlerCtx)
+	ledger, err := s.readRepoFromHandlerContext(handlerCtx)
 	if err != nil {
 		return nil, err
 	}
-	headCommitID := repo.Ref
+	headCommitID := ledger.Ref
 	hasConflicts := false
 	isUpToDate := false
 	objMng, err := azlangobjs.NewObjectManager()

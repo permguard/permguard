@@ -93,7 +93,7 @@ func registerIdentityForFetchMocking() (string, []Identity, *sqlmock.Rows) {
 // TestRepoUpsertIdentityWithInvalidInput tests the upsert of an identity with invalid input.
 func TestRepoUpsertIdentityWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
-	repo := Facade{}
+	ledger := Facade{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -101,7 +101,7 @@ func TestRepoUpsertIdentityWithInvalidInput(t *testing.T) {
 	tx, _ := sqlDB.Begin()
 
 	{ // Test with nil identity
-		_, err := repo.UpsertIdentity(tx, true, nil)
+		_, err := ledger.UpsertIdentity(tx, true, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -111,7 +111,7 @@ func TestRepoUpsertIdentityWithInvalidInput(t *testing.T) {
 			IdentityID: GenerateUUID(),
 			Name:       "rent-a-car",
 		}
-		_, err := repo.UpsertIdentity(tx, false, dbInIdentity)
+		_, err := ledger.UpsertIdentity(tx, false, dbInIdentity)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -121,7 +121,7 @@ func TestRepoUpsertIdentityWithInvalidInput(t *testing.T) {
 			ApplicationID: 581616507495,
 			Name:          "rent-a-car",
 		}
-		_, err := repo.UpsertIdentity(tx, false, dbInIdentity)
+		_, err := ledger.UpsertIdentity(tx, false, dbInIdentity)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -143,7 +143,7 @@ func TestRepoUpsertIdentityWithInvalidInput(t *testing.T) {
 			dbInIdentity := &Identity{
 				Name: identityName,
 			}
-			dbOutIdentity, err := repo.UpsertIdentity(tx, true, dbInIdentity)
+			dbOutIdentity, err := ledger.UpsertIdentity(tx, true, dbInIdentity)
 			assert.NotNil(err, "error should be not nil")
 			assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 			assert.Nil(dbOutIdentity, "identity should be nil")
@@ -154,7 +154,7 @@ func TestRepoUpsertIdentityWithInvalidInput(t *testing.T) {
 // TestRepoUpsertIdentityWithSuccess tests the upsert of an identity with success.
 func TestRepoUpsertIdentityWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	repo := Facade{}
+	ledger := Facade{}
 
 	tests := []bool{
 		true,
@@ -197,7 +197,7 @@ func TestRepoUpsertIdentityWithSuccess(t *testing.T) {
 			WillReturnRows(sqlIdentityRows)
 
 		tx, _ := sqlDB.Begin()
-		dbOutIdentity, err := repo.UpsertIdentity(tx, isCreate, dbInIdentity)
+		dbOutIdentity, err := ledger.UpsertIdentity(tx, isCreate, dbInIdentity)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.NotNil(dbOutIdentity, "identity should be not nil")
@@ -213,7 +213,7 @@ func TestRepoUpsertIdentityWithSuccess(t *testing.T) {
 // TestRepoUpsertIdentityWithErrors tests the upsert of an identity with errors.
 func TestRepoUpsertIdentityWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	repo := Facade{}
+	ledger := Facade{}
 
 	tests := []bool{
 		true,
@@ -253,7 +253,7 @@ func TestRepoUpsertIdentityWithErrors(t *testing.T) {
 		}
 
 		tx, _ := sqlDB.Begin()
-		dbOutIdentity, err := repo.UpsertIdentity(tx, isCreate, dbInIdentity)
+		dbOutIdentity, err := ledger.UpsertIdentity(tx, isCreate, dbInIdentity)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutIdentity, "identity should be nil")
@@ -264,7 +264,7 @@ func TestRepoUpsertIdentityWithErrors(t *testing.T) {
 
 // TestRepoDeleteIdentityWithInvalidInput tests the delete of an identity with invalid input.
 func TestRepoDeleteIdentityWithInvalidInput(t *testing.T) {
-	repo := Facade{}
+	ledger := Facade{}
 
 	assert := assert.New(t)
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
@@ -273,13 +273,13 @@ func TestRepoDeleteIdentityWithInvalidInput(t *testing.T) {
 	tx, _ := sqlDB.Begin()
 
 	{ // Test with invalid application id
-		_, err := repo.DeleteIdentity(tx, 0, GenerateUUID())
+		_, err := ledger.DeleteIdentity(tx, 0, GenerateUUID())
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid identity id
-		_, err := repo.DeleteIdentity(tx, 581616507495, "")
+		_, err := ledger.DeleteIdentity(tx, 581616507495, "")
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -288,7 +288,7 @@ func TestRepoDeleteIdentityWithInvalidInput(t *testing.T) {
 // TestRepoDeleteIdentityWithSuccess tests the delete of an identity with success.
 func TestRepoDeleteIdentityWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	repo := Facade{}
+	ledger := Facade{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -306,7 +306,7 @@ func TestRepoDeleteIdentityWithSuccess(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	tx, _ := sqlDB.Begin()
-	dbOutIdentity, err := repo.DeleteIdentity(tx, identity.ApplicationID, identity.IdentityID)
+	dbOutIdentity, err := ledger.DeleteIdentity(tx, identity.ApplicationID, identity.IdentityID)
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutIdentity, "identity should be not nil")
@@ -321,7 +321,7 @@ func TestRepoDeleteIdentityWithSuccess(t *testing.T) {
 // TestRepoDeleteIdentityWithErrors tests the delete of an identity with errors.
 func TestRepoDeleteIdentityWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	repo := Facade{}
+	ledger := Facade{}
 
 	tests := []int{
 		1,
@@ -357,7 +357,7 @@ func TestRepoDeleteIdentityWithErrors(t *testing.T) {
 		}
 
 		tx, _ := sqlDB.Begin()
-		dbOutIdentity, err := repo.DeleteIdentity(tx, identity.ApplicationID, identity.IdentityID)
+		dbOutIdentity, err := ledger.DeleteIdentity(tx, identity.ApplicationID, identity.IdentityID)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutIdentity, "identity should be nil")
@@ -374,40 +374,40 @@ func TestRepoDeleteIdentityWithErrors(t *testing.T) {
 // TestRepoFetchIdentityWithInvalidInput tests the fetch of identities with invalid input.
 func TestRepoFetchIdentityWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
-	repo := Facade{}
+	ledger := Facade{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
 	{ // Test with invalid page
-		_, err := repo.FetchIdentities(sqlDB, 0, 100, 581616507495, nil, nil)
+		_, err := ledger.FetchIdentities(sqlDB, 0, 100, 581616507495, nil, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid page size
-		_, err := repo.FetchIdentities(sqlDB, 1, 0, 581616507495, nil, nil)
+		_, err := ledger.FetchIdentities(sqlDB, 1, 0, 581616507495, nil, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid application id
 		identityID := GenerateUUID()
-		_, err := repo.FetchIdentities(sqlDB, 1, 1, 0, &identityID, nil)
+		_, err := ledger.FetchIdentities(sqlDB, 1, 1, 0, &identityID, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
 	}
 
 	{ // Test with invalid identity id
 		identityID := ""
-		_, err := repo.FetchIdentities(sqlDB, 1, 1, 581616507495, &identityID, nil)
+		_, err := ledger.FetchIdentities(sqlDB, 1, 1, 581616507495, &identityID, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
 	}
 
 	{ // Test with invalid identity name
 		identityName := "@"
-		_, err := repo.FetchIdentities(sqlDB, 1, 1, 581616507495, nil, &identityName)
+		_, err := ledger.FetchIdentities(sqlDB, 1, 1, 581616507495, nil, &identityName)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientName, err), "error should be errclientname")
 	}
@@ -416,7 +416,7 @@ func TestRepoFetchIdentityWithInvalidInput(t *testing.T) {
 // TestRepoFetchIdentityWithSuccess tests the fetch of identities with success.
 func TestRepoFetchIdentityWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	repo := Facade{}
+	ledger := Facade{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -430,7 +430,7 @@ func TestRepoFetchIdentityWithSuccess(t *testing.T) {
 		WithArgs(sqlIdentities[0].ApplicationID, sqlIdentities[0].IdentityID, identityName, pageSize, page-1).
 		WillReturnRows(sqlIdentityRows)
 
-	dbOutIdentities, err := repo.FetchIdentities(sqlDB, page, pageSize, sqlIdentities[0].ApplicationID, &sqlIdentities[0].IdentityID, &sqlIdentities[0].Name)
+	dbOutIdentities, err := ledger.FetchIdentities(sqlDB, page, pageSize, sqlIdentities[0].ApplicationID, &sqlIdentities[0].IdentityID, &sqlIdentities[0].Name)
 
 	orderedSQLIdentities := make([]Identity, len(sqlIdentities))
 	copy(orderedSQLIdentities, sqlIdentities)

@@ -68,7 +68,7 @@ output:
 ```bash
 Initialized empty permguard ledger in 'magicfarmacia'.
 Remote origin has been added.
-Repo magicfarmacia has been added.
+Ledger magicfarmacia has been added.
 ```
 
 <details>
@@ -84,7 +84,7 @@ output:
 
 ```json
 {
-  "repos": [
+  "ledgers": [
     {
       "is_head": true,
       "ref": "refs/remotes/origin/676095239339/fd1ac44e4afa4fc4beec622494d3175a",

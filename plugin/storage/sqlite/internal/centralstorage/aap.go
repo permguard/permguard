@@ -33,12 +33,12 @@ type SQLiteCentralStorageAAP struct {
 }
 
 // newSQLiteAAPCentralStorage creates a new SQLiteAAPCentralStorage.
-func newSQLiteAAPCentralStorage(storageContext *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, repo SqliteRepo, sqlExec SqliteExecutor) (*SQLiteCentralStorageAAP, error) {
+func newSQLiteAAPCentralStorage(storageContext *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, ledger SqliteRepo, sqlExec SqliteExecutor) (*SQLiteCentralStorageAAP, error) {
 	if storageContext == nil || sqliteConnector == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: storageContext is nil")
 	}
-	if repo == nil {
-		repo = &azirepos.Facade{}
+	if ledger == nil {
+		ledger = &azirepos.Facade{}
 	}
 	if sqlExec == nil {
 		sqlExec = &SqliteExec{}
@@ -50,7 +50,7 @@ func newSQLiteAAPCentralStorage(storageContext *azstorage.StorageContext, sqlite
 	return &SQLiteCentralStorageAAP{
 		ctx:             storageContext,
 		sqliteConnector: sqliteConnector,
-		sqlRepo:         repo,
+		sqlRepo:         ledger,
 		sqlExec:         sqlExec,
 		config:          config,
 	}, nil

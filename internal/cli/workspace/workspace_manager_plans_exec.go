@@ -79,13 +79,13 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "plan", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(headCtx.GetRef())), nil, true)
-		out(nil, "plan", fmt.Sprintf("Repo set to %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
+		out(nil, "plan", fmt.Sprintf("Ledger set to %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
 			"ref": headCtx.GetRef(),
 		}
 		output = out(output, "head", remoteObj, nil, true)
-		output = out(output, "repo", headCtx.GetRepoURI(), nil, true)
+		output = out(output, "ledger", headCtx.GetRepoURI(), nil, true)
 	}
 
 	// Executes the planning for the current head
