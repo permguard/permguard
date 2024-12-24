@@ -41,9 +41,14 @@ func (s SQLiteCentralStoragePAP) CreateLedger(ledger *azmodels.Ledger) (*azmodel
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
+	kind, err := azirepos.ConvertIdentityKindToID(ledger.Kind)
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger kind %s is not valid", ledger.Kind))
+	}
 	dbInLedger := &azirepos.Ledger{
 		ApplicationID: ledger.ApplicationID,
 		Name:          ledger.Name,
+		Kind:          kind,
 	}
 	dbOutLedger, err := s.sqlRepo.UpsertLedger(tx, true, dbInLedger)
 	if err != nil {
@@ -69,10 +74,14 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *azmodels.Ledger) (*azmodel
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
+	kind, err := azirepos.ConvertIdentityKindToID(ledger.Kind)
+	if err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger kind %s is not valid", ledger.Kind))
+	}
 	dbInLedger := &azirepos.Ledger{
 		LedgerID:      ledger.LedgerID,
 		ApplicationID: ledger.ApplicationID,
-		Kind:          1,
+		Kind:          kind,
 		Name:          ledger.Name,
 	}
 	dbOutLedger, err := s.sqlRepo.UpsertLedger(tx, false, dbInLedger)

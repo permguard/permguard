@@ -7,7 +7,8 @@
         "request": "launch",
         "mode": "auto",
         "program": "./cmd/cli/main.go",
-        "args": ["clone", "permguard@localhost/676095239339/branches", "-w", "/Users/nicolagallo/source/tmp/", "-o", "json"],
+        // "args": ["clone", "permguard@localhost/676095239339/branches", "-w", "/Users/nicolagallo/source/tmp/", "-o", "json"],
+        "args": ["authz", "ledgers", "create", "--name", "branches", "--appid", "851990457443", "-w", "/Users/nicolagallo/source/tmp/", "-o", "json"],
         "env": {
             "PERMGUARD_DEBUG": "TRUE",
         },

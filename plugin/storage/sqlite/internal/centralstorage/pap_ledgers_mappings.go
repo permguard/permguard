@@ -23,12 +23,17 @@ import (
 
 // mapLedgerToAgentLedger maps a Ledger to a model Ledger.
 func mapLedgerToAgentLedger(ledger *azirepos.Ledger) (*azmodels.Ledger, error) {
+	kind, err := azirepos.ConvertLedgerKindToString(ledger.Kind)
+	if err != nil {
+		return nil, err
+	}
 	return &azmodels.Ledger{
 		LedgerID:      ledger.LedgerID,
 		CreatedAt:     ledger.CreatedAt,
 		UpdatedAt:     ledger.UpdatedAt,
 		ApplicationID: ledger.ApplicationID,
 		Name:          ledger.Name,
+		Kind:          kind,
 		Ref:           ledger.Ref,
 	}, nil
 }
