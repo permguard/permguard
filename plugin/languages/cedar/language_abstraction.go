@@ -237,7 +237,7 @@ func (abs *CedarLanguageAbstraction) CreateMultiPolicyContentBytes(blocks [][]by
 	var sb strings.Builder
 	for i, block := range blocks {
 		if i > 0 {
-			sb.WriteString("\n")
+			sb.WriteString("\n\n")
 		}
 		sb.Write(block)
 	}
