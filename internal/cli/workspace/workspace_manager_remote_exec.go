@@ -302,7 +302,19 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 				case azlangtypes.ClassTypeSchemaID:
 					schemaBlock = codeBlock
 				case azlangtypes.ClassTypePolicyID:
-					codeBlocks = append(codeBlocks, codeBlock)
+					objInfo, err := m.objMar.GetObjectInfo(entryObj)
+					if err != nil {
+						return nil, err
+					}
+					header := objInfo.GetHeader()
+					if header == nil {
+						azerrors.WrapSystemError(azerrors.ErrClientGeneric, "cli: object header is nil")
+					}
+					langID := header.GetLanguageID()
+					langVersionID := header.GetLanguageVersionID()
+					langTypeID := header.GetLanguageTypeID()
+					langCodeBlock, err := absLang.ConvertBytesToFrontendLanguage(langID, langVersionID, langTypeID, codeBlock)
+					codeBlocks = append(codeBlocks, langCodeBlock)
 				default:
 					return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: invalid class type"))
 				}

@@ -66,8 +66,8 @@ output:
 ```bash
 Your workspace has on error in the following file:
 
-	- 'platform/platform-policies.cedar'
-		1: parser error: parse error at <input>:15:5 "n": exact got whe want ;
+  - 'platform/platform-policies.cedar'
+    1: parser error: parse error at <input>:15:5 "n": exact got whe want ;
 
 Please fix the errors to proceed.
 Failed to validate the current workspace.

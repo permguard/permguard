@@ -104,7 +104,11 @@ func (abs *CedarLanguageAbstraction) ReadObjectContentBytes(obj *azlangobjs.Obje
 	if !objHeader.IsNativeLanguage() {
 		return 0, nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid object type")
 	}
-	return objHeader.GetCodeTypeID(), objInfo.GetObject().GetContent(), nil
+	instance, ok := objInfo.GetInstance().([]byte)
+	if !ok {
+		return 0, nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid object instance")
+	}
+	return objHeader.GetCodeTypeID(), instance, nil
 }
 
 // CreateCommitObject creates a commit object.
