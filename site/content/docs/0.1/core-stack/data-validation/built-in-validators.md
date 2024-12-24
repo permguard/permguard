@@ -21,6 +21,7 @@ seo:
 
 **Permguard** implements built-in validators that are universally applied across multiple components.
 
-| TYPE | VALIDATION                             | CASE   | DESCRIPTION                                                                       |
-|------|----------------------------------------|--------|-----------------------------------------------------------------------------------|
-| NAME | `^[a-z][a-z0-9\-\._]*[a-z0-9]*$`       | lower  | A valid name must satisfy the regex and cannot begin with the prefix **permguard**. |
+| TYPE        | VALIDATION                             | CASE   | DESCRIPTION                                                                                |
+|-------------|----------------------------------------|--------|--------------------------------------------------------------------------------------------|
+| SIMPLENAME  | `^[a-z][a-z0-9]*[a-z0-9]$`             | lower  | A valid simple name must satisfy the regex and cannot begin with the prefix **permguard**. |
+| NAME        | `^[a-z][a-z0-9\-\._]*[a-z0-9]$`       | lower  | A valid name must satisfy the regex and cannot begin with the prefix **permguard**.        |

@@ -22,6 +22,7 @@ import (
 	"github.com/cedar-policy/cedar-go"
 
 	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
+	azlangvalidators "github.com/permguard/permguard-abs-language/pkg/languages/validators"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azids "github.com/permguard/permguard-core/pkg/extensions/ids"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
@@ -192,6 +193,11 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, da
 		}
 		objName := policyID
 		codeID := objName
+
+		if isValid, err := azlangvalidators.ValidatePolicyName(policyID); !isValid {
+			multiSecObj.AddSectionObjectWithError(i, err)
+			continue
+		}
 
 		header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, langPolicyTypeID, codeID, codeTypeID)
 		if err != nil {
