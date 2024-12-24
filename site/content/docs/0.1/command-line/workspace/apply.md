@@ -64,19 +64,19 @@ permguard apply
 output:
 
 ```bash
-Initiating the planning process for repository head/273165098782/9b3de5272b0447f2a8d1024937bdef11.
+Initiating the planning process for repository head/676095239339/fd1ac44e4afa4fc4beec622494d3175a.
 Planning process completed successfully.
 The following changes have been identified and are ready to be applied:
 
-  + 53f1f98089c5b8f9ccbc250c80f1f2d330944009b2a1998375aaef3fb250e10d pharmacy-branch-management1
-  = 0a0b9ef638c0ea0e93cf92d6a257dbb4226e42c3eefaba86090870ab2505440a schema
-  - 95b32cd25a53e657667c38975c53e2d4a9ad7e8d6f130078cb1ec616b25e506d pharmacy-branch-management
+	+ 8a169320102ba429b4f7c0a5a9cde6e9bf2ace6335af3b57b11970718c05aa80 view-branch-inventory-auditor
+	+ 2597a54653b09188bf613a24e6a64100a1b14612ffed3bd8558dfc24dd63a34f assign-role-branch
+	+ 007867724d1aa801216d92d8d08ed2269a55e495575aceb1f46cded8594159ee schema
 
-unchanged 1, created 1, modified 0, deleted 1
+unchanged 0, created 3, modified 0, deleted 0
 
-Initiating the apply process for repository head/273165098782/9b3de5272b0447f2a8d1024937bdef11.
+Initiating the apply process for repository head/676095239339/fd1ac44e4afa4fc4beec622494d3175a.
 Apply process completed successfully.
-Your workspace is synchronized with the remote repository: head/273165098782/9b3de5272b0447f2a8d1024937bdef11.
+Your workspace is synchronized with the remote repository: head/676095239339/fd1ac44e4afa4fc4beec622494d3175a.
 ```
 
 <details>
@@ -90,7 +90,7 @@ permguard apply --output json
 
 output:
 
-```bash
+```json
 {
   "plan": {
     "create": [

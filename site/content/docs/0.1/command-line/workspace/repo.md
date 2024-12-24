@@ -78,13 +78,14 @@ permguard repos --output json
 
 output:
 
-```bash
+```json
 {
   "repos": [
     {
       "is_head": true,
-      "ref": "refs/repos/origin/273165098782/9b3de5272b0447f2a8d1024937bdef11",
-      "repo": "origin/273165098782/magicfarmacia"
+      "ref": "refs/remotes/origin/676095239339/fd1ac44e4afa4fc4beec622494d3175a",
+      "repo_id": "fd1ac44e4afa4fc4beec622494d3175a",
+      "repo_uri": "origin/676095239339/branches"
     }
   ]
 }

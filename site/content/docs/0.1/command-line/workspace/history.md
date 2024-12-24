@@ -64,22 +64,22 @@ permguard history
 output:
 
 ```bash
-Your workspace history head/273165098782/9b3de5272b0447f2a8d1024937bdef11:
+Your workspace history head/676095239339/fd1ac44e4afa4fc4beec622494d3175a:
 
-Commit c1d036a1afedb800b1dd0b89d1d4c3a4b070358765754f2ebc547ed0dcf0dc1b:
-  - Tree: c7ed1a6a5be1b03460d47dfa6cee369384dbfc80644841da2ab9a74575ba12ff
-  - Committer Timestamp: 2024-11-17 18:26:52 +0100 CET
-  - Author Timestamp: 2024-11-17 18:26:52 +0100 CET
+commit c813fc8680f0bfc2dc721b383152e163b1afbe5566ef73e1cf6c79862f5e1367:
+  - tree: c4107182d88b021fcc36245535e3fdf6a7610374acdcb5b588395912389de5b5
+  - Committer date: 2024-12-24 16:51:57 +0100 CET
+  - Author date: 2024-12-24 16:51:57 +0100 CET
+commit 77a0af3b0189a2bc6e650aa6b0e6ea079b3e96a42290622b608267ca9d57249e:
+  - tree: d8a1946ee2c6d16e6b30a16e761d766c46f7ad77a90db2d2522394905184198a
+  - Committer date: 2024-12-24 16:50:04 +0100 CET
+  - Author date: 2024-12-24 16:50:04 +0100 CET
+commit 06e28881c876e9b08c3afb6430b18e85bb2491bf567a40607bd8a57befe82e99:
+  - tree: c4107182d88b021fcc36245535e3fdf6a7610374acdcb5b588395912389de5b5
+  - Committer date: 2024-12-24 16:48:58 +0100 CET
+  - Author date: 2024-12-24 16:48:58 +0100 CET
 
-Commit 92dabde1bf3cae4472e72cfac8986c474bd3cbdb7468b36ab70f6b5cad9cb030:
-  - Tree: 233ff1755c54987bd640f6b11748698e30d64b115a8c9ac1d74da9499c6fd94d
-  - Committer Timestamp: 2024-11-17 18:07:07 +0100 CET
-  - Author Timestamp: 2024-11-17 18:07:07 +0100 CET
-
-Commit 941322d193e08109f9f8c1c7073698d5b6aa1c9a00b40e927f3c23a14ed6e614:
-  - Tree: 28fb0c9ff09dbd908c58314daebb246a1634733f424234a4ef5f25c9f7e22780
-  - Committer Timestamp: 2024-11-17 18:06:38 +0100 CET
-  - Author Timestamp: 2024-11-17 18:06:38 +0100 CET
+total 3
 ```
 
 <details>
@@ -93,35 +93,38 @@ permguard history --output json
 
 output:
 
-```bash
+```json
 {
   "commits": [
     {
       "author": "unknown",
-      "author_timestamp": "2024-11-17T18:26:52+01:00",
-      "commit_id": "c1d036a1afedb800b1dd0b89d1d4c3a4b070358765754f2ebc547ed0dcf0dc1b",
+      "author_timestamp": "2024-12-24T16:51:57+01:00",
       "committer": "unknown",
-      "committer_timestamp": "2024-11-17T18:26:52+01:00",
-      "parent": "92dabde1bf3cae4472e72cfac8986c474bd3cbdb7468b36ab70f6b5cad9cb030",
-      "tree": "c7ed1a6a5be1b03460d47dfa6cee369384dbfc80644841da2ab9a74575ba12ff"
+      "committer_timestamp": "2024-12-24T16:51:57+01:00",
+      "message": "cli commit",
+      "oid": "c813fc8680f0bfc2dc721b383152e163b1afbe5566ef73e1cf6c79862f5e1367",
+      "parent": "77a0af3b0189a2bc6e650aa6b0e6ea079b3e96a42290622b608267ca9d57249e",
+      "tree": "c4107182d88b021fcc36245535e3fdf6a7610374acdcb5b588395912389de5b5"
     },
     {
       "author": "unknown",
-      "author_timestamp": "2024-11-17T18:07:07+01:00",
-      "commit_id": "92dabde1bf3cae4472e72cfac8986c474bd3cbdb7468b36ab70f6b5cad9cb030",
+      "author_timestamp": "2024-12-24T16:50:04+01:00",
       "committer": "unknown",
-      "committer_timestamp": "2024-11-17T18:07:07+01:00",
-      "parent": "941322d193e08109f9f8c1c7073698d5b6aa1c9a00b40e927f3c23a14ed6e614",
-      "tree": "233ff1755c54987bd640f6b11748698e30d64b115a8c9ac1d74da9499c6fd94d"
+      "committer_timestamp": "2024-12-24T16:50:04+01:00",
+      "message": "cli commit",
+      "oid": "77a0af3b0189a2bc6e650aa6b0e6ea079b3e96a42290622b608267ca9d57249e",
+      "parent": "06e28881c876e9b08c3afb6430b18e85bb2491bf567a40607bd8a57befe82e99",
+      "tree": "d8a1946ee2c6d16e6b30a16e761d766c46f7ad77a90db2d2522394905184198a"
     },
     {
       "author": "unknown",
-      "author_timestamp": "2024-11-17T18:06:38+01:00",
-      "commit_id": "941322d193e08109f9f8c1c7073698d5b6aa1c9a00b40e927f3c23a14ed6e614",
+      "author_timestamp": "2024-12-24T16:48:58+01:00",
       "committer": "unknown",
-      "committer_timestamp": "2024-11-17T18:06:38+01:00",
+      "committer_timestamp": "2024-12-24T16:48:58+01:00",
+      "message": "cli commit",
+      "oid": "06e28881c876e9b08c3afb6430b18e85bb2491bf567a40607bd8a57befe82e99",
       "parent": "0000000000000000000000000000000000000000000000000000000000000000",
-      "tree": "28fb0c9ff09dbd908c58314daebb246a1634733f424234a4ef5f25c9f7e22780"
+      "tree": "c4107182d88b021fcc36245535e3fdf6a7610374acdcb5b588395912389de5b5"
     }
   ]
 }

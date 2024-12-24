@@ -82,11 +82,14 @@ permguard clone permguard@localhost/273165098782/magicfarmacia --output json
 
 output:
 
-```bash
+```json
 {
   "repos": [
     {
-      "repo": "magicfarmacia"
+      "is_head": true,
+      "ref": "refs/remotes/origin/676095239339/fd1ac44e4afa4fc4beec622494d3175a",
+      "repo_id": "fd1ac44e4afa4fc4beec622494d3175a",
+      "repo_uri": "origin/676095239339/branches"
     }
   ]
 }

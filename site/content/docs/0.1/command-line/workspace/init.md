@@ -78,10 +78,13 @@ permguard init --output json
 
 output:
 
-```bash
+```json
 {
   "workspace": {
-    "cwd": "."
+    "policy_engine": {
+      "language": "cedar"
+    },
+    "root": "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar"
   }
 }
 ```

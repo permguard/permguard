@@ -64,14 +64,15 @@ permguard plan
 output:
 
 ```bash
-Initiating the planning process for repository head/273165098782/9b3de5272b0447f2a8d1024937bdef11.
+Initiating the planning process for repository head/676095239339/fd1ac44e4afa4fc4beec622494d3175a.
 Planning process completed successfully.
 The following changes have been identified and are ready to be applied:
 
-  = 95b32cd25a53e657667c38975c53e2d4a9ad7e8d6f130078cb1ec616b25e506d pharmacy-branch-management
-  = 0a0b9ef638c0ea0e93cf92d6a257dbb4226e42c3eefaba86090870ab2505440a schema
+	+ 8a169320102ba429b4f7c0a5a9cde6e9bf2ace6335af3b57b11970718c05aa80 view-branch-inventory-auditor
+	+ 2597a54653b09188bf613a24e6a64100a1b14612ffed3bd8558dfc24dd63a34f assign-role-branch
+	+ 007867724d1aa801216d92d8d08ed2269a55e495575aceb1f46cded8594159ee schema
 
-unchanged 2, created 0, modified 0, deleted 0
+unchanged 0, created 3, modified 0, deleted 0
 
 Run the 'apply' command to apply the changes.
 ```
@@ -87,30 +88,47 @@ permguard plan --output json
 
 output:
 
-```bash
+```json
 {
   "plan": {
-    "create": [],
-    "delete": [],
-    "modify": [],
-    "unchanged": [
+    "create": [
       {
-        "oname": "pharmacy-branch-management",
+        "oname": "view-branch-inventory-auditor",
         "otype": "blob",
-        "oid": "95b32cd25a53e657667c38975c53e2d4a9ad7e8d6f130078cb1ec616b25e506d",
-        "codeid": "pharmacy-branch-management",
-        "codetype": "acpolicy",
-        "state": "unchanged"
+        "oid": "8a169320102ba429b4f7c0a5a9cde6e9bf2ace6335af3b57b11970718c05aa80",
+        "codeid": "view-branch-inventory-auditor",
+        "codetype": "policy",
+        "language": "cedar-json",
+        "languagetype": "policy",
+        "languageversion": "*",
+        "state": "create"
+      },
+      {
+        "oname": "assign-role-branch",
+        "otype": "blob",
+        "oid": "2597a54653b09188bf613a24e6a64100a1b14612ffed3bd8558dfc24dd63a34f",
+        "codeid": "assign-role-branch",
+        "codetype": "policy",
+        "language": "cedar-json",
+        "languagetype": "policy",
+        "languageversion": "*",
+        "state": "create"
       },
       {
         "oname": "schema",
         "otype": "blob",
-        "oid": "0a0b9ef638c0ea0e93cf92d6a257dbb4226e42c3eefaba86090870ab2505440a",
+        "oid": "007867724d1aa801216d92d8d08ed2269a55e495575aceb1f46cded8594159ee",
         "codeid": "schema",
         "codetype": "schema",
-        "state": "unchanged"
+        "language": "cedar-json",
+        "languagetype": "schema",
+        "languageversion": "*",
+        "state": "create"
       }
-    ]
+    ],
+    "delete": [],
+    "modify": [],
+    "unchanged": []
   }
 }
 ```
