@@ -30,12 +30,12 @@ import (
 )
 
 const (
-	// commandNameForRepository is the command name for repository.
-	commandNameForRepositoriesDelete = "repositories.delete"
+	// commandNameForLedger is the command name for ledger.
+	commandNameForLedgersDelete = "ledgers.delete"
 )
 
-// runECommandForDeleteRepository runs the command for creating a repository.
-func runECommandForDeleteRepository(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+// runECommandForDeleteLedger runs the command for creating a ledger.
+func runECommandForDeleteLedger(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -47,12 +47,12 @@ func runECommandForDeleteRepository(deps azcli.CliDependenciesProvider, cmd *cob
 		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	applicationID := v.GetInt64(azoptions.FlagName(commandNameForRepository, aziclicommon.FlagCommonApplicationID))
-	repositoryID := v.GetString(azoptions.FlagName(commandNameForRepositoriesDelete, flagRepositoryID))
-	repository, err := client.DeleteRepository(applicationID, repositoryID)
+	applicationID := v.GetInt64(azoptions.FlagName(commandNameForLedger, aziclicommon.FlagCommonApplicationID))
+	ledgerID := v.GetString(azoptions.FlagName(commandNameForLedgersDelete, flagLedgerID))
+	ledger, err := client.DeleteLedger(applicationID, ledgerID)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to delete the repository.")
+			printer.Println("Failed to delete the ledger.")
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}
@@ -61,32 +61,32 @@ func runECommandForDeleteRepository(deps azcli.CliDependenciesProvider, cmd *cob
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
-		repositoryID := repository.RepositoryID
-		repositoryName := repository.Name
-		output[repositoryID] = repositoryName
+		ledgerID := ledger.LedgerID
+		ledgerName := ledger.Name
+		output[ledgerID] = ledgerName
 	} else if ctx.IsJSONOutput() {
-		output["repositories"] = []*azmodels.Repository{repository}
+		output["ledgers"] = []*azmodels.Ledger{ledger}
 	}
 	printer.PrintlnMap(output)
 	return nil
 }
 
-// createCommandForRepositoryDelete creates a command for managing repositorydelete.
-func createCommandForRepositoryDelete(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+// createCommandForLedgerDelete creates a command for managing ledgerdelete.
+func createCommandForLedgerDelete(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
-		Short: "Delete a remote repository",
-		Long: aziclicommon.BuildCliLongTemplate(`This command deletes a remote repository.
+		Short: "Delete a remote ledger",
+		Long: aziclicommon.BuildCliLongTemplate(`This command deletes a remote ledger.
 
 Examples:
-  # delete a repository and output the result in json format
-  permguard authz repos delete --application 268786704340 --repositoryid 668f3771eacf4094ba8a80942ea5fd3f --output json
+  # delete a ledger and output the result in json format
+  permguard authz ledgers delete --application 268786704340 --ledgerid 668f3771eacf4094ba8a80942ea5fd3f --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForDeleteRepository(deps, cmd, v)
+			return runECommandForDeleteLedger(deps, cmd, v)
 		},
 	}
-	command.Flags().String(flagRepositoryID, "", "specify the ID of the repository to delete")
-	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesDelete, flagRepositoryID), command.Flags().Lookup(flagRepositoryID))
+	command.Flags().String(flagLedgerID, "", "specify the ID of the ledger to delete")
+	v.BindPFlag(azoptions.FlagName(commandNameForLedgersDelete, flagLedgerID), command.Flags().Lookup(flagLedgerID))
 	return command
 }

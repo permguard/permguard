@@ -19,7 +19,7 @@ package centralstorage
 import (
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
@@ -40,11 +40,11 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 	if remoteRefSPacket.RefCommit == "" || remoteRefSPacket.RefPrevCommit == "" {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid remote ref state packet.")
 	}
-	repo, err := s.readRepoFromHandlerContext(handlerCtx)
+	ledger, err := s.readRepoFromHandlerContext(handlerCtx)
 	if err != nil {
 		return nil, err
 	}
-	headCommitID := repo.Ref
+	headCommitID := ledger.Ref
 	hasConflicts := false
 	isUpToDate := false
 	objMng, err := azlangobjs.NewObjectManager()

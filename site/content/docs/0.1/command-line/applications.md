@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `applications` command, it is possible to manage Applications on the remote server.
+Using the `apps` command, it is possible to manage Applications on the remote server.
 
 ```text
 This command manages applications.

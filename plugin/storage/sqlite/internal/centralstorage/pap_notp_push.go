@@ -19,7 +19,7 @@ package centralstorage
 import (
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
@@ -40,11 +40,11 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 	if remoteRefPacket.RefCommit == "" || remoteRefPacket.RefPrevCommit == "" {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid remote ref state packet.")
 	}
-	repo, err := s.readRepoFromHandlerContext(handlerCtx)
+	ledger, err := s.readRepoFromHandlerContext(handlerCtx)
 	if err != nil {
 		return nil, err
 	}
-	headCommitID := repo.Ref
+	headCommitID := ledger.Ref
 	hasConflicts := false
 	isUpToDate := false
 	if headCommitID != azlangobjs.ZeroOID && headCommitID != remoteRefPacket.RefPrevCommit {
@@ -142,12 +142,12 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 		}
 	}
 	if statePacket.HasCompletedDataStream() {
-		repo, err := s.readRepoFromHandlerContext(handlerCtx)
+		ledger, err := s.readRepoFromHandlerContext(handlerCtx)
 		if err != nil {
 			return nil, err
 		}
 		remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDKey)
-		err = s.sqlRepo.UpdateRepositoryRef(tx, repo.ApplicationID, repo.RepositoryID, repo.Ref, remoteCommitID)
+		err = s.sqlRepo.UpdateLedgerRef(tx, ledger.ApplicationID, ledger.LedgerID, ledger.Ref, remoteCommitID)
 		if err := tx.Commit(); err != nil {
 			return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 		}

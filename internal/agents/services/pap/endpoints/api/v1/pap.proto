@@ -23,39 +23,39 @@ package policyadministrationpoint;
 
 option go_package = "github.com/permguard/permguard/internal/hosts/api/pap/v1";
 
-// Repositories
+// Ledgers
 
-// Repository get request.
-message RepositoryFetchRequest {
+// Ledger get request.
+message LedgerFetchRequest {
 	optional int32 Page 	 		= 1;
 	optional int32 PageSize	 		= 2;
     int64 ApplicationID 				= 3;
-    optional string RepositoryID 	= 4;
+    optional string LedgerID 	= 4;
 	optional string Name 			= 5;
 }
 
-// Repository create request.
-message RepositoryCreateRequest {
+// Ledger create request.
+message LedgerCreateRequest {
     int64 ApplicationID = 1;
 	string Name = 2;
 }
 
-// Repository update request.
-message RepositoryUpdateRequest {
+// Ledger update request.
+message LedgerUpdateRequest {
 	int64 ApplicationID = 1;
-    string RepositoryID = 2;
+    string LedgerID = 2;
     string Name = 3;
 }
 
-// Repository delete request.
-message RepositoryDeleteRequest {
+// Ledger delete request.
+message LedgerDeleteRequest {
 	int64 ApplicationID = 1;
-	string RepositoryID = 2;
+	string LedgerID = 2;
 }
 
-// Repository response.
-message RepositoryResponse {
-    string RepositoryID = 1;
+// Ledger response.
+message LedgerResponse {
+    string LedgerID = 1;
     int64 ApplicationID = 2;
     google.protobuf.Timestamp CreatedAt = 3;
     google.protobuf.Timestamp UpdatedAt = 4;
@@ -65,10 +65,10 @@ message RepositoryResponse {
 
 // Pack Objects
 
-// Repository stream request.
-message RepositoryStreamRequest {
+// Ledger stream request.
+message LedgerStreamRequest {
 	int64 ApplicationID = 1;
-    string RepositoryID = 2;
+    string LedgerID = 2;
 }
 
 // PackMessage is a pack message.
@@ -78,14 +78,14 @@ message PackMessage {
 
 // V1PAPService is the service for the Policy Administration Point.
 service V1PAPService {
-	// Create an repository.
-	rpc CreateRepository(RepositoryCreateRequest) returns (RepositoryResponse) {}
-	// Update an repository.
-	rpc UpdateRepository(RepositoryUpdateRequest) returns (RepositoryResponse) {}
-	// Delete an repository.
-	rpc DeleteRepository(RepositoryDeleteRequest) returns (RepositoryResponse) {}
-	// Fetch repositories.
-	rpc FetchRepositories(RepositoryFetchRequest) returns (stream RepositoryResponse) {}
+	// Create an ledger.
+	rpc CreateLedger(LedgerCreateRequest) returns (LedgerResponse) {}
+	// Update an ledger.
+	rpc UpdateLedger(LedgerUpdateRequest) returns (LedgerResponse) {}
+	// Delete an ledger.
+	rpc DeleteLedger(LedgerDeleteRequest) returns (LedgerResponse) {}
+	// Fetch ledgers.
+	rpc FetchLedgers(LedgerFetchRequest) returns (stream LedgerResponse) {}
 	// ReceivePack receives objects from the client.
 	rpc ReceivePack(stream PackMessage) returns (stream PackMessage) {}
 	// NOTPStream handles bidirectional stream using the NOTP protocol.

@@ -14,5 +14,20 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package repositories provides the repository implementation.
-package repositories
+package facade
+
+import (
+	"strings"
+
+	"github.com/google/uuid"
+)
+
+// Facade is the central storage ledger.
+type Facade struct {
+}
+
+// GenerateUUID generates a UUID.
+func GenerateUUID() string {
+	id := uuid.NewString()
+	return strings.ReplaceAll(id, "-", "")
+}

@@ -15,8 +15,8 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 -- +goose Up
-CREATE TABLE repositories (
-    repository_id TEXT NOT NULL PRIMARY KEY,
+CREATE TABLE ledgers (
+    ledger_id TEXT NOT NULL PRIMARY KEY,
     created_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
     updated_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
     name TEXT NOT NULL,
@@ -24,57 +24,57 @@ CREATE TABLE repositories (
 	-- REFERENCES
 	application_id INTEGER NOT NULL REFERENCES applications(application_id) ON UPDATE CASCADE ON DELETE CASCADE,
 	-- CONSTRAINTS
-	CONSTRAINT repositories_applicationid_name_key UNIQUE (application_id, name)
+	CONSTRAINT ledgers_applicationid_name_key UNIQUE (application_id, name)
 );
 
-CREATE INDEX repositories_name_idx ON repositories(name);
-CREATE INDEX repositories_applicationid_idx ON repositories(application_id);
+CREATE INDEX ledgers_name_idx ON ledgers(name);
+CREATE INDEX ledgers_applicationid_idx ON ledgers(application_id);
 
--- Trigger to track changes in the `repositories` table after insert
+-- Trigger to track changes in the `ledgers` table after insert
 -- +goose StatementBegin
-CREATE TRIGGER repositories_change_streams_after_insert
-AFTER INSERT ON repositories
+CREATE TRIGGER ledgers_change_streams_after_insert
+AFTER INSERT ON ledgers
 FOR EACH ROW
 BEGIN
     INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
-		VALUES ('REPOSITORY', 'INSERT', NEW.repository_id, NEW.application_id,
-				'{"repository_id": "' || NEW.repository_id || '", "created_at": "' || NEW.created_at ||
+		VALUES ('LEDGER', 'INSERT', NEW.ledger_id, NEW.application_id,
+				'{"ledger_id": "' || NEW.ledger_id || '", "created_at": "' || NEW.created_at ||
 				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name ||
 				'", "application_id": ' || NEW.application_id || ', "ref": "' || NEW.ref || '"}');
 END;
 -- +goose StatementEnd
 
--- Trigger to track changes in the `repositories` table after update
+-- Trigger to track changes in the `ledgers` table after update
 -- +goose StatementBegin
-CREATE TRIGGER repositories_change_streams_after_update
-AFTER UPDATE ON repositories
+CREATE TRIGGER ledgers_change_streams_after_update
+AFTER UPDATE ON ledgers
 FOR EACH ROW
 BEGIN
-    UPDATE repositories SET updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW') WHERE repository_id = OLD.repository_id;
+    UPDATE ledgers SET updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW') WHERE ledger_id = OLD.ledger_id;
     INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
-		VALUES ('REPOSITORY', 'UPDATE', NEW.repository_id, NEW.application_id,
-				'{"repository_id": "' || NEW.repository_id || '", "created_at": "' || NEW.created_at ||
+		VALUES ('LEDGER', 'UPDATE', NEW.ledger_id, NEW.application_id,
+				'{"ledger_id": "' || NEW.ledger_id || '", "created_at": "' || NEW.created_at ||
 				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name ||
 				'", "application_id": ' || NEW.application_id || ', "ref": "' || NEW.ref || '"}');
 END;
 -- +goose StatementEnd
 
--- Trigger to track changes in the `repositories` table after delete
+-- Trigger to track changes in the `ledgers` table after delete
 -- +goose StatementBegin
-CREATE TRIGGER repositories_change_streams_after_delete
-AFTER DELETE ON repositories
+CREATE TRIGGER ledgers_change_streams_after_delete
+AFTER DELETE ON ledgers
 FOR EACH ROW
 BEGIN
     INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
-		VALUES ('REPOSITORY', 'DELETE', OLD.repository_id, OLD.application_id,
-				'{"repository_id": "' || OLD.repository_id || '", "created_at": "' || OLD.created_at ||
+		VALUES ('LEDGER', 'DELETE', OLD.ledger_id, OLD.application_id,
+				'{"ledger_id": "' || OLD.ledger_id || '", "created_at": "' || OLD.created_at ||
 				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name ||
 				'", "application_id": ' || OLD.application_id || ', "ref": "' || OLD.ref || '"}');
 END;
 -- +goose StatementEnd
 
 -- +goose Down
-DROP TRIGGER IF EXISTS repositories_change_streams_after_insert;
-DROP TRIGGER IF EXISTS repositories_change_streams_after_update;
-DROP TRIGGER IF EXISTS repositories_change_streams_after_delete;
-DROP TABLE IF EXISTS repositories;
+DROP TRIGGER IF EXISTS ledgers_change_streams_after_insert;
+DROP TRIGGER IF EXISTS ledgers_change_streams_after_update;
+DROP TRIGGER IF EXISTS ledgers_change_streams_after_delete;
+DROP TABLE IF EXISTS ledgers;

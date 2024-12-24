@@ -37,8 +37,8 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Repository get request.
-type RepositoryFetchRequest struct {
+// Ledger get request.
+type LedgerFetchRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
@@ -46,12 +46,12 @@ type RepositoryFetchRequest struct {
 	Page          *int32  `protobuf:"varint,1,opt,name=Page,proto3,oneof" json:"Page,omitempty"`
 	PageSize      *int32  `protobuf:"varint,2,opt,name=PageSize,proto3,oneof" json:"PageSize,omitempty"`
 	ApplicationID int64   `protobuf:"varint,3,opt,name=ApplicationID,proto3" json:"ApplicationID,omitempty"`
-	RepositoryID  *string `protobuf:"bytes,4,opt,name=RepositoryID,proto3,oneof" json:"RepositoryID,omitempty"`
+	LedgerID  *string `protobuf:"bytes,4,opt,name=LedgerID,proto3,oneof" json:"LedgerID,omitempty"`
 	Name          *string `protobuf:"bytes,5,opt,name=Name,proto3,oneof" json:"Name,omitempty"`
 }
 
-func (x *RepositoryFetchRequest) Reset() {
-	*x = RepositoryFetchRequest{}
+func (x *LedgerFetchRequest) Reset() {
+	*x = LedgerFetchRequest{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes[0]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -59,13 +59,13 @@ func (x *RepositoryFetchRequest) Reset() {
 	}
 }
 
-func (x *RepositoryFetchRequest) String() string {
+func (x *LedgerFetchRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*RepositoryFetchRequest) ProtoMessage() {}
+func (*LedgerFetchRequest) ProtoMessage() {}
 
-func (x *RepositoryFetchRequest) ProtoReflect() protoreflect.Message {
+func (x *LedgerFetchRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes[0]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -77,48 +77,48 @@ func (x *RepositoryFetchRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use RepositoryFetchRequest.ProtoReflect.Descriptor instead.
-func (*RepositoryFetchRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use LedgerFetchRequest.ProtoReflect.Descriptor instead.
+func (*LedgerFetchRequest) Descriptor() ([]byte, []int) {
 	return file_internal_agents_services_pap_endpoints_api_v1_pap_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *RepositoryFetchRequest) GetPage() int32 {
+func (x *LedgerFetchRequest) GetPage() int32 {
 	if x != nil && x.Page != nil {
 		return *x.Page
 	}
 	return 0
 }
 
-func (x *RepositoryFetchRequest) GetPageSize() int32 {
+func (x *LedgerFetchRequest) GetPageSize() int32 {
 	if x != nil && x.PageSize != nil {
 		return *x.PageSize
 	}
 	return 0
 }
 
-func (x *RepositoryFetchRequest) GetApplicationID() int64 {
+func (x *LedgerFetchRequest) GetApplicationID() int64 {
 	if x != nil {
 		return x.ApplicationID
 	}
 	return 0
 }
 
-func (x *RepositoryFetchRequest) GetRepositoryID() string {
-	if x != nil && x.RepositoryID != nil {
-		return *x.RepositoryID
+func (x *LedgerFetchRequest) GetLedgerID() string {
+	if x != nil && x.LedgerID != nil {
+		return *x.LedgerID
 	}
 	return ""
 }
 
-func (x *RepositoryFetchRequest) GetName() string {
+func (x *LedgerFetchRequest) GetName() string {
 	if x != nil && x.Name != nil {
 		return *x.Name
 	}
 	return ""
 }
 
-// Repository create request.
-type RepositoryCreateRequest struct {
+// Ledger create request.
+type LedgerCreateRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
@@ -127,8 +127,8 @@ type RepositoryCreateRequest struct {
 	Name          string `protobuf:"bytes,2,opt,name=Name,proto3" json:"Name,omitempty"`
 }
 
-func (x *RepositoryCreateRequest) Reset() {
-	*x = RepositoryCreateRequest{}
+func (x *LedgerCreateRequest) Reset() {
+	*x = LedgerCreateRequest{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes[1]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -136,13 +136,13 @@ func (x *RepositoryCreateRequest) Reset() {
 	}
 }
 
-func (x *RepositoryCreateRequest) String() string {
+func (x *LedgerCreateRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*RepositoryCreateRequest) ProtoMessage() {}
+func (*LedgerCreateRequest) ProtoMessage() {}
 
-func (x *RepositoryCreateRequest) ProtoReflect() protoreflect.Message {
+func (x *LedgerCreateRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes[1]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -154,38 +154,38 @@ func (x *RepositoryCreateRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use RepositoryCreateRequest.ProtoReflect.Descriptor instead.
-func (*RepositoryCreateRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use LedgerCreateRequest.ProtoReflect.Descriptor instead.
+func (*LedgerCreateRequest) Descriptor() ([]byte, []int) {
 	return file_internal_agents_services_pap_endpoints_api_v1_pap_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *RepositoryCreateRequest) GetApplicationID() int64 {
+func (x *LedgerCreateRequest) GetApplicationID() int64 {
 	if x != nil {
 		return x.ApplicationID
 	}
 	return 0
 }
 
-func (x *RepositoryCreateRequest) GetName() string {
+func (x *LedgerCreateRequest) GetName() string {
 	if x != nil {
 		return x.Name
 	}
 	return ""
 }
 
-// Repository update request.
-type RepositoryUpdateRequest struct {
+// Ledger update request.
+type LedgerUpdateRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
 	ApplicationID int64  `protobuf:"varint,1,opt,name=ApplicationID,proto3" json:"ApplicationID,omitempty"`
-	RepositoryID  string `protobuf:"bytes,2,opt,name=RepositoryID,proto3" json:"RepositoryID,omitempty"`
+	LedgerID  string `protobuf:"bytes,2,opt,name=LedgerID,proto3" json:"LedgerID,omitempty"`
 	Name          string `protobuf:"bytes,3,opt,name=Name,proto3" json:"Name,omitempty"`
 }
 
-func (x *RepositoryUpdateRequest) Reset() {
-	*x = RepositoryUpdateRequest{}
+func (x *LedgerUpdateRequest) Reset() {
+	*x = LedgerUpdateRequest{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes[2]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -193,13 +193,13 @@ func (x *RepositoryUpdateRequest) Reset() {
 	}
 }
 
-func (x *RepositoryUpdateRequest) String() string {
+func (x *LedgerUpdateRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*RepositoryUpdateRequest) ProtoMessage() {}
+func (*LedgerUpdateRequest) ProtoMessage() {}
 
-func (x *RepositoryUpdateRequest) ProtoReflect() protoreflect.Message {
+func (x *LedgerUpdateRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes[2]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -211,44 +211,44 @@ func (x *RepositoryUpdateRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use RepositoryUpdateRequest.ProtoReflect.Descriptor instead.
-func (*RepositoryUpdateRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use LedgerUpdateRequest.ProtoReflect.Descriptor instead.
+func (*LedgerUpdateRequest) Descriptor() ([]byte, []int) {
 	return file_internal_agents_services_pap_endpoints_api_v1_pap_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *RepositoryUpdateRequest) GetApplicationID() int64 {
+func (x *LedgerUpdateRequest) GetApplicationID() int64 {
 	if x != nil {
 		return x.ApplicationID
 	}
 	return 0
 }
 
-func (x *RepositoryUpdateRequest) GetRepositoryID() string {
+func (x *LedgerUpdateRequest) GetLedgerID() string {
 	if x != nil {
-		return x.RepositoryID
+		return x.LedgerID
 	}
 	return ""
 }
 
-func (x *RepositoryUpdateRequest) GetName() string {
+func (x *LedgerUpdateRequest) GetName() string {
 	if x != nil {
 		return x.Name
 	}
 	return ""
 }
 
-// Repository delete request.
-type RepositoryDeleteRequest struct {
+// Ledger delete request.
+type LedgerDeleteRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
 	ApplicationID int64  `protobuf:"varint,1,opt,name=ApplicationID,proto3" json:"ApplicationID,omitempty"`
-	RepositoryID  string `protobuf:"bytes,2,opt,name=RepositoryID,proto3" json:"RepositoryID,omitempty"`
+	LedgerID  string `protobuf:"bytes,2,opt,name=LedgerID,proto3" json:"LedgerID,omitempty"`
 }
 
-func (x *RepositoryDeleteRequest) Reset() {
-	*x = RepositoryDeleteRequest{}
+func (x *LedgerDeleteRequest) Reset() {
+	*x = LedgerDeleteRequest{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes[3]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -256,13 +256,13 @@ func (x *RepositoryDeleteRequest) Reset() {
 	}
 }
 
-func (x *RepositoryDeleteRequest) String() string {
+func (x *LedgerDeleteRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*RepositoryDeleteRequest) ProtoMessage() {}
+func (*LedgerDeleteRequest) ProtoMessage() {}
 
-func (x *RepositoryDeleteRequest) ProtoReflect() protoreflect.Message {
+func (x *LedgerDeleteRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes[3]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -274,32 +274,32 @@ func (x *RepositoryDeleteRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use RepositoryDeleteRequest.ProtoReflect.Descriptor instead.
-func (*RepositoryDeleteRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use LedgerDeleteRequest.ProtoReflect.Descriptor instead.
+func (*LedgerDeleteRequest) Descriptor() ([]byte, []int) {
 	return file_internal_agents_services_pap_endpoints_api_v1_pap_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *RepositoryDeleteRequest) GetApplicationID() int64 {
+func (x *LedgerDeleteRequest) GetApplicationID() int64 {
 	if x != nil {
 		return x.ApplicationID
 	}
 	return 0
 }
 
-func (x *RepositoryDeleteRequest) GetRepositoryID() string {
+func (x *LedgerDeleteRequest) GetLedgerID() string {
 	if x != nil {
-		return x.RepositoryID
+		return x.LedgerID
 	}
 	return ""
 }
 
-// Repository response.
-type RepositoryResponse struct {
+// Ledger response.
+type LedgerResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	RepositoryID  string                 `protobuf:"bytes,1,opt,name=RepositoryID,proto3" json:"RepositoryID,omitempty"`
+	LedgerID  string                 `protobuf:"bytes,1,opt,name=LedgerID,proto3" json:"LedgerID,omitempty"`
 	ApplicationID int64                  `protobuf:"varint,2,opt,name=ApplicationID,proto3" json:"ApplicationID,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=CreatedAt,proto3" json:"CreatedAt,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=UpdatedAt,proto3" json:"UpdatedAt,omitempty"`
@@ -307,8 +307,8 @@ type RepositoryResponse struct {
 	Ref           string                 `protobuf:"bytes,6,opt,name=Ref,proto3" json:"Ref,omitempty"`
 }
 
-func (x *RepositoryResponse) Reset() {
-	*x = RepositoryResponse{}
+func (x *LedgerResponse) Reset() {
+	*x = LedgerResponse{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes[4]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -316,13 +316,13 @@ func (x *RepositoryResponse) Reset() {
 	}
 }
 
-func (x *RepositoryResponse) String() string {
+func (x *LedgerResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*RepositoryResponse) ProtoMessage() {}
+func (*LedgerResponse) ProtoMessage() {}
 
-func (x *RepositoryResponse) ProtoReflect() protoreflect.Message {
+func (x *LedgerResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes[4]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -334,65 +334,65 @@ func (x *RepositoryResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use RepositoryResponse.ProtoReflect.Descriptor instead.
-func (*RepositoryResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use LedgerResponse.ProtoReflect.Descriptor instead.
+func (*LedgerResponse) Descriptor() ([]byte, []int) {
 	return file_internal_agents_services_pap_endpoints_api_v1_pap_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *RepositoryResponse) GetRepositoryID() string {
+func (x *LedgerResponse) GetLedgerID() string {
 	if x != nil {
-		return x.RepositoryID
+		return x.LedgerID
 	}
 	return ""
 }
 
-func (x *RepositoryResponse) GetApplicationID() int64 {
+func (x *LedgerResponse) GetApplicationID() int64 {
 	if x != nil {
 		return x.ApplicationID
 	}
 	return 0
 }
 
-func (x *RepositoryResponse) GetCreatedAt() *timestamppb.Timestamp {
+func (x *LedgerResponse) GetCreatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CreatedAt
 	}
 	return nil
 }
 
-func (x *RepositoryResponse) GetUpdatedAt() *timestamppb.Timestamp {
+func (x *LedgerResponse) GetUpdatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.UpdatedAt
 	}
 	return nil
 }
 
-func (x *RepositoryResponse) GetName() string {
+func (x *LedgerResponse) GetName() string {
 	if x != nil {
 		return x.Name
 	}
 	return ""
 }
 
-func (x *RepositoryResponse) GetRef() string {
+func (x *LedgerResponse) GetRef() string {
 	if x != nil {
 		return x.Ref
 	}
 	return ""
 }
 
-// Repository stream request.
-type RepositoryStreamRequest struct {
+// Ledger stream request.
+type LedgerStreamRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
 	ApplicationID int64  `protobuf:"varint,1,opt,name=ApplicationID,proto3" json:"ApplicationID,omitempty"`
-	RepositoryID  string `protobuf:"bytes,2,opt,name=RepositoryID,proto3" json:"RepositoryID,omitempty"`
+	LedgerID  string `protobuf:"bytes,2,opt,name=LedgerID,proto3" json:"LedgerID,omitempty"`
 }
 
-func (x *RepositoryStreamRequest) Reset() {
-	*x = RepositoryStreamRequest{}
+func (x *LedgerStreamRequest) Reset() {
+	*x = LedgerStreamRequest{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes[5]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -400,13 +400,13 @@ func (x *RepositoryStreamRequest) Reset() {
 	}
 }
 
-func (x *RepositoryStreamRequest) String() string {
+func (x *LedgerStreamRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*RepositoryStreamRequest) ProtoMessage() {}
+func (*LedgerStreamRequest) ProtoMessage() {}
 
-func (x *RepositoryStreamRequest) ProtoReflect() protoreflect.Message {
+func (x *LedgerStreamRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes[5]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -418,21 +418,21 @@ func (x *RepositoryStreamRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use RepositoryStreamRequest.ProtoReflect.Descriptor instead.
-func (*RepositoryStreamRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use LedgerStreamRequest.ProtoReflect.Descriptor instead.
+func (*LedgerStreamRequest) Descriptor() ([]byte, []int) {
 	return file_internal_agents_services_pap_endpoints_api_v1_pap_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *RepositoryStreamRequest) GetApplicationID() int64 {
+func (x *LedgerStreamRequest) GetApplicationID() int64 {
 	if x != nil {
 		return x.ApplicationID
 	}
 	return 0
 }
 
-func (x *RepositoryStreamRequest) GetRepositoryID() string {
+func (x *LedgerStreamRequest) GetLedgerID() string {
 	if x != nil {
-		return x.RepositoryID
+		return x.LedgerID
 	}
 	return ""
 }
@@ -618,28 +618,28 @@ func file_internal_agents_services_pap_endpoints_api_v1_pap_proto_rawDescGZIP() 
 
 var file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_internal_agents_services_pap_endpoints_api_v1_pap_proto_goTypes = []any{
-	(*RepositoryFetchRequest)(nil),  // 0: policyadministrationpoint.RepositoryFetchRequest
-	(*RepositoryCreateRequest)(nil), // 1: policyadministrationpoint.RepositoryCreateRequest
-	(*RepositoryUpdateRequest)(nil), // 2: policyadministrationpoint.RepositoryUpdateRequest
-	(*RepositoryDeleteRequest)(nil), // 3: policyadministrationpoint.RepositoryDeleteRequest
-	(*RepositoryResponse)(nil),      // 4: policyadministrationpoint.RepositoryResponse
-	(*RepositoryStreamRequest)(nil), // 5: policyadministrationpoint.RepositoryStreamRequest
+	(*LedgerFetchRequest)(nil),  // 0: policyadministrationpoint.LedgerFetchRequest
+	(*LedgerCreateRequest)(nil), // 1: policyadministrationpoint.LedgerCreateRequest
+	(*LedgerUpdateRequest)(nil), // 2: policyadministrationpoint.LedgerUpdateRequest
+	(*LedgerDeleteRequest)(nil), // 3: policyadministrationpoint.LedgerDeleteRequest
+	(*LedgerResponse)(nil),      // 4: policyadministrationpoint.LedgerResponse
+	(*LedgerStreamRequest)(nil), // 5: policyadministrationpoint.LedgerStreamRequest
 	(*PackMessage)(nil),             // 6: policyadministrationpoint.PackMessage
 	(*timestamppb.Timestamp)(nil),   // 7: google.protobuf.Timestamp
 }
 var file_internal_agents_services_pap_endpoints_api_v1_pap_proto_depIdxs = []int32{
-	7, // 0: policyadministrationpoint.RepositoryResponse.CreatedAt:type_name -> google.protobuf.Timestamp
-	7, // 1: policyadministrationpoint.RepositoryResponse.UpdatedAt:type_name -> google.protobuf.Timestamp
-	1, // 2: policyadministrationpoint.V1PAPService.CreateRepository:input_type -> policyadministrationpoint.RepositoryCreateRequest
-	2, // 3: policyadministrationpoint.V1PAPService.UpdateRepository:input_type -> policyadministrationpoint.RepositoryUpdateRequest
-	3, // 4: policyadministrationpoint.V1PAPService.DeleteRepository:input_type -> policyadministrationpoint.RepositoryDeleteRequest
-	0, // 5: policyadministrationpoint.V1PAPService.FetchRepositories:input_type -> policyadministrationpoint.RepositoryFetchRequest
+	7, // 0: policyadministrationpoint.LedgerResponse.CreatedAt:type_name -> google.protobuf.Timestamp
+	7, // 1: policyadministrationpoint.LedgerResponse.UpdatedAt:type_name -> google.protobuf.Timestamp
+	1, // 2: policyadministrationpoint.V1PAPService.CreateLedger:input_type -> policyadministrationpoint.LedgerCreateRequest
+	2, // 3: policyadministrationpoint.V1PAPService.UpdateLedger:input_type -> policyadministrationpoint.LedgerUpdateRequest
+	3, // 4: policyadministrationpoint.V1PAPService.DeleteLedger:input_type -> policyadministrationpoint.LedgerDeleteRequest
+	0, // 5: policyadministrationpoint.V1PAPService.FetchLedgers:input_type -> policyadministrationpoint.LedgerFetchRequest
 	6, // 6: policyadministrationpoint.V1PAPService.ReceivePack:input_type -> policyadministrationpoint.PackMessage
 	6, // 7: policyadministrationpoint.V1PAPService.NOTPStream:input_type -> policyadministrationpoint.PackMessage
-	4, // 8: policyadministrationpoint.V1PAPService.CreateRepository:output_type -> policyadministrationpoint.RepositoryResponse
-	4, // 9: policyadministrationpoint.V1PAPService.UpdateRepository:output_type -> policyadministrationpoint.RepositoryResponse
-	4, // 10: policyadministrationpoint.V1PAPService.DeleteRepository:output_type -> policyadministrationpoint.RepositoryResponse
-	4, // 11: policyadministrationpoint.V1PAPService.FetchRepositories:output_type -> policyadministrationpoint.RepositoryResponse
+	4, // 8: policyadministrationpoint.V1PAPService.CreateLedger:output_type -> policyadministrationpoint.LedgerResponse
+	4, // 9: policyadministrationpoint.V1PAPService.UpdateLedger:output_type -> policyadministrationpoint.LedgerResponse
+	4, // 10: policyadministrationpoint.V1PAPService.DeleteLedger:output_type -> policyadministrationpoint.LedgerResponse
+	4, // 11: policyadministrationpoint.V1PAPService.FetchLedgers:output_type -> policyadministrationpoint.LedgerResponse
 	6, // 12: policyadministrationpoint.V1PAPService.ReceivePack:output_type -> policyadministrationpoint.PackMessage
 	6, // 13: policyadministrationpoint.V1PAPService.NOTPStream:output_type -> policyadministrationpoint.PackMessage
 	8, // [8:14] is the sub-list for method output_type
@@ -656,7 +656,7 @@ func file_internal_agents_services_pap_endpoints_api_v1_pap_proto_init() {
 	}
 	if !protoimpl.UnsafeEnabled {
 		file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes[0].Exporter = func(v any, i int) any {
-			switch v := v.(*RepositoryFetchRequest); i {
+			switch v := v.(*LedgerFetchRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -668,7 +668,7 @@ func file_internal_agents_services_pap_endpoints_api_v1_pap_proto_init() {
 			}
 		}
 		file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes[1].Exporter = func(v any, i int) any {
-			switch v := v.(*RepositoryCreateRequest); i {
+			switch v := v.(*LedgerCreateRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -680,7 +680,7 @@ func file_internal_agents_services_pap_endpoints_api_v1_pap_proto_init() {
 			}
 		}
 		file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes[2].Exporter = func(v any, i int) any {
-			switch v := v.(*RepositoryUpdateRequest); i {
+			switch v := v.(*LedgerUpdateRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -692,7 +692,7 @@ func file_internal_agents_services_pap_endpoints_api_v1_pap_proto_init() {
 			}
 		}
 		file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes[3].Exporter = func(v any, i int) any {
-			switch v := v.(*RepositoryDeleteRequest); i {
+			switch v := v.(*LedgerDeleteRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -704,7 +704,7 @@ func file_internal_agents_services_pap_endpoints_api_v1_pap_proto_init() {
 			}
 		}
 		file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes[4].Exporter = func(v any, i int) any {
-			switch v := v.(*RepositoryResponse); i {
+			switch v := v.(*LedgerResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -716,7 +716,7 @@ func file_internal_agents_services_pap_endpoints_api_v1_pap_proto_init() {
 			}
 		}
 		file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes[5].Exporter = func(v any, i int) any {
-			switch v := v.(*RepositoryStreamRequest); i {
+			switch v := v.(*LedgerStreamRequest); i {
 			case 0:
 				return &v.state
 			case 1:

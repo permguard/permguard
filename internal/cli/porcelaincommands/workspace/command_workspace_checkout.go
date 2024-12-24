@@ -55,8 +55,8 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	repo := args[0]
-	output, err := wksMgr.ExecCheckoutRepo(repo, outFunc(ctx, printer))
+	ledger := args[0]
+	output, err := wksMgr.ExecCheckoutRepo(ledger, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
@@ -77,11 +77,11 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 func CreateCommandForWorkspaceCheckout(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "checkout",
-		Short: `Check out the contents of a remote repository to the local permguard workspace`,
-		Long: aziclicommon.BuildCliLongTemplate(`This command checks out the contents of a remote repository to the local permguard workspace.
+		Short: `Check out the contents of a remote ledger to the local permguard workspace`,
+		Long: aziclicommon.BuildCliLongTemplate(`This command checks out the contents of a remote ledger to the local permguard workspace.
 
 Examples:
-  # check out the contents of a remote repository to the local permguard workspace
+  # check out the contents of a remote ledger to the local permguard workspace
   permguard checkout dev/268786704340/magicfarmacia `),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCheckoutWorkspace(args, deps, cmd, v)

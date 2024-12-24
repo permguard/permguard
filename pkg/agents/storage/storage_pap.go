@@ -25,14 +25,14 @@ import (
 
 // PAPCentralStorage is the interface for the AAP central storage.
 type PAPCentralStorage interface {
-	// CreateRepository creates a new repository.
-	CreateRepository(repository *azmodels.Repository) (*azmodels.Repository, error)
-	// UpdateRepository updates an repository.
-	UpdateRepository(repository *azmodels.Repository) (*azmodels.Repository, error)
-	// DeleteRepository deletes an repository.
-	DeleteRepository(applicationID int64, repositoryID string) (*azmodels.Repository, error)
-	// FetchRepositories gets all repositories.
-	FetchRepositories(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Repository, error)
+	// CreateLedger creates a new ledger.
+	CreateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error)
+	// UpdateLedger updates an ledger.
+	UpdateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error)
+	// DeleteLedger deletes an ledger.
+	DeleteLedger(applicationID int64, ledgerID string) (*azmodels.Ledger, error)
+	// FetchLedgers gets all ledgers.
+	FetchLedgers(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Ledger, error)
 	// OnPullHandleRequestCurrentState handles the request for the current state.
 	OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPullSendNotifyCurrentStateResponse notifies the current state.

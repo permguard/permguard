@@ -50,8 +50,8 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 		color.Red("Invalid arguments")
 		return aziclicommon.ErrCommandSilent
 	}
-	repo := strings.TrimPrefix(repoURI, "permguard@")
-	elements := strings.Split(repo, "/")
+	ledger := strings.TrimPrefix(repoURI, "permguard@")
+	elements := strings.Split(ledger, "/")
 	if len(elements) < 3 {
 		color.Red("Invalid arguments")
 		return aziclicommon.ErrCommandSilent
@@ -61,7 +61,7 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 	repoFolder := filepath.Join(workDir, folder)
 	cmd.Flags().Set(aziclicommon.FlagWorkingDirectory, repoFolder)
 	if ok, _ := azfiles.CheckPathIfExists(repoFolder); ok {
-		color.Red(fmt.Sprintf("The repository %s already exists", repoFolder))
+		color.Red(fmt.Sprintf("The ledger %s already exists", repoFolder))
 		return aziclicommon.ErrCommandSilent
 	}
 	azfiles.CreateDirIfNotExists(repoFolder)
@@ -109,11 +109,11 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 func CreateCommandForWorkspaceClone(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "clone",
-		Short: "Clone a remote repository to the local permguard workspace",
-		Long: aziclicommon.BuildCliLongTemplate(`This command clones a remote repository to the local permguard workspace.
+		Short: "Clone a remote ledger to the local permguard workspace",
+		Long: aziclicommon.BuildCliLongTemplate(`This command clones a remote ledger to the local permguard workspace.
 
 Examples:
-  # clone a remote repository to the local permguard workspace
+  # clone a remote ledger to the local permguard workspace
   permguard clone 268786704340/magicfarmacia`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCloneWorkspace(args, deps, cmd, v)

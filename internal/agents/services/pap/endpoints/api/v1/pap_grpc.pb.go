@@ -35,10 +35,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	V1PAPService_CreateRepository_FullMethodName  = "/policyadministrationpoint.V1PAPService/CreateRepository"
-	V1PAPService_UpdateRepository_FullMethodName  = "/policyadministrationpoint.V1PAPService/UpdateRepository"
-	V1PAPService_DeleteRepository_FullMethodName  = "/policyadministrationpoint.V1PAPService/DeleteRepository"
-	V1PAPService_FetchRepositories_FullMethodName = "/policyadministrationpoint.V1PAPService/FetchRepositories"
+	V1PAPService_CreateLedger_FullMethodName  = "/policyadministrationpoint.V1PAPService/CreateLedger"
+	V1PAPService_UpdateLedger_FullMethodName  = "/policyadministrationpoint.V1PAPService/UpdateLedger"
+	V1PAPService_DeleteLedger_FullMethodName  = "/policyadministrationpoint.V1PAPService/DeleteLedger"
+	V1PAPService_FetchLedgers_FullMethodName = "/policyadministrationpoint.V1PAPService/FetchLedgers"
 	V1PAPService_ReceivePack_FullMethodName       = "/policyadministrationpoint.V1PAPService/ReceivePack"
 	V1PAPService_NOTPStream_FullMethodName        = "/policyadministrationpoint.V1PAPService/NOTPStream"
 )
@@ -49,14 +49,14 @@ const (
 //
 // V1PAPService is the service for the Policy Administration Point.
 type V1PAPServiceClient interface {
-	// Create an repository.
-	CreateRepository(ctx context.Context, in *RepositoryCreateRequest, opts ...grpc.CallOption) (*RepositoryResponse, error)
-	// Update an repository.
-	UpdateRepository(ctx context.Context, in *RepositoryUpdateRequest, opts ...grpc.CallOption) (*RepositoryResponse, error)
-	// Delete an repository.
-	DeleteRepository(ctx context.Context, in *RepositoryDeleteRequest, opts ...grpc.CallOption) (*RepositoryResponse, error)
-	// Fetch repositories.
-	FetchRepositories(ctx context.Context, in *RepositoryFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RepositoryResponse], error)
+	// Create an ledger.
+	CreateLedger(ctx context.Context, in *LedgerCreateRequest, opts ...grpc.CallOption) (*LedgerResponse, error)
+	// Update an ledger.
+	UpdateLedger(ctx context.Context, in *LedgerUpdateRequest, opts ...grpc.CallOption) (*LedgerResponse, error)
+	// Delete an ledger.
+	DeleteLedger(ctx context.Context, in *LedgerDeleteRequest, opts ...grpc.CallOption) (*LedgerResponse, error)
+	// Fetch ledgers.
+	FetchLedgers(ctx context.Context, in *LedgerFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[LedgerResponse], error)
 	// ReceivePack receives objects from the client.
 	ReceivePack(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PackMessage, PackMessage], error)
 	// NOTPStream handles bidirectional stream using the NOTP protocol.
@@ -71,43 +71,43 @@ func NewV1PAPServiceClient(cc grpc.ClientConnInterface) V1PAPServiceClient {
 	return &v1PAPServiceClient{cc}
 }
 
-func (c *v1PAPServiceClient) CreateRepository(ctx context.Context, in *RepositoryCreateRequest, opts ...grpc.CallOption) (*RepositoryResponse, error) {
+func (c *v1PAPServiceClient) CreateLedger(ctx context.Context, in *LedgerCreateRequest, opts ...grpc.CallOption) (*LedgerResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RepositoryResponse)
-	err := c.cc.Invoke(ctx, V1PAPService_CreateRepository_FullMethodName, in, out, cOpts...)
+	out := new(LedgerResponse)
+	err := c.cc.Invoke(ctx, V1PAPService_CreateLedger_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *v1PAPServiceClient) UpdateRepository(ctx context.Context, in *RepositoryUpdateRequest, opts ...grpc.CallOption) (*RepositoryResponse, error) {
+func (c *v1PAPServiceClient) UpdateLedger(ctx context.Context, in *LedgerUpdateRequest, opts ...grpc.CallOption) (*LedgerResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RepositoryResponse)
-	err := c.cc.Invoke(ctx, V1PAPService_UpdateRepository_FullMethodName, in, out, cOpts...)
+	out := new(LedgerResponse)
+	err := c.cc.Invoke(ctx, V1PAPService_UpdateLedger_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *v1PAPServiceClient) DeleteRepository(ctx context.Context, in *RepositoryDeleteRequest, opts ...grpc.CallOption) (*RepositoryResponse, error) {
+func (c *v1PAPServiceClient) DeleteLedger(ctx context.Context, in *LedgerDeleteRequest, opts ...grpc.CallOption) (*LedgerResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RepositoryResponse)
-	err := c.cc.Invoke(ctx, V1PAPService_DeleteRepository_FullMethodName, in, out, cOpts...)
+	out := new(LedgerResponse)
+	err := c.cc.Invoke(ctx, V1PAPService_DeleteLedger_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *v1PAPServiceClient) FetchRepositories(ctx context.Context, in *RepositoryFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RepositoryResponse], error) {
+func (c *v1PAPServiceClient) FetchLedgers(ctx context.Context, in *LedgerFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[LedgerResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &V1PAPService_ServiceDesc.Streams[0], V1PAPService_FetchRepositories_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &V1PAPService_ServiceDesc.Streams[0], V1PAPService_FetchLedgers_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[RepositoryFetchRequest, RepositoryResponse]{ClientStream: stream}
+	x := &grpc.GenericClientStream[LedgerFetchRequest, LedgerResponse]{ClientStream: stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -118,7 +118,7 @@ func (c *v1PAPServiceClient) FetchRepositories(ctx context.Context, in *Reposito
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type V1PAPService_FetchRepositoriesClient = grpc.ServerStreamingClient[RepositoryResponse]
+type V1PAPService_FetchLedgersClient = grpc.ServerStreamingClient[LedgerResponse]
 
 func (c *v1PAPServiceClient) ReceivePack(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PackMessage, PackMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -152,14 +152,14 @@ type V1PAPService_NOTPStreamClient = grpc.BidiStreamingClient[PackMessage, PackM
 //
 // V1PAPService is the service for the Policy Administration Point.
 type V1PAPServiceServer interface {
-	// Create an repository.
-	CreateRepository(context.Context, *RepositoryCreateRequest) (*RepositoryResponse, error)
-	// Update an repository.
-	UpdateRepository(context.Context, *RepositoryUpdateRequest) (*RepositoryResponse, error)
-	// Delete an repository.
-	DeleteRepository(context.Context, *RepositoryDeleteRequest) (*RepositoryResponse, error)
-	// Fetch repositories.
-	FetchRepositories(*RepositoryFetchRequest, grpc.ServerStreamingServer[RepositoryResponse]) error
+	// Create an ledger.
+	CreateLedger(context.Context, *LedgerCreateRequest) (*LedgerResponse, error)
+	// Update an ledger.
+	UpdateLedger(context.Context, *LedgerUpdateRequest) (*LedgerResponse, error)
+	// Delete an ledger.
+	DeleteLedger(context.Context, *LedgerDeleteRequest) (*LedgerResponse, error)
+	// Fetch ledgers.
+	FetchLedgers(*LedgerFetchRequest, grpc.ServerStreamingServer[LedgerResponse]) error
 	// ReceivePack receives objects from the client.
 	ReceivePack(grpc.BidiStreamingServer[PackMessage, PackMessage]) error
 	// NOTPStream handles bidirectional stream using the NOTP protocol.
@@ -174,17 +174,17 @@ type V1PAPServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedV1PAPServiceServer struct{}
 
-func (UnimplementedV1PAPServiceServer) CreateRepository(context.Context, *RepositoryCreateRequest) (*RepositoryResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CreateRepository not implemented")
+func (UnimplementedV1PAPServiceServer) CreateLedger(context.Context, *LedgerCreateRequest) (*LedgerResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateLedger not implemented")
 }
-func (UnimplementedV1PAPServiceServer) UpdateRepository(context.Context, *RepositoryUpdateRequest) (*RepositoryResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdateRepository not implemented")
+func (UnimplementedV1PAPServiceServer) UpdateLedger(context.Context, *LedgerUpdateRequest) (*LedgerResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateLedger not implemented")
 }
-func (UnimplementedV1PAPServiceServer) DeleteRepository(context.Context, *RepositoryDeleteRequest) (*RepositoryResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DeleteRepository not implemented")
+func (UnimplementedV1PAPServiceServer) DeleteLedger(context.Context, *LedgerDeleteRequest) (*LedgerResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteLedger not implemented")
 }
-func (UnimplementedV1PAPServiceServer) FetchRepositories(*RepositoryFetchRequest, grpc.ServerStreamingServer[RepositoryResponse]) error {
-	return status.Errorf(codes.Unimplemented, "method FetchRepositories not implemented")
+func (UnimplementedV1PAPServiceServer) FetchLedgers(*LedgerFetchRequest, grpc.ServerStreamingServer[LedgerResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method FetchLedgers not implemented")
 }
 func (UnimplementedV1PAPServiceServer) ReceivePack(grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
 	return status.Errorf(codes.Unimplemented, "method ReceivePack not implemented")
@@ -213,70 +213,70 @@ func RegisterV1PAPServiceServer(s grpc.ServiceRegistrar, srv V1PAPServiceServer)
 	s.RegisterService(&V1PAPService_ServiceDesc, srv)
 }
 
-func _V1PAPService_CreateRepository_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RepositoryCreateRequest)
+func _V1PAPService_CreateLedger_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LedgerCreateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(V1PAPServiceServer).CreateRepository(ctx, in)
+		return srv.(V1PAPServiceServer).CreateLedger(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: V1PAPService_CreateRepository_FullMethodName,
+		FullMethod: V1PAPService_CreateLedger_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1PAPServiceServer).CreateRepository(ctx, req.(*RepositoryCreateRequest))
+		return srv.(V1PAPServiceServer).CreateLedger(ctx, req.(*LedgerCreateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1PAPService_UpdateRepository_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RepositoryUpdateRequest)
+func _V1PAPService_UpdateLedger_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LedgerUpdateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(V1PAPServiceServer).UpdateRepository(ctx, in)
+		return srv.(V1PAPServiceServer).UpdateLedger(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: V1PAPService_UpdateRepository_FullMethodName,
+		FullMethod: V1PAPService_UpdateLedger_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1PAPServiceServer).UpdateRepository(ctx, req.(*RepositoryUpdateRequest))
+		return srv.(V1PAPServiceServer).UpdateLedger(ctx, req.(*LedgerUpdateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1PAPService_DeleteRepository_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RepositoryDeleteRequest)
+func _V1PAPService_DeleteLedger_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LedgerDeleteRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(V1PAPServiceServer).DeleteRepository(ctx, in)
+		return srv.(V1PAPServiceServer).DeleteLedger(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: V1PAPService_DeleteRepository_FullMethodName,
+		FullMethod: V1PAPService_DeleteLedger_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1PAPServiceServer).DeleteRepository(ctx, req.(*RepositoryDeleteRequest))
+		return srv.(V1PAPServiceServer).DeleteLedger(ctx, req.(*LedgerDeleteRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1PAPService_FetchRepositories_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(RepositoryFetchRequest)
+func _V1PAPService_FetchLedgers_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(LedgerFetchRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(V1PAPServiceServer).FetchRepositories(m, &grpc.GenericServerStream[RepositoryFetchRequest, RepositoryResponse]{ServerStream: stream})
+	return srv.(V1PAPServiceServer).FetchLedgers(m, &grpc.GenericServerStream[LedgerFetchRequest, LedgerResponse]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type V1PAPService_FetchRepositoriesServer = grpc.ServerStreamingServer[RepositoryResponse]
+type V1PAPService_FetchLedgersServer = grpc.ServerStreamingServer[LedgerResponse]
 
 func _V1PAPService_ReceivePack_Handler(srv interface{}, stream grpc.ServerStream) error {
 	return srv.(V1PAPServiceServer).ReceivePack(&grpc.GenericServerStream[PackMessage, PackMessage]{ServerStream: stream})
@@ -300,22 +300,22 @@ var V1PAPService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*V1PAPServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "CreateRepository",
-			Handler:    _V1PAPService_CreateRepository_Handler,
+			MethodName: "CreateLedger",
+			Handler:    _V1PAPService_CreateLedger_Handler,
 		},
 		{
-			MethodName: "UpdateRepository",
-			Handler:    _V1PAPService_UpdateRepository_Handler,
+			MethodName: "UpdateLedger",
+			Handler:    _V1PAPService_UpdateLedger_Handler,
 		},
 		{
-			MethodName: "DeleteRepository",
-			Handler:    _V1PAPService_DeleteRepository_Handler,
+			MethodName: "DeleteLedger",
+			Handler:    _V1PAPService_DeleteLedger_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "FetchRepositories",
-			Handler:       _V1PAPService_FetchRepositories_Handler,
+			StreamName:    "FetchLedgers",
+			Handler:       _V1PAPService_FetchLedgers_Handler,
 			ServerStreams: true,
 		},
 		{

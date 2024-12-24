@@ -21,17 +21,17 @@ import (
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 )
 
 const (
-	RepositoryDefaultName = "default"
+	LedgerDefaultName = "default"
 )
 
-// CreateRepository creates a new repository.
-func (s SQLiteCentralStoragePAP) CreateRepository(repository *azmodels.Repository) (*azmodels.Repository, error) {
-	if repository == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - repository is nil")
+// CreateLedger creates a new ledger.
+func (s SQLiteCentralStoragePAP) CreateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error) {
+	if ledger == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - ledger is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -41,11 +41,11 @@ func (s SQLiteCentralStoragePAP) CreateRepository(repository *azmodels.Repositor
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbInRepository := &azirepos.Repository{
-		ApplicationID: repository.ApplicationID,
-		Name:          repository.Name,
+	dbInLedger := &azirepos.Ledger{
+		ApplicationID: ledger.ApplicationID,
+		Name:          ledger.Name,
 	}
-	dbOutRepository, err := s.sqlRepo.UpsertRepository(tx, true, dbInRepository)
+	dbOutLedger, err := s.sqlRepo.UpsertLedger(tx, true, dbInLedger)
 	if err != nil {
 		tx.Rollback()
 		return nil, err
@@ -53,13 +53,13 @@ func (s SQLiteCentralStoragePAP) CreateRepository(repository *azmodels.Repositor
 	if err := tx.Commit(); err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
-	return mapRepositoryToAgentRepository(dbOutRepository)
+	return mapLedgerToAgentLedger(dbOutLedger)
 }
 
-// UpdateRepository updates a repository.
-func (s SQLiteCentralStoragePAP) UpdateRepository(repository *azmodels.Repository) (*azmodels.Repository, error) {
-	if repository == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - repository is nil")
+// UpdateLedger updates a ledger.
+func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error) {
+	if ledger == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - ledger is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -69,12 +69,12 @@ func (s SQLiteCentralStoragePAP) UpdateRepository(repository *azmodels.Repositor
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbInRepository := &azirepos.Repository{
-		RepositoryID:  repository.RepositoryID,
-		ApplicationID: repository.ApplicationID,
-		Name:          repository.Name,
+	dbInLedger := &azirepos.Ledger{
+		LedgerID:      ledger.LedgerID,
+		ApplicationID: ledger.ApplicationID,
+		Name:          ledger.Name,
 	}
-	dbOutRepository, err := s.sqlRepo.UpsertRepository(tx, false, dbInRepository)
+	dbOutLedger, err := s.sqlRepo.UpsertLedger(tx, false, dbInLedger)
 	if err != nil {
 		tx.Rollback()
 		return nil, err
@@ -82,11 +82,11 @@ func (s SQLiteCentralStoragePAP) UpdateRepository(repository *azmodels.Repositor
 	if err := tx.Commit(); err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
-	return mapRepositoryToAgentRepository(dbOutRepository)
+	return mapLedgerToAgentLedger(dbOutLedger)
 }
 
-// DeleteRepository deletes a repository.
-func (s SQLiteCentralStoragePAP) DeleteRepository(applicationID int64, repositoryID string) (*azmodels.Repository, error) {
+// DeleteLedger deletes a ledger.
+func (s SQLiteCentralStoragePAP) DeleteLedger(applicationID int64, ledgerID string) (*azmodels.Ledger, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
@@ -95,7 +95,7 @@ func (s SQLiteCentralStoragePAP) DeleteRepository(applicationID int64, repositor
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbOutRepository, err := s.sqlRepo.DeleteRepository(tx, applicationID, repositoryID)
+	dbOutLedger, err := s.sqlRepo.DeleteLedger(tx, applicationID, ledgerID)
 	if err != nil {
 		tx.Rollback()
 		return nil, err
@@ -103,11 +103,11 @@ func (s SQLiteCentralStoragePAP) DeleteRepository(applicationID int64, repositor
 	if err := tx.Commit(); err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
-	return mapRepositoryToAgentRepository(dbOutRepository)
+	return mapLedgerToAgentLedger(dbOutLedger)
 }
 
-// FetchRepositories returns all repositories.
-func (s SQLiteCentralStoragePAP) FetchRepositories(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Repository, error) {
+// FetchLedgers returns all ledgers.
+func (s SQLiteCentralStoragePAP) FetchLedgers(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Ledger, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
@@ -116,32 +116,32 @@ func (s SQLiteCentralStoragePAP) FetchRepositories(page int32, pageSize int32, a
 		return nil, err
 	}
 	var filterID *string
-	if _, ok := fields[azmodels.FieldRepositoryRepositoryID]; ok {
-		repositoryID, ok := fields[azmodels.FieldRepositoryRepositoryID].(string)
+	if _, ok := fields[azmodels.FieldLedgerLedgerID]; ok {
+		ledgerID, ok := fields[azmodels.FieldLedgerLedgerID].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (repository id: %s)", repositoryID))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger id is not valid (ledger id: %s)", ledgerID))
 		}
-		filterID = &repositoryID
+		filterID = &ledgerID
 	}
 	var filterName *string
-	if _, ok := fields[azmodels.FieldRepositoryName]; ok {
-		repositoryName, ok := fields[azmodels.FieldRepositoryName].(string)
+	if _, ok := fields[azmodels.FieldLedgerName]; ok {
+		ledgerName, ok := fields[azmodels.FieldLedgerName].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository name is not valid (repository name: %s)", repositoryName))
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger name is not valid (ledger name: %s)", ledgerName))
 		}
-		filterName = &repositoryName
+		filterName = &ledgerName
 	}
-	dbRepositories, err := s.sqlRepo.FetchRepositories(db, page, pageSize, applicationID, filterID, filterName)
+	dbLedgers, err := s.sqlRepo.FetchLedgers(db, page, pageSize, applicationID, filterID, filterName)
 	if err != nil {
 		return nil, err
 	}
-	repositories := make([]azmodels.Repository, len(dbRepositories))
-	for i, a := range dbRepositories {
-		repository, err := mapRepositoryToAgentRepository(&a)
+	ledgers := make([]azmodels.Ledger, len(dbLedgers))
+	for i, a := range dbLedgers {
+		ledger, err := mapLedgerToAgentLedger(&a)
 		if err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert repository entity (%s)", azirepos.LogRepositoryEntry(&a)))
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert ledger entity (%s)", azirepos.LogLedgerEntry(&a)))
 		}
-		repositories[i] = *repository
+		ledgers[i] = *ledger
 	}
-	return repositories, nil
+	return ledgers, nil
 }

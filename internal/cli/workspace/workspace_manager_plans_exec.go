@@ -25,7 +25,7 @@ import (
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
 )
 
-// ExecPlan generates a plan of changes to apply to the remote repository based on the differences between the local and remote states.
+// ExecPlan generates a plan of changes to apply to the remote ledger based on the differences between the local and remote states.
 func (m *WorkspaceManager) ExecPlan(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to build the plan.", nil, true)
@@ -45,7 +45,7 @@ func (m *WorkspaceManager) ExecPlan(out aziclicommon.PrinterOutFunc) (map[string
 	return m.execInternalPlan(false, out)
 }
 
-// execInternalPlan generates a plan of changes to apply to the remote repository based on the differences between the local and remote states.
+// execInternalPlan generates a plan of changes to apply to the remote ledger based on the differences between the local and remote states.
 func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
@@ -79,17 +79,17 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "plan", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(headCtx.GetRef())), nil, true)
-		out(nil, "plan", fmt.Sprintf("Repo set to %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
+		out(nil, "plan", fmt.Sprintf("Ledger set to %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
 			"ref": headCtx.GetRef(),
 		}
 		output = out(output, "head", remoteObj, nil, true)
-		output = out(output, "repo", headCtx.GetRepoURI(), nil, true)
+		output = out(output, "ledger", headCtx.GetRepoURI(), nil, true)
 	}
 
 	// Executes the planning for the current head
-	out(nil, "", fmt.Sprintf("Initiating the planning process for repository %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
+	out(nil, "", fmt.Sprintf("Initiating the planning process for ledger %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 
 	errPlanningProcessFailed := "Planning process failed."
 
@@ -206,7 +206,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 	return output, nil
 }
 
-// ExecApply applies the plan to the remote repository
+// ExecApply applies the plan to the remote ledger
 func (m *WorkspaceManager) ExecApply(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to apply the plan.", nil, true)
@@ -226,7 +226,7 @@ func (m *WorkspaceManager) ExecApply(out aziclicommon.PrinterOutFunc) (map[strin
 	return m.execInternalApply(false, out)
 }
 
-// execInternalApply applies the plan to the remote repository
+// execInternalApply applies the plan to the remote ledger
 func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
@@ -258,7 +258,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 	}
 
 	// Executes the apply for the current head
-	out(nil, "", fmt.Sprintf("Initiating the apply process for repository %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
+	out(nil, "", fmt.Sprintf("Initiating the apply process for ledger %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", "Preparing to read the plan.", nil, true)
@@ -348,7 +348,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 
 	out(nil, "", "Apply process completed successfully.", nil, true)
 	if !internal {
-		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote repository: %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
+		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote ledger: %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
 	}
 	return output, nil
 }
