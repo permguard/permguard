@@ -46,7 +46,7 @@ Usage:
   permguard [command]
 
 Available Commands:
-  applications    Manage applications on the remote server
+  apps        Manage applications on the remote server
   apply       Apply the plan to the remote ledger
   authn       Manage tenants and identities on the remote server
   authz       Manage ledgers on the remote server
@@ -62,7 +62,7 @@ Available Commands:
   pull        Fetch the latest changes from the remote ledger and constructs the remote state.
   refresh     Scan source files in the current directory and synchronizes the local state
   remote      Manage remote server for tracking and interaction
-  ledger        Manage ledger settings and operations
+  ledger      Manage the ledger
   validate    Validate the local state for consistency and correctness
 
 Flags:

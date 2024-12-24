@@ -30,7 +30,7 @@ Using the `ledgers` command, it is possible to manage locally checked out ledger
 
 The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
-This command manages ledger settings and operations.
+This command Manages the ledger.
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
 

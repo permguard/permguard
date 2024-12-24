@@ -71,8 +71,8 @@ func runECommandForRepoWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 func CreateCommandForWorkspaceRepo(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "ledger",
-		Short: `Manage ledger settings and operations`,
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages ledger settings and operations.`),
+		Short: `Manage the ledger`,
+		Long:  aziclicommon.BuildCliLongTemplate(`This command Manages the ledger.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForRepoWorkspace(deps, cmd, v)
 		},
