@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package repositories
+package facade
 
 import (
 	"database/sql"
@@ -27,7 +27,7 @@ import (
 )
 
 // UpsertKeyValue creates or updates a key-value pair.
-func (r *Repo) UpsertKeyValue(tx *sql.Tx, keyValue *KeyValue) (*KeyValue, error) {
+func (r *Facade) UpsertKeyValue(tx *sql.Tx, keyValue *KeyValue) (*KeyValue, error) {
 	if keyValue == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - key-value data is missing or malformed")
 	}
@@ -65,7 +65,7 @@ func (r *Repo) UpsertKeyValue(tx *sql.Tx, keyValue *KeyValue) (*KeyValue, error)
 }
 
 // GetKeyValue retrieves the value for a given key from the key-value store.
-func (r *Repo) GetKeyValue(db *sqlx.DB, key string) (*KeyValue, error) {
+func (r *Facade) GetKeyValue(db *sqlx.DB, key string) (*KeyValue, error) {
 	if key == "" {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - key is missing or empty")
 	}

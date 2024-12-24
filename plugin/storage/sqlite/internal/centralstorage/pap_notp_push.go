@@ -19,7 +19,7 @@ package centralstorage
 import (
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"

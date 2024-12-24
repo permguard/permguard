@@ -23,7 +23,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	mock "github.com/stretchr/testify/mock"
 
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 )
 
 // MockSqliteRepo sqlite repo mock

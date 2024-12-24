@@ -22,7 +22,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 

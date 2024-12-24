@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package repositories
+package facade
 
 import (
 	"database/sql"
@@ -34,7 +34,7 @@ const (
 )
 
 // UpsertRepository creates or updates a repository.
-func (r *Repo) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Repository) (*Repository, error) {
+func (r *Facade) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Repository) (*Repository, error) {
 	if repository == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository data is missing or malformed (%s)", LogRepositoryEntry(repository)))
 	}
@@ -85,7 +85,7 @@ func (r *Repo) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Repositor
 }
 
 // UpdateRepositoryRef updates the ref of a repository.
-func (r *Repo) UpdateRepositoryRef(tx *sql.Tx, applicationID int64, repositoryID, currentRef, newRef string) error {
+func (r *Facade) UpdateRepositoryRef(tx *sql.Tx, applicationID int64, repositoryID, currentRef, newRef string) error {
 	if err := azvalidators.ValidateCodeID("repository", applicationID); err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidApplicationID, applicationID))
 	}
@@ -128,7 +128,7 @@ func (r *Repo) UpdateRepositoryRef(tx *sql.Tx, applicationID int64, repositoryID
 }
 
 // DeleteRepository deletes a repository.
-func (r *Repo) DeleteRepository(tx *sql.Tx, applicationID int64, repositoryID string) (*Repository, error) {
+func (r *Facade) DeleteRepository(tx *sql.Tx, applicationID int64, repositoryID string) (*Repository, error) {
 	if err := azvalidators.ValidateCodeID("repository", applicationID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidApplicationID, applicationID))
 	}
@@ -160,7 +160,7 @@ func (r *Repo) DeleteRepository(tx *sql.Tx, applicationID int64, repositoryID st
 }
 
 // FetchRepositories retrieves repositories.
-func (r *Repo) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]Repository, error) {
+func (r *Facade) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]Repository, error) {
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}

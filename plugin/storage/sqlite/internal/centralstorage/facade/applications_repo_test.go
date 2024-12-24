@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package repositories
+package facade
 
 import (
 	"regexp"
@@ -28,7 +28,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
+	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade/testutils"
 )
 
 // registerApplicationForUpsertMocking registers an application for upsert mocking.
@@ -84,7 +84,7 @@ func registerApplicationForFetchMocking() (string, []Application, *sqlmock.Rows)
 // TestRepoUpsertApplicationWithInvalidInput tests the upsert of an application with invalid input.
 func TestRepoUpsertApplicationWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	repo := Facade{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -135,7 +135,7 @@ func TestRepoUpsertApplicationWithInvalidInput(t *testing.T) {
 // TestRepoUpsertApplicationWithSuccess tests the upsert of an application with success.
 func TestRepoUpsertApplicationWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	repo := Facade{}
 
 	tests := []bool{
 		true,
@@ -185,7 +185,7 @@ func TestRepoUpsertApplicationWithSuccess(t *testing.T) {
 // TestRepoCreateApplicationWithSuccess tests the upsert of an application with success.
 func TestRepoUpsertApplicationWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	repo := Facade{}
 
 	tests := []bool{
 		true,
@@ -230,7 +230,7 @@ func TestRepoUpsertApplicationWithErrors(t *testing.T) {
 
 // TestRepoDeleteApplicationWithInvalidInput tests the delete of an application with invalid input.
 func TestRepoDeleteApplicationWithInvalidInput(t *testing.T) {
-	repo := Repo{}
+	repo := Facade{}
 
 	assert := assert.New(t)
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
@@ -248,7 +248,7 @@ func TestRepoDeleteApplicationWithInvalidInput(t *testing.T) {
 // TestRepoDeleteApplicationWithSuccess tests the delete of an application with success.
 func TestRepoDeleteApplicationWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	repo := Facade{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -278,7 +278,7 @@ func TestRepoDeleteApplicationWithSuccess(t *testing.T) {
 // TestRepoDeleteApplicationWithErrors tests the delete of an application with errors.
 func TestRepoDeleteApplicationWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	repo := Facade{}
 
 	tests := []int{
 		1,
@@ -331,7 +331,7 @@ func TestRepoDeleteApplicationWithErrors(t *testing.T) {
 // TestRepoFetchApplicationWithInvalidInput tests the fetch of applications with invalid input.
 func TestRepoFetchApplicationWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	repo := Facade{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -366,7 +366,7 @@ func TestRepoFetchApplicationWithInvalidInput(t *testing.T) {
 // TestRepoFetchApplicationWithSuccess tests the fetch of applications with success.
 func TestRepoFetchApplicationWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	repo := Facade{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()

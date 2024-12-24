@@ -21,7 +21,7 @@ import (
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 )
 
 const (

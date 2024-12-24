@@ -18,7 +18,7 @@ package centralstorage
 
 import (
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 )
 
 // mapRepositoryToAgentRepository maps a Repository to a model Repository.

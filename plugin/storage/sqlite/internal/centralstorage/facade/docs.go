@@ -14,20 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package repositories
-
-import (
-	"strings"
-
-	"github.com/google/uuid"
-)
-
-// Repo is the central storage repository.
-type Repo struct {
-}
-
-// GenerateUUID generates a UUID.
-func GenerateUUID() string {
-	id := uuid.NewString()
-	return strings.ReplaceAll(id, "-", "")
-}
+// package facade provides the repository implementation.
+package facade

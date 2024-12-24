@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package repositories
+package facade
 
 import (
 	"regexp"
@@ -28,7 +28,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
+	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade/testutils"
 )
 
 // registerIdentitySourceForUpsertMocking registers an identity source for upsert mocking.
@@ -87,7 +87,7 @@ func registerIdentitySourceForFetchMocking() (string, []IdentitySource, *sqlmock
 // TestRepoUpsertIdentitySourceWithInvalidInput tests the upsert of an identity source with invalid input.
 func TestRepoUpsertIdentitySourceWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	repo := Facade{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -148,7 +148,7 @@ func TestRepoUpsertIdentitySourceWithInvalidInput(t *testing.T) {
 // TestRepoUpsertIdentitySourceWithSuccess tests the upsert of an identity source with success.
 func TestRepoUpsertIdentitySourceWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	repo := Facade{}
 
 	tests := []bool{
 		true,
@@ -201,7 +201,7 @@ func TestRepoUpsertIdentitySourceWithSuccess(t *testing.T) {
 // TestRepoUpsertIdentitySourceWithErrors tests the upsert of an identity source with errors.
 func TestRepoUpsertIdentitySourceWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	repo := Facade{}
 
 	tests := []bool{
 		true,
@@ -248,7 +248,7 @@ func TestRepoUpsertIdentitySourceWithErrors(t *testing.T) {
 
 // TestRepoDeleteIdentitySourceWithInvalidInput tests the delete of an identity source with invalid input.
 func TestRepoDeleteIdentitySourceWithInvalidInput(t *testing.T) {
-	repo := Repo{}
+	repo := Facade{}
 
 	assert := assert.New(t)
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
@@ -272,7 +272,7 @@ func TestRepoDeleteIdentitySourceWithInvalidInput(t *testing.T) {
 // TestRepoDeleteIdentitySourceWithSuccess tests the delete of an identity source with success.
 func TestRepoDeleteIdentitySourceWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	repo := Facade{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -303,7 +303,7 @@ func TestRepoDeleteIdentitySourceWithSuccess(t *testing.T) {
 // TestRepoDeleteIdentitySourceWithErrors tests the delete of an identity source with errors.
 func TestRepoDeleteIdentitySourceWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	repo := Facade{}
 
 	tests := []int{
 		1,
@@ -356,7 +356,7 @@ func TestRepoDeleteIdentitySourceWithErrors(t *testing.T) {
 // TestRepoFetchIdentitySourceWithInvalidInput tests the fetch of identity sources with invalid input.
 func TestRepoFetchIdentitySourceWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	repo := Facade{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -398,7 +398,7 @@ func TestRepoFetchIdentitySourceWithInvalidInput(t *testing.T) {
 // TestRepoFetchIdentitySourceWithSuccess tests the fetch of identity sources with success.
 func TestRepoFetchIdentitySourceWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	repo := Facade{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
