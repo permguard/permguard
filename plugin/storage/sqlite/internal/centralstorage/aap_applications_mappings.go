@@ -21,12 +21,12 @@ import (
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
-// mapAccountToAgentAccount maps an Account to a model Account.
-func mapAccountToAgentAccount(account *azirepos.Account) (*azmodels.Account, error) {
-	return &azmodels.Account{
-		AccountID: account.AccountID,
-		CreatedAt: account.CreatedAt,
-		UpdatedAt: account.UpdatedAt,
-		Name:      account.Name,
+// mapApplicationToAgentApplication maps an Application to a model Application.
+func mapApplicationToAgentApplication(application *azirepos.Application) (*azmodels.Application, error) {
+	return &azmodels.Application{
+		ApplicationID: application.ApplicationID,
+		CreatedAt:     application.CreatedAt,
+		UpdatedAt:     application.UpdatedAt,
+		Name:          application.Name,
 	}, nil
 }

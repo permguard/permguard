@@ -112,7 +112,7 @@ func (m *ConfigManager) GetRepoInfo(repoURI string) (*azicliwkscommon.RefInfo, e
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", repoURI))
 	}
 	cfgRepository := cfg.Repositories[repoURI]
-	refInfo, err := azicliwkscommon.NewRefInfoFromRepoName(cfgRepository.Remote, cfgRepository.AccountID, cfgRepository.RepoName)
+	refInfo, err := azicliwkscommon.NewRefInfoFromRepoName(cfgRepository.Remote, cfgRepository.ApplicationID, cfgRepository.RepoName)
 	if err != nil {
 		return nil, err
 	}

@@ -89,11 +89,11 @@ func TestCreateRepositoryWithSuccess(t *testing.T) {
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLitePAPCentralStorageWithMocks()
 
 	dbOutRepository := &azirepos.Repository{
-		AccountID:    232956849236,
-		RepositoryID: azirepos.GenerateUUID(),
-		Name:         "rent-a-car1",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		ApplicationID: 232956849236,
+		RepositoryID:  azirepos.GenerateUUID(),
+		Name:          "rent-a-car1",
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
@@ -171,11 +171,11 @@ func TestUpdateRepositoryWithSuccess(t *testing.T) {
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLitePAPCentralStorageWithMocks()
 
 	dbOutRepository := &azirepos.Repository{
-		AccountID:    232956849236,
-		RepositoryID: azirepos.GenerateUUID(),
-		Name:         "rent-a-car1",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		ApplicationID: 232956849236,
+		RepositoryID:  azirepos.GenerateUUID(),
+		Name:          "rent-a-car1",
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
@@ -228,7 +228,7 @@ func TestDeleteRepositoryWithErrors(t *testing.T) {
 		}
 
 		inRepositoryID := azirepos.GenerateUUID()
-		outRepositories, err := storage.DeleteRepository(azirepos.GenerateAccountID(), inRepositoryID)
+		outRepositories, err := storage.DeleteRepository(azirepos.GenerateApplicationID(), inRepositoryID)
 		assert.Nil(outRepositories, "repositories should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
@@ -246,11 +246,11 @@ func TestDeleteRepositoryWithSuccess(t *testing.T) {
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLitePAPCentralStorageWithMocks()
 
 	dbOutRepository := &azirepos.Repository{
-		AccountID:    232956849236,
-		RepositoryID: azirepos.GenerateUUID(),
-		Name:         "rent-a-car1",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		ApplicationID: 232956849236,
+		RepositoryID:  azirepos.GenerateUUID(),
+		Name:          "rent-a-car1",
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
@@ -259,7 +259,7 @@ func TestDeleteRepositoryWithSuccess(t *testing.T) {
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
 	inRepositoryID := azirepos.GenerateUUID()
-	outRepositories, err := storage.DeleteRepository(azirepos.GenerateAccountID(), inRepositoryID)
+	outRepositories, err := storage.DeleteRepository(azirepos.GenerateApplicationID(), inRepositoryID)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outRepositories, "repositories should not be nil")
 	assert.Equal(dbOutRepository.RepositoryID, outRepositories.RepositoryID, "repository id should be equal")
@@ -330,18 +330,18 @@ func TestFetchRepositoryWithSuccess(t *testing.T) {
 
 	dbOutRepositories := []azirepos.Repository{
 		{
-			AccountID:    232956849236,
-			RepositoryID: azirepos.GenerateUUID(),
-			Name:         "rent-a-car1",
-			CreatedAt:    time.Now(),
-			UpdatedAt:    time.Now(),
+			ApplicationID: 232956849236,
+			RepositoryID:  azirepos.GenerateUUID(),
+			Name:          "rent-a-car1",
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
 		},
 		{
-			AccountID:    232956849236,
-			RepositoryID: azirepos.GenerateUUID(),
-			Name:         "rent-a-car2",
-			CreatedAt:    time.Now(),
-			UpdatedAt:    time.Now(),
+			ApplicationID: 232956849236,
+			RepositoryID:  azirepos.GenerateUUID(),
+			Name:          "rent-a-car2",
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
 		},
 	}
 

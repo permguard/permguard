@@ -108,11 +108,11 @@ func TestCliTenantsCreateWithSuccess(t *testing.T) {
 
 		aapClient := azmocks.NewGrpcAAPClientMock()
 		tenant := &azmodels.Tenant{
-			TenantID:  "c3160a533ab24fbcb1eab7a09fd85f36",
-			AccountID: 581616507495,
-			Name:      "materabranch",
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			TenantID:      "c3160a533ab24fbcb1eab7a09fd85f36",
+			ApplicationID: 581616507495,
+			Name:          "materabranch",
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
 		}
 		aapClient.On("CreateTenant", mock.Anything, mock.Anything).Return(tenant, nil)
 

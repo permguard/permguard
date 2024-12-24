@@ -79,15 +79,15 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 			out(nil, "checkout", "Remote verified successfully.", nil, true)
 		}
 		// Add the repository
-		ref := m.rfsMgr.GenerateRef(repoInfo.GetRemote(), repoInfo.GetAccountID(), srvRepo.RepositoryID)
-		output, err = m.cfgMgr.ExecAddRepo(repoURI, ref, repoInfo.GetRemote(), repoInfo.GetRepo(), srvRepo.RepositoryID, repoInfo.GetAccountID(), nil, out)
+		ref := m.rfsMgr.GenerateRef(repoInfo.GetRemote(), repoInfo.GetApplicationID(), srvRepo.RepositoryID)
+		output, err = m.cfgMgr.ExecAddRepo(repoURI, ref, repoInfo.GetRemote(), repoInfo.GetRepo(), srvRepo.RepositoryID, repoInfo.GetApplicationID(), nil, out)
 		if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
 			return failedOpErr(output, err)
 		}
 		// Checkout the head
 		remoteCommitID := azlangobjs.ZeroOID
 		var remoteRef, headRef string
-		remoteRef, headRef, output, err = m.rfsMgr.ExecCheckoutRefFilesForRemote(repoInfo.GetRemote(), repoInfo.GetAccountID(), repoInfo.GetRepo(), srvRepo.RepositoryID, remoteCommitID, output, out)
+		remoteRef, headRef, output, err = m.rfsMgr.ExecCheckoutRefFilesForRemote(repoInfo.GetRemote(), repoInfo.GetApplicationID(), repoInfo.GetRepo(), srvRepo.RepositoryID, remoteCommitID, output, out)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -115,7 +115,7 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	remoteRef := azicliwkscommon.GenerateHeadRef(refInfo.GetAccountID(), refInfo.GetRepo())
+	remoteRef := azicliwkscommon.GenerateHeadRef(refInfo.GetApplicationID(), refInfo.GetRepo())
 	_, output, err = m.rfsMgr.ExecCheckoutHead(remoteRef, output, out)
 	if err != nil {
 		return failedOpErr(nil, err)
@@ -192,7 +192,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		HeadContextKey:         headCtx,
 	}
 
-	ctx, err := m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetAccountID(), headCtx.GetRepoID(), bag, m)
+	ctx, err := m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetApplicationID(), headCtx.GetRepoID(), bag, m)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
@@ -276,18 +276,18 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		}
 
 		var schemaBlock []byte
-		codeEntries:= []map[string]any{}
+		codeEntries := []map[string]any{}
 		codeBlocks := [][]byte{}
 		for _, entry := range tree.GetEntries() {
 			codeEntries = append(codeEntries, map[string]any{
-				"oid": entry.GetOID(),
-				"oname": entry.GetOName(),
-				"type": entry.GetType(),
-				"code_id": entry.GetCodeID(),
-				"code_type": entry.GetCodeType(),
-				"language": entry.GetLanguage(),
+				"oid":               entry.GetOID(),
+				"oname":             entry.GetOName(),
+				"type":              entry.GetType(),
+				"code_id":           entry.GetCodeID(),
+				"code_type":         entry.GetCodeType(),
+				"language":          entry.GetLanguage(),
 				"lanaguage_version": entry.GetLanguageVersion(),
-				"langauge_type": entry.GetLanguageType(),
+				"langauge_type":     entry.GetLanguageType(),
 			})
 			if _, ok := codeMapIds[entry.GetOID()]; !ok {
 				entryObj, err := m.cospMgr.ReadObject(entry.GetOID())
@@ -400,7 +400,7 @@ func (m *WorkspaceManager) ExecCloneRepo(language, repoURI string, aapPort, papP
 	}
 
 	uriServer := elements[0]
-	uriAccountID := elements[1]
+	uriApplicationID := elements[1]
 	uriRepo := elements[2]
 
 	output, err := m.ExecInitWorkspace(language, out)
@@ -413,7 +413,7 @@ func (m *WorkspaceManager) ExecCloneRepo(language, repoURI string, aapPort, papP
 		defer fileLock.Unlock()
 		output, err = m.execInternalAddRemote(true, OriginRemoteName, uriServer, aapPort, papPort, out)
 		if err == nil {
-			repoURI := fmt.Sprintf("%s/%s/%s", OriginRemoteName, uriAccountID, uriRepo)
+			repoURI := fmt.Sprintf("%s/%s/%s", OriginRemoteName, uriApplicationID, uriRepo)
 			output, err = m.execInternalCheckoutRepo(true, repoURI, out)
 			if err != nil {
 				aborted = true

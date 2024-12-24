@@ -27,14 +27,14 @@ CREATE TABLE change_streams (
 	change_type TEXT NOT NULL,
 	change_entity_id TEXT NOT NULL,
 	change_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
-    account_id INTEGER NOT NULL,
+    application_id INTEGER NOT NULL,
     payload TEXT NOT NULL
 );
 
 CREATE INDEX change_streams_change_entity_idx ON change_streams(change_entity);
 CREATE INDEX change_streams_change_type_idx ON change_streams(change_type);
 CREATE INDEX change_streams_change_entity_id_idx ON change_streams(change_entity_id);
-CREATE INDEX change_streams_account_id_idx ON change_streams(account_id);
+CREATE INDEX change_streams_application_id_idx ON change_streams(application_id);
 CREATE INDEX change_streams_change_at_idx ON change_streams(change_at);
 
 -- +goose Down

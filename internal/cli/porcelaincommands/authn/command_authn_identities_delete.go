@@ -47,9 +47,9 @@ func runECommandForDeleteIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	accountID := v.GetInt64(azoptions.FlagName(commandNameForIdentity, aziclicommon.FlagCommonAccountID))
+	applicationID := v.GetInt64(azoptions.FlagName(commandNameForIdentity, aziclicommon.FlagCommonApplicationID))
 	identityID := v.GetString(azoptions.FlagName(commandNameForIdentitiesDelete, flagIdentityID))
-	identity, err := client.DeleteIdentity(accountID, identityID)
+	identity, err := client.DeleteIdentity(applicationID, identityID)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
 			printer.Println("Failed to delete the identity.")
@@ -80,7 +80,7 @@ func createCommandForIdentityDelete(deps azcli.CliDependenciesProvider, v *viper
 
 Examples:
   # delete an identity and output the result in json format
-  permguard authn identities delete --account 268786704340 --identityid 1da1d9094501425085859c60429163c2 --output json
+  permguard authn identities delete --application 268786704340 --identityid 1da1d9094501425085859c60429163c2 --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteIdentity(deps, cmd, v)

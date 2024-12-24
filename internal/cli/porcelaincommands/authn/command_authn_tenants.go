@@ -49,14 +49,14 @@ func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	accountID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonAccountID))
+	applicationID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonApplicationID))
 	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
 	tenant := &azmodels.Tenant{
-		AccountID: accountID,
-		Name:      name,
+		ApplicationID: applicationID,
+		Name:          name,
 	}
 	if isCreate {
-		tenant, err = client.CreateTenant(accountID, name)
+		tenant, err = client.CreateTenant(applicationID, name)
 	} else {
 		tenantID := v.GetString(azoptions.FlagName(flagPrefix, flagTenantID))
 		tenant.TenantID = tenantID
@@ -101,8 +101,8 @@ func createCommandForTenants(deps azcli.CliDependenciesProvider, v *viper.Viper)
 		RunE:  runECommandForTenants,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonAccountID, 0, "account id filter")
-	v.BindPFlag(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonAccountID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonAccountID))
+	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id filter")
+	v.BindPFlag(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonApplicationID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonApplicationID))
 
 	command.AddCommand(createCommandForTenantCreate(deps, v))
 	command.AddCommand(createCommandForTenantUpdate(deps, v))

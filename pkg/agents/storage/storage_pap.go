@@ -30,9 +30,9 @@ type PAPCentralStorage interface {
 	// UpdateRepository updates an repository.
 	UpdateRepository(repository *azmodels.Repository) (*azmodels.Repository, error)
 	// DeleteRepository deletes an repository.
-	DeleteRepository(accountID int64, repositoryID string) (*azmodels.Repository, error)
+	DeleteRepository(applicationID int64, repositoryID string) (*azmodels.Repository, error)
 	// FetchRepositories gets all repositories.
-	FetchRepositories(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Repository, error)
+	FetchRepositories(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Repository, error)
 	// OnPullHandleRequestCurrentState handles the request for the current state.
 	OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPullSendNotifyCurrentStateResponse notifies the current state.

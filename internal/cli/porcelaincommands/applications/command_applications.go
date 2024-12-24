@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package accounts
+package applications
 
 import (
 	"fmt"
@@ -29,8 +29,8 @@ import (
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
 )
 
-// runECommandForUpsertAccount runs the command for creating or updating an account.
-func runECommandForUpsertAccount(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+// runECommandForUpsertApplication runs the command for creating or updating an application.
+func runECommandForUpsertApplication(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
 	if deps == nil {
 		color.Red("cli: an issue has been detected with the cli code configuration. please create a github issue with the details")
 		return aziclicommon.ErrCommandSilent
@@ -47,23 +47,23 @@ func runECommandForUpsertAccount(deps azcli.CliDependenciesProvider, cmd *cobra.
 		return aziclicommon.ErrCommandSilent
 	}
 	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
-	var account *azmodels.Account
+	var application *azmodels.Application
 	if isCreate {
-		account, err = client.CreateAccount(name)
+		application, err = client.CreateApplication(name)
 	} else {
-		accountID := v.GetInt64(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonAccountID))
-		inputAccount := &azmodels.Account{
-			AccountID: accountID,
-			Name:      name,
+		applicationID := v.GetInt64(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonApplicationID))
+		inputApplication := &azmodels.Application{
+			ApplicationID: applicationID,
+			Name:          name,
 		}
-		account, err = client.UpdateAccount(inputAccount)
+		application, err = client.UpdateApplication(inputApplication)
 	}
 	if err != nil {
 		if ctx.IsTerminalOutput() {
 			if isCreate {
-				printer.Println("Failed to create the account.")
+				printer.Println("Failed to create the application.")
 			} else {
-				printer.Println("Failed to update the account.")
+				printer.Println("Failed to update the application.")
 			}
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
@@ -73,35 +73,35 @@ func runECommandForUpsertAccount(deps azcli.CliDependenciesProvider, cmd *cobra.
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
-		accountID := fmt.Sprintf("%d", account.AccountID)
-		output[accountID] = account.Name
+		applicationID := fmt.Sprintf("%d", application.ApplicationID)
+		output[applicationID] = application.Name
 	} else if ctx.IsJSONOutput() {
-		output["accounts"] = []*azmodels.Account{account}
+		output["applications"] = []*azmodels.Application{application}
 	}
 	printer.PrintlnMap(output)
 	return nil
 }
 
-// runECommandForAccounts runs the command for managing accounts.
-func runECommandForAccounts(cmd *cobra.Command, args []string) error {
+// runECommandForApplications runs the command for managing applications.
+func runECommandForApplications(cmd *cobra.Command, args []string) error {
 	return cmd.Help()
 }
 
-// CreateCommandForAccounts creates a command for managing accounts.
-func CreateCommandForAccounts(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+// CreateCommandForApplications creates a command for managing applications.
+func CreateCommandForApplications(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "accounts",
-		Short: "Manage accounts on the remote server",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages accounts on the remote server.`),
-		RunE:  runECommandForAccounts,
+		Use:   "applications",
+		Short: "Manage applications on the remote server",
+		Long:  aziclicommon.BuildCliLongTemplate(`This command manages applications on the remote server.`),
+		RunE:  runECommandForApplications,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonAccountID, 0, "filter results by account ID across all subcommands")
-	v.BindPFlag(azoptions.FlagName(commandNameForAccountsList, aziclicommon.FlagCommonAccountID), command.Flags().Lookup(aziclicommon.FlagCommonAccountID))
+	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "filter results by application ID across all subcommands")
+	v.BindPFlag(azoptions.FlagName(commandNameForApplicationsList, aziclicommon.FlagCommonApplicationID), command.Flags().Lookup(aziclicommon.FlagCommonApplicationID))
 
-	command.AddCommand(createCommandForAccountCreate(deps, v))
-	command.AddCommand(createCommandForAccountUpdate(deps, v))
-	command.AddCommand(createCommandForAccountDelete(deps, v))
-	command.AddCommand(createCommandForAccountList(deps, v))
+	command.AddCommand(createCommandForApplicationCreate(deps, v))
+	command.AddCommand(createCommandForApplicationUpdate(deps, v))
+	command.AddCommand(createCommandForApplicationDelete(deps, v))
+	command.AddCommand(createCommandForApplicationList(deps, v))
 	return command
 }

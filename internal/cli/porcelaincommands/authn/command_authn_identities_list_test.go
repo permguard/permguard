@@ -109,18 +109,18 @@ func TestCliIdentitiesListWithSuccess(t *testing.T) {
 		aapClient := azmocks.NewGrpcAAPClientMock()
 		identities := []azmodels.Identity{
 			{
-				IdentityID: "c3160a533ab24fbcb1eab7a09fd85f36",
-				AccountID:  581616507495,
-				Name:       "nicola.gallo",
-				CreatedAt:  time.Now(),
-				UpdatedAt:  time.Now(),
+				IdentityID:    "c3160a533ab24fbcb1eab7a09fd85f36",
+				ApplicationID: 581616507495,
+				Name:          "nicola.gallo",
+				CreatedAt:     time.Now(),
+				UpdatedAt:     time.Now(),
 			},
 			{
-				IdentityID: "f73d25ae7b1f4f66807c3face0fee0f3",
-				AccountID:  581616507495,
-				Name:       "john.doe",
-				CreatedAt:  time.Now(),
-				UpdatedAt:  time.Now(),
+				IdentityID:    "f73d25ae7b1f4f66807c3face0fee0f3",
+				ApplicationID: 581616507495,
+				Name:          "john.doe",
+				CreatedAt:     time.Now(),
+				UpdatedAt:     time.Now(),
 			},
 		}
 		aapClient.On("FetchIdentitiesBy", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(identities, nil)

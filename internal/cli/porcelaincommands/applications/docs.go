@@ -14,17 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package accounts
-
-import (
-	"testing"
-
-	aztestutils "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
-)
-
-// TestCreateCommandForAccounts tests the CreateCommandForAccounts function.
-func TestCreateCommandForAccounts(t *testing.T) {
-	args := []string{}
-	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command manages accounts on the remote server."}
-	aztestutils.BaseCommandTest(t, CreateCommandForAccounts, args, false, outputs)
-}
+// Package applications provides the cobra commands for the applications commands.
+package applications

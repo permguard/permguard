@@ -29,45 +29,45 @@ option go_package = "github.com/permguard/permguard/internal/hosts/api/pap/v1";
 message RepositoryFetchRequest {
 	optional int32 Page 	 		= 1;
 	optional int32 PageSize	 		= 2;
-    int64 AccountID 				= 3;
+    int64 ApplicationID 				= 3;
     optional string RepositoryID 	= 4;
 	optional string Name 			= 5;
 }
 
 // Repository create request.
 message RepositoryCreateRequest {
-    int64 AccountID = 1;
+    int64 ApplicationID = 1;
 	string Name = 2;
 }
 
 // Repository update request.
 message RepositoryUpdateRequest {
-	int64 AccountID = 1;
+	int64 ApplicationID = 1;
     string RepositoryID = 2;
     string Name = 3;
 }
 
 // Repository delete request.
 message RepositoryDeleteRequest {
-	int64 AccountID = 1;
+	int64 ApplicationID = 1;
 	string RepositoryID = 2;
 }
 
 // Repository response.
 message RepositoryResponse {
     string RepositoryID = 1;
-    int64 AccountID = 2;
+    int64 ApplicationID = 2;
     google.protobuf.Timestamp CreatedAt = 3;
     google.protobuf.Timestamp UpdatedAt = 4;
     string Name = 5;
-	string Refs = 6;
+	string Ref = 6;
 }
 
 // Pack Objects
 
 // Repository stream request.
 message RepositoryStreamRequest {
-	int64 AccountID = 1;
+	int64 ApplicationID = 1;
     string RepositoryID = 2;
 }
 

@@ -31,45 +31,45 @@ func MapPointerStringToString(str *string) string {
 	return response
 }
 
-// MapGrpcAccountResponseToAgentAccount maps the gRPC account to the agent account.
-func MapGrpcAccountResponseToAgentAccount(account *AccountResponse) (*azmodels.Account, error) {
-	return &azmodels.Account{
-		AccountID: account.AccountID,
-		CreatedAt: account.CreatedAt.AsTime(),
-		UpdatedAt: account.UpdatedAt.AsTime(),
-		Name:      account.Name,
+// MapGrpcApplicationResponseToAgentApplication maps the gRPC application to the agent application.
+func MapGrpcApplicationResponseToAgentApplication(application *ApplicationResponse) (*azmodels.Application, error) {
+	return &azmodels.Application{
+		ApplicationID: application.ApplicationID,
+		CreatedAt:     application.CreatedAt.AsTime(),
+		UpdatedAt:     application.UpdatedAt.AsTime(),
+		Name:          application.Name,
 	}, nil
 }
 
-// MapAgentAccountToGrpcAccountResponse maps the agent account to the gRPC account.
-func MapAgentAccountToGrpcAccountResponse(account *azmodels.Account) (*AccountResponse, error) {
-	return &AccountResponse{
-		AccountID: account.AccountID,
-		CreatedAt: timestamppb.New(account.CreatedAt),
-		UpdatedAt: timestamppb.New(account.UpdatedAt),
-		Name:      account.Name,
+// MapAgentApplicationToGrpcApplicationResponse maps the agent application to the gRPC application.
+func MapAgentApplicationToGrpcApplicationResponse(application *azmodels.Application) (*ApplicationResponse, error) {
+	return &ApplicationResponse{
+		ApplicationID: application.ApplicationID,
+		CreatedAt:     timestamppb.New(application.CreatedAt),
+		UpdatedAt:     timestamppb.New(application.UpdatedAt),
+		Name:          application.Name,
 	}, nil
 }
 
 // MapGrpcTenantResponseToAgentTenant maps the gRPC tenant to the agent tenant.
 func MapGrpcTenantResponseToAgentTenant(tenant *TenantResponse) (*azmodels.Tenant, error) {
 	return &azmodels.Tenant{
-		TenantID:  tenant.TenantID,
-		CreatedAt: tenant.CreatedAt.AsTime(),
-		UpdatedAt: tenant.UpdatedAt.AsTime(),
-		AccountID: tenant.AccountID,
-		Name:      tenant.Name,
+		TenantID:      tenant.TenantID,
+		CreatedAt:     tenant.CreatedAt.AsTime(),
+		UpdatedAt:     tenant.UpdatedAt.AsTime(),
+		ApplicationID: tenant.ApplicationID,
+		Name:          tenant.Name,
 	}, nil
 }
 
 // MapAgentTenantToGrpcTenantResponse maps the agent tenant to the gRPC tenant.
 func MapAgentTenantToGrpcTenantResponse(tenant *azmodels.Tenant) (*TenantResponse, error) {
 	return &TenantResponse{
-		TenantID:  tenant.TenantID,
-		CreatedAt: timestamppb.New(tenant.CreatedAt),
-		UpdatedAt: timestamppb.New(tenant.UpdatedAt),
-		AccountID: tenant.AccountID,
-		Name:      tenant.Name,
+		TenantID:      tenant.TenantID,
+		CreatedAt:     timestamppb.New(tenant.CreatedAt),
+		UpdatedAt:     timestamppb.New(tenant.UpdatedAt),
+		ApplicationID: tenant.ApplicationID,
+		Name:          tenant.Name,
 	}, nil
 }
 
@@ -79,7 +79,7 @@ func MapGrpcIdentitySourceResponseToAgentIdentitySource(identitySource *Identity
 		IdentitySourceID: identitySource.IdentitySourceID,
 		CreatedAt:        identitySource.CreatedAt.AsTime(),
 		UpdatedAt:        identitySource.UpdatedAt.AsTime(),
-		AccountID:        identitySource.AccountID,
+		ApplicationID:    identitySource.ApplicationID,
 		Name:             identitySource.Name,
 	}, nil
 }
@@ -90,7 +90,7 @@ func MapAgentIdentitySourceToGrpcIdentitySourceResponse(identitySource *azmodels
 		IdentitySourceID: identitySource.IdentitySourceID,
 		CreatedAt:        timestamppb.New(identitySource.CreatedAt),
 		UpdatedAt:        timestamppb.New(identitySource.UpdatedAt),
-		AccountID:        identitySource.AccountID,
+		ApplicationID:    identitySource.ApplicationID,
 		Name:             identitySource.Name,
 	}, nil
 }
@@ -101,7 +101,7 @@ func MapGrpcIdentityResponseToAgentIdentity(identity *IdentityResponse) (*azmode
 		IdentityID:       identity.IdentityID,
 		CreatedAt:        identity.CreatedAt.AsTime(),
 		UpdatedAt:        identity.UpdatedAt.AsTime(),
-		AccountID:        identity.AccountID,
+		ApplicationID:    identity.ApplicationID,
 		IdentitySourceID: identity.IdentitySourceID,
 		Kind:             identity.Kind,
 		Name:             identity.Name,
@@ -114,7 +114,7 @@ func MapAgentIdentityToGrpcIdentityResponse(identity *azmodels.Identity) (*Ident
 		IdentityID:       identity.IdentityID,
 		CreatedAt:        timestamppb.New(identity.CreatedAt),
 		UpdatedAt:        timestamppb.New(identity.UpdatedAt),
-		AccountID:        identity.AccountID,
+		ApplicationID:    identity.ApplicationID,
 		IdentitySourceID: identity.IdentitySourceID,
 		Kind:             identity.Kind,
 		Name:             identity.Name,

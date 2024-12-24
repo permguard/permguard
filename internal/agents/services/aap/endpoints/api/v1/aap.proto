@@ -19,39 +19,39 @@ syntax="proto3";
 
 import "google/protobuf/timestamp.proto";
 
-package accountadministrationpoint;
+package applicationadministrationpoint;
 
 option go_package = "github.com/permguard/permguard/internal/hosts/api/aap/v1";
 
-// Accounts
+// Applications
 
-// Account get request.
-message AccountFetchRequest {
+// Application get request.
+message ApplicationFetchRequest {
 	optional int32 Page = 1;
 	optional int32 PageSize = 2;
-	optional int64 AccountID = 3;
+	optional int64 ApplicationID = 3;
 	optional string Name = 4;
 }
 
-// Account create request.
-message AccountCreateRequest {
+// Application create request.
+message ApplicationCreateRequest {
 	string Name = 1;
 }
 
-// Account update request.
-message AccountUpdateRequest {
-    int64 AccountID = 1;
+// Application update request.
+message ApplicationUpdateRequest {
+    int64 ApplicationID = 1;
     string Name = 2;
 }
 
-// Account delete request.
-message AccountDeleteRequest {
-	int64 AccountID = 1;
+// Application delete request.
+message ApplicationDeleteRequest {
+	int64 ApplicationID = 1;
 }
 
-// Account response.
-message AccountResponse {
-    int64 AccountID = 1;
+// Application response.
+message ApplicationResponse {
+    int64 ApplicationID = 1;
     google.protobuf.Timestamp CreatedAt = 2;
     google.protobuf.Timestamp UpdatedAt = 3;
     string Name = 4;
@@ -63,34 +63,34 @@ message AccountResponse {
 message TenantFetchRequest {
 	optional int32 Page = 1;
 	optional int32 PageSize= 2;
-    int64 AccountID = 3;
+    int64 ApplicationID = 3;
     optional string TenantID = 4;
 	optional string Name = 5;
 }
 
 // Tenant create request.
 message TenantCreateRequest {
-    int64 AccountID = 1;
+    int64 ApplicationID = 1;
 	string Name = 2;
 }
 
 // Tenant update request.
 message TenantUpdateRequest {
-    int64 AccountID = 1;
+    int64 ApplicationID = 1;
     string TenantID = 2;
     string Name = 3;
 }
 
 // Tenant delete request.
 message TenantDeleteRequest {
-	int64 AccountID = 1;
+	int64 ApplicationID = 1;
 	string TenantID = 2;
 }
 
 // Tenant response.
 message TenantResponse {
     string TenantID = 1;
-    int64 AccountID = 2;
+    int64 ApplicationID = 2;
     google.protobuf.Timestamp CreatedAt = 3;
     google.protobuf.Timestamp UpdatedAt = 4;
     string Name = 5;
@@ -102,34 +102,34 @@ message TenantResponse {
 message IdentitySourceFetchRequest {
 	optional int32 Page = 1;
 	optional int32 PageSize = 2;
-    int64 AccountID = 3;
+    int64 ApplicationID = 3;
     optional string IdentitySourceID = 4;
 	optional string Name = 5;
 }
 
 // IdentitySource create request.
 message IdentitySourceCreateRequest {
-    int64 AccountID = 1;
+    int64 ApplicationID = 1;
 	string Name = 2;
 }
 
 // IdentitySource update request.
 message IdentitySourceUpdateRequest {
-	int64 AccountID = 1;
+	int64 ApplicationID = 1;
     string IdentitySourceID = 2;
     string Name = 3;
 }
 
 // IdentitySource delete request.
 message IdentitySourceDeleteRequest {
-	int64 AccountID = 1;
+	int64 ApplicationID = 1;
 	string IdentitySourceID = 2;
 }
 
 // IdentitySource response.
 message IdentitySourceResponse {
     string IdentitySourceID = 1;
-    int64 AccountID = 2;
+    int64 ApplicationID = 2;
     google.protobuf.Timestamp CreatedAt = 3;
     google.protobuf.Timestamp UpdatedAt = 4;
     string Name = 5;
@@ -141,7 +141,7 @@ message IdentitySourceResponse {
 message IdentityFetchRequest {
 	optional int32 Page = 1;
 	optional int32 PageSize = 2;
-	int64 AccountID = 3;
+	int64 ApplicationID = 3;
     optional string IdentityID = 4;
     optional string IdentitySourceID = 5;
     optional string Kind = 6;
@@ -150,7 +150,7 @@ message IdentityFetchRequest {
 
 // Identity create request.
 message IdentityCreateRequest {
-	int64 AccountID = 1;
+	int64 ApplicationID = 1;
 	string IdentitySourceID = 2;
     string Kind = 3;
 	string Name = 4;
@@ -158,7 +158,7 @@ message IdentityCreateRequest {
 
 // Identity update request.
 message IdentityUpdateRequest {
-	int64 AccountID = 1;
+	int64 ApplicationID = 1;
     string IdentityID = 2;
     string Kind = 3;
 	string Name = 4;
@@ -166,14 +166,14 @@ message IdentityUpdateRequest {
 
 // Identity delete request.
 message IdentityDeleteRequest {
-	int64 AccountID = 1;
+	int64 ApplicationID = 1;
 	string IdentityID = 2;
 }
 
 // Identity response.
 message IdentityResponse {
     string IdentityID = 1;
-    int64 AccountID = 2;
+    int64 ApplicationID = 2;
     string IdentitySourceID = 3;
     google.protobuf.Timestamp CreatedAt = 4;
     google.protobuf.Timestamp UpdatedAt = 5;
@@ -181,16 +181,16 @@ message IdentityResponse {
     string Name = 7;
 }
 
-// V1AAPService is the service for the Account Administration Point.
+// V1AAPService is the service for the Application Administration Point.
 service V1AAPService {
-	// Create an account.
-	rpc CreateAccount(AccountCreateRequest) returns (AccountResponse) {}
-	// Update an account.
-	rpc UpdateAccount(AccountUpdateRequest) returns (AccountResponse) {}
-	// Delete an account.
-	rpc DeleteAccount(AccountDeleteRequest) returns (AccountResponse) {}
-	// Fetch Accounts.
-	rpc FetchAccounts(AccountFetchRequest) returns (stream AccountResponse) {}
+	// Create an application.
+	rpc CreateApplication(ApplicationCreateRequest) returns (ApplicationResponse) {}
+	// Update an application.
+	rpc UpdateApplication(ApplicationUpdateRequest) returns (ApplicationResponse) {}
+	// Delete an application.
+	rpc DeleteApplication(ApplicationDeleteRequest) returns (ApplicationResponse) {}
+	// Fetch Applications.
+	rpc FetchApplications(ApplicationFetchRequest) returns (stream ApplicationResponse) {}
 
 	// Create an identity source.
 	rpc CreateIdentitySource(IdentitySourceCreateRequest) returns (IdentitySourceResponse) {}

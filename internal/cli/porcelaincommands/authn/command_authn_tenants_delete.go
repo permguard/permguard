@@ -47,9 +47,9 @@ func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	accountID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonAccountID))
+	applicationID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonApplicationID))
 	tenantID := v.GetString(azoptions.FlagName(commandNameForTenantsDelete, flagTenantID))
-	tenant, err := client.DeleteTenant(accountID, tenantID)
+	tenant, err := client.DeleteTenant(applicationID, tenantID)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
 			printer.Println("Failed to delete the tenant.")
@@ -80,7 +80,7 @@ func createCommandForTenantDelete(deps azcli.CliDependenciesProvider, v *viper.V
 
 Examples:
   # delete a tenant and output the result in json format
-  permguard authn tenants delete --account 268786704340 --tenantid 2e190ee712494838bb54d67e2a0c496a
+  permguard authn tenants delete --application 268786704340 --tenantid 2e190ee712494838bb54d67e2a0c496a
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteTenant(deps, cmd, v)

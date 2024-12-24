@@ -109,18 +109,18 @@ func TestCliTenantsListWithSuccess(t *testing.T) {
 		aapClient := azmocks.NewGrpcAAPClientMock()
 		tenants := []azmodels.Tenant{
 			{
-				TenantID:  "c3160a533ab24fbcb1eab7a09fd85f36",
-				AccountID: 581616507495,
-				Name:      "materabranch1",
-				CreatedAt: time.Now(),
-				UpdatedAt: time.Now(),
+				TenantID:      "c3160a533ab24fbcb1eab7a09fd85f36",
+				ApplicationID: 581616507495,
+				Name:          "materabranch1",
+				CreatedAt:     time.Now(),
+				UpdatedAt:     time.Now(),
 			},
 			{
-				TenantID:  "f73d25ae7b1f4f66807c3face0fee0f3",
-				AccountID: 581616507495,
-				Name:      "materabranch2",
-				CreatedAt: time.Now(),
-				UpdatedAt: time.Now(),
+				TenantID:      "f73d25ae7b1f4f66807c3face0fee0f3",
+				ApplicationID: 581616507495,
+				Name:          "materabranch2",
+				CreatedAt:     time.Now(),
+				UpdatedAt:     time.Now(),
 			},
 		}
 		aapClient.On("FetchTenantsBy", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tenants, nil)

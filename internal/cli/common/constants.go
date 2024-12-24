@@ -35,7 +35,7 @@ const (
 	FlagCommonPageShort       = "p"
 	FlagCommonPageSize        = "size"
 	FlagCommonPageSizeShort   = "s"
-	FlagCommonAccountID       = "account"
+	FlagCommonApplicationID   = "application"
 	FlagCommonName            = "name"
 	FlagCommonEmail           = "email"
 	FlagCommonDescription     = "description"

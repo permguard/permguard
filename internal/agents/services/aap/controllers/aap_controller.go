@@ -42,24 +42,24 @@ func NewAAPController(serviceContext *azservices.ServiceContext, aapCentralStora
 	return &service, nil
 }
 
-// CreateAccount creates a new account.
-func (s AAPController) CreateAccount(account *azmodels.Account) (*azmodels.Account, error) {
-	return s.storage.CreateAccount(account)
+// CreateApplication creates a new application.
+func (s AAPController) CreateApplication(application *azmodels.Application) (*azmodels.Application, error) {
+	return s.storage.CreateApplication(application)
 }
 
-// UpdateAccount updates an account.
-func (s AAPController) UpdateAccount(account *azmodels.Account) (*azmodels.Account, error) {
-	return s.storage.UpdateAccount(account)
+// UpdateApplication updates an application.
+func (s AAPController) UpdateApplication(application *azmodels.Application) (*azmodels.Application, error) {
+	return s.storage.UpdateApplication(application)
 }
 
-// DeleteAccount delete an account.
-func (s AAPController) DeleteAccount(accountID int64) (*azmodels.Account, error) {
-	return s.storage.DeleteAccount(accountID)
+// DeleteApplication delete an application.
+func (s AAPController) DeleteApplication(applicationID int64) (*azmodels.Application, error) {
+	return s.storage.DeleteApplication(applicationID)
 }
 
-// FetchAccounts returns all accounts filtering by search criteria.
-func (s AAPController) FetchAccounts(page int32, pageSize int32, fields map[string]any) ([]azmodels.Account, error) {
-	return s.storage.FetchAccounts(page, pageSize, fields)
+// FetchApplications returns all applications filtering by search criteria.
+func (s AAPController) FetchApplications(page int32, pageSize int32, fields map[string]any) ([]azmodels.Application, error) {
+	return s.storage.FetchApplications(page, pageSize, fields)
 }
 
 // CreateIdentitySource creates a new identity source.
@@ -73,13 +73,13 @@ func (s AAPController) UpdateIdentitySource(identitySource *azmodels.IdentitySou
 }
 
 // DeleteIdentitySource delete an identity source.
-func (s AAPController) DeleteIdentitySource(accountID int64, identitySourceID string) (*azmodels.IdentitySource, error) {
-	return s.storage.DeleteIdentitySource(accountID, identitySourceID)
+func (s AAPController) DeleteIdentitySource(applicationID int64, identitySourceID string) (*azmodels.IdentitySource, error) {
+	return s.storage.DeleteIdentitySource(applicationID, identitySourceID)
 }
 
 // FetchIdentitySources returns all identity sources filtering by search criteria.
-func (s AAPController) FetchIdentitySources(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.IdentitySource, error) {
-	return s.storage.FetchIdentitySources(page, pageSize, accountID, fields)
+func (s AAPController) FetchIdentitySources(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.IdentitySource, error) {
+	return s.storage.FetchIdentitySources(page, pageSize, applicationID, fields)
 }
 
 // CreateIdentity creates a new identity.
@@ -93,13 +93,13 @@ func (s AAPController) UpdateIdentity(identity *azmodels.Identity) (*azmodels.Id
 }
 
 // DeleteIdentity delete an identity.
-func (s AAPController) DeleteIdentity(accountID int64, identityID string) (*azmodels.Identity, error) {
-	return s.storage.DeleteIdentity(accountID, identityID)
+func (s AAPController) DeleteIdentity(applicationID int64, identityID string) (*azmodels.Identity, error) {
+	return s.storage.DeleteIdentity(applicationID, identityID)
 }
 
 // FetchIdentities returns all identities filtering by search criteria.
-func (s AAPController) FetchIdentities(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Identity, error) {
-	return s.storage.FetchIdentities(page, pageSize, accountID, fields)
+func (s AAPController) FetchIdentities(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Identity, error) {
+	return s.storage.FetchIdentities(page, pageSize, applicationID, fields)
 }
 
 // CreateTenant creates a new tenant.
@@ -113,11 +113,11 @@ func (s AAPController) UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, 
 }
 
 // DeleteTenant delete a tenant.
-func (s AAPController) DeleteTenant(accountID int64, tenantID string) (*azmodels.Tenant, error) {
-	return s.storage.DeleteTenant(accountID, tenantID)
+func (s AAPController) DeleteTenant(applicationID int64, tenantID string) (*azmodels.Tenant, error) {
+	return s.storage.DeleteTenant(applicationID, tenantID)
 }
 
 // FetchTenants returns all tenants filtering by search criteria.
-func (s AAPController) FetchTenants(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Tenant, error) {
-	return s.storage.FetchTenants(page, pageSize, accountID, fields)
+func (s AAPController) FetchTenants(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Tenant, error) {
+	return s.storage.FetchTenants(page, pageSize, applicationID, fields)
 }

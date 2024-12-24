@@ -24,24 +24,24 @@ import (
 
 func MapGrpcRepositoryResponseToAgentRepository(repository *RepositoryResponse) (*azmodels.Repository, error) {
 	return &azmodels.Repository{
-		RepositoryID: repository.RepositoryID,
-		CreatedAt:    repository.CreatedAt.AsTime(),
-		UpdatedAt:    repository.UpdatedAt.AsTime(),
-		AccountID:    repository.AccountID,
-		Name:         repository.Name,
-		Ref:          repository.Ref,
+		RepositoryID:  repository.RepositoryID,
+		CreatedAt:     repository.CreatedAt.AsTime(),
+		UpdatedAt:     repository.UpdatedAt.AsTime(),
+		ApplicationID: repository.ApplicationID,
+		Name:          repository.Name,
+		Ref:           repository.Ref,
 	}, nil
 }
 
 // MapAgentRepositoryToGrpcRepositoryResponse maps the agent repository to the gRPC repository.
 func MapAgentRepositoryToGrpcRepositoryResponse(repository *azmodels.Repository) (*RepositoryResponse, error) {
 	return &RepositoryResponse{
-		RepositoryID: repository.RepositoryID,
-		CreatedAt:    timestamppb.New(repository.CreatedAt),
-		UpdatedAt:    timestamppb.New(repository.UpdatedAt),
-		AccountID:    repository.AccountID,
-		Name:         repository.Name,
-		Ref:          repository.Ref,
+		RepositoryID:  repository.RepositoryID,
+		CreatedAt:     timestamppb.New(repository.CreatedAt),
+		UpdatedAt:     timestamppb.New(repository.UpdatedAt),
+		ApplicationID: repository.ApplicationID,
+		Name:          repository.Name,
+		Ref:           repository.Ref,
 	}, nil
 }
 

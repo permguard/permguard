@@ -56,11 +56,11 @@ func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceMan
 		output["code_files"] = []map[string]any{}
 		for _, codeFile := range codeFiles {
 			output["code_files"] = append(output["code_files"].([]map[string]any), map[string]any{
-				"path": codeFile.Path,
-				"section": codeFile.Section + 1,
-				"oid": codeFile.OID,
-				"oname": codeFile.OName,
-				"has_errors": codeFile.HasErrors,
+				"path":          codeFile.Path,
+				"section":       codeFile.Section + 1,
+				"oid":           codeFile.OID,
+				"oname":         codeFile.OName,
+				"has_errors":    codeFile.HasErrors,
 				"error_message": codeFile.ErrorMessage,
 			})
 		}

@@ -48,12 +48,12 @@ func runECommandForListIdentities(deps azcli.CliDependenciesProvider, cmd *cobra
 	}
 	page := v.GetInt32(azoptions.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonPage))
 	pageSize := v.GetInt32(azoptions.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonPageSize))
-	accountID := v.GetInt64(azoptions.FlagName(commandNameForIdentity, aziclicommon.FlagCommonAccountID))
+	applicationID := v.GetInt64(azoptions.FlagName(commandNameForIdentity, aziclicommon.FlagCommonApplicationID))
 	identitySourceID := v.GetString(azoptions.FlagName(commandNameForIdentitiesList, flagIdentitySourceID))
 	identityID := v.GetString(azoptions.FlagName(commandNameForIdentitiesList, flagIdentityID))
 	kind := v.GetString(azoptions.FlagName(commandNameForIdentitiesList, flagIdentityKind))
 	name := v.GetString(azoptions.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonName))
-	identities, err := client.FetchIdentitiesBy(page, pageSize, accountID, identitySourceID, identityID, kind, name)
+	identities, err := client.FetchIdentitiesBy(page, pageSize, applicationID, identitySourceID, identityID, kind, name)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
 			printer.Println("Failed to list identities.")
@@ -86,11 +86,11 @@ func createCommandForIdentityList(deps azcli.CliDependenciesProvider, v *viper.V
 
 Examples:
   # list all identities and output the result in json format
-  permguard authn identities list --account 268786704340 --output json
+  permguard authn identities list --application 268786704340 --output json
   # list all identities and apply filter by name
-  permguard authn identities list --account 268786704340 --name branch
+  permguard authn identities list --application 268786704340 --name branch
   # list all identities and apply filter by identity source id
-  permguard authn identities list --account 268786704340 --identityid 1da1d9094501425085859c60429163c2
+  permguard authn identities list --application 268786704340 --identityid 1da1d9094501425085859c60429163c2
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListIdentities(deps, cmd, v)

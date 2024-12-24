@@ -28,79 +28,79 @@ type GrpcAAPClientMock struct {
 	mock.Mock
 }
 
-// CreateAccount creates a new account.
-func (m *GrpcAAPClientMock) CreateAccount(name string) (*azmodels.Account, error) {
+// CreateApplication creates a new application.
+func (m *GrpcAAPClientMock) CreateApplication(name string) (*azmodels.Application, error) {
 	args := m.Called(name)
-	var r0 *azmodels.Account
-	if val, ok := args.Get(0).(*azmodels.Account); ok {
+	var r0 *azmodels.Application
+	if val, ok := args.Get(0).(*azmodels.Application); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
-// UpdateAccount updates an account.
-func (m *GrpcAAPClientMock) UpdateAccount(account *azmodels.Account) (*azmodels.Account, error) {
-	args := m.Called(account)
-	var r0 *azmodels.Account
-	if val, ok := args.Get(0).(*azmodels.Account); ok {
+// UpdateApplication updates an application.
+func (m *GrpcAAPClientMock) UpdateApplication(application *azmodels.Application) (*azmodels.Application, error) {
+	args := m.Called(application)
+	var r0 *azmodels.Application
+	if val, ok := args.Get(0).(*azmodels.Application); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
-// DeleteAccount deletes an account.
-func (m *GrpcAAPClientMock) DeleteAccount(accountID int64) (*azmodels.Account, error) {
-	args := m.Called(accountID)
-	var r0 *azmodels.Account
-	if val, ok := args.Get(0).(*azmodels.Account); ok {
+// DeleteApplication deletes an application.
+func (m *GrpcAAPClientMock) DeleteApplication(applicationID int64) (*azmodels.Application, error) {
+	args := m.Called(applicationID)
+	var r0 *azmodels.Application
+	if val, ok := args.Get(0).(*azmodels.Application); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
-// FetchAccounts fetches accounts.
-func (m *GrpcAAPClientMock) FetchAccounts(page int32, pageSize int32) ([]azmodels.Account, error) {
+// FetchApplications fetches applications.
+func (m *GrpcAAPClientMock) FetchApplications(page int32, pageSize int32) ([]azmodels.Application, error) {
 	args := m.Called(page)
-	var r0 []azmodels.Account
-	if val, ok := args.Get(0).([]azmodels.Account); ok {
+	var r0 []azmodels.Application
+	if val, ok := args.Get(0).([]azmodels.Application); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
-// FetchAccountsByID fetches accounts by ID.
-func (m *GrpcAAPClientMock) FetchAccountsByID(page int32, pageSize int32, accountID int64) ([]azmodels.Account, error) {
-	args := m.Called(page, pageSize, accountID)
-	var r0 []azmodels.Account
-	if val, ok := args.Get(0).([]azmodels.Account); ok {
+// FetchApplicationsByID fetches applications by ID.
+func (m *GrpcAAPClientMock) FetchApplicationsByID(page int32, pageSize int32, applicationID int64) ([]azmodels.Application, error) {
+	args := m.Called(page, pageSize, applicationID)
+	var r0 []azmodels.Application
+	if val, ok := args.Get(0).([]azmodels.Application); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
-// FetchAccountsByName fetches accounts by name.
-func (m *GrpcAAPClientMock) FetchAccountsByName(page int32, pageSize int32, name string) ([]azmodels.Account, error) {
+// FetchApplicationsByName fetches applications by name.
+func (m *GrpcAAPClientMock) FetchApplicationsByName(page int32, pageSize int32, name string) ([]azmodels.Application, error) {
 	args := m.Called(page, pageSize, name)
-	var r0 []azmodels.Account
-	if val, ok := args.Get(0).([]azmodels.Account); ok {
+	var r0 []azmodels.Application
+	if val, ok := args.Get(0).([]azmodels.Application); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
-// FetchAccountsBy fetches accounts by.
-func (m *GrpcAAPClientMock) FetchAccountsBy(page int32, pageSize int32, accountID int64, name string) ([]azmodels.Account, error) {
-	args := m.Called(page, pageSize, accountID, name)
-	var r0 []azmodels.Account
-	if val, ok := args.Get(0).([]azmodels.Account); ok {
+// FetchApplicationsBy fetches applications by.
+func (m *GrpcAAPClientMock) FetchApplicationsBy(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Application, error) {
+	args := m.Called(page, pageSize, applicationID, name)
+	var r0 []azmodels.Application
+	if val, ok := args.Get(0).([]azmodels.Application); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
 // CreateIdentity creates a new identity.
-func (m *GrpcAAPClientMock) CreateIdentity(accountID int64, identitySourceID string, kind string, name string) (*azmodels.Identity, error) {
-	args := m.Called(accountID, identitySourceID, kind, name)
+func (m *GrpcAAPClientMock) CreateIdentity(applicationID int64, identitySourceID string, kind string, name string) (*azmodels.Identity, error) {
+	args := m.Called(applicationID, identitySourceID, kind, name)
 	var r0 *azmodels.Identity
 	if val, ok := args.Get(0).(*azmodels.Identity); ok {
 		r0 = val
@@ -119,8 +119,8 @@ func (m *GrpcAAPClientMock) UpdateIdentity(identity *azmodels.Identity) (*azmode
 }
 
 // DeleteIdentity deletes an identity.
-func (m *GrpcAAPClientMock) DeleteIdentity(accountID int64, identityID string) (*azmodels.Identity, error) {
-	args := m.Called(accountID, identityID)
+func (m *GrpcAAPClientMock) DeleteIdentity(applicationID int64, identityID string) (*azmodels.Identity, error) {
+	args := m.Called(applicationID, identityID)
 	var r0 *azmodels.Identity
 	if val, ok := args.Get(0).(*azmodels.Identity); ok {
 		r0 = val
@@ -129,8 +129,8 @@ func (m *GrpcAAPClientMock) DeleteIdentity(accountID int64, identityID string) (
 }
 
 // FetchIdentities returns all identities.
-func (m *GrpcAAPClientMock) FetchIdentities(page int32, pageSize int32, accountID int64) ([]azmodels.Identity, error) {
-	args := m.Called(page, pageSize, accountID)
+func (m *GrpcAAPClientMock) FetchIdentities(page int32, pageSize int32, applicationID int64) ([]azmodels.Identity, error) {
+	args := m.Called(page, pageSize, applicationID)
 	var r0 []azmodels.Identity
 	if val, ok := args.Get(0).([]azmodels.Identity); ok {
 		r0 = val
@@ -139,8 +139,8 @@ func (m *GrpcAAPClientMock) FetchIdentities(page int32, pageSize int32, accountI
 }
 
 // FetchIdentitiesByID returns all identities filtering by identity id.
-func (m *GrpcAAPClientMock) FetchIdentitiesByID(page int32, pageSize int32, accountID int64, identityID string) ([]azmodels.Identity, error) {
-	args := m.Called(page, pageSize, accountID, identityID)
+func (m *GrpcAAPClientMock) FetchIdentitiesByID(page int32, pageSize int32, applicationID int64, identityID string) ([]azmodels.Identity, error) {
+	args := m.Called(page, pageSize, applicationID, identityID)
 	var r0 []azmodels.Identity
 	if val, ok := args.Get(0).([]azmodels.Identity); ok {
 		r0 = val
@@ -149,8 +149,8 @@ func (m *GrpcAAPClientMock) FetchIdentitiesByID(page int32, pageSize int32, acco
 }
 
 // FetchIdentitiesByEmail returns all identities filtering by name.
-func (m *GrpcAAPClientMock) FetchIdentitiesByEmail(page int32, pageSize int32, accountID int64, name string) ([]azmodels.Identity, error) {
-	args := m.Called(page, pageSize, accountID, name)
+func (m *GrpcAAPClientMock) FetchIdentitiesByEmail(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Identity, error) {
+	args := m.Called(page, pageSize, applicationID, name)
 	var r0 []azmodels.Identity
 	if val, ok := args.Get(0).([]azmodels.Identity); ok {
 		r0 = val
@@ -159,8 +159,8 @@ func (m *GrpcAAPClientMock) FetchIdentitiesByEmail(page int32, pageSize int32, a
 }
 
 // FetchIdentitiesBy returns all identities filtering by all criteria.
-func (m *GrpcAAPClientMock) FetchIdentitiesBy(page int32, pageSize int32, accountID int64, identitySourceID string, identityID string, kind string, name string) ([]azmodels.Identity, error) {
-	args := m.Called(page, pageSize, accountID, identitySourceID, identityID, kind, name)
+func (m *GrpcAAPClientMock) FetchIdentitiesBy(page int32, pageSize int32, applicationID int64, identitySourceID string, identityID string, kind string, name string) ([]azmodels.Identity, error) {
+	args := m.Called(page, pageSize, applicationID, identitySourceID, identityID, kind, name)
 	var r0 []azmodels.Identity
 	if val, ok := args.Get(0).([]azmodels.Identity); ok {
 		r0 = val
@@ -169,8 +169,8 @@ func (m *GrpcAAPClientMock) FetchIdentitiesBy(page int32, pageSize int32, accoun
 }
 
 // CreateIdentitySource creates a new identity source.
-func (m *GrpcAAPClientMock) CreateIdentitySource(accountID int64, name string) (*azmodels.IdentitySource, error) {
-	args := m.Called(accountID, name)
+func (m *GrpcAAPClientMock) CreateIdentitySource(applicationID int64, name string) (*azmodels.IdentitySource, error) {
+	args := m.Called(applicationID, name)
 	var r0 *azmodels.IdentitySource
 	if val, ok := args.Get(0).(*azmodels.IdentitySource); ok {
 		r0 = val
@@ -189,8 +189,8 @@ func (m *GrpcAAPClientMock) UpdateIdentitySource(identitySource *azmodels.Identi
 }
 
 // DeleteIdentitySource deletes an identity source.
-func (m *GrpcAAPClientMock) DeleteIdentitySource(accountID int64, identitySourceID string) (*azmodels.IdentitySource, error) {
-	args := m.Called(accountID, identitySourceID)
+func (m *GrpcAAPClientMock) DeleteIdentitySource(applicationID int64, identitySourceID string) (*azmodels.IdentitySource, error) {
+	args := m.Called(applicationID, identitySourceID)
 	var r0 *azmodels.IdentitySource
 	if val, ok := args.Get(0).(*azmodels.IdentitySource); ok {
 		r0 = val
@@ -199,8 +199,8 @@ func (m *GrpcAAPClientMock) DeleteIdentitySource(accountID int64, identitySource
 }
 
 // FetchIdentitySources returns all identity sources.
-func (m *GrpcAAPClientMock) FetchIdentitySources(page int32, pageSize int32, accountID int64) ([]azmodels.IdentitySource, error) {
-	args := m.Called(page, pageSize, accountID)
+func (m *GrpcAAPClientMock) FetchIdentitySources(page int32, pageSize int32, applicationID int64) ([]azmodels.IdentitySource, error) {
+	args := m.Called(page, pageSize, applicationID)
 	var r0 []azmodels.IdentitySource
 	if val, ok := args.Get(0).([]azmodels.IdentitySource); ok {
 		r0 = val
@@ -209,8 +209,8 @@ func (m *GrpcAAPClientMock) FetchIdentitySources(page int32, pageSize int32, acc
 }
 
 // FetchIdentitySourcesByID returns all identity sources filtering by identity source id.
-func (m *GrpcAAPClientMock) FetchIdentitySourcesByID(page int32, pageSize int32, accountID int64, identitySourceID string) ([]azmodels.IdentitySource, error) {
-	args := m.Called(page, pageSize, accountID, identitySourceID)
+func (m *GrpcAAPClientMock) FetchIdentitySourcesByID(page int32, pageSize int32, applicationID int64, identitySourceID string) ([]azmodels.IdentitySource, error) {
+	args := m.Called(page, pageSize, applicationID, identitySourceID)
 	var r0 []azmodels.IdentitySource
 	if val, ok := args.Get(0).([]azmodels.IdentitySource); ok {
 		r0 = val
@@ -219,8 +219,8 @@ func (m *GrpcAAPClientMock) FetchIdentitySourcesByID(page int32, pageSize int32,
 }
 
 // FetchIdentitySourcesByName returns all identity sources filtering by name.
-func (m *GrpcAAPClientMock) FetchIdentitySourcesByName(page int32, pageSize int32, accountID int64, name string) ([]azmodels.IdentitySource, error) {
-	args := m.Called(page, pageSize, accountID, name)
+func (m *GrpcAAPClientMock) FetchIdentitySourcesByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.IdentitySource, error) {
+	args := m.Called(page, pageSize, applicationID, name)
 	var r0 []azmodels.IdentitySource
 	if val, ok := args.Get(0).([]azmodels.IdentitySource); ok {
 		r0 = val
@@ -229,8 +229,8 @@ func (m *GrpcAAPClientMock) FetchIdentitySourcesByName(page int32, pageSize int3
 }
 
 // FetchIdentitySourcesBy returns all identity sources filtering by identity source id and name.
-func (m *GrpcAAPClientMock) FetchIdentitySourcesBy(page int32, pageSize int32, accountID int64, identitySourceID string, name string) ([]azmodels.IdentitySource, error) {
-	args := m.Called(page, pageSize, accountID, identitySourceID, name)
+func (m *GrpcAAPClientMock) FetchIdentitySourcesBy(page int32, pageSize int32, applicationID int64, identitySourceID string, name string) ([]azmodels.IdentitySource, error) {
+	args := m.Called(page, pageSize, applicationID, identitySourceID, name)
 	var r0 []azmodels.IdentitySource
 	if val, ok := args.Get(0).([]azmodels.IdentitySource); ok {
 		r0 = val
@@ -239,8 +239,8 @@ func (m *GrpcAAPClientMock) FetchIdentitySourcesBy(page int32, pageSize int32, a
 }
 
 // CreateTenant creates a tenant.
-func (m *GrpcAAPClientMock) CreateTenant(accountID int64, name string) (*azmodels.Tenant, error) {
-	args := m.Called(accountID, name)
+func (m *GrpcAAPClientMock) CreateTenant(applicationID int64, name string) (*azmodels.Tenant, error) {
+	args := m.Called(applicationID, name)
 	var r0 *azmodels.Tenant
 	if val, ok := args.Get(0).(*azmodels.Tenant); ok {
 		r0 = val
@@ -259,8 +259,8 @@ func (m *GrpcAAPClientMock) UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Ten
 }
 
 // DeleteTenant deletes a tenant.
-func (m *GrpcAAPClientMock) DeleteTenant(accountID int64, tenantID string) (*azmodels.Tenant, error) {
-	args := m.Called(accountID, tenantID)
+func (m *GrpcAAPClientMock) DeleteTenant(applicationID int64, tenantID string) (*azmodels.Tenant, error) {
+	args := m.Called(applicationID, tenantID)
 	var r0 *azmodels.Tenant
 	if val, ok := args.Get(0).(*azmodels.Tenant); ok {
 		r0 = val
@@ -269,8 +269,8 @@ func (m *GrpcAAPClientMock) DeleteTenant(accountID int64, tenantID string) (*azm
 }
 
 // FetchTenants returns all tenants.
-func (m *GrpcAAPClientMock) FetchTenants(page int32, pageSize int32, accountID int64) ([]azmodels.Tenant, error) {
-	args := m.Called(page, pageSize, accountID)
+func (m *GrpcAAPClientMock) FetchTenants(page int32, pageSize int32, applicationID int64) ([]azmodels.Tenant, error) {
+	args := m.Called(page, pageSize, applicationID)
 	var r0 []azmodels.Tenant
 	if val, ok := args.Get(0).([]azmodels.Tenant); ok {
 		r0 = val
@@ -279,8 +279,8 @@ func (m *GrpcAAPClientMock) FetchTenants(page int32, pageSize int32, accountID i
 }
 
 // FetchTenantsByID returns all tenants filtering by tenant id.
-func (m *GrpcAAPClientMock) FetchTenantsByID(page int32, pageSize int32, accountID int64, tenantID string) ([]azmodels.Tenant, error) {
-	args := m.Called(page, pageSize, accountID, tenantID)
+func (m *GrpcAAPClientMock) FetchTenantsByID(page int32, pageSize int32, applicationID int64, tenantID string) ([]azmodels.Tenant, error) {
+	args := m.Called(page, pageSize, applicationID, tenantID)
 	var r0 []azmodels.Tenant
 	if val, ok := args.Get(0).([]azmodels.Tenant); ok {
 		r0 = val
@@ -289,8 +289,8 @@ func (m *GrpcAAPClientMock) FetchTenantsByID(page int32, pageSize int32, account
 }
 
 // FetchTenantsByName returns all tenants filtering by name.
-func (m *GrpcAAPClientMock) FetchTenantsByName(page int32, pageSize int32, accountID int64, name string) ([]azmodels.Tenant, error) {
-	args := m.Called(page, pageSize, accountID, name)
+func (m *GrpcAAPClientMock) FetchTenantsByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Tenant, error) {
+	args := m.Called(page, pageSize, applicationID, name)
 	var r0 []azmodels.Tenant
 	if val, ok := args.Get(0).([]azmodels.Tenant); ok {
 		r0 = val
@@ -299,8 +299,8 @@ func (m *GrpcAAPClientMock) FetchTenantsByName(page int32, pageSize int32, accou
 }
 
 // FetchTenantsBy returns all tenants filtering by tenant id and name.
-func (m *GrpcAAPClientMock) FetchTenantsBy(page int32, pageSize int32, accountID int64, tenantID string, name string) ([]azmodels.Tenant, error) {
-	args := m.Called(page, pageSize, accountID, tenantID, name)
+func (m *GrpcAAPClientMock) FetchTenantsBy(page int32, pageSize int32, applicationID int64, tenantID string, name string) ([]azmodels.Tenant, error) {
+	args := m.Called(page, pageSize, applicationID, tenantID, name)
 	var r0 []azmodels.Tenant
 	if val, ok := args.Get(0).([]azmodels.Tenant); ok {
 		r0 = val

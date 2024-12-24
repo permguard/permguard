@@ -109,7 +109,7 @@ func TestCliIdentitySourcesUpdateWithSuccess(t *testing.T) {
 		aapClient := azmocks.NewGrpcAAPClientMock()
 		identitysource := &azmodels.IdentitySource{
 			IdentitySourceID: "c3160a533ab24fbcb1eab7a09fd85f36",
-			AccountID:        581616507495,
+			ApplicationID:    581616507495,
 			Name:             "nicola.gallo",
 			CreatedAt:        time.Now(),
 			UpdatedAt:        time.Now(),

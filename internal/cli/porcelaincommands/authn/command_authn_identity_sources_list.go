@@ -48,10 +48,10 @@ func runECommandForListIdentitySources(deps azcli.CliDependenciesProvider, cmd *
 	}
 	page := v.GetInt32(azoptions.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonPage))
 	pageSize := v.GetInt32(azoptions.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonPageSize))
-	accountID := v.GetInt64(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonAccountID))
+	applicationID := v.GetInt64(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonApplicationID))
 	identitySourceID := v.GetString(azoptions.FlagName(commandNameForIdentitySourcesList, flagIdentitySourceID))
 	name := v.GetString(azoptions.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonName))
-	identitySources, err := client.FetchIdentitySourcesBy(page, pageSize, accountID, identitySourceID, name)
+	identitySources, err := client.FetchIdentitySourcesBy(page, pageSize, applicationID, identitySourceID, name)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
 			printer.Println("Failed to list identity sources.")
@@ -84,11 +84,11 @@ func createCommandForIdentitySourceList(deps azcli.CliDependenciesProvider, v *v
 
 Examples:
   # list all identity sources and output in json format
-  permguard authn identitysources list --account 268786704340 --output json
+  permguard authn identitysources list --application 268786704340 --output json
   # list all identity sources and filter by name
-  permguard authn identitysources list --account 268786704340 --name google
+  permguard authn identitysources list --application 268786704340 --name google
   # list all identity sources and filter by identity source id
-  permguard authn identitysources list --account 268786704340 --identitysourceid 1da1d9094501425085859c60429163c2
+  permguard authn identitysources list --application 268786704340 --identitysourceid 1da1d9094501425085859c60429163c2
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListIdentitySources(deps, cmd, v)

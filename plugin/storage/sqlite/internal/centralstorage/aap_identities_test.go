@@ -92,7 +92,7 @@ func TestCreateIdentityWithSuccess(t *testing.T) {
 
 	dbOutIdentity := &azirepos.Identity{
 		IdentityID:       azirepos.GenerateUUID(),
-		AccountID:        581616507495,
+		ApplicationID:    581616507495,
 		IdentitySourceID: azirepos.GenerateUUID(),
 		Kind:             1,
 		Name:             "nicola.gallo",
@@ -180,7 +180,7 @@ func TestUpdateIdentityWithSuccess(t *testing.T) {
 
 	dbOutIdentity := &azirepos.Identity{
 		IdentityID:       azirepos.GenerateUUID(),
-		AccountID:        581616507495,
+		ApplicationID:    581616507495,
 		IdentitySourceID: azirepos.GenerateUUID(),
 		Kind:             1,
 		Name:             "nicola.gallo",
@@ -240,7 +240,7 @@ func TestDeleteIdentityWithErrors(t *testing.T) {
 		}
 
 		inIdentityID := azirepos.GenerateUUID()
-		outIdentities, err := storage.DeleteIdentity(azirepos.GenerateAccountID(), inIdentityID)
+		outIdentities, err := storage.DeleteIdentity(azirepos.GenerateApplicationID(), inIdentityID)
 		assert.Nil(outIdentities, "identities should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
@@ -259,7 +259,7 @@ func TestDeleteIdentityWithSuccess(t *testing.T) {
 
 	dbOutIdentity := &azirepos.Identity{
 		IdentityID:       azirepos.GenerateUUID(),
-		AccountID:        581616507495,
+		ApplicationID:    581616507495,
 		IdentitySourceID: azirepos.GenerateUUID(),
 		Kind:             1,
 		Name:             "nicola.gallo",
@@ -273,7 +273,7 @@ func TestDeleteIdentityWithSuccess(t *testing.T) {
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
 	inIdentityID := azirepos.GenerateUUID()
-	outIdentities, err := storage.DeleteIdentity(azirepos.GenerateAccountID(), inIdentityID)
+	outIdentities, err := storage.DeleteIdentity(azirepos.GenerateApplicationID(), inIdentityID)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outIdentities, "identities should not be nil")
 	assert.Equal(dbOutIdentity.IdentityID, outIdentities.IdentityID, "identity id should be equal")
@@ -345,7 +345,7 @@ func TestFetchIdentityWithSuccess(t *testing.T) {
 	dbOutIdentities := []azirepos.Identity{
 		{
 			IdentityID:       azirepos.GenerateUUID(),
-			AccountID:        232956849236,
+			ApplicationID:    232956849236,
 			IdentitySourceID: azirepos.GenerateUUID(),
 			Kind:             1,
 			Name:             "nicola.gallo",
@@ -354,7 +354,7 @@ func TestFetchIdentityWithSuccess(t *testing.T) {
 		},
 		{
 			IdentityID:       azirepos.GenerateUUID(),
-			AccountID:        232956849236,
+			ApplicationID:    232956849236,
 			IdentitySourceID: azirepos.GenerateUUID(),
 			Kind:             1,
 			Name:             "francesco.gallo",

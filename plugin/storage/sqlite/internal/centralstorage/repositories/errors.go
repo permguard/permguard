@@ -56,7 +56,7 @@ func WrapSqlite3ErrorWithParams(msg string, err error, params map[string]string)
 			if sqliteErr.ExtendedCode == sqlite3.ErrConstraintForeignKey {
 				foreignKey := readErroMapParam(WrapSqlite3ParamForeignKey, params)
 				if foreignKey != "" {
-					return azerrors.WrapSystemError(azerrors.ErrStorageConstraintForeignKey, fmt.Sprintf("storage: %s validation failed: the provided account id does not exist - %s", foreignKey, msg))
+					return azerrors.WrapSystemError(azerrors.ErrStorageConstraintForeignKey, fmt.Sprintf("storage: %s validation failed: the provided application id does not exist - %s", foreignKey, msg))
 				}
 				return azerrors.WrapSystemError(azerrors.ErrStorageConstraintForeignKey, fmt.Sprintf("storage: foreign key constraint failed - %s", msg))
 			}

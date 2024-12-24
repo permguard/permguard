@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package aap for the applicative Account Administration Point components.
+// Package aap for the applicative Application Administration Point components.
 package aap

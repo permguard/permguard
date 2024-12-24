@@ -26,12 +26,12 @@ import (
 )
 
 // CreateTenant creates a new tenant.
-func (c *GrpcAAPClient) CreateTenant(accountID int64, name string) (*azmodels.Tenant, error) {
+func (c *GrpcAAPClient) CreateTenant(applicationID int64, name string) (*azmodels.Tenant, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	tenant, err := client.CreateTenant(context.Background(), &azapiv1aap.TenantCreateRequest{AccountID: accountID, Name: name})
+	tenant, err := client.CreateTenant(context.Background(), &azapiv1aap.TenantCreateRequest{ApplicationID: applicationID, Name: name})
 	if err != nil {
 		return nil, err
 	}
@@ -48,9 +48,9 @@ func (c *GrpcAAPClient) UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant,
 		return nil, err
 	}
 	updatedTenant, err := client.UpdateTenant(context.Background(), &azapiv1aap.TenantUpdateRequest{
-		TenantID:  tenant.TenantID,
-		AccountID: tenant.AccountID,
-		Name:      tenant.Name,
+		TenantID:      tenant.TenantID,
+		ApplicationID: tenant.ApplicationID,
+		Name:          tenant.Name,
 	})
 	if err != nil {
 		return nil, err
@@ -59,12 +59,12 @@ func (c *GrpcAAPClient) UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant,
 }
 
 // DeleteTenant deletes a tenant.
-func (c *GrpcAAPClient) DeleteTenant(accountID int64, tenantID string) (*azmodels.Tenant, error) {
+func (c *GrpcAAPClient) DeleteTenant(applicationID int64, tenantID string) (*azmodels.Tenant, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	tenant, err := client.DeleteTenant(context.Background(), &azapiv1aap.TenantDeleteRequest{AccountID: accountID, TenantID: tenantID})
+	tenant, err := client.DeleteTenant(context.Background(), &azapiv1aap.TenantDeleteRequest{ApplicationID: applicationID, TenantID: tenantID})
 	if err != nil {
 		return nil, err
 	}
@@ -72,22 +72,22 @@ func (c *GrpcAAPClient) DeleteTenant(accountID int64, tenantID string) (*azmodel
 }
 
 // FetchTenants returns all tenants.
-func (c *GrpcAAPClient) FetchTenants(page int32, pageSize int32, accountID int64) ([]azmodels.Tenant, error) {
-	return c.FetchTenantsBy(page, pageSize, accountID, "", "")
+func (c *GrpcAAPClient) FetchTenants(page int32, pageSize int32, applicationID int64) ([]azmodels.Tenant, error) {
+	return c.FetchTenantsBy(page, pageSize, applicationID, "", "")
 }
 
 // FetchTenantsByID returns all tenants filtering by tenant id.
-func (c *GrpcAAPClient) FetchTenantsByID(page int32, pageSize int32, accountID int64, tenantID string) ([]azmodels.Tenant, error) {
-	return c.FetchTenantsBy(page, pageSize, accountID, tenantID, "")
+func (c *GrpcAAPClient) FetchTenantsByID(page int32, pageSize int32, applicationID int64, tenantID string) ([]azmodels.Tenant, error) {
+	return c.FetchTenantsBy(page, pageSize, applicationID, tenantID, "")
 }
 
 // FetchTenantsByName returns all tenants filtering by name.
-func (c *GrpcAAPClient) FetchTenantsByName(page int32, pageSize int32, accountID int64, name string) ([]azmodels.Tenant, error) {
-	return c.FetchTenantsBy(page, pageSize, accountID, "", name)
+func (c *GrpcAAPClient) FetchTenantsByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Tenant, error) {
+	return c.FetchTenantsBy(page, pageSize, applicationID, "", name)
 }
 
 // FetchTenantsBy returns all tenants filtering by tenant id and name.
-func (c *GrpcAAPClient) FetchTenantsBy(page int32, pageSize int32, accountID int64, tenantID string, name string) ([]azmodels.Tenant, error) {
+func (c *GrpcAAPClient) FetchTenantsBy(page int32, pageSize int32, applicationID int64, tenantID string, name string) ([]azmodels.Tenant, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
@@ -95,8 +95,8 @@ func (c *GrpcAAPClient) FetchTenantsBy(page int32, pageSize int32, accountID int
 	tenantFetchRequest := &azapiv1aap.TenantFetchRequest{}
 	tenantFetchRequest.Page = &page
 	tenantFetchRequest.PageSize = &pageSize
-	if accountID > 0 {
-		tenantFetchRequest.AccountID = accountID
+	if applicationID > 0 {
+		tenantFetchRequest.ApplicationID = applicationID
 	}
 	if name != "" {
 		tenantFetchRequest.Name = &name

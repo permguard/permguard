@@ -86,22 +86,22 @@ func (s SQLiteCentralStoragePAP) readObject(db *sqlx.DB, oid string) (*azlangobj
 
 // extractMetaData extracts the meta data.
 func (s SQLiteCentralStoragePAP) extractMetaData(ctx *notpstatemachines.HandlerContext) (int64, string) {
-	accountIDStr, _ := getFromHandlerContext[string](ctx, notpagstatemachines.AccountIDKey)
-	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
+	applicationIDStr, _ := getFromHandlerContext[string](ctx, notpagstatemachines.ApplicationIDKey)
+	applicationID, err := strconv.ParseInt(applicationIDStr, 10, 64)
 	if err != nil {
 		return 0, ""
 	}
 	repoID, _ := getFromHandlerContext[string](ctx, notpagstatemachines.RepositoryIDKey)
-	return accountID, repoID
+	return applicationID, repoID
 }
 
 // readRepoFromHandlerContext reads the repository from the handler context.
 func (s SQLiteCentralStoragePAP) readRepoFromHandlerContext(handlerCtx *notpstatemachines.HandlerContext) (*azmodels.Repository, error) {
-	accountID, repoID := s.extractMetaData(handlerCtx)
+	applicationID, repoID := s.extractMetaData(handlerCtx)
 	fields := map[string]any{
 		azmodels.FieldRepositoryRepositoryID: repoID,
 	}
-	repos, err := s.FetchRepositories(1, 1, accountID, fields)
+	repos, err := s.FetchRepositories(1, 1, applicationID, fields)
 	if err != nil {
 		return nil, err
 	}

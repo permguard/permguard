@@ -42,8 +42,8 @@ func (s SQLiteCentralStoragePAP) CreateRepository(repository *azmodels.Repositor
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	dbInRepository := &azirepos.Repository{
-		AccountID: repository.AccountID,
-		Name:      repository.Name,
+		ApplicationID: repository.ApplicationID,
+		Name:          repository.Name,
 	}
 	dbOutRepository, err := s.sqlRepo.UpsertRepository(tx, true, dbInRepository)
 	if err != nil {
@@ -70,9 +70,9 @@ func (s SQLiteCentralStoragePAP) UpdateRepository(repository *azmodels.Repositor
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	dbInRepository := &azirepos.Repository{
-		RepositoryID: repository.RepositoryID,
-		AccountID:    repository.AccountID,
-		Name:         repository.Name,
+		RepositoryID:  repository.RepositoryID,
+		ApplicationID: repository.ApplicationID,
+		Name:          repository.Name,
 	}
 	dbOutRepository, err := s.sqlRepo.UpsertRepository(tx, false, dbInRepository)
 	if err != nil {
@@ -86,7 +86,7 @@ func (s SQLiteCentralStoragePAP) UpdateRepository(repository *azmodels.Repositor
 }
 
 // DeleteRepository deletes a repository.
-func (s SQLiteCentralStoragePAP) DeleteRepository(accountID int64, repositoryID string) (*azmodels.Repository, error) {
+func (s SQLiteCentralStoragePAP) DeleteRepository(applicationID int64, repositoryID string) (*azmodels.Repository, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
@@ -95,7 +95,7 @@ func (s SQLiteCentralStoragePAP) DeleteRepository(accountID int64, repositoryID 
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbOutRepository, err := s.sqlRepo.DeleteRepository(tx, accountID, repositoryID)
+	dbOutRepository, err := s.sqlRepo.DeleteRepository(tx, applicationID, repositoryID)
 	if err != nil {
 		tx.Rollback()
 		return nil, err
@@ -107,7 +107,7 @@ func (s SQLiteCentralStoragePAP) DeleteRepository(accountID int64, repositoryID 
 }
 
 // FetchRepositories returns all repositories.
-func (s SQLiteCentralStoragePAP) FetchRepositories(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Repository, error) {
+func (s SQLiteCentralStoragePAP) FetchRepositories(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Repository, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
@@ -131,7 +131,7 @@ func (s SQLiteCentralStoragePAP) FetchRepositories(page int32, pageSize int32, a
 		}
 		filterName = &repositoryName
 	}
-	dbRepositories, err := s.sqlRepo.FetchRepositories(db, page, pageSize, accountID, filterID, filterName)
+	dbRepositories, err := s.sqlRepo.FetchRepositories(db, page, pageSize, applicationID, filterID, filterName)
 	if err != nil {
 		return nil, err
 	}

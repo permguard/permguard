@@ -27,7 +27,7 @@ func mapIdentitySourceToAgentIdentitySource(IdentitySource *azirepos.IdentitySou
 		IdentitySourceID: IdentitySource.IdentitySourceID,
 		CreatedAt:        IdentitySource.CreatedAt,
 		UpdatedAt:        IdentitySource.UpdatedAt,
-		AccountID:        IdentitySource.AccountID,
+		ApplicationID:    IdentitySource.ApplicationID,
 		Name:             IdentitySource.Name,
 	}, nil
 }

@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	// errorMessageRepositoryInvalidAccountID is the error message repository invalid account id.
-	errorMessageRepositoryInvalidAccountID = "storage: invalid client input - account id is not valid (id: %d)"
+	// errorMessageRepositoryInvalidApplicationID is the error message repository invalid application id.
+	errorMessageRepositoryInvalidApplicationID = "storage: invalid client input - application id is not valid (id: %d)"
 )
 
 // UpsertRepository creates or updates a repository.
@@ -38,8 +38,8 @@ func (r *Repo) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Repositor
 	if repository == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository data is missing or malformed (%s)", LogRepositoryEntry(repository)))
 	}
-	if err := azvalidators.ValidateCodeID("repository", repository.AccountID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidAccountID, repository.AccountID))
+	if err := azvalidators.ValidateCodeID("repository", repository.ApplicationID); err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidApplicationID, repository.ApplicationID))
 	}
 	if !isCreate && azvalidators.ValidateUUID("repository", repository.RepositoryID) != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (%s)", LogRepositoryEntry(repository)))
@@ -49,29 +49,29 @@ func (r *Repo) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Repositor
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogRepositoryEntry(repository)))
 	}
 
-	accountID := repository.AccountID
+	applicationID := repository.ApplicationID
 	repositoryID := repository.RepositoryID
 	repositoryName := repository.Name
 	var result sql.Result
 	var err error
 	if isCreate {
 		repositoryID = GenerateUUID()
-		result, err = tx.Exec("INSERT INTO repositories (account_id, repository_id, name) VALUES (?, ?, ?)", accountID, repositoryID, repositoryName)
+		result, err = tx.Exec("INSERT INTO repositories (application_id, repository_id, name) VALUES (?, ?, ?)", applicationID, repositoryID, repositoryName)
 	} else {
-		result, err = tx.Exec("UPDATE repositories SET name = ? WHERE account_id = ? and repository_id = ?", repositoryName, accountID, repositoryID)
+		result, err = tx.Exec("UPDATE repositories SET name = ? WHERE application_id = ? and repository_id = ?", repositoryName, applicationID, repositoryID)
 	}
 	if err != nil || result == nil {
 		action := "update"
 		if isCreate {
 			action = "create"
 		}
-		params := map[string]string{WrapSqlite3ParamForeignKey: "account id"}
+		params := map[string]string{WrapSqlite3ParamForeignKey: "application id"}
 		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s repository - operation '%s-repository' encountered an issue (%s)", action, action, LogRepositoryEntry(repository)), err, params)
 	}
 
 	var dbRepository Repository
-	err = tx.QueryRow("SELECT account_id, repository_id, created_at, updated_at, name, ref FROM repositories WHERE account_id = ? and repository_id = ?", accountID, repositoryID).Scan(
-		&dbRepository.AccountID,
+	err = tx.QueryRow("SELECT application_id, repository_id, created_at, updated_at, name, ref FROM repositories WHERE application_id = ? and repository_id = ?", applicationID, repositoryID).Scan(
+		&dbRepository.ApplicationID,
 		&dbRepository.RepositoryID,
 		&dbRepository.CreatedAt,
 		&dbRepository.UpdatedAt,
@@ -85,9 +85,9 @@ func (r *Repo) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Repositor
 }
 
 // UpdateRepositoryRef updates the ref of a repository.
-func (r *Repo) UpdateRepositoryRef(tx *sql.Tx, accountID int64, repositoryID, currentRef, newRef string) error {
-	if err := azvalidators.ValidateCodeID("repository", accountID); err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidAccountID, accountID))
+func (r *Repo) UpdateRepositoryRef(tx *sql.Tx, applicationID int64, repositoryID, currentRef, newRef string) error {
+	if err := azvalidators.ValidateCodeID("repository", applicationID); err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidApplicationID, applicationID))
 	}
 	if err := azvalidators.ValidateUUID("repository", repositoryID); err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (id: %s)", repositoryID))
@@ -100,10 +100,10 @@ func (r *Repo) UpdateRepositoryRef(tx *sql.Tx, accountID int64, repositoryID, cu
 	}
 
 	var dbCurrentRef string
-	err := tx.QueryRow("SELECT ref FROM repositories WHERE account_id = ? AND repository_id = ?", accountID, repositoryID).Scan(&dbCurrentRef)
+	err := tx.QueryRow("SELECT ref FROM repositories WHERE application_id = ? AND repository_id = ?", applicationID, repositoryID).Scan(&dbCurrentRef)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return azerrors.WrapSystemError(azerrors.ErrClientNotFound, fmt.Sprintf("repository not found (account_id: %d, repository_id: %s)", accountID, repositoryID))
+			return azerrors.WrapSystemError(azerrors.ErrClientNotFound, fmt.Sprintf("repository not found (application_id: %d, repository_id: %s)", applicationID, repositoryID))
 		}
 		return WrapSqlite3Error("failed to retrieve current ref for repository", err)
 	}
@@ -112,7 +112,7 @@ func (r *Repo) UpdateRepositoryRef(tx *sql.Tx, accountID int64, repositoryID, cu
 		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("current ref mismatch (expected: %s, got: %s)", dbCurrentRef, currentRef))
 	}
 
-	result, err := tx.Exec("UPDATE repositories SET ref = ? WHERE account_id = ? AND repository_id = ?", newRef, accountID, repositoryID)
+	result, err := tx.Exec("UPDATE repositories SET ref = ? WHERE application_id = ? AND repository_id = ?", newRef, applicationID, repositoryID)
 	if err != nil {
 		return WrapSqlite3Error("failed to update repository ref", err)
 	}
@@ -122,23 +122,23 @@ func (r *Repo) UpdateRepositoryRef(tx *sql.Tx, accountID int64, repositoryID, cu
 		return WrapSqlite3Error("failed to get rows affected for update ref", err)
 	}
 	if rows != 1 {
-		return azerrors.WrapSystemError(azerrors.ErrClientUpdateConflict, fmt.Sprintf("update failed, no rows affected (account_id: %d, repository_id: %s)", accountID, repositoryID))
+		return azerrors.WrapSystemError(azerrors.ErrClientUpdateConflict, fmt.Sprintf("update failed, no rows affected (application_id: %d, repository_id: %s)", applicationID, repositoryID))
 	}
 	return nil
 }
 
 // DeleteRepository deletes a repository.
-func (r *Repo) DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string) (*Repository, error) {
-	if err := azvalidators.ValidateCodeID("repository", accountID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidAccountID, accountID))
+func (r *Repo) DeleteRepository(tx *sql.Tx, applicationID int64, repositoryID string) (*Repository, error) {
+	if err := azvalidators.ValidateCodeID("repository", applicationID); err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidApplicationID, applicationID))
 	}
 	if err := azvalidators.ValidateUUID("repository", repositoryID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (id: %s)", repositoryID))
 	}
 
 	var dbRepository Repository
-	err := tx.QueryRow("SELECT account_id, repository_id, created_at, updated_at, name, ref FROM repositories WHERE account_id = ? and repository_id = ?", accountID, repositoryID).Scan(
-		&dbRepository.AccountID,
+	err := tx.QueryRow("SELECT application_id, repository_id, created_at, updated_at, name, ref FROM repositories WHERE application_id = ? and repository_id = ?", applicationID, repositoryID).Scan(
+		&dbRepository.ApplicationID,
 		&dbRepository.RepositoryID,
 		&dbRepository.CreatedAt,
 		&dbRepository.UpdatedAt,
@@ -148,7 +148,7 @@ func (r *Repo) DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string
 	if err != nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - repository id is not valid (id: %s)", repositoryID), err)
 	}
-	res, err := tx.Exec("DELETE FROM repositories WHERE account_id = ? and repository_id = ?", accountID, repositoryID)
+	res, err := tx.Exec("DELETE FROM repositories WHERE application_id = ? and repository_id = ?", applicationID, repositoryID)
 	if err != nil || res == nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete repository - operation 'delete-repository' encountered an issue (id: %s)", repositoryID), err)
 	}
@@ -160,12 +160,12 @@ func (r *Repo) DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string
 }
 
 // FetchRepositories retrieves repositories.
-func (r *Repo) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]Repository, error) {
+func (r *Repo) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]Repository, error) {
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
-	if err := azvalidators.ValidateCodeID("repository", accountID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageRepositoryInvalidAccountID, accountID))
+	if err := azvalidators.ValidateCodeID("repository", applicationID); err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageRepositoryInvalidApplicationID, applicationID))
 	}
 
 	var dbRepositories []Repository
@@ -174,8 +174,8 @@ func (r *Repo) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, accoun
 	var conditions []string
 	var args []any
 
-	conditions = append(conditions, "account_id = ?")
-	args = append(args, accountID)
+	conditions = append(conditions, "application_id = ?")
+	args = append(args, applicationID)
 
 	if filterID != nil {
 		repositoryID := *filterID

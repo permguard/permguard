@@ -26,12 +26,12 @@ import (
 )
 
 // CreateIdentitySource creates a new identity source.
-func (c *GrpcAAPClient) CreateIdentitySource(accountID int64, name string) (*azmodels.IdentitySource, error) {
+func (c *GrpcAAPClient) CreateIdentitySource(applicationID int64, name string) (*azmodels.IdentitySource, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	identitySource, err := client.CreateIdentitySource(context.Background(), &azapiv1aap.IdentitySourceCreateRequest{AccountID: accountID, Name: name})
+	identitySource, err := client.CreateIdentitySource(context.Background(), &azapiv1aap.IdentitySourceCreateRequest{ApplicationID: applicationID, Name: name})
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +49,7 @@ func (c *GrpcAAPClient) UpdateIdentitySource(identitySource *azmodels.IdentitySo
 	}
 	updatedIdentitySource, err := client.UpdateIdentitySource(context.Background(), &azapiv1aap.IdentitySourceUpdateRequest{
 		IdentitySourceID: identitySource.IdentitySourceID,
-		AccountID:        identitySource.AccountID,
+		ApplicationID:    identitySource.ApplicationID,
 		Name:             identitySource.Name,
 	})
 	if err != nil {
@@ -59,12 +59,12 @@ func (c *GrpcAAPClient) UpdateIdentitySource(identitySource *azmodels.IdentitySo
 }
 
 // DeleteIdentitySource deletes an identity source.
-func (c *GrpcAAPClient) DeleteIdentitySource(accountID int64, identitySourceID string) (*azmodels.IdentitySource, error) {
+func (c *GrpcAAPClient) DeleteIdentitySource(applicationID int64, identitySourceID string) (*azmodels.IdentitySource, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	identitySource, err := client.DeleteIdentitySource(context.Background(), &azapiv1aap.IdentitySourceDeleteRequest{AccountID: accountID, IdentitySourceID: identitySourceID})
+	identitySource, err := client.DeleteIdentitySource(context.Background(), &azapiv1aap.IdentitySourceDeleteRequest{ApplicationID: applicationID, IdentitySourceID: identitySourceID})
 	if err != nil {
 		return nil, err
 	}
@@ -72,22 +72,22 @@ func (c *GrpcAAPClient) DeleteIdentitySource(accountID int64, identitySourceID s
 }
 
 // FetchIdentitySources returns all identity sources.
-func (c *GrpcAAPClient) FetchIdentitySources(page int32, pageSize int32, accountID int64) ([]azmodels.IdentitySource, error) {
-	return c.FetchIdentitySourcesBy(page, pageSize, accountID, "", "")
+func (c *GrpcAAPClient) FetchIdentitySources(page int32, pageSize int32, applicationID int64) ([]azmodels.IdentitySource, error) {
+	return c.FetchIdentitySourcesBy(page, pageSize, applicationID, "", "")
 }
 
 // FetchIdentitySourcesByID returns all identity sources filtering by identity source id.
-func (c *GrpcAAPClient) FetchIdentitySourcesByID(page int32, pageSize int32, accountID int64, identitySourceID string) ([]azmodels.IdentitySource, error) {
-	return c.FetchIdentitySourcesBy(page, pageSize, accountID, identitySourceID, "")
+func (c *GrpcAAPClient) FetchIdentitySourcesByID(page int32, pageSize int32, applicationID int64, identitySourceID string) ([]azmodels.IdentitySource, error) {
+	return c.FetchIdentitySourcesBy(page, pageSize, applicationID, identitySourceID, "")
 }
 
 // FetchIdentitySourcesByName returns all identity sources filtering by name.
-func (c *GrpcAAPClient) FetchIdentitySourcesByName(page int32, pageSize int32, accountID int64, name string) ([]azmodels.IdentitySource, error) {
-	return c.FetchIdentitySourcesBy(page, pageSize, accountID, "", name)
+func (c *GrpcAAPClient) FetchIdentitySourcesByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.IdentitySource, error) {
+	return c.FetchIdentitySourcesBy(page, pageSize, applicationID, "", name)
 }
 
 // FetchIdentitySourcesBy returns all identity sources filtering by identity source id and name.
-func (c *GrpcAAPClient) FetchIdentitySourcesBy(page int32, pageSize int32, accountID int64, identitySourceID string, name string) ([]azmodels.IdentitySource, error) {
+func (c *GrpcAAPClient) FetchIdentitySourcesBy(page int32, pageSize int32, applicationID int64, identitySourceID string, name string) ([]azmodels.IdentitySource, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
@@ -95,8 +95,8 @@ func (c *GrpcAAPClient) FetchIdentitySourcesBy(page int32, pageSize int32, accou
 	identitySourceFetchRequest := &azapiv1aap.IdentitySourceFetchRequest{}
 	identitySourceFetchRequest.Page = &page
 	identitySourceFetchRequest.PageSize = &pageSize
-	if accountID > 0 {
-		identitySourceFetchRequest.AccountID = accountID
+	if applicationID > 0 {
+		identitySourceFetchRequest.ApplicationID = applicationID
 	}
 	if name != "" {
 		identitySourceFetchRequest.Name = &name

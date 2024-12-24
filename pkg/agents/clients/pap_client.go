@@ -23,17 +23,17 @@ import (
 // GrpcPAPClient is the gRPC PAP client servicer.
 type GrpcPAPClient interface {
 	// CreateRepository creates a repository.
-	CreateRepository(accountID int64, name string) (*azmodels.Repository, error)
+	CreateRepository(applicationID int64, name string) (*azmodels.Repository, error)
 	// UpdateRepository updates a repository.
 	UpdateRepository(repository *azmodels.Repository) (*azmodels.Repository, error)
 	// DeleteRepository deletes a repository.
-	DeleteRepository(accountID int64, repositoryID string) (*azmodels.Repository, error)
+	DeleteRepository(applicationID int64, repositoryID string) (*azmodels.Repository, error)
 	// FetchRepositories returns all repositories.
-	FetchRepositories(page int32, pageSize int32, accountID int64) ([]azmodels.Repository, error)
+	FetchRepositories(page int32, pageSize int32, applicationID int64) ([]azmodels.Repository, error)
 	// FetchRepositoriesByID returns all repositories filtering by repository id.
-	FetchRepositoriesByID(page int32, pageSize int32, accountID int64, repositoryID string) ([]azmodels.Repository, error)
+	FetchRepositoriesByID(page int32, pageSize int32, applicationID int64, repositoryID string) ([]azmodels.Repository, error)
 	// FetchRepositoriesByName returns all repositories filtering by name.
-	FetchRepositoriesByName(page int32, pageSize int32, accountID int64, name string) ([]azmodels.Repository, error)
+	FetchRepositoriesByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Repository, error)
 	// FetchRepositoriesBy returns all repositories filtering by repository id and name.
-	FetchRepositoriesBy(page int32, pageSize int32, accountID int64, repositoryID string, name string) ([]azmodels.Repository, error)
+	FetchRepositoriesBy(page int32, pageSize int32, applicationID int64, repositoryID string, name string) ([]azmodels.Repository, error)
 }

@@ -26,12 +26,12 @@ import (
 )
 
 // CreateRepository creates a new repository.
-func (c *GrpcPAPClient) CreateRepository(accountID int64, name string) (*azmodels.Repository, error) {
+func (c *GrpcPAPClient) CreateRepository(applicationID int64, name string) (*azmodels.Repository, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	repository, err := client.CreateRepository(context.Background(), &azapiv1pap.RepositoryCreateRequest{AccountID: accountID, Name: name})
+	repository, err := client.CreateRepository(context.Background(), &azapiv1pap.RepositoryCreateRequest{ApplicationID: applicationID, Name: name})
 	if err != nil {
 		return nil, err
 	}
@@ -48,9 +48,9 @@ func (c *GrpcPAPClient) UpdateRepository(repository *azmodels.Repository) (*azmo
 		return nil, err
 	}
 	updatedRepository, err := client.UpdateRepository(context.Background(), &azapiv1pap.RepositoryUpdateRequest{
-		RepositoryID: repository.RepositoryID,
-		AccountID:    repository.AccountID,
-		Name:         repository.Name,
+		RepositoryID:  repository.RepositoryID,
+		ApplicationID: repository.ApplicationID,
+		Name:          repository.Name,
 	})
 	if err != nil {
 		return nil, err
@@ -59,12 +59,12 @@ func (c *GrpcPAPClient) UpdateRepository(repository *azmodels.Repository) (*azmo
 }
 
 // DeleteRepository deletes an repository.
-func (c *GrpcPAPClient) DeleteRepository(accountID int64, repositoryID string) (*azmodels.Repository, error) {
+func (c *GrpcPAPClient) DeleteRepository(applicationID int64, repositoryID string) (*azmodels.Repository, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	repository, err := client.DeleteRepository(context.Background(), &azapiv1pap.RepositoryDeleteRequest{AccountID: accountID, RepositoryID: repositoryID})
+	repository, err := client.DeleteRepository(context.Background(), &azapiv1pap.RepositoryDeleteRequest{ApplicationID: applicationID, RepositoryID: repositoryID})
 	if err != nil {
 		return nil, err
 	}
@@ -72,22 +72,22 @@ func (c *GrpcPAPClient) DeleteRepository(accountID int64, repositoryID string) (
 }
 
 // FetchRepositories returns all repositories.
-func (c *GrpcPAPClient) FetchRepositories(page int32, pageSize int32, accountID int64) ([]azmodels.Repository, error) {
-	return c.FetchRepositoriesBy(page, pageSize, accountID, "", "")
+func (c *GrpcPAPClient) FetchRepositories(page int32, pageSize int32, applicationID int64) ([]azmodels.Repository, error) {
+	return c.FetchRepositoriesBy(page, pageSize, applicationID, "", "")
 }
 
 // FetchRepositoriesByID returns all repositories filtering by repository id.
-func (c *GrpcPAPClient) FetchRepositoriesByID(page int32, pageSize int32, accountID int64, repositoryID string) ([]azmodels.Repository, error) {
-	return c.FetchRepositoriesBy(page, pageSize, accountID, repositoryID, "")
+func (c *GrpcPAPClient) FetchRepositoriesByID(page int32, pageSize int32, applicationID int64, repositoryID string) ([]azmodels.Repository, error) {
+	return c.FetchRepositoriesBy(page, pageSize, applicationID, repositoryID, "")
 }
 
 // FetchRepositoriesByName returns all repositories filtering by name.
-func (c *GrpcPAPClient) FetchRepositoriesByName(page int32, pageSize int32, accountID int64, name string) ([]azmodels.Repository, error) {
-	return c.FetchRepositoriesBy(page, pageSize, accountID, "", name)
+func (c *GrpcPAPClient) FetchRepositoriesByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Repository, error) {
+	return c.FetchRepositoriesBy(page, pageSize, applicationID, "", name)
 }
 
 // FetchRepositoriesBy returns all repositories filtering by repository id and name.
-func (c *GrpcPAPClient) FetchRepositoriesBy(page int32, pageSize int32, accountID int64, repositoryID string, name string) ([]azmodels.Repository, error) {
+func (c *GrpcPAPClient) FetchRepositoriesBy(page int32, pageSize int32, applicationID int64, repositoryID string, name string) ([]azmodels.Repository, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
@@ -95,8 +95,8 @@ func (c *GrpcPAPClient) FetchRepositoriesBy(page int32, pageSize int32, accountI
 	repositoryFetchRequest := &azapiv1pap.RepositoryFetchRequest{}
 	repositoryFetchRequest.Page = &page
 	repositoryFetchRequest.PageSize = &pageSize
-	if accountID > 0 {
-		repositoryFetchRequest.AccountID = accountID
+	if applicationID > 0 {
+		repositoryFetchRequest.ApplicationID = applicationID
 	}
 	if name != "" {
 		repositoryFetchRequest.Name = &name

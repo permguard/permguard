@@ -64,7 +64,7 @@ Asynchronous by Design: Built to Mirror Reality, Not Mask It — Robust Where Sy
 
 The ZTAuth\* architecture supports administrative services like:
 
-- **Account Administration Point (AAP)**: Manages accounts and related configurations.
+- **Application Administration Point (AAP)**: Manages applications and related configurations.
 
 - **Policy Administration Point (PAP)**: Defines and manages policies.
 
@@ -131,7 +131,7 @@ To explore these concepts further, refer to the following articles:
 
 - [**Introducing the ZTAuth\* Architecture**](https://medium.com/ztauth/introducing-the-ztauth-architecture-8d220ba008d1)
 
-- [**Resources, Actions and Accounts in the Context of Autonomous and Disconnected Challenges**](https://medium.com/ztauth/resources-actions-andaccounts-in-the-context-of-autonomous-and-disconnected-challenges-b261d37cb28a)
+- [**Resources, Actions and Applications in the Context of Autonomous and Disconnected Challenges**](https://medium.com/ztauth/resources-actions-andapplications-in-the-context-of-autonomous-and-disconnected-challenges-b261d37cb28a)
 
 - [**Unlocking Zero Trust Delegation through Permissions and Policies**](https://medium.com/ztauth/unlocking-zero-trust-delegation-through-permissions-and-policies-f2952f56f79b)
 

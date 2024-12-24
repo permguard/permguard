@@ -35,38 +35,38 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	V1AAPService_CreateAccount_FullMethodName        = "/accountadministrationpoint.V1AAPService/CreateAccount"
-	V1AAPService_UpdateAccount_FullMethodName        = "/accountadministrationpoint.V1AAPService/UpdateAccount"
-	V1AAPService_DeleteAccount_FullMethodName        = "/accountadministrationpoint.V1AAPService/DeleteAccount"
-	V1AAPService_FetchAccounts_FullMethodName        = "/accountadministrationpoint.V1AAPService/FetchAccounts"
-	V1AAPService_CreateIdentitySource_FullMethodName = "/accountadministrationpoint.V1AAPService/CreateIdentitySource"
-	V1AAPService_UpdateIdentitySource_FullMethodName = "/accountadministrationpoint.V1AAPService/UpdateIdentitySource"
-	V1AAPService_DeleteIdentitySource_FullMethodName = "/accountadministrationpoint.V1AAPService/DeleteIdentitySource"
-	V1AAPService_FetchIdentitySources_FullMethodName = "/accountadministrationpoint.V1AAPService/FetchIdentitySources"
-	V1AAPService_CreateIdentity_FullMethodName       = "/accountadministrationpoint.V1AAPService/CreateIdentity"
-	V1AAPService_UpdateIdentity_FullMethodName       = "/accountadministrationpoint.V1AAPService/UpdateIdentity"
-	V1AAPService_DeleteIdentity_FullMethodName       = "/accountadministrationpoint.V1AAPService/DeleteIdentity"
-	V1AAPService_FetchIdentities_FullMethodName      = "/accountadministrationpoint.V1AAPService/FetchIdentities"
-	V1AAPService_CreateTenant_FullMethodName         = "/accountadministrationpoint.V1AAPService/CreateTenant"
-	V1AAPService_UpdateTenant_FullMethodName         = "/accountadministrationpoint.V1AAPService/UpdateTenant"
-	V1AAPService_DeleteTenant_FullMethodName         = "/accountadministrationpoint.V1AAPService/DeleteTenant"
-	V1AAPService_FetchTenants_FullMethodName         = "/accountadministrationpoint.V1AAPService/FetchTenants"
+	V1AAPService_CreateApplication_FullMethodName    = "/applicationadministrationpoint.V1AAPService/CreateApplication"
+	V1AAPService_UpdateApplication_FullMethodName    = "/applicationadministrationpoint.V1AAPService/UpdateApplication"
+	V1AAPService_DeleteApplication_FullMethodName    = "/applicationadministrationpoint.V1AAPService/DeleteApplication"
+	V1AAPService_FetchApplications_FullMethodName    = "/applicationadministrationpoint.V1AAPService/FetchApplications"
+	V1AAPService_CreateIdentitySource_FullMethodName = "/applicationadministrationpoint.V1AAPService/CreateIdentitySource"
+	V1AAPService_UpdateIdentitySource_FullMethodName = "/applicationadministrationpoint.V1AAPService/UpdateIdentitySource"
+	V1AAPService_DeleteIdentitySource_FullMethodName = "/applicationadministrationpoint.V1AAPService/DeleteIdentitySource"
+	V1AAPService_FetchIdentitySources_FullMethodName = "/applicationadministrationpoint.V1AAPService/FetchIdentitySources"
+	V1AAPService_CreateIdentity_FullMethodName       = "/applicationadministrationpoint.V1AAPService/CreateIdentity"
+	V1AAPService_UpdateIdentity_FullMethodName       = "/applicationadministrationpoint.V1AAPService/UpdateIdentity"
+	V1AAPService_DeleteIdentity_FullMethodName       = "/applicationadministrationpoint.V1AAPService/DeleteIdentity"
+	V1AAPService_FetchIdentities_FullMethodName      = "/applicationadministrationpoint.V1AAPService/FetchIdentities"
+	V1AAPService_CreateTenant_FullMethodName         = "/applicationadministrationpoint.V1AAPService/CreateTenant"
+	V1AAPService_UpdateTenant_FullMethodName         = "/applicationadministrationpoint.V1AAPService/UpdateTenant"
+	V1AAPService_DeleteTenant_FullMethodName         = "/applicationadministrationpoint.V1AAPService/DeleteTenant"
+	V1AAPService_FetchTenants_FullMethodName         = "/applicationadministrationpoint.V1AAPService/FetchTenants"
 )
 
 // V1AAPServiceClient is the client API for V1AAPService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// V1AAPService is the service for the Account Administration Point.
+// V1AAPService is the service for the Application Administration Point.
 type V1AAPServiceClient interface {
-	// Create an account.
-	CreateAccount(ctx context.Context, in *AccountCreateRequest, opts ...grpc.CallOption) (*AccountResponse, error)
-	// Update an account.
-	UpdateAccount(ctx context.Context, in *AccountUpdateRequest, opts ...grpc.CallOption) (*AccountResponse, error)
-	// Delete an account.
-	DeleteAccount(ctx context.Context, in *AccountDeleteRequest, opts ...grpc.CallOption) (*AccountResponse, error)
-	// Fetch Accounts.
-	FetchAccounts(ctx context.Context, in *AccountFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AccountResponse], error)
+	// Create an application.
+	CreateApplication(ctx context.Context, in *ApplicationCreateRequest, opts ...grpc.CallOption) (*ApplicationResponse, error)
+	// Update an application.
+	UpdateApplication(ctx context.Context, in *ApplicationUpdateRequest, opts ...grpc.CallOption) (*ApplicationResponse, error)
+	// Delete an application.
+	DeleteApplication(ctx context.Context, in *ApplicationDeleteRequest, opts ...grpc.CallOption) (*ApplicationResponse, error)
+	// Fetch Applications.
+	FetchApplications(ctx context.Context, in *ApplicationFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ApplicationResponse], error)
 	// Create an identity source.
 	CreateIdentitySource(ctx context.Context, in *IdentitySourceCreateRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error)
 	// Update an identity source.
@@ -101,43 +101,43 @@ func NewV1AAPServiceClient(cc grpc.ClientConnInterface) V1AAPServiceClient {
 	return &v1AAPServiceClient{cc}
 }
 
-func (c *v1AAPServiceClient) CreateAccount(ctx context.Context, in *AccountCreateRequest, opts ...grpc.CallOption) (*AccountResponse, error) {
+func (c *v1AAPServiceClient) CreateApplication(ctx context.Context, in *ApplicationCreateRequest, opts ...grpc.CallOption) (*ApplicationResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(AccountResponse)
-	err := c.cc.Invoke(ctx, V1AAPService_CreateAccount_FullMethodName, in, out, cOpts...)
+	out := new(ApplicationResponse)
+	err := c.cc.Invoke(ctx, V1AAPService_CreateApplication_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *v1AAPServiceClient) UpdateAccount(ctx context.Context, in *AccountUpdateRequest, opts ...grpc.CallOption) (*AccountResponse, error) {
+func (c *v1AAPServiceClient) UpdateApplication(ctx context.Context, in *ApplicationUpdateRequest, opts ...grpc.CallOption) (*ApplicationResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(AccountResponse)
-	err := c.cc.Invoke(ctx, V1AAPService_UpdateAccount_FullMethodName, in, out, cOpts...)
+	out := new(ApplicationResponse)
+	err := c.cc.Invoke(ctx, V1AAPService_UpdateApplication_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *v1AAPServiceClient) DeleteAccount(ctx context.Context, in *AccountDeleteRequest, opts ...grpc.CallOption) (*AccountResponse, error) {
+func (c *v1AAPServiceClient) DeleteApplication(ctx context.Context, in *ApplicationDeleteRequest, opts ...grpc.CallOption) (*ApplicationResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(AccountResponse)
-	err := c.cc.Invoke(ctx, V1AAPService_DeleteAccount_FullMethodName, in, out, cOpts...)
+	out := new(ApplicationResponse)
+	err := c.cc.Invoke(ctx, V1AAPService_DeleteApplication_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *v1AAPServiceClient) FetchAccounts(ctx context.Context, in *AccountFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AccountResponse], error) {
+func (c *v1AAPServiceClient) FetchApplications(ctx context.Context, in *ApplicationFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ApplicationResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &V1AAPService_ServiceDesc.Streams[0], V1AAPService_FetchAccounts_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &V1AAPService_ServiceDesc.Streams[0], V1AAPService_FetchApplications_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[AccountFetchRequest, AccountResponse]{ClientStream: stream}
+	x := &grpc.GenericClientStream[ApplicationFetchRequest, ApplicationResponse]{ClientStream: stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -148,7 +148,7 @@ func (c *v1AAPServiceClient) FetchAccounts(ctx context.Context, in *AccountFetch
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type V1AAPService_FetchAccountsClient = grpc.ServerStreamingClient[AccountResponse]
+type V1AAPService_FetchApplicationsClient = grpc.ServerStreamingClient[ApplicationResponse]
 
 func (c *v1AAPServiceClient) CreateIdentitySource(ctx context.Context, in *IdentitySourceCreateRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -301,16 +301,16 @@ type V1AAPService_FetchTenantsClient = grpc.ServerStreamingClient[TenantResponse
 // All implementations must embed UnimplementedV1AAPServiceServer
 // for forward compatibility.
 //
-// V1AAPService is the service for the Account Administration Point.
+// V1AAPService is the service for the Application Administration Point.
 type V1AAPServiceServer interface {
-	// Create an account.
-	CreateAccount(context.Context, *AccountCreateRequest) (*AccountResponse, error)
-	// Update an account.
-	UpdateAccount(context.Context, *AccountUpdateRequest) (*AccountResponse, error)
-	// Delete an account.
-	DeleteAccount(context.Context, *AccountDeleteRequest) (*AccountResponse, error)
-	// Fetch Accounts.
-	FetchAccounts(*AccountFetchRequest, grpc.ServerStreamingServer[AccountResponse]) error
+	// Create an application.
+	CreateApplication(context.Context, *ApplicationCreateRequest) (*ApplicationResponse, error)
+	// Update an application.
+	UpdateApplication(context.Context, *ApplicationUpdateRequest) (*ApplicationResponse, error)
+	// Delete an application.
+	DeleteApplication(context.Context, *ApplicationDeleteRequest) (*ApplicationResponse, error)
+	// Fetch Applications.
+	FetchApplications(*ApplicationFetchRequest, grpc.ServerStreamingServer[ApplicationResponse]) error
 	// Create an identity source.
 	CreateIdentitySource(context.Context, *IdentitySourceCreateRequest) (*IdentitySourceResponse, error)
 	// Update an identity source.
@@ -345,17 +345,17 @@ type V1AAPServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedV1AAPServiceServer struct{}
 
-func (UnimplementedV1AAPServiceServer) CreateAccount(context.Context, *AccountCreateRequest) (*AccountResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CreateAccount not implemented")
+func (UnimplementedV1AAPServiceServer) CreateApplication(context.Context, *ApplicationCreateRequest) (*ApplicationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateApplication not implemented")
 }
-func (UnimplementedV1AAPServiceServer) UpdateAccount(context.Context, *AccountUpdateRequest) (*AccountResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdateAccount not implemented")
+func (UnimplementedV1AAPServiceServer) UpdateApplication(context.Context, *ApplicationUpdateRequest) (*ApplicationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateApplication not implemented")
 }
-func (UnimplementedV1AAPServiceServer) DeleteAccount(context.Context, *AccountDeleteRequest) (*AccountResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DeleteAccount not implemented")
+func (UnimplementedV1AAPServiceServer) DeleteApplication(context.Context, *ApplicationDeleteRequest) (*ApplicationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteApplication not implemented")
 }
-func (UnimplementedV1AAPServiceServer) FetchAccounts(*AccountFetchRequest, grpc.ServerStreamingServer[AccountResponse]) error {
-	return status.Errorf(codes.Unimplemented, "method FetchAccounts not implemented")
+func (UnimplementedV1AAPServiceServer) FetchApplications(*ApplicationFetchRequest, grpc.ServerStreamingServer[ApplicationResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method FetchApplications not implemented")
 }
 func (UnimplementedV1AAPServiceServer) CreateIdentitySource(context.Context, *IdentitySourceCreateRequest) (*IdentitySourceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateIdentitySource not implemented")
@@ -414,70 +414,70 @@ func RegisterV1AAPServiceServer(s grpc.ServiceRegistrar, srv V1AAPServiceServer)
 	s.RegisterService(&V1AAPService_ServiceDesc, srv)
 }
 
-func _V1AAPService_CreateAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AccountCreateRequest)
+func _V1AAPService_CreateApplication_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApplicationCreateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(V1AAPServiceServer).CreateAccount(ctx, in)
+		return srv.(V1AAPServiceServer).CreateApplication(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: V1AAPService_CreateAccount_FullMethodName,
+		FullMethod: V1AAPService_CreateApplication_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1AAPServiceServer).CreateAccount(ctx, req.(*AccountCreateRequest))
+		return srv.(V1AAPServiceServer).CreateApplication(ctx, req.(*ApplicationCreateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_UpdateAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AccountUpdateRequest)
+func _V1AAPService_UpdateApplication_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApplicationUpdateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(V1AAPServiceServer).UpdateAccount(ctx, in)
+		return srv.(V1AAPServiceServer).UpdateApplication(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: V1AAPService_UpdateAccount_FullMethodName,
+		FullMethod: V1AAPService_UpdateApplication_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1AAPServiceServer).UpdateAccount(ctx, req.(*AccountUpdateRequest))
+		return srv.(V1AAPServiceServer).UpdateApplication(ctx, req.(*ApplicationUpdateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_DeleteAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AccountDeleteRequest)
+func _V1AAPService_DeleteApplication_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApplicationDeleteRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(V1AAPServiceServer).DeleteAccount(ctx, in)
+		return srv.(V1AAPServiceServer).DeleteApplication(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: V1AAPService_DeleteAccount_FullMethodName,
+		FullMethod: V1AAPService_DeleteApplication_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1AAPServiceServer).DeleteAccount(ctx, req.(*AccountDeleteRequest))
+		return srv.(V1AAPServiceServer).DeleteApplication(ctx, req.(*ApplicationDeleteRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _V1AAPService_FetchAccounts_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(AccountFetchRequest)
+func _V1AAPService_FetchApplications_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ApplicationFetchRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(V1AAPServiceServer).FetchAccounts(m, &grpc.GenericServerStream[AccountFetchRequest, AccountResponse]{ServerStream: stream})
+	return srv.(V1AAPServiceServer).FetchApplications(m, &grpc.GenericServerStream[ApplicationFetchRequest, ApplicationResponse]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type V1AAPService_FetchAccountsServer = grpc.ServerStreamingServer[AccountResponse]
+type V1AAPService_FetchApplicationsServer = grpc.ServerStreamingServer[ApplicationResponse]
 
 func _V1AAPService_CreateIdentitySource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(IdentitySourceCreateRequest)
@@ -678,20 +678,20 @@ type V1AAPService_FetchTenantsServer = grpc.ServerStreamingServer[TenantResponse
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var V1AAPService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "accountadministrationpoint.V1AAPService",
+	ServiceName: "applicationadministrationpoint.V1AAPService",
 	HandlerType: (*V1AAPServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "CreateAccount",
-			Handler:    _V1AAPService_CreateAccount_Handler,
+			MethodName: "CreateApplication",
+			Handler:    _V1AAPService_CreateApplication_Handler,
 		},
 		{
-			MethodName: "UpdateAccount",
-			Handler:    _V1AAPService_UpdateAccount_Handler,
+			MethodName: "UpdateApplication",
+			Handler:    _V1AAPService_UpdateApplication_Handler,
 		},
 		{
-			MethodName: "DeleteAccount",
-			Handler:    _V1AAPService_DeleteAccount_Handler,
+			MethodName: "DeleteApplication",
+			Handler:    _V1AAPService_DeleteApplication_Handler,
 		},
 		{
 			MethodName: "CreateIdentitySource",
@@ -732,8 +732,8 @@ var V1AAPService_ServiceDesc = grpc.ServiceDesc{
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "FetchAccounts",
-			Handler:       _V1AAPService_FetchAccounts_Handler,
+			StreamName:    "FetchApplications",
+			Handler:       _V1AAPService_FetchApplications_Handler,
 			ServerStreams: true,
 		},
 		{

@@ -24,11 +24,11 @@ import (
 // mapRepositoryToAgentRepository maps a Repository to a model Repository.
 func mapRepositoryToAgentRepository(repository *azirepos.Repository) (*azmodels.Repository, error) {
 	return &azmodels.Repository{
-		RepositoryID: repository.RepositoryID,
-		CreatedAt:    repository.CreatedAt,
-		UpdatedAt:    repository.UpdatedAt,
-		AccountID:    repository.AccountID,
-		Name:         repository.Name,
-		Ref:          repository.Ref,
+		RepositoryID:  repository.RepositoryID,
+		CreatedAt:     repository.CreatedAt,
+		UpdatedAt:     repository.UpdatedAt,
+		ApplicationID: repository.ApplicationID,
+		Name:          repository.Name,
+		Ref:           repository.Ref,
 	}, nil
 }

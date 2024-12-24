@@ -29,8 +29,8 @@ type GrpcPAPClientMock struct {
 }
 
 // CreateRepository creates a repository.
-func (m *GrpcPAPClientMock) CreateRepository(accountID int64, name string) (*azmodels.Repository, error) {
-	args := m.Called(accountID, name)
+func (m *GrpcPAPClientMock) CreateRepository(applicationID int64, name string) (*azmodels.Repository, error) {
+	args := m.Called(applicationID, name)
 	var r0 *azmodels.Repository
 	if val, ok := args.Get(0).(*azmodels.Repository); ok {
 		r0 = val
@@ -49,8 +49,8 @@ func (m *GrpcPAPClientMock) UpdateRepository(repository *azmodels.Repository) (*
 }
 
 // DeleteRepository deletes a repository.
-func (m *GrpcPAPClientMock) DeleteRepository(accountID int64, repositoryID string) (*azmodels.Repository, error) {
-	args := m.Called(accountID, repositoryID)
+func (m *GrpcPAPClientMock) DeleteRepository(applicationID int64, repositoryID string) (*azmodels.Repository, error) {
+	args := m.Called(applicationID, repositoryID)
 	var r0 *azmodels.Repository
 	if val, ok := args.Get(0).(*azmodels.Repository); ok {
 		r0 = val
@@ -59,8 +59,8 @@ func (m *GrpcPAPClientMock) DeleteRepository(accountID int64, repositoryID strin
 }
 
 // FetchRepositories returns all repositories.
-func (m *GrpcPAPClientMock) FetchRepositories(page int32, pageSize int32, accountID int64) ([]azmodels.Repository, error) {
-	args := m.Called(page, pageSize, accountID)
+func (m *GrpcPAPClientMock) FetchRepositories(page int32, pageSize int32, applicationID int64) ([]azmodels.Repository, error) {
+	args := m.Called(page, pageSize, applicationID)
 	var r0 []azmodels.Repository
 	if val, ok := args.Get(0).([]azmodels.Repository); ok {
 		r0 = val
@@ -69,8 +69,8 @@ func (m *GrpcPAPClientMock) FetchRepositories(page int32, pageSize int32, accoun
 }
 
 // FetchRepositoriesByID returns all repositories filtering by repository id.
-func (m *GrpcPAPClientMock) FetchRepositoriesByID(page int32, pageSize int32, accountID int64, repositoryID string) ([]azmodels.Repository, error) {
-	args := m.Called(page, pageSize, accountID, repositoryID)
+func (m *GrpcPAPClientMock) FetchRepositoriesByID(page int32, pageSize int32, applicationID int64, repositoryID string) ([]azmodels.Repository, error) {
+	args := m.Called(page, pageSize, applicationID, repositoryID)
 	var r0 []azmodels.Repository
 	if val, ok := args.Get(0).([]azmodels.Repository); ok {
 		r0 = val
@@ -79,8 +79,8 @@ func (m *GrpcPAPClientMock) FetchRepositoriesByID(page int32, pageSize int32, ac
 }
 
 // FetchRepositoriesByName returns all repositories filtering by name.
-func (m *GrpcPAPClientMock) FetchRepositoriesByName(page int32, pageSize int32, accountID int64, name string) ([]azmodels.Repository, error) {
-	args := m.Called(page, pageSize, accountID, name)
+func (m *GrpcPAPClientMock) FetchRepositoriesByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Repository, error) {
+	args := m.Called(page, pageSize, applicationID, name)
 	var r0 []azmodels.Repository
 	if val, ok := args.Get(0).([]azmodels.Repository); ok {
 		r0 = val
@@ -89,8 +89,8 @@ func (m *GrpcPAPClientMock) FetchRepositoriesByName(page int32, pageSize int32, 
 }
 
 // FetchRepositoriesBy returns all repositories filtering by repository id and name.
-func (m *GrpcPAPClientMock) FetchRepositoriesBy(page int32, pageSize int32, accountID int64, repositoryID string, name string) ([]azmodels.Repository, error) {
-	args := m.Called(page, pageSize, accountID, repositoryID, name)
+func (m *GrpcPAPClientMock) FetchRepositoriesBy(page int32, pageSize int32, applicationID int64, repositoryID string, name string) ([]azmodels.Repository, error) {
+	args := m.Called(page, pageSize, applicationID, repositoryID, name)
 	var r0 []azmodels.Repository
 	if val, ok := args.Get(0).([]azmodels.Repository); ok {
 		r0 = val

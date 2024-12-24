@@ -21,21 +21,21 @@ import (
 )
 
 const (
-	FieldRepositoryAccountID    = "account_id"
-	FieldRepositoryRepositoryID = "repository_id"
-	FieldRepositoryName         = "name"
-	FieldSchemaSchemaID         = "schema_id"
-	FieldSchemaAccountID        = "account_id"
+	FieldRepositoryApplicationID = "application_id"
+	FieldRepositoryRepositoryID  = "repository_id"
+	FieldRepositoryName          = "name"
+	FieldSchemaSchemaID          = "schema_id"
+	FieldSchemaApplicationID     = "application_id"
 )
 
 // Repository is the repository.
 type Repository struct {
-	RepositoryID string    `json:"repository_id" validate:"required,isuuid"`
-	CreatedAt    time.Time `json:"created_at" validate:"required"`
-	UpdatedAt    time.Time `json:"updated_at" validate:"required"`
-	AccountID    int64     `json:"account_id" validate:"required,gt=0"`
-	Name         string    `json:"name"`
-	Ref          string    `json:"ref"`
+	RepositoryID  string    `json:"repository_id" validate:"required,isuuid"`
+	CreatedAt     time.Time `json:"created_at" validate:"required"`
+	UpdatedAt     time.Time `json:"updated_at" validate:"required"`
+	ApplicationID int64     `json:"application_id" validate:"required,gt=0"`
+	Name          string    `json:"name"`
+	Ref           string    `json:"ref"`
 }
 
 // Schema is the schema.
@@ -43,7 +43,7 @@ type Schema struct {
 	SchemaID       string         `json:"schema_id" validate:"required,isuuid"`
 	CreatedAt      time.Time      `json:"created_at" validate:"required"`
 	UpdatedAt      time.Time      `json:"updated_at" validate:"required"`
-	AccountID      int64          `json:"account_id" validate:"required,gt=0"`
+	ApplicationID  int64          `json:"application_id" validate:"required,gt=0"`
 	RepositoryID   string         `json:"repository_id" validate:"required,isuuid"`
 	RepositoryName string         `json:"repository_name"`
 	SchemaDomains  *SchemaDomains `json:"domains" validate:"required"`

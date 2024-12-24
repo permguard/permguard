@@ -22,13 +22,13 @@ CREATE TABLE repositories (
     name TEXT NOT NULL,
 	ref  TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000',
 	-- REFERENCES
-	account_id INTEGER NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
+	application_id INTEGER NOT NULL REFERENCES applications(application_id) ON UPDATE CASCADE ON DELETE CASCADE,
 	-- CONSTRAINTS
-	CONSTRAINT repositories_accountid_name_key UNIQUE (account_id, name)
+	CONSTRAINT repositories_applicationid_name_key UNIQUE (application_id, name)
 );
 
 CREATE INDEX repositories_name_idx ON repositories(name);
-CREATE INDEX repositories_accountid_idx ON repositories(account_id);
+CREATE INDEX repositories_applicationid_idx ON repositories(application_id);
 
 -- Trigger to track changes in the `repositories` table after insert
 -- +goose StatementBegin
@@ -36,11 +36,11 @@ CREATE TRIGGER repositories_change_streams_after_insert
 AFTER INSERT ON repositories
 FOR EACH ROW
 BEGIN
-    INSERT INTO change_streams (change_entity, change_type, change_entity_id, account_id, payload)
-		VALUES ('REPOSITORY', 'INSERT', NEW.repository_id, NEW.account_id,
+    INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
+		VALUES ('REPOSITORY', 'INSERT', NEW.repository_id, NEW.application_id,
 				'{"repository_id": "' || NEW.repository_id || '", "created_at": "' || NEW.created_at ||
 				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name ||
-				'", "account_id": ' || NEW.account_id || ', "ref": "' || NEW.ref || '"}');
+				'", "application_id": ' || NEW.application_id || ', "ref": "' || NEW.ref || '"}');
 END;
 -- +goose StatementEnd
 
@@ -51,11 +51,11 @@ AFTER UPDATE ON repositories
 FOR EACH ROW
 BEGIN
     UPDATE repositories SET updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW') WHERE repository_id = OLD.repository_id;
-    INSERT INTO change_streams (change_entity, change_type, change_entity_id, account_id, payload)
-		VALUES ('REPOSITORY', 'UPDATE', NEW.repository_id, NEW.account_id,
+    INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
+		VALUES ('REPOSITORY', 'UPDATE', NEW.repository_id, NEW.application_id,
 				'{"repository_id": "' || NEW.repository_id || '", "created_at": "' || NEW.created_at ||
 				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name ||
-				'", "account_id": ' || NEW.account_id || ', "ref": "' || NEW.ref || '"}');
+				'", "application_id": ' || NEW.application_id || ', "ref": "' || NEW.ref || '"}');
 END;
 -- +goose StatementEnd
 
@@ -65,11 +65,11 @@ CREATE TRIGGER repositories_change_streams_after_delete
 AFTER DELETE ON repositories
 FOR EACH ROW
 BEGIN
-    INSERT INTO change_streams (change_entity, change_type, change_entity_id, account_id, payload)
-		VALUES ('REPOSITORY', 'DELETE', OLD.repository_id, OLD.account_id,
+    INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
+		VALUES ('REPOSITORY', 'DELETE', OLD.repository_id, OLD.application_id,
 				'{"repository_id": "' || OLD.repository_id || '", "created_at": "' || OLD.created_at ||
 				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name ||
-				'", "account_id": ' || OLD.account_id || ', "ref": "' || OLD.ref || '"}');
+				'", "application_id": ' || OLD.application_id || ', "ref": "' || OLD.ref || '"}');
 END;
 -- +goose StatementEnd
 

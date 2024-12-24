@@ -40,14 +40,14 @@ A **Permguard** workspace contains the following files:
 
 ## Initialize a new repository
 
-When starting a new project, the first step is to create an account:
+When starting a new project, the first step is to create an application:
 
 ```bash
-permguard accounts create --name magicfarmacia-dev --output json
+permguard applications create --name magicfarmacia-dev --output json
 {
-  "accounts": [
+  "applications": [
     {
-      "account_id": 268786704340,
+      "application_id": 268786704340,
       "created_at": "2024-08-25T14:07:59.634Z",
       "updated_at": "2024-08-25T14:07:59.634Z",
       "name": "magicfarmacia-dev"
@@ -59,14 +59,14 @@ permguard accounts create --name magicfarmacia-dev --output json
 Next, create a repository:
 
 ```bash
-permguard authz  repos create --account 268786704340  --name magicfarmacia --output json
+permguard authz  repos create --application 268786704340  --name magicfarmacia --output json
 {
   "repositories": [
     {
       "repo_id": "668f3771eacf4094ba8a80942ea5fd3f",
       "created_at": "2024-08-25T14:50:38.003Z",
       "updated_at": "2024-08-25T14:50:38.003Z",
-      "account_id": 268786704340,
+      "application_id": 268786704340,
       "name": "magicfarmacia"
     }
   ]

@@ -22,14 +22,14 @@ CREATE TABLE identities (
     name TEXT NOT NULL,
 	kind INTEGER NOT NULL,
 	-- REFERENCES
-	account_id INTEGER NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
+	application_id INTEGER NOT NULL REFERENCES applications(application_id) ON UPDATE CASCADE ON DELETE CASCADE,
 	identity_source_id TEXT NOT NULL REFERENCES identity_sources(identity_source_id) ON UPDATE CASCADE ON DELETE CASCADE,
 	-- CONSTRAINTS
-	CONSTRAINT identities_accountid_name_key UNIQUE (account_id, name)
+	CONSTRAINT identities_applicationid_name_key UNIQUE (application_id, name)
 );
 
 CREATE INDEX identities_name_idx ON identities(name);
-CREATE INDEX identities_account_id_idx ON identities(account_id);
+CREATE INDEX identities_application_id_idx ON identities(application_id);
 CREATE INDEX identities_identity_source_id_idx ON identities(identity_source_id);
 
 -- Trigger to track changes in the `identities` table after insert
@@ -38,11 +38,11 @@ CREATE TRIGGER change_streams_after_insert
 AFTER INSERT ON identities
 FOR EACH ROW
 BEGIN
-    INSERT INTO change_streams (change_entity, change_type, change_entity_id, account_id, payload)
-		VALUES ('IDENTITY', 'INSERT', NEW.identity_id, NEW.account_id,
+    INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
+		VALUES ('IDENTITY', 'INSERT', NEW.identity_id, NEW.application_id,
 				'{"identity_id": "' || NEW.identity_id || '", "created_at": "' || NEW.created_at ||
 				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name ||
-				'", "kind": ' || NEW.kind || ', "account_id": ' || NEW.account_id ||
+				'", "kind": ' || NEW.kind || ', "application_id": ' || NEW.application_id ||
 				', "identity_source_id": "' || NEW.identity_source_id || '"}');
 END;
 -- +goose StatementEnd
@@ -54,11 +54,11 @@ AFTER UPDATE ON identities
 FOR EACH ROW
 BEGIN
     UPDATE identities SET updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW') WHERE identity_id = OLD.identity_id;
-    INSERT INTO change_streams (change_entity, change_type, change_entity_id, account_id, payload)
-		VALUES ('IDENTITY', 'UPDATE', NEW.identity_id, NEW.account_id,
+    INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
+		VALUES ('IDENTITY', 'UPDATE', NEW.identity_id, NEW.application_id,
 				'{"identity_id": "' || NEW.identity_id || '", "created_at": "' || NEW.created_at ||
 				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name ||
-				'", "kind": ' || NEW.kind || ', "account_id": ' || NEW.account_id ||
+				'", "kind": ' || NEW.kind || ', "application_id": ' || NEW.application_id ||
 				', "identity_source_id": "' || NEW.identity_source_id || '"}');
 END;
 -- +goose StatementEnd
@@ -69,11 +69,11 @@ CREATE TRIGGER change_streams_after_delete
 AFTER DELETE ON identities
 FOR EACH ROW
 BEGIN
-    INSERT INTO change_streams (change_entity, change_type, change_entity_id, account_id, payload)
-		VALUES ('IDENTITY', 'DELETE', OLD.identity_id, OLD.account_id,
+    INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
+		VALUES ('IDENTITY', 'DELETE', OLD.identity_id, OLD.application_id,
 				'{"identity_id": "' || OLD.identity_id || '", "created_at": "' || OLD.created_at ||
 				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name ||
-				'", "kind": ' || OLD.kind || ', "account_id": ' || OLD.account_id ||
+				'", "kind": ' || OLD.kind || ', "application_id": ' || OLD.application_id ||
 				', "identity_source_id": "' || OLD.identity_source_id || '"}');
 END;
 -- +goose StatementEnd

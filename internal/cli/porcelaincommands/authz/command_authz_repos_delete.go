@@ -47,9 +47,9 @@ func runECommandForDeleteRepository(deps azcli.CliDependenciesProvider, cmd *cob
 		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	accountID := v.GetInt64(azoptions.FlagName(commandNameForRepository, aziclicommon.FlagCommonAccountID))
+	applicationID := v.GetInt64(azoptions.FlagName(commandNameForRepository, aziclicommon.FlagCommonApplicationID))
 	repositoryID := v.GetString(azoptions.FlagName(commandNameForRepositoriesDelete, flagRepositoryID))
-	repository, err := client.DeleteRepository(accountID, repositoryID)
+	repository, err := client.DeleteRepository(applicationID, repositoryID)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
 			printer.Println("Failed to delete the repository.")
@@ -80,7 +80,7 @@ func createCommandForRepositoryDelete(deps azcli.CliDependenciesProvider, v *vip
 
 Examples:
   # delete a repository and output the result in json format
-  permguard authz repos delete --account 268786704340 --repositoryid 668f3771eacf4094ba8a80942ea5fd3f --output json
+  permguard authz repos delete --application 268786704340 --repositoryid 668f3771eacf4094ba8a80942ea5fd3f --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteRepository(deps, cmd, v)

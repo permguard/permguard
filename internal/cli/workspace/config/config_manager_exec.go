@@ -152,11 +152,11 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out aziclicommon.
 		remotes := []any{}
 		for cfgRemote := range cfg.Remotes {
 			remoteObj := map[string]any{
-				"remote": cfgRemote,
+				"remote":     cfgRemote,
 				"aap_server": cfg.Remotes[cfgRemote].Server,
-				"aap_port":    cfg.Remotes[cfgRemote].AAPPort,
+				"aap_port":   cfg.Remotes[cfgRemote].AAPPort,
 				"pap_server": cfg.Remotes[cfgRemote].Server,
-				"pap_port":    cfg.Remotes[cfgRemote].PAPPort,
+				"pap_port":   cfg.Remotes[cfgRemote].PAPPort,
 			}
 			remotes = append(remotes, remoteObj)
 		}
@@ -166,7 +166,7 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out aziclicommon.
 }
 
 // ExecAddRepo adds a repo.
-func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, repo, repoID string, account int64, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, repo, repoID string, application int64, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -189,12 +189,12 @@ func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, repo, repoID string, a
 			cfg.Repositories[key] = repo
 		}
 		cfgRepo = repositoryConfig{
-			Ref:       ref,
-			Remote:    remote,
-			AccountID: account,
-			RepoName:  repo,
-			RepoID:    repoID,
-			IsHead:    true,
+			Ref:           ref,
+			Remote:        remote,
+			ApplicationID: application,
+			RepoName:      repo,
+			RepoID:        repoID,
+			IsHead:        true,
 		}
 		cfg.Repositories[repoURI] = cfgRepo
 		m.saveConfig(true, cfg)
@@ -207,10 +207,10 @@ func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, repo, repoID string, a
 	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{
-			"ref":     cfgRepo.Ref,
+			"ref":      cfgRepo.Ref,
 			"repo_uri": repoURI,
-			"repo_id": cfgRepo.RepoID,
-			"is_head": cfgRepo.IsHead,
+			"repo_id":  cfgRepo.RepoID,
+			"is_head":  cfgRepo.IsHead,
 		}
 		remotes = append(remotes, remoteObj)
 		output = out(output, "repos", remotes, nil, true)
@@ -251,10 +251,10 @@ func (m *ConfigManager) ExecListRepos(output map[string]any, out aziclicommon.Pr
 		for cfgRepo := range cfg.Repositories {
 			isHead := cfg.Repositories[cfgRepo].IsHead
 			repoObj := map[string]any{
-				"ref":     cfg.Repositories[cfgRepo].Ref,
-				"repo_uri":    cfgRepo,
-				"repo_id": cfg.Repositories[cfgRepo].RepoID,
-				"is_head": isHead,
+				"ref":      cfg.Repositories[cfgRepo].Ref,
+				"repo_uri": cfgRepo,
+				"repo_id":  cfg.Repositories[cfgRepo].RepoID,
+				"is_head":  isHead,
 			}
 			repos = append(repos, repoObj)
 		}

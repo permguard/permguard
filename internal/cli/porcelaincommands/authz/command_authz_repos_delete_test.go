@@ -108,11 +108,11 @@ func TestCliRepositoriesDeleteWithSuccess(t *testing.T) {
 
 		papClient := azmocks.NewGrpcPAPClientMock()
 		repository := &azmodels.Repository{
-			RepositoryID: "c3160a533ab24fbcb1eab7a09fd85f36",
-			AccountID:    581616507495,
-			Name:         "materabranch",
-			CreatedAt:    time.Now(),
-			UpdatedAt:    time.Now(),
+			RepositoryID:  "c3160a533ab24fbcb1eab7a09fd85f36",
+			ApplicationID: 581616507495,
+			Name:          "materabranch",
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
 		}
 		papClient.On("DeleteRepository", mock.Anything, mock.Anything).Return(repository, nil)
 

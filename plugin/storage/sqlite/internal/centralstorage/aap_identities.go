@@ -46,7 +46,7 @@ func (s SQLiteCentralStorageAAP) CreateIdentity(identity *azmodels.Identity) (*a
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity kind %s is not valid", identity.Kind))
 	}
 	dbInIdentity := &azirepos.Identity{
-		AccountID:        identity.AccountID,
+		ApplicationID:    identity.ApplicationID,
 		IdentitySourceID: identity.IdentitySourceID,
 		Kind:             kind,
 		Name:             identity.Name,
@@ -81,7 +81,7 @@ func (s SQLiteCentralStorageAAP) UpdateIdentity(identity *azmodels.Identity) (*a
 	}
 	dbInIdentity := &azirepos.Identity{
 		IdentityID:       identity.IdentityID,
-		AccountID:        identity.AccountID,
+		ApplicationID:    identity.ApplicationID,
 		IdentitySourceID: identity.IdentitySourceID,
 		Kind:             kind,
 		Name:             identity.Name,
@@ -98,7 +98,7 @@ func (s SQLiteCentralStorageAAP) UpdateIdentity(identity *azmodels.Identity) (*a
 }
 
 // DeleteIdentity deletes an identity.
-func (s SQLiteCentralStorageAAP) DeleteIdentity(accountID int64, identityID string) (*azmodels.Identity, error) {
+func (s SQLiteCentralStorageAAP) DeleteIdentity(applicationID int64, identityID string) (*azmodels.Identity, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
@@ -107,7 +107,7 @@ func (s SQLiteCentralStorageAAP) DeleteIdentity(accountID int64, identityID stri
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbOutIdentity, err := s.sqlRepo.DeleteIdentity(tx, accountID, identityID)
+	dbOutIdentity, err := s.sqlRepo.DeleteIdentity(tx, applicationID, identityID)
 	if err != nil {
 		tx.Rollback()
 		return nil, err
@@ -119,7 +119,7 @@ func (s SQLiteCentralStorageAAP) DeleteIdentity(accountID int64, identityID stri
 }
 
 // FetchIdentities returns all identities.
-func (s SQLiteCentralStorageAAP) FetchIdentities(page int32, pageSize int32, accountID int64, fields map[string]any) ([]azmodels.Identity, error) {
+func (s SQLiteCentralStorageAAP) FetchIdentities(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Identity, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
@@ -143,7 +143,7 @@ func (s SQLiteCentralStorageAAP) FetchIdentities(page int32, pageSize int32, acc
 		}
 		filterName = &identityName
 	}
-	dbIdentities, err := s.sqlRepo.FetchIdentities(db, page, pageSize, accountID, filterID, filterName)
+	dbIdentities, err := s.sqlRepo.FetchIdentities(db, page, pageSize, applicationID, filterID, filterName)
 	if err != nil {
 		return nil, err
 	}

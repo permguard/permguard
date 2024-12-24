@@ -34,38 +34,38 @@ import (
 // registerRepositoryForUpsertMocking registers a repository for upsert mocking.
 func registerRepositoryForUpsertMocking(isCreate bool) (*Repository, string, *sqlmock.Rows) {
 	repository := &Repository{
-		RepositoryID: GenerateUUID(),
-		AccountID:    581616507495,
-		Name:         "rent-a-car",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
-		Ref:          "0000000000000000000000000000000000000000000000000000000000000000",
+		RepositoryID:  GenerateUUID(),
+		ApplicationID: 581616507495,
+		Name:          "rent-a-car",
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+		Ref:           "0000000000000000000000000000000000000000000000000000000000000000",
 	}
 	var sql string
 	if isCreate {
-		sql = `INSERT INTO repositories \(account_id, repository_id, name\) VALUES \(\?, \?, \?\)`
+		sql = `INSERT INTO repositories \(application_id, repository_id, name\) VALUES \(\?, \?, \?\)`
 	} else {
-		sql = `UPDATE repositories SET name = \? WHERE account_id = \? and repository_id = \?`
+		sql = `UPDATE repositories SET name = \? WHERE application_id = \? and repository_id = \?`
 	}
-	sqlRows := sqlmock.NewRows([]string{"account_id", "repository_id", "created_at", "updated_at", "name", "ref"}).
-		AddRow(repository.AccountID, repository.RepositoryID, repository.CreatedAt, repository.UpdatedAt, repository.Name, repository.Name)
+	sqlRows := sqlmock.NewRows([]string{"application_id", "repository_id", "created_at", "updated_at", "name", "ref"}).
+		AddRow(repository.ApplicationID, repository.RepositoryID, repository.CreatedAt, repository.UpdatedAt, repository.Name, repository.Name)
 	return repository, sql, sqlRows
 }
 
 // registerRepositoryForDeleteMocking registers a repository for delete mocking.
 func registerRepositoryForDeleteMocking() (string, *Repository, *sqlmock.Rows, string) {
 	repository := &Repository{
-		RepositoryID: GenerateUUID(),
-		AccountID:    581616507495,
-		Name:         "rent-a-car",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
-		Ref:          "0000000000000000000000000000000000000000000000000000000000000000",
+		RepositoryID:  GenerateUUID(),
+		ApplicationID: 581616507495,
+		Name:          "rent-a-car",
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+		Ref:           "0000000000000000000000000000000000000000000000000000000000000000",
 	}
-	var sqlSelect = `SELECT account_id, repository_id, created_at, updated_at, name, ref FROM repositories WHERE account_id = \? and repository_id = \?`
-	var sqlDelete = `DELETE FROM repositories WHERE account_id = \? and repository_id = \?`
-	sqlRows := sqlmock.NewRows([]string{"account_id", "repository_id", "created_at", "updated_at", "name", "ref"}).
-		AddRow(repository.AccountID, repository.RepositoryID, repository.CreatedAt, repository.UpdatedAt, repository.Name, repository.Ref)
+	var sqlSelect = `SELECT application_id, repository_id, created_at, updated_at, name, ref FROM repositories WHERE application_id = \? and repository_id = \?`
+	var sqlDelete = `DELETE FROM repositories WHERE application_id = \? and repository_id = \?`
+	sqlRows := sqlmock.NewRows([]string{"application_id", "repository_id", "created_at", "updated_at", "name", "ref"}).
+		AddRow(repository.ApplicationID, repository.RepositoryID, repository.CreatedAt, repository.UpdatedAt, repository.Name, repository.Ref)
 	return sqlSelect, repository, sqlRows, sqlDelete
 }
 
@@ -73,17 +73,17 @@ func registerRepositoryForDeleteMocking() (string, *Repository, *sqlmock.Rows, s
 func registerRepositoryForFetchMocking() (string, []Repository, *sqlmock.Rows) {
 	repositories := []Repository{
 		{
-			RepositoryID: GenerateUUID(),
-			AccountID:    581616507495,
-			Name:         "rent-a-car",
-			CreatedAt:    time.Now(),
-			UpdatedAt:    time.Now(),
-			Ref:          "0000000000000000000000000000000000000000000000000000000000000000",
+			RepositoryID:  GenerateUUID(),
+			ApplicationID: 581616507495,
+			Name:          "rent-a-car",
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
+			Ref:           "0000000000000000000000000000000000000000000000000000000000000000",
 		},
 	}
-	var sqlSelect = "SELECT * FROM repositories WHERE account_id = ? AND repository_id = ? AND name LIKE ? ORDER BY repository_id ASC LIMIT ? OFFSET ?"
-	sqlRows := sqlmock.NewRows([]string{"account_id", "repository_id", "created_at", "updated_at", "name", "ref"}).
-		AddRow(repositories[0].AccountID, repositories[0].RepositoryID, repositories[0].CreatedAt, repositories[0].UpdatedAt, repositories[0].Name, repositories[0].Ref)
+	var sqlSelect = "SELECT * FROM repositories WHERE application_id = ? AND repository_id = ? AND name LIKE ? ORDER BY repository_id ASC LIMIT ? OFFSET ?"
+	sqlRows := sqlmock.NewRows([]string{"application_id", "repository_id", "created_at", "updated_at", "name", "ref"}).
+		AddRow(repositories[0].ApplicationID, repositories[0].RepositoryID, repositories[0].CreatedAt, repositories[0].UpdatedAt, repositories[0].Name, repositories[0].Ref)
 	return sqlSelect, repositories, sqlRows
 }
 
@@ -103,7 +103,7 @@ func TestRepoUpsertRepositoryWithInvalidInput(t *testing.T) {
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
-	{ // Test with invalid account id
+	{ // Test with invalid application id
 		dbInRepository := &Repository{
 			RepositoryID: GenerateUUID(),
 			Name:         "rent-a-car",
@@ -115,8 +115,8 @@ func TestRepoUpsertRepositoryWithInvalidInput(t *testing.T) {
 
 	{ // Test with invalid repository id
 		dbInRepository := &Repository{
-			AccountID: 581616507495,
-			Name:      "rent-a-car",
+			ApplicationID: 581616507495,
+			Name:          "rent-a-car",
 		}
 		_, err := repo.UpsertRepository(tx, false, dbInRepository)
 		assert.NotNil(err, "error should be not nil")
@@ -168,24 +168,24 @@ func TestRepoUpsertRepositoryWithSuccess(t *testing.T) {
 		var dbInRepository *Repository
 		if isCreate {
 			dbInRepository = &Repository{
-				AccountID: repository.AccountID,
-				Name:      repository.Name,
+				ApplicationID: repository.ApplicationID,
+				Name:          repository.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(repository.AccountID, sqlmock.AnyArg(), repository.Name).
+				WithArgs(repository.ApplicationID, sqlmock.AnyArg(), repository.Name).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 		} else {
 			dbInRepository = &Repository{
-				RepositoryID: repository.RepositoryID,
-				AccountID:    repository.AccountID,
-				Name:         repository.Name,
+				RepositoryID:  repository.RepositoryID,
+				ApplicationID: repository.ApplicationID,
+				Name:          repository.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(repository.Name, repository.AccountID, repository.RepositoryID).
+				WithArgs(repository.Name, repository.ApplicationID, repository.RepositoryID).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 		}
 
-		sqlDBMock.ExpectQuery(`SELECT account_id, repository_id, created_at, updated_at, name, ref FROM repositories WHERE account_id = \? and repository_id = \?`).
+		sqlDBMock.ExpectQuery(`SELECT application_id, repository_id, created_at, updated_at, name, ref FROM repositories WHERE application_id = \? and repository_id = \?`).
 			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
 			WillReturnRows(sqlRepositoryRows)
 
@@ -195,7 +195,7 @@ func TestRepoUpsertRepositoryWithSuccess(t *testing.T) {
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.NotNil(dbOutRepository, "repository should be not nil")
 		assert.Equal(repository.RepositoryID, dbOutRepository.RepositoryID, "repository id is not correct")
-		assert.Equal(repository.AccountID, dbOutRepository.AccountID, "repository account id is not correct")
+		assert.Equal(repository.ApplicationID, dbOutRepository.ApplicationID, "repository application id is not correct")
 		assert.Equal(repository.Name, dbOutRepository.Name, "repository name is not correct")
 		assert.Nil(err, "error should be nil")
 	}
@@ -222,20 +222,20 @@ func TestRepoUpsertRepositoryWithErrors(t *testing.T) {
 		var dbInRepository *Repository
 		if isCreate {
 			dbInRepository = &Repository{
-				AccountID: repository.AccountID,
-				Name:      repository.Name,
+				ApplicationID: repository.ApplicationID,
+				Name:          repository.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(repository.AccountID, sqlmock.AnyArg(), repository.Name).
+				WithArgs(repository.ApplicationID, sqlmock.AnyArg(), repository.Name).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 		} else {
 			dbInRepository = &Repository{
-				RepositoryID: repository.RepositoryID,
-				AccountID:    repository.AccountID,
-				Name:         repository.Name,
+				RepositoryID:  repository.RepositoryID,
+				ApplicationID: repository.ApplicationID,
+				Name:          repository.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(repository.Name, repository.AccountID, repository.RepositoryID).
+				WithArgs(repository.Name, repository.ApplicationID, repository.RepositoryID).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 		}
 
@@ -259,7 +259,7 @@ func TestRepoDeleteRepositoryWithInvalidInput(t *testing.T) {
 
 	tx, _ := sqlDB.Begin()
 
-	{ // Test with invalid account id
+	{ // Test with invalid application id
 		_, err := repo.DeleteRepository(tx, 0, GenerateUUID())
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
@@ -285,20 +285,20 @@ func TestRepoDeleteRepositoryWithSuccess(t *testing.T) {
 	sqlDBMock.ExpectBegin()
 
 	sqlDBMock.ExpectQuery(sqlSelect).
-		WithArgs(repository.AccountID, repository.RepositoryID).
+		WithArgs(repository.ApplicationID, repository.RepositoryID).
 		WillReturnRows(sqlRepositoryRows)
 
 	sqlDBMock.ExpectExec(sqlDelete).
-		WithArgs(repository.AccountID, repository.RepositoryID).
+		WithArgs(repository.ApplicationID, repository.RepositoryID).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	tx, _ := sqlDB.Begin()
-	dbOutRepository, err := repo.DeleteRepository(tx, repository.AccountID, repository.RepositoryID)
+	dbOutRepository, err := repo.DeleteRepository(tx, repository.ApplicationID, repository.RepositoryID)
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutRepository, "repository should be not nil")
 	assert.Equal(repository.RepositoryID, dbOutRepository.RepositoryID, "repository id should be correct")
-	assert.Equal(repository.AccountID, dbOutRepository.AccountID, "repository account id should be correct")
+	assert.Equal(repository.ApplicationID, dbOutRepository.ApplicationID, "repository application id should be correct")
 	assert.Equal(repository.Name, dbOutRepository.Name, "repository name should be correct")
 	assert.Nil(err, "error should be nil")
 }
@@ -342,7 +342,7 @@ func TestRepoDeleteRepositoryWithErrors(t *testing.T) {
 		}
 
 		tx, _ := sqlDB.Begin()
-		dbOutRepository, err := repo.DeleteRepository(tx, repository.AccountID, repository.RepositoryID)
+		dbOutRepository, err := repo.DeleteRepository(tx, repository.ApplicationID, repository.RepositoryID)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutRepository, "repository should be nil")
@@ -376,7 +376,7 @@ func TestRepoFetchRepositoryWithInvalidInput(t *testing.T) {
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
-	{ // Test with invalid account id
+	{ // Test with invalid application id
 		repositoryID := GenerateUUID()
 		_, err := repo.FetchRepositories(sqlDB, 1, 1, 0, &repositoryID, nil)
 		assert.NotNil(err, "error should be not nil")
@@ -412,10 +412,10 @@ func TestRepoFetchRepositoryWithSuccess(t *testing.T) {
 	pageSize := int32(100)
 	repositoryName := "%" + sqlRepositories[0].Name + "%"
 	sqlDBMock.ExpectQuery(regexp.QuoteMeta(sqlSelect)).
-		WithArgs(sqlRepositories[0].AccountID, sqlRepositories[0].RepositoryID, repositoryName, pageSize, page-1).
+		WithArgs(sqlRepositories[0].ApplicationID, sqlRepositories[0].RepositoryID, repositoryName, pageSize, page-1).
 		WillReturnRows(sqlRepositoryRows)
 
-	dbOutRepository, err := repo.FetchRepositories(sqlDB, page, pageSize, sqlRepositories[0].AccountID, &sqlRepositories[0].RepositoryID, &sqlRepositories[0].Name)
+	dbOutRepository, err := repo.FetchRepositories(sqlDB, page, pageSize, sqlRepositories[0].ApplicationID, &sqlRepositories[0].RepositoryID, &sqlRepositories[0].Name)
 
 	orderedSQLRepositories := make([]Repository, len(sqlRepositories))
 	copy(orderedSQLRepositories, sqlRepositories)
@@ -428,7 +428,7 @@ func TestRepoFetchRepositoryWithSuccess(t *testing.T) {
 	assert.Len(orderedSQLRepositories, len(dbOutRepository), "repositories len should be correct")
 	for i, repository := range dbOutRepository {
 		assert.Equal(repository.RepositoryID, orderedSQLRepositories[i].RepositoryID, "repository id is not correct")
-		assert.Equal(repository.AccountID, orderedSQLRepositories[i].AccountID, "repository account id is not correct")
+		assert.Equal(repository.ApplicationID, orderedSQLRepositories[i].ApplicationID, "repository application id is not correct")
 		assert.Equal(repository.Name, orderedSQLRepositories[i].Name, "repository name is not correct")
 	}
 	assert.Nil(err, "error should be nil")

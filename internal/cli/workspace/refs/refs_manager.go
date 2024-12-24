@@ -65,7 +65,7 @@ func (m *RefManager) getRefFile(ref string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(hiddenRefsDir, refInfo.GetSourceType(), refInfo.GetRemote(), fmt.Sprintf("%d", refInfo.GetAccountID()), refInfo.GetRepoID()), nil
+	return filepath.Join(hiddenRefsDir, refInfo.GetSourceType(), refInfo.GetRemote(), fmt.Sprintf("%d", refInfo.GetApplicationID()), refInfo.GetRepoID()), nil
 }
 
 // ensureRefFileExists ensures the ref file exists.
@@ -82,8 +82,8 @@ func (m *RefManager) ensureRefFileExists(ref string) error {
 }
 
 // GenerateRef generates the ref.
-func (m *RefManager) GenerateRef(remote string, accountID int64, repoID string) string {
-	refInfo, _ := azicliwkscommon.NewRefInfoFromRepoName(remote, accountID, repoID)
+func (m *RefManager) GenerateRef(remote string, applicationID int64, repoID string) string {
+	refInfo, _ := azicliwkscommon.NewRefInfoFromRepoName(remote, applicationID, repoID)
 	ref := azicliwkscommon.ConvertRefInfoToString(refInfo)
 	return ref
 }

@@ -21,36 +21,36 @@ import (
 )
 
 const (
-	FieldAccountAccountID               = "account_id"
-	FieldAccountName                    = "name"
-	FieldTenantAccountID                = "account_id"
+	FieldApplicationApplicationID       = "application_id"
+	FieldApplicationName                = "name"
+	FieldTenantApplicationID            = "application_id"
 	FieldTenantTenantID                 = "tenant_id"
 	FieldTenantName                     = "name"
-	FieldIdentitySourceAccountID        = "account_id"
+	FieldIdentitySourceApplicationID    = "application_id"
 	FieldIdentitySourceName             = "name"
 	FieldIdentitySourceIdentitySourceID = "identity_source_id"
-	FieldIdentityAccountID              = "account_id"
+	FieldIdentityApplicationID          = "application_id"
 	FieldIdentityIdentitySourceID       = "identity_source_id"
 	FieldIdentityIdentityID             = "identity_id"
 	FieldIdentityName                   = "name"
 	FieldIdentityKind                   = "kind"
 )
 
-// Account is the account.
-type Account struct {
-	AccountID int64     `json:"account_id" validate:"required,gt=0"`
-	CreatedAt time.Time `json:"created_at" validate:"required"`
-	UpdatedAt time.Time `json:"updated_at" validate:"required"`
-	Name      string    `json:"name" validate:"required,name"`
+// Application is the application.
+type Application struct {
+	ApplicationID int64     `json:"application_id" validate:"required,gt=0"`
+	CreatedAt     time.Time `json:"created_at" validate:"required"`
+	UpdatedAt     time.Time `json:"updated_at" validate:"required"`
+	Name          string    `json:"name" validate:"required,name"`
 }
 
 // Tenant is the tenant.
 type Tenant struct {
-	TenantID  string    `json:"tenant_id" validate:"required,isuuid"`
-	CreatedAt time.Time `json:"created_at" validate:"required"`
-	UpdatedAt time.Time `json:"updated_at" validate:"required"`
-	AccountID int64     `json:"account_id" validate:"required,gt=0"`
-	Name      string    `json:"name"`
+	TenantID      string    `json:"tenant_id" validate:"required,isuuid"`
+	CreatedAt     time.Time `json:"created_at" validate:"required"`
+	UpdatedAt     time.Time `json:"updated_at" validate:"required"`
+	ApplicationID int64     `json:"application_id" validate:"required,gt=0"`
+	Name          string    `json:"name"`
 }
 
 // IdentitySource represent and identity source
@@ -58,7 +58,7 @@ type IdentitySource struct {
 	IdentitySourceID string    `json:"identity_source_id" validate:"required,isuuid"`
 	CreatedAt        time.Time `json:"created_at" validate:"required"`
 	UpdatedAt        time.Time `json:"updated_at" validate:"required"`
-	AccountID        int64     `json:"account_id" validate:"required,gt=0"`
+	ApplicationID    int64     `json:"application_id" validate:"required,gt=0"`
 	Name             string    `json:"name" validate:"required"`
 }
 
@@ -67,7 +67,7 @@ type Identity struct {
 	IdentityID       string    `json:"identity_id" validate:"required,isuuid"`
 	CreatedAt        time.Time `json:"created_at" validate:"required"`
 	UpdatedAt        time.Time `json:"updated_at" validate:"required"`
-	AccountID        int64     `json:"account_id" validate:"required,gt=0"`
+	ApplicationID    int64     `json:"application_id" validate:"required,gt=0"`
 	IdentitySourceID string    `json:"identity_source_id" validate:"required,isuuid"`
 	Kind             string    `json:"identity_type" validate:"required,oneof='user' 'actor'"`
 	Name             string    `json:"name" validate:"required"`

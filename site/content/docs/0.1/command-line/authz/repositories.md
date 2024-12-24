@@ -33,7 +33,7 @@ Available Commands:
   update      Update a repository
 
 Flags:
-      --account int   account id filter
+      --application int   application id filter
   -h, --help          help for repos
 
 Global Flags:
@@ -51,10 +51,10 @@ The output from your current version of Permguard may differ from the example pr
 
 ## Create an Repository
 
-The `permguard authz repos create` command allows to create a repository for the mandatory input account and name.
+The `permguard authz repos create` command allows to create a repository for the mandatory input application and name.
 
 ```bash
-permguard authz repos create --account 268786704340 --name magicfarmacia
+permguard authz repos create --application 268786704340 --name magicfarmacia
 ```
 
 output:
@@ -69,7 +69,7 @@ output:
   </summary>
 
 ```bash
-permguard authz repos create --account 268786704340 --name magicfarmacia --output json
+permguard authz repos create --application 268786704340 --name magicfarmacia --output json
 ```
 
 output:
@@ -81,7 +81,7 @@ output:
       "repository_id": "668f3771eacf4094ba8a80942ea5fd3f",
       "created_at": "2024-08-25T14:50:38.003Z",
       "updated_at": "2024-08-25T14:50:38.003Z",
-      "account_id": 268786704340,
+      "application_id": 268786704340,
       "name": "magicfarmacia"
     }
   ]
@@ -95,7 +95,7 @@ output:
 The `permguard authz repos list` command allows for the retrieval of all repositories.
 
 ```bash
-permguard authz repos list --account 268786704340
+permguard authz repos list --application 268786704340
 ```
 
 output:
@@ -114,7 +114,7 @@ d02af7e50a7b462cb496aa6ddeb4275e: magicfarmacia
   </summary>
 
 ```bash
-permguard authz repos list --account 268786704340 --output json
+permguard authz repos list --application 268786704340 --output json
 ```
 
 output:
@@ -126,35 +126,35 @@ output:
       "repository_id": "295433941928473fb692f1a12b6ef660",
       "created_at": "2024-08-25T14:50:30.248Z",
       "updated_at": "2024-08-25T14:50:30.248Z",
-      "account_id": 268786704340,
+      "application_id": 268786704340,
       "name": "crm"
     },
     {
       "repository_id": "4fc71b8d934a496d9347ab4a04322460",
       "created_at": "2024-08-25T14:50:26.999Z",
       "updated_at": "2024-08-25T14:50:26.999Z",
-      "account_id": 268786704340,
+      "application_id": 268786704340,
       "name": "accounting"
     },
     {
       "repository_id": "668f3771eacf4094ba8a80942ea5fd3f",
       "created_at": "2024-08-25T14:50:38.003Z",
       "updated_at": "2024-08-25T14:50:38.003Z",
-      "account_id": 268786704340,
+      "application_id": 268786704340,
       "name": "bookshop"
     },
     {
       "repository_id": "a2b8df4c367940739d872bcbb157155f",
       "created_at": "2024-08-25T14:50:33.046Z",
       "updated_at": "2024-08-25T14:50:33.046Z",
-      "account_id": 268786704340,
+      "application_id": 268786704340,
       "name": "insurance"
     },
     {
       "repository_id": "d02af7e50a7b462cb496aa6ddeb4275e",
       "created_at": "2024-08-25T14:50:13.705Z",
       "updated_at": "2024-08-25T14:50:13.705Z",
-      "account_id": 268786704340,
+      "application_id": 268786704340,
       "name": "magicfarmacia"
     }
   ]

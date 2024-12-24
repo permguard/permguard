@@ -48,10 +48,10 @@ func runECommandForListRepositories(deps azcli.CliDependenciesProvider, cmd *cob
 	}
 	page := v.GetInt32(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonPage))
 	pageSize := v.GetInt32(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonPageSize))
-	accountID := v.GetInt64(azoptions.FlagName(commandNameForRepository, aziclicommon.FlagCommonAccountID))
+	applicationID := v.GetInt64(azoptions.FlagName(commandNameForRepository, aziclicommon.FlagCommonApplicationID))
 	repositoryID := v.GetString(azoptions.FlagName(commandNameForRepositoriesList, flagRepositoryID))
 	name := v.GetString(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonName))
-	repositories, err := client.FetchRepositoriesBy(page, pageSize, accountID, repositoryID, name)
+	repositories, err := client.FetchRepositoriesBy(page, pageSize, applicationID, repositoryID, name)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
 			printer.Println("Failed to list repositories.")
@@ -84,11 +84,11 @@ func createCommandForRepositoryList(deps azcli.CliDependenciesProvider, v *viper
 
 Examples:
   # list all repositories and output in json format
-  permguard authz repos list --account 268786704340 --output json
+  permguard authz repos list --application 268786704340 --output json
   # list all repositories filtered by name
-  permguard authz repos list --account 268786704340 --name v1
+  permguard authz repos list --application 268786704340 --name v1
   # list all repositories filtered by repository id
-  permguard authz repos list --account 268786704340 --repositoryid 668f3771eacf4094ba8a80942ea5fd3f
+  permguard authz repos list --application 268786704340 --repositoryid 668f3771eacf4094ba8a80942ea5fd3f
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListRepositories(deps, cmd, v)

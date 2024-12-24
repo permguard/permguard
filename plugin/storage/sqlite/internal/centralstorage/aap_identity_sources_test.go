@@ -89,7 +89,7 @@ func TestCreateIdentitySourceWithSuccess(t *testing.T) {
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
 	dbOutIdentitySource := &azirepos.IdentitySource{
-		AccountID:        232956849236,
+		ApplicationID:    232956849236,
 		IdentitySourceID: azirepos.GenerateUUID(),
 		Name:             "rent-a-car1",
 		CreatedAt:        time.Now(),
@@ -171,7 +171,7 @@ func TestUpdateIdentitySourceWithSuccess(t *testing.T) {
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
 	dbOutIdentitySource := &azirepos.IdentitySource{
-		AccountID:        232956849236,
+		ApplicationID:    232956849236,
 		IdentitySourceID: azirepos.GenerateUUID(),
 		Name:             "rent-a-car1",
 		CreatedAt:        time.Now(),
@@ -228,7 +228,7 @@ func TestDeleteIdentitySourceWithErrors(t *testing.T) {
 		}
 
 		inIdentitySourceID := azirepos.GenerateUUID()
-		outIdentitySources, err := storage.DeleteIdentitySource(azirepos.GenerateAccountID(), inIdentitySourceID)
+		outIdentitySources, err := storage.DeleteIdentitySource(azirepos.GenerateApplicationID(), inIdentitySourceID)
 		assert.Nil(outIdentitySources, "identity sources should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
@@ -246,7 +246,7 @@ func TestDeleteIdentitySourceWithSuccess(t *testing.T) {
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
 	dbOutIdentitySource := &azirepos.IdentitySource{
-		AccountID:        232956849236,
+		ApplicationID:    232956849236,
 		IdentitySourceID: azirepos.GenerateUUID(),
 		Name:             "rent-a-car1",
 		CreatedAt:        time.Now(),
@@ -259,7 +259,7 @@ func TestDeleteIdentitySourceWithSuccess(t *testing.T) {
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
 	inIdentitySourceID := azirepos.GenerateUUID()
-	outIdentitySources, err := storage.DeleteIdentitySource(azirepos.GenerateAccountID(), inIdentitySourceID)
+	outIdentitySources, err := storage.DeleteIdentitySource(azirepos.GenerateApplicationID(), inIdentitySourceID)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outIdentitySources, "identity sources should not be nil")
 	assert.Equal(dbOutIdentitySource.IdentitySourceID, outIdentitySources.IdentitySourceID, "identity source id should be equal")
@@ -330,14 +330,14 @@ func TestFetchIdentitySourceWithSuccess(t *testing.T) {
 
 	dbOutIdentitySources := []azirepos.IdentitySource{
 		{
-			AccountID:        232956849236,
+			ApplicationID:    232956849236,
 			IdentitySourceID: azirepos.GenerateUUID(),
 			Name:             "rent-a-car1",
 			CreatedAt:        time.Now(),
 			UpdatedAt:        time.Now(),
 		},
 		{
-			AccountID:        232956849236,
+			ApplicationID:    232956849236,
 			IdentitySourceID: azirepos.GenerateUUID(),
 			Name:             "rent-a-car2",
 			CreatedAt:        time.Now(),

@@ -61,7 +61,7 @@ The name of the can be either a valid PermgGuard name or an email address.
 An `Actor` is a type of virtual identity that can be temporarily assumed by a Principal identity. It represents either:
 
 - A `Role`: A predefined set of permissions tailored to specific tasks, such as "Approvals Manager" or "Compliance Reviewer."
-- A `Digital Twin`: A virtual representation of a user or service account, designed to perform tasks independently while reflecting the original identity.
+- A `Digital Twin`: A virtual representation of a user or service application, designed to perform tasks independently while reflecting the original identity.
 
 PermGuard allows systems to **optionally** build around the concept of Actors. This approach isolates different profiles of an identity, ensuring every operation is executed under the specific permissions of the Actor rather than the broader permissions of the `Principal`.
 

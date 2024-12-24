@@ -36,31 +36,31 @@ func NewMockSqliteRepo() *MockSqliteRepo {
 	return &MockSqliteRepo{}
 }
 
-// UpsertAccount creates or updates an account.
-func (m *MockSqliteRepo) UpsertAccount(tx *sql.Tx, isCreate bool, account *azirepos.Account) (*azirepos.Account, error) {
-	args := m.Called(tx, isCreate, account)
-	var r0 *azirepos.Account
-	if val, ok := args.Get(0).(*azirepos.Account); ok {
+// UpsertApplication creates or updates an application.
+func (m *MockSqliteRepo) UpsertApplication(tx *sql.Tx, isCreate bool, application *azirepos.Application) (*azirepos.Application, error) {
+	args := m.Called(tx, isCreate, application)
+	var r0 *azirepos.Application
+	if val, ok := args.Get(0).(*azirepos.Application); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
-// DeleteAccount deletes an account.
-func (m *MockSqliteRepo) DeleteAccount(tx *sql.Tx, accountID int64) (*azirepos.Account, error) {
-	args := m.Called(tx, accountID)
-	var r0 *azirepos.Account
-	if val, ok := args.Get(0).(*azirepos.Account); ok {
+// DeleteApplication deletes an application.
+func (m *MockSqliteRepo) DeleteApplication(tx *sql.Tx, applicationID int64) (*azirepos.Application, error) {
+	args := m.Called(tx, applicationID)
+	var r0 *azirepos.Application
+	if val, ok := args.Get(0).(*azirepos.Application); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
-// FetchAccounts fetches accounts.
-func (m *MockSqliteRepo) FetchAccounts(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]azirepos.Account, error) {
+// FetchApplications fetches applications.
+func (m *MockSqliteRepo) FetchApplications(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]azirepos.Application, error) {
 	args := m.Called(db, page, pageSize, filterID, filterName)
-	var r0 []azirepos.Account
-	if val, ok := args.Get(0).([]azirepos.Account); ok {
+	var r0 []azirepos.Application
+	if val, ok := args.Get(0).([]azirepos.Application); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
@@ -77,8 +77,8 @@ func (m *MockSqliteRepo) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identit
 }
 
 // DeleteIdentitySource deletes an identity source.
-func (m *MockSqliteRepo) DeleteIdentitySource(tx *sql.Tx, accountID int64, identitySourceID string) (*azirepos.IdentitySource, error) {
-	args := m.Called(tx, accountID, identitySourceID)
+func (m *MockSqliteRepo) DeleteIdentitySource(tx *sql.Tx, applicationID int64, identitySourceID string) (*azirepos.IdentitySource, error) {
+	args := m.Called(tx, applicationID, identitySourceID)
 	var r0 *azirepos.IdentitySource
 	if val, ok := args.Get(0).(*azirepos.IdentitySource); ok {
 		r0 = val
@@ -87,8 +87,8 @@ func (m *MockSqliteRepo) DeleteIdentitySource(tx *sql.Tx, accountID int64, ident
 }
 
 // FetchIdentitySources fetches identity sources.
-func (m *MockSqliteRepo) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.IdentitySource, error) {
-	args := m.Called(db, page, pageSize, accountID, filterID, filterName)
+func (m *MockSqliteRepo) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]azirepos.IdentitySource, error) {
+	args := m.Called(db, page, pageSize, applicationID, filterID, filterName)
 	var r0 []azirepos.IdentitySource
 	if val, ok := args.Get(0).([]azirepos.IdentitySource); ok {
 		r0 = val
@@ -107,8 +107,8 @@ func (m *MockSqliteRepo) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *azi
 }
 
 // DeleteIdentity deletes an identity.
-func (m *MockSqliteRepo) DeleteIdentity(tx *sql.Tx, accountID int64, identityID string) (*azirepos.Identity, error) {
-	args := m.Called(tx, accountID, identityID)
+func (m *MockSqliteRepo) DeleteIdentity(tx *sql.Tx, applicationID int64, identityID string) (*azirepos.Identity, error) {
+	args := m.Called(tx, applicationID, identityID)
 	var r0 *azirepos.Identity
 	if val, ok := args.Get(0).(*azirepos.Identity); ok {
 		r0 = val
@@ -117,8 +117,8 @@ func (m *MockSqliteRepo) DeleteIdentity(tx *sql.Tx, accountID int64, identityID 
 }
 
 // FetchIdentities fetches identities.
-func (m *MockSqliteRepo) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.Identity, error) {
-	args := m.Called(db, page, pageSize, accountID, filterID, filterName)
+func (m *MockSqliteRepo) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]azirepos.Identity, error) {
+	args := m.Called(db, page, pageSize, applicationID, filterID, filterName)
 	var r0 []azirepos.Identity
 	if val, ok := args.Get(0).([]azirepos.Identity); ok {
 		r0 = val
@@ -137,8 +137,8 @@ func (m *MockSqliteRepo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *azirepo
 }
 
 // DeleteTenant deletes an tenant.
-func (m *MockSqliteRepo) DeleteTenant(tx *sql.Tx, accountID int64, tenantID string) (*azirepos.Tenant, error) {
-	args := m.Called(tx, accountID, tenantID)
+func (m *MockSqliteRepo) DeleteTenant(tx *sql.Tx, applicationID int64, tenantID string) (*azirepos.Tenant, error) {
+	args := m.Called(tx, applicationID, tenantID)
 	var r0 *azirepos.Tenant
 	if val, ok := args.Get(0).(*azirepos.Tenant); ok {
 		r0 = val
@@ -147,8 +147,8 @@ func (m *MockSqliteRepo) DeleteTenant(tx *sql.Tx, accountID int64, tenantID stri
 }
 
 // FetchTenants fetches tenants.
-func (m *MockSqliteRepo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.Tenant, error) {
-	args := m.Called(db, page, pageSize, accountID, filterID, filterName)
+func (m *MockSqliteRepo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]azirepos.Tenant, error) {
+	args := m.Called(db, page, pageSize, applicationID, filterID, filterName)
 	var r0 []azirepos.Tenant
 	if val, ok := args.Get(0).([]azirepos.Tenant); ok {
 		r0 = val
@@ -167,14 +167,14 @@ func (m *MockSqliteRepo) UpsertRepository(tx *sql.Tx, isCreate bool, repository 
 }
 
 // UpsertRepository creates or updates a repository.
-func (m *MockSqliteRepo) UpdateRepositoryRef(tx *sql.Tx, accountID int64, repositoryID, currentRef, newRef string) error {
-	args := m.Called(tx, accountID, repositoryID, currentRef, newRef)
+func (m *MockSqliteRepo) UpdateRepositoryRef(tx *sql.Tx, applicationID int64, repositoryID, currentRef, newRef string) error {
+	args := m.Called(tx, applicationID, repositoryID, currentRef, newRef)
 	return args.Error(1)
 }
 
 // DeleteRepository deletes a repository.
-func (m *MockSqliteRepo) DeleteRepository(tx *sql.Tx, accountID int64, repositoryID string) (*azirepos.Repository, error) {
-	args := m.Called(tx, accountID, repositoryID)
+func (m *MockSqliteRepo) DeleteRepository(tx *sql.Tx, applicationID int64, repositoryID string) (*azirepos.Repository, error) {
+	args := m.Called(tx, applicationID, repositoryID)
 	var r0 *azirepos.Repository
 	if val, ok := args.Get(0).(*azirepos.Repository); ok {
 		r0 = val
@@ -183,8 +183,8 @@ func (m *MockSqliteRepo) DeleteRepository(tx *sql.Tx, accountID int64, repositor
 }
 
 // FetchRepositories fetches repositories.
-func (m *MockSqliteRepo) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, accountID int64, filterID *string, filterName *string) ([]azirepos.Repository, error) {
-	args := m.Called(db, page, pageSize, accountID, filterID, filterName)
+func (m *MockSqliteRepo) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]azirepos.Repository, error) {
+	args := m.Called(db, page, pageSize, applicationID, filterID, filterName)
 	var r0 []azirepos.Repository
 	if val, ok := args.Get(0).([]azirepos.Repository); ok {
 		r0 = val

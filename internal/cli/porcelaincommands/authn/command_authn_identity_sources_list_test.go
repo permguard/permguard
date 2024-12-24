@@ -110,14 +110,14 @@ func TestCliIdentitySourcesListWithSuccess(t *testing.T) {
 		identitysources := []azmodels.IdentitySource{
 			{
 				IdentitySourceID: "c3160a533ab24fbcb1eab7a09fd85f36",
-				AccountID:        581616507495,
+				ApplicationID:    581616507495,
 				Name:             "google",
 				CreatedAt:        time.Now(),
 				UpdatedAt:        time.Now(),
 			},
 			{
 				IdentitySourceID: "f73d25ae7b1f4f66807c3face0fee0f3",
-				AccountID:        581616507495,
+				ApplicationID:    581616507495,
 				Name:             "facebook",
 				CreatedAt:        time.Now(),
 				UpdatedAt:        time.Now(),

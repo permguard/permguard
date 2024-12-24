@@ -22,60 +22,60 @@ import (
 
 // GrpcAAPClient is the gRPC AAP client servicer.
 type GrpcAAPClient interface {
-	// CreateAccount creates a new account.
-	CreateAccount(name string) (*azmodels.Account, error)
-	// UpdateAccount updates an account.
-	UpdateAccount(account *azmodels.Account) (*azmodels.Account, error)
-	// DeleteAccount deletes an account.
-	DeleteAccount(accountID int64) (*azmodels.Account, error)
-	// FetchAccounts fetches accounts.
-	FetchAccounts(page int32, pageSize int32) ([]azmodels.Account, error)
-	// FetchAccountsByID fetches accounts by ID.
-	FetchAccountsByID(page int32, pageSize int32, accountID int64) ([]azmodels.Account, error)
-	// FetchAccountsByName fetches accounts by name.
-	FetchAccountsByName(page int32, pageSize int32, name string) ([]azmodels.Account, error)
-	// FetchAccountsBy fetches accounts by.
-	FetchAccountsBy(page int32, pageSize int32, accountID int64, name string) ([]azmodels.Account, error)
+	// CreateApplication creates a new application.
+	CreateApplication(name string) (*azmodels.Application, error)
+	// UpdateApplication updates an application.
+	UpdateApplication(application *azmodels.Application) (*azmodels.Application, error)
+	// DeleteApplication deletes an application.
+	DeleteApplication(applicationID int64) (*azmodels.Application, error)
+	// FetchApplications fetches applications.
+	FetchApplications(page int32, pageSize int32) ([]azmodels.Application, error)
+	// FetchApplicationsByID fetches applications by ID.
+	FetchApplicationsByID(page int32, pageSize int32, applicationID int64) ([]azmodels.Application, error)
+	// FetchApplicationsByName fetches applications by name.
+	FetchApplicationsByName(page int32, pageSize int32, name string) ([]azmodels.Application, error)
+	// FetchApplicationsBy fetches applications by.
+	FetchApplicationsBy(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Application, error)
 	// CreateIdentity creates a new identity.
-	CreateIdentity(accountID int64, identitySourceID string, kind string, name string) (*azmodels.Identity, error)
+	CreateIdentity(applicationID int64, identitySourceID string, kind string, name string) (*azmodels.Identity, error)
 	// UpdateIdentity updates an identity.
 	UpdateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error)
 	// DeleteIdentity deletes an identity.
-	DeleteIdentity(accountID int64, identityID string) (*azmodels.Identity, error)
+	DeleteIdentity(applicationID int64, identityID string) (*azmodels.Identity, error)
 	// FetchIdentities returns all identities.
-	FetchIdentities(page int32, pageSize int32, accountID int64) ([]azmodels.Identity, error)
+	FetchIdentities(page int32, pageSize int32, applicationID int64) ([]azmodels.Identity, error)
 	// FetchIdentitiesByID returns all identities filtering by identity id.
-	FetchIdentitiesByID(page int32, pageSize int32, accountID int64, identityID string) ([]azmodels.Identity, error)
+	FetchIdentitiesByID(page int32, pageSize int32, applicationID int64, identityID string) ([]azmodels.Identity, error)
 	// FetchIdentitiesByEmail returns all identities filtering by name.
-	FetchIdentitiesByEmail(page int32, pageSize int32, accountID int64, name string) ([]azmodels.Identity, error)
+	FetchIdentitiesByEmail(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Identity, error)
 	// FetchIdentitiesBy returns all identities filtering by all criteria.
-	FetchIdentitiesBy(page int32, pageSize int32, accountID int64, identitySourceID string, identityID string, kind string, name string) ([]azmodels.Identity, error)
+	FetchIdentitiesBy(page int32, pageSize int32, applicationID int64, identitySourceID string, identityID string, kind string, name string) ([]azmodels.Identity, error)
 	// CreateIdentitySource creates a new identity source.
-	CreateIdentitySource(accountID int64, name string) (*azmodels.IdentitySource, error)
+	CreateIdentitySource(applicationID int64, name string) (*azmodels.IdentitySource, error)
 	// UpdateIdentitySource updates an identity source.
 	UpdateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error)
 	// DeleteIdentitySource deletes an identity source.
-	DeleteIdentitySource(accountID int64, identitySourceID string) (*azmodels.IdentitySource, error)
+	DeleteIdentitySource(applicationID int64, identitySourceID string) (*azmodels.IdentitySource, error)
 	// FetchIdentitySources returns all identity sources.
-	FetchIdentitySources(page int32, pageSize int32, accountID int64) ([]azmodels.IdentitySource, error)
+	FetchIdentitySources(page int32, pageSize int32, applicationID int64) ([]azmodels.IdentitySource, error)
 	// FetchIdentitySourcesByID returns all identity sources filtering by identity source id.
-	FetchIdentitySourcesByID(page int32, pageSize int32, accountID int64, identitySourceID string) ([]azmodels.IdentitySource, error)
+	FetchIdentitySourcesByID(page int32, pageSize int32, applicationID int64, identitySourceID string) ([]azmodels.IdentitySource, error)
 	// FetchIdentitySourcesByName returns all identity sources filtering by name.
-	FetchIdentitySourcesByName(page int32, pageSize int32, accountID int64, name string) ([]azmodels.IdentitySource, error)
+	FetchIdentitySourcesByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.IdentitySource, error)
 	// FetchIdentitySourcesBy returns all identity sources filtering by identity source id and name.
-	FetchIdentitySourcesBy(page int32, pageSize int32, accountID int64, identitySourceID string, name string) ([]azmodels.IdentitySource, error)
+	FetchIdentitySourcesBy(page int32, pageSize int32, applicationID int64, identitySourceID string, name string) ([]azmodels.IdentitySource, error)
 	// CreateTenant creates a tenant.
-	CreateTenant(accountID int64, name string) (*azmodels.Tenant, error)
+	CreateTenant(applicationID int64, name string) (*azmodels.Tenant, error)
 	// UpdateTenant updates a tenant.
 	UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error)
 	// DeleteTenant deletes a tenant.
-	DeleteTenant(accountID int64, tenantID string) (*azmodels.Tenant, error)
+	DeleteTenant(applicationID int64, tenantID string) (*azmodels.Tenant, error)
 	// FetchTenants returns all tenants.
-	FetchTenants(page int32, pageSize int32, accountID int64) ([]azmodels.Tenant, error)
+	FetchTenants(page int32, pageSize int32, applicationID int64) ([]azmodels.Tenant, error)
 	// FetchTenantsByID returns all tenants filtering by tenant id.
-	FetchTenantsByID(page int32, pageSize int32, accountID int64, tenantID string) ([]azmodels.Tenant, error)
+	FetchTenantsByID(page int32, pageSize int32, applicationID int64, tenantID string) ([]azmodels.Tenant, error)
 	// FetchTenantsByName returns all tenants filtering by name.
-	FetchTenantsByName(page int32, pageSize int32, accountID int64, name string) ([]azmodels.Tenant, error)
+	FetchTenantsByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Tenant, error)
 	// FetchTenantsBy returns all tenants filtering by tenant id and name.
-	FetchTenantsBy(page int32, pageSize int32, accountID int64, tenantID string, name string) ([]azmodels.Tenant, error)
+	FetchTenantsBy(page int32, pageSize int32, applicationID int64, tenantID string, name string) ([]azmodels.Tenant, error)
 }

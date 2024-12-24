@@ -100,8 +100,8 @@ This section provides a **high-level explanation** of the core patterns with min
 
 For a deeper dive into how these patterns operate within a **Zero Trust context**, including autonomous and disconnected environments, refer to the following articles:
 
-1. [**Resources, Actions and Accounts in the Context of Autonomous and Disconnected Challenges**](https://medium.com/ztauth/resources-actions-andaccounts-in-the-context-of-autonomous-and-disconnected-challenges-b261d37cb28a)
-   Explore the challenges and solutions for managing resources, actions, and accounts in systems with partial or no connectivity.
+1. [**Resources, Actions and Applications in the Context of Autonomous and Disconnected Challenges**](https://medium.com/ztauth/resources-actions-andapplications-in-the-context-of-autonomous-and-disconnected-challenges-b261d37cb28a)
+   Explore the challenges and solutions for managing resources, actions, and applications in systems with partial or no connectivity.
 
 2. [**Unlocking Zero Trust Delegation through Permissions and Policies**](https://medium.com/ztauth/unlocking-zero-trust-delegation-through-permissions-and-policies-f2952f56f79b)
    Learn about the actor of permissions and policies in enabling secure, scalable Zero Trust delegation.

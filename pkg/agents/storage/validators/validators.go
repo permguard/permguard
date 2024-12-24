@@ -24,18 +24,18 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
-// ValidateCodeID validates an account ID.
-func ValidateCodeID(entity string, accountID int64) error {
-	vAccountID := struct {
-		AccountID int64 `validate:"required,gt=0"`
-	}{AccountID: accountID}
-	if isValid, err := azvalidators.ValidateInstance(vAccountID); err != nil || !isValid {
-		return fmt.Errorf("storage: %s name %d is not valid. %w", entity, vAccountID.AccountID, azerrors.ErrClientID)
+// ValidateCodeID validates an application ID.
+func ValidateCodeID(entity string, applicationID int64) error {
+	vApplicationID := struct {
+		ApplicationID int64 `validate:"required,gt=0"`
+	}{ApplicationID: applicationID}
+	if isValid, err := azvalidators.ValidateInstance(vApplicationID); err != nil || !isValid {
+		return fmt.Errorf("storage: %s name %d is not valid. %w", entity, vApplicationID.ApplicationID, azerrors.ErrClientID)
 	}
 	min := int64(100000000000)
 	max := int64(999999999999)
-	if accountID < min || accountID > max {
-		return fmt.Errorf("storage: %s name %d is not valid. it must be between %d and %d. %w", entity, accountID, min, max, azerrors.ErrClientID)
+	if applicationID < min || applicationID > max {
+		return fmt.Errorf("storage: %s name %d is not valid. it must be between %d and %d. %w", entity, applicationID, min, max, azerrors.ErrClientID)
 	}
 	return nil
 }

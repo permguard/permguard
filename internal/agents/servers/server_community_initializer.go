@@ -47,7 +47,7 @@ Copyright © 2022 Nitro Agility S.r.l.
   Find more information at: https://www.permguard.com/docs/0.1/devops/deployment/cli-flags/`
 	hostInfos := map[azservices.HostKind]*azservices.HostInfo{
 		azservices.HostAllInOne: {Name: "AllInOne", Use: "all-in-one", Short: "The official Permguard Server - Start all services", Long: fmt.Sprintf(template, "Using this option all services are started.")},
-		azservices.HostAAP:      {Name: "AAP (Account Administration Point)", Use: "pdp", Short: "The official Permguard Server - Start the AAP service", Long: fmt.Sprintf(template, "Using this option the Account Administration Point (AAP) service is started.")},
+		azservices.HostAAP:      {Name: "AAP (Application Administration Point)", Use: "pdp", Short: "The official Permguard Server - Start the AAP service", Long: fmt.Sprintf(template, "Using this option the Application Administration Point (AAP) service is started.")},
 		azservices.HostPAP:      {Name: "PAP (Policy Administration Point)", Use: "pap", Short: "The official Permguard Server - Start the PAP service", Long: fmt.Sprintf(template, "Using this option the Policy Administration Point (PAP) service is started.")},
 		azservices.HostIDP:      {Name: "IDP (Identity Provider)", Use: "idp", Short: "The official Permguard Server - Start the IDP service", Long: fmt.Sprintf(template, "Using this option the Identity Provider (IDP) service is started.")},
 		azservices.HostPDP:      {Name: "PDP (Policy Decision Point)", Use: "pdp", Short: "The official Permguard Server - Start the PDP service", Long: fmt.Sprintf(template, "Using this option the Policy Decision Point (PDP) service is started.")},

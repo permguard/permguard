@@ -108,11 +108,11 @@ func TestCliRepositoriesUpdateWithSuccess(t *testing.T) {
 
 		papClient := azmocks.NewGrpcPAPClientMock()
 		repository := &azmodels.Repository{
-			RepositoryID: "c3160a533ab24fbcb1eab7a09fd85f36",
-			AccountID:    581616507495,
-			Name:         "v1.0",
-			CreatedAt:    time.Now(),
-			UpdatedAt:    time.Now(),
+			RepositoryID:  "c3160a533ab24fbcb1eab7a09fd85f36",
+			ApplicationID: 581616507495,
+			Name:          "v1.0",
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
 		}
 		papClient.On("UpdateRepository", mock.Anything).Return(repository, nil)
 
