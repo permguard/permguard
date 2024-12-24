@@ -38,11 +38,11 @@ const (
 	OriginRemoteName = "origin"
 )
 
-// execInternalCheckoutRepo checks out a ledger.
-func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+// execInternalCheckoutLedger checks out a ledger.
+func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
-			out(nil, "", fmt.Sprintf("Failed to check out the ledger %s.", aziclicommon.KeywordText(repoURI)), nil, true)
+			out(nil, "", fmt.Sprintf("Failed to check out the ledger %s.", aziclicommon.KeywordText(ledgerURI)), nil, true)
 		}
 		return output, err
 	}
@@ -51,21 +51,21 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 	}
 
 	// Verifies the ledger URI and check if it already exists
-	repoInfo, err := azicliwkscommon.GetRepoInfoFromURI(repoURI)
+	ledgerInfo, err := azicliwkscommon.GetLedgerInfoFromURI(ledgerURI)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
 	var output map[string]any
-	if ok := m.cfgMgr.CheckRepoIfExists(repoURI); !ok {
+	if ok := m.cfgMgr.CheckLedgerIfExists(ledgerURI); !ok {
 		// Retrieves the remote information
-		remoteInfo, err := m.cfgMgr.GetRemoteInfo(repoInfo.GetRemote())
+		remoteInfo, err := m.cfgMgr.GetRemoteInfo(ledgerInfo.GetRemote())
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "checkout", "Retrieving remote ledger information.", nil, true)
 		}
-		srvRepo, err := m.rmSrvtMgr.GetServerRemoteRepo(remoteInfo, repoInfo)
+		srvLedger, err := m.rmSrvtMgr.GetServerRemoteLedger(remoteInfo, ledgerInfo)
 		if err != nil {
 			if m.ctx.IsVerboseTerminalOutput() {
 				out(nil, "checkout", "Failed to retrieve remote ledger information.", nil, true)
@@ -79,15 +79,15 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 			out(nil, "checkout", "Remote verified successfully.", nil, true)
 		}
 		// Add the ledger
-		ref := m.rfsMgr.GenerateRef(repoInfo.GetRemote(), repoInfo.GetApplicationID(), srvRepo.LedgerID)
-		output, err = m.cfgMgr.ExecAddRepo(repoURI, ref, repoInfo.GetRemote(), repoInfo.GetRepo(), srvRepo.LedgerID, repoInfo.GetApplicationID(), nil, out)
+		ref := m.rfsMgr.GenerateRef(ledgerInfo.GetRemote(), ledgerInfo.GetApplicationID(), srvLedger.LedgerID)
+		output, err = m.cfgMgr.ExecAddLedger(ledgerURI, ref, ledgerInfo.GetRemote(), ledgerInfo.GetLedger(), srvLedger.LedgerID, ledgerInfo.GetApplicationID(), nil, out)
 		if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
 			return failedOpErr(output, err)
 		}
 		// Checkout the head
 		remoteCommitID := azlangobjs.ZeroOID
 		var remoteRef, headRef string
-		remoteRef, headRef, output, err = m.rfsMgr.ExecCheckoutRefFilesForRemote(repoInfo.GetRemote(), repoInfo.GetApplicationID(), repoInfo.GetRepo(), srvRepo.LedgerID, remoteCommitID, output, out)
+		remoteRef, headRef, output, err = m.rfsMgr.ExecCheckoutRefFilesForRemote(ledgerInfo.GetRemote(), ledgerInfo.GetApplicationID(), ledgerInfo.GetLedger(), srvLedger.LedgerID, remoteCommitID, output, out)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -111,11 +111,11 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 		}
 	}
 
-	refInfo, err := m.cfgMgr.GetRepoInfo(repoURI)
+	refInfo, err := m.cfgMgr.GetLedgerInfo(ledgerURI)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	remoteRef := azicliwkscommon.GenerateHeadRef(refInfo.GetApplicationID(), refInfo.GetRepo())
+	remoteRef := azicliwkscommon.GenerateHeadRef(refInfo.GetApplicationID(), refInfo.GetLedger())
 	_, output, err = m.rfsMgr.ExecCheckoutHead(remoteRef, output, out)
 	if err != nil {
 		return failedOpErr(nil, err)
@@ -129,10 +129,10 @@ func (m *WorkspaceManager) execInternalCheckoutRepo(internal bool, repoURI strin
 	return output, nil
 }
 
-// ExecCheckoutRepo checks out a ledger.
-func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+// ExecCheckoutLedger checks out a ledger.
+func (m *WorkspaceManager) ExecCheckoutLedger(ledgerURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to checkout the ledger %s.", aziclicommon.KeywordText(repoURI)), nil, true)
+		out(nil, "", fmt.Sprintf("Failed to checkout the ledger %s.", aziclicommon.KeywordText(ledgerURI)), nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
@@ -146,7 +146,7 @@ func (m *WorkspaceManager) ExecCheckoutRepo(repoURI string, out aziclicommon.Pri
 	}
 	defer fileLock.Unlock()
 
-	return m.execInternalCheckoutRepo(false, repoURI, out)
+	return m.execInternalCheckoutLedger(false, ledgerURI, out)
 }
 
 func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
@@ -192,7 +192,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		HeadContextKey:         headCtx,
 	}
 
-	ctx, err := m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetApplicationID(), headCtx.GetRepoID(), bag, m)
+	ctx, err := m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetApplicationID(), headCtx.GetLedgerID(), bag, m)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
@@ -222,33 +222,33 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 		if !committed || localCommitID == "" || remoteCommitID == "" {
 			if localCommitID != "" && remoteCommitID != "" {
-				_, err := m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetRepoURI())
+				_, err := m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
 			}
 		}
-		err = m.rfsMgr.SaveRefConfig(remoteRefInfo.GetRepoID(), remoteRefInfo.GetRef(), remoteCommitID)
+		err = m.rfsMgr.SaveRefConfig(remoteRefInfo.GetLedgerID(), remoteRefInfo.GetRef(), remoteCommitID)
 		if err != nil {
-			_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetRepoURI())
+			_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
 			return failedOpErr(nil, err)
 		}
-		err = m.rfsMgr.SaveRefWithRemoteConfig(headRefInfo.GetRepoID(), headRefInfo.GetRef(), remoteRefInfo.GetRef(), remoteCommitID)
+		err = m.rfsMgr.SaveRefWithRemoteConfig(headRefInfo.GetLedgerID(), headRefInfo.GetRef(), remoteRefInfo.GetRef(), remoteCommitID)
 		if err != nil {
-			_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetRepoURI())
+			_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
 			return failedOpErr(nil, err)
 		}
-		_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, remoteRefInfo.GetRepoURI())
+		_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, remoteRefInfo.GetLedgerURI())
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, remoteRefInfo.GetRepoURI())
+		_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, remoteRefInfo.GetLedgerURI())
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -355,7 +355,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			out(nil, azicliwkslogs.LogActionPull, "The pull has been completed successfully.", nil, true)
 		}
 		out(nil, "", "Pull process completed successfully.", nil, true)
-		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote ledger: %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
+		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote ledger: %s.", aziclicommon.KeywordText(headCtx.GetLedgerURI())), nil, true)
 	}
 	return output, nil
 }
@@ -380,28 +380,28 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 	return m.execInternalPull(false, out)
 }
 
-// ExecCloneRepo clones a ledger.
-func (m *WorkspaceManager) ExecCloneRepo(language, repoURI string, aapPort, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+// ExecCloneLedger clones a ledger.
+func (m *WorkspaceManager) ExecCloneLedger(language, ledgerURI string, aapPort, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to clone the ledger %s.", aziclicommon.KeywordText(repoURI)), nil, true)
+		out(nil, "", fmt.Sprintf("Failed to clone the ledger %s.", aziclicommon.KeywordText(ledgerURI)), nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
 
 	var output map[string]any
-	repoURI = strings.ToLower(repoURI)
-	if !strings.HasPrefix(repoURI, "permguard@") {
+	ledgerURI = strings.ToLower(ledgerURI)
+	if !strings.HasPrefix(ledgerURI, "permguard@") {
 		return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid ledger URI"))
 	}
-	repoURI = strings.TrimPrefix(repoURI, "permguard@")
-	elements := strings.Split(repoURI, "/")
+	ledgerURI = strings.TrimPrefix(ledgerURI, "permguard@")
+	elements := strings.Split(ledgerURI, "/")
 	if len(elements) != 3 {
 		return failedOpErr(output, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid ledger URI"))
 	}
 
 	uriServer := elements[0]
 	uriApplicationID := elements[1]
-	uriRepo := elements[2]
+	uriLedger := elements[2]
 
 	output, err := m.ExecInitWorkspace(language, out)
 	aborted := false
@@ -413,8 +413,8 @@ func (m *WorkspaceManager) ExecCloneRepo(language, repoURI string, aapPort, papP
 		defer fileLock.Unlock()
 		output, err = m.execInternalAddRemote(true, OriginRemoteName, uriServer, aapPort, papPort, out)
 		if err == nil {
-			repoURI := fmt.Sprintf("%s/%s/%s", OriginRemoteName, uriApplicationID, uriRepo)
-			output, err = m.execInternalCheckoutRepo(true, repoURI, out)
+			ledgerURI := fmt.Sprintf("%s/%s/%s", OriginRemoteName, uriApplicationID, uriLedger)
+			output, err = m.execInternalCheckoutLedger(true, ledgerURI, out)
 			if err != nil {
 				aborted = true
 			}

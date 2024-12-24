@@ -45,12 +45,12 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 		color.Red("Invalid arguments")
 		return aziclicommon.ErrCommandSilent
 	}
-	repoURI := strings.ToLower(args[0])
-	if !strings.HasPrefix(repoURI, "permguard@") {
+	ledgerURI := strings.ToLower(args[0])
+	if !strings.HasPrefix(ledgerURI, "permguard@") {
 		color.Red("Invalid arguments")
 		return aziclicommon.ErrCommandSilent
 	}
-	ledger := strings.TrimPrefix(repoURI, "permguard@")
+	ledger := strings.TrimPrefix(ledgerURI, "permguard@")
 	elements := strings.Split(ledger, "/")
 	if len(elements) < 3 {
 		color.Red("Invalid arguments")
@@ -58,13 +58,13 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 	}
 	folder := elements[2]
 	workDir, err := cmd.Flags().GetString(aziclicommon.FlagWorkingDirectory)
-	repoFolder := filepath.Join(workDir, folder)
-	cmd.Flags().Set(aziclicommon.FlagWorkingDirectory, repoFolder)
-	if ok, _ := azfiles.CheckPathIfExists(repoFolder); ok {
-		color.Red(fmt.Sprintf("The ledger %s already exists", repoFolder))
+	ledgerFolder := filepath.Join(workDir, folder)
+	cmd.Flags().Set(aziclicommon.FlagWorkingDirectory, ledgerFolder)
+	if ok, _ := azfiles.CheckPathIfExists(ledgerFolder); ok {
+		color.Red(fmt.Sprintf("The ledger %s already exists", ledgerFolder))
 		return aziclicommon.ErrCommandSilent
 	}
-	azfiles.CreateDirIfNotExists(repoFolder)
+	azfiles.CreateDirIfNotExists(ledgerFolder)
 
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
@@ -87,9 +87,9 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 	}
 	aapPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagAAP))
 	papPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagPAP))
-	output, err := wksMgr.ExecCloneRepo(azplangcedar.LanguageName, repoURI, aapPort, papPort, outFunc(ctx, printer))
+	output, err := wksMgr.ExecCloneLedger(azplangcedar.LanguageName, ledgerURI, aapPort, papPort, outFunc(ctx, printer))
 	if err != nil {
-		azfiles.DeletePath(repoFolder)
+		azfiles.DeletePath(ledgerFolder)
 		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
 		} else if ctx.IsTerminalOutput() {

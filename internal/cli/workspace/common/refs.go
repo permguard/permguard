@@ -35,8 +35,8 @@ const (
 	headPrefix = "heads"
 )
 
-// ConvertStringWithRepoIDToRefInfo converts the string with the ledger ID to ref information.
-func ConvertStringWithRepoIDToRefInfo(ref string) (*RefInfo, error) {
+// ConvertStringWithLedgerIDToRefInfo converts the string with the ledger ID to ref information.
+func ConvertStringWithLedgerIDToRefInfo(ref string) (*RefInfo, error) {
 	refObs := strings.Split(ref, refSeparator)
 	if len(refObs) != 5 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: malformed ref")
@@ -58,7 +58,7 @@ func ConvertStringWithRepoIDToRefInfo(ref string) (*RefInfo, error) {
 		sourceType:    sourceType,
 		remote:        remote,
 		applicationID: applicationID,
-		repoID:        ledger,
+		ledgerID:      ledger,
 	}, nil
 }
 
@@ -85,7 +85,7 @@ func GenerateHeadRef(applicationID int64, ledger string) string {
 
 // convertRefInfoToString converts the ref information to string.
 func ConvertRefInfoToString(refInfo *RefInfo) string {
-	return generateRef(refInfo.IsSourceHead(), refInfo.GetRemote(), refInfo.GetApplicationID(), refInfo.GetRepo())
+	return generateRef(refInfo.IsSourceHead(), refInfo.GetRemote(), refInfo.GetApplicationID(), refInfo.GetLedger())
 }
 
 // RefInfo represents the ref information.
@@ -93,31 +93,31 @@ type RefInfo struct {
 	sourceType    string
 	remote        string
 	applicationID int64
-	repoName      string
-	repoID        string
+	ledgerName    string
+	ledgerID      string
 }
 
 // NewRefInfo creates a new ref information.
-func NewRefInfoFromRepoName(remote string, applicationID int64, repoName string) (*RefInfo, error) {
+func NewRefInfoFromLedgerName(remote string, applicationID int64, ledgerName string) (*RefInfo, error) {
 	if len(remote) == 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid remote")
 	}
 	if applicationID <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid application ID")
 	}
-	if len(repoName) == 0 {
+	if len(ledgerName) == 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid ledger name")
 	}
 	return &RefInfo{
 		sourceType:    remotePrefix,
 		remote:        remote,
 		applicationID: applicationID,
-		repoName:      repoName,
+		ledgerName:    ledgerName,
 	}, nil
 }
 
-// BuildRefInfoFromRepoID builds the ref information from the ledger ID.
-func BuildRefInfoFromRepoID(refInfo *RefInfo, repoID string) (*RefInfo, error) {
+// BuildRefInfoFromLedgerID builds the ref information from the ledger ID.
+func BuildRefInfoFromLedgerID(refInfo *RefInfo, ledgerID string) (*RefInfo, error) {
 	if refInfo == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid ref info")
 	}
@@ -129,8 +129,8 @@ func BuildRefInfoFromRepoID(refInfo *RefInfo, repoID string) (*RefInfo, error) {
 		sourceType:    refInfo.sourceType,
 		remote:        szRemote,
 		applicationID: refInfo.applicationID,
-		repoName:      refInfo.repoName,
-		repoID:        repoID,
+		ledgerName:    refInfo.ledgerName,
+		ledgerID:      ledgerID,
 	}, nil
 }
 
@@ -154,43 +154,43 @@ func (i *RefInfo) GetApplicationID() int64 {
 	return i.applicationID
 }
 
-// GetRepoName returns the ledger name.
-func (i *RefInfo) GetRepoName() string {
-	return i.repoName
+// GetLedgerName returns the ledger name.
+func (i *RefInfo) GetLedgerName() string {
+	return i.ledgerName
 }
 
-// GetRepoID returns the ledger id.
-func (i *RefInfo) GetRepoID() string {
-	return i.repoID
+// GetLedgerID returns the ledger id.
+func (i *RefInfo) GetLedgerID() string {
+	return i.ledgerID
 }
 
-// GetRepo returns the ledger.
-func (i *RefInfo) GetRepo() string {
-	if len(i.repoID) > 0 {
-		return i.repoID
+// GetLedger returns the ledger.
+func (i *RefInfo) GetLedger() string {
+	if len(i.ledgerID) > 0 {
+		return i.ledgerID
 	}
-	return i.repoName
+	return i.ledgerName
 }
 
 // GetRef returns the ref.
 func (i *RefInfo) GetRef() string {
-	return generateRef(i.IsSourceHead(), i.GetRemote(), i.GetApplicationID(), i.GetRepo())
+	return generateRef(i.IsSourceHead(), i.GetRemote(), i.GetApplicationID(), i.GetLedger())
 }
 
-// GetRepoFilePath returns the ledger file path.
-func (i *RefInfo) GetRepoFilePath(includeFileName bool) string {
+// GetLedgerFilePath returns the ledger file path.
+func (i *RefInfo) GetLedgerFilePath(includeFileName bool) string {
 	path := filepath.Join(refsPrefix, i.sourceType, i.remote, strconv.FormatInt(i.applicationID, 10))
 	if includeFileName {
-		path = filepath.Join(path, i.GetRepo())
+		path = filepath.Join(path, i.GetLedger())
 	}
 	return path
 }
 
-// GetRepoURI returns the ledger uri.
-func (i *RefInfo) GetRepoURI() string {
-	repoURI, err := GetRepoURI(i.remote, i.applicationID, i.GetRepo())
+// GetLedgerURI returns the ledger uri.
+func (i *RefInfo) GetLedgerURI() string {
+	ledgerURI, err := GetLedgerURI(i.remote, i.applicationID, i.GetLedger())
 	if err != nil {
 		return ""
 	}
-	return repoURI
+	return ledgerURI
 }

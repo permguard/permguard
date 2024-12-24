@@ -18,11 +18,11 @@ package centralstorage
 
 import (
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
+	azifacade "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 )
 
 // mapIdentitySourceToAgentIdentitySource maps a IdentitySource to a model IdentitySource.
-func mapIdentitySourceToAgentIdentitySource(IdentitySource *azirepos.IdentitySource) (*azmodels.IdentitySource, error) {
+func mapIdentitySourceToAgentIdentitySource(IdentitySource *azifacade.IdentitySource) (*azmodels.IdentitySource, error) {
 	return &azmodels.IdentitySource{
 		IdentitySourceID: IdentitySource.IdentitySourceID,
 		CreatedAt:        IdentitySource.CreatedAt,

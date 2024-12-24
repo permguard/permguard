@@ -61,11 +61,11 @@ func (m *RefManager) getHeadFile() string {
 
 // getRefFile returns the ref file.
 func (m *RefManager) getRefFile(ref string) (string, error) {
-	refInfo, err := azicliwkscommon.ConvertStringWithRepoIDToRefInfo(ref)
+	refInfo, err := azicliwkscommon.ConvertStringWithLedgerIDToRefInfo(ref)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(hiddenRefsDir, refInfo.GetSourceType(), refInfo.GetRemote(), fmt.Sprintf("%d", refInfo.GetApplicationID()), refInfo.GetRepoID()), nil
+	return filepath.Join(hiddenRefsDir, refInfo.GetSourceType(), refInfo.GetRemote(), fmt.Sprintf("%d", refInfo.GetApplicationID()), refInfo.GetLedgerID()), nil
 }
 
 // ensureRefFileExists ensures the ref file exists.
@@ -82,8 +82,8 @@ func (m *RefManager) ensureRefFileExists(ref string) error {
 }
 
 // GenerateRef generates the ref.
-func (m *RefManager) GenerateRef(remote string, applicationID int64, repoID string) string {
-	refInfo, _ := azicliwkscommon.NewRefInfoFromRepoName(remote, applicationID, repoID)
+func (m *RefManager) GenerateRef(remote string, applicationID int64, ledgerID string) string {
+	refInfo, _ := azicliwkscommon.NewRefInfoFromLedgerName(remote, applicationID, ledgerID)
 	ref := azicliwkscommon.ConvertRefInfoToString(refInfo)
 	return ref
 }
@@ -128,12 +128,12 @@ func (m *RefManager) readHeadConfig() (*headConfig, error) {
 }
 
 // SaveRefConfig saves the ref configuration.
-func (m *RefManager) SaveRefConfig(repoID string, ref string, commit string) error {
-	return m.SaveRefWithRemoteConfig(repoID, ref, "", commit)
+func (m *RefManager) SaveRefConfig(ledgerID string, ref string, commit string) error {
+	return m.SaveRefWithRemoteConfig(ledgerID, ref, "", commit)
 }
 
 // SaveRefWithRemoteConfig saves the ref with remote configuration.
-func (m *RefManager) SaveRefWithRemoteConfig(repoID string, ref, upstreamRef string, commit string) error {
+func (m *RefManager) SaveRefWithRemoteConfig(ledgerID string, ref, upstreamRef string, commit string) error {
 	err := m.ensureRefFileExists(ref)
 	if err != nil {
 		return err
@@ -145,7 +145,7 @@ func (m *RefManager) SaveRefWithRemoteConfig(repoID string, ref, upstreamRef str
 	refCfg := refConfig{
 		Objects: refObjectsConfig{
 			UpstreamRef: upstreamRef,
-			RepoID:      repoID,
+			LedgerID:    ledgerID,
 			Commit:      commit,
 		},
 	}
@@ -183,8 +183,8 @@ func (m *RefManager) GetRefUpstreamRef(ref string) (string, error) {
 	return refCfg.Objects.UpstreamRef, nil
 }
 
-// GetRefRepoID reads the ref ledger id.
-func (m *RefManager) GetRefRepoID(ref string) (string, error) {
+// GetRefLedgerID reads the ref ledger id.
+func (m *RefManager) GetRefLedgerID(ref string) (string, error) {
 	refCfg, err := m.readRefConfig(ref)
 	if err != nil {
 		return "", err
@@ -193,7 +193,7 @@ func (m *RefManager) GetRefRepoID(ref string) (string, error) {
 		return "", azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: invalid ref config file")
 
 	}
-	return refCfg.Objects.RepoID, nil
+	return refCfg.Objects.LedgerID, nil
 }
 
 // GetRefCommit reads the ref commit.
@@ -226,13 +226,13 @@ func (m *RefManager) GetCurrentHeadRef() (string, error) {
 	return headInfo.GetRef(), nil
 }
 
-// GetCurrentHeadRepoID gets the current head ledger id.
-func (m *RefManager) GetCurrentHeadRepoID() (string, error) {
+// GetCurrentHeadLedgerID gets the current head ledger id.
+func (m *RefManager) GetCurrentHeadLedgerID() (string, error) {
 	headInfo, err := m.GetCurrentHead()
 	if err != nil {
 		return "", err
 	}
-	return m.GetRefRepoID(headInfo.GetRef())
+	return m.GetRefLedgerID(headInfo.GetRef())
 }
 
 // GetCurrentHeadCommit gets the current head commit.
@@ -249,7 +249,7 @@ func (m *RefManager) GetRefInfo(ref string) (*azicliwkscommon.RefInfo, error) {
 	if len(ref) == 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid ref")
 	}
-	return azicliwkscommon.ConvertStringWithRepoIDToRefInfo(ref)
+	return azicliwkscommon.ConvertStringWithLedgerIDToRefInfo(ref)
 }
 
 // GetCurrentHeadRefInfo gets the current head ref information.

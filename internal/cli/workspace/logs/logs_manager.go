@@ -78,12 +78,12 @@ func (c *LogsManager) Log(refInfo *azicliwkscommon.RefInfo, origin string, targe
 	if strings.TrimSpace(string(actionDetail)) == "" {
 		return false, fmt.Errorf("Invalid action")
 	}
-	logDir := refInfo.GetRepoFilePath(false)
+	logDir := refInfo.GetLedgerFilePath(false)
 	_, err := c.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, logDir)
 	if err != nil {
 		return false, err
 	}
-	logFile := filepath.Join(c.getLogsDir(), logDir, refInfo.GetRepoID())
+	logFile := filepath.Join(c.getLogsDir(), logDir, refInfo.GetLedgerID())
 	_, err = c.persMgr.CreateFileIfNotExists(azicliwkspers.PermguardDir, logFile)
 	if err != nil {
 		return false, err

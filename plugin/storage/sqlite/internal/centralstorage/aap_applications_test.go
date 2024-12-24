@@ -26,7 +26,7 @@ import (
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
+	azifacade "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 )
 
 // TestCreateApplicationWithErrors tests the CreateApplication function with errors.
@@ -64,7 +64,7 @@ func TestCreateApplicationWithErrors(t *testing.T) {
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			application := &azirepos.Application{
+			application := &azifacade.Application{
 				ApplicationID: 232956849236,
 				Name:          "rent-a-car1",
 				CreatedAt:     time.Now(),
@@ -97,7 +97,7 @@ func TestCreateApplicationWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
-	dbOutApplication := &azirepos.Application{
+	dbOutApplication := &azifacade.Application{
 		ApplicationID: 232956849236,
 		Name:          "rent-a-car1",
 		CreatedAt:     time.Now(),
@@ -157,7 +157,7 @@ func TestUpdateApplicationWithErrors(t *testing.T) {
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			application := &azirepos.Application{
+			application := &azifacade.Application{
 				ApplicationID: 232956849236,
 				Name:          "rent-a-car1",
 				CreatedAt:     time.Now(),
@@ -190,7 +190,7 @@ func TestUpdateApplicationWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
-	dbOutApplication := &azirepos.Application{
+	dbOutApplication := &azifacade.Application{
 		ApplicationID: 232956849236,
 		Name:          "rent-a-car1",
 		CreatedAt:     time.Now(),
@@ -264,7 +264,7 @@ func TestDeleteApplicationWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
-	dbOutApplication := &azirepos.Application{
+	dbOutApplication := &azifacade.Application{
 		ApplicationID: 232956849236,
 		Name:          "rent-a-car1",
 		CreatedAt:     time.Now(),
@@ -346,7 +346,7 @@ func TestFetchApplicationWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 
-	dbOutApplications := []azirepos.Application{
+	dbOutApplications := []azifacade.Application{
 		{
 			ApplicationID: 232956849236,
 			Name:          "rent-a-car1",

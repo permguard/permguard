@@ -58,11 +58,11 @@ func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) 
 		server:         remoteInfo.GetServer(),
 		serverPAPPort:  remoteInfo.GetPAPPort(),
 	}
-	repoID, err := m.rfsMgr.GetRefRepoID(headRef)
+	ledgerID, err := m.rfsMgr.GetRefLedgerID(headRef)
 	if err != nil {
 		return nil, err
 	}
-	headCtx.headRefInfo, err = azicliwkscommon.BuildRefInfoFromRepoID(headRefInfo, repoID)
+	headCtx.headRefInfo, err = azicliwkscommon.BuildRefInfoFromLedgerID(headRefInfo, ledgerID)
 	if err != nil {
 		return nil, err
 	}

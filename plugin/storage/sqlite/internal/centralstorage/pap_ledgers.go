@@ -21,7 +21,7 @@ import (
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
+	azifacade "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 )
 
 const (
@@ -35,13 +35,13 @@ func (s SQLiteCentralStoragePAP) CreateLedger(ledger *azmodels.Ledger) (*azmodel
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbInLedger := &azirepos.Ledger{
+	dbInLedger := &azifacade.Ledger{
 		ApplicationID: ledger.ApplicationID,
 		Name:          ledger.Name,
 	}
@@ -51,7 +51,7 @@ func (s SQLiteCentralStoragePAP) CreateLedger(ledger *azmodels.Ledger) (*azmodel
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapLedgerToAgentLedger(dbOutLedger)
 }
@@ -63,13 +63,13 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *azmodels.Ledger) (*azmodel
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbInLedger := &azirepos.Ledger{
+	dbInLedger := &azifacade.Ledger{
 		LedgerID:      ledger.LedgerID,
 		ApplicationID: ledger.ApplicationID,
 		Name:          ledger.Name,
@@ -80,7 +80,7 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *azmodels.Ledger) (*azmodel
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapLedgerToAgentLedger(dbOutLedger)
 }
@@ -89,11 +89,11 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *azmodels.Ledger) (*azmodel
 func (s SQLiteCentralStoragePAP) DeleteLedger(applicationID int64, ledgerID string) (*azmodels.Ledger, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	dbOutLedger, err := s.sqlRepo.DeleteLedger(tx, applicationID, ledgerID)
 	if err != nil {
@@ -101,7 +101,7 @@ func (s SQLiteCentralStoragePAP) DeleteLedger(applicationID int64, ledgerID stri
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapLedgerToAgentLedger(dbOutLedger)
 }
@@ -139,7 +139,7 @@ func (s SQLiteCentralStoragePAP) FetchLedgers(page int32, pageSize int32, applic
 	for i, a := range dbLedgers {
 		ledger, err := mapLedgerToAgentLedger(&a)
 		if err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert ledger entity (%s)", azirepos.LogLedgerEntry(&a)))
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert ledger entity (%s)", azifacade.LogLedgerEntry(&a)))
 		}
 		ledgers[i] = *ledger
 	}

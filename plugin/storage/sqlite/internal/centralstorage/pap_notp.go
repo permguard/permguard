@@ -95,8 +95,8 @@ func (s SQLiteCentralStoragePAP) extractMetaData(ctx *notpstatemachines.HandlerC
 	return applicationID, repoID
 }
 
-// readRepoFromHandlerContext reads the ledger from the handler context.
-func (s SQLiteCentralStoragePAP) readRepoFromHandlerContext(handlerCtx *notpstatemachines.HandlerContext) (*azmodels.Ledger, error) {
+// readLedgerFromHandlerContext reads the ledger from the handler context.
+func (s SQLiteCentralStoragePAP) readLedgerFromHandlerContext(handlerCtx *notpstatemachines.HandlerContext) (*azmodels.Ledger, error) {
 	applicationID, repoID := s.extractMetaData(handlerCtx)
 	fields := map[string]any{
 		azmodels.FieldLedgerLedgerID: repoID,

@@ -56,7 +56,7 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 		return aziclicommon.ErrCommandSilent
 	}
 	ledger := args[0]
-	output, err := wksMgr.ExecCheckoutRepo(ledger, outFunc(ctx, printer))
+	output, err := wksMgr.ExecCheckoutLedger(ledger, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)

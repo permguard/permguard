@@ -29,7 +29,7 @@ type headConfig struct {
 // refObjectsConfig represents the configuration for the objects.
 type refObjectsConfig struct {
 	UpstreamRef string `toml:"upstreamref"`
-	RepoID      string `toml:"repoid"`
+	LedgerID    string `toml:"ledgerid"`
 	Commit      string `toml:"commit"`
 }
 

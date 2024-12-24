@@ -40,14 +40,14 @@ func (h *currentHeadContext) GetApplicationID() int64 {
 	return h.headRefInfo.GetApplicationID()
 }
 
-// GetRepoID returns the ledger id.
-func (h *currentHeadContext) GetRepoID() string {
-	return h.headRefInfo.GetRepoID()
+// GetLedgerID returns the ledger id.
+func (h *currentHeadContext) GetLedgerID() string {
+	return h.headRefInfo.GetLedgerID()
 }
 
-// GetRepoURI gets the ledger URI.
-func (h *currentHeadContext) GetRepoURI() string {
-	return h.headRefInfo.GetRepoURI()
+// GetLedgerURI gets the ledger URI.
+func (h *currentHeadContext) GetLedgerURI() string {
+	return h.headRefInfo.GetLedgerURI()
 }
 
 // GetRef returns the ref.

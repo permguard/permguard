@@ -25,53 +25,53 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
-// RepoInfo contains the ledger information.
-type RepoInfo struct {
+// LedgerInfo contains the ledger information.
+type LedgerInfo struct {
 	remote        string
 	applicationID int64
 	ledger        string
 }
 
 // GetRemote returns the remote.
-func (r *RepoInfo) GetRemote() string {
+func (r *LedgerInfo) GetRemote() string {
 	return r.remote
 }
 
 // GetApplicationID returns the application id.
-func (r *RepoInfo) GetApplicationID() int64 {
+func (r *LedgerInfo) GetApplicationID() int64 {
 	return r.applicationID
 }
 
-// GetRepo returns the ledger.
-func (r *RepoInfo) GetRepo() string {
+// GetLedger returns the ledger.
+func (r *LedgerInfo) GetLedger() string {
 	return r.ledger
 }
 
-// GetRepoURI gets the ledger URI.
-func GetRepoURI(remote string, applicationID int64, ledger string) (string, error) {
-	repoInfo := &RepoInfo{
+// GetLedgerURI gets the ledger URI.
+func GetLedgerURI(remote string, applicationID int64, ledger string) (string, error) {
+	ledgerInfo := &LedgerInfo{
 		remote:        remote,
 		applicationID: applicationID,
 		ledger:        ledger,
 	}
-	return GetRepoURIFromRepoInfo(repoInfo)
+	return GetLedgerURIFromLedgerInfo(ledgerInfo)
 }
 
-// GetRepoURIFromRepoInfo gets the ledger URI from the ledger info.
-func GetRepoURIFromRepoInfo(repoInfo *RepoInfo) (string, error) {
-	return fmt.Sprintf("%s/%d/%s", repoInfo.remote, repoInfo.applicationID, repoInfo.ledger), nil
+// GetLedgerURIFromLedgerInfo gets the ledger URI from the ledger info.
+func GetLedgerURIFromLedgerInfo(ledgerInfo *LedgerInfo) (string, error) {
+	return fmt.Sprintf("%s/%d/%s", ledgerInfo.remote, ledgerInfo.applicationID, ledgerInfo.ledger), nil
 }
 
-// GetRepoInfoFromURI gets the ledger information from the URI.
-func GetRepoInfoFromURI(repoURI string) (*RepoInfo, error) {
-	if len(repoURI) == 0 {
+// GetLedgerInfoFromURI gets the ledger information from the URI.
+func GetLedgerInfoFromURI(ledgerURI string) (*LedgerInfo, error) {
+	if len(ledgerURI) == 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid ledger uri")
 	}
-	result := &RepoInfo{}
-	repoURI = strings.ToLower(repoURI)
-	items := strings.Split(repoURI, "/")
+	result := &LedgerInfo{}
+	ledgerURI = strings.ToLower(ledgerURI)
+	items := strings.Split(ledgerURI, "/")
 	if len(items) < 3 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid ledger %s", repoURI))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid ledger %s", ledgerURI))
 	}
 
 	remoteName, err := SanitizeRemote(items[0])
@@ -91,23 +91,23 @@ func GetRepoInfoFromURI(repoURI string) (*RepoInfo, error) {
 	}
 	result.applicationID = applicationID
 
-	repoName := items[2]
-	err = azvalidators.ValidateName("ledger", repoName)
+	ledgerName := items[2]
+	err = azvalidators.ValidateName("ledger", ledgerName)
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid ledger name %s", repoName))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid ledger name %s", ledgerName))
 	}
-	result.ledger = repoName
+	result.ledger = ledgerName
 	return result, nil
 }
 
-// SanitizeRepo sanitizes the remote name.
-func SanitizeRepo(repoURI string) (string, error) {
-	if len(repoURI) == 0 {
+// SanitizeLedger sanitizes the remote name.
+func SanitizeLedger(ledgerURI string) (string, error) {
+	if len(ledgerURI) == 0 {
 		return "", azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid ledger uri")
 	}
-	repoURI = strings.ToLower(repoURI)
-	if _, err := GetRepoInfoFromURI(repoURI); err != nil {
+	ledgerURI = strings.ToLower(ledgerURI)
+	if _, err := GetLedgerInfoFromURI(ledgerURI); err != nil {
 		return "", err
 	}
-	return repoURI, nil
+	return ledgerURI, nil
 }
