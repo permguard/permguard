@@ -84,11 +84,11 @@ func createCommandForLedgerList(deps azcli.CliDependenciesProvider, v *viper.Vip
 
 Examples:
   # list all ledgers and output in json format
-  permguard authz ledgers list --application 268786704340 --output json
+  permguard authz ledgers list --appid 268786704340 --output json
   # list all ledgers filtered by name
-  permguard authz ledgers list --application 268786704340 --name v1
+  permguard authz ledgers list --appid 268786704340 --name v1
   # list all ledgers filtered by ledger id
-  permguard authz ledgers list --application 268786704340 --ledgerid 668f3771eacf4094ba8a80942ea5fd3f
+  permguard authz ledgers list --appid 268786704340 --ledgerid 668f3771eacf4094ba8a80942ea5fd3f
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListLedgers(deps, cmd, v)

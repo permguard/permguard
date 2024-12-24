@@ -33,7 +33,7 @@ Available Commands:
   update      Update a tenant
 
 Flags:
-      --application int   application id filter
+      --appid int   application id
   -h, --help          help for tenants
 
 Global Flags:
@@ -54,7 +54,7 @@ The output from your current version of Permguard may differ from the example pr
 The `permguard authn tenants create` command allows to create a tenant for the mandatory input application and name.
 
 ```bash
-permguard authn tenants create --application 268786704340 --name matera-branch
+permguard authn tenants create --appid 268786704340 --name matera-branch
 
 ```
 
@@ -70,7 +70,7 @@ output:
   </summary>
 
 ```bash
-permguard authn tenants create --application 268786704340 --name matera-branch --output json
+permguard authn tenants create --appid 268786704340 --name matera-branch --output json
 ```
 
 output:
@@ -96,7 +96,7 @@ output:
 The `permguard authn tenants list` command allows for the retrieval of all tenants.
 
 ```bash
-permguard authn tenants list --application 268786704340
+permguard authn tenants list --appid 268786704340
 
 ```
 
@@ -118,7 +118,7 @@ ec40fe0ce651404a8cc0e4ab1e386053: birmingham-branch
   </summary>
 
 ```bash
-permguard authn tenants list --application 268786704340 --output json
+permguard authn tenants list --appid 268786704340 --output json
 ```
 
 output:

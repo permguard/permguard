@@ -33,7 +33,7 @@ Available Commands:
   update      Update a ledger
 
 Flags:
-      --application int   application id filter
+      --appid int   application id
   -h, --help          help for ledgers
 
 Global Flags:
@@ -54,7 +54,7 @@ The output from your current version of Permguard may differ from the example pr
 The `permguard authz ledgers create` command allows to create a ledger for the mandatory input application and name.
 
 ```bash
-permguard authz ledgers create --application 268786704340 --name magicfarmacia
+permguard authz ledgers create --appid 268786704340 --name magicfarmacia
 ```
 
 output:
@@ -69,7 +69,7 @@ output:
   </summary>
 
 ```bash
-permguard authz ledgers create --application 268786704340 --name magicfarmacia --output json
+permguard authz ledgers create --appid 268786704340 --name magicfarmacia --output json
 ```
 
 output:
@@ -95,7 +95,7 @@ output:
 The `permguard authz ledgers list` command allows for the retrieval of all ledgers.
 
 ```bash
-permguard authz ledgers list --application 268786704340
+permguard authz ledgers list --appid 268786704340
 ```
 
 output:
@@ -114,7 +114,7 @@ d02af7e50a7b462cb496aa6ddeb4275e: magicfarmacia
   </summary>
 
 ```bash
-permguard authz ledgers list --application 268786704340 --output json
+permguard authz ledgers list --appid 268786704340 --output json
 ```
 
 output:

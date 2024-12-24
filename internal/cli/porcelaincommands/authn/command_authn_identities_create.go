@@ -44,9 +44,9 @@ func createCommandForIdentityCreate(deps azcli.CliDependenciesProvider, v *viper
 
 Examples:
   # create an user identity and output the result in json format
-  permguard authn identities create --application 268786704340 --kind user --name nicolagallo --identitysourceid 1da1d9094501425085859c60429163c2 --output json
+  permguard authn identities create --appid 268786704340 --kind user --name nicolagallo --identitysourceid 1da1d9094501425085859c60429163c2 --output json
   # create an actor identity and output the result in json format
-  permguard authn identities create --application 268786704340 --kind actor --name branch-manager --identitysourceid 1da1d9094501425085859c60429163c2 --output json
+  permguard authn identities create --appid 268786704340 --kind actor --name branch-manager --identitysourceid 1da1d9094501425085859c60429163c2 --output json
 
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {

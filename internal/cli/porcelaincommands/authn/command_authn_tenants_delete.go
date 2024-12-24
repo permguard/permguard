@@ -80,7 +80,7 @@ func createCommandForTenantDelete(deps azcli.CliDependenciesProvider, v *viper.V
 
 Examples:
   # delete a tenant and output the result in json format
-  permguard authn tenants delete --application 268786704340 --tenantid 2e190ee712494838bb54d67e2a0c496a
+  permguard authn tenants delete --appid 268786704340 --tenantid 2e190ee712494838bb54d67e2a0c496a
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteTenant(deps, cmd, v)

@@ -96,6 +96,7 @@ type Ledger struct {
 	CreatedAt     time.Time `db:"created_at"`
 	UpdatedAt     time.Time `db:"updated_at"`
 	ApplicationID int64     `db:"application_id"`
+	Kind          int16     `db:"kind"`
 	Name          string    `db:"name"`
 	Ref           string    `db:"ref"`
 }

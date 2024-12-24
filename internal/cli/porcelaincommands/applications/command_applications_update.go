@@ -44,7 +44,7 @@ func createCommandForApplicationUpdate(deps azcli.CliDependenciesProvider, v *vi
 
 Examples:
   # update an application and output the result in json format
-  permguard applications update --application 268786704340 --name magicfarmacia-dev --output json
+  permguard applications update --appid 268786704340 --name magicfarmacia-dev --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForUpdateApplication(deps, cmd, v)

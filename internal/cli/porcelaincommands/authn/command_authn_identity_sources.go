@@ -101,7 +101,7 @@ func createCommandForIdentitySources(deps azcli.CliDependenciesProvider, v *vipe
 		RunE:  runECommandForIdentitySources,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id filter")
+	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonApplicationID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonApplicationID))
 
 	command.AddCommand(createCommandForIdentitySourceCreate(deps, v))

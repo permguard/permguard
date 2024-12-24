@@ -101,7 +101,7 @@ func createCommandForLedgers(deps azcli.CliDependenciesProvider, v *viper.Viper)
 		RunE:  runECommandForLedgers,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id filter")
+	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id")
 	v.BindPFlag(azoptions.FlagName(commandNameForLedger, aziclicommon.FlagCommonApplicationID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonApplicationID))
 
 	command.AddCommand(createCommandForLedgerCreate(deps, v))

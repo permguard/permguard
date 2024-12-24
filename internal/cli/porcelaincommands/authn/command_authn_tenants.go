@@ -101,7 +101,7 @@ func createCommandForTenants(deps azcli.CliDependenciesProvider, v *viper.Viper)
 		RunE:  runECommandForTenants,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id filter")
+	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id")
 	v.BindPFlag(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonApplicationID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonApplicationID))
 
 	command.AddCommand(createCommandForTenantCreate(deps, v))

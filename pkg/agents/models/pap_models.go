@@ -35,6 +35,7 @@ type Ledger struct {
 	UpdatedAt     time.Time `json:"updated_at" validate:"required"`
 	ApplicationID int64     `json:"application_id" validate:"required,gt=0"`
 	Name          string    `json:"name"`
+	Kind          string    `json:"kind" validate:"required,oneof='policy'"`
 	Ref           string    `json:"ref"`
 }
 

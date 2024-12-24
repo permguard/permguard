@@ -72,17 +72,17 @@ devapplication=$(echo $output | cut -d ':' -f 1)
 echo "Application ID: $devapplication"
 
 # Execute each of the following commands, but don't exit on error
-go run ./cmd/cli/main.go authn tenants create --name matera-branch --application $devapplication || echo "Failed to create Milan branch"
-go run ./cmd/cli/main.go authn tenants create --name milan-branch --application $devapplication || echo "Failed to create Milan branch"
-go run ./cmd/cli/main.go authn tenants create --name pisa-branch --application $devapplication || echo "Failed to create Florence branch"
-go run ./cmd/cli/main.go authn tenants create --name bari-branch --application $devapplication || echo "Failed to create Naples branch"
+go run ./cmd/cli/main.go authn tenants create --name matera-branch --appid $devapplication || echo "Failed to create Milan branch"
+go run ./cmd/cli/main.go authn tenants create --name milan-branch --appid $devapplication || echo "Failed to create Milan branch"
+go run ./cmd/cli/main.go authn tenants create --name pisa-branch --appid $devapplication || echo "Failed to create Florence branch"
+go run ./cmd/cli/main.go authn tenants create --name bari-branch --appid $devapplication || echo "Failed to create Naples branch"
 
-go run ./cmd/cli/main.go authn tenants create --name london-branch --application $devapplication || echo "Failed to create London branch"
-go run ./cmd/cli/main.go authn tenants create --name leeds-branch --application $devapplication || echo "Failed to create Manchester branch"
-go run ./cmd/cli/main.go authn tenants create --name birmingham-branch --application $devapplication || echo "Failed to create Birmingham branch"
+go run ./cmd/cli/main.go authn tenants create --name london-branch --appid $devapplication || echo "Failed to create London branch"
+go run ./cmd/cli/main.go authn tenants create --name leeds-branch --appid $devapplication || echo "Failed to create Manchester branch"
+go run ./cmd/cli/main.go authn tenants create --name birmingham-branch --appid $devapplication || echo "Failed to create Birmingham branch"
 
 # Capture the output from identity source creation
-output=$(go run ./cmd/cli/main.go authn identitysources create --name google --application $devapplication || echo "Failed to create Google identity source")
+output=$(go run ./cmd/cli/main.go authn identitysources create --name google --appid $devapplication || echo "Failed to create Google identity source")
 if [ $? -ne 0 ]; then
     echo "Error creating the identity source"
     exit 1
@@ -90,14 +90,14 @@ fi
 # Extract the application ID
 devidsource=$(echo $output | cut -d ':' -f 1)
 
-go run ./cmd/cli/main.go authn identitysources create --name facebook --application $devapplication || echo "Failed to create Facebook identity source"
+go run ./cmd/cli/main.go authn identitysources create --name facebook --appid $devapplication || echo "Failed to create Facebook identity source"
 
-go run ./cmd/cli/main.go authn identities create --application $devapplication --kind actor --name platform-administrator --identitysourceid $devidsource
-go run ./cmd/cli/main.go authn identities create --application $devapplication --kind actor --name branch-manager --identitysourceid $devidsource
-go run ./cmd/cli/main.go authn identities create --application $devapplication --kind actor --name inventory-manager --identitysourceid $devidsource
-go run ./cmd/cli/main.go authn identities create --application $devapplication --kind actor --name pharmacist --identitysourceid $devidsource
-go run ./cmd/cli/main.go authn identities create --application $devapplication --kind actor --name customer --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --appid $devapplication --kind actor --name platform-administrator --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --appid $devapplication --kind actor --name branch-manager --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --appid $devapplication --kind actor --name inventory-manager --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --appid $devapplication --kind actor --name pharmacist --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --appid $devapplication --kind actor --name customer --identitysourceid $devidsource
 
-go run ./cmd/cli/main.go authz ledgers create --name v0.1 --application $devapplication || echo "Failed to create v0.1 ledger"
+go run ./cmd/cli/main.go authz ledgers create --name v0.1 --appid $devapplication || echo "Failed to create v0.1 ledger"
 
 # Script ends here, triggering the cleanup function to terminate the server process
