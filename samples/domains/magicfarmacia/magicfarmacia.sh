@@ -98,6 +98,6 @@ go run ./cmd/cli/main.go authn identities create --application $devapplication -
 go run ./cmd/cli/main.go authn identities create --application $devapplication --kind actor --name pharmacist --identitysourceid $devidsource
 go run ./cmd/cli/main.go authn identities create --application $devapplication --kind actor --name customer --identitysourceid $devidsource
 
-go run ./cmd/cli/main.go authz repos create --name v0.1 --application $devapplication || echo "Failed to create v0.1 repository"
+go run ./cmd/cli/main.go authz ledgers create --name v0.1 --application $devapplication || echo "Failed to create v0.1 ledger"
 
 # Script ends here, triggering the cleanup function to terminate the server process

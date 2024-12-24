@@ -21,7 +21,7 @@ import (
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 )
 
 // CreateApplication creates a new application.
@@ -58,11 +58,11 @@ func (s SQLiteCentralStorageAAP) CreateApplication(application *azmodels.Applica
 			_, err = s.sqlRepo.UpsertIdentitySource(tx, true, identitySource)
 		}
 		if err == nil {
-			repository := &azirepos.Repository{
+			ledger := &azirepos.Ledger{
 				ApplicationID: dbOutApplication.ApplicationID,
-				Name:          RepositoryDefaultName,
+				Name:          LedgerDefaultName,
 			}
-			_, err = s.sqlRepo.UpsertRepository(tx, true, repository)
+			_, err = s.sqlRepo.UpsertLedger(tx, true, ledger)
 		}
 	}
 	if err != nil {

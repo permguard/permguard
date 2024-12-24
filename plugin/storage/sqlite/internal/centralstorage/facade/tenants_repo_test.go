@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package repositories
+package facade
 
 import (
 	"regexp"
@@ -28,7 +28,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
+	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade/testutils"
 )
 
 // registerTenantForUpsertMocking registers an tenant for upsert mocking.
@@ -87,7 +87,7 @@ func registerTenantForFetchMocking() (string, []Tenant, *sqlmock.Rows) {
 // TestRepoUpsertTenantWithInvalidInput tests the upsert of an tenant with invalid input.
 func TestRepoUpsertTenantWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -95,7 +95,7 @@ func TestRepoUpsertTenantWithInvalidInput(t *testing.T) {
 	tx, _ := sqlDB.Begin()
 
 	{ // Test with nil tenant
-		_, err := repo.UpsertTenant(tx, true, nil)
+		_, err := ledger.UpsertTenant(tx, true, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -105,7 +105,7 @@ func TestRepoUpsertTenantWithInvalidInput(t *testing.T) {
 			TenantID: GenerateUUID(),
 			Name:     "rent-a-car",
 		}
-		_, err := repo.UpsertTenant(tx, false, dbInTenant)
+		_, err := ledger.UpsertTenant(tx, false, dbInTenant)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -115,7 +115,7 @@ func TestRepoUpsertTenantWithInvalidInput(t *testing.T) {
 			ApplicationID: 581616507495,
 			Name:          "rent-a-car",
 		}
-		_, err := repo.UpsertTenant(tx, false, dbInTenant)
+		_, err := ledger.UpsertTenant(tx, false, dbInTenant)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -137,7 +137,7 @@ func TestRepoUpsertTenantWithInvalidInput(t *testing.T) {
 			dbInTenant := &Tenant{
 				Name: tenantName,
 			}
-			dbOutTenant, err := repo.UpsertTenant(tx, true, dbInTenant)
+			dbOutTenant, err := ledger.UpsertTenant(tx, true, dbInTenant)
 			assert.NotNil(err, "error should be not nil")
 			assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 			assert.Nil(dbOutTenant, "tenants should be nil")
@@ -148,7 +148,7 @@ func TestRepoUpsertTenantWithInvalidInput(t *testing.T) {
 // TestRepoUpsertTenantWithSuccess tests the upsert of an tenant with success.
 func TestRepoUpsertTenantWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 
 	tests := []bool{
 		true,
@@ -187,7 +187,7 @@ func TestRepoUpsertTenantWithSuccess(t *testing.T) {
 			WillReturnRows(sqlTenantRows)
 
 		tx, _ := sqlDB.Begin()
-		dbOutTenant, err := repo.UpsertTenant(tx, isCreate, dbInTenant)
+		dbOutTenant, err := ledger.UpsertTenant(tx, isCreate, dbInTenant)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.NotNil(dbOutTenant, "tenant should be not nil")
@@ -201,7 +201,7 @@ func TestRepoUpsertTenantWithSuccess(t *testing.T) {
 // TestRepoCreateTenantWithSuccess tests the upsert of an tenant with success.
 func TestRepoUpsertTenantWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 
 	tests := []bool{
 		true,
@@ -237,7 +237,7 @@ func TestRepoUpsertTenantWithErrors(t *testing.T) {
 		}
 
 		tx, _ := sqlDB.Begin()
-		dbOutTenant, err := repo.UpsertTenant(tx, isCreate, dbInTenant)
+		dbOutTenant, err := ledger.UpsertTenant(tx, isCreate, dbInTenant)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutTenant, "tenant should be nil")
@@ -248,7 +248,7 @@ func TestRepoUpsertTenantWithErrors(t *testing.T) {
 
 // TestRepoDeleteTenantWithInvalidInput tests the delete of an tenant with invalid input.
 func TestRepoDeleteTenantWithInvalidInput(t *testing.T) {
-	repo := Repo{}
+	ledger := Facade{}
 
 	assert := assert.New(t)
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
@@ -257,13 +257,13 @@ func TestRepoDeleteTenantWithInvalidInput(t *testing.T) {
 	tx, _ := sqlDB.Begin()
 
 	{ // Test with invalid application id
-		_, err := repo.DeleteTenant(tx, 0, GenerateUUID())
+		_, err := ledger.DeleteTenant(tx, 0, GenerateUUID())
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid tenant id
-		_, err := repo.DeleteTenant(tx, 581616507495, "")
+		_, err := ledger.DeleteTenant(tx, 581616507495, "")
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -272,7 +272,7 @@ func TestRepoDeleteTenantWithInvalidInput(t *testing.T) {
 // TestRepoDeleteTenantWithSuccess tests the delete of an tenant with success.
 func TestRepoDeleteTenantWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -290,7 +290,7 @@ func TestRepoDeleteTenantWithSuccess(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	tx, _ := sqlDB.Begin()
-	dbOutTenant, err := repo.DeleteTenant(tx, tenant.ApplicationID, tenant.TenantID)
+	dbOutTenant, err := ledger.DeleteTenant(tx, tenant.ApplicationID, tenant.TenantID)
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutTenant, "tenant should be not nil")
@@ -303,7 +303,7 @@ func TestRepoDeleteTenantWithSuccess(t *testing.T) {
 // TestRepoDeleteTenantWithErrors tests the delete of an tenant with errors.
 func TestRepoDeleteTenantWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 
 	tests := []int{
 		1,
@@ -339,7 +339,7 @@ func TestRepoDeleteTenantWithErrors(t *testing.T) {
 		}
 
 		tx, _ := sqlDB.Begin()
-		dbOutTenant, err := repo.DeleteTenant(tx, tenant.ApplicationID, tenant.TenantID)
+		dbOutTenant, err := ledger.DeleteTenant(tx, tenant.ApplicationID, tenant.TenantID)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutTenant, "tenant should be nil")
@@ -356,40 +356,40 @@ func TestRepoDeleteTenantWithErrors(t *testing.T) {
 // TestRepoFetchTenantWithInvalidInput tests the fetch of tenants with invalid input.
 func TestRepoFetchTenantWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
 	{ // Test with invalid page
-		_, err := repo.FetchTenants(sqlDB, 0, 100, 581616507495, nil, nil)
+		_, err := ledger.FetchTenants(sqlDB, 0, 100, 581616507495, nil, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid page size
-		_, err := repo.FetchTenants(sqlDB, 1, 0, 581616507495, nil, nil)
+		_, err := ledger.FetchTenants(sqlDB, 1, 0, 581616507495, nil, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid application id
 		tenantID := GenerateUUID()
-		_, err := repo.FetchTenants(sqlDB, 1, 1, 0, &tenantID, nil)
+		_, err := ledger.FetchTenants(sqlDB, 1, 1, 0, &tenantID, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
 	}
 
 	{ // Test with invalid tenant id
 		tenantID := ""
-		_, err := repo.FetchTenants(sqlDB, 1, 1, 581616507495, &tenantID, nil)
+		_, err := ledger.FetchTenants(sqlDB, 1, 1, 581616507495, &tenantID, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
 	}
 
 	{ // Test with invalid tenant id
 		tenantName := "@"
-		_, err := repo.FetchTenants(sqlDB, 1, 1, 581616507495, nil, &tenantName)
+		_, err := ledger.FetchTenants(sqlDB, 1, 1, 581616507495, nil, &tenantName)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientName, err), "error should be errclientname")
 	}
@@ -398,7 +398,7 @@ func TestRepoFetchTenantWithInvalidInput(t *testing.T) {
 // TestRepoFetchTenantWithSuccess tests the fetch of tenants with success.
 func TestRepoFetchTenantWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -412,7 +412,7 @@ func TestRepoFetchTenantWithSuccess(t *testing.T) {
 		WithArgs(sqlTenants[0].ApplicationID, sqlTenants[0].TenantID, tenantName, pageSize, page-1).
 		WillReturnRows(sqlTenantRows)
 
-	dbOutTenant, err := repo.FetchTenants(sqlDB, page, pageSize, sqlTenants[0].ApplicationID, &sqlTenants[0].TenantID, &sqlTenants[0].Name)
+	dbOutTenant, err := ledger.FetchTenants(sqlDB, page, pageSize, sqlTenants[0].ApplicationID, &sqlTenants[0].TenantID, &sqlTenants[0].Name)
 
 	orderedSQLTenants := make([]Tenant, len(sqlTenants))
 	copy(orderedSQLTenants, sqlTenants)

@@ -108,25 +108,25 @@ func (m *ConfigManager) GetRepoInfo(repoURI string) (*azicliwkscommon.RefInfo, e
 	if err != nil {
 		return nil, err
 	}
-	if _, ok := cfg.Repositories[repoURI]; !ok {
+	if _, ok := cfg.Ledgers[repoURI]; !ok {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", repoURI))
 	}
-	cfgRepository := cfg.Repositories[repoURI]
-	refInfo, err := azicliwkscommon.NewRefInfoFromRepoName(cfgRepository.Remote, cfgRepository.ApplicationID, cfgRepository.RepoName)
+	cfgLedger := cfg.Ledgers[repoURI]
+	refInfo, err := azicliwkscommon.NewRefInfoFromRepoName(cfgLedger.Remote, cfgLedger.ApplicationID, cfgLedger.RepoName)
 	if err != nil {
 		return nil, err
 	}
-	return azicliwkscommon.BuildRefInfoFromRepoID(refInfo, cfgRepository.RepoID)
+	return azicliwkscommon.BuildRefInfoFromRepoID(refInfo, cfgLedger.RepoID)
 }
 
-// CheckRepoIfExists checks if a repository exists.
+// CheckRepoIfExists checks if a ledger exists.
 func (m *ConfigManager) CheckRepoIfExists(repoURI string) bool {
 	repoURI, _ = azicliwkscommon.SanitizeRepo(repoURI)
 	cfg, err := m.readConfig()
 	if err != nil {
 		return false
 	}
-	if _, ok := cfg.Repositories[repoURI]; !ok {
+	if _, ok := cfg.Ledgers[repoURI]; !ok {
 		return false
 	}
 	return true

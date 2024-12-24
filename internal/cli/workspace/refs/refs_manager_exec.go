@@ -39,7 +39,7 @@ func (m *RefManager) ExecInitalize(lang string) error {
 }
 
 // ExecCheckoutRefFilesForRemote checks out the remote refs files for the remote.
-func (m *RefManager) ExecCheckoutRefFilesForRemote(remote string, applicationID int64, repo string, repoID string, commit string, output map[string]any, out aziclicommon.PrinterOutFunc) (string, string, map[string]any, error) {
+func (m *RefManager) ExecCheckoutRefFilesForRemote(remote string, applicationID int64, ledger string, repoID string, commit string, output map[string]any, out aziclicommon.PrinterOutFunc) (string, string, map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}

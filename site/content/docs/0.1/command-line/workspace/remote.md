@@ -38,8 +38,8 @@ Usage:
   permguard remote [command]
 
 Available Commands:
-  add         add a new remote repository to track and interact with
-  remove      remove a remote repository from the configuration
+  add         add a new remote ledger to track and interact with
+  remove      remove a remote ledger from the configuration
 
 Flags:
   -h, --help   help for remote

@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package repositories
+package facade
 
 import (
 	"fmt"
@@ -90,9 +90,9 @@ func LogTenantEntry(tenant *Tenant) string {
 	return fmt.Sprintf("tenant id: %s, application id: %d, name: %s", tenant.TenantID, tenant.ApplicationID, tenant.Name)
 }
 
-// Repository is the model for the schema table.
-type Repository struct {
-	RepositoryID  string    `db:"repository_id"`
+// Ledger is the model for the schema table.
+type Ledger struct {
+	LedgerID      string    `db:"ledger_id"`
 	CreatedAt     time.Time `db:"created_at"`
 	UpdatedAt     time.Time `db:"updated_at"`
 	ApplicationID int64     `db:"application_id"`
@@ -100,12 +100,12 @@ type Repository struct {
 	Ref           string    `db:"ref"`
 }
 
-// LogRepositoryEntry returns a string representation of the repository.
-func LogRepositoryEntry(repository *Repository) string {
-	if repository == nil {
+// LogLedgerEntry returns a string representation of the ledger.
+func LogLedgerEntry(ledger *Ledger) string {
+	if ledger == nil {
 		return "tenant is nil"
 	}
-	return fmt.Sprintf("repository id: %s, application id: %d, name: %s", repository.RepositoryID, repository.ApplicationID, repository.Name)
+	return fmt.Sprintf("ledger id: %s, application id: %d, name: %s", ledger.LedgerID, ledger.ApplicationID, ledger.Name)
 }
 
 // KeyValue is the model for the key_value table.

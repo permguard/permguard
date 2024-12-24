@@ -31,15 +31,15 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
-// TestUpdateCommandForRepositoriesUpdate tests the updateCommandForRepositoriesUpdate function.
-func TestUpdateCommandForRepositoriesUpdate(t *testing.T) {
+// TestUpdateCommandForLedgersUpdate tests the updateCommandForLedgersUpdate function.
+func TestUpdateCommandForLedgersUpdate(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command updates a remote repository."}
-	aztestutils.BaseCommandTest(t, createCommandForRepositoryUpdate, args, false, outputs)
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command updates a remote ledger."}
+	aztestutils.BaseCommandTest(t, createCommandForLedgerUpdate, args, false, outputs)
 }
 
-// TestCliRepositoriesUpdateWithError tests the command for creating a repository with an error.
-func TestCliRepositoriesUpdateWithError(t *testing.T) {
+// TestCliLedgersUpdateWithError tests the command for creating a ledger with an error.
+func TestCliLedgersUpdateWithError(t *testing.T) {
 	tests := []struct {
 		OutputType string
 		HasError   bool
@@ -54,20 +54,20 @@ func TestCliRepositoriesUpdateWithError(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		args := []string{"repositories", "update", "--repositoryid", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", test.OutputType}
+		args := []string{"ledgers", "update", "--ledgerid", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", test.OutputType}
 		outputs := []string{""}
 
 		v := viper.New()
 		v.Set(azconfigs.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget), "localhost:9092")
 
 		depsMocks := azmocks.NewCliDependenciesMock()
-		cmd := createCommandForRepositoryUpdate(depsMocks, v)
+		cmd := createCommandForLedgerUpdate(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, test.OutputType, "output format")
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		papClient := azmocks.NewGrpcPAPClientMock()
-		papClient.On("UpdateRepository", mock.Anything).Return(nil, azerrors.ErrClientParameter)
+		papClient.On("UpdateLedger", mock.Anything).Return(nil, azerrors.ErrClientParameter)
 
 		printerMock := azmocks.NewPrinterMock()
 		printerMock.On("Println", mock.Anything).Return()
@@ -86,14 +86,14 @@ func TestCliRepositoriesUpdateWithError(t *testing.T) {
 	}
 }
 
-// TestCliRepositoriesUpdateWithSuccess tests the command for creating a repository with an error.
-func TestCliRepositoriesUpdateWithSuccess(t *testing.T) {
+// TestCliLedgersUpdateWithSuccess tests the command for creating a ledger with an error.
+func TestCliLedgersUpdateWithSuccess(t *testing.T) {
 	tests := []string{
 		"terminal",
 		"json",
 	}
 	for _, outputType := range tests {
-		args := []string{"repositories", "update", "--repositoryid", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", outputType}
+		args := []string{"ledgers", "update", "--ledgerid", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", outputType}
 		outputs := []string{""}
 
 		v := viper.New()
@@ -101,29 +101,29 @@ func TestCliRepositoriesUpdateWithSuccess(t *testing.T) {
 		v.Set(azconfigs.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget), "localhost:9092")
 
 		depsMocks := azmocks.NewCliDependenciesMock()
-		cmd := createCommandForRepositoryUpdate(depsMocks, v)
+		cmd := createCommandForLedgerUpdate(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		papClient := azmocks.NewGrpcPAPClientMock()
-		repository := &azmodels.Repository{
-			RepositoryID:  "c3160a533ab24fbcb1eab7a09fd85f36",
+		ledger := &azmodels.Ledger{
+			LedgerID:      "c3160a533ab24fbcb1eab7a09fd85f36",
 			ApplicationID: 581616507495,
 			Name:          "v1.0",
 			CreatedAt:     time.Now(),
 			UpdatedAt:     time.Now(),
 		}
-		papClient.On("UpdateRepository", mock.Anything).Return(repository, nil)
+		papClient.On("UpdateLedger", mock.Anything).Return(ledger, nil)
 
 		printerMock := azmocks.NewPrinterMock()
 		outputPrinter := map[string]any{}
 
 		if outputType == "terminal" {
-			repositoryID := repository.RepositoryID
-			outputPrinter[repositoryID] = repository.Name
+			ledgerID := ledger.LedgerID
+			outputPrinter[ledgerID] = ledger.Name
 		} else {
-			outputPrinter["repositories"] = []*azmodels.Repository{repository}
+			outputPrinter["ledgers"] = []*azmodels.Ledger{ledger}
 		}
 		printerMock.On("PrintMap", outputPrinter).Return()
 		printerMock.On("PrintlnMap", outputPrinter).Return()

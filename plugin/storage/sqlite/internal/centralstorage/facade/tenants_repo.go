@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package repositories
+package facade
 
 import (
 	"database/sql"
@@ -34,7 +34,7 @@ const (
 )
 
 // UpsertTenant creates or updates an tenant.
-func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant, error) {
+func (r *Facade) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant, error) {
 	if tenant == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant data is missing or malformed (%s)", LogTenantEntry(tenant)))
 	}
@@ -84,7 +84,7 @@ func (r *Repo) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant,
 }
 
 // DeleteTenant deletes an tenant.
-func (r *Repo) DeleteTenant(tx *sql.Tx, applicationID int64, tenantID string) (*Tenant, error) {
+func (r *Facade) DeleteTenant(tx *sql.Tx, applicationID int64, tenantID string) (*Tenant, error) {
 	if err := azvalidators.ValidateCodeID("tenant", applicationID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidApplicationID, applicationID))
 	}
@@ -115,7 +115,7 @@ func (r *Repo) DeleteTenant(tx *sql.Tx, applicationID int64, tenantID string) (*
 }
 
 // FetchTenants retrieves tenants.
-func (r *Repo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]Tenant, error) {
+func (r *Facade) FetchTenants(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]Tenant, error) {
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}

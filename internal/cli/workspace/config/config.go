@@ -18,9 +18,9 @@ package config
 
 // config represents the configuration for the workspace.
 type config struct {
-	Core         coreConfig                  `toml:"core"`
-	Remotes      map[string]remoteConfig     `toml:"remote"`
-	Repositories map[string]repositoryConfig `toml:"repository"`
+	Core    coreConfig              `toml:"core"`
+	Remotes map[string]remoteConfig `toml:"remote"`
+	Ledgers map[string]ledgerConfig `toml:"ledger"`
 }
 
 // coreConfig represents the configuration for the core.
@@ -36,8 +36,8 @@ type remoteConfig struct {
 	PAPPort int    `toml:"papport"`
 }
 
-// repositoryConfig represents the configuration for the repository.
-type repositoryConfig struct {
+// ledgerConfig represents the configuration for the ledger.
+type ledgerConfig struct {
 	Ref           string `toml:"ref"`
 	Remote        string `toml:"remote"`
 	ApplicationID int64  `toml:"applicationid"`

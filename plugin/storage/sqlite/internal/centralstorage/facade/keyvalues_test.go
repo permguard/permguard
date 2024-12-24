@@ -1,4 +1,4 @@
-package repositories
+package facade
 
 import (
 	"database/sql"
@@ -13,7 +13,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
+	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade/testutils"
 )
 
 // registerKeyValueForUpsertMocking registers a key-value pair for upsert mocking.
@@ -32,7 +32,7 @@ func registerKeyValueForUpsertMocking() (*KeyValue, string, *sqlmock.Rows) {
 // TestRepoUpsertKeyValueWithInvalidInput tests the upsert of a key-value pair with invalid input.
 func TestRepoUpsertKeyValueWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -40,7 +40,7 @@ func TestRepoUpsertKeyValueWithInvalidInput(t *testing.T) {
 	tx, _ := sqlDB.Begin()
 
 	{ // Test with nil key-value
-		_, err := repo.UpsertKeyValue(tx, nil)
+		_, err := ledger.UpsertKeyValue(tx, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -50,7 +50,7 @@ func TestRepoUpsertKeyValueWithInvalidInput(t *testing.T) {
 			Key:   "",
 			Value: []byte("test-value"),
 		}
-		_, err := repo.UpsertKeyValue(tx, keyValue)
+		_, err := ledger.UpsertKeyValue(tx, keyValue)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -59,7 +59,7 @@ func TestRepoUpsertKeyValueWithInvalidInput(t *testing.T) {
 // TestRepoUpsertKeyValueWithSuccess tests the upsert of a key-value pair with success.
 func TestRepoUpsertKeyValueWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
@@ -75,7 +75,7 @@ func TestRepoUpsertKeyValueWithSuccess(t *testing.T) {
 		WillReturnRows(sqlKeyValueRows)
 
 	tx, _ := sqlDB.Begin()
-	dbOutKeyValue, err := repo.UpsertKeyValue(tx, keyValue)
+	dbOutKeyValue, err := ledger.UpsertKeyValue(tx, keyValue)
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutKeyValue, "key-value should be not nil")
@@ -87,7 +87,7 @@ func TestRepoUpsertKeyValueWithSuccess(t *testing.T) {
 // TestRepoUpsertKeyValueWithErrors tests the upsert of a key-value pair with errors.
 func TestRepoUpsertKeyValueWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -100,7 +100,7 @@ func TestRepoUpsertKeyValueWithErrors(t *testing.T) {
 		WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 
 	tx, _ := sqlDB.Begin()
-	dbOutKeyValue, err := repo.UpsertKeyValue(tx, keyValue)
+	dbOutKeyValue, err := ledger.UpsertKeyValue(tx, keyValue)
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.Nil(dbOutKeyValue, "key-value should be nil")
@@ -111,7 +111,7 @@ func TestRepoUpsertKeyValueWithErrors(t *testing.T) {
 // TestRepoGetKeyValueWithSuccess tests the retrieval of a key-value pair with success.
 func TestRepoGetKeyValueWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -128,7 +128,7 @@ func TestRepoGetKeyValueWithSuccess(t *testing.T) {
 		WithArgs(keyValue.Key).
 		WillReturnRows(sqlRows)
 
-	dbOutKeyValue, err := repo.GetKeyValue(sqlDB, keyValue.Key)
+	dbOutKeyValue, err := ledger.GetKeyValue(sqlDB, keyValue.Key)
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutKeyValue, "key-value should be not nil")
@@ -140,7 +140,7 @@ func TestRepoGetKeyValueWithSuccess(t *testing.T) {
 // TestRepoGetKeyValueWithErrors tests the retrieval of a key-value pair with errors.
 func TestRepoGetKeyValueWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -150,7 +150,7 @@ func TestRepoGetKeyValueWithErrors(t *testing.T) {
 		WithArgs("non-existent-key").
 		WillReturnError(sql.ErrNoRows)
 
-	dbOutKeyValue, err := repo.GetKeyValue(sqlDB, "non-existent-key")
+	dbOutKeyValue, err := ledger.GetKeyValue(sqlDB, "non-existent-key")
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.Nil(dbOutKeyValue, "key-value should be nil")

@@ -64,7 +64,7 @@ permguard init
 output:
 
 ```bash
-Initialized empty permguard repository in '.'.
+Initialized empty permguard ledger in '.'.
 ```
 
 <details>
@@ -84,7 +84,7 @@ output:
     "policy_engine": {
       "language": "cedar"
     },
-    "root": "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar"
+    "root": "/Users/nicolagallo/source/nitro/permguard-workspace/ledgers/playground-cedar"
   }
 }
 ```

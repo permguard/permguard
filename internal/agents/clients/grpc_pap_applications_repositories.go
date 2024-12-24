@@ -25,90 +25,90 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
-// CreateRepository creates a new repository.
-func (c *GrpcPAPClient) CreateRepository(applicationID int64, name string) (*azmodels.Repository, error) {
+// CreateLedger creates a new ledger.
+func (c *GrpcPAPClient) CreateLedger(applicationID int64, name string) (*azmodels.Ledger, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	repository, err := client.CreateRepository(context.Background(), &azapiv1pap.RepositoryCreateRequest{ApplicationID: applicationID, Name: name})
+	ledger, err := client.CreateLedger(context.Background(), &azapiv1pap.LedgerCreateRequest{ApplicationID: applicationID, Name: name})
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1pap.MapGrpcRepositoryResponseToAgentRepository(repository)
+	return azapiv1pap.MapGrpcLedgerResponseToAgentLedger(ledger)
 }
 
-// UpdateRepository updates an repository.
-func (c *GrpcPAPClient) UpdateRepository(repository *azmodels.Repository) (*azmodels.Repository, error) {
-	if repository == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientGeneric, "client: invalid repository instance")
+// UpdateLedger updates an ledger.
+func (c *GrpcPAPClient) UpdateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error) {
+	if ledger == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientGeneric, "client: invalid ledger instance")
 	}
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	updatedRepository, err := client.UpdateRepository(context.Background(), &azapiv1pap.RepositoryUpdateRequest{
-		RepositoryID:  repository.RepositoryID,
-		ApplicationID: repository.ApplicationID,
-		Name:          repository.Name,
+	updatedLedger, err := client.UpdateLedger(context.Background(), &azapiv1pap.LedgerUpdateRequest{
+		LedgerID:      ledger.LedgerID,
+		ApplicationID: ledger.ApplicationID,
+		Name:          ledger.Name,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1pap.MapGrpcRepositoryResponseToAgentRepository(updatedRepository)
+	return azapiv1pap.MapGrpcLedgerResponseToAgentLedger(updatedLedger)
 }
 
-// DeleteRepository deletes an repository.
-func (c *GrpcPAPClient) DeleteRepository(applicationID int64, repositoryID string) (*azmodels.Repository, error) {
+// DeleteLedger deletes an ledger.
+func (c *GrpcPAPClient) DeleteLedger(applicationID int64, ledgerID string) (*azmodels.Ledger, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	repository, err := client.DeleteRepository(context.Background(), &azapiv1pap.RepositoryDeleteRequest{ApplicationID: applicationID, RepositoryID: repositoryID})
+	ledger, err := client.DeleteLedger(context.Background(), &azapiv1pap.LedgerDeleteRequest{ApplicationID: applicationID, LedgerID: ledgerID})
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1pap.MapGrpcRepositoryResponseToAgentRepository(repository)
+	return azapiv1pap.MapGrpcLedgerResponseToAgentLedger(ledger)
 }
 
-// FetchRepositories returns all repositories.
-func (c *GrpcPAPClient) FetchRepositories(page int32, pageSize int32, applicationID int64) ([]azmodels.Repository, error) {
-	return c.FetchRepositoriesBy(page, pageSize, applicationID, "", "")
+// FetchLedgers returns all ledgers.
+func (c *GrpcPAPClient) FetchLedgers(page int32, pageSize int32, applicationID int64) ([]azmodels.Ledger, error) {
+	return c.FetchLedgersBy(page, pageSize, applicationID, "", "")
 }
 
-// FetchRepositoriesByID returns all repositories filtering by repository id.
-func (c *GrpcPAPClient) FetchRepositoriesByID(page int32, pageSize int32, applicationID int64, repositoryID string) ([]azmodels.Repository, error) {
-	return c.FetchRepositoriesBy(page, pageSize, applicationID, repositoryID, "")
+// FetchLedgersByID returns all ledgers filtering by ledger id.
+func (c *GrpcPAPClient) FetchLedgersByID(page int32, pageSize int32, applicationID int64, ledgerID string) ([]azmodels.Ledger, error) {
+	return c.FetchLedgersBy(page, pageSize, applicationID, ledgerID, "")
 }
 
-// FetchRepositoriesByName returns all repositories filtering by name.
-func (c *GrpcPAPClient) FetchRepositoriesByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Repository, error) {
-	return c.FetchRepositoriesBy(page, pageSize, applicationID, "", name)
+// FetchLedgersByName returns all ledgers filtering by name.
+func (c *GrpcPAPClient) FetchLedgersByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Ledger, error) {
+	return c.FetchLedgersBy(page, pageSize, applicationID, "", name)
 }
 
-// FetchRepositoriesBy returns all repositories filtering by repository id and name.
-func (c *GrpcPAPClient) FetchRepositoriesBy(page int32, pageSize int32, applicationID int64, repositoryID string, name string) ([]azmodels.Repository, error) {
+// FetchLedgersBy returns all ledgers filtering by ledger id and name.
+func (c *GrpcPAPClient) FetchLedgersBy(page int32, pageSize int32, applicationID int64, ledgerID string, name string) ([]azmodels.Ledger, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	repositoryFetchRequest := &azapiv1pap.RepositoryFetchRequest{}
-	repositoryFetchRequest.Page = &page
-	repositoryFetchRequest.PageSize = &pageSize
+	ledgerFetchRequest := &azapiv1pap.LedgerFetchRequest{}
+	ledgerFetchRequest.Page = &page
+	ledgerFetchRequest.PageSize = &pageSize
 	if applicationID > 0 {
-		repositoryFetchRequest.ApplicationID = applicationID
+		ledgerFetchRequest.ApplicationID = applicationID
 	}
 	if name != "" {
-		repositoryFetchRequest.Name = &name
+		ledgerFetchRequest.Name = &name
 	}
-	if repositoryID != "" {
-		repositoryFetchRequest.RepositoryID = &repositoryID
+	if ledgerID != "" {
+		ledgerFetchRequest.LedgerID = &ledgerID
 	}
-	stream, err := client.FetchRepositories(context.Background(), repositoryFetchRequest)
+	stream, err := client.FetchLedgers(context.Background(), ledgerFetchRequest)
 	if err != nil {
 		return nil, err
 	}
-	repositories := []azmodels.Repository{}
+	ledgers := []azmodels.Ledger{}
 	for {
 		response, err := stream.Recv()
 		if err == io.EOF {
@@ -117,11 +117,11 @@ func (c *GrpcPAPClient) FetchRepositoriesBy(page int32, pageSize int32, applicat
 		if err != nil {
 			return nil, err
 		}
-		repository, err := azapiv1pap.MapGrpcRepositoryResponseToAgentRepository(response)
+		ledger, err := azapiv1pap.MapGrpcLedgerResponseToAgentLedger(response)
 		if err != nil {
 			return nil, err
 		}
-		repositories = append(repositories, *repository)
+		ledgers = append(ledgers, *ledger)
 	}
-	return repositories, nil
+	return ledgers, nil
 }

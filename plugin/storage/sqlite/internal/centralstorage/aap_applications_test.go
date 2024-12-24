@@ -26,7 +26,7 @@ import (
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 )
 
 // TestCreateApplicationWithErrors tests the CreateApplication function with errors.
@@ -73,7 +73,7 @@ func TestCreateApplicationWithErrors(t *testing.T) {
 			mockSQLRepo.On("UpsertApplication", mock.Anything, true, mock.Anything).Return(application, nil)
 			mockSQLRepo.On("UpsertTenant", mock.Anything, true, mock.Anything).Return(nil, nil)
 			mockSQLRepo.On("UpsertIdentitySource", mock.Anything, true, mock.Anything).Return(nil, nil)
-			mockSQLRepo.On("UpsertRepository", mock.Anything, true, mock.Anything).Return(nil, nil)
+			mockSQLRepo.On("UpsertLedger", mock.Anything, true, mock.Anything).Return(nil, nil)
 			mockSQLDB.ExpectCommit().WillReturnError(errors.New(testcase))
 		default:
 			assert.FailNow("Unknown testcase")
@@ -109,7 +109,7 @@ func TestCreateApplicationWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertApplication", mock.Anything, true, mock.Anything).Return(dbOutApplication, nil)
 	mockSQLRepo.On("UpsertTenant", mock.Anything, true, mock.Anything).Return(nil, nil)
 	mockSQLRepo.On("UpsertIdentitySource", mock.Anything, true, mock.Anything).Return(nil, nil)
-	mockSQLRepo.On("UpsertRepository", mock.Anything, true, mock.Anything).Return(nil, nil)
+	mockSQLRepo.On("UpsertLedger", mock.Anything, true, mock.Anything).Return(nil, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
 	inApplication := &azmodels.Application{}
@@ -166,7 +166,7 @@ func TestUpdateApplicationWithErrors(t *testing.T) {
 			mockSQLRepo.On("UpsertApplication", mock.Anything, false, mock.Anything).Return(application, nil)
 			mockSQLRepo.On("UpsertTenant", mock.Anything, true, mock.Anything).Return(nil, nil)
 			mockSQLRepo.On("UpsertIdentitySource", mock.Anything, true, mock.Anything).Return(nil, nil)
-			mockSQLRepo.On("UpsertRepository", mock.Anything, true, mock.Anything).Return(nil, nil)
+			mockSQLRepo.On("UpsertLedger", mock.Anything, true, mock.Anything).Return(nil, nil)
 			mockSQLDB.ExpectCommit().WillReturnError(errors.New(testcase))
 		default:
 			assert.FailNow("Unknown testcase")

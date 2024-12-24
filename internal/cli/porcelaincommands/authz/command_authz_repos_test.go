@@ -22,9 +22,9 @@ import (
 	aztestutils "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
 )
 
-// TestCreateCommandForRepositories tests the createCommandForRepositories function.
-func TestCreateCommandForRepositories(t *testing.T) {
+// TestCreateCommandForLedgers tests the createCommandForLedgers function.
+func TestCreateCommandForLedgers(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command manages repositories on the remote server."}
-	aztestutils.BaseCommandTest(t, createCommandForRepositories, args, false, outputs)
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command manages ledgers on the remote server."}
+	aztestutils.BaseCommandTest(t, createCommandForLedgers, args, false, outputs)
 }

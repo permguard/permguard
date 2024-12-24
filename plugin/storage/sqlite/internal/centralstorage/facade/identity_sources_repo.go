@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package repositories
+package facade
 
 import (
 	"database/sql"
@@ -34,7 +34,7 @@ const (
 )
 
 // UpsertIdentitySource creates or updates an identity source.
-func (r *Repo) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *IdentitySource) (*IdentitySource, error) {
+func (r *Facade) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *IdentitySource) (*IdentitySource, error) {
 	if identitySource == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source data is missing or malformed (%s)", LogIdentitySourceEntry(identitySource)))
 	}
@@ -84,7 +84,7 @@ func (r *Repo) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *I
 }
 
 // DeleteIdentitySource deletes an identity source.
-func (r *Repo) DeleteIdentitySource(tx *sql.Tx, applicationID int64, identitySourceID string) (*IdentitySource, error) {
+func (r *Facade) DeleteIdentitySource(tx *sql.Tx, applicationID int64, identitySourceID string) (*IdentitySource, error) {
 	if err := azvalidators.ValidateCodeID("identitySource", applicationID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentitySourceInvalidApplicationID, applicationID))
 	}
@@ -115,7 +115,7 @@ func (r *Repo) DeleteIdentitySource(tx *sql.Tx, applicationID int64, identitySou
 }
 
 // FetchIdentitySources retrieves identity sources.
-func (r *Repo) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]IdentitySource, error) {
+func (r *Facade) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]IdentitySource, error) {
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}

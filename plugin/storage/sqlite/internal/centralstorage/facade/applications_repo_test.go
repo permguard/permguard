@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package repositories
+package facade
 
 import (
 	"regexp"
@@ -28,7 +28,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
+	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade/testutils"
 )
 
 // registerApplicationForUpsertMocking registers an application for upsert mocking.
@@ -84,7 +84,7 @@ func registerApplicationForFetchMocking() (string, []Application, *sqlmock.Rows)
 // TestRepoUpsertApplicationWithInvalidInput tests the upsert of an application with invalid input.
 func TestRepoUpsertApplicationWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -92,7 +92,7 @@ func TestRepoUpsertApplicationWithInvalidInput(t *testing.T) {
 	tx, _ := sqlDB.Begin()
 
 	{ // Test with nil application
-		_, err := repo.UpsertApplication(tx, true, nil)
+		_, err := ledger.UpsertApplication(tx, true, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -102,7 +102,7 @@ func TestRepoUpsertApplicationWithInvalidInput(t *testing.T) {
 			ApplicationID: 0,
 			Name:          "rent-a-car",
 		}
-		_, err := repo.UpsertApplication(tx, false, dbInApplication)
+		_, err := ledger.UpsertApplication(tx, false, dbInApplication)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -124,7 +124,7 @@ func TestRepoUpsertApplicationWithInvalidInput(t *testing.T) {
 			dbInApplication := &Application{
 				Name: applicationName,
 			}
-			dbOutApplication, err := repo.UpsertApplication(tx, true, dbInApplication)
+			dbOutApplication, err := ledger.UpsertApplication(tx, true, dbInApplication)
 			assert.NotNil(err, "error should be not nil")
 			assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 			assert.Nil(dbOutApplication, "applications should be nil")
@@ -135,7 +135,7 @@ func TestRepoUpsertApplicationWithInvalidInput(t *testing.T) {
 // TestRepoUpsertApplicationWithSuccess tests the upsert of an application with success.
 func TestRepoUpsertApplicationWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 
 	tests := []bool{
 		true,
@@ -172,7 +172,7 @@ func TestRepoUpsertApplicationWithSuccess(t *testing.T) {
 			WillReturnRows(sqlApplicationRows)
 
 		tx, _ := sqlDB.Begin()
-		dbOutApplication, err := repo.UpsertApplication(tx, isCreate, dbInApplication)
+		dbOutApplication, err := ledger.UpsertApplication(tx, isCreate, dbInApplication)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.NotNil(dbOutApplication, "application should be not nil")
@@ -185,7 +185,7 @@ func TestRepoUpsertApplicationWithSuccess(t *testing.T) {
 // TestRepoCreateApplicationWithSuccess tests the upsert of an application with success.
 func TestRepoUpsertApplicationWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 
 	tests := []bool{
 		true,
@@ -219,7 +219,7 @@ func TestRepoUpsertApplicationWithErrors(t *testing.T) {
 		}
 
 		tx, _ := sqlDB.Begin()
-		dbOutApplication, err := repo.UpsertApplication(tx, isCreate, dbInApplication)
+		dbOutApplication, err := ledger.UpsertApplication(tx, isCreate, dbInApplication)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutApplication, "application should be nil")
@@ -230,7 +230,7 @@ func TestRepoUpsertApplicationWithErrors(t *testing.T) {
 
 // TestRepoDeleteApplicationWithInvalidInput tests the delete of an application with invalid input.
 func TestRepoDeleteApplicationWithInvalidInput(t *testing.T) {
-	repo := Repo{}
+	ledger := Facade{}
 
 	assert := assert.New(t)
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
@@ -239,7 +239,7 @@ func TestRepoDeleteApplicationWithInvalidInput(t *testing.T) {
 	tx, _ := sqlDB.Begin()
 
 	{ // Test with invalid application id
-		_, err := repo.DeleteApplication(tx, 0)
+		_, err := ledger.DeleteApplication(tx, 0)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -248,7 +248,7 @@ func TestRepoDeleteApplicationWithInvalidInput(t *testing.T) {
 // TestRepoDeleteApplicationWithSuccess tests the delete of an application with success.
 func TestRepoDeleteApplicationWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -266,7 +266,7 @@ func TestRepoDeleteApplicationWithSuccess(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	tx, _ := sqlDB.Begin()
-	dbOutApplication, err := repo.DeleteApplication(tx, application.ApplicationID)
+	dbOutApplication, err := ledger.DeleteApplication(tx, application.ApplicationID)
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutApplication, "application should be not nil")
@@ -278,7 +278,7 @@ func TestRepoDeleteApplicationWithSuccess(t *testing.T) {
 // TestRepoDeleteApplicationWithErrors tests the delete of an application with errors.
 func TestRepoDeleteApplicationWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 
 	tests := []int{
 		1,
@@ -314,7 +314,7 @@ func TestRepoDeleteApplicationWithErrors(t *testing.T) {
 		}
 
 		tx, _ := sqlDB.Begin()
-		dbOutApplication, err := repo.DeleteApplication(tx, application.ApplicationID)
+		dbOutApplication, err := ledger.DeleteApplication(tx, application.ApplicationID)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutApplication, "application should be nil")
@@ -331,33 +331,33 @@ func TestRepoDeleteApplicationWithErrors(t *testing.T) {
 // TestRepoFetchApplicationWithInvalidInput tests the fetch of applications with invalid input.
 func TestRepoFetchApplicationWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
 	{ // Test with invalid page
-		_, err := repo.FetchApplications(sqlDB, 0, 100, nil, nil)
+		_, err := ledger.FetchApplications(sqlDB, 0, 100, nil, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid page size
-		_, err := repo.FetchApplications(sqlDB, 1, 0, nil, nil)
+		_, err := ledger.FetchApplications(sqlDB, 1, 0, nil, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid application id
 		applicationID := int64(0)
-		_, err := repo.FetchApplications(sqlDB, 1, 1, &applicationID, nil)
+		_, err := ledger.FetchApplications(sqlDB, 1, 1, &applicationID, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
 	}
 
 	{ // Test with invalid application id
 		applicationName := "@"
-		_, err := repo.FetchApplications(sqlDB, 1, 1, nil, &applicationName)
+		_, err := ledger.FetchApplications(sqlDB, 1, 1, nil, &applicationName)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientName, err), "error should be errclientname")
 	}
@@ -366,7 +366,7 @@ func TestRepoFetchApplicationWithInvalidInput(t *testing.T) {
 // TestRepoFetchApplicationWithSuccess tests the fetch of applications with success.
 func TestRepoFetchApplicationWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	repo := Repo{}
+	ledger := Facade{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -380,7 +380,7 @@ func TestRepoFetchApplicationWithSuccess(t *testing.T) {
 		WithArgs(sqlApplications[0].ApplicationID, applicationName, pageSize, page-1).
 		WillReturnRows(sqlApplicationRows)
 
-	dbOutApplication, err := repo.FetchApplications(sqlDB, page, pageSize, &sqlApplications[0].ApplicationID, &sqlApplications[0].Name)
+	dbOutApplication, err := ledger.FetchApplications(sqlDB, page, pageSize, &sqlApplications[0].ApplicationID, &sqlApplications[0].Name)
 
 	orderedSQLApplications := make([]Application, len(sqlApplications))
 	copy(orderedSQLApplications, sqlApplications)

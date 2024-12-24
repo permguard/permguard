@@ -26,31 +26,31 @@ import (
 )
 
 const (
-	// commandNameForRepositoriesCreate is the command name for repositories create.
-	commandNameForRepositoriesCreate = "repositories.create"
+	// commandNameForLedgersCreate is the command name for ledgers create.
+	commandNameForLedgersCreate = "ledgers.create"
 )
 
-// runECommandForCreateRepository runs the command for creating a repository.
-func runECommandForCreateRepository(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	return runECommandForUpsertRepository(deps, cmd, v, commandNameForRepositoriesCreate, true)
+// runECommandForCreateLedger runs the command for creating a ledger.
+func runECommandForCreateLedger(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	return runECommandForUpsertLedger(deps, cmd, v, commandNameForLedgersCreate, true)
 }
 
-// createCommandForRepositoryCreate creates a command for managing repositorycreate.
-func createCommandForRepositoryCreate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+// createCommandForLedgerCreate creates a command for managing ledgercreate.
+func createCommandForLedgerCreate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
-		Short: "Create a remote repository",
-		Long: aziclicommon.BuildCliLongTemplate(`This command creates a remote repository.
+		Short: "Create a remote ledger",
+		Long: aziclicommon.BuildCliLongTemplate(`This command creates a remote ledger.
 
 Examples:
-  # create a repository and output the result in json format
-  permguard authz repos create --application 268786704340 --name magicfarmacia --output json
+  # create a ledger and output the result in json format
+  permguard authz ledgers create --application 268786704340 --name magicfarmacia --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForCreateRepository(deps, cmd, v)
+			return runECommandForCreateLedger(deps, cmd, v)
 		},
 	}
-	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the name of the repository to create")
-	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesCreate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the name of the ledger to create")
+	v.BindPFlag(azoptions.FlagName(commandNameForLedgersCreate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

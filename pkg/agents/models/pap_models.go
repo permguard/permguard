@@ -21,16 +21,16 @@ import (
 )
 
 const (
-	FieldRepositoryApplicationID = "application_id"
-	FieldRepositoryRepositoryID  = "repository_id"
-	FieldRepositoryName          = "name"
-	FieldSchemaSchemaID          = "schema_id"
-	FieldSchemaApplicationID     = "application_id"
+	FieldLedgerApplicationID = "application_id"
+	FieldLedgerLedgerID      = "ledger_id"
+	FieldLedgerName          = "name"
+	FieldSchemaSchemaID      = "schema_id"
+	FieldSchemaApplicationID = "application_id"
 )
 
-// Repository is the repository.
-type Repository struct {
-	RepositoryID  string    `json:"repository_id" validate:"required,isuuid"`
+// Ledger is the ledger.
+type Ledger struct {
+	LedgerID      string    `json:"ledger_id" validate:"required,isuuid"`
 	CreatedAt     time.Time `json:"created_at" validate:"required"`
 	UpdatedAt     time.Time `json:"updated_at" validate:"required"`
 	ApplicationID int64     `json:"application_id" validate:"required,gt=0"`
@@ -40,13 +40,13 @@ type Repository struct {
 
 // Schema is the schema.
 type Schema struct {
-	SchemaID       string         `json:"schema_id" validate:"required,isuuid"`
-	CreatedAt      time.Time      `json:"created_at" validate:"required"`
-	UpdatedAt      time.Time      `json:"updated_at" validate:"required"`
-	ApplicationID  int64          `json:"application_id" validate:"required,gt=0"`
-	RepositoryID   string         `json:"repository_id" validate:"required,isuuid"`
-	RepositoryName string         `json:"repository_name"`
-	SchemaDomains  *SchemaDomains `json:"domains" validate:"required"`
+	SchemaID      string         `json:"schema_id" validate:"required,isuuid"`
+	CreatedAt     time.Time      `json:"created_at" validate:"required"`
+	UpdatedAt     time.Time      `json:"updated_at" validate:"required"`
+	ApplicationID int64          `json:"application_id" validate:"required,gt=0"`
+	LedgerID      string         `json:"ledger_id" validate:"required,isuuid"`
+	LedgerName    string         `json:"ledger_name"`
+	SchemaDomains *SchemaDomains `json:"domains" validate:"required"`
 }
 
 // Action is the action.

@@ -71,11 +71,11 @@ func runECommandForPullWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 func CreateCommandForWorkspacePull(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pull",
-		Short: "Fetch the latest changes from the remote repository and constructs the remote state.",
-		Long: aziclicommon.BuildCliLongTemplate(`This command fetches the latest changes from the remote repository and constructs the remote state.
+		Short: "Fetch the latest changes from the remote ledger and constructs the remote state.",
+		Long: aziclicommon.BuildCliLongTemplate(`This command fetches the latest changes from the remote ledger and constructs the remote state.
 
 Examples:
-  # fetches the latest changes from the remote repository and constructs the remote state
+  # fetches the latest changes from the remote ledger and constructs the remote state
   permguard pull`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForPullWorkspace(deps, cmd, v)

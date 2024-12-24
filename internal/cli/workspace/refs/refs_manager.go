@@ -183,7 +183,7 @@ func (m *RefManager) GetRefUpstreamRef(ref string) (string, error) {
 	return refCfg.Objects.UpstreamRef, nil
 }
 
-// GetRefRepoID reads the ref repo id.
+// GetRefRepoID reads the ref ledger id.
 func (m *RefManager) GetRefRepoID(ref string) (string, error) {
 	refCfg, err := m.readRefConfig(ref)
 	if err != nil {
@@ -226,7 +226,7 @@ func (m *RefManager) GetCurrentHeadRef() (string, error) {
 	return headInfo.GetRef(), nil
 }
 
-// GetCurrentHeadRepoID gets the current head repo id.
+// GetCurrentHeadRepoID gets the current head ledger id.
 func (m *RefManager) GetCurrentHeadRepoID() (string, error) {
 	headInfo, err := m.GetCurrentHead()
 	if err != nil {

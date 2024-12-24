@@ -28,71 +28,71 @@ type GrpcPAPClientMock struct {
 	mock.Mock
 }
 
-// CreateRepository creates a repository.
-func (m *GrpcPAPClientMock) CreateRepository(applicationID int64, name string) (*azmodels.Repository, error) {
+// CreateLedger creates a ledger.
+func (m *GrpcPAPClientMock) CreateLedger(applicationID int64, name string) (*azmodels.Ledger, error) {
 	args := m.Called(applicationID, name)
-	var r0 *azmodels.Repository
-	if val, ok := args.Get(0).(*azmodels.Repository); ok {
+	var r0 *azmodels.Ledger
+	if val, ok := args.Get(0).(*azmodels.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
-// UpdateRepository updates a repository.
-func (m *GrpcPAPClientMock) UpdateRepository(repository *azmodels.Repository) (*azmodels.Repository, error) {
-	args := m.Called(repository)
-	var r0 *azmodels.Repository
-	if val, ok := args.Get(0).(*azmodels.Repository); ok {
+// UpdateLedger updates a ledger.
+func (m *GrpcPAPClientMock) UpdateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error) {
+	args := m.Called(ledger)
+	var r0 *azmodels.Ledger
+	if val, ok := args.Get(0).(*azmodels.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
-// DeleteRepository deletes a repository.
-func (m *GrpcPAPClientMock) DeleteRepository(applicationID int64, repositoryID string) (*azmodels.Repository, error) {
-	args := m.Called(applicationID, repositoryID)
-	var r0 *azmodels.Repository
-	if val, ok := args.Get(0).(*azmodels.Repository); ok {
+// DeleteLedger deletes a ledger.
+func (m *GrpcPAPClientMock) DeleteLedger(applicationID int64, ledgerID string) (*azmodels.Ledger, error) {
+	args := m.Called(applicationID, ledgerID)
+	var r0 *azmodels.Ledger
+	if val, ok := args.Get(0).(*azmodels.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
-// FetchRepositories returns all repositories.
-func (m *GrpcPAPClientMock) FetchRepositories(page int32, pageSize int32, applicationID int64) ([]azmodels.Repository, error) {
+// FetchLedgers returns all ledgers.
+func (m *GrpcPAPClientMock) FetchLedgers(page int32, pageSize int32, applicationID int64) ([]azmodels.Ledger, error) {
 	args := m.Called(page, pageSize, applicationID)
-	var r0 []azmodels.Repository
-	if val, ok := args.Get(0).([]azmodels.Repository); ok {
+	var r0 []azmodels.Ledger
+	if val, ok := args.Get(0).([]azmodels.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
-// FetchRepositoriesByID returns all repositories filtering by repository id.
-func (m *GrpcPAPClientMock) FetchRepositoriesByID(page int32, pageSize int32, applicationID int64, repositoryID string) ([]azmodels.Repository, error) {
-	args := m.Called(page, pageSize, applicationID, repositoryID)
-	var r0 []azmodels.Repository
-	if val, ok := args.Get(0).([]azmodels.Repository); ok {
+// FetchLedgersByID returns all ledgers filtering by ledger id.
+func (m *GrpcPAPClientMock) FetchLedgersByID(page int32, pageSize int32, applicationID int64, ledgerID string) ([]azmodels.Ledger, error) {
+	args := m.Called(page, pageSize, applicationID, ledgerID)
+	var r0 []azmodels.Ledger
+	if val, ok := args.Get(0).([]azmodels.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
-// FetchRepositoriesByName returns all repositories filtering by name.
-func (m *GrpcPAPClientMock) FetchRepositoriesByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Repository, error) {
+// FetchLedgersByName returns all ledgers filtering by name.
+func (m *GrpcPAPClientMock) FetchLedgersByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Ledger, error) {
 	args := m.Called(page, pageSize, applicationID, name)
-	var r0 []azmodels.Repository
-	if val, ok := args.Get(0).([]azmodels.Repository); ok {
+	var r0 []azmodels.Ledger
+	if val, ok := args.Get(0).([]azmodels.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
-// FetchRepositoriesBy returns all repositories filtering by repository id and name.
-func (m *GrpcPAPClientMock) FetchRepositoriesBy(page int32, pageSize int32, applicationID int64, repositoryID string, name string) ([]azmodels.Repository, error) {
-	args := m.Called(page, pageSize, applicationID, repositoryID, name)
-	var r0 []azmodels.Repository
-	if val, ok := args.Get(0).([]azmodels.Repository); ok {
+// FetchLedgersBy returns all ledgers filtering by ledger id and name.
+func (m *GrpcPAPClientMock) FetchLedgersBy(page int32, pageSize int32, applicationID int64, ledgerID string, name string) ([]azmodels.Ledger, error) {
+	args := m.Called(page, pageSize, applicationID, ledgerID, name)
+	var r0 []azmodels.Ledger
+	if val, ok := args.Get(0).([]azmodels.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)

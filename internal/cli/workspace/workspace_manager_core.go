@@ -164,8 +164,8 @@ func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out aziclicommon.PrinterO
 func (m *WorkspaceManager) getCurrentHeadInfo(out aziclicommon.PrinterOutFunc) (*azicliwkscommon.HeadInfo, error) {
 	headInfo, err := m.rfsMgr.GetCurrentHead()
 	if err != nil || headInfo.GetRef() == "" {
-		out(nil, "", "No repository is configured in the current workspace.", nil, true)
-		out(nil, "", "Please checkout a repository and try again.", nil, true)
+		out(nil, "", "No ledger is configured in the current workspace.", nil, true)
+		out(nil, "", "Please checkout a ledger and try again.", nil, true)
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceInvaliHead, "cli: invalid head configuration")
 	}
 	return headInfo, nil

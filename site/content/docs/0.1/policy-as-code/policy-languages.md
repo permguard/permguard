@@ -21,7 +21,7 @@ seo:
 
 **PermGuard** fully supports `Cedar` as the primary policy language.
 
-`PermGuard` enforces a mandatory `single schema` for each `repository`.
+`PermGuard` enforces a mandatory `single schema` for each `ledger`.
 
 To enhance the developer experience, each policy language can define its own schema grammar.
 For example, when using `Cedar`, PermGuard leverages the `official schema` defined by the Cedar language.

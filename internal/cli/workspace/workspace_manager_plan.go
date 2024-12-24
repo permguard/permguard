@@ -25,7 +25,7 @@ import (
 	azlang "github.com/permguard/permguard/pkg/core/languages"
 )
 
-// plan generates a plan of changes to apply to the remote repository based on the differences between the local and remote states.
+// plan generates a plan of changes to apply to the remote ledger based on the differences between the local and remote states.
 func (m *WorkspaceManager) plan(currentCodeObsStates []azicliwkscosp.CodeObjectState, remoteCodeObsStates []azicliwkscosp.CodeObjectState) ([]azicliwkscosp.CodeObjectState, error) {
 	return m.cospMgr.CalculateCodeObjectsState(currentCodeObsStates, remoteCodeObsStates), nil
 }

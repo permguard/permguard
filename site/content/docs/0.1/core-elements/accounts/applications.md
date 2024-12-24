@@ -20,7 +20,7 @@ seo:
 ---
 
 **Permguard** implements the concept of `multi-application`, allowing the creation of multiple **applications**.
-These applications are isolated from one another, enabling each application to have its distinct set of tenants, identities, repositories, schemas, policies and permissions.
+These applications are isolated from one another, enabling each application to have its distinct set of tenants, identities, ledgers, schemas, policies and permissions.
 
 {{< callout context="caution" icon="alert-triangle" >}}
 It is recommended to utilize a distinct application for each environment, such as development, staging, and production, this as a best practice to mitigate potential security risks.

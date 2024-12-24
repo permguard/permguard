@@ -23,10 +23,10 @@ import (
 	"github.com/jmoiron/sqlx"
 	mock "github.com/stretchr/testify/mock"
 
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 )
 
-// MockSqliteRepo sqlite repo mock
+// MockSqliteRepo sqlite ledger mock
 type MockSqliteRepo struct {
 	mock.Mock
 }
@@ -156,37 +156,37 @@ func (m *MockSqliteRepo) FetchTenants(db *sqlx.DB, page int32, pageSize int32, a
 	return r0, args.Error(1)
 }
 
-// UpsertRepository creates or updates a repository.
-func (m *MockSqliteRepo) UpsertRepository(tx *sql.Tx, isCreate bool, repository *azirepos.Repository) (*azirepos.Repository, error) {
-	args := m.Called(tx, isCreate, repository)
-	var r0 *azirepos.Repository
-	if val, ok := args.Get(0).(*azirepos.Repository); ok {
+// UpsertLedger creates or updates a ledger.
+func (m *MockSqliteRepo) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *azirepos.Ledger) (*azirepos.Ledger, error) {
+	args := m.Called(tx, isCreate, ledger)
+	var r0 *azirepos.Ledger
+	if val, ok := args.Get(0).(*azirepos.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
-// UpsertRepository creates or updates a repository.
-func (m *MockSqliteRepo) UpdateRepositoryRef(tx *sql.Tx, applicationID int64, repositoryID, currentRef, newRef string) error {
-	args := m.Called(tx, applicationID, repositoryID, currentRef, newRef)
+// UpsertLedger creates or updates a ledger.
+func (m *MockSqliteRepo) UpdateLedgerRef(tx *sql.Tx, applicationID int64, ledgerID, currentRef, newRef string) error {
+	args := m.Called(tx, applicationID, ledgerID, currentRef, newRef)
 	return args.Error(1)
 }
 
-// DeleteRepository deletes a repository.
-func (m *MockSqliteRepo) DeleteRepository(tx *sql.Tx, applicationID int64, repositoryID string) (*azirepos.Repository, error) {
-	args := m.Called(tx, applicationID, repositoryID)
-	var r0 *azirepos.Repository
-	if val, ok := args.Get(0).(*azirepos.Repository); ok {
+// DeleteLedger deletes a ledger.
+func (m *MockSqliteRepo) DeleteLedger(tx *sql.Tx, applicationID int64, ledgerID string) (*azirepos.Ledger, error) {
+	args := m.Called(tx, applicationID, ledgerID)
+	var r0 *azirepos.Ledger
+	if val, ok := args.Get(0).(*azirepos.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
-// FetchRepositories fetches repositories.
-func (m *MockSqliteRepo) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]azirepos.Repository, error) {
+// FetchLedgers fetches ledgers.
+func (m *MockSqliteRepo) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]azirepos.Ledger, error) {
 	args := m.Called(db, page, pageSize, applicationID, filterID, filterName)
-	var r0 []azirepos.Repository
-	if val, ok := args.Get(0).([]azirepos.Repository); ok {
+	var r0 []azirepos.Ledger
+	if val, ok := args.Get(0).([]azirepos.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)

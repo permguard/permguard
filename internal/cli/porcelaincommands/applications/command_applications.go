@@ -90,7 +90,7 @@ func runECommandForApplications(cmd *cobra.Command, args []string) error {
 // CreateCommandForApplications creates a command for managing applications.
 func CreateCommandForApplications(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "applications",
+		Use:   "apps",
 		Short: "Manage applications on the remote server",
 		Long:  aziclicommon.BuildCliLongTemplate(`This command manages applications on the remote server.`),
 		RunE:  runECommandForApplications,

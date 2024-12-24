@@ -30,14 +30,14 @@ import (
 )
 
 const (
-	// commandNameForRepository is the command name for repository.
-	commandNameForRepository = "repository"
-	// flagRepositoryID is the flag for repository id.
-	flagRepositoryID = "repositoryid"
+	// commandNameForLedger is the command name for ledger.
+	commandNameForLedger = "ledger"
+	// flagLedgerID is the flag for ledger id.
+	flagLedgerID = "ledgerid"
 )
 
-// runECommandForCreateRepository runs the command for creating a repository.
-func runECommandForUpsertRepository(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+// runECommandForCreateLedger runs the command for creating a ledger.
+func runECommandForUpsertLedger(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -49,25 +49,25 @@ func runECommandForUpsertRepository(deps azcli.CliDependenciesProvider, cmd *cob
 		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	applicationID := v.GetInt64(azoptions.FlagName(commandNameForRepository, aziclicommon.FlagCommonApplicationID))
+	applicationID := v.GetInt64(azoptions.FlagName(commandNameForLedger, aziclicommon.FlagCommonApplicationID))
 	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
-	repository := &azmodels.Repository{
+	ledger := &azmodels.Ledger{
 		ApplicationID: applicationID,
 		Name:          name,
 	}
 	if isCreate {
-		repository, err = client.CreateRepository(applicationID, name)
+		ledger, err = client.CreateLedger(applicationID, name)
 	} else {
-		repositoryID := v.GetString(azoptions.FlagName(flagPrefix, flagRepositoryID))
-		repository.RepositoryID = repositoryID
-		repository, err = client.UpdateRepository(repository)
+		ledgerID := v.GetString(azoptions.FlagName(flagPrefix, flagLedgerID))
+		ledger.LedgerID = ledgerID
+		ledger, err = client.UpdateLedger(ledger)
 	}
 	if err != nil {
 		if ctx.IsTerminalOutput() {
 			if isCreate {
-				printer.Println("Failed to create the repository.")
+				printer.Println("Failed to create the ledger.")
 			} else {
-				printer.Println("Failed to update the repository.")
+				printer.Println("Failed to update the ledger.")
 			}
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
@@ -77,36 +77,36 @@ func runECommandForUpsertRepository(deps azcli.CliDependenciesProvider, cmd *cob
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
-		repositoryID := repository.RepositoryID
-		repositoryName := repository.Name
-		output[repositoryID] = repositoryName
+		ledgerID := ledger.LedgerID
+		ledgerName := ledger.Name
+		output[ledgerID] = ledgerName
 	} else if ctx.IsJSONOutput() {
-		output["repositories"] = []*azmodels.Repository{repository}
+		output["ledgers"] = []*azmodels.Ledger{ledger}
 	}
 	printer.PrintlnMap(output)
 	return nil
 }
 
-// runECommandForRepositories runs the command for managing repositories.
-func runECommandForRepositories(cmd *cobra.Command, args []string) error {
+// runECommandForLedgers runs the command for managing ledgers.
+func runECommandForLedgers(cmd *cobra.Command, args []string) error {
 	return cmd.Help()
 }
 
-// createCommandForRepositories creates a command for managing repositories.
-func createCommandForRepositories(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+// createCommandForLedgers creates a command for managing ledgers.
+func createCommandForLedgers(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "repos",
-		Short: "Manage repos on the remote server",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages repositories on the remote server.`),
-		RunE:  runECommandForRepositories,
+		Use:   "ledgers",
+		Short: "Manage ledgers on the remote server",
+		Long:  aziclicommon.BuildCliLongTemplate(`This command manages ledgers on the remote server.`),
+		RunE:  runECommandForLedgers,
 	}
 
 	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id filter")
-	v.BindPFlag(azoptions.FlagName(commandNameForRepository, aziclicommon.FlagCommonApplicationID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonApplicationID))
+	v.BindPFlag(azoptions.FlagName(commandNameForLedger, aziclicommon.FlagCommonApplicationID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonApplicationID))
 
-	command.AddCommand(createCommandForRepositoryCreate(deps, v))
-	command.AddCommand(createCommandForRepositoryUpdate(deps, v))
-	command.AddCommand(createCommandForRepositoryDelete(deps, v))
-	command.AddCommand(createCommandForRepositoryList(deps, v))
+	command.AddCommand(createCommandForLedgerCreate(deps, v))
+	command.AddCommand(createCommandForLedgerUpdate(deps, v))
+	command.AddCommand(createCommandForLedgerDelete(deps, v))
+	command.AddCommand(createCommandForLedgerList(deps, v))
 	return command
 }

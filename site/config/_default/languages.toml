@@ -12,8 +12,8 @@
     homeApplicationBody = 'Create and configure an <code>Application</code>, optionally including its <code>Tenants</code>.'
     homeIdentitiesTitle = "Identities"
     homeIdentitiesBody = "Create an identity source and populate it with <code>Users</code> and <code>Actors</code> using available SDKs."
-    homeSchemaTitle = 'Repositories'
-    homeSchemaBody = 'Create a <code>Repository</code> and configure its <code>Schema</code> (domains, resources and actions).'
+    homeSchemaTitle = 'Ledgers'
+    homeSchemaBody = 'Create a <code>Ledger</code> and configure its <code>Schema</code> (domains, resources and actions).'
     homePolicyTitle = 'Policies'
     homePolicyBody = 'Configure <code>Policies</code> to define what can be permitted or forbidden.'
     homePermissionsTitle = "Permissions"

@@ -43,24 +43,24 @@ func NewPAPController(serviceContext *azservices.ServiceContext, storage azStora
 	return &service, nil
 }
 
-// CreateRepository creates a new repository.
-func (s PAPController) CreateRepository(repository *azmodels.Repository) (*azmodels.Repository, error) {
-	return s.storage.CreateRepository(repository)
+// CreateLedger creates a new ledger.
+func (s PAPController) CreateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error) {
+	return s.storage.CreateLedger(ledger)
 }
 
-// UpdateRepository updates an repository.
-func (s PAPController) UpdateRepository(repository *azmodels.Repository) (*azmodels.Repository, error) {
-	return s.storage.UpdateRepository(repository)
+// UpdateLedger updates an ledger.
+func (s PAPController) UpdateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error) {
+	return s.storage.UpdateLedger(ledger)
 }
 
-// DeleteRepository deletes an repository.
-func (s PAPController) DeleteRepository(applicationID int64, repositoryID string) (*azmodels.Repository, error) {
-	return s.storage.DeleteRepository(applicationID, repositoryID)
+// DeleteLedger deletes an ledger.
+func (s PAPController) DeleteLedger(applicationID int64, ledgerID string) (*azmodels.Ledger, error) {
+	return s.storage.DeleteLedger(applicationID, ledgerID)
 }
 
-// FetchRepositories gets all repositories.
-func (s PAPController) FetchRepositories(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Repository, error) {
-	return s.storage.FetchRepositories(page, pageSize, applicationID, fields)
+// FetchLedgers gets all ledgers.
+func (s PAPController) FetchLedgers(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Ledger, error) {
+	return s.storage.FetchLedgers(page, pageSize, applicationID, fields)
 }
 
 // OnPullHandleRequestCurrentState handles the request for the current state.

@@ -22,7 +22,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
@@ -55,14 +55,14 @@ type SqliteRepo interface {
 	// FetchTenant fetches an tenant.
 	FetchTenants(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]azirepos.Tenant, error)
 
-	// UpsertRepository creates or updates a repository.
-	UpsertRepository(tx *sql.Tx, isCreate bool, repository *azirepos.Repository) (*azirepos.Repository, error)
-	// DeleteRepository deletes a repository.
-	DeleteRepository(tx *sql.Tx, applicationID int64, repositoryID string) (*azirepos.Repository, error)
-	// FetchRepositories fetches repositories.
-	FetchRepositories(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]azirepos.Repository, error)
-	// UpdateRepositoryRef updates the repository ref.
-	UpdateRepositoryRef(tx *sql.Tx, applicationID int64, repositoryID, currentRef, newRef string) error
+	// UpsertLedger creates or updates a ledger.
+	UpsertLedger(tx *sql.Tx, isCreate bool, ledger *azirepos.Ledger) (*azirepos.Ledger, error)
+	// DeleteLedger deletes a ledger.
+	DeleteLedger(tx *sql.Tx, applicationID int64, ledgerID string) (*azirepos.Ledger, error)
+	// FetchLedgers fetches ledgers.
+	FetchLedgers(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]azirepos.Ledger, error)
+	// UpdateLedgerRef updates the ledger ref.
+	UpdateLedgerRef(tx *sql.Tx, applicationID int64, ledgerID, currentRef, newRef string) error
 
 	// UpsertKeyValue creates or updates a key value.
 	UpsertKeyValue(tx *sql.Tx, keyValue *azirepos.KeyValue) (*azirepos.KeyValue, error)
