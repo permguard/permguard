@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package facade
+package repositories
 
 import (
 	"regexp"
@@ -28,7 +28,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade/testutils"
+	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
 )
 
 // registerTenantForUpsertMocking registers an tenant for upsert mocking.
@@ -87,7 +87,7 @@ func registerTenantForFetchMocking() (string, []Tenant, *sqlmock.Rows) {
 // TestRepoUpsertTenantWithInvalidInput tests the upsert of an tenant with invalid input.
 func TestRepoUpsertTenantWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -148,7 +148,7 @@ func TestRepoUpsertTenantWithInvalidInput(t *testing.T) {
 // TestRepoUpsertTenantWithSuccess tests the upsert of an tenant with success.
 func TestRepoUpsertTenantWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	tests := []bool{
 		true,
@@ -201,7 +201,7 @@ func TestRepoUpsertTenantWithSuccess(t *testing.T) {
 // TestRepoCreateTenantWithSuccess tests the upsert of an tenant with success.
 func TestRepoUpsertTenantWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	tests := []bool{
 		true,
@@ -248,7 +248,7 @@ func TestRepoUpsertTenantWithErrors(t *testing.T) {
 
 // TestRepoDeleteTenantWithInvalidInput tests the delete of an tenant with invalid input.
 func TestRepoDeleteTenantWithInvalidInput(t *testing.T) {
-	ledger := Facade{}
+	ledger := Repository{}
 
 	assert := assert.New(t)
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
@@ -272,7 +272,7 @@ func TestRepoDeleteTenantWithInvalidInput(t *testing.T) {
 // TestRepoDeleteTenantWithSuccess tests the delete of an tenant with success.
 func TestRepoDeleteTenantWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -303,7 +303,7 @@ func TestRepoDeleteTenantWithSuccess(t *testing.T) {
 // TestRepoDeleteTenantWithErrors tests the delete of an tenant with errors.
 func TestRepoDeleteTenantWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	tests := []int{
 		1,
@@ -356,7 +356,7 @@ func TestRepoDeleteTenantWithErrors(t *testing.T) {
 // TestRepoFetchTenantWithInvalidInput tests the fetch of tenants with invalid input.
 func TestRepoFetchTenantWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -398,7 +398,7 @@ func TestRepoFetchTenantWithInvalidInput(t *testing.T) {
 // TestRepoFetchTenantWithSuccess tests the fetch of tenants with success.
 func TestRepoFetchTenantWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()

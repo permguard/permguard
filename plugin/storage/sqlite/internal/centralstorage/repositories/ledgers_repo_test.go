@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package facade
+package repositories
 
 import (
 	"regexp"
@@ -28,7 +28,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade/testutils"
+	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
 )
 
 // registerLedgerForUpsertMocking registers a ledger for upsert mocking.
@@ -90,7 +90,7 @@ func registerLedgerForFetchMocking() (string, []Ledger, *sqlmock.Rows) {
 // TestRepoUpsertLedgerWithInvalidInput tests the upsert of a ledger with invalid input.
 func TestRepoUpsertLedgerWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -151,7 +151,7 @@ func TestRepoUpsertLedgerWithInvalidInput(t *testing.T) {
 // TestRepoUpsertLedgerWithSuccess tests the upsert of a ledger with success.
 func TestRepoUpsertLedgerWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	facade := Facade{}
+	repository := Repository{}
 
 	tests := []bool{
 		true,
@@ -190,7 +190,7 @@ func TestRepoUpsertLedgerWithSuccess(t *testing.T) {
 			WillReturnRows(sqlLedgerRows)
 
 		tx, _ := sqlDB.Begin()
-		dbOutLedger, err := facade.UpsertLedger(tx, isCreate, dbInLedger)
+		dbOutLedger, err := repository.UpsertLedger(tx, isCreate, dbInLedger)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.NotNil(dbOutLedger, "ledger should be not nil")
@@ -204,7 +204,7 @@ func TestRepoUpsertLedgerWithSuccess(t *testing.T) {
 // TestRepoUpsertLedgerWithErrors tests the upsert of a ledger with errors.
 func TestRepoUpsertLedgerWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	facade := Facade{}
+	repository := Repository{}
 
 	tests := []bool{
 		true,
@@ -240,7 +240,7 @@ func TestRepoUpsertLedgerWithErrors(t *testing.T) {
 		}
 
 		tx, _ := sqlDB.Begin()
-		dbOutLedger, err := facade.UpsertLedger(tx, isCreate, dbInLedger)
+		dbOutLedger, err := repository.UpsertLedger(tx, isCreate, dbInLedger)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutLedger, "ledger should be nil")
@@ -251,7 +251,7 @@ func TestRepoUpsertLedgerWithErrors(t *testing.T) {
 
 // TestRepoDeleteLedgerWithInvalidInput tests the delete of a ledger with invalid input.
 func TestRepoDeleteLedgerWithInvalidInput(t *testing.T) {
-	ledger := Facade{}
+	ledger := Repository{}
 
 	assert := assert.New(t)
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
@@ -275,7 +275,7 @@ func TestRepoDeleteLedgerWithInvalidInput(t *testing.T) {
 // TestRepoDeleteLedgerWithSuccess tests the delete of a ledger with success.
 func TestRepoDeleteLedgerWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	facade := Facade{}
+	repository := Repository{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -293,7 +293,7 @@ func TestRepoDeleteLedgerWithSuccess(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	tx, _ := sqlDB.Begin()
-	dbOutLedger, err := facade.DeleteLedger(tx, ledger.ApplicationID, ledger.LedgerID)
+	dbOutLedger, err := repository.DeleteLedger(tx, ledger.ApplicationID, ledger.LedgerID)
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutLedger, "ledger should be not nil")
@@ -306,7 +306,7 @@ func TestRepoDeleteLedgerWithSuccess(t *testing.T) {
 // TestRepoDeleteLedgerWithErrors tests the delete of a ledger with errors.
 func TestRepoDeleteLedgerWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	facade := Facade{}
+	repository := Repository{}
 
 	tests := []int{
 		1,
@@ -342,7 +342,7 @@ func TestRepoDeleteLedgerWithErrors(t *testing.T) {
 		}
 
 		tx, _ := sqlDB.Begin()
-		dbOutLedger, err := facade.DeleteLedger(tx, ledger.ApplicationID, ledger.LedgerID)
+		dbOutLedger, err := repository.DeleteLedger(tx, ledger.ApplicationID, ledger.LedgerID)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutLedger, "ledger should be nil")
@@ -359,7 +359,7 @@ func TestRepoDeleteLedgerWithErrors(t *testing.T) {
 // TestRepoFetchLedgerWithInvalidInput tests the fetch of ledgers with invalid input.
 func TestRepoFetchLedgerWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -401,7 +401,7 @@ func TestRepoFetchLedgerWithInvalidInput(t *testing.T) {
 // TestRepoFetchLedgerWithSuccess tests the fetch of ledgers with success.
 func TestRepoFetchLedgerWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()

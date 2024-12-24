@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package facade
+package repositories
 
 import (
 	"database/sql"
@@ -41,7 +41,7 @@ func GenerateApplicationID() int64 {
 }
 
 // UpsertApplication creates or updates an application.
-func (r *Facade) UpsertApplication(tx *sql.Tx, isCreate bool, application *Application) (*Application, error) {
+func (r *Repository) UpsertApplication(tx *sql.Tx, isCreate bool, application *Application) (*Application, error) {
 	if application == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - application data is missing or malformed (%s)", LogApplicationEntry(application)))
 	}
@@ -85,7 +85,7 @@ func (r *Facade) UpsertApplication(tx *sql.Tx, isCreate bool, application *Appli
 }
 
 // DeleteApplication deletes an application.
-func (r *Facade) DeleteApplication(tx *sql.Tx, applicationID int64) (*Application, error) {
+func (r *Repository) DeleteApplication(tx *sql.Tx, applicationID int64) (*Application, error) {
 	if err := azvalidators.ValidateCodeID("application", applicationID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - application id is not valid (id: %d)", applicationID))
 	}
@@ -112,7 +112,7 @@ func (r *Facade) DeleteApplication(tx *sql.Tx, applicationID int64) (*Applicatio
 }
 
 // FetchApplications retrieves applications.
-func (r *Facade) FetchApplications(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]Application, error) {
+func (r *Repository) FetchApplications(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]Application, error) {
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}

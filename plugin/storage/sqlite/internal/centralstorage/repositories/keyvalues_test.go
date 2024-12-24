@@ -1,4 +1,4 @@
-package facade
+package repositories
 
 import (
 	"database/sql"
@@ -13,7 +13,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade/testutils"
+	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
 )
 
 // registerKeyValueForUpsertMocking registers a key-value pair for upsert mocking.
@@ -32,7 +32,7 @@ func registerKeyValueForUpsertMocking() (*KeyValue, string, *sqlmock.Rows) {
 // TestRepoUpsertKeyValueWithInvalidInput tests the upsert of a key-value pair with invalid input.
 func TestRepoUpsertKeyValueWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -59,7 +59,7 @@ func TestRepoUpsertKeyValueWithInvalidInput(t *testing.T) {
 // TestRepoUpsertKeyValueWithSuccess tests the upsert of a key-value pair with success.
 func TestRepoUpsertKeyValueWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
@@ -87,7 +87,7 @@ func TestRepoUpsertKeyValueWithSuccess(t *testing.T) {
 // TestRepoUpsertKeyValueWithErrors tests the upsert of a key-value pair with errors.
 func TestRepoUpsertKeyValueWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -111,7 +111,7 @@ func TestRepoUpsertKeyValueWithErrors(t *testing.T) {
 // TestRepoGetKeyValueWithSuccess tests the retrieval of a key-value pair with success.
 func TestRepoGetKeyValueWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -140,7 +140,7 @@ func TestRepoGetKeyValueWithSuccess(t *testing.T) {
 // TestRepoGetKeyValueWithErrors tests the retrieval of a key-value pair with errors.
 func TestRepoGetKeyValueWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()

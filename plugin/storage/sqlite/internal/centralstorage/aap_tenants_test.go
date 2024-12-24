@@ -26,7 +26,7 @@ import (
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azifacade "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // TestCreateTenantWithErrors tests the CreateTenant function with errors.
@@ -88,9 +88,9 @@ func TestCreateTenantWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
-	dbOutTenant := &azifacade.Tenant{
+	dbOutTenant := &azirepos.Tenant{
 		ApplicationID: 232956849236,
-		TenantID:      azifacade.GenerateUUID(),
+		TenantID:      azirepos.GenerateUUID(),
 		Name:          "rent-a-car1",
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
@@ -170,9 +170,9 @@ func TestUpdateTenantWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
-	dbOutTenant := &azifacade.Tenant{
+	dbOutTenant := &azirepos.Tenant{
 		ApplicationID: 232956849236,
-		TenantID:      azifacade.GenerateUUID(),
+		TenantID:      azirepos.GenerateUUID(),
 		Name:          "rent-a-car1",
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
@@ -227,8 +227,8 @@ func TestDeleteTenantWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inTenantID := azifacade.GenerateUUID()
-		outTenants, err := storage.DeleteTenant(azifacade.GenerateApplicationID(), inTenantID)
+		inTenantID := azirepos.GenerateUUID()
+		outTenants, err := storage.DeleteTenant(azirepos.GenerateApplicationID(), inTenantID)
 		assert.Nil(outTenants, "tenants should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
@@ -245,9 +245,9 @@ func TestDeleteTenantWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
-	dbOutTenant := &azifacade.Tenant{
+	dbOutTenant := &azirepos.Tenant{
 		ApplicationID: 232956849236,
-		TenantID:      azifacade.GenerateUUID(),
+		TenantID:      azirepos.GenerateUUID(),
 		Name:          "rent-a-car1",
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
@@ -258,8 +258,8 @@ func TestDeleteTenantWithSuccess(t *testing.T) {
 	mockSQLRepo.On("DeleteTenant", mock.Anything, mock.Anything, mock.Anything).Return(dbOutTenant, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inTenantID := azifacade.GenerateUUID()
-	outTenants, err := storage.DeleteTenant(azifacade.GenerateApplicationID(), inTenantID)
+	inTenantID := azirepos.GenerateUUID()
+	outTenants, err := storage.DeleteTenant(azirepos.GenerateApplicationID(), inTenantID)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outTenants, "tenants should not be nil")
 	assert.Equal(dbOutTenant.TenantID, outTenants.TenantID, "tenant id should be equal")
@@ -328,17 +328,17 @@ func TestFetchTenantWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 
-	dbOutTenants := []azifacade.Tenant{
+	dbOutTenants := []azirepos.Tenant{
 		{
 			ApplicationID: 232956849236,
-			TenantID:      azifacade.GenerateUUID(),
+			TenantID:      azirepos.GenerateUUID(),
 			Name:          "rent-a-car1",
 			CreatedAt:     time.Now(),
 			UpdatedAt:     time.Now(),
 		},
 		{
 			ApplicationID: 232956849236,
-			TenantID:      azifacade.GenerateUUID(),
+			TenantID:      azirepos.GenerateUUID(),
 			Name:          "rent-a-car2",
 			CreatedAt:     time.Now(),
 			UpdatedAt:     time.Now(),
@@ -348,7 +348,7 @@ func TestFetchTenantWithSuccess(t *testing.T) {
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLRepo.On("FetchTenants", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutTenants, nil)
 
-	outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]any{azmodels.FieldTenantTenantID: azifacade.GenerateUUID(), azmodels.FieldTenantName: "rent-a-car2"})
+	outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]any{azmodels.FieldTenantTenantID: azirepos.GenerateUUID(), azmodels.FieldTenantName: "rent-a-car2"})
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outTenants, "tenants should not be nil")
 	assert.Equal(len(outTenants), len(dbOutTenants), "tenants and dbTenants should have the same length")

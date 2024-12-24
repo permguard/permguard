@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package facade
+package repositories
 
 import (
 	"strings"
@@ -22,8 +22,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// Facade is the central storage ledger.
-type Facade struct {
+// Repository is the central storage repository.
+type Repository struct {
 }
 
 // GenerateUUID generates a UUID.

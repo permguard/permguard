@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// package facade provides the ledger implementation.
-package facade
+// package repositories provides the ledger implementation.
+package repositories

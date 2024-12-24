@@ -21,7 +21,7 @@ import (
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azifacade "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // CreateApplication creates a new application.
@@ -31,34 +31,34 @@ func (s SQLiteCentralStorageAAP) CreateApplication(application *azmodels.Applica
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azifacade.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbInApplication := &azifacade.Application{
+	dbInApplication := &azirepos.Application{
 		ApplicationID: application.ApplicationID,
 		Name:          application.Name,
 	}
 	dbOutApplication, err := s.sqlRepo.UpsertApplication(tx, true, dbInApplication)
 	if s.config.GetEnabledDefaultCreation() {
 		if err == nil {
-			tenant := &azifacade.Tenant{
+			tenant := &azirepos.Tenant{
 				ApplicationID: dbOutApplication.ApplicationID,
 				Name:          TenantDefaultName,
 			}
 			_, err = s.sqlRepo.UpsertTenant(tx, true, tenant)
 		}
 		if err == nil {
-			identitySource := &azifacade.IdentitySource{
+			identitySource := &azirepos.IdentitySource{
 				ApplicationID: dbOutApplication.ApplicationID,
 				Name:          IdentitySourceDefaultName,
 			}
 			_, err = s.sqlRepo.UpsertIdentitySource(tx, true, identitySource)
 		}
 		if err == nil {
-			ledger := &azifacade.Ledger{
+			ledger := &azirepos.Ledger{
 				ApplicationID: dbOutApplication.ApplicationID,
 				Name:          LedgerDefaultName,
 			}
@@ -70,7 +70,7 @@ func (s SQLiteCentralStorageAAP) CreateApplication(application *azmodels.Applica
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azifacade.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapApplicationToAgentApplication(dbOutApplication)
 }
@@ -82,13 +82,13 @@ func (s SQLiteCentralStorageAAP) UpdateApplication(application *azmodels.Applica
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azifacade.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbInApplication := &azifacade.Application{
+	dbInApplication := &azirepos.Application{
 		ApplicationID: application.ApplicationID,
 		Name:          application.Name,
 	}
@@ -98,7 +98,7 @@ func (s SQLiteCentralStorageAAP) UpdateApplication(application *azmodels.Applica
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azifacade.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapApplicationToAgentApplication(dbOutapplication)
 }
@@ -107,11 +107,11 @@ func (s SQLiteCentralStorageAAP) UpdateApplication(application *azmodels.Applica
 func (s SQLiteCentralStorageAAP) DeleteApplication(applicationID int64) (*azmodels.Application, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azifacade.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	dbOutapplication, err := s.sqlRepo.DeleteApplication(tx, applicationID)
 	if err != nil {
@@ -119,7 +119,7 @@ func (s SQLiteCentralStorageAAP) DeleteApplication(applicationID int64) (*azmode
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azifacade.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapApplicationToAgentApplication(dbOutapplication)
 }
@@ -157,7 +157,7 @@ func (s SQLiteCentralStorageAAP) FetchApplications(page int32, pageSize int32, f
 	for i, a := range dbApplications {
 		application, err := mapApplicationToAgentApplication(&a)
 		if err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert application entity (%s)", azifacade.LogApplicationEntry(&a)))
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert application entity (%s)", azirepos.LogApplicationEntry(&a)))
 		}
 		applications[i] = *application
 	}
