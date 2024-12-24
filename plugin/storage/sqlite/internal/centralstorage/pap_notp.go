@@ -91,15 +91,15 @@ func (s SQLiteCentralStoragePAP) extractMetaData(ctx *notpstatemachines.HandlerC
 	if err != nil {
 		return 0, ""
 	}
-	repoID, _ := getFromHandlerContext[string](ctx, notpagstatemachines.LedgerIDKey)
-	return applicationID, repoID
+	ledgerID, _ := getFromHandlerContext[string](ctx, notpagstatemachines.LedgerIDKey)
+	return applicationID, ledgerID
 }
 
 // readLedgerFromHandlerContext reads the ledger from the handler context.
 func (s SQLiteCentralStoragePAP) readLedgerFromHandlerContext(handlerCtx *notpstatemachines.HandlerContext) (*azmodels.Ledger, error) {
-	applicationID, repoID := s.extractMetaData(handlerCtx)
+	applicationID, ledgerID := s.extractMetaData(handlerCtx)
 	fields := map[string]any{
-		azmodels.FieldLedgerLedgerID: repoID,
+		azmodels.FieldLedgerLedgerID: ledgerID,
 	}
 	ledgers, err := s.FetchLedgers(1, 1, applicationID, fields)
 	if err != nil {

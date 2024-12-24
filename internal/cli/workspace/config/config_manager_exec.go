@@ -166,7 +166,7 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out aziclicommon.
 }
 
 // ExecAddLedger adds a ledger.
-func (m *ConfigManager) ExecAddLedger(repoURI, ref, remote, ledger, repoID string, application int64, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *ConfigManager) ExecAddLedger(ledgerURI, ref, remote, ledger, ledgerID string, application int64, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -177,8 +177,8 @@ func (m *ConfigManager) ExecAddLedger(repoURI, ref, remote, ledger, repoID strin
 	var cfgRepo ledgerConfig
 	exists := false
 	for ledger := range cfg.Ledgers {
-		if ledger == ledger && cfg.Ledgers[repoURI].Remote == remote {
-			cfgRepo = cfg.Ledgers[repoURI]
+		if ledger == ledger && cfg.Ledgers[ledgerURI].Remote == remote {
+			cfgRepo = cfg.Ledgers[ledgerURI]
 			exists = true
 			break
 		}
@@ -193,10 +193,10 @@ func (m *ConfigManager) ExecAddLedger(repoURI, ref, remote, ledger, repoID strin
 			Remote:        remote,
 			ApplicationID: application,
 			LedgerName:    ledger,
-			LedgerID:      repoID,
+			LedgerID:      ledgerID,
 			IsHead:        true,
 		}
-		cfg.Ledgers[repoURI] = cfgRepo
+		cfg.Ledgers[ledgerURI] = cfgRepo
 		m.saveConfig(true, cfg)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
@@ -207,10 +207,10 @@ func (m *ConfigManager) ExecAddLedger(repoURI, ref, remote, ledger, repoID strin
 	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{
-			"ref":      cfgRepo.Ref,
-			"repo_uri": repoURI,
-			"repo_id":  cfgRepo.LedgerID,
-			"is_head":  cfgRepo.IsHead,
+			"ref":        cfgRepo.Ref,
+			"ledger_uri": ledgerURI,
+			"ledger_id":  cfgRepo.LedgerID,
+			"is_head":    cfgRepo.IsHead,
 		}
 		remotes = append(remotes, remoteObj)
 		output = out(output, "ledgers", remotes, nil, true)
@@ -251,10 +251,10 @@ func (m *ConfigManager) ExecListLedgers(output map[string]any, out aziclicommon.
 		for cfgRepo := range cfg.Ledgers {
 			isHead := cfg.Ledgers[cfgRepo].IsHead
 			repoObj := map[string]any{
-				"ref":      cfg.Ledgers[cfgRepo].Ref,
-				"repo_uri": cfgRepo,
-				"repo_id":  cfg.Ledgers[cfgRepo].LedgerID,
-				"is_head":  isHead,
+				"ref":        cfg.Ledgers[cfgRepo].Ref,
+				"ledger_uri": cfgRepo,
+				"ledger_id":  cfg.Ledgers[cfgRepo].LedgerID,
+				"is_head":    isHead,
 			}
 			ledgers = append(ledgers, repoObj)
 		}
