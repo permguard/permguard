@@ -31,10 +31,10 @@ import (
 	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade/testutils"
 )
 
-// registerRepositoryForUpsertMocking registers a repository for upsert mocking.
-func registerRepositoryForUpsertMocking(isCreate bool) (*Repository, string, *sqlmock.Rows) {
-	repository := &Repository{
-		RepositoryID:  GenerateUUID(),
+// registerLedgerForUpsertMocking registers a ledger for upsert mocking.
+func registerLedgerForUpsertMocking(isCreate bool) (*Ledger, string, *sqlmock.Rows) {
+	ledger := &Ledger{
+		LedgerID:      GenerateUUID(),
 		ApplicationID: 581616507495,
 		Name:          "rent-a-car",
 		CreatedAt:     time.Now(),
@@ -43,37 +43,37 @@ func registerRepositoryForUpsertMocking(isCreate bool) (*Repository, string, *sq
 	}
 	var sql string
 	if isCreate {
-		sql = `INSERT INTO repositories \(application_id, repository_id, name\) VALUES \(\?, \?, \?\)`
+		sql = `INSERT INTO ledgers \(application_id, ledger_id, name\) VALUES \(\?, \?, \?\)`
 	} else {
-		sql = `UPDATE repositories SET name = \? WHERE application_id = \? and repository_id = \?`
+		sql = `UPDATE ledgers SET name = \? WHERE application_id = \? and ledger_id = \?`
 	}
-	sqlRows := sqlmock.NewRows([]string{"application_id", "repository_id", "created_at", "updated_at", "name", "ref"}).
-		AddRow(repository.ApplicationID, repository.RepositoryID, repository.CreatedAt, repository.UpdatedAt, repository.Name, repository.Name)
-	return repository, sql, sqlRows
+	sqlRows := sqlmock.NewRows([]string{"application_id", "ledger_id", "created_at", "updated_at", "name", "ref"}).
+		AddRow(ledger.ApplicationID, ledger.LedgerID, ledger.CreatedAt, ledger.UpdatedAt, ledger.Name, ledger.Name)
+	return ledger, sql, sqlRows
 }
 
-// registerRepositoryForDeleteMocking registers a repository for delete mocking.
-func registerRepositoryForDeleteMocking() (string, *Repository, *sqlmock.Rows, string) {
-	repository := &Repository{
-		RepositoryID:  GenerateUUID(),
+// registerLedgerForDeleteMocking registers a ledger for delete mocking.
+func registerLedgerForDeleteMocking() (string, *Ledger, *sqlmock.Rows, string) {
+	ledger := &Ledger{
+		LedgerID:      GenerateUUID(),
 		ApplicationID: 581616507495,
 		Name:          "rent-a-car",
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 		Ref:           "0000000000000000000000000000000000000000000000000000000000000000",
 	}
-	var sqlSelect = `SELECT application_id, repository_id, created_at, updated_at, name, ref FROM repositories WHERE application_id = \? and repository_id = \?`
-	var sqlDelete = `DELETE FROM repositories WHERE application_id = \? and repository_id = \?`
-	sqlRows := sqlmock.NewRows([]string{"application_id", "repository_id", "created_at", "updated_at", "name", "ref"}).
-		AddRow(repository.ApplicationID, repository.RepositoryID, repository.CreatedAt, repository.UpdatedAt, repository.Name, repository.Ref)
-	return sqlSelect, repository, sqlRows, sqlDelete
+	var sqlSelect = `SELECT application_id, ledger_id, created_at, updated_at, name, ref FROM ledgers WHERE application_id = \? and ledger_id = \?`
+	var sqlDelete = `DELETE FROM ledgers WHERE application_id = \? and ledger_id = \?`
+	sqlRows := sqlmock.NewRows([]string{"application_id", "ledger_id", "created_at", "updated_at", "name", "ref"}).
+		AddRow(ledger.ApplicationID, ledger.LedgerID, ledger.CreatedAt, ledger.UpdatedAt, ledger.Name, ledger.Ref)
+	return sqlSelect, ledger, sqlRows, sqlDelete
 }
 
-// registerRepositoryForFetchMocking registers a repository for fetch mocking.
-func registerRepositoryForFetchMocking() (string, []Repository, *sqlmock.Rows) {
-	repositories := []Repository{
+// registerLedgerForFetchMocking registers a ledger for fetch mocking.
+func registerLedgerForFetchMocking() (string, []Ledger, *sqlmock.Rows) {
+	ledgers := []Ledger{
 		{
-			RepositoryID:  GenerateUUID(),
+			LedgerID:      GenerateUUID(),
 			ApplicationID: 581616507495,
 			Name:          "rent-a-car",
 			CreatedAt:     time.Now(),
@@ -81,14 +81,14 @@ func registerRepositoryForFetchMocking() (string, []Repository, *sqlmock.Rows) {
 			Ref:           "0000000000000000000000000000000000000000000000000000000000000000",
 		},
 	}
-	var sqlSelect = "SELECT * FROM repositories WHERE application_id = ? AND repository_id = ? AND name LIKE ? ORDER BY repository_id ASC LIMIT ? OFFSET ?"
-	sqlRows := sqlmock.NewRows([]string{"application_id", "repository_id", "created_at", "updated_at", "name", "ref"}).
-		AddRow(repositories[0].ApplicationID, repositories[0].RepositoryID, repositories[0].CreatedAt, repositories[0].UpdatedAt, repositories[0].Name, repositories[0].Ref)
-	return sqlSelect, repositories, sqlRows
+	var sqlSelect = "SELECT * FROM ledgers WHERE application_id = ? AND ledger_id = ? AND name LIKE ? ORDER BY ledger_id ASC LIMIT ? OFFSET ?"
+	sqlRows := sqlmock.NewRows([]string{"application_id", "ledger_id", "created_at", "updated_at", "name", "ref"}).
+		AddRow(ledgers[0].ApplicationID, ledgers[0].LedgerID, ledgers[0].CreatedAt, ledgers[0].UpdatedAt, ledgers[0].Name, ledgers[0].Ref)
+	return sqlSelect, ledgers, sqlRows
 }
 
-// TestRepoUpsertRepositoryWithInvalidInput tests the upsert of a repository with invalid input.
-func TestRepoUpsertRepositoryWithInvalidInput(t *testing.T) {
+// TestRepoUpsertLedgerWithInvalidInput tests the upsert of a ledger with invalid input.
+func TestRepoUpsertLedgerWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
 	repo := Facade{}
 
@@ -97,33 +97,33 @@ func TestRepoUpsertRepositoryWithInvalidInput(t *testing.T) {
 
 	tx, _ := sqlDB.Begin()
 
-	{ // Test with nil repository
-		_, err := repo.UpsertRepository(tx, true, nil)
+	{ // Test with nil ledger
+		_, err := repo.UpsertLedger(tx, true, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid application id
-		dbInRepository := &Repository{
-			RepositoryID: GenerateUUID(),
-			Name:         "rent-a-car",
+		dbInLedger := &Ledger{
+			LedgerID: GenerateUUID(),
+			Name:     "rent-a-car",
 		}
-		_, err := repo.UpsertRepository(tx, false, dbInRepository)
+		_, err := repo.UpsertLedger(tx, false, dbInLedger)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
-	{ // Test with invalid repository id
-		dbInRepository := &Repository{
+	{ // Test with invalid ledger id
+		dbInLedger := &Ledger{
 			ApplicationID: 581616507495,
 			Name:          "rent-a-car",
 		}
-		_, err := repo.UpsertRepository(tx, false, dbInRepository)
+		_, err := repo.UpsertLedger(tx, false, dbInLedger)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
-	{ // Test with invalid repository name
+	{ // Test with invalid ledger name
 		tests := []string{
 			"",
 			" ",
@@ -131,25 +131,25 @@ func TestRepoUpsertRepositoryWithInvalidInput(t *testing.T) {
 			"1aX",
 			"X-@x"}
 		for _, test := range tests {
-			repositoryName := test
+			ledgerName := test
 			_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 			defer sqlDB.Close()
 
 			tx, _ := sqlDB.Begin()
 
-			dbInRepository := &Repository{
-				Name: repositoryName,
+			dbInLedger := &Ledger{
+				Name: ledgerName,
 			}
-			dbOutRepository, err := repo.UpsertRepository(tx, true, dbInRepository)
+			dbOutLedger, err := repo.UpsertLedger(tx, true, dbInLedger)
 			assert.NotNil(err, "error should be not nil")
 			assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
-			assert.Nil(dbOutRepository, "repository should be nil")
+			assert.Nil(dbOutLedger, "ledger should be nil")
 		}
 	}
 }
 
-// TestRepoUpsertRepositoryWithSuccess tests the upsert of a repository with success.
-func TestRepoUpsertRepositoryWithSuccess(t *testing.T) {
+// TestRepoUpsertLedgerWithSuccess tests the upsert of a ledger with success.
+func TestRepoUpsertLedgerWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 	repo := Facade{}
 
@@ -162,47 +162,47 @@ func TestRepoUpsertRepositoryWithSuccess(t *testing.T) {
 		defer sqlDB.Close()
 
 		isCreate := test
-		repository, sql, sqlRepositoryRows := registerRepositoryForUpsertMocking(isCreate)
+		ledger, sql, sqlLedgerRows := registerLedgerForUpsertMocking(isCreate)
 
 		sqlDBMock.ExpectBegin()
-		var dbInRepository *Repository
+		var dbInLedger *Ledger
 		if isCreate {
-			dbInRepository = &Repository{
-				ApplicationID: repository.ApplicationID,
-				Name:          repository.Name,
+			dbInLedger = &Ledger{
+				ApplicationID: ledger.ApplicationID,
+				Name:          ledger.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(repository.ApplicationID, sqlmock.AnyArg(), repository.Name).
+				WithArgs(ledger.ApplicationID, sqlmock.AnyArg(), ledger.Name).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 		} else {
-			dbInRepository = &Repository{
-				RepositoryID:  repository.RepositoryID,
-				ApplicationID: repository.ApplicationID,
-				Name:          repository.Name,
+			dbInLedger = &Ledger{
+				LedgerID:      ledger.LedgerID,
+				ApplicationID: ledger.ApplicationID,
+				Name:          ledger.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(repository.Name, repository.ApplicationID, repository.RepositoryID).
+				WithArgs(ledger.Name, ledger.ApplicationID, ledger.LedgerID).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 		}
 
-		sqlDBMock.ExpectQuery(`SELECT application_id, repository_id, created_at, updated_at, name, ref FROM repositories WHERE application_id = \? and repository_id = \?`).
+		sqlDBMock.ExpectQuery(`SELECT application_id, ledger_id, created_at, updated_at, name, ref FROM ledgers WHERE application_id = \? and ledger_id = \?`).
 			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
-			WillReturnRows(sqlRepositoryRows)
+			WillReturnRows(sqlLedgerRows)
 
 		tx, _ := sqlDB.Begin()
-		dbOutRepository, err := repo.UpsertRepository(tx, isCreate, dbInRepository)
+		dbOutLedger, err := repo.UpsertLedger(tx, isCreate, dbInLedger)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
-		assert.NotNil(dbOutRepository, "repository should be not nil")
-		assert.Equal(repository.RepositoryID, dbOutRepository.RepositoryID, "repository id is not correct")
-		assert.Equal(repository.ApplicationID, dbOutRepository.ApplicationID, "repository application id is not correct")
-		assert.Equal(repository.Name, dbOutRepository.Name, "repository name is not correct")
+		assert.NotNil(dbOutLedger, "ledger should be not nil")
+		assert.Equal(ledger.LedgerID, dbOutLedger.LedgerID, "ledger id is not correct")
+		assert.Equal(ledger.ApplicationID, dbOutLedger.ApplicationID, "ledger application id is not correct")
+		assert.Equal(ledger.Name, dbOutLedger.Name, "ledger name is not correct")
 		assert.Nil(err, "error should be nil")
 	}
 }
 
-// TestRepoUpsertRepositoryWithErrors tests the upsert of a repository with errors.
-func TestRepoUpsertRepositoryWithErrors(t *testing.T) {
+// TestRepoUpsertLedgerWithErrors tests the upsert of a ledger with errors.
+func TestRepoUpsertLedgerWithErrors(t *testing.T) {
 	assert := assert.New(t)
 	repo := Facade{}
 
@@ -215,42 +215,42 @@ func TestRepoUpsertRepositoryWithErrors(t *testing.T) {
 		defer sqlDB.Close()
 
 		isCreate := test
-		repository, sql, _ := registerRepositoryForUpsertMocking(isCreate)
+		ledger, sql, _ := registerLedgerForUpsertMocking(isCreate)
 
 		sqlDBMock.ExpectBegin()
 
-		var dbInRepository *Repository
+		var dbInLedger *Ledger
 		if isCreate {
-			dbInRepository = &Repository{
-				ApplicationID: repository.ApplicationID,
-				Name:          repository.Name,
+			dbInLedger = &Ledger{
+				ApplicationID: ledger.ApplicationID,
+				Name:          ledger.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(repository.ApplicationID, sqlmock.AnyArg(), repository.Name).
+				WithArgs(ledger.ApplicationID, sqlmock.AnyArg(), ledger.Name).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 		} else {
-			dbInRepository = &Repository{
-				RepositoryID:  repository.RepositoryID,
-				ApplicationID: repository.ApplicationID,
-				Name:          repository.Name,
+			dbInLedger = &Ledger{
+				LedgerID:      ledger.LedgerID,
+				ApplicationID: ledger.ApplicationID,
+				Name:          ledger.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(repository.Name, repository.ApplicationID, repository.RepositoryID).
+				WithArgs(ledger.Name, ledger.ApplicationID, ledger.LedgerID).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 		}
 
 		tx, _ := sqlDB.Begin()
-		dbOutRepository, err := repo.UpsertRepository(tx, isCreate, dbInRepository)
+		dbOutLedger, err := repo.UpsertLedger(tx, isCreate, dbInLedger)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
-		assert.Nil(dbOutRepository, "repository should be nil")
+		assert.Nil(dbOutLedger, "ledger should be nil")
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrStorageConstraintUnique, err), "error should be errstorageconstraintunique")
 	}
 }
 
-// TestRepoDeleteRepositoryWithInvalidInput tests the delete of a repository with invalid input.
-func TestRepoDeleteRepositoryWithInvalidInput(t *testing.T) {
+// TestRepoDeleteLedgerWithInvalidInput tests the delete of a ledger with invalid input.
+func TestRepoDeleteLedgerWithInvalidInput(t *testing.T) {
 	repo := Facade{}
 
 	assert := assert.New(t)
@@ -260,51 +260,51 @@ func TestRepoDeleteRepositoryWithInvalidInput(t *testing.T) {
 	tx, _ := sqlDB.Begin()
 
 	{ // Test with invalid application id
-		_, err := repo.DeleteRepository(tx, 0, GenerateUUID())
+		_, err := repo.DeleteLedger(tx, 0, GenerateUUID())
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
-	{ // Test with invalid repository id
-		_, err := repo.DeleteRepository(tx, 581616507495, "")
+	{ // Test with invalid ledger id
+		_, err := repo.DeleteLedger(tx, 581616507495, "")
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 }
 
-// TestRepoDeleteRepositoryWithSuccess tests the delete of a repository with success.
-func TestRepoDeleteRepositoryWithSuccess(t *testing.T) {
+// TestRepoDeleteLedgerWithSuccess tests the delete of a ledger with success.
+func TestRepoDeleteLedgerWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 	repo := Facade{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
-	sqlSelect, repository, sqlRepositoryRows, sqlDelete := registerRepositoryForDeleteMocking()
+	sqlSelect, ledger, sqlLedgerRows, sqlDelete := registerLedgerForDeleteMocking()
 
 	sqlDBMock.ExpectBegin()
 
 	sqlDBMock.ExpectQuery(sqlSelect).
-		WithArgs(repository.ApplicationID, repository.RepositoryID).
-		WillReturnRows(sqlRepositoryRows)
+		WithArgs(ledger.ApplicationID, ledger.LedgerID).
+		WillReturnRows(sqlLedgerRows)
 
 	sqlDBMock.ExpectExec(sqlDelete).
-		WithArgs(repository.ApplicationID, repository.RepositoryID).
+		WithArgs(ledger.ApplicationID, ledger.LedgerID).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	tx, _ := sqlDB.Begin()
-	dbOutRepository, err := repo.DeleteRepository(tx, repository.ApplicationID, repository.RepositoryID)
+	dbOutLedger, err := repo.DeleteLedger(tx, ledger.ApplicationID, ledger.LedgerID)
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
-	assert.NotNil(dbOutRepository, "repository should be not nil")
-	assert.Equal(repository.RepositoryID, dbOutRepository.RepositoryID, "repository id should be correct")
-	assert.Equal(repository.ApplicationID, dbOutRepository.ApplicationID, "repository application id should be correct")
-	assert.Equal(repository.Name, dbOutRepository.Name, "repository name should be correct")
+	assert.NotNil(dbOutLedger, "ledger should be not nil")
+	assert.Equal(ledger.LedgerID, dbOutLedger.LedgerID, "ledger id should be correct")
+	assert.Equal(ledger.ApplicationID, dbOutLedger.ApplicationID, "ledger application id should be correct")
+	assert.Equal(ledger.Name, dbOutLedger.Name, "ledger name should be correct")
 	assert.Nil(err, "error should be nil")
 }
 
-// TestRepoDeleteRepositoryWithErrors tests the delete of a repository with errors.
-func TestRepoDeleteRepositoryWithErrors(t *testing.T) {
+// TestRepoDeleteLedgerWithErrors tests the delete of a ledger with errors.
+func TestRepoDeleteLedgerWithErrors(t *testing.T) {
 	assert := assert.New(t)
 	repo := Facade{}
 
@@ -317,7 +317,7 @@ func TestRepoDeleteRepositoryWithErrors(t *testing.T) {
 		_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 		defer sqlDB.Close()
 
-		sqlSelect, repository, sqlRepositoryRows, sqlDelete := registerRepositoryForDeleteMocking()
+		sqlSelect, ledger, sqlLedgerRows, sqlDelete := registerLedgerForDeleteMocking()
 
 		sqlDBMock.ExpectBegin()
 
@@ -328,7 +328,7 @@ func TestRepoDeleteRepositoryWithErrors(t *testing.T) {
 		} else {
 			sqlDBMock.ExpectQuery(sqlSelect).
 				WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
-				WillReturnRows(sqlRepositoryRows)
+				WillReturnRows(sqlLedgerRows)
 		}
 
 		if test == 2 {
@@ -342,10 +342,10 @@ func TestRepoDeleteRepositoryWithErrors(t *testing.T) {
 		}
 
 		tx, _ := sqlDB.Begin()
-		dbOutRepository, err := repo.DeleteRepository(tx, repository.ApplicationID, repository.RepositoryID)
+		dbOutLedger, err := repo.DeleteLedger(tx, ledger.ApplicationID, ledger.LedgerID)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
-		assert.Nil(dbOutRepository, "repository should be nil")
+		assert.Nil(dbOutLedger, "ledger should be nil")
 		assert.NotNil(err, "error should be not nil")
 
 		if test == 1 {
@@ -356,8 +356,8 @@ func TestRepoDeleteRepositoryWithErrors(t *testing.T) {
 	}
 }
 
-// TestRepoFetchRepositoryWithInvalidInput tests the fetch of repositories with invalid input.
-func TestRepoFetchRepositoryWithInvalidInput(t *testing.T) {
+// TestRepoFetchLedgerWithInvalidInput tests the fetch of ledgers with invalid input.
+func TestRepoFetchLedgerWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
 	repo := Facade{}
 
@@ -365,71 +365,71 @@ func TestRepoFetchRepositoryWithInvalidInput(t *testing.T) {
 	defer sqlDB.Close()
 
 	{ // Test with invalid page
-		_, err := repo.FetchRepositories(sqlDB, 0, 100, 581616507495, nil, nil)
+		_, err := repo.FetchLedgers(sqlDB, 0, 100, 581616507495, nil, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid page size
-		_, err := repo.FetchRepositories(sqlDB, 1, 0, 581616507495, nil, nil)
+		_, err := repo.FetchLedgers(sqlDB, 1, 0, 581616507495, nil, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid application id
-		repositoryID := GenerateUUID()
-		_, err := repo.FetchRepositories(sqlDB, 1, 1, 0, &repositoryID, nil)
+		ledgerID := GenerateUUID()
+		_, err := repo.FetchLedgers(sqlDB, 1, 1, 0, &ledgerID, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
 	}
 
-	{ // Test with invalid repository id
-		repositoryID := ""
-		_, err := repo.FetchRepositories(sqlDB, 1, 1, 581616507495, &repositoryID, nil)
+	{ // Test with invalid ledger id
+		ledgerID := ""
+		_, err := repo.FetchLedgers(sqlDB, 1, 1, 581616507495, &ledgerID, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
 	}
 
-	{ // Test with invalid repository name
-		repositoryName := "@"
-		_, err := repo.FetchRepositories(sqlDB, 1, 1, 581616507495, nil, &repositoryName)
+	{ // Test with invalid ledger name
+		ledgerName := "@"
+		_, err := repo.FetchLedgers(sqlDB, 1, 1, 581616507495, nil, &ledgerName)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientName, err), "error should be errclientname")
 	}
 }
 
-// TestRepoFetchRepositoryWithSuccess tests the fetch of repositories with success.
-func TestRepoFetchRepositoryWithSuccess(t *testing.T) {
+// TestRepoFetchLedgerWithSuccess tests the fetch of ledgers with success.
+func TestRepoFetchLedgerWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 	repo := Facade{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
-	sqlSelect, sqlRepositories, sqlRepositoryRows := registerRepositoryForFetchMocking()
+	sqlSelect, sqlLedgers, sqlLedgerRows := registerLedgerForFetchMocking()
 
 	page := int32(1)
 	pageSize := int32(100)
-	repositoryName := "%" + sqlRepositories[0].Name + "%"
+	ledgerName := "%" + sqlLedgers[0].Name + "%"
 	sqlDBMock.ExpectQuery(regexp.QuoteMeta(sqlSelect)).
-		WithArgs(sqlRepositories[0].ApplicationID, sqlRepositories[0].RepositoryID, repositoryName, pageSize, page-1).
-		WillReturnRows(sqlRepositoryRows)
+		WithArgs(sqlLedgers[0].ApplicationID, sqlLedgers[0].LedgerID, ledgerName, pageSize, page-1).
+		WillReturnRows(sqlLedgerRows)
 
-	dbOutRepository, err := repo.FetchRepositories(sqlDB, page, pageSize, sqlRepositories[0].ApplicationID, &sqlRepositories[0].RepositoryID, &sqlRepositories[0].Name)
+	dbOutLedger, err := repo.FetchLedgers(sqlDB, page, pageSize, sqlLedgers[0].ApplicationID, &sqlLedgers[0].LedgerID, &sqlLedgers[0].Name)
 
-	orderedSQLRepositories := make([]Repository, len(sqlRepositories))
-	copy(orderedSQLRepositories, sqlRepositories)
-	sort.Slice(orderedSQLRepositories, func(i, j int) bool {
-		return orderedSQLRepositories[i].RepositoryID < orderedSQLRepositories[j].RepositoryID
+	orderedSQLLedgers := make([]Ledger, len(sqlLedgers))
+	copy(orderedSQLLedgers, sqlLedgers)
+	sort.Slice(orderedSQLLedgers, func(i, j int) bool {
+		return orderedSQLLedgers[i].LedgerID < orderedSQLLedgers[j].LedgerID
 	})
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
-	assert.NotNil(dbOutRepository, "repository should be not nil")
-	assert.Len(orderedSQLRepositories, len(dbOutRepository), "repositories len should be correct")
-	for i, repository := range dbOutRepository {
-		assert.Equal(repository.RepositoryID, orderedSQLRepositories[i].RepositoryID, "repository id is not correct")
-		assert.Equal(repository.ApplicationID, orderedSQLRepositories[i].ApplicationID, "repository application id is not correct")
-		assert.Equal(repository.Name, orderedSQLRepositories[i].Name, "repository name is not correct")
+	assert.NotNil(dbOutLedger, "ledger should be not nil")
+	assert.Len(orderedSQLLedgers, len(dbOutLedger), "ledgers len should be correct")
+	for i, ledger := range dbOutLedger {
+		assert.Equal(ledger.LedgerID, orderedSQLLedgers[i].LedgerID, "ledger id is not correct")
+		assert.Equal(ledger.ApplicationID, orderedSQLLedgers[i].ApplicationID, "ledger application id is not correct")
+		assert.Equal(ledger.Name, orderedSQLLedgers[i].Name, "ledger name is not correct")
 	}
 	assert.Nil(err, "error should be nil")
 }

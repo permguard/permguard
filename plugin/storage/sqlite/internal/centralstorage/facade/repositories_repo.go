@@ -29,36 +29,36 @@ import (
 )
 
 const (
-	// errorMessageRepositoryInvalidApplicationID is the error message repository invalid application id.
-	errorMessageRepositoryInvalidApplicationID = "storage: invalid client input - application id is not valid (id: %d)"
+	// errorMessageLedgerInvalidApplicationID is the error message ledger invalid application id.
+	errorMessageLedgerInvalidApplicationID = "storage: invalid client input - application id is not valid (id: %d)"
 )
 
-// UpsertRepository creates or updates a repository.
-func (r *Facade) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Repository) (*Repository, error) {
-	if repository == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository data is missing or malformed (%s)", LogRepositoryEntry(repository)))
+// UpsertLedger creates or updates a ledger.
+func (r *Facade) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*Ledger, error) {
+	if ledger == nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger data is missing or malformed (%s)", LogLedgerEntry(ledger)))
 	}
-	if err := azvalidators.ValidateCodeID("repository", repository.ApplicationID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidApplicationID, repository.ApplicationID))
+	if err := azvalidators.ValidateCodeID("ledger", ledger.ApplicationID); err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidApplicationID, ledger.ApplicationID))
 	}
-	if !isCreate && azvalidators.ValidateUUID("repository", repository.RepositoryID) != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (%s)", LogRepositoryEntry(repository)))
+	if !isCreate && azvalidators.ValidateUUID("ledger", ledger.LedgerID) != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger id is not valid (%s)", LogLedgerEntry(ledger)))
 	}
-	if err := azvalidators.ValidateName("repository", repository.Name); err != nil {
-		errorMessage := "storage: invalid client input - repository name is not valid (%s)"
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogRepositoryEntry(repository)))
+	if err := azvalidators.ValidateName("ledger", ledger.Name); err != nil {
+		errorMessage := "storage: invalid client input - ledger name is not valid (%s)"
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogLedgerEntry(ledger)))
 	}
 
-	applicationID := repository.ApplicationID
-	repositoryID := repository.RepositoryID
-	repositoryName := repository.Name
+	applicationID := ledger.ApplicationID
+	ledgerID := ledger.LedgerID
+	ledgerName := ledger.Name
 	var result sql.Result
 	var err error
 	if isCreate {
-		repositoryID = GenerateUUID()
-		result, err = tx.Exec("INSERT INTO repositories (application_id, repository_id, name) VALUES (?, ?, ?)", applicationID, repositoryID, repositoryName)
+		ledgerID = GenerateUUID()
+		result, err = tx.Exec("INSERT INTO ledgers (application_id, ledger_id, name) VALUES (?, ?, ?)", applicationID, ledgerID, ledgerName)
 	} else {
-		result, err = tx.Exec("UPDATE repositories SET name = ? WHERE application_id = ? and repository_id = ?", repositoryName, applicationID, repositoryID)
+		result, err = tx.Exec("UPDATE ledgers SET name = ? WHERE application_id = ? and ledger_id = ?", ledgerName, applicationID, ledgerID)
 	}
 	if err != nil || result == nil {
 		action := "update"
@@ -66,55 +66,55 @@ func (r *Facade) UpsertRepository(tx *sql.Tx, isCreate bool, repository *Reposit
 			action = "create"
 		}
 		params := map[string]string{WrapSqlite3ParamForeignKey: "application id"}
-		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s repository - operation '%s-repository' encountered an issue (%s)", action, action, LogRepositoryEntry(repository)), err, params)
+		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s ledger - operation '%s-ledger' encountered an issue (%s)", action, action, LogLedgerEntry(ledger)), err, params)
 	}
 
-	var dbRepository Repository
-	err = tx.QueryRow("SELECT application_id, repository_id, created_at, updated_at, name, ref FROM repositories WHERE application_id = ? and repository_id = ?", applicationID, repositoryID).Scan(
-		&dbRepository.ApplicationID,
-		&dbRepository.RepositoryID,
-		&dbRepository.CreatedAt,
-		&dbRepository.UpdatedAt,
-		&dbRepository.Name,
-		&dbRepository.Ref,
+	var dbLedger Ledger
+	err = tx.QueryRow("SELECT application_id, ledger_id, created_at, updated_at, name, ref FROM ledgers WHERE application_id = ? and ledger_id = ?", applicationID, ledgerID).Scan(
+		&dbLedger.ApplicationID,
+		&dbLedger.LedgerID,
+		&dbLedger.CreatedAt,
+		&dbLedger.UpdatedAt,
+		&dbLedger.Name,
+		&dbLedger.Ref,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve repository - operation 'retrieve-created-repository' encountered an issue (%s)", LogRepositoryEntry(repository)), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve ledger - operation 'retrieve-created-ledger' encountered an issue (%s)", LogLedgerEntry(ledger)), err)
 	}
-	return &dbRepository, nil
+	return &dbLedger, nil
 }
 
-// UpdateRepositoryRef updates the ref of a repository.
-func (r *Facade) UpdateRepositoryRef(tx *sql.Tx, applicationID int64, repositoryID, currentRef, newRef string) error {
-	if err := azvalidators.ValidateCodeID("repository", applicationID); err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidApplicationID, applicationID))
+// UpdateLedgerRef updates the ref of a ledger.
+func (r *Facade) UpdateLedgerRef(tx *sql.Tx, applicationID int64, ledgerID, currentRef, newRef string) error {
+	if err := azvalidators.ValidateCodeID("ledger", applicationID); err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidApplicationID, applicationID))
 	}
-	if err := azvalidators.ValidateUUID("repository", repositoryID); err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (id: %s)", repositoryID))
+	if err := azvalidators.ValidateUUID("ledger", ledgerID); err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger id is not valid (id: %s)", ledgerID))
 	}
-	if err := azvalidators.ValidateSHA256("repository", currentRef); err != nil {
+	if err := azvalidators.ValidateSHA256("ledger", currentRef); err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - current ref is not valid (ref: %s)", currentRef))
 	}
-	if err := azvalidators.ValidateSHA256("repository", newRef); err != nil {
+	if err := azvalidators.ValidateSHA256("ledger", newRef); err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - new ref is not valid (ref: %s)", newRef))
 	}
 
 	var dbCurrentRef string
-	err := tx.QueryRow("SELECT ref FROM repositories WHERE application_id = ? AND repository_id = ?", applicationID, repositoryID).Scan(&dbCurrentRef)
+	err := tx.QueryRow("SELECT ref FROM ledgers WHERE application_id = ? AND ledger_id = ?", applicationID, ledgerID).Scan(&dbCurrentRef)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return azerrors.WrapSystemError(azerrors.ErrClientNotFound, fmt.Sprintf("repository not found (application_id: %d, repository_id: %s)", applicationID, repositoryID))
+			return azerrors.WrapSystemError(azerrors.ErrClientNotFound, fmt.Sprintf("ledger not found (application_id: %d, ledger_id: %s)", applicationID, ledgerID))
 		}
-		return WrapSqlite3Error("failed to retrieve current ref for repository", err)
+		return WrapSqlite3Error("failed to retrieve current ref for ledger", err)
 	}
 
 	if dbCurrentRef != currentRef {
 		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("current ref mismatch (expected: %s, got: %s)", dbCurrentRef, currentRef))
 	}
 
-	result, err := tx.Exec("UPDATE repositories SET ref = ? WHERE application_id = ? AND repository_id = ?", newRef, applicationID, repositoryID)
+	result, err := tx.Exec("UPDATE ledgers SET ref = ? WHERE application_id = ? AND ledger_id = ?", newRef, applicationID, ledgerID)
 	if err != nil {
-		return WrapSqlite3Error("failed to update repository ref", err)
+		return WrapSqlite3Error("failed to update ledger ref", err)
 	}
 
 	rows, err := result.RowsAffected()
@@ -122,55 +122,55 @@ func (r *Facade) UpdateRepositoryRef(tx *sql.Tx, applicationID int64, repository
 		return WrapSqlite3Error("failed to get rows affected for update ref", err)
 	}
 	if rows != 1 {
-		return azerrors.WrapSystemError(azerrors.ErrClientUpdateConflict, fmt.Sprintf("update failed, no rows affected (application_id: %d, repository_id: %s)", applicationID, repositoryID))
+		return azerrors.WrapSystemError(azerrors.ErrClientUpdateConflict, fmt.Sprintf("update failed, no rows affected (application_id: %d, ledger_id: %s)", applicationID, ledgerID))
 	}
 	return nil
 }
 
-// DeleteRepository deletes a repository.
-func (r *Facade) DeleteRepository(tx *sql.Tx, applicationID int64, repositoryID string) (*Repository, error) {
-	if err := azvalidators.ValidateCodeID("repository", applicationID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageRepositoryInvalidApplicationID, applicationID))
+// DeleteLedger deletes a ledger.
+func (r *Facade) DeleteLedger(tx *sql.Tx, applicationID int64, ledgerID string) (*Ledger, error) {
+	if err := azvalidators.ValidateCodeID("ledger", applicationID); err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidApplicationID, applicationID))
 	}
-	if err := azvalidators.ValidateUUID("repository", repositoryID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - repository id is not valid (id: %s)", repositoryID))
+	if err := azvalidators.ValidateUUID("ledger", ledgerID); err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger id is not valid (id: %s)", ledgerID))
 	}
 
-	var dbRepository Repository
-	err := tx.QueryRow("SELECT application_id, repository_id, created_at, updated_at, name, ref FROM repositories WHERE application_id = ? and repository_id = ?", applicationID, repositoryID).Scan(
-		&dbRepository.ApplicationID,
-		&dbRepository.RepositoryID,
-		&dbRepository.CreatedAt,
-		&dbRepository.UpdatedAt,
-		&dbRepository.Name,
-		&dbRepository.Ref,
+	var dbLedger Ledger
+	err := tx.QueryRow("SELECT application_id, ledger_id, created_at, updated_at, name, ref FROM ledgers WHERE application_id = ? and ledger_id = ?", applicationID, ledgerID).Scan(
+		&dbLedger.ApplicationID,
+		&dbLedger.LedgerID,
+		&dbLedger.CreatedAt,
+		&dbLedger.UpdatedAt,
+		&dbLedger.Name,
+		&dbLedger.Ref,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - repository id is not valid (id: %s)", repositoryID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - ledger id is not valid (id: %s)", ledgerID), err)
 	}
-	res, err := tx.Exec("DELETE FROM repositories WHERE application_id = ? and repository_id = ?", applicationID, repositoryID)
+	res, err := tx.Exec("DELETE FROM ledgers WHERE application_id = ? and ledger_id = ?", applicationID, ledgerID)
 	if err != nil || res == nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete repository - operation 'delete-repository' encountered an issue (id: %s)", repositoryID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete ledger - operation 'delete-ledger' encountered an issue (id: %s)", ledgerID), err)
 	}
 	rows, err := res.RowsAffected()
 	if err != nil || rows != 1 {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete repository - operation 'delete-repository' could not find the repository (id: %s)", repositoryID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete ledger - operation 'delete-ledger' could not find the ledger (id: %s)", ledgerID), err)
 	}
-	return &dbRepository, nil
+	return &dbLedger, nil
 }
 
-// FetchRepositories retrieves repositories.
-func (r *Facade) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]Repository, error) {
+// FetchLedgers retrieves ledgers.
+func (r *Facade) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]Ledger, error) {
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
-	if err := azvalidators.ValidateCodeID("repository", applicationID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageRepositoryInvalidApplicationID, applicationID))
+	if err := azvalidators.ValidateCodeID("ledger", applicationID); err != nil {
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageLedgerInvalidApplicationID, applicationID))
 	}
 
-	var dbRepositories []Repository
+	var dbLedgers []Ledger
 
-	baseQuery := "SELECT * FROM repositories"
+	baseQuery := "SELECT * FROM ledgers"
 	var conditions []string
 	var args []any
 
@@ -178,29 +178,29 @@ func (r *Facade) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, appl
 	args = append(args, applicationID)
 
 	if filterID != nil {
-		repositoryID := *filterID
-		if err := azvalidators.ValidateUUID("repository", repositoryID); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - repository id is not valid (id: %s)", repositoryID))
+		ledgerID := *filterID
+		if err := azvalidators.ValidateUUID("ledger", ledgerID); err != nil {
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - ledger id is not valid (id: %s)", ledgerID))
 		}
-		conditions = append(conditions, "repository_id = ?")
-		args = append(args, repositoryID)
+		conditions = append(conditions, "ledger_id = ?")
+		args = append(args, ledgerID)
 	}
 
 	if filterName != nil {
-		repositoryName := *filterName
-		if err := azvalidators.ValidateName("repository", repositoryName); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - repository name is not valid (name: %s)", repositoryName))
+		ledgerName := *filterName
+		if err := azvalidators.ValidateName("ledger", ledgerName); err != nil {
+			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - ledger name is not valid (name: %s)", ledgerName))
 		}
-		repositoryName = "%" + repositoryName + "%"
+		ledgerName = "%" + ledgerName + "%"
 		conditions = append(conditions, "name LIKE ?")
-		args = append(args, repositoryName)
+		args = append(args, ledgerName)
 	}
 
 	if len(conditions) > 0 {
 		baseQuery += " WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	baseQuery += " ORDER BY repository_id ASC"
+	baseQuery += " ORDER BY ledger_id ASC"
 
 	limit := pageSize
 	offset := (page - 1) * pageSize
@@ -208,10 +208,10 @@ func (r *Facade) FetchRepositories(db *sqlx.DB, page int32, pageSize int32, appl
 
 	args = append(args, limit, offset)
 
-	err := db.Select(&dbRepositories, baseQuery, args...)
+	err := db.Select(&dbLedgers, baseQuery, args...)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve repositories - operation 'retrieve-repositories' encountered an issue with parameters %v", args), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve ledgers - operation 'retrieve-ledgers' encountered an issue with parameters %v", args), err)
 	}
 
-	return dbRepositories, nil
+	return dbLedgers, nil
 }

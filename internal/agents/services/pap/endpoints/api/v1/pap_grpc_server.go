@@ -43,14 +43,14 @@ const (
 // PAPService is the service for the PAP.
 type PAPService interface {
 	Setup() error
-	// CreateRepository creates a new repository.
-	CreateRepository(repository *azmodels.Repository) (*azmodels.Repository, error)
-	// UpdateRepository updates an repository.
-	UpdateRepository(repository *azmodels.Repository) (*azmodels.Repository, error)
-	// DeleteRepository deletes an repository.
-	DeleteRepository(applicationID int64, repositoryID string) (*azmodels.Repository, error)
-	// FetchRepositories gets all repositories.
-	FetchRepositories(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Repository, error)
+	// CreateLedger creates a new ledger.
+	CreateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error)
+	// UpdateLedger updates an ledger.
+	UpdateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error)
+	// DeleteLedger deletes an ledger.
+	DeleteLedger(applicationID int64, ledgerID string) (*azmodels.Ledger, error)
+	// FetchLedgers gets all ledgers.
+	FetchLedgers(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Ledger, error)
 	// OnPullHandleRequestCurrentState handles the request for the current state.
 	OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPullSendNotifyCurrentStateResponse notifies the current state.
@@ -92,61 +92,61 @@ type V1PAPServer struct {
 	service PAPService
 }
 
-// CreateRepository creates a new repository.
-func (s *V1PAPServer) CreateRepository(ctx context.Context, repositoryRequest *RepositoryCreateRequest) (*RepositoryResponse, error) {
-	repository, err := s.service.CreateRepository(&azmodels.Repository{ApplicationID: repositoryRequest.ApplicationID, Name: repositoryRequest.Name})
+// CreateLedger creates a new ledger.
+func (s *V1PAPServer) CreateLedger(ctx context.Context, ledgerRequest *LedgerCreateRequest) (*LedgerResponse, error) {
+	ledger, err := s.service.CreateLedger(&azmodels.Ledger{ApplicationID: ledgerRequest.ApplicationID, Name: ledgerRequest.Name})
 	if err != nil {
 		return nil, err
 	}
-	return MapAgentRepositoryToGrpcRepositoryResponse(repository)
+	return MapAgentLedgerToGrpcLedgerResponse(ledger)
 }
 
-// UpdateRepository updates a repository.
-func (s *V1PAPServer) UpdateRepository(ctx context.Context, repositoryRequest *RepositoryUpdateRequest) (*RepositoryResponse, error) {
-	repository, err := s.service.UpdateRepository((&azmodels.Repository{RepositoryID: repositoryRequest.RepositoryID, ApplicationID: repositoryRequest.ApplicationID, Name: repositoryRequest.Name}))
+// UpdateLedger updates a ledger.
+func (s *V1PAPServer) UpdateLedger(ctx context.Context, ledgerRequest *LedgerUpdateRequest) (*LedgerResponse, error) {
+	ledger, err := s.service.UpdateLedger((&azmodels.Ledger{LedgerID: ledgerRequest.LedgerID, ApplicationID: ledgerRequest.ApplicationID, Name: ledgerRequest.Name}))
 	if err != nil {
 		return nil, err
 	}
-	return MapAgentRepositoryToGrpcRepositoryResponse(repository)
+	return MapAgentLedgerToGrpcLedgerResponse(ledger)
 }
 
-// DeleteRepository deletes a repository.
-func (s *V1PAPServer) DeleteRepository(ctx context.Context, repositoryRequest *RepositoryDeleteRequest) (*RepositoryResponse, error) {
-	repository, err := s.service.DeleteRepository(repositoryRequest.ApplicationID, repositoryRequest.RepositoryID)
+// DeleteLedger deletes a ledger.
+func (s *V1PAPServer) DeleteLedger(ctx context.Context, ledgerRequest *LedgerDeleteRequest) (*LedgerResponse, error) {
+	ledger, err := s.service.DeleteLedger(ledgerRequest.ApplicationID, ledgerRequest.LedgerID)
 	if err != nil {
 		return nil, err
 	}
-	return MapAgentRepositoryToGrpcRepositoryResponse(repository)
+	return MapAgentLedgerToGrpcLedgerResponse(ledger)
 }
 
-// FetchRepositories returns all repositories.
-func (s *V1PAPServer) FetchRepositories(repositoryRequest *RepositoryFetchRequest, stream grpc.ServerStreamingServer[RepositoryResponse]) error {
+// FetchLedgers returns all ledgers.
+func (s *V1PAPServer) FetchLedgers(ledgerRequest *LedgerFetchRequest, stream grpc.ServerStreamingServer[LedgerResponse]) error {
 	fields := map[string]any{}
-	fields[azmodels.FieldRepositoryApplicationID] = repositoryRequest.ApplicationID
-	if repositoryRequest.Name != nil {
-		fields[azmodels.FieldRepositoryName] = *repositoryRequest.Name
+	fields[azmodels.FieldLedgerApplicationID] = ledgerRequest.ApplicationID
+	if ledgerRequest.Name != nil {
+		fields[azmodels.FieldLedgerName] = *ledgerRequest.Name
 	}
-	if repositoryRequest.RepositoryID != nil {
-		fields[azmodels.FieldRepositoryRepositoryID] = *repositoryRequest.RepositoryID
+	if ledgerRequest.LedgerID != nil {
+		fields[azmodels.FieldLedgerLedgerID] = *ledgerRequest.LedgerID
 	}
 	page := int32(0)
-	if repositoryRequest.Page != nil {
-		page = int32(*repositoryRequest.Page)
+	if ledgerRequest.Page != nil {
+		page = int32(*ledgerRequest.Page)
 	}
 	pageSize := int32(0)
-	if repositoryRequest.PageSize != nil {
-		pageSize = int32(*repositoryRequest.PageSize)
+	if ledgerRequest.PageSize != nil {
+		pageSize = int32(*ledgerRequest.PageSize)
 	}
-	repositories, err := s.service.FetchRepositories(page, pageSize, repositoryRequest.ApplicationID, fields)
+	ledgers, err := s.service.FetchLedgers(page, pageSize, ledgerRequest.ApplicationID, fields)
 	if err != nil {
 		return err
 	}
-	for _, repository := range repositories {
-		cvtedRepository, err := MapAgentRepositoryToGrpcRepositoryResponse(&repository)
+	for _, ledger := range ledgers {
+		cvtedLedger, err := MapAgentLedgerToGrpcLedgerResponse(&ledger)
 		if err != nil {
 			return err
 		}
-		stream.SendMsg(cvtedRepository)
+		stream.SendMsg(cvtedLedger)
 	}
 	return nil
 }
@@ -274,9 +274,9 @@ func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, Pa
 	if !ok || len(applicationID) == 0 {
 		return azerrors.WrapSystemError(azerrors.ErrServerGeneric, "server: notp stream missing application id")
 	}
-	respositoryID, ok := md[azagentnotpsm.RepositoryIDKey]
+	respositoryID, ok := md[azagentnotpsm.LedgerIDKey]
 	if !ok || len(respositoryID) == 0 {
-		return azerrors.WrapSystemError(azerrors.ErrServerGeneric, "server: notp stream missing repository id")
+		return azerrors.WrapSystemError(azerrors.ErrServerGeneric, "server: notp stream missing ledger id")
 	}
 
 	stateMachine, err := s.createWiredStateMachine(stream)
@@ -285,7 +285,7 @@ func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, Pa
 	}
 	bag := map[string]any{}
 	bag[azagentnotpsm.ApplicationIDKey] = applicationID[0]
-	bag[azagentnotpsm.RepositoryIDKey] = respositoryID[0]
+	bag[azagentnotpsm.LedgerIDKey] = respositoryID[0]
 	_, err = stateMachine.Run(bag, notpstatemachines.UnknownFlowType)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrServerGeneric, fmt.Sprintf("server: notp stream unhandled err %s", err.Error()))

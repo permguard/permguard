@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `checkout` command, it is possible to checkout out a remote repository locally.
+Using the `checkout` command, it is possible to checkout out a remote ledger locally.
 
 ```text
   ____                                               _
@@ -29,10 +29,10 @@ Using the `checkout` command, it is possible to checkout out a remote repository
 
 The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
-This command checks out the contents of a remote repository to the local permguard workspace.
+This command checks out the contents of a remote ledger to the local permguard workspace.
 
 Examples:
-  # check out the contents of a remote repository to the local permguard workspace
+  # check out the contents of a remote ledger to the local permguard workspace
   permguard checkout dev/268786704340/magicfarmacia
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
@@ -53,9 +53,9 @@ Global Flags:
 The output from your current version of Permguard may differ from the example provided on this page.
 {{< /callout >}}
 
-## Checkout a repository
+## Checkout a ledger
 
-The `permguard checkout` command allows you to check out a remote repository locally.
+The `permguard checkout` command allows you to check out a remote ledger locally.
 
 ```bash
 permguard checkout origin/273165098782/magicfarmacia

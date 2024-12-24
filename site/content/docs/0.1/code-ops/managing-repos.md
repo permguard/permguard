@@ -19,14 +19,14 @@ seo:
   noindex: false # false (default) or true
 ---
 
-Permguard supports multiple repositories for each remote, providing flexible management for both coding and provisioning tasks. When making changes, it is crucial to specify the remote where these changes will be pushed.
+Permguard supports multiple ledgers for each remote, providing flexible management for both coding and provisioning tasks. When making changes, it is crucial to specify the remote where these changes will be pushed.
 
-To ensure that changes are provisioned correctly, you must first check out the appropriate repository. This repository will then serve as the target for provisioning and deploying the updates.
+To ensure that changes are provisioned correctly, you must first check out the appropriate ledger. This ledger will then serve as the target for provisioning and deploying the updates.
 
-You can check out a repository using the `checkout` command:
+You can check out a ledger using the `checkout` command:
 
 ```bash
  permguard checkout dev/268786704340/magicfarmacia
 ```
 
-In this command, the first parameter is the remote, followed by the application ID, and finally the repository identifier. The format used is `<remote>/<application-id>/<repository-name>`.
+In this command, the first parameter is the remote, followed by the application ID, and finally the ledger identifier. The format used is `<remote>/<application-id>/<ledger-name>`.

@@ -22,18 +22,18 @@ import (
 
 // GrpcPAPClient is the gRPC PAP client servicer.
 type GrpcPAPClient interface {
-	// CreateRepository creates a repository.
-	CreateRepository(applicationID int64, name string) (*azmodels.Repository, error)
-	// UpdateRepository updates a repository.
-	UpdateRepository(repository *azmodels.Repository) (*azmodels.Repository, error)
-	// DeleteRepository deletes a repository.
-	DeleteRepository(applicationID int64, repositoryID string) (*azmodels.Repository, error)
-	// FetchRepositories returns all repositories.
-	FetchRepositories(page int32, pageSize int32, applicationID int64) ([]azmodels.Repository, error)
-	// FetchRepositoriesByID returns all repositories filtering by repository id.
-	FetchRepositoriesByID(page int32, pageSize int32, applicationID int64, repositoryID string) ([]azmodels.Repository, error)
-	// FetchRepositoriesByName returns all repositories filtering by name.
-	FetchRepositoriesByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Repository, error)
-	// FetchRepositoriesBy returns all repositories filtering by repository id and name.
-	FetchRepositoriesBy(page int32, pageSize int32, applicationID int64, repositoryID string, name string) ([]azmodels.Repository, error)
+	// CreateLedger creates a ledger.
+	CreateLedger(applicationID int64, name string) (*azmodels.Ledger, error)
+	// UpdateLedger updates a ledger.
+	UpdateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error)
+	// DeleteLedger deletes a ledger.
+	DeleteLedger(applicationID int64, ledgerID string) (*azmodels.Ledger, error)
+	// FetchLedgers returns all ledgers.
+	FetchLedgers(page int32, pageSize int32, applicationID int64) ([]azmodels.Ledger, error)
+	// FetchLedgersByID returns all ledgers filtering by ledger id.
+	FetchLedgersByID(page int32, pageSize int32, applicationID int64, ledgerID string) ([]azmodels.Ledger, error)
+	// FetchLedgersByName returns all ledgers filtering by name.
+	FetchLedgersByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Ledger, error)
+	// FetchLedgersBy returns all ledgers filtering by ledger id and name.
+	FetchLedgersBy(page int32, pageSize int32, applicationID int64, ledgerID string, name string) ([]azmodels.Ledger, error)
 }

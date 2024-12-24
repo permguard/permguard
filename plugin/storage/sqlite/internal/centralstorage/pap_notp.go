@@ -91,22 +91,22 @@ func (s SQLiteCentralStoragePAP) extractMetaData(ctx *notpstatemachines.HandlerC
 	if err != nil {
 		return 0, ""
 	}
-	repoID, _ := getFromHandlerContext[string](ctx, notpagstatemachines.RepositoryIDKey)
+	repoID, _ := getFromHandlerContext[string](ctx, notpagstatemachines.LedgerIDKey)
 	return applicationID, repoID
 }
 
-// readRepoFromHandlerContext reads the repository from the handler context.
-func (s SQLiteCentralStoragePAP) readRepoFromHandlerContext(handlerCtx *notpstatemachines.HandlerContext) (*azmodels.Repository, error) {
+// readRepoFromHandlerContext reads the ledger from the handler context.
+func (s SQLiteCentralStoragePAP) readRepoFromHandlerContext(handlerCtx *notpstatemachines.HandlerContext) (*azmodels.Ledger, error) {
 	applicationID, repoID := s.extractMetaData(handlerCtx)
 	fields := map[string]any{
-		azmodels.FieldRepositoryRepositoryID: repoID,
+		azmodels.FieldLedgerLedgerID: repoID,
 	}
-	repos, err := s.FetchRepositories(1, 1, applicationID, fields)
+	repos, err := s.FetchLedgers(1, 1, applicationID, fields)
 	if err != nil {
 		return nil, err
 	}
 	if len(repos) == 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: repository not found.")
+		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: ledger not found.")
 	}
 	return &repos[0], nil
 }

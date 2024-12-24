@@ -42,13 +42,13 @@ func NewRemoteServerManager(ctx *aziclicommon.CliCommandContext) (*RemoteServerM
 	}, nil
 }
 
-// GetServerRemoteRepo gets the remote repository from the server.
-func (m *RemoteServerManager) GetServerRemoteRepo(remoteInfo *azicliwkscommon.RemoteInfo, repoInfo *azicliwkscommon.RepoInfo) (*azmodels.Repository, error) {
+// GetServerRemoteRepo gets the remote ledger from the server.
+func (m *RemoteServerManager) GetServerRemoteRepo(remoteInfo *azicliwkscommon.RemoteInfo, repoInfo *azicliwkscommon.RepoInfo) (*azmodels.Ledger, error) {
 	if remoteInfo == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: remote info is nil")
 	}
 	if repoInfo == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: repository info is nil")
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: ledger info is nil")
 	}
 	appServer := fmt.Sprintf("%s:%d", remoteInfo.GetServer(), remoteInfo.GetAAPPort())
 	aapClient, err := aziclients.NewGrpcAAPClient(appServer)
@@ -66,12 +66,12 @@ func (m *RemoteServerManager) GetServerRemoteRepo(remoteInfo *azicliwkscommon.Re
 	if err != nil || srvApplications == nil || len(srvApplications) == 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: application %d does not exist", applicationID))
 	}
-	srvRepo, err := papClient.FetchRepositoriesByName(1, 1, applicationID, repo)
+	srvRepo, err := papClient.FetchLedgersByName(1, 1, applicationID, repo)
 	if err != nil || srvRepo == nil || len(srvRepo) == 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: repository %s does not exist", repo))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: ledger %s does not exist", repo))
 	}
 	if srvRepo[0].Name != repo {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: repository %s not found", repo))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: ledger %s not found", repo))
 	}
 	return &srvRepo[0], nil
 }
@@ -94,7 +94,7 @@ type NOTPClient interface {
 }
 
 // NOTPPush push objects using the NOTP protocol.
-func (m *RemoteServerManager) NOTPPush(server string, papPort int, applicationID int64, repositoryID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
+func (m *RemoteServerManager) NOTPPush(server string, papPort int, applicationID int64, ledgerID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
 	pppServer := fmt.Sprintf("%s:%d", server, papPort)
 	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
 	if err != nil {
@@ -141,11 +141,11 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, applicationID
 			return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid state %d", handlerCtx.GetCurrentStateID()))
 		}
 	}
-	return papClient.NOTPStream(hostHandler, applicationID, repositoryID, bag, notpstatemachines.PushFlowType)
+	return papClient.NOTPStream(hostHandler, applicationID, ledgerID, bag, notpstatemachines.PushFlowType)
 }
 
 // NOTPPull pull objects using the NOTP protocol.
-func (m *RemoteServerManager) NOTPPull(server string, papPort int, applicationID int64, repositoryID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
+func (m *RemoteServerManager) NOTPPull(server string, papPort int, applicationID int64, ledgerID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
 	pppServer := fmt.Sprintf("%s:%d", server, papPort)
 	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
 	if err != nil {
@@ -192,5 +192,5 @@ func (m *RemoteServerManager) NOTPPull(server string, papPort int, applicationID
 			return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid state %d", handlerCtx.GetCurrentStateID()))
 		}
 	}
-	return papClient.NOTPStream(hostHandler, applicationID, repositoryID, bag, notpstatemachines.PullFlowType)
+	return papClient.NOTPStream(hostHandler, applicationID, ledgerID, bag, notpstatemachines.PullFlowType)
 }

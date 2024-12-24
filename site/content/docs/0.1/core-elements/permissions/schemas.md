@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-In **Permguard**, multiple repositories can be created, and each of them has a single **schema**. This provides a structured method for modelling the authorization model.
+In **Permguard**, multiple ledgers can be created, and each of them has a single **schema**. This provides a structured method for modelling the authorization model.
 
 {{< callout context="note" icon="info-circle" >}}
 In the context of the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management), , the schema primarily represents two namespaces: the `platform` tenant, which serves as the master tenant capable of managing all branches, and the `pharmacy branch` tenant.

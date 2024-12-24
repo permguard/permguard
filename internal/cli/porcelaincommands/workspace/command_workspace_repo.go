@@ -29,11 +29,11 @@ import (
 )
 
 const (
-	// commandNameForWorkspacesRepo is the command name for a workspace repository.
+	// commandNameForWorkspacesRepo is the command name for a workspace ledger.
 	commandNameForWorkspacesRepo = "workspaces.repo"
 )
 
-// runECommandForRepoWorkspace runs the command for the local repository.
+// runECommandForRepoWorkspace runs the command for the local ledger.
 func runECommandForRepoWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
@@ -71,8 +71,8 @@ func runECommandForRepoWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 func CreateCommandForWorkspaceRepo(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "repo",
-		Short: `Manage repository settings and operations`,
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages repository settings and operations.`),
+		Short: `Manage ledger settings and operations`,
+		Long:  aziclicommon.BuildCliLongTemplate(`This command manages ledger settings and operations.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForRepoWorkspace(deps, cmd, v)
 		},

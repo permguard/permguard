@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `clone` command, it is possible to clone a remote repository locally.
+Using the `clone` command, it is possible to clone a remote ledger locally.
 
 ```text
   ____                                               _
@@ -29,10 +29,10 @@ Using the `clone` command, it is possible to clone a remote repository locally.
 
 The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
-This command clones a remote repository to the local permguard workspace.
+This command clones a remote ledger to the local permguard workspace.
 
 Examples:
-  # clone a remote repository to the local permguard workspace
+  # clone a remote ledger to the local permguard workspace
   permguard clone 268786704340/magicfarmacia
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
@@ -55,9 +55,9 @@ Global Flags:
 The output from your current version of Permguard may differ from the example provided on this page.
 {{< /callout >}}
 
-## Clone a repository
+## Clone a ledger
 
-The `permguard clone` command allows you to clone a remote repository locally.
+The `permguard clone` command allows you to clone a remote ledger locally.
 
 ```bash
 permguard clone permguard@localhost/273165098782/magicfarmacia
@@ -66,7 +66,7 @@ permguard clone permguard@localhost/273165098782/magicfarmacia
 output:
 
 ```bash
-Initialized empty permguard repository in 'magicfarmacia'.
+Initialized empty permguard ledger in 'magicfarmacia'.
 Remote origin has been added.
 Repo magicfarmacia has been added.
 ```

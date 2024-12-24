@@ -106,7 +106,7 @@ func NewRefInfoFromRepoName(remote string, applicationID int64, repoName string)
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid application ID")
 	}
 	if len(repoName) == 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository name")
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid ledger name")
 	}
 	return &RefInfo{
 		sourceType:    remotePrefix,

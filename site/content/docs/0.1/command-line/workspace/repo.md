@@ -18,7 +18,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-Using the `repos` command, it is possible to manage locally checked out repositories.
+Using the `repos` command, it is possible to manage locally checked out ledgers.
 
 ```text
   ____                                               _
@@ -30,7 +30,7 @@ Using the `repos` command, it is possible to manage locally checked out reposito
 
 The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
-This command manages repository settings and operations.
+This command manages ledger settings and operations.
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
 
@@ -52,7 +52,7 @@ The output from your current version of Permguard may differ from the example pr
 
 ## Get All Repos
 
-The `permguard repos` command allows for the retrieval of all locally checked out repositories.
+The `permguard repos` command allows for the retrieval of all locally checked out ledgers.
 
 ```bash
 permguard repos
@@ -61,7 +61,7 @@ permguard repos
 output:
 
 ```bash
-Your workspace configured repositories:
+Your workspace configured ledgers:
 
   - *origin/273165098782/magicfarmacia
 

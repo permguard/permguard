@@ -65,13 +65,13 @@ func GetRepoURIFromRepoInfo(repoInfo *RepoInfo) (string, error) {
 // GetRepoInfoFromURI gets the repo information from the URI.
 func GetRepoInfoFromURI(repoURI string) (*RepoInfo, error) {
 	if len(repoURI) == 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository uri")
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid ledger uri")
 	}
 	result := &RepoInfo{}
 	repoURI = strings.ToLower(repoURI)
 	items := strings.Split(repoURI, "/")
 	if len(items) < 3 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repository %s", repoURI))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid ledger %s", repoURI))
 	}
 
 	remoteName, err := SanitizeRemote(items[0])
@@ -94,7 +94,7 @@ func GetRepoInfoFromURI(repoURI string) (*RepoInfo, error) {
 	repoName := items[2]
 	err = azvalidators.ValidateName("repo", repoName)
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid repository name %s", repoName))
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid ledger name %s", repoName))
 	}
 	result.repo = repoName
 	return result, nil
@@ -103,7 +103,7 @@ func GetRepoInfoFromURI(repoURI string) (*RepoInfo, error) {
 // SanitizeRepo sanitizes the remote name.
 func SanitizeRepo(repoURI string) (string, error) {
 	if len(repoURI) == 0 {
-		return "", azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid repository uri")
+		return "", azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: invalid ledger uri")
 	}
 	repoURI = strings.ToLower(repoURI)
 	if _, err := GetRepoInfoFromURI(repoURI); err != nil {

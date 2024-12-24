@@ -32,8 +32,8 @@ func (m *ConfigManager) ExecInitialize(lang string) error {
 			ClientVersion: m.ctx.GetClientVersion(),
 			Language:      strings.ToLower(lang),
 		},
-		Remotes:      map[string]remoteConfig{},
-		Repositories: map[string]repositoryConfig{},
+		Remotes: map[string]remoteConfig{},
+		Ledgers: map[string]ledgerConfig{},
 	}
 	return m.saveConfig(false, &config)
 }
@@ -100,9 +100,9 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 	if _, ok := cfg.Remotes[remote]; !ok {
 		return output, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", remote))
 	}
-	for repository := range cfg.Repositories {
-		if cfg.Repositories[repository].Remote == remote {
-			return output, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: remote %s is used by repository %s", remote, repository))
+	for ledger := range cfg.Ledgers {
+		if cfg.Ledgers[ledger].Remote == remote {
+			return output, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: remote %s is used by ledger %s", remote, ledger))
 		}
 	}
 	cfgRemote := cfg.Remotes[remote]
@@ -174,21 +174,21 @@ func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, repo, repoID string, a
 	if err != nil {
 		return output, err
 	}
-	var cfgRepo repositoryConfig
+	var cfgRepo ledgerConfig
 	exists := false
-	for repository := range cfg.Repositories {
-		if repository == repo && cfg.Repositories[repoURI].Remote == remote {
-			cfgRepo = cfg.Repositories[repoURI]
+	for ledger := range cfg.Ledgers {
+		if ledger == repo && cfg.Ledgers[repoURI].Remote == remote {
+			cfgRepo = cfg.Ledgers[repoURI]
 			exists = true
 			break
 		}
 	}
 	if !exists {
-		for key, repo := range cfg.Repositories {
+		for key, repo := range cfg.Ledgers {
 			repo.IsHead = false
-			cfg.Repositories[key] = repo
+			cfg.Ledgers[key] = repo
 		}
-		cfgRepo = repositoryConfig{
+		cfgRepo = ledgerConfig{
 			Ref:           ref,
 			Remote:        remote,
 			ApplicationID: application,
@@ -196,7 +196,7 @@ func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, repo, repoID string, a
 			RepoID:        repoID,
 			IsHead:        true,
 		}
-		cfg.Repositories[repoURI] = cfgRepo
+		cfg.Ledgers[repoURI] = cfgRepo
 		m.saveConfig(true, cfg)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
@@ -229,18 +229,18 @@ func (m *ConfigManager) ExecListRepos(output map[string]any, out aziclicommon.Pr
 	}
 	if m.ctx.IsTerminalOutput() {
 		repos := []string{}
-		for cfgRepo := range cfg.Repositories {
+		for cfgRepo := range cfg.Ledgers {
 			cfgRepoTxt := cfgRepo
-			isHead := cfg.Repositories[cfgRepo].IsHead
+			isHead := cfg.Ledgers[cfgRepo].IsHead
 			if isHead {
 				cfgRepoTxt = fmt.Sprintf("*%s", cfgRepo)
 			}
 			repos = append(repos, cfgRepoTxt)
 		}
 		if len(repos) == 0 {
-			out(nil, "", "Your workspace doesn't have any repository configured.", nil, true)
+			out(nil, "", "Your workspace doesn't have any ledger configured.", nil, true)
 		} else {
-			out(nil, "", "Your workspace configured repositories:\n", nil, true)
+			out(nil, "", "Your workspace configured ledgers:\n", nil, true)
 			for _, repo := range repos {
 				out(nil, "", fmt.Sprintf("	- %s", aziclicommon.KeywordText(repo)), nil, true)
 			}
@@ -248,12 +248,12 @@ func (m *ConfigManager) ExecListRepos(output map[string]any, out aziclicommon.Pr
 		}
 	} else if m.ctx.IsJSONOutput() {
 		repos := []any{}
-		for cfgRepo := range cfg.Repositories {
-			isHead := cfg.Repositories[cfgRepo].IsHead
+		for cfgRepo := range cfg.Ledgers {
+			isHead := cfg.Ledgers[cfgRepo].IsHead
 			repoObj := map[string]any{
-				"ref":      cfg.Repositories[cfgRepo].Ref,
+				"ref":      cfg.Ledgers[cfgRepo].Ref,
 				"repo_uri": cfgRepo,
-				"repo_id":  cfg.Repositories[cfgRepo].RepoID,
+				"repo_id":  cfg.Ledgers[cfgRepo].RepoID,
 				"is_head":  isHead,
 			}
 			repos = append(repos, repoObj)

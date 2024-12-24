@@ -72,7 +72,7 @@ mainSections = ["docs"]
   imageList = true # true (default) or false
   imageSingle = true # true (default) or false
 
-  # Repository
+  # Ledger
   editPage = false # false (default) or true
   lastMod = false # false (default) or true
   repoHost = "GitHub" # GitHub (default), Gitea, GitLab, Bitbucket, or BitbucketServer

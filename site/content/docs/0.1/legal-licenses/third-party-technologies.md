@@ -52,7 +52,7 @@ All trademarks, logos, trade names, and intellectual property mentioned on this 
 - **Disclaimer**:
   **Permguard Project** is not affiliated with, endorsed, or sponsored by Amazon Web Services, Inc. (AWS) or its affiliates. Any references to Cedar are purely technical and should not imply any form of partnership or endorsement by AWS. This disclaimer also applies to **Nitro Agility** and all contributors to the **Permguard Project**.
 
-For more information, you can view Cedar's licensing and documentation on the [official repository](https://github.com/cedar-policy/cedar) and its [official site](https://www.cedarpolicy.com/en).
+For more information, you can view Cedar's licensing and documentation on the [official ledger](https://github.com/cedar-policy/cedar) and its [official site](https://www.cedarpolicy.com/en).
 
 ---
 

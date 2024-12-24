@@ -26,33 +26,33 @@ import (
 )
 
 const (
-	// commandNameForRepositoriesUpdate is the command name for repositories update.
-	commandNameForRepositoriesUpdate = "repositories.update"
+	// commandNameForLedgersUpdate is the command name for ledgers update.
+	commandNameForLedgersUpdate = "ledgers.update"
 )
 
-// runECommandForUpdateRepository runs the command for creating a repository.
-func runECommandForUpdateRepository(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	return runECommandForUpsertRepository(deps, cmd, v, commandNameForRepositoriesUpdate, false)
+// runECommandForUpdateLedger runs the command for creating a ledger.
+func runECommandForUpdateLedger(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	return runECommandForUpsertLedger(deps, cmd, v, commandNameForLedgersUpdate, false)
 }
 
-// createCommandForRepositoryUpdate creates a command for managing repositoryupdate.
-func createCommandForRepositoryUpdate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+// createCommandForLedgerUpdate creates a command for managing ledgerupdate.
+func createCommandForLedgerUpdate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
-		Short: "Update a remote repository",
-		Long: aziclicommon.BuildCliLongTemplate(`This command updates a remote repository.
+		Short: "Update a remote ledger",
+		Long: aziclicommon.BuildCliLongTemplate(`This command updates a remote ledger.
 
 Examples:
-  # update a repository and output the result in json format
-  permguard authz repos update --application 268786704340 --repositoryid 668f3771eacf4094ba8a80942ea5fd3f --name v1.1 --output json
+  # update a ledger and output the result in json format
+  permguard authz repos update --application 268786704340 --ledgerid 668f3771eacf4094ba8a80942ea5fd3f --name v1.1 --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForUpdateRepository(deps, cmd, v)
+			return runECommandForUpdateLedger(deps, cmd, v)
 		},
 	}
-	command.Flags().String(flagRepositoryID, "", "specify the ID of the repository to update")
-	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesUpdate, flagRepositoryID), command.Flags().Lookup(flagRepositoryID))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the new name for the repository")
-	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesUpdate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	command.Flags().String(flagLedgerID, "", "specify the ID of the ledger to update")
+	v.BindPFlag(azoptions.FlagName(commandNameForLedgersUpdate, flagLedgerID), command.Flags().Lookup(flagLedgerID))
+	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the new name for the ledger")
+	v.BindPFlag(azoptions.FlagName(commandNameForLedgersUpdate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

@@ -93,9 +93,9 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out aziclicommon.P
 	}
 	var msg string
 	if firstInit {
-		msg = fmt.Sprintf("Initialized empty permguard repository in '%s'.", aziclicommon.FileText(m.getHomeDir()))
+		msg = fmt.Sprintf("Initialized empty permguard ledger in '%s'.", aziclicommon.FileText(m.getHomeDir()))
 	} else {
-		msg = fmt.Sprintf("Reinitialized existing permguard repository in '%s'.", aziclicommon.FileText(m.getHomeDir()))
+		msg = fmt.Sprintf("Reinitialized existing permguard ledger in '%s'.", aziclicommon.FileText(m.getHomeDir()))
 	}
 	out(nil, "", msg, nil, true)
 	output = map[string]any{}
@@ -213,10 +213,10 @@ func (m *WorkspaceManager) ExecListRemotes(out aziclicommon.PrinterOutFunc) (map
 	return output, err
 }
 
-// ExecListRepos lists the repositories.
+// ExecListRepos lists the ledgers.
 func (m *WorkspaceManager) ExecListRepos(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to list repositories.", nil, true)
+		out(nil, "", "Failed to list ledgers.", nil, true)
 		return output, err
 	}
 	output := m.ExecPrintContext(nil, out)

@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `plan` command, it is possible to  generate a plan of changes to apply to the remote repository based on the differences between the local and remote states.
+Using the `plan` command, it is possible to  generate a plan of changes to apply to the remote ledger based on the differences between the local and remote states.
 
 ```text
   ____                                               _
@@ -29,10 +29,10 @@ Using the `plan` command, it is possible to  generate a plan of changes to apply
 
 The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
-This command generates a plan of changes to apply to the remote repository based on the differences between the local and remote states.
+This command generates a plan of changes to apply to the remote ledger based on the differences between the local and remote states.
 
 Examples:
-  # generate a plan of changes to apply to the remote repository based on the differences between the local and remote states
+  # generate a plan of changes to apply to the remote ledger based on the differences between the local and remote states
   permguard plan
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
@@ -55,7 +55,7 @@ The output from your current version of Permguard may differ from the example pr
 
 ## Plan the local state
 
-The `permguard plan` command allows you to generate a plan of changes to apply to the remote repository based on the differences between the local and remote states.
+The `permguard plan` command allows you to generate a plan of changes to apply to the remote ledger based on the differences between the local and remote states.
 
 ```bash
 permguard plan
@@ -64,13 +64,13 @@ permguard plan
 output:
 
 ```bash
-Initiating the planning process for repository head/676095239339/fd1ac44e4afa4fc4beec622494d3175a.
+Initiating the planning process for ledger head/676095239339/fd1ac44e4afa4fc4beec622494d3175a.
 Planning process completed successfully.
 The following changes have been identified and are ready to be applied:
 
-	+ 8a169320102ba429b4f7c0a5a9cde6e9bf2ace6335af3b57b11970718c05aa80 view-branch-inventory-auditor
-	+ 2597a54653b09188bf613a24e6a64100a1b14612ffed3bd8558dfc24dd63a34f assign-role-branch
-	+ 007867724d1aa801216d92d8d08ed2269a55e495575aceb1f46cded8594159ee schema
+  + 8a169320102ba429b4f7c0a5a9cde6e9bf2ace6335af3b57b11970718c05aa80 view-branch-inventory-auditor
+  + 2597a54653b09188bf613a24e6a64100a1b14612ffed3bd8558dfc24dd63a34f assign-role-branch
+  + 007867724d1aa801216d92d8d08ed2269a55e495575aceb1f46cded8594159ee schema
 
 unchanged 0, created 3, modified 0, deleted 0
 

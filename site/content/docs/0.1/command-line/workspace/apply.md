@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `apply` command, it is possible to apply the plan to the remote repository.
+Using the `apply` command, it is possible to apply the plan to the remote ledger.
 
 ```text
   ____                                               _
@@ -29,10 +29,10 @@ Using the `apply` command, it is possible to apply the plan to the remote reposi
 
 The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
-This command applies the plan to the remote repository.
+This command applies the plan to the remote ledger.
 
 Examples:
-  # apply the plan to the remote repository
+  # apply the plan to the remote ledger
   permguard apply
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
@@ -55,7 +55,7 @@ The output from your current version of Permguard may differ from the example pr
 
 ## Apply the local state
 
-The `permguard apply` command allows you to apply the plan to the remote repository.
+The `permguard apply` command allows you to apply the plan to the remote ledger.
 
 ```bash
 permguard apply
@@ -64,7 +64,7 @@ permguard apply
 output:
 
 ```bash
-Initiating the planning process for repository head/676095239339/fd1ac44e4afa4fc4beec622494d3175a.
+Initiating the planning process for ledger head/676095239339/fd1ac44e4afa4fc4beec622494d3175a.
 Planning process completed successfully.
 The following changes have been identified and are ready to be applied:
 
@@ -75,9 +75,9 @@ The following changes have been identified and are ready to be applied:
 
 unchanged 2, created 1, modified 0, deleted 1
 
-Initiating the apply process for repository head/676095239339/fd1ac44e4afa4fc4beec622494d3175a.
+Initiating the apply process for ledger head/676095239339/fd1ac44e4afa4fc4beec622494d3175a.
 Apply process completed successfully.
-Your workspace is synchronized with the remote repository: head/676095239339/fd1ac44e4afa4fc4beec622494d3175a.
+Your workspace is synchronized with the remote ledger: head/676095239339/fd1ac44e4afa4fc4beec622494d3175a.
 ```
 
 <details>

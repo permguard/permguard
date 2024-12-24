@@ -29,12 +29,12 @@ import (
 )
 
 const (
-	// commandNameForRepositoriesList is the command name for repositories list.
-	commandNameForRepositoriesList = "repositories.list"
+	// commandNameForLedgersList is the command name for ledgers list.
+	commandNameForLedgersList = "ledgers.list"
 )
 
-// runECommandForListRepositories runs the command for creating a repository.
-func runECommandForListRepositories(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+// runECommandForListLedgers runs the command for creating a ledger.
+func runECommandForListLedgers(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -46,15 +46,15 @@ func runECommandForListRepositories(deps azcli.CliDependenciesProvider, cmd *cob
 		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	page := v.GetInt32(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonPage))
-	pageSize := v.GetInt32(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonPageSize))
-	applicationID := v.GetInt64(azoptions.FlagName(commandNameForRepository, aziclicommon.FlagCommonApplicationID))
-	repositoryID := v.GetString(azoptions.FlagName(commandNameForRepositoriesList, flagRepositoryID))
-	name := v.GetString(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonName))
-	repositories, err := client.FetchRepositoriesBy(page, pageSize, applicationID, repositoryID, name)
+	page := v.GetInt32(azoptions.FlagName(commandNameForLedgersList, aziclicommon.FlagCommonPage))
+	pageSize := v.GetInt32(azoptions.FlagName(commandNameForLedgersList, aziclicommon.FlagCommonPageSize))
+	applicationID := v.GetInt64(azoptions.FlagName(commandNameForLedger, aziclicommon.FlagCommonApplicationID))
+	ledgerID := v.GetString(azoptions.FlagName(commandNameForLedgersList, flagLedgerID))
+	name := v.GetString(azoptions.FlagName(commandNameForLedgersList, aziclicommon.FlagCommonName))
+	ledgers, err := client.FetchLedgersBy(page, pageSize, applicationID, ledgerID, name)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to list repositories.")
+			printer.Println("Failed to list ledgers.")
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}
@@ -63,44 +63,44 @@ func runECommandForListRepositories(deps azcli.CliDependenciesProvider, cmd *cob
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
-		for _, repository := range repositories {
-			repositoryID := repository.RepositoryID
-			repositoryName := repository.Name
-			output[repositoryID] = repositoryName
+		for _, ledger := range ledgers {
+			ledgerID := ledger.LedgerID
+			ledgerName := ledger.Name
+			output[ledgerID] = ledgerName
 		}
 	} else if ctx.IsJSONOutput() {
-		output["repositories"] = repositories
+		output["ledgers"] = ledgers
 	}
 	printer.PrintlnMap(output)
 	return nil
 }
 
-// createCommandForRepositoryList creates a command for managing repositorylist.
-func createCommandForRepositoryList(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+// createCommandForLedgerList creates a command for managing ledgerlist.
+func createCommandForLedgerList(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
-		Short: "List remote repositories",
-		Long: aziclicommon.BuildCliLongTemplate(`This command lists all remote repositories.
+		Short: "List remote ledgers",
+		Long: aziclicommon.BuildCliLongTemplate(`This command lists all remote ledgers.
 
 Examples:
-  # list all repositories and output in json format
+  # list all ledgers and output in json format
   permguard authz repos list --application 268786704340 --output json
-  # list all repositories filtered by name
+  # list all ledgers filtered by name
   permguard authz repos list --application 268786704340 --name v1
-  # list all repositories filtered by repository id
-  permguard authz repos list --application 268786704340 --repositoryid 668f3771eacf4094ba8a80942ea5fd3f
+  # list all ledgers filtered by ledger id
+  permguard authz repos list --application 268786704340 --ledgerid 668f3771eacf4094ba8a80942ea5fd3f
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForListRepositories(deps, cmd, v)
+			return runECommandForListLedgers(deps, cmd, v)
 		},
 	}
 	command.Flags().Int32P(aziclicommon.FlagCommonPage, aziclicommon.FlagCommonPageShort, 1, "specify the page number for paginated results")
-	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonPage), command.Flags().Lookup(aziclicommon.FlagCommonPage))
+	v.BindPFlag(azoptions.FlagName(commandNameForLedgersList, aziclicommon.FlagCommonPage), command.Flags().Lookup(aziclicommon.FlagCommonPage))
 	command.Flags().Int32P(aziclicommon.FlagCommonPageSize, aziclicommon.FlagCommonPageSizeShort, 1000, "specify the number of results per page")
-	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonPageSize), command.Flags().Lookup(aziclicommon.FlagCommonPageSize))
-	command.Flags().String(flagRepositoryID, "", "filter results by repository id")
-	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesList, flagRepositoryID), command.Flags().Lookup(flagRepositoryID))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "filter results by repository name")
-	v.BindPFlag(azoptions.FlagName(commandNameForRepositoriesList, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	v.BindPFlag(azoptions.FlagName(commandNameForLedgersList, aziclicommon.FlagCommonPageSize), command.Flags().Lookup(aziclicommon.FlagCommonPageSize))
+	command.Flags().String(flagLedgerID, "", "filter results by ledger id")
+	v.BindPFlag(azoptions.FlagName(commandNameForLedgersList, flagLedgerID), command.Flags().Lookup(flagLedgerID))
+	command.Flags().String(aziclicommon.FlagCommonName, "", "filter results by ledger name")
+	v.BindPFlag(azoptions.FlagName(commandNameForLedgersList, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command
 }

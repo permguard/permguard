@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `pull` command, it is possible to fetch the latest changes from the remote repository and construct the remote state.
+Using the `pull` command, it is possible to fetch the latest changes from the remote ledger and construct the remote state.
 
 ```text
   ____                                               _
@@ -29,10 +29,10 @@ Using the `pull` command, it is possible to fetch the latest changes from the re
 
 The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
-This command fetches the latest changes from the remote repository and constructs the remote state.
+This command fetches the latest changes from the remote ledger and constructs the remote state.
 
 Examples:
-  # fetches the latest changes from the remote repository and constructs the remote state
+  # fetches the latest changes from the remote ledger and constructs the remote state
   permguard pull
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
@@ -53,9 +53,9 @@ Global Flags:
 The output from your current version of Permguard may differ from the example provided on this page.
 {{< /callout >}}
 
-## Pull a repository
+## Pull a ledger
 
-The `permguard pull` command allows you to fetch the latest changes from the remote repository and construct the remote state.
+The `permguard pull` command allows you to fetch the latest changes from the remote ledger and construct the remote state.
 
 ```bash
 permguard pull
@@ -64,9 +64,9 @@ permguard pull
 output:
 
 ```bash
-The local workspace is already fully up to date with the remote repository.
+The local workspace is already fully up to date with the remote ledger.
 Pull process completed successfully.
-Your workspace is synchronized with the remote repository: head/273165098782/9b3de5272b0447f2a8d1024937bdef11.
+Your workspace is synchronized with the remote ledger: head/273165098782/9b3de5272b0447f2a8d1024937bdef11.
 ```
 
 <details>

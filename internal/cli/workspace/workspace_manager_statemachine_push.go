@@ -31,7 +31,7 @@ import (
 func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
-		wksCtx.outFunc("notp-push", "Advertising - Initiating repository state notification.", true)
+		wksCtx.outFunc("notp-push", "Advertising - Initiating ledger state notification.", true)
 	}
 	handlerCtx.Set(CommittedKey, false)
 	localCommitObj, _ := getFromHandlerContext[*azlangobjs.Object](handlerCtx, LocalCodeCommitObjectKey)
@@ -49,7 +49,7 @@ func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemac
 func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
-		wksCtx.outFunc("notp-push", "Advertising - Processing response to repository state notification.", true)
+		wksCtx.outFunc("notp-push", "Advertising - Processing response to ledger state notification.", true)
 	}
 	localRefSPacket := &notpagpackets.LocalRefStatePacket{}
 	err := notppackets.ConvertPacketable(packets[0], localRefSPacket)
@@ -64,7 +64,7 @@ func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *no
 		return handlerReturn, nil
 	}
 	if localRefSPacket.HasConflicts {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, "workspace: conflicts detected in the remote repository.")
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, "workspace: conflicts detected in the remote ledger.")
 	}
 	handlerCtx.Set(RemoteCommitIDKey, localRefSPacket.RefCommit)
 	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)

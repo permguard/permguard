@@ -22,7 +22,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Facade is the central storage repository.
+// Facade is the central storage ledger.
 type Facade struct {
 }
 

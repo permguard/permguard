@@ -29,7 +29,7 @@ import (
 func (m *WorkspaceManager) OnPullSendRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
-		wksCtx.outFunc("notp-pull", "Advertising - Initiating request for repository state.", true)
+		wksCtx.outFunc("notp-pull", "Advertising - Initiating request for ledger state.", true)
 	}
 	handlerCtx.Set(CommittedKey, false)
 	packet := &notpagpackets.RemoteRefStatePacket{
@@ -47,7 +47,7 @@ func (m *WorkspaceManager) OnPullSendRequestCurrentState(handlerCtx *notpstatema
 func (m *WorkspaceManager) OnPullHandleRequestCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
-		wksCtx.outFunc("notp-pull", "Advertising - Processing response for repository state request.", true)
+		wksCtx.outFunc("notp-pull", "Advertising - Processing response for ledger state request.", true)
 	}
 	localRefSPacket := &notpagpackets.LocalRefStatePacket{}
 	err := notppackets.ConvertPacketable(packets[0], localRefSPacket)
@@ -63,7 +63,7 @@ func (m *WorkspaceManager) OnPullHandleRequestCurrentStateResponse(handlerCtx *n
 		return handlerReturn, nil
 	}
 	if localRefSPacket.HasConflicts {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, "workspace: conflicts detected in the remote repository.")
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, "workspace: conflicts detected in the remote ledger.")
 	}
 	handlerCtx.Set(RemoteCommitIDKey, localRefSPacket.RefCommit)
 	handlerCtx.Set(RemoteCommitsCountKey, localRefSPacket.NumberOfCommits)

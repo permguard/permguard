@@ -25,11 +25,11 @@ AuthZ administration is handled exclusively through the CLI, while AuthZ adminis
 
 The authorization process follows a code-first approach, and when dealing with Schemas and Policies, the CLI should be executed from a permguard workspace that contains configuration files written in Cedar.
 
-There are three methods to create a permguard workspace and associate it with a Permguard repository:
+There are three methods to create a permguard workspace and associate it with a Permguard ledger:
 
-- Initialize a new repository in a permguard workspace
-- Clone an existing repository into a permguard workspace
-- Fork an existing repository into a working direct.
+- Initialize a new ledger in a permguard workspace
+- Clone an existing ledger into a permguard workspace
+- Fork an existing ledger into a working direct.
 
 ## Workspace
 
@@ -38,7 +38,7 @@ A **Permguard** workspace contains the following files:
 - Policy files in `Cedar` language.
 - A hidden `.permguard` directory which Permguard uses to store metadata and intermediate files that are automatically managed by Permguard and should not be modified manually. This directory should be added to the `.gitignore` file to prevent it from being committed to the source code version control.
 
-## Initialize a new repository
+## Initialize a new ledger
 
 When starting a new project, the first step is to create an application:
 
@@ -56,12 +56,12 @@ permguard applications create --name magicfarmacia-dev --output json
 }
 ```
 
-Next, create a repository:
+Next, create a ledger:
 
 ```bash
 permguard authz  repos create --application 268786704340  --name magicfarmacia --output json
 {
-  "repositories": [
+  "ledgers": [
     {
       "repo_id": "668f3771eacf4094ba8a80942ea5fd3f",
       "created_at": "2024-08-25T14:50:38.003Z",
@@ -81,11 +81,11 @@ Finally, initialize the workspace and associate it with a Permguard `remote` ser
  permguard checkout dev/268786704340/magicfarmacia
 ```
 
-## Clone an existing repository
+## Clone an existing ledger
 
-There are advanced cases where a Permguard repository has already been created and it is required to recovery the configuration files to a local permguard workspace.
+There are advanced cases where a Permguard ledger has already been created and it is required to recovery the configuration files to a local permguard workspace.
 
-In this case, it is just necessary to clone the Permguard repository:
+In this case, it is just necessary to clone the Permguard ledger:
 
 ```bash
  permguard clone permguard@server.permguard.com/268786704340/magicfarmacia

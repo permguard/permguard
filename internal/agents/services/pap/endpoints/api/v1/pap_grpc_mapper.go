@@ -22,26 +22,26 @@ import (
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 )
 
-func MapGrpcRepositoryResponseToAgentRepository(repository *RepositoryResponse) (*azmodels.Repository, error) {
-	return &azmodels.Repository{
-		RepositoryID:  repository.RepositoryID,
-		CreatedAt:     repository.CreatedAt.AsTime(),
-		UpdatedAt:     repository.UpdatedAt.AsTime(),
-		ApplicationID: repository.ApplicationID,
-		Name:          repository.Name,
-		Ref:           repository.Ref,
+func MapGrpcLedgerResponseToAgentLedger(ledger *LedgerResponse) (*azmodels.Ledger, error) {
+	return &azmodels.Ledger{
+		LedgerID:      ledger.LedgerID,
+		CreatedAt:     ledger.CreatedAt.AsTime(),
+		UpdatedAt:     ledger.UpdatedAt.AsTime(),
+		ApplicationID: ledger.ApplicationID,
+		Name:          ledger.Name,
+		Ref:           ledger.Ref,
 	}, nil
 }
 
-// MapAgentRepositoryToGrpcRepositoryResponse maps the agent repository to the gRPC repository.
-func MapAgentRepositoryToGrpcRepositoryResponse(repository *azmodels.Repository) (*RepositoryResponse, error) {
-	return &RepositoryResponse{
-		RepositoryID:  repository.RepositoryID,
-		CreatedAt:     timestamppb.New(repository.CreatedAt),
-		UpdatedAt:     timestamppb.New(repository.UpdatedAt),
-		ApplicationID: repository.ApplicationID,
-		Name:          repository.Name,
-		Ref:           repository.Ref,
+// MapAgentLedgerToGrpcLedgerResponse maps the agent ledger to the gRPC ledger.
+func MapAgentLedgerToGrpcLedgerResponse(ledger *azmodels.Ledger) (*LedgerResponse, error) {
+	return &LedgerResponse{
+		LedgerID:      ledger.LedgerID,
+		CreatedAt:     timestamppb.New(ledger.CreatedAt),
+		UpdatedAt:     timestamppb.New(ledger.UpdatedAt),
+		ApplicationID: ledger.ApplicationID,
+		Name:          ledger.Name,
+		Ref:           ledger.Ref,
 	}, nil
 }
 

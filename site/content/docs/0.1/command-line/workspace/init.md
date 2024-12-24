@@ -64,7 +64,7 @@ permguard init
 output:
 
 ```bash
-Initialized empty permguard repository in '.'.
+Initialized empty permguard ledger in '.'.
 ```
 
 <details>
