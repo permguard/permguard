@@ -42,12 +42,12 @@ func NewRemoteServerManager(ctx *aziclicommon.CliCommandContext) (*RemoteServerM
 	}, nil
 }
 
-// GetServerRemoteRepo gets the remote ledger from the server.
-func (m *RemoteServerManager) GetServerRemoteRepo(remoteInfo *azicliwkscommon.RemoteInfo, repoInfo *azicliwkscommon.RepoInfo) (*azmodels.Ledger, error) {
+// GetServerRemoteLedger gets the remote ledger from the server.
+func (m *RemoteServerManager) GetServerRemoteLedger(remoteInfo *azicliwkscommon.RemoteInfo, ledgerInfo *azicliwkscommon.LedgerInfo) (*azmodels.Ledger, error) {
 	if remoteInfo == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: remote info is nil")
 	}
-	if repoInfo == nil {
+	if ledgerInfo == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: ledger info is nil")
 	}
 	appServer := fmt.Sprintf("%s:%d", remoteInfo.GetServer(), remoteInfo.GetAAPPort())
@@ -60,20 +60,20 @@ func (m *RemoteServerManager) GetServerRemoteRepo(remoteInfo *azicliwkscommon.Re
 	if err != nil {
 		return nil, err
 	}
-	applicationID := repoInfo.GetApplicationID()
-	ledger := repoInfo.GetRepo()
+	applicationID := ledgerInfo.GetApplicationID()
+	ledger := ledgerInfo.GetLedger()
 	srvApplications, err := aapClient.FetchApplicationsByID(1, 1, applicationID)
 	if err != nil || srvApplications == nil || len(srvApplications) == 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: application %d does not exist", applicationID))
 	}
-	srvRepo, err := papClient.FetchLedgersByName(1, 1, applicationID, ledger)
-	if err != nil || srvRepo == nil || len(srvRepo) == 0 {
+	srvLedger, err := papClient.FetchLedgersByName(1, 1, applicationID, ledger)
+	if err != nil || srvLedger == nil || len(srvLedger) == 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: ledger %s does not exist", ledger))
 	}
-	if srvRepo[0].Name != ledger {
+	if srvLedger[0].Name != ledger {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: ledger %s not found", ledger))
 	}
-	return &srvRepo[0], nil
+	return &srvLedger[0], nil
 }
 
 // NOTPClient is the interface for the NOTP client.

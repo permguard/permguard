@@ -18,11 +18,11 @@ package centralstorage
 
 import (
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
+	azifacade "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 )
 
 // mapApplicationToAgentApplication maps an Application to a model Application.
-func mapApplicationToAgentApplication(application *azirepos.Application) (*azmodels.Application, error) {
+func mapApplicationToAgentApplication(application *azifacade.Application) (*azmodels.Application, error) {
 	return &azmodels.Application{
 		ApplicationID: application.ApplicationID,
 		CreatedAt:     application.CreatedAt,

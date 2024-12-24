@@ -26,7 +26,7 @@ import (
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
+	azifacade "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 )
 
 // TestCreateLedgerWithErrors tests the CreateLedger function with errors.
@@ -88,9 +88,9 @@ func TestCreateLedgerWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLitePAPCentralStorageWithMocks()
 
-	dbOutLedger := &azirepos.Ledger{
+	dbOutLedger := &azifacade.Ledger{
 		ApplicationID: 232956849236,
-		LedgerID:      azirepos.GenerateUUID(),
+		LedgerID:      azifacade.GenerateUUID(),
 		Name:          "rent-a-car1",
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
@@ -170,9 +170,9 @@ func TestUpdateLedgerWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLitePAPCentralStorageWithMocks()
 
-	dbOutLedger := &azirepos.Ledger{
+	dbOutLedger := &azifacade.Ledger{
 		ApplicationID: 232956849236,
-		LedgerID:      azirepos.GenerateUUID(),
+		LedgerID:      azifacade.GenerateUUID(),
 		Name:          "rent-a-car1",
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
@@ -227,8 +227,8 @@ func TestDeleteLedgerWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inLedgerID := azirepos.GenerateUUID()
-		outLedgers, err := storage.DeleteLedger(azirepos.GenerateApplicationID(), inLedgerID)
+		inLedgerID := azifacade.GenerateUUID()
+		outLedgers, err := storage.DeleteLedger(azifacade.GenerateApplicationID(), inLedgerID)
 		assert.Nil(outLedgers, "ledgers should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
@@ -245,9 +245,9 @@ func TestDeleteLedgerWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLitePAPCentralStorageWithMocks()
 
-	dbOutLedger := &azirepos.Ledger{
+	dbOutLedger := &azifacade.Ledger{
 		ApplicationID: 232956849236,
-		LedgerID:      azirepos.GenerateUUID(),
+		LedgerID:      azifacade.GenerateUUID(),
 		Name:          "rent-a-car1",
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
@@ -258,8 +258,8 @@ func TestDeleteLedgerWithSuccess(t *testing.T) {
 	mockSQLRepo.On("DeleteLedger", mock.Anything, mock.Anything, mock.Anything).Return(dbOutLedger, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inLedgerID := azirepos.GenerateUUID()
-	outLedgers, err := storage.DeleteLedger(azirepos.GenerateApplicationID(), inLedgerID)
+	inLedgerID := azifacade.GenerateUUID()
+	outLedgers, err := storage.DeleteLedger(azifacade.GenerateApplicationID(), inLedgerID)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outLedgers, "ledgers should not be nil")
 	assert.Equal(dbOutLedger.LedgerID, outLedgers.LedgerID, "ledger id should be equal")
@@ -328,17 +328,17 @@ func TestFetchLedgerWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLitePAPCentralStorageWithMocks()
 
-	dbOutLedgers := []azirepos.Ledger{
+	dbOutLedgers := []azifacade.Ledger{
 		{
 			ApplicationID: 232956849236,
-			LedgerID:      azirepos.GenerateUUID(),
+			LedgerID:      azifacade.GenerateUUID(),
 			Name:          "rent-a-car1",
 			CreatedAt:     time.Now(),
 			UpdatedAt:     time.Now(),
 		},
 		{
 			ApplicationID: 232956849236,
-			LedgerID:      azirepos.GenerateUUID(),
+			LedgerID:      azifacade.GenerateUUID(),
 			Name:          "rent-a-car2",
 			CreatedAt:     time.Now(),
 			UpdatedAt:     time.Now(),
@@ -348,7 +348,7 @@ func TestFetchLedgerWithSuccess(t *testing.T) {
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLRepo.On("FetchLedgers", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutLedgers, nil)
 
-	outLedgers, err := storage.FetchLedgers(1, 100, 232956849236, map[string]any{azmodels.FieldLedgerLedgerID: azirepos.GenerateUUID(), azmodels.FieldLedgerName: "rent-a-car2"})
+	outLedgers, err := storage.FetchLedgers(1, 100, 232956849236, map[string]any{azmodels.FieldLedgerLedgerID: azifacade.GenerateUUID(), azmodels.FieldLedgerName: "rent-a-car2"})
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outLedgers, "ledgers should not be nil")
 	assert.Equal(len(outLedgers), len(dbOutLedgers), "ledgers and dbLedgers should have the same length")

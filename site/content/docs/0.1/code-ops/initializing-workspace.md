@@ -63,7 +63,7 @@ permguard authz  ledgers create --application 268786704340  --name magicfarmacia
 {
   "ledgers": [
     {
-      "repo_id": "668f3771eacf4094ba8a80942ea5fd3f",
+      "ledger_id": "668f3771eacf4094ba8a80942ea5fd3f",
       "created_at": "2024-08-25T14:50:38.003Z",
       "updated_at": "2024-08-25T14:50:38.003Z",
       "application_id": 268786704340,

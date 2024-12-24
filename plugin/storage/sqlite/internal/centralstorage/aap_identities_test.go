@@ -26,7 +26,7 @@ import (
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
+	azifacade "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 )
 
 // TestCreateIdentityWithErrors tests the CreateIdentity function with errors.
@@ -90,10 +90,10 @@ func TestCreateIdentityWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
-	dbOutIdentity := &azirepos.Identity{
-		IdentityID:       azirepos.GenerateUUID(),
+	dbOutIdentity := &azifacade.Identity{
+		IdentityID:       azifacade.GenerateUUID(),
 		ApplicationID:    581616507495,
-		IdentitySourceID: azirepos.GenerateUUID(),
+		IdentitySourceID: azifacade.GenerateUUID(),
 		Kind:             1,
 		Name:             "nicola.gallo",
 		CreatedAt:        time.Now(),
@@ -178,10 +178,10 @@ func TestUpdateIdentityWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
-	dbOutIdentity := &azirepos.Identity{
-		IdentityID:       azirepos.GenerateUUID(),
+	dbOutIdentity := &azifacade.Identity{
+		IdentityID:       azifacade.GenerateUUID(),
 		ApplicationID:    581616507495,
-		IdentitySourceID: azirepos.GenerateUUID(),
+		IdentitySourceID: azifacade.GenerateUUID(),
 		Kind:             1,
 		Name:             "nicola.gallo",
 		CreatedAt:        time.Now(),
@@ -239,8 +239,8 @@ func TestDeleteIdentityWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inIdentityID := azirepos.GenerateUUID()
-		outIdentities, err := storage.DeleteIdentity(azirepos.GenerateApplicationID(), inIdentityID)
+		inIdentityID := azifacade.GenerateUUID()
+		outIdentities, err := storage.DeleteIdentity(azifacade.GenerateApplicationID(), inIdentityID)
 		assert.Nil(outIdentities, "identities should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
@@ -257,10 +257,10 @@ func TestDeleteIdentityWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteAAPCentralStorageWithMocks()
 
-	dbOutIdentity := &azirepos.Identity{
-		IdentityID:       azirepos.GenerateUUID(),
+	dbOutIdentity := &azifacade.Identity{
+		IdentityID:       azifacade.GenerateUUID(),
 		ApplicationID:    581616507495,
-		IdentitySourceID: azirepos.GenerateUUID(),
+		IdentitySourceID: azifacade.GenerateUUID(),
 		Kind:             1,
 		Name:             "nicola.gallo",
 		CreatedAt:        time.Now(),
@@ -272,8 +272,8 @@ func TestDeleteIdentityWithSuccess(t *testing.T) {
 	mockSQLRepo.On("DeleteIdentity", mock.Anything, mock.Anything, mock.Anything).Return(dbOutIdentity, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inIdentityID := azirepos.GenerateUUID()
-	outIdentities, err := storage.DeleteIdentity(azirepos.GenerateApplicationID(), inIdentityID)
+	inIdentityID := azifacade.GenerateUUID()
+	outIdentities, err := storage.DeleteIdentity(azifacade.GenerateApplicationID(), inIdentityID)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outIdentities, "identities should not be nil")
 	assert.Equal(dbOutIdentity.IdentityID, outIdentities.IdentityID, "identity id should be equal")
@@ -342,20 +342,20 @@ func TestFetchIdentityWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 
-	dbOutIdentities := []azirepos.Identity{
+	dbOutIdentities := []azifacade.Identity{
 		{
-			IdentityID:       azirepos.GenerateUUID(),
+			IdentityID:       azifacade.GenerateUUID(),
 			ApplicationID:    232956849236,
-			IdentitySourceID: azirepos.GenerateUUID(),
+			IdentitySourceID: azifacade.GenerateUUID(),
 			Kind:             1,
 			Name:             "nicola.gallo",
 			CreatedAt:        time.Now(),
 			UpdatedAt:        time.Now(),
 		},
 		{
-			IdentityID:       azirepos.GenerateUUID(),
+			IdentityID:       azifacade.GenerateUUID(),
 			ApplicationID:    232956849236,
-			IdentitySourceID: azirepos.GenerateUUID(),
+			IdentitySourceID: azifacade.GenerateUUID(),
 			Kind:             1,
 			Name:             "francesco.gallo",
 			CreatedAt:        time.Now(),
@@ -366,7 +366,7 @@ func TestFetchIdentityWithSuccess(t *testing.T) {
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLRepo.On("FetchIdentities", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutIdentities, nil)
 
-	outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]any{azmodels.FieldIdentityIdentityID: azirepos.GenerateUUID(), azmodels.FieldIdentityName: "rent-a-car2"})
+	outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]any{azmodels.FieldIdentityIdentityID: azifacade.GenerateUUID(), azmodels.FieldIdentityName: "rent-a-car2"})
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outIdentities, "identities should not be nil")
 	assert.Equal(len(outIdentities), len(dbOutIdentities), "identities and dbIdentities should have the same length")

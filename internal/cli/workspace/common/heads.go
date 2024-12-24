@@ -42,5 +42,5 @@ func (i *HeadInfo) GetRef() string {
 
 // GetRefInfo returns the ref information.
 func (i *HeadInfo) GetRefInfo() (*RefInfo, error) {
-	return ConvertStringWithRepoIDToRefInfo(i.GetRef())
+	return ConvertStringWithLedgerIDToRefInfo(i.GetRef())
 }

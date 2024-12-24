@@ -102,31 +102,31 @@ func (m *ConfigManager) GetRemoteInfo(remote string) (*azicliwkscommon.RemoteInf
 	return azicliwkscommon.NewRemoteInfo(cfgRemote.Server, cfgRemote.AAPPort, cfgRemote.PAPPort)
 }
 
-// GetRepoInfo gets the ref info.
-func (m *ConfigManager) GetRepoInfo(repoURI string) (*azicliwkscommon.RefInfo, error) {
+// GetLedgerInfo gets the ref info.
+func (m *ConfigManager) GetLedgerInfo(ledgerURI string) (*azicliwkscommon.RefInfo, error) {
 	cfg, err := m.readConfig()
 	if err != nil {
 		return nil, err
 	}
-	if _, ok := cfg.Ledgers[repoURI]; !ok {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", repoURI))
+	if _, ok := cfg.Ledgers[ledgerURI]; !ok {
+		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", ledgerURI))
 	}
-	cfgLedger := cfg.Ledgers[repoURI]
-	refInfo, err := azicliwkscommon.NewRefInfoFromRepoName(cfgLedger.Remote, cfgLedger.ApplicationID, cfgLedger.RepoName)
+	cfgLedger := cfg.Ledgers[ledgerURI]
+	refInfo, err := azicliwkscommon.NewRefInfoFromLedgerName(cfgLedger.Remote, cfgLedger.ApplicationID, cfgLedger.LedgerName)
 	if err != nil {
 		return nil, err
 	}
-	return azicliwkscommon.BuildRefInfoFromRepoID(refInfo, cfgLedger.RepoID)
+	return azicliwkscommon.BuildRefInfoFromLedgerID(refInfo, cfgLedger.LedgerID)
 }
 
-// CheckRepoIfExists checks if a ledger exists.
-func (m *ConfigManager) CheckRepoIfExists(repoURI string) bool {
-	repoURI, _ = azicliwkscommon.SanitizeRepo(repoURI)
+// CheckLedgerIfExists checks if a ledger exists.
+func (m *ConfigManager) CheckLedgerIfExists(ledgerURI string) bool {
+	ledgerURI, _ = azicliwkscommon.SanitizeLedger(ledgerURI)
 	cfg, err := m.readConfig()
 	if err != nil {
 		return false
 	}
-	if _, ok := cfg.Ledgers[repoURI]; !ok {
+	if _, ok := cfg.Ledgers[ledgerURI]; !ok {
 		return false
 	}
 	return true

@@ -21,7 +21,7 @@ import (
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
+	azifacade "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 )
 
 const (
@@ -35,17 +35,17 @@ func (s SQLiteCentralStorageAAP) CreateIdentity(identity *azmodels.Identity) (*a
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	kind, err := azirepos.ConvertIdentityKindToID(identity.Kind)
+	kind, err := azifacade.ConvertIdentityKindToID(identity.Kind)
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity kind %s is not valid", identity.Kind))
 	}
-	dbInIdentity := &azirepos.Identity{
+	dbInIdentity := &azifacade.Identity{
 		ApplicationID:    identity.ApplicationID,
 		IdentitySourceID: identity.IdentitySourceID,
 		Kind:             kind,
@@ -57,7 +57,7 @@ func (s SQLiteCentralStorageAAP) CreateIdentity(identity *azmodels.Identity) (*a
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapIdentityToAgentIdentity(dbOutIdentity)
 }
@@ -69,17 +69,17 @@ func (s SQLiteCentralStorageAAP) UpdateIdentity(identity *azmodels.Identity) (*a
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	kind, err := azirepos.ConvertIdentityKindToID(identity.Kind)
+	kind, err := azifacade.ConvertIdentityKindToID(identity.Kind)
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity kind %s is not valid", identity.Kind))
 	}
-	dbInIdentity := &azirepos.Identity{
+	dbInIdentity := &azifacade.Identity{
 		IdentityID:       identity.IdentityID,
 		ApplicationID:    identity.ApplicationID,
 		IdentitySourceID: identity.IdentitySourceID,
@@ -92,7 +92,7 @@ func (s SQLiteCentralStorageAAP) UpdateIdentity(identity *azmodels.Identity) (*a
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapIdentityToAgentIdentity(dbOutIdentity)
 }
@@ -101,11 +101,11 @@ func (s SQLiteCentralStorageAAP) UpdateIdentity(identity *azmodels.Identity) (*a
 func (s SQLiteCentralStorageAAP) DeleteIdentity(applicationID int64, identityID string) (*azmodels.Identity, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	dbOutIdentity, err := s.sqlRepo.DeleteIdentity(tx, applicationID, identityID)
 	if err != nil {
@@ -113,7 +113,7 @@ func (s SQLiteCentralStorageAAP) DeleteIdentity(applicationID int64, identityID 
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapIdentityToAgentIdentity(dbOutIdentity)
 }
@@ -151,7 +151,7 @@ func (s SQLiteCentralStorageAAP) FetchIdentities(page int32, pageSize int32, app
 	for i, a := range dbIdentities {
 		identity, err := mapIdentityToAgentIdentity(&a)
 		if err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert identity entity (%s)", azirepos.LogIdentityEntry(&a)))
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert identity entity (%s)", azifacade.LogIdentityEntry(&a)))
 		}
 		identities[i] = *identity
 	}

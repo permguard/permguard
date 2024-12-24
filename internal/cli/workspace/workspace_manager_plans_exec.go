@@ -79,17 +79,17 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "plan", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(headCtx.GetRef())), nil, true)
-		out(nil, "plan", fmt.Sprintf("Ledger set to %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
+		out(nil, "plan", fmt.Sprintf("Ledger set to %s.", aziclicommon.KeywordText(headCtx.GetLedgerURI())), nil, true)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
 			"ref": headCtx.GetRef(),
 		}
 		output = out(output, "head", remoteObj, nil, true)
-		output = out(output, "ledger", headCtx.GetRepoURI(), nil, true)
+		output = out(output, "ledger", headCtx.GetLedgerURI(), nil, true)
 	}
 
 	// Executes the planning for the current head
-	out(nil, "", fmt.Sprintf("Initiating the planning process for ledger %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
+	out(nil, "", fmt.Sprintf("Initiating the planning process for ledger %s.", aziclicommon.KeywordText(headCtx.GetLedgerURI())), nil, true)
 
 	errPlanningProcessFailed := "Planning process failed."
 
@@ -258,7 +258,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 	}
 
 	// Executes the apply for the current head
-	out(nil, "", fmt.Sprintf("Initiating the apply process for ledger %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
+	out(nil, "", fmt.Sprintf("Initiating the apply process for ledger %s.", aziclicommon.KeywordText(headCtx.GetLedgerURI())), nil, true)
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", "Preparing to read the plan.", nil, true)
@@ -327,12 +327,12 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		HeadContextKey:           headCtx,
 	}
 
-	ctx, err := m.rmSrvtMgr.NOTPPush(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetApplicationID(), headCtx.GetRepoID(), bag, m)
+	ctx, err := m.rmSrvtMgr.NOTPPush(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetApplicationID(), headCtx.GetLedgerID(), bag, m)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
 	committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
-	_, err = m.logsMgr.Log(headCtx.headRefInfo, headCtx.remoteCommitID, commitObj.GetOID(), azicliwkslogs.LogActionPush, committed, headCtx.GetRepoURI())
+	_, err = m.logsMgr.Log(headCtx.headRefInfo, headCtx.remoteCommitID, commitObj.GetOID(), azicliwkslogs.LogActionPush, committed, headCtx.GetLedgerURI())
 
 	if err != nil {
 		return failedOpErr(nil, err)
@@ -348,7 +348,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 
 	out(nil, "", "Apply process completed successfully.", nil, true)
 	if !internal {
-		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote ledger: %s.", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
+		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote ledger: %s.", aziclicommon.KeywordText(headCtx.GetLedgerURI())), nil, true)
 	}
 	return output, nil
 }

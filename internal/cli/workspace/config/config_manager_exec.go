@@ -165,8 +165,8 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out aziclicommon.
 	return output, nil
 }
 
-// ExecAddRepo adds a ledger.
-func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, ledger, repoID string, application int64, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+// ExecAddLedger adds a ledger.
+func (m *ConfigManager) ExecAddLedger(repoURI, ref, remote, ledger, repoID string, application int64, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -192,8 +192,8 @@ func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, ledger, repoID string,
 			Ref:           ref,
 			Remote:        remote,
 			ApplicationID: application,
-			RepoName:      ledger,
-			RepoID:        repoID,
+			LedgerName:    ledger,
+			LedgerID:      repoID,
 			IsHead:        true,
 		}
 		cfg.Ledgers[repoURI] = cfgRepo
@@ -209,7 +209,7 @@ func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, ledger, repoID string,
 		remoteObj := map[string]any{
 			"ref":      cfgRepo.Ref,
 			"repo_uri": repoURI,
-			"repo_id":  cfgRepo.RepoID,
+			"repo_id":  cfgRepo.LedgerID,
 			"is_head":  cfgRepo.IsHead,
 		}
 		remotes = append(remotes, remoteObj)
@@ -218,8 +218,8 @@ func (m *ConfigManager) ExecAddRepo(repoURI, ref, remote, ledger, repoID string,
 	return output, nil
 }
 
-// ExecListRepos lists the ledgers.
-func (m *ConfigManager) ExecListRepos(output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+// ExecListLedgers lists the ledgers.
+func (m *ConfigManager) ExecListLedgers(output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -253,7 +253,7 @@ func (m *ConfigManager) ExecListRepos(output map[string]any, out aziclicommon.Pr
 			repoObj := map[string]any{
 				"ref":      cfg.Ledgers[cfgRepo].Ref,
 				"repo_uri": cfgRepo,
-				"repo_id":  cfg.Ledgers[cfgRepo].RepoID,
+				"repo_id":  cfg.Ledgers[cfgRepo].LedgerID,
 				"is_head":  isHead,
 			}
 			ledgers = append(ledgers, repoObj)

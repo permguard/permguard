@@ -351,7 +351,7 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 			out(nil, "", "No history data is available in the current workspace.", nil, true)
 			return output, nil
 		} else {
-			out(nil, "", fmt.Sprintf("Your workspace history %s:\n", aziclicommon.KeywordText(headCtx.GetRepoURI())), nil, true)
+			out(nil, "", fmt.Sprintf("Your workspace history %s:\n", aziclicommon.KeywordText(headCtx.GetLedgerURI())), nil, true)
 			for _, commitInfo := range commitInfos {
 				commit := commitInfo.GetCommit()
 				commitStr, err := m.getCommitString(commitInfo.GetCommitOID(), commit)

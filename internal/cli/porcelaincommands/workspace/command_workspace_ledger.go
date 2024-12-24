@@ -29,12 +29,12 @@ import (
 )
 
 const (
-	// commandNameForWorkspacesRepo is the command name for a workspace ledger.
-	commandNameForWorkspacesRepo = "workspaces.ledger"
+	// commandNameForWorkspacesLedger is the command name for a workspace ledger.
+	commandNameForWorkspacesLedger = "workspaces.ledger"
 )
 
-// runECommandForRepoWorkspace runs the command for the local ledger.
-func runECommandForRepoWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+// runECommandForLedgerWorkspace runs the command for the local ledger.
+func runECommandForLedgerWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -50,7 +50,7 @@ func runECommandForRepoWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	output, err := wksMgr.ExecListRepos(outFunc(ctx, printer))
+	output, err := wksMgr.ExecListLedgers(outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
@@ -67,14 +67,14 @@ func runECommandForRepoWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 	return nil
 }
 
-// CreateCommandForWorkspaceRepo creates a command for repoializing a permguard workspace.
-func CreateCommandForWorkspaceRepo(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+// CreateCommandForWorkspaceLedger creates a command for ledgerializing a permguard workspace.
+func CreateCommandForWorkspaceLedger(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "ledger",
 		Short: `Manage the ledger`,
 		Long:  aziclicommon.BuildCliLongTemplate(`This command Manages the ledger.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForRepoWorkspace(deps, cmd, v)
+			return runECommandForLedgerWorkspace(deps, cmd, v)
 		},
 	}
 	return command

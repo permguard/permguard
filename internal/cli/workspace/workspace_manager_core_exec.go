@@ -213,8 +213,8 @@ func (m *WorkspaceManager) ExecListRemotes(out aziclicommon.PrinterOutFunc) (map
 	return output, err
 }
 
-// ExecListRepos lists the ledgers.
-func (m *WorkspaceManager) ExecListRepos(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+// ExecListLedgers lists the ledgers.
+func (m *WorkspaceManager) ExecListLedgers(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to list ledgers.", nil, true)
 		return output, err
@@ -230,6 +230,6 @@ func (m *WorkspaceManager) ExecListRepos(out aziclicommon.PrinterOutFunc) (map[s
 	}
 	defer fileLock.Unlock()
 
-	output, err = m.cfgMgr.ExecListRepos(nil, out)
+	output, err = m.cfgMgr.ExecListLedgers(nil, out)
 	return output, err
 }

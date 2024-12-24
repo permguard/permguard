@@ -41,7 +41,7 @@ type ledgerConfig struct {
 	Ref           string `toml:"ref"`
 	Remote        string `toml:"remote"`
 	ApplicationID int64  `toml:"applicationid"`
-	RepoName      string `toml:"reponame"`
-	RepoID        string `toml:"repoid"`
+	LedgerName    string `toml:"ledgername"`
+	LedgerID      string `toml:"ledgerid"`
 	IsHead        bool   `toml:"head"`
 }

@@ -21,7 +21,7 @@ import (
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
+	azifacade "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 )
 
 const (
@@ -35,13 +35,13 @@ func (s SQLiteCentralStorageAAP) CreateIdentitySource(identitySource *azmodels.I
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbInIdentitySource := &azirepos.IdentitySource{
+	dbInIdentitySource := &azifacade.IdentitySource{
 		ApplicationID: identitySource.ApplicationID,
 		Name:          identitySource.Name,
 	}
@@ -51,7 +51,7 @@ func (s SQLiteCentralStorageAAP) CreateIdentitySource(identitySource *azmodels.I
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapIdentitySourceToAgentIdentitySource(dbOutIdentitySource)
 }
@@ -63,13 +63,13 @@ func (s SQLiteCentralStorageAAP) UpdateIdentitySource(identitySource *azmodels.I
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbInIdentitySource := &azirepos.IdentitySource{
+	dbInIdentitySource := &azifacade.IdentitySource{
 		IdentitySourceID: identitySource.IdentitySourceID,
 		ApplicationID:    identitySource.ApplicationID,
 		Name:             identitySource.Name,
@@ -80,7 +80,7 @@ func (s SQLiteCentralStorageAAP) UpdateIdentitySource(identitySource *azmodels.I
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapIdentitySourceToAgentIdentitySource(dbOutIdentitySource)
 }
@@ -89,11 +89,11 @@ func (s SQLiteCentralStorageAAP) UpdateIdentitySource(identitySource *azmodels.I
 func (s SQLiteCentralStorageAAP) DeleteIdentitySource(applicationID int64, identitySourceID string) (*azmodels.IdentitySource, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	dbOutIdentitySource, err := s.sqlRepo.DeleteIdentitySource(tx, applicationID, identitySourceID)
 	if err != nil {
@@ -101,7 +101,7 @@ func (s SQLiteCentralStorageAAP) DeleteIdentitySource(applicationID int64, ident
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapIdentitySourceToAgentIdentitySource(dbOutIdentitySource)
 }
@@ -139,7 +139,7 @@ func (s SQLiteCentralStorageAAP) FetchIdentitySources(page int32, pageSize int32
 	for i, a := range dbIdentitySources {
 		identitySource, err := mapIdentitySourceToAgentIdentitySource(&a)
 		if err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert identity source entity (%s)", azirepos.LogIdentitySourceEntry(&a)))
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert identity source entity (%s)", azifacade.LogIdentitySourceEntry(&a)))
 		}
 		identitySources[i] = *identitySource
 	}

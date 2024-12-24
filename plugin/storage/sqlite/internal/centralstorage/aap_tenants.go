@@ -21,7 +21,7 @@ import (
 
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
+	azifacade "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
 )
 
 const (
@@ -35,13 +35,13 @@ func (s SQLiteCentralStorageAAP) CreateTenant(tenant *azmodels.Tenant) (*azmodel
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbInTenant := &azirepos.Tenant{
+	dbInTenant := &azifacade.Tenant{
 		ApplicationID: tenant.ApplicationID,
 		Name:          tenant.Name,
 	}
@@ -51,7 +51,7 @@ func (s SQLiteCentralStorageAAP) CreateTenant(tenant *azmodels.Tenant) (*azmodel
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapTenantToAgentTenant(dbOutTenant)
 }
@@ -63,13 +63,13 @@ func (s SQLiteCentralStorageAAP) UpdateTenant(tenant *azmodels.Tenant) (*azmodel
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbInTenant := &azirepos.Tenant{
+	dbInTenant := &azifacade.Tenant{
 		TenantID:      tenant.TenantID,
 		ApplicationID: tenant.ApplicationID,
 		Name:          tenant.Name,
@@ -80,7 +80,7 @@ func (s SQLiteCentralStorageAAP) UpdateTenant(tenant *azmodels.Tenant) (*azmodel
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapTenantToAgentTenant(dbOutTenant)
 }
@@ -89,11 +89,11 @@ func (s SQLiteCentralStorageAAP) UpdateTenant(tenant *azmodels.Tenant) (*azmodel
 func (s SQLiteCentralStorageAAP) DeleteTenant(applicationID int64, tenantID string) (*azmodels.Tenant, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	dbOutTenant, err := s.sqlRepo.DeleteTenant(tx, applicationID, tenantID)
 	if err != nil {
@@ -101,7 +101,7 @@ func (s SQLiteCentralStorageAAP) DeleteTenant(applicationID int64, tenantID stri
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, azifacade.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapTenantToAgentTenant(dbOutTenant)
 }
@@ -139,7 +139,7 @@ func (s SQLiteCentralStorageAAP) FetchTenants(page int32, pageSize int32, applic
 	for i, a := range dbTenants {
 		tenant, err := mapTenantToAgentTenant(&a)
 		if err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert tenant entity (%s)", azirepos.LogTenantEntry(&a)))
+			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert tenant entity (%s)", azifacade.LogTenantEntry(&a)))
 		}
 		tenants[i] = *tenant
 	}
