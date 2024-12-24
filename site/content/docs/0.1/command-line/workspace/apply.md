@@ -68,11 +68,12 @@ Initiating the planning process for repository head/676095239339/fd1ac44e4afa4fc
 Planning process completed successfully.
 The following changes have been identified and are ready to be applied:
 
-	+ 8a169320102ba429b4f7c0a5a9cde6e9bf2ace6335af3b57b11970718c05aa80 view-branch-inventory-auditor
-	+ 2597a54653b09188bf613a24e6a64100a1b14612ffed3bd8558dfc24dd63a34f assign-role-branch
-	+ 007867724d1aa801216d92d8d08ed2269a55e495575aceb1f46cded8594159ee schema
+  + 553e9dd55b0591930ec043bc89c1a9410d737536e9433c80845bea996d7ca169 view-branch-inventory-auditors
+  = 64ec643d0775708a947256e8d1eba898a184e9cc8427f9840495e5f5f039e640 assign-role-branch
+  = 007867724d1aa801216d92d8d08ed2269a55e495575aceb1f46cded8594159ee schema
+  - 8a169320102ba429b4f7c0a5a9cde6e9bf2ace6335af3b57b11970718c05aa80 view-branch-inventory-auditor
 
-unchanged 0, created 3, modified 0, deleted 0
+unchanged 2, created 1, modified 0, deleted 1
 
 Initiating the apply process for repository head/676095239339/fd1ac44e4afa4fc4beec622494d3175a.
 Apply process completed successfully.
@@ -93,34 +94,42 @@ output:
 ```json
 {
   "plan": {
-    "create": [
+    "create": [],
+    "delete": [],
+    "modify": [
       {
-        "oname": "pharmacy-branch-management1",
+        "oname": "assign-role-branch",
         "otype": "blob",
-        "oid": "53f1f98089c5b8f9ccbc250c80f1f2d330944009b2a1998375aaef3fb250e10d",
-        "codeid": "pharmacy-branch-management1",
-        "codetype": "acpolicy",
-        "state": "create"
+        "oid": "2597a54653b09188bf613a24e6a64100a1b14612ffed3bd8558dfc24dd63a34f",
+        "codeid": "assign-role-branch",
+        "codetype": "policy",
+        "language": "cedar-json",
+        "languagetype": "policy",
+        "languageversion": "*",
+        "state": "modify"
       }
     ],
-    "delete": [
-      {
-        "oname": "pharmacy-branch-management2",
-        "otype": "blob",
-        "oid": "9ee3bbbc7fbb2bac3f532cb2b9897293d29d7cdf0bacfc05a5affa11ceb51427",
-        "codeid": "pharmacy-branch-management2",
-        "codetype": "acpolicy",
-        "state": "delete"
-      }
-    ],
-    "modify": [],
     "unchanged": [
+      {
+        "oname": "view-branch-inventory-auditors",
+        "otype": "blob",
+        "oid": "553e9dd55b0591930ec043bc89c1a9410d737536e9433c80845bea996d7ca169",
+        "codeid": "view-branch-inventory-auditors",
+        "codetype": "policy",
+        "language": "cedar-json",
+        "languagetype": "policy",
+        "languageversion": "*",
+        "state": "unchanged"
+      },
       {
         "oname": "schema",
         "otype": "blob",
-        "oid": "0a0b9ef638c0ea0e93cf92d6a257dbb4226e42c3eefaba86090870ab2505440a",
+        "oid": "007867724d1aa801216d92d8d08ed2269a55e495575aceb1f46cded8594159ee",
         "codeid": "schema",
         "codetype": "schema",
+        "language": "cedar-json",
+        "languagetype": "schema",
+        "languageversion": "*",
         "state": "unchanged"
       }
     ]
