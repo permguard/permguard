@@ -80,7 +80,7 @@ func createCommandForIdentitySourceDelete(deps azcli.CliDependenciesProvider, v 
 
 Examples:
   # delete an identity source and output the result in json format
-  permguard authn identitysources delete --application 268786704340 --identitysourceid 1da1d9094501425085859c60429163c2 --output json
+  permguard authn identitysources delete --appid 268786704340 --identitysourceid 1da1d9094501425085859c60429163c2 --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteIdentitySource(deps, cmd, v)

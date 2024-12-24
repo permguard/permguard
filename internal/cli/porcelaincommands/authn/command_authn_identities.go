@@ -106,7 +106,7 @@ func createCommandForIdentities(deps azcli.CliDependenciesProvider, v *viper.Vip
 		RunE:  runECommandForIdentities,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id filter")
+	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id")
 	v.BindPFlag(azoptions.FlagName(commandNameForIdentity, aziclicommon.FlagCommonApplicationID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonApplicationID))
 
 	command.AddCommand(createCommandForIdentityCreate(deps, v))

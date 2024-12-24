@@ -88,9 +88,9 @@ Examples:
   # list all applications for page 1 and page size 100
   permguard applications list --page 1 --size 100
   # list applications and filter by application
-  permguard applications list --application 301
+  permguard applications list --appid 301
   # list applications and filter by application and name
-  permguard applications list --application 301--name dev
+  permguard applications list --appid 301--name dev
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListApplications(deps, cmd, v)

@@ -72,6 +72,7 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *azmodels.Ledger) (*azmodel
 	dbInLedger := &azirepos.Ledger{
 		LedgerID:      ledger.LedgerID,
 		ApplicationID: ledger.ApplicationID,
+		Kind:          1,
 		Name:          ledger.Name,
 	}
 	dbOutLedger, err := s.sqlRepo.UpsertLedger(tx, false, dbInLedger)

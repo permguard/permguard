@@ -46,7 +46,7 @@ type LedgerFetchRequest struct {
 	Page          *int32  `protobuf:"varint,1,opt,name=Page,proto3,oneof" json:"Page,omitempty"`
 	PageSize      *int32  `protobuf:"varint,2,opt,name=PageSize,proto3,oneof" json:"PageSize,omitempty"`
 	ApplicationID int64   `protobuf:"varint,3,opt,name=ApplicationID,proto3" json:"ApplicationID,omitempty"`
-	LedgerID  *string `protobuf:"bytes,4,opt,name=LedgerID,proto3,oneof" json:"LedgerID,omitempty"`
+	LedgerID      *string `protobuf:"bytes,4,opt,name=LedgerID,proto3,oneof" json:"LedgerID,omitempty"`
 	Name          *string `protobuf:"bytes,5,opt,name=Name,proto3,oneof" json:"Name,omitempty"`
 }
 
@@ -180,7 +180,7 @@ type LedgerUpdateRequest struct {
 	unknownFields protoimpl.UnknownFields
 
 	ApplicationID int64  `protobuf:"varint,1,opt,name=ApplicationID,proto3" json:"ApplicationID,omitempty"`
-	LedgerID  string `protobuf:"bytes,2,opt,name=LedgerID,proto3" json:"LedgerID,omitempty"`
+	LedgerID      string `protobuf:"bytes,2,opt,name=LedgerID,proto3" json:"LedgerID,omitempty"`
 	Name          string `protobuf:"bytes,3,opt,name=Name,proto3" json:"Name,omitempty"`
 }
 
@@ -244,7 +244,7 @@ type LedgerDeleteRequest struct {
 	unknownFields protoimpl.UnknownFields
 
 	ApplicationID int64  `protobuf:"varint,1,opt,name=ApplicationID,proto3" json:"ApplicationID,omitempty"`
-	LedgerID  string `protobuf:"bytes,2,opt,name=LedgerID,proto3" json:"LedgerID,omitempty"`
+	LedgerID      string `protobuf:"bytes,2,opt,name=LedgerID,proto3" json:"LedgerID,omitempty"`
 }
 
 func (x *LedgerDeleteRequest) Reset() {
@@ -299,7 +299,7 @@ type LedgerResponse struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	LedgerID  string                 `protobuf:"bytes,1,opt,name=LedgerID,proto3" json:"LedgerID,omitempty"`
+	LedgerID      string                 `protobuf:"bytes,1,opt,name=LedgerID,proto3" json:"LedgerID,omitempty"`
 	ApplicationID int64                  `protobuf:"varint,2,opt,name=ApplicationID,proto3" json:"ApplicationID,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=CreatedAt,proto3" json:"CreatedAt,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=UpdatedAt,proto3" json:"UpdatedAt,omitempty"`
@@ -388,7 +388,7 @@ type LedgerStreamRequest struct {
 	unknownFields protoimpl.UnknownFields
 
 	ApplicationID int64  `protobuf:"varint,1,opt,name=ApplicationID,proto3" json:"ApplicationID,omitempty"`
-	LedgerID  string `protobuf:"bytes,2,opt,name=LedgerID,proto3" json:"LedgerID,omitempty"`
+	LedgerID      string `protobuf:"bytes,2,opt,name=LedgerID,proto3" json:"LedgerID,omitempty"`
 }
 
 func (x *LedgerStreamRequest) Reset() {
@@ -618,14 +618,14 @@ func file_internal_agents_services_pap_endpoints_api_v1_pap_proto_rawDescGZIP() 
 
 var file_internal_agents_services_pap_endpoints_api_v1_pap_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_internal_agents_services_pap_endpoints_api_v1_pap_proto_goTypes = []any{
-	(*LedgerFetchRequest)(nil),  // 0: policyadministrationpoint.LedgerFetchRequest
-	(*LedgerCreateRequest)(nil), // 1: policyadministrationpoint.LedgerCreateRequest
-	(*LedgerUpdateRequest)(nil), // 2: policyadministrationpoint.LedgerUpdateRequest
-	(*LedgerDeleteRequest)(nil), // 3: policyadministrationpoint.LedgerDeleteRequest
-	(*LedgerResponse)(nil),      // 4: policyadministrationpoint.LedgerResponse
-	(*LedgerStreamRequest)(nil), // 5: policyadministrationpoint.LedgerStreamRequest
-	(*PackMessage)(nil),             // 6: policyadministrationpoint.PackMessage
-	(*timestamppb.Timestamp)(nil),   // 7: google.protobuf.Timestamp
+	(*LedgerFetchRequest)(nil),    // 0: policyadministrationpoint.LedgerFetchRequest
+	(*LedgerCreateRequest)(nil),   // 1: policyadministrationpoint.LedgerCreateRequest
+	(*LedgerUpdateRequest)(nil),   // 2: policyadministrationpoint.LedgerUpdateRequest
+	(*LedgerDeleteRequest)(nil),   // 3: policyadministrationpoint.LedgerDeleteRequest
+	(*LedgerResponse)(nil),        // 4: policyadministrationpoint.LedgerResponse
+	(*LedgerStreamRequest)(nil),   // 5: policyadministrationpoint.LedgerStreamRequest
+	(*PackMessage)(nil),           // 6: policyadministrationpoint.PackMessage
+	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
 }
 var file_internal_agents_services_pap_endpoints_api_v1_pap_proto_depIdxs = []int32{
 	7, // 0: policyadministrationpoint.LedgerResponse.CreatedAt:type_name -> google.protobuf.Timestamp

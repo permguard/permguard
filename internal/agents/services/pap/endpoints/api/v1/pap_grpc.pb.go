@@ -35,12 +35,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	V1PAPService_CreateLedger_FullMethodName  = "/policyadministrationpoint.V1PAPService/CreateLedger"
-	V1PAPService_UpdateLedger_FullMethodName  = "/policyadministrationpoint.V1PAPService/UpdateLedger"
-	V1PAPService_DeleteLedger_FullMethodName  = "/policyadministrationpoint.V1PAPService/DeleteLedger"
+	V1PAPService_CreateLedger_FullMethodName = "/policyadministrationpoint.V1PAPService/CreateLedger"
+	V1PAPService_UpdateLedger_FullMethodName = "/policyadministrationpoint.V1PAPService/UpdateLedger"
+	V1PAPService_DeleteLedger_FullMethodName = "/policyadministrationpoint.V1PAPService/DeleteLedger"
 	V1PAPService_FetchLedgers_FullMethodName = "/policyadministrationpoint.V1PAPService/FetchLedgers"
-	V1PAPService_ReceivePack_FullMethodName       = "/policyadministrationpoint.V1PAPService/ReceivePack"
-	V1PAPService_NOTPStream_FullMethodName        = "/policyadministrationpoint.V1PAPService/NOTPStream"
+	V1PAPService_ReceivePack_FullMethodName  = "/policyadministrationpoint.V1PAPService/ReceivePack"
+	V1PAPService_NOTPStream_FullMethodName   = "/policyadministrationpoint.V1PAPService/NOTPStream"
 )
 
 // V1PAPServiceClient is the client API for V1PAPService service.

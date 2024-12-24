@@ -20,6 +20,7 @@ CREATE TABLE ledgers (
     created_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
     updated_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
     name TEXT NOT NULL,
+	kind INTEGER NOT NULL,
 	ref  TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000',
 	-- REFERENCES
 	application_id INTEGER NOT NULL REFERENCES applications(application_id) ON UPDATE CASCADE ON DELETE CASCADE,
@@ -39,7 +40,7 @@ BEGIN
     INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
 		VALUES ('LEDGER', 'INSERT', NEW.ledger_id, NEW.application_id,
 				'{"ledger_id": "' || NEW.ledger_id || '", "created_at": "' || NEW.created_at ||
-				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name ||
+				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name || '", "kind": "' || NEW.kind ||
 				'", "application_id": ' || NEW.application_id || ', "ref": "' || NEW.ref || '"}');
 END;
 -- +goose StatementEnd
@@ -54,7 +55,7 @@ BEGIN
     INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
 		VALUES ('LEDGER', 'UPDATE', NEW.ledger_id, NEW.application_id,
 				'{"ledger_id": "' || NEW.ledger_id || '", "created_at": "' || NEW.created_at ||
-				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name ||
+				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name || '", "kind": "' || NEW.kind ||
 				'", "application_id": ' || NEW.application_id || ', "ref": "' || NEW.ref || '"}');
 END;
 -- +goose StatementEnd
@@ -68,7 +69,7 @@ BEGIN
     INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
 		VALUES ('LEDGER', 'DELETE', OLD.ledger_id, OLD.application_id,
 				'{"ledger_id": "' || OLD.ledger_id || '", "created_at": "' || OLD.created_at ||
-				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name ||
+				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name || OLD.name || '", "kind": "' || OLD.kind ||
 				'", "application_id": ' || OLD.application_id || ', "ref": "' || OLD.ref || '"}');
 END;
 -- +goose StatementEnd

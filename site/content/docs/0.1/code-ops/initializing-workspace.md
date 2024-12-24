@@ -59,7 +59,7 @@ permguard applications create --name magicfarmacia-dev --output json
 Next, create a ledger:
 
 ```bash
-permguard authz  ledgers create --application 268786704340  --name magicfarmacia --output json
+permguard authz  ledgers create --appid 268786704340  --name magicfarmacia --output json
 {
   "ledgers": [
     {

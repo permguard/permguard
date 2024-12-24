@@ -78,7 +78,7 @@ func createCommandForApplicationDelete(deps azcli.CliDependenciesProvider, v *vi
 
 Examples:
   # delete an application and output the result in json format
-  permguard applications delete --application 268786704340 --output json
+  permguard applications delete --appid 268786704340 --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteApplication(deps, cmd, v)

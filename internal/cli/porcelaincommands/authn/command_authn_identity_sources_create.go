@@ -44,7 +44,7 @@ func createCommandForIdentitySourceCreate(deps azcli.CliDependenciesProvider, v 
 
 Examples:
   # create an identity source and output the result in json format
-  permguard authn identitysources create --application 268786704340 --name google --output json
+  permguard authn identitysources create --appid 268786704340 --name google --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCreateIdentitySource(deps, cmd, v)

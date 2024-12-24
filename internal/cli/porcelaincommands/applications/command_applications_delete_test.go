@@ -55,7 +55,7 @@ func TestCliApplicationsDeleteWithError(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		args := []string{"applications", "delete", "--application", "581616507495", "--output", test.OutputType}
+		args := []string{"applications", "delete", "--appid", "581616507495", "--output", test.OutputType}
 		outputs := []string{""}
 
 		v := viper.New()
@@ -94,7 +94,7 @@ func TestCliApplicationsDeleteWithSuccess(t *testing.T) {
 		"json",
 	}
 	for _, outputType := range tests {
-		args := []string{"applications", "delete", "--application", "581616507495", "--output", outputType}
+		args := []string{"applications", "delete", "--appid", "581616507495", "--output", outputType}
 		outputs := []string{""}
 
 		v := viper.New()
