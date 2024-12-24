@@ -250,13 +250,13 @@ func (m *ConfigManager) ExecListLedgers(output map[string]any, out aziclicommon.
 		ledgers := []any{}
 		for cfgLedger := range cfg.Ledgers {
 			isHead := cfg.Ledgers[cfgLedger].IsHead
-			repoObj := map[string]any{
+			ledgerObj := map[string]any{
 				"ref":        cfg.Ledgers[cfgLedger].Ref,
 				"ledger_uri": cfgLedger,
 				"ledger_id":  cfg.Ledgers[cfgLedger].LedgerID,
 				"is_head":    isHead,
 			}
-			ledgers = append(ledgers, repoObj)
+			ledgers = append(ledgers, ledgerObj)
 		}
 		output = out(output, "ledgers", ledgers, nil, true)
 	}
