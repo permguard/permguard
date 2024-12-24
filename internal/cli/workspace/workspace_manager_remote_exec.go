@@ -198,13 +198,13 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 	}
 
 	localCommitID, _ := getFromRuntimeContext[string](ctx, LocalCodeCommitIDKey)
-	output["local_commit_id"] = localCommitID
+	output["local_commit_oid"] = localCommitID
 
 	localCommitsCount, _ := getFromRuntimeContext[uint32](ctx, LocalCommitsCountKey)
 	output["local_commits_count"] = localCommitsCount
 
 	remoteCommitID, _ := getFromRuntimeContext[string](ctx, RemoteCommitIDKey)
-	output["remote_commit_id"] = remoteCommitID
+	output["remote_commit_oid"] = remoteCommitID
 
 	remoteCommitCount, _ := getFromRuntimeContext[uint32](ctx, RemoteCommitsCountKey)
 	output["remote_commits_count"] = remoteCommitCount
