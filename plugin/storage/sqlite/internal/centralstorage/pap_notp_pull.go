@@ -19,7 +19,7 @@ package centralstorage
 import (
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azifacade "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
@@ -54,7 +54,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 		}
 		db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 		if err != nil {
-			return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
+			return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 		}
 		hasMatch, history, err := objMng.BuildCommitHistory(remoteRefSPacket.RefPrevCommit, headCommitID, false, func(oid string) (*azlangobjs.Object, error) {
 			keyValue, err := s.sqlRepo.GetKeyValue(db, oid)
@@ -71,7 +71,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	_, commits, err := objMng.BuildCommitHistory(headCommitID, remoteRefSPacket.RefCommit, true, func(oid string) (*azlangobjs.Object, error) {
 		return s.readObject(db, oid)
@@ -113,7 +113,7 @@ func (s SQLiteCentralStoragePAP) OnPullSendNegotiationRequest(handlerCtx *notpst
 		}
 		db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 		if err != nil {
-			return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
+			return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 		}
 		_, history, err := objMng.BuildCommitHistory(localCommitID, remoteCommitID, true, func(oid string) (*azlangobjs.Object, error) {
 			return s.readObject(db, oid)
@@ -155,7 +155,7 @@ func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(commitID string) 
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	packetable := []notppackets.Packetable{}
 

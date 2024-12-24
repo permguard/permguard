@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package facade
+package repositories
 
 import (
 	"database/sql"
@@ -60,7 +60,7 @@ func ConvertIdentityKindToString(id int16) (string, error) {
 }
 
 // UpsertIdentity creates or updates an identity.
-func (r *Facade) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*Identity, error) {
+func (r *Repository) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*Identity, error) {
 	if identity == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity data is missing or malformed (%s)", LogIdentityEntry(identity)))
 	}
@@ -124,7 +124,7 @@ func (r *Facade) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (
 }
 
 // DeleteIdentity deletes an identity.
-func (r *Facade) DeleteIdentity(tx *sql.Tx, applicationID int64, identityID string) (*Identity, error) {
+func (r *Repository) DeleteIdentity(tx *sql.Tx, applicationID int64, identityID string) (*Identity, error) {
 	if err := azvalidators.ValidateCodeID("identity", applicationID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentityInvalidApplicationID, applicationID))
 	}
@@ -156,7 +156,7 @@ func (r *Facade) DeleteIdentity(tx *sql.Tx, applicationID int64, identityID stri
 }
 
 // FetchIdentities retrieves identities.
-func (r *Facade) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]Identity, error) {
+func (r *Repository) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]Identity, error) {
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}

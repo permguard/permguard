@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package facade
+package repositories
 
 import (
 	"database/sql"
@@ -34,7 +34,7 @@ const (
 )
 
 // UpsertLedger creates or updates a ledger.
-func (r *Facade) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*Ledger, error) {
+func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*Ledger, error) {
 	if ledger == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger data is missing or malformed (%s)", LogLedgerEntry(ledger)))
 	}
@@ -85,7 +85,7 @@ func (r *Facade) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*Ledge
 }
 
 // UpdateLedgerRef updates the ref of a ledger.
-func (r *Facade) UpdateLedgerRef(tx *sql.Tx, applicationID int64, ledgerID, currentRef, newRef string) error {
+func (r *Repository) UpdateLedgerRef(tx *sql.Tx, applicationID int64, ledgerID, currentRef, newRef string) error {
 	if err := azvalidators.ValidateCodeID("ledger", applicationID); err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidApplicationID, applicationID))
 	}
@@ -128,7 +128,7 @@ func (r *Facade) UpdateLedgerRef(tx *sql.Tx, applicationID int64, ledgerID, curr
 }
 
 // DeleteLedger deletes a ledger.
-func (r *Facade) DeleteLedger(tx *sql.Tx, applicationID int64, ledgerID string) (*Ledger, error) {
+func (r *Repository) DeleteLedger(tx *sql.Tx, applicationID int64, ledgerID string) (*Ledger, error) {
 	if err := azvalidators.ValidateCodeID("ledger", applicationID); err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidApplicationID, applicationID))
 	}
@@ -160,7 +160,7 @@ func (r *Facade) DeleteLedger(tx *sql.Tx, applicationID int64, ledgerID string) 
 }
 
 // FetchLedgers retrieves ledgers.
-func (r *Facade) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]Ledger, error) {
+func (r *Repository) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]Ledger, error) {
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}

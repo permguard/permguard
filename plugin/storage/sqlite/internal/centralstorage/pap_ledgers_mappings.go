@@ -18,11 +18,11 @@ package centralstorage
 
 import (
 	azmodels "github.com/permguard/permguard/pkg/agents/models"
-	azifacade "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // mapLedgerToAgentLedger maps a Ledger to a model Ledger.
-func mapLedgerToAgentLedger(ledger *azifacade.Ledger) (*azmodels.Ledger, error) {
+func mapLedgerToAgentLedger(ledger *azirepos.Ledger) (*azmodels.Ledger, error) {
 	return &azmodels.Ledger{
 		LedgerID:      ledger.LedgerID,
 		CreatedAt:     ledger.CreatedAt,

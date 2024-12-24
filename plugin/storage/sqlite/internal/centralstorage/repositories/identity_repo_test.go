@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package facade
+package repositories
 
 import (
 	"regexp"
@@ -28,7 +28,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade/testutils"
+	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
 )
 
 // registerIdentityForUpsertMocking registers an identity for upsert mocking.
@@ -93,7 +93,7 @@ func registerIdentityForFetchMocking() (string, []Identity, *sqlmock.Rows) {
 // TestRepoUpsertIdentityWithInvalidInput tests the upsert of an identity with invalid input.
 func TestRepoUpsertIdentityWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -154,7 +154,7 @@ func TestRepoUpsertIdentityWithInvalidInput(t *testing.T) {
 // TestRepoUpsertIdentityWithSuccess tests the upsert of an identity with success.
 func TestRepoUpsertIdentityWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	tests := []bool{
 		true,
@@ -213,7 +213,7 @@ func TestRepoUpsertIdentityWithSuccess(t *testing.T) {
 // TestRepoUpsertIdentityWithErrors tests the upsert of an identity with errors.
 func TestRepoUpsertIdentityWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	tests := []bool{
 		true,
@@ -264,7 +264,7 @@ func TestRepoUpsertIdentityWithErrors(t *testing.T) {
 
 // TestRepoDeleteIdentityWithInvalidInput tests the delete of an identity with invalid input.
 func TestRepoDeleteIdentityWithInvalidInput(t *testing.T) {
-	ledger := Facade{}
+	ledger := Repository{}
 
 	assert := assert.New(t)
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
@@ -288,7 +288,7 @@ func TestRepoDeleteIdentityWithInvalidInput(t *testing.T) {
 // TestRepoDeleteIdentityWithSuccess tests the delete of an identity with success.
 func TestRepoDeleteIdentityWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -321,7 +321,7 @@ func TestRepoDeleteIdentityWithSuccess(t *testing.T) {
 // TestRepoDeleteIdentityWithErrors tests the delete of an identity with errors.
 func TestRepoDeleteIdentityWithErrors(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	tests := []int{
 		1,
@@ -374,7 +374,7 @@ func TestRepoDeleteIdentityWithErrors(t *testing.T) {
 // TestRepoFetchIdentityWithInvalidInput tests the fetch of identities with invalid input.
 func TestRepoFetchIdentityWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
@@ -416,7 +416,7 @@ func TestRepoFetchIdentityWithInvalidInput(t *testing.T) {
 // TestRepoFetchIdentityWithSuccess tests the fetch of identities with success.
 func TestRepoFetchIdentityWithSuccess(t *testing.T) {
 	assert := assert.New(t)
-	ledger := Facade{}
+	ledger := Repository{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()

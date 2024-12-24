@@ -19,7 +19,7 @@ package centralstorage
 import (
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azifacade "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/facade"
+	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
@@ -54,7 +54,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 		}
 		db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 		if err != nil {
-			return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
+			return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 		}
 		hasMatch, history, err := objMng.BuildCommitHistory(headCommitID, remoteRefPacket.RefPrevCommit, false, func(oid string) (*azlangobjs.Object, error) {
 			keyValue, errkey := s.sqlRepo.GetKeyValue(db, oid)
@@ -118,11 +118,11 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNegotiationResponse(handlerCtx *not
 func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azifacade.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azifacade.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	for _, packet := range packets {
 		objStatePacket := &notpagpackets.ObjectStatePacket{}
@@ -131,7 +131,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 			tx.Rollback()
 			return nil, err
 		}
-		keyValue := &azifacade.KeyValue{
+		keyValue := &azirepos.KeyValue{
 			Key:   objStatePacket.OID,
 			Value: objStatePacket.Content,
 		}
@@ -149,7 +149,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 		remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDKey)
 		err = s.sqlRepo.UpdateLedgerRef(tx, ledger.ApplicationID, ledger.LedgerID, ledger.Ref, remoteCommitID)
 		if err := tx.Commit(); err != nil {
-			return nil, azifacade.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+			return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 		}
 	}
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
