@@ -52,6 +52,19 @@ func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceMan
 			}
 		}
 	}
+	if m.ctx.IsJSONOutput() && len(errorsMap) == 0 {
+		output["code_files"] = []map[string]any{}
+		for _, codeFile := range codeFiles {
+			output["code_files"] = append(output["code_files"].([]map[string]any), map[string]any{
+				"path": codeFile.Path,
+				"section": codeFile.Section + 1,
+				"oid": codeFile.OID,
+				"oname": codeFile.OName,
+				"has_errors": codeFile.HasErrors,
+				"error_message": codeFile.ErrorMessage,
+			})
+		}
+	}
 	if len(errorsMap) > 0 {
 		output["validation_errors"] = errorsMap
 	}
