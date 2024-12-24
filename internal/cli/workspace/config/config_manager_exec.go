@@ -174,11 +174,11 @@ func (m *ConfigManager) ExecAddLedger(ledgerURI, ref, remote, ledger, ledgerID s
 	if err != nil {
 		return output, err
 	}
-	var cfgRepo ledgerConfig
+	var cfgLedger ledgerConfig
 	exists := false
 	for ledger := range cfg.Ledgers {
 		if ledger == ledger && cfg.Ledgers[ledgerURI].Remote == remote {
-			cfgRepo = cfg.Ledgers[ledgerURI]
+			cfgLedger = cfg.Ledgers[ledgerURI]
 			exists = true
 			break
 		}
@@ -188,7 +188,7 @@ func (m *ConfigManager) ExecAddLedger(ledgerURI, ref, remote, ledger, ledgerID s
 			ledger.IsHead = false
 			cfg.Ledgers[key] = ledger
 		}
-		cfgRepo = ledgerConfig{
+		cfgLedger = ledgerConfig{
 			Ref:           ref,
 			Remote:        remote,
 			ApplicationID: application,
@@ -196,21 +196,21 @@ func (m *ConfigManager) ExecAddLedger(ledgerURI, ref, remote, ledger, ledgerID s
 			LedgerID:      ledgerID,
 			IsHead:        true,
 		}
-		cfg.Ledgers[ledgerURI] = cfgRepo
+		cfg.Ledgers[ledgerURI] = cfgLedger
 		m.saveConfig(true, cfg)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "ledger", fmt.Sprintf("Ref successfully set to %s.", aziclicommon.KeywordText(cfgRepo.Ref)), nil, true)
+		out(nil, "ledger", fmt.Sprintf("Ref successfully set to %s.", aziclicommon.KeywordText(cfgLedger.Ref)), nil, true)
 	}
 	out(nil, "", fmt.Sprintf("Ledger %s has been added.", aziclicommon.KeywordText(ledger)), nil, true)
 	output = map[string]any{}
 	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
 		remoteObj := map[string]any{
-			"ref":        cfgRepo.Ref,
+			"ref":        cfgLedger.Ref,
 			"ledger_uri": ledgerURI,
-			"ledger_id":  cfgRepo.LedgerID,
-			"is_head":    cfgRepo.IsHead,
+			"ledger_id":  cfgLedger.LedgerID,
+			"is_head":    cfgLedger.IsHead,
 		}
 		remotes = append(remotes, remoteObj)
 		output = out(output, "ledgers", remotes, nil, true)
@@ -229,13 +229,13 @@ func (m *ConfigManager) ExecListLedgers(output map[string]any, out aziclicommon.
 	}
 	if m.ctx.IsTerminalOutput() {
 		ledgers := []string{}
-		for cfgRepo := range cfg.Ledgers {
-			cfgRepoTxt := cfgRepo
-			isHead := cfg.Ledgers[cfgRepo].IsHead
+		for cfgLedger := range cfg.Ledgers {
+			cfgLedgerTxt := cfgLedger
+			isHead := cfg.Ledgers[cfgLedger].IsHead
 			if isHead {
-				cfgRepoTxt = fmt.Sprintf("*%s", cfgRepo)
+				cfgLedgerTxt = fmt.Sprintf("*%s", cfgLedger)
 			}
-			ledgers = append(ledgers, cfgRepoTxt)
+			ledgers = append(ledgers, cfgLedgerTxt)
 		}
 		if len(ledgers) == 0 {
 			out(nil, "", "Your workspace doesn't have any ledger configured.", nil, true)
@@ -248,12 +248,12 @@ func (m *ConfigManager) ExecListLedgers(output map[string]any, out aziclicommon.
 		}
 	} else if m.ctx.IsJSONOutput() {
 		ledgers := []any{}
-		for cfgRepo := range cfg.Ledgers {
-			isHead := cfg.Ledgers[cfgRepo].IsHead
+		for cfgLedger := range cfg.Ledgers {
+			isHead := cfg.Ledgers[cfgLedger].IsHead
 			repoObj := map[string]any{
-				"ref":        cfg.Ledgers[cfgRepo].Ref,
-				"ledger_uri": cfgRepo,
-				"ledger_id":  cfg.Ledgers[cfgRepo].LedgerID,
+				"ref":        cfg.Ledgers[cfgLedger].Ref,
+				"ledger_uri": cfgLedger,
+				"ledger_id":  cfg.Ledgers[cfgLedger].LedgerID,
 				"is_head":    isHead,
 			}
 			ledgers = append(ledgers, repoObj)
