@@ -23,6 +23,7 @@ import (
 const (
 	FieldLedgerApplicationID = "application_id"
 	FieldLedgerLedgerID      = "ledger_id"
+	FieldLedgerKind          = "kind"
 	FieldLedgerName          = "name"
 	FieldSchemaSchemaID      = "schema_id"
 	FieldSchemaApplicationID = "application_id"

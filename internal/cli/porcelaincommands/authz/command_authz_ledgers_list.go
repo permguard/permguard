@@ -50,8 +50,9 @@ func runECommandForListLedgers(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 	pageSize := v.GetInt32(azoptions.FlagName(commandNameForLedgersList, aziclicommon.FlagCommonPageSize))
 	applicationID := v.GetInt64(azoptions.FlagName(commandNameForLedger, aziclicommon.FlagCommonApplicationID))
 	ledgerID := v.GetString(azoptions.FlagName(commandNameForLedgersList, flagLedgerID))
+	kind := v.GetString(azoptions.FlagName(commandNameForLedgersList, flagLedgerKind))
 	name := v.GetString(azoptions.FlagName(commandNameForLedgersList, aziclicommon.FlagCommonName))
-	ledgers, err := client.FetchLedgersBy(page, pageSize, applicationID, ledgerID, name)
+	ledgers, err := client.FetchLedgersBy(page, pageSize, applicationID, ledgerID, kind, name)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
 			printer.Println("Failed to list ledgers.")
@@ -94,12 +95,16 @@ Examples:
 			return runECommandForListLedgers(deps, cmd, v)
 		},
 	}
+
 	command.Flags().Int32P(aziclicommon.FlagCommonPage, aziclicommon.FlagCommonPageShort, 1, "specify the page number for paginated results")
 	v.BindPFlag(azoptions.FlagName(commandNameForLedgersList, aziclicommon.FlagCommonPage), command.Flags().Lookup(aziclicommon.FlagCommonPage))
+
 	command.Flags().Int32P(aziclicommon.FlagCommonPageSize, aziclicommon.FlagCommonPageSizeShort, 1000, "specify the number of results per page")
 	v.BindPFlag(azoptions.FlagName(commandNameForLedgersList, aziclicommon.FlagCommonPageSize), command.Flags().Lookup(aziclicommon.FlagCommonPageSize))
+
 	command.Flags().String(flagLedgerID, "", "filter results by ledger id")
 	v.BindPFlag(azoptions.FlagName(commandNameForLedgersList, flagLedgerID), command.Flags().Lookup(flagLedgerID))
+
 	command.Flags().String(aziclicommon.FlagCommonName, "", "filter results by ledger name")
 	v.BindPFlag(azoptions.FlagName(commandNameForLedgersList, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
 	return command

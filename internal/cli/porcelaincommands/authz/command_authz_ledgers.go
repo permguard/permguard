@@ -34,6 +34,8 @@ const (
 	commandNameForLedger = "ledger"
 	// flagLedgerID is the flag for ledger id.
 	flagLedgerID = "ledgerid"
+	// flagLedgerKind is the flag for ledger kind.
+	flagLedgerKind = "kind"
 )
 
 // runECommandForCreateLedger runs the command for creating a ledger.

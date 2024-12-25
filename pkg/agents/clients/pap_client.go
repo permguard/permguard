@@ -35,5 +35,5 @@ type GrpcPAPClient interface {
 	// FetchLedgersByName returns all ledgers filtering by name.
 	FetchLedgersByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Ledger, error)
 	// FetchLedgersBy returns all ledgers filtering by ledger id and name.
-	FetchLedgersBy(page int32, pageSize int32, applicationID int64, ledgerID string, name string) ([]azmodels.Ledger, error)
+	FetchLedgersBy(page int32, pageSize int32, applicationID int64, ledgerID string, kind string, name string) ([]azmodels.Ledger, error)
 }
