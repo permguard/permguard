@@ -153,6 +153,7 @@ func TestUpdateLedgerWithErrors(t *testing.T) {
 		}
 
 		inLedger := &azmodels.Ledger{}
+		inLedger.Kind = azirepos.LedgerTypePolicy
 		outLedgers, err := storage.UpdateLedger(inLedger)
 		assert.Nil(outLedgers, "ledgers should be nil")
 		assert.Error(err)
@@ -184,6 +185,8 @@ func TestUpdateLedgerWithSuccess(t *testing.T) {
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
 	inLedger := &azmodels.Ledger{}
+	inLedger.Kind = azirepos.LedgerTypePolicy
+	
 	outLedgers, err := storage.UpdateLedger(inLedger)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outLedgers, "ledgers should not be nil")

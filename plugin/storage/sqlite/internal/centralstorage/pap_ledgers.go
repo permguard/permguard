@@ -80,7 +80,7 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *azmodels.Ledger) (*azmodel
 	if ledger.Kind == "" {
 		ledger.Kind = azirepos.LedgerTypePolicy
 	}
-	kind, err := azirepos.ConvertIdentityKindToID(ledger.Kind)
+	kind, err := azirepos.ConvertLedgerKindToID(ledger.Kind)
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger kind %s is not valid", ledger.Kind))
 	}
