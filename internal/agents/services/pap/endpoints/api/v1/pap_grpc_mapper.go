@@ -28,6 +28,7 @@ func MapGrpcLedgerResponseToAgentLedger(ledger *LedgerResponse) (*azmodels.Ledge
 		CreatedAt:     ledger.CreatedAt.AsTime(),
 		UpdatedAt:     ledger.UpdatedAt.AsTime(),
 		ApplicationID: ledger.ApplicationID,
+		Kind:          ledger.Kind,
 		Name:          ledger.Name,
 		Ref:           ledger.Ref,
 	}, nil
@@ -40,6 +41,7 @@ func MapAgentLedgerToGrpcLedgerResponse(ledger *azmodels.Ledger) (*LedgerRespons
 		CreatedAt:     timestamppb.New(ledger.CreatedAt),
 		UpdatedAt:     timestamppb.New(ledger.UpdatedAt),
 		ApplicationID: ledger.ApplicationID,
+		Kind:          ledger.Kind,
 		Name:          ledger.Name,
 		Ref:           ledger.Ref,
 	}, nil
