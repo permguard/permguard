@@ -15,7 +15,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
-syntax="proto3";
+syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
 
@@ -27,195 +27,195 @@ option go_package = "github.com/permguard/permguard/internal/hosts/api/aap/v1";
 
 // Application get request.
 message ApplicationFetchRequest {
-	optional int32 Page = 1;
-	optional int32 PageSize = 2;
-	optional int64 ApplicationID = 3;
-	optional string Name = 4;
+  optional int32 Page = 1;
+  optional int32 PageSize = 2;
+  optional int64 ApplicationID = 3;
+  optional string Name = 4;
 }
 
 // Application create request.
 message ApplicationCreateRequest {
-	string Name = 1;
+  string Name = 1;
 }
 
 // Application update request.
 message ApplicationUpdateRequest {
-    int64 ApplicationID = 1;
-    string Name = 2;
+  int64 ApplicationID = 1;
+  string Name = 2;
 }
 
 // Application delete request.
 message ApplicationDeleteRequest {
-	int64 ApplicationID = 1;
+  int64 ApplicationID = 1;
 }
 
 // Application response.
 message ApplicationResponse {
-    int64 ApplicationID = 1;
-    google.protobuf.Timestamp CreatedAt = 2;
-    google.protobuf.Timestamp UpdatedAt = 3;
-    string Name = 4;
+  int64 ApplicationID = 1;
+  google.protobuf.Timestamp CreatedAt = 2;
+  google.protobuf.Timestamp UpdatedAt = 3;
+  string Name = 4;
 }
 
 // Tenants
 
 // Tenant get request.
 message TenantFetchRequest {
-	optional int32 Page = 1;
-	optional int32 PageSize= 2;
-    int64 ApplicationID = 3;
-    optional string TenantID = 4;
-	optional string Name = 5;
+  optional int32 Page = 1;
+  optional int32 PageSize = 2;
+  int64 ApplicationID = 3;
+  optional string TenantID = 4;
+  optional string Name = 5;
 }
 
 // Tenant create request.
 message TenantCreateRequest {
-    int64 ApplicationID = 1;
-	string Name = 2;
+  int64 ApplicationID = 1;
+  string Name = 2;
 }
 
 // Tenant update request.
 message TenantUpdateRequest {
-    int64 ApplicationID = 1;
-    string TenantID = 2;
-    string Name = 3;
+  int64 ApplicationID = 1;
+  string TenantID = 2;
+  string Name = 3;
 }
 
 // Tenant delete request.
 message TenantDeleteRequest {
-	int64 ApplicationID = 1;
-	string TenantID = 2;
+  int64 ApplicationID = 1;
+  string TenantID = 2;
 }
 
 // Tenant response.
 message TenantResponse {
-    string TenantID = 1;
-    int64 ApplicationID = 2;
-    google.protobuf.Timestamp CreatedAt = 3;
-    google.protobuf.Timestamp UpdatedAt = 4;
-    string Name = 5;
+  string TenantID = 1;
+  int64 ApplicationID = 2;
+  google.protobuf.Timestamp CreatedAt = 3;
+  google.protobuf.Timestamp UpdatedAt = 4;
+  string Name = 5;
 }
 
 // IdentitySources
 
 // IdentitySource get request.
 message IdentitySourceFetchRequest {
-	optional int32 Page = 1;
-	optional int32 PageSize = 2;
-    int64 ApplicationID = 3;
-    optional string IdentitySourceID = 4;
-	optional string Name = 5;
+  optional int32 Page = 1;
+  optional int32 PageSize = 2;
+  int64 ApplicationID = 3;
+  optional string IdentitySourceID = 4;
+  optional string Name = 5;
 }
 
 // IdentitySource create request.
 message IdentitySourceCreateRequest {
-    int64 ApplicationID = 1;
-	string Name = 2;
+  int64 ApplicationID = 1;
+  string Name = 2;
 }
 
 // IdentitySource update request.
 message IdentitySourceUpdateRequest {
-	int64 ApplicationID = 1;
-    string IdentitySourceID = 2;
-    string Name = 3;
+  int64 ApplicationID = 1;
+  string IdentitySourceID = 2;
+  string Name = 3;
 }
 
 // IdentitySource delete request.
 message IdentitySourceDeleteRequest {
-	int64 ApplicationID = 1;
-	string IdentitySourceID = 2;
+  int64 ApplicationID = 1;
+  string IdentitySourceID = 2;
 }
 
 // IdentitySource response.
 message IdentitySourceResponse {
-    string IdentitySourceID = 1;
-    int64 ApplicationID = 2;
-    google.protobuf.Timestamp CreatedAt = 3;
-    google.protobuf.Timestamp UpdatedAt = 4;
-    string Name = 5;
+  string IdentitySourceID = 1;
+  int64 ApplicationID = 2;
+  google.protobuf.Timestamp CreatedAt = 3;
+  google.protobuf.Timestamp UpdatedAt = 4;
+  string Name = 5;
 }
 
 // Identities
 
 // Identities.
 message IdentityFetchRequest {
-	optional int32 Page = 1;
-	optional int32 PageSize = 2;
-	int64 ApplicationID = 3;
-    optional string IdentityID = 4;
-    optional string IdentitySourceID = 5;
-    optional string Kind = 6;
-	optional string Name = 7;
+  optional int32 Page = 1;
+  optional int32 PageSize = 2;
+  int64 ApplicationID = 3;
+  optional string IdentityID = 4;
+  optional string IdentitySourceID = 5;
+  optional string Kind = 6;
+  optional string Name = 7;
 }
 
 // Identity create request.
 message IdentityCreateRequest {
-	int64 ApplicationID = 1;
-	string IdentitySourceID = 2;
-    string Kind = 3;
-	string Name = 4;
+  int64 ApplicationID = 1;
+  string IdentitySourceID = 2;
+  string Kind = 3;
+  string Name = 4;
 }
 
 // Identity update request.
 message IdentityUpdateRequest {
-	int64 ApplicationID = 1;
-    string IdentityID = 2;
-    string Kind = 3;
-	string Name = 4;
+  int64 ApplicationID = 1;
+  string IdentityID = 2;
+  string Kind = 3;
+  string Name = 4;
 }
 
 // Identity delete request.
 message IdentityDeleteRequest {
-	int64 ApplicationID = 1;
-	string IdentityID = 2;
+  int64 ApplicationID = 1;
+  string IdentityID = 2;
 }
 
 // Identity response.
 message IdentityResponse {
-    string IdentityID = 1;
-    int64 ApplicationID = 2;
-    string IdentitySourceID = 3;
-    google.protobuf.Timestamp CreatedAt = 4;
-    google.protobuf.Timestamp UpdatedAt = 5;
-    string Kind = 6;
-    string Name = 7;
+  string IdentityID = 1;
+  int64 ApplicationID = 2;
+  string IdentitySourceID = 3;
+  google.protobuf.Timestamp CreatedAt = 4;
+  google.protobuf.Timestamp UpdatedAt = 5;
+  string Kind = 6;
+  string Name = 7;
 }
 
 // V1AAPService is the service for the Application Administration Point.
 service V1AAPService {
-	// Create an application.
-	rpc CreateApplication(ApplicationCreateRequest) returns (ApplicationResponse) {}
-	// Update an application.
-	rpc UpdateApplication(ApplicationUpdateRequest) returns (ApplicationResponse) {}
-	// Delete an application.
-	rpc DeleteApplication(ApplicationDeleteRequest) returns (ApplicationResponse) {}
-	// Fetch Applications.
-	rpc FetchApplications(ApplicationFetchRequest) returns (stream ApplicationResponse) {}
+  // Create an application.
+  rpc CreateApplication(ApplicationCreateRequest) returns (ApplicationResponse) {}
+  // Update an application.
+  rpc UpdateApplication(ApplicationUpdateRequest) returns (ApplicationResponse) {}
+  // Delete an application.
+  rpc DeleteApplication(ApplicationDeleteRequest) returns (ApplicationResponse) {}
+  // Fetch Applications.
+  rpc FetchApplications(ApplicationFetchRequest) returns (stream ApplicationResponse) {}
 
-	// Create an identity source.
-	rpc CreateIdentitySource(IdentitySourceCreateRequest) returns (IdentitySourceResponse) {}
-	// Update an identity source.
-	rpc UpdateIdentitySource(IdentitySourceUpdateRequest) returns (IdentitySourceResponse) {}
-	// Delete an identity source.
-	rpc DeleteIdentitySource(IdentitySourceDeleteRequest) returns (IdentitySourceResponse) {}
-	// Fetch identity sources.
-	rpc FetchIdentitySources(IdentitySourceFetchRequest) returns (stream IdentitySourceResponse) {}
+  // Create an identity source.
+  rpc CreateIdentitySource(IdentitySourceCreateRequest) returns (IdentitySourceResponse) {}
+  // Update an identity source.
+  rpc UpdateIdentitySource(IdentitySourceUpdateRequest) returns (IdentitySourceResponse) {}
+  // Delete an identity source.
+  rpc DeleteIdentitySource(IdentitySourceDeleteRequest) returns (IdentitySourceResponse) {}
+  // Fetch identity sources.
+  rpc FetchIdentitySources(IdentitySourceFetchRequest) returns (stream IdentitySourceResponse) {}
 
-	// Create an identity.
-	rpc CreateIdentity(IdentityCreateRequest) returns (IdentityResponse) {}
-	// Update an identity.
-	rpc UpdateIdentity(IdentityUpdateRequest) returns (IdentityResponse) {}
-	// Delete an identity.
-	rpc DeleteIdentity(IdentityDeleteRequest) returns (IdentityResponse) {}
-	// Fetch Identities.
-	rpc FetchIdentities(IdentityFetchRequest) returns (stream IdentityResponse) {}
+  // Create an identity.
+  rpc CreateIdentity(IdentityCreateRequest) returns (IdentityResponse) {}
+  // Update an identity.
+  rpc UpdateIdentity(IdentityUpdateRequest) returns (IdentityResponse) {}
+  // Delete an identity.
+  rpc DeleteIdentity(IdentityDeleteRequest) returns (IdentityResponse) {}
+  // Fetch Identities.
+  rpc FetchIdentities(IdentityFetchRequest) returns (stream IdentityResponse) {}
 
-	// Create an tenant.
-	rpc CreateTenant(TenantCreateRequest) returns (TenantResponse) {}
-	// Update an tenant.
-	rpc UpdateTenant(TenantUpdateRequest) returns (TenantResponse) {}
-	// Delete an tenant.
-	rpc DeleteTenant(TenantDeleteRequest) returns (TenantResponse) {}
-	// Fetch Tenants.
-	rpc FetchTenants(TenantFetchRequest) returns (stream TenantResponse) {}
+  // Create an tenant.
+  rpc CreateTenant(TenantCreateRequest) returns (TenantResponse) {}
+  // Update an tenant.
+  rpc UpdateTenant(TenantUpdateRequest) returns (TenantResponse) {}
+  // Delete an tenant.
+  rpc DeleteTenant(TenantDeleteRequest) returns (TenantResponse) {}
+  // Fetch Tenants.
+  rpc FetchTenants(TenantFetchRequest) returns (stream TenantResponse) {}
 }

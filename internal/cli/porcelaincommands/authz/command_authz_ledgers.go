@@ -56,7 +56,7 @@ func runECommandForUpsertLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		Name:          name,
 	}
 	if isCreate {
-		ledger, err = client.CreateLedger(applicationID, name)
+		ledger, err = client.CreateLedger(applicationID, name, "policy")
 	} else {
 		ledgerID := v.GetString(azoptions.FlagName(flagPrefix, flagLedgerID))
 		ledger.LedgerID = ledgerID

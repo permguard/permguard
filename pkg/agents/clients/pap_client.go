@@ -23,7 +23,7 @@ import (
 // GrpcPAPClient is the gRPC PAP client servicer.
 type GrpcPAPClient interface {
 	// CreateLedger creates a ledger.
-	CreateLedger(applicationID int64, name string) (*azmodels.Ledger, error)
+	CreateLedger(applicationID int64, kind string, name string) (*azmodels.Ledger, error)
 	// UpdateLedger updates a ledger.
 	UpdateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error)
 	// DeleteLedger deletes a ledger.
