@@ -39,16 +39,17 @@ func registerLedgerForUpsertMocking(isCreate bool) (*Ledger, string, *sqlmock.Ro
 		Name:          "rent-a-car",
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
+		Kind: 1,
 		Ref:           "0000000000000000000000000000000000000000000000000000000000000000",
 	}
 	var sql string
 	if isCreate {
-		sql = `INSERT INTO ledgers \(application_id, ledger_id, name\) VALUES \(\?, \?, \?\)`
+		sql = `INSERT INTO ledgers \(application_id, ledger_id, kind, name\) VALUES \(\?, \?, \?, \?\)`
 	} else {
 		sql = `UPDATE ledgers SET name = \? WHERE application_id = \? and ledger_id = \?`
 	}
-	sqlRows := sqlmock.NewRows([]string{"application_id", "ledger_id", "created_at", "updated_at", "name", "ref"}).
-		AddRow(ledger.ApplicationID, ledger.LedgerID, ledger.CreatedAt, ledger.UpdatedAt, ledger.Name, ledger.Name)
+	sqlRows := sqlmock.NewRows([]string{"application_id", "ledger_id", "created_at", "updated_at", "kind", "name", "ref"}).
+		AddRow(ledger.ApplicationID, ledger.LedgerID, ledger.CreatedAt, ledger.UpdatedAt, ledger.Kind, ledger.Name, ledger.Ref)
 	return ledger, sql, sqlRows
 }
 
@@ -60,12 +61,13 @@ func registerLedgerForDeleteMocking() (string, *Ledger, *sqlmock.Rows, string) {
 		Name:          "rent-a-car",
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
+		Kind: 1,
 		Ref:           "0000000000000000000000000000000000000000000000000000000000000000",
 	}
-	var sqlSelect = `SELECT application_id, ledger_id, created_at, updated_at, name, ref FROM ledgers WHERE application_id = \? and ledger_id = \?`
+	var sqlSelect = `SELECT application_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE application_id = \? and ledger_id = \?`
 	var sqlDelete = `DELETE FROM ledgers WHERE application_id = \? and ledger_id = \?`
-	sqlRows := sqlmock.NewRows([]string{"application_id", "ledger_id", "created_at", "updated_at", "name", "ref"}).
-		AddRow(ledger.ApplicationID, ledger.LedgerID, ledger.CreatedAt, ledger.UpdatedAt, ledger.Name, ledger.Ref)
+	sqlRows := sqlmock.NewRows([]string{"application_id", "ledger_id", "created_at", "updated_at", "kind", "name", "ref"}).
+		AddRow(ledger.ApplicationID, ledger.LedgerID, ledger.CreatedAt, ledger.UpdatedAt, ledger.Kind, ledger.Name, ledger.Ref)
 	return sqlSelect, ledger, sqlRows, sqlDelete
 }
 
@@ -78,12 +80,13 @@ func registerLedgerForFetchMocking() (string, []Ledger, *sqlmock.Rows) {
 			Name:          "rent-a-car",
 			CreatedAt:     time.Now(),
 			UpdatedAt:     time.Now(),
+			Kind: 1,
 			Ref:           "0000000000000000000000000000000000000000000000000000000000000000",
 		},
 	}
 	var sqlSelect = "SELECT * FROM ledgers WHERE application_id = ? AND ledger_id = ? AND name LIKE ? ORDER BY ledger_id ASC LIMIT ? OFFSET ?"
-	sqlRows := sqlmock.NewRows([]string{"application_id", "ledger_id", "created_at", "updated_at", "name", "ref"}).
-		AddRow(ledgers[0].ApplicationID, ledgers[0].LedgerID, ledgers[0].CreatedAt, ledgers[0].UpdatedAt, ledgers[0].Name, ledgers[0].Ref)
+	sqlRows := sqlmock.NewRows([]string{"application_id", "ledger_id", "created_at", "updated_at", "kind", "name", "ref"}).
+		AddRow(ledgers[0].ApplicationID, ledgers[0].LedgerID, ledgers[0].CreatedAt, ledgers[0].UpdatedAt, ledgers[0].Kind, ledgers[0].Name, ledgers[0].Ref)
 	return sqlSelect, ledgers, sqlRows
 }
 
@@ -170,22 +173,24 @@ func TestRepoUpsertLedgerWithSuccess(t *testing.T) {
 			dbInLedger = &Ledger{
 				ApplicationID: ledger.ApplicationID,
 				Name:          ledger.Name,
+				Kind: 1,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(ledger.ApplicationID, sqlmock.AnyArg(), ledger.Name).
+				WithArgs(ledger.ApplicationID, sqlmock.AnyArg(), ledger.Kind, ledger.Name).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 		} else {
 			dbInLedger = &Ledger{
 				LedgerID:      ledger.LedgerID,
 				ApplicationID: ledger.ApplicationID,
 				Name:          ledger.Name,
+				Kind: 1,
 			}
 			sqlDBMock.ExpectExec(sql).
 				WithArgs(ledger.Name, ledger.ApplicationID, ledger.LedgerID).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 		}
 
-		sqlDBMock.ExpectQuery(`SELECT application_id, ledger_id, created_at, updated_at, name, ref FROM ledgers WHERE application_id = \? and ledger_id = \?`).
+		sqlDBMock.ExpectQuery(`SELECT application_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE application_id = \? and ledger_id = \?`).
 			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
 			WillReturnRows(sqlLedgerRows)
 
@@ -224,15 +229,17 @@ func TestRepoUpsertLedgerWithErrors(t *testing.T) {
 			dbInLedger = &Ledger{
 				ApplicationID: ledger.ApplicationID,
 				Name:          ledger.Name,
+				Kind: 1,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(ledger.ApplicationID, sqlmock.AnyArg(), ledger.Name).
+				WithArgs(ledger.ApplicationID, sqlmock.AnyArg(), ledger.Kind, ledger.Name).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 		} else {
 			dbInLedger = &Ledger{
 				LedgerID:      ledger.LedgerID,
 				ApplicationID: ledger.ApplicationID,
 				Name:          ledger.Name,
+				Kind: 1,
 			}
 			sqlDBMock.ExpectExec(sql).
 				WithArgs(ledger.Name, ledger.ApplicationID, ledger.LedgerID).

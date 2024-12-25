@@ -41,7 +41,10 @@ func (s SQLiteCentralStoragePAP) CreateLedger(ledger *azmodels.Ledger) (*azmodel
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	kind, err := azirepos.ConvertIdentityKindToID(ledger.Kind)
+	if ledger.Kind == "" {
+		ledger.Kind = azirepos.LedgerTypePolicy
+	}
+	kind, err := azirepos.ConvertLedgerKindToID(ledger.Kind)
 	if err != nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger kind %s is not valid", ledger.Kind))
 	}
@@ -73,6 +76,9 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *azmodels.Ledger) (*azmodel
 	tx, err := db.Begin()
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+	}
+	if ledger.Kind == "" {
+		ledger.Kind = azirepos.LedgerTypePolicy
 	}
 	kind, err := azirepos.ConvertIdentityKindToID(ledger.Kind)
 	if err != nil {
