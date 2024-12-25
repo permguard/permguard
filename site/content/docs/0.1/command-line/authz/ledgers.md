@@ -101,10 +101,6 @@ permguard authz ledgers list --appid 268786704340
 output:
 
 ```bash
-295433941928473fb692f1a12b6ef660: crm
-4fc71b8d934a496d9347ab4a04322460: accounting
-668f3771eacf4094ba8a80942ea5fd3f: bookshop
-a2b8df4c367940739d872bcbb157155f: insurance
 d02af7e50a7b462cb496aa6ddeb4275e: magicfarmacia
 ```
 
@@ -121,41 +117,15 @@ output:
 
 ```bash
 {
-  "ledger": [
-    {
-      "ledger_id": "295433941928473fb692f1a12b6ef660",
-      "created_at": "2024-08-25T14:50:30.248Z",
-      "updated_at": "2024-08-25T14:50:30.248Z",
-      "application_id": 268786704340,
-      "name": "crm"
-    },
-    {
-      "ledger_id": "4fc71b8d934a496d9347ab4a04322460",
-      "created_at": "2024-08-25T14:50:26.999Z",
-      "updated_at": "2024-08-25T14:50:26.999Z",
-      "application_id": 268786704340,
-      "name": "accounting"
-    },
-    {
-      "ledger_id": "668f3771eacf4094ba8a80942ea5fd3f",
-      "created_at": "2024-08-25T14:50:38.003Z",
-      "updated_at": "2024-08-25T14:50:38.003Z",
-      "application_id": 268786704340,
-      "name": "bookshop"
-    },
-    {
-      "ledger_id": "a2b8df4c367940739d872bcbb157155f",
-      "created_at": "2024-08-25T14:50:33.046Z",
-      "updated_at": "2024-08-25T14:50:33.046Z",
-      "application_id": 268786704340,
-      "name": "insurance"
-    },
+  "ledgers": [
     {
       "ledger_id": "d02af7e50a7b462cb496aa6ddeb4275e",
-      "created_at": "2024-08-25T14:50:13.705Z",
-      "updated_at": "2024-08-25T14:50:13.705Z",
-      "application_id": 268786704340,
-      "name": "magicfarmacia"
+      "created_at": "2024-12-25T08:49:14.467Z",
+      "updated_at": "2024-12-25T08:49:14.467Z",
+      "application_id": 727373447775,
+      "name": "727373447775",
+      "kind": "policy",
+      "ref": "0000000000000000000000000000000000000000000000000000000000000000"
     }
   ]
 }

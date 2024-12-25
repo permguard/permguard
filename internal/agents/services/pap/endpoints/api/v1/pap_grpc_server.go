@@ -123,6 +123,9 @@ func (s *V1PAPServer) DeleteLedger(ctx context.Context, ledgerRequest *LedgerDel
 func (s *V1PAPServer) FetchLedgers(ledgerRequest *LedgerFetchRequest, stream grpc.ServerStreamingServer[LedgerResponse]) error {
 	fields := map[string]any{}
 	fields[azmodels.FieldLedgerApplicationID] = ledgerRequest.ApplicationID
+	if ledgerRequest.Kind != nil {
+		fields[azmodels.FieldLedgerKind] = *ledgerRequest.Kind
+	}
 	if ledgerRequest.Name != nil {
 		fields[azmodels.FieldLedgerName] = *ledgerRequest.Name
 	}

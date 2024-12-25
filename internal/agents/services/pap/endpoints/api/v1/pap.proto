@@ -31,7 +31,8 @@ message LedgerFetchRequest {
   optional int32 PageSize = 2;
   int64 ApplicationID = 3;
   optional string LedgerID = 4;
-  optional string Name = 5;
+	optional string Kind = 5;
+  optional string Name = 6;
 }
 
 // Ledger create request.
