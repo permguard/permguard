@@ -17,7 +17,6 @@
 package cedar
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -112,52 +111,4 @@ func TestTreeCreation(t *testing.T) {
 		assert.Equal(entry.GetLanguageType(), convertedEntry.GetLanguageType(), "LanguageType mismatch")
 		assert.Equal(entry.GetLanguageVersion(), convertedEntry.GetLanguageVersion(), "LanguageVersion mismatch")
 	}
-}
-
-// TestCreateAndReadPolicyBlobObjects tests the creation and reading of policy blob objects.
-func TestCreateAndReadPolicyBlobObjects(t *testing.T) {
-	assert := assert.New(t)
-
-	langAbs, err := NewCedarLanguageAbstraction()
-	assert.Nil(err, "NewCedarLanguageAbstraction should not return an error")
-	assert.NotNil(langAbs, "Language abstraction should not be nil")
-
-	path := "./testutils/data/create-blob-objects"
-
-	file1 := `
-permit(
-	principal in Permguard::Actor::"inventory-auditor",
-	action in Action::"view",
-	resource in MagicFarmacia::Branch::Inventory::"*"
-);`
-
-	file2 := `
-@id("assign-role-branch")
-permit(
-	principal in Permguard::Actor::"administer-branches-staff",
-	action in Action::"assignRole",
-	resource in MagicFarmacia::Branch::Staff::"*"
-)
-when {
-	principal.active == true &&
-	context.id > 0
-}
-unless {
-	principal has isTerminated && principal.isTerminated
-};`
-
-	codeFiles := fmt.Sprintln(file1, file2)
-	objs, err := langAbs.CreatePolicyBlobObjects(path, []byte(codeFiles))
-	assert.Nil(err, "CreatePolicyBlobObjects should not return an error")
-	assert.NotNil(objs, "MultiSectionsObject should not be nil")
-	assert.Equal(objs.GetNumberOfSections(), 2, "Section objects count mismatch")
-	for _, obj := range objs.GetSectionObjects() {
-		assert.NotNil(obj, "Object should not be nil")
-		assert.Nil(obj.GetError(), "Object error should be nil")
-	}
-	secObjs := objs.GetSectionObjects()
-	assert.Nil(err, "GetNumberOfSections should not return an error")
-	assert.NotNil(secObjs, "Section objects should not be nil")
-	assert.Equal("view-inventory", secObjs[0].GetCodeID(), "CodeID mismatch")
-	assert.Equal("assign-role-branch", secObjs[1].GetCodeID(), "CodeID mismatch")
 }

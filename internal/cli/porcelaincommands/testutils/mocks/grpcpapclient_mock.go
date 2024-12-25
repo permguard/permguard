@@ -89,8 +89,8 @@ func (m *GrpcPAPClientMock) FetchLedgersByName(page int32, pageSize int32, appli
 }
 
 // FetchLedgersBy returns all ledgers filtering by ledger id and name.
-func (m *GrpcPAPClientMock) FetchLedgersBy(page int32, pageSize int32, applicationID int64, ledgerID string, name string) ([]azmodels.Ledger, error) {
-	args := m.Called(page, pageSize, applicationID, ledgerID, name)
+func (m *GrpcPAPClientMock) FetchLedgersBy(page int32, pageSize int32, applicationID int64, ledgerID string, kind string, name string) ([]azmodels.Ledger, error) {
+	args := m.Called(page, pageSize, applicationID, ledgerID, kind, name)
 	var r0 []azmodels.Ledger
 	if val, ok := args.Get(0).([]azmodels.Ledger); ok {
 		r0 = val
