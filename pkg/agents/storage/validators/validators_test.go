@@ -94,8 +94,8 @@ func TestValidateName(t *testing.T) {
 	}{
 		{"application", "", true},
 		{"application", " s s d  ", true},
-		{"application", "132465", true},
-		{"application", "13a2aa465", true},
+		{"application", "132465", false},
+		{"application", "13a2aa465", false},
 		{"application", "nome-@nonvalido", true},
 		{"application", "nome/nonvalido", true},
 		{"application", "nome", false},

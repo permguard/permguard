@@ -33,10 +33,13 @@ const (
 	errorMessageLedgerInvalidApplicationID = "storage: invalid client input - application id is not valid (id: %d)"
 )
 
+const (
+	LedgerTypePolicy = "policy"
+)
+
 // ledgersMap is a map of ledger kinds to IDs.
 var ledgersMap = map[string]int16{
-	"user":  1,
-	"actor": 2,
+	LedgerTypePolicy:  1,
 }
 
 // ConvertLedgerKindToID converts an ledger kind to an ID.
@@ -79,14 +82,11 @@ func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*L
 	ledgerID := ledger.LedgerID
 	ledgerName := ledger.Name
 	ledgerKind := ledger.Kind
-	if ledgerKind == 0 {
-		ledgerKind = 1
-	}
 	var result sql.Result
 	var err error
 	if isCreate {
 		ledgerID = GenerateUUID()
-		result, err = tx.Exec("INSERT INTO ledgers (application_id, ledger_id, name, kind) VALUES (?, ?, ?, ?)", applicationID, ledgerID, ledgerName, ledgerKind)
+		result, err = tx.Exec("INSERT INTO ledgers (application_id, ledger_id, kind, name) VALUES (?, ?, ?, ?)", applicationID, ledgerID, ledgerKind, ledgerName)
 	} else {
 		result, err = tx.Exec("UPDATE ledgers SET name = ? WHERE application_id = ? and ledger_id = ?", ledgerName, applicationID, ledgerID)
 	}
@@ -100,13 +100,13 @@ func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*L
 	}
 
 	var dbLedger Ledger
-	err = tx.QueryRow("SELECT application_id, ledger_id, created_at, updated_at, name, kind, ref FROM ledgers WHERE application_id = ? and ledger_id = ?", applicationID, ledgerID).Scan(
+	err = tx.QueryRow("SELECT application_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE application_id = ? and ledger_id = ?", applicationID, ledgerID).Scan(
 		&dbLedger.ApplicationID,
 		&dbLedger.LedgerID,
 		&dbLedger.CreatedAt,
 		&dbLedger.UpdatedAt,
-		&dbLedger.Name,
 		&dbLedger.Kind,
+		&dbLedger.Name,
 		&dbLedger.Ref,
 	)
 	if err != nil {
@@ -168,11 +168,12 @@ func (r *Repository) DeleteLedger(tx *sql.Tx, applicationID int64, ledgerID stri
 	}
 
 	var dbLedger Ledger
-	err := tx.QueryRow("SELECT application_id, ledger_id, created_at, updated_at, name, ref FROM ledgers WHERE application_id = ? and ledger_id = ?", applicationID, ledgerID).Scan(
+	err := tx.QueryRow("SELECT application_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE application_id = ? and ledger_id = ?", applicationID, ledgerID).Scan(
 		&dbLedger.ApplicationID,
 		&dbLedger.LedgerID,
 		&dbLedger.CreatedAt,
 		&dbLedger.UpdatedAt,
+		&dbLedger.Kind,
 		&dbLedger.Name,
 		&dbLedger.Ref,
 	)
