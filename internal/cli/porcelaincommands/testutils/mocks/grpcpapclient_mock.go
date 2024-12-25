@@ -29,8 +29,8 @@ type GrpcPAPClientMock struct {
 }
 
 // CreateLedger creates a ledger.
-func (m *GrpcPAPClientMock) CreateLedger(applicationID int64, name string) (*azmodels.Ledger, error) {
-	args := m.Called(applicationID, name)
+func (m *GrpcPAPClientMock) CreateLedger(applicationID int64, kind string, name string) (*azmodels.Ledger, error) {
+	args := m.Called(applicationID, kind, name)
 	var r0 *azmodels.Ledger
 	if val, ok := args.Get(0).(*azmodels.Ledger); ok {
 		r0 = val

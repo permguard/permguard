@@ -186,7 +186,7 @@ func TestUpdateLedgerWithSuccess(t *testing.T) {
 
 	inLedger := &azmodels.Ledger{}
 	inLedger.Kind = azirepos.LedgerTypePolicy
-	
+
 	outLedgers, err := storage.UpdateLedger(inLedger)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outLedgers, "ledgers should not be nil")

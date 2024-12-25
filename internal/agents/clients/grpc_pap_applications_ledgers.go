@@ -26,12 +26,12 @@ import (
 )
 
 // CreateLedger creates a new ledger.
-func (c *GrpcPAPClient) CreateLedger(applicationID int64, name string) (*azmodels.Ledger, error) {
+func (c *GrpcPAPClient) CreateLedger(applicationID int64, kind string, name string) (*azmodels.Ledger, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	ledger, err := client.CreateLedger(context.Background(), &azapiv1pap.LedgerCreateRequest{ApplicationID: applicationID, Name: name})
+	ledger, err := client.CreateLedger(context.Background(), &azapiv1pap.LedgerCreateRequest{ApplicationID: applicationID, Name: name, Kind: kind})
 	if err != nil {
 		return nil, err
 	}
@@ -50,6 +50,7 @@ func (c *GrpcPAPClient) UpdateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger,
 	updatedLedger, err := client.UpdateLedger(context.Background(), &azapiv1pap.LedgerUpdateRequest{
 		LedgerID:      ledger.LedgerID,
 		ApplicationID: ledger.ApplicationID,
+		Kind:          ledger.Kind,
 		Name:          ledger.Name,
 	})
 	if err != nil {

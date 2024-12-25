@@ -15,7 +15,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
-syntax="proto3";
+syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
 
@@ -27,48 +27,51 @@ option go_package = "github.com/permguard/permguard/internal/hosts/api/pap/v1";
 
 // Ledger get request.
 message LedgerFetchRequest {
-	optional int32 Page 	 		= 1;
-	optional int32 PageSize	 		= 2;
-    int64 ApplicationID 				= 3;
-    optional string LedgerID 	= 4;
-	optional string Name 			= 5;
+  optional int32 Page = 1;
+  optional int32 PageSize = 2;
+  int64 ApplicationID = 3;
+  optional string LedgerID = 4;
+  optional string Name = 5;
 }
 
 // Ledger create request.
 message LedgerCreateRequest {
-    int64 ApplicationID = 1;
-	string Name = 2;
+  int64 ApplicationID = 1;
+  string Kind = 2;
+  string Name = 3;
 }
 
 // Ledger update request.
 message LedgerUpdateRequest {
-	int64 ApplicationID = 1;
-    string LedgerID = 2;
-    string Name = 3;
+  int64 ApplicationID = 1;
+  string LedgerID = 2;
+  string Kind = 3;
+  string Name = 4;
 }
 
 // Ledger delete request.
 message LedgerDeleteRequest {
-	int64 ApplicationID = 1;
-	string LedgerID = 2;
+  int64 ApplicationID = 1;
+  string LedgerID = 2;
 }
 
 // Ledger response.
 message LedgerResponse {
-    string LedgerID = 1;
-    int64 ApplicationID = 2;
-    google.protobuf.Timestamp CreatedAt = 3;
-    google.protobuf.Timestamp UpdatedAt = 4;
-    string Name = 5;
-	string Ref = 6;
+  string LedgerID = 1;
+  int64 ApplicationID = 2;
+  google.protobuf.Timestamp CreatedAt = 3;
+  google.protobuf.Timestamp UpdatedAt = 4;
+  string Kind = 5;
+  string Name = 6;
+  string Ref = 7;
 }
 
 // Pack Objects
 
 // Ledger stream request.
 message LedgerStreamRequest {
-	int64 ApplicationID = 1;
-    string LedgerID = 2;
+  int64 ApplicationID = 1;
+  string LedgerID = 2;
 }
 
 // PackMessage is a pack message.
@@ -78,16 +81,16 @@ message PackMessage {
 
 // V1PAPService is the service for the Policy Administration Point.
 service V1PAPService {
-	// Create an ledger.
-	rpc CreateLedger(LedgerCreateRequest) returns (LedgerResponse) {}
-	// Update an ledger.
-	rpc UpdateLedger(LedgerUpdateRequest) returns (LedgerResponse) {}
-	// Delete an ledger.
-	rpc DeleteLedger(LedgerDeleteRequest) returns (LedgerResponse) {}
-	// Fetch ledgers.
-	rpc FetchLedgers(LedgerFetchRequest) returns (stream LedgerResponse) {}
-	// ReceivePack receives objects from the client.
-	rpc ReceivePack(stream PackMessage) returns (stream PackMessage) {}
-	// NOTPStream handles bidirectional stream using the NOTP protocol.
-	rpc NOTPStream(stream PackMessage) returns (stream PackMessage) {}
+  // Create an ledger.
+  rpc CreateLedger(LedgerCreateRequest) returns (LedgerResponse) {}
+  // Update an ledger.
+  rpc UpdateLedger(LedgerUpdateRequest) returns (LedgerResponse) {}
+  // Delete an ledger.
+  rpc DeleteLedger(LedgerDeleteRequest) returns (LedgerResponse) {}
+  // Fetch ledgers.
+  rpc FetchLedgers(LedgerFetchRequest) returns (stream LedgerResponse) {}
+  // ReceivePack receives objects from the client.
+  rpc ReceivePack(stream PackMessage) returns (stream PackMessage) {}
+  // NOTPStream handles bidirectional stream using the NOTP protocol.
+  rpc NOTPStream(stream PackMessage) returns (stream PackMessage) {}
 }

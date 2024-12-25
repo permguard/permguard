@@ -67,7 +67,7 @@ func TestCliLedgersCreateWithError(t *testing.T) {
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		papClient := azmocks.NewGrpcPAPClientMock()
-		papClient.On("CreateLedger", mock.Anything, mock.Anything).Return(nil, azerrors.ErrClientParameter)
+		papClient.On("CreateLedger", mock.Anything, mock.Anything, mock.Anything).Return(nil, azerrors.ErrClientParameter)
 
 		printerMock := azmocks.NewPrinterMock()
 		printerMock.On("Println", mock.Anything).Return()
@@ -114,7 +114,7 @@ func TestCliLedgersCreateWithSuccess(t *testing.T) {
 			CreatedAt:     time.Now(),
 			UpdatedAt:     time.Now(),
 		}
-		papClient.On("CreateLedger", mock.Anything, mock.Anything).Return(ledger, nil)
+		papClient.On("CreateLedger", mock.Anything, mock.Anything, mock.Anything).Return(ledger, nil)
 
 		printerMock := azmocks.NewPrinterMock()
 		outputPrinter := map[string]any{}

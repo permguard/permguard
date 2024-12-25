@@ -39,7 +39,7 @@ const (
 
 // ledgersMap is a map of ledger kinds to IDs.
 var ledgersMap = map[string]int16{
-	LedgerTypePolicy:  1,
+	LedgerTypePolicy: 1,
 }
 
 // ConvertLedgerKindToID converts an ledger kind to an ID.

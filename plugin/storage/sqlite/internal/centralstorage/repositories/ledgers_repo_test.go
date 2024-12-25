@@ -39,7 +39,7 @@ func registerLedgerForUpsertMocking(isCreate bool) (*Ledger, string, *sqlmock.Ro
 		Name:          "rent-a-car",
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
-		Kind: 1,
+		Kind:          1,
 		Ref:           "0000000000000000000000000000000000000000000000000000000000000000",
 	}
 	var sql string
@@ -61,7 +61,7 @@ func registerLedgerForDeleteMocking() (string, *Ledger, *sqlmock.Rows, string) {
 		Name:          "rent-a-car",
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
-		Kind: 1,
+		Kind:          1,
 		Ref:           "0000000000000000000000000000000000000000000000000000000000000000",
 	}
 	var sqlSelect = `SELECT application_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE application_id = \? and ledger_id = \?`
@@ -80,7 +80,7 @@ func registerLedgerForFetchMocking() (string, []Ledger, *sqlmock.Rows) {
 			Name:          "rent-a-car",
 			CreatedAt:     time.Now(),
 			UpdatedAt:     time.Now(),
-			Kind: 1,
+			Kind:          1,
 			Ref:           "0000000000000000000000000000000000000000000000000000000000000000",
 		},
 	}
@@ -173,7 +173,7 @@ func TestRepoUpsertLedgerWithSuccess(t *testing.T) {
 			dbInLedger = &Ledger{
 				ApplicationID: ledger.ApplicationID,
 				Name:          ledger.Name,
-				Kind: 1,
+				Kind:          1,
 			}
 			sqlDBMock.ExpectExec(sql).
 				WithArgs(ledger.ApplicationID, sqlmock.AnyArg(), ledger.Kind, ledger.Name).
@@ -183,7 +183,7 @@ func TestRepoUpsertLedgerWithSuccess(t *testing.T) {
 				LedgerID:      ledger.LedgerID,
 				ApplicationID: ledger.ApplicationID,
 				Name:          ledger.Name,
-				Kind: 1,
+				Kind:          1,
 			}
 			sqlDBMock.ExpectExec(sql).
 				WithArgs(ledger.Name, ledger.ApplicationID, ledger.LedgerID).
@@ -229,7 +229,7 @@ func TestRepoUpsertLedgerWithErrors(t *testing.T) {
 			dbInLedger = &Ledger{
 				ApplicationID: ledger.ApplicationID,
 				Name:          ledger.Name,
-				Kind: 1,
+				Kind:          1,
 			}
 			sqlDBMock.ExpectExec(sql).
 				WithArgs(ledger.ApplicationID, sqlmock.AnyArg(), ledger.Kind, ledger.Name).
@@ -239,7 +239,7 @@ func TestRepoUpsertLedgerWithErrors(t *testing.T) {
 				LedgerID:      ledger.LedgerID,
 				ApplicationID: ledger.ApplicationID,
 				Name:          ledger.Name,
-				Kind: 1,
+				Kind:          1,
 			}
 			sqlDBMock.ExpectExec(sql).
 				WithArgs(ledger.Name, ledger.ApplicationID, ledger.LedgerID).
