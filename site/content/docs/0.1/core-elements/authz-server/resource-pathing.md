@@ -34,7 +34,7 @@ An environment can include multiple **Authorization Servers**, making it essenti
 To reference a specific application in an **Authorization Server**, use the following URI format:
 
 ```text
- protocol    host     account
+ protocol    host   application
 ┌───┴────┐┌───┴───┐ ┌────┴─────┐
 permguard@localhost/273165098782
 ```
@@ -44,7 +44,7 @@ permguard@localhost/273165098782
 To reference a specific identity source in an **Authorization Server**, use the following URI format:
 
 ```text
- protocol    host     account           identity-source
+ protocol    host   application         identity-source
 ┌───┴────┐┌───┴───┐ ┌────┴─────┐            ┌──┴───┐
 permguard@localhost/273165098782/identities/keycloak
 ```
@@ -52,7 +52,7 @@ permguard@localhost/273165098782/identities/keycloak
 A user identity can be referenced using the following URI format:
 
 ```text
- protocol    host     account           identity-source       user
+ protocol    host   application         identity-source       user
 ┌───┴────┐┌───┴───┐ ┌────┴─────┐            ┌──┴───┐       ┌───┴────┐
 permguard@localhost/273165098782/identities/keycloak/users/john.smith
 ```
@@ -62,7 +62,7 @@ permguard@localhost/273165098782/identities/keycloak/users/john.smith
 To reference a specific ledger in an **Authorization Server**, use the following URI format:
 
 ```text
- protocol    host     account               ledger
+ protocol    host   application              ledger
 ┌───┴────┐┌───┴───┐ ┌────┴─────┐         ┌─────┴─────┐
 permguard@localhost/273165098782/ledgers/magicfarmacia
 ```
@@ -70,7 +70,7 @@ permguard@localhost/273165098782/ledgers/magicfarmacia
 A policy can be referenced using the following URI format:
 
 ```text
- protocol    host     account               ledger                                 version                                            policy
+ protocol    host   application              ledger                                 version                                            policy
 ┌───┴────┐┌───┴───┐ ┌────┴─────┐         ┌─────┴─────┐ ┌───────────────────────────────┴───────────────────────────────┐         ┌───────┴────────┐
 permguard@localhost/273165098782/ledgers/magicfarmacia/722164f552f2c8e582d4ef79270c7ec94b3633e8172af6ea53ffe1fdf64d66de/policies/assign-role-branch
 ```
