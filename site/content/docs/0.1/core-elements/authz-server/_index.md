@@ -1,6 +1,6 @@
 ---
-title: "Authorization Server"
-slug: "Authorization Server"
+title: "AuthZ Server"
+slug: "AuthZ Server"
 description: ""
 summary: ""
 date: 2023-08-21T22:48:53+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "authorization-server-436017e0f3074f96810e26d7a9af215a"
+    identifier: "authz-server-436017e0f3074f96810e26d7a9af215a"
 weight: 2400
 toc: true
 seo:
