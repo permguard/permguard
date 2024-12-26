@@ -1,6 +1,6 @@
 ---
-title: "Policy Ledgers"
-slug: "Policy Ledgers"
+title: "Ledgers"
+slug: "Ledgers"
 description: ""
 summary: ""
 date: 2023-08-21T22:44:27+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "policy-ledgers-50fb7fecb28949e0af3be49b7d2954c5"
+    identifier: "ledgers-50fb7fecb28949e0af3be49b7d2954c5"
 weight: 2301
 toc: true
 seo:
