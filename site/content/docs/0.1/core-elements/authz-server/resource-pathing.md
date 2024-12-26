@@ -52,9 +52,9 @@ To reference a specific identity source in an **Authorization Server**, use the 
 A user identity can be referenced using the following URI format:
 
 ```text
-   protocol    host     account          identity-source      user
-  ┌───┴────┐┌───┴───┐ ┌────┴─────┐            ┌──┴───┐       ┌──┴─┐
-  permguard@localhost/676095239339/identities/keycloak/users/1001
+   protocol    host     account          identity-source         user
+  ┌───┴────┐┌───┴───┐ ┌────┴─────┐            ┌──┴───┐       ┌────┴────┐
+  permguard@localhost/676095239339/identities/keycloak/users/john.smith
 ```
 
 ## Ledger Pathing
