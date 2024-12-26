@@ -53,7 +53,7 @@ A user identity can be referenced using the following URI format:
 
 ```text
    protocol    host     account          identity-source         user
-  ┌───┴────┐┌───┴───┐ ┌────┴─────┐            ┌──┴───┐       ┌────┴───┐
+  ┌───┴────┐┌───┴───┐ ┌────┴─────┐            ┌──┴───┐       ┌───┴────┐
   permguard@localhost/676095239339/identities/keycloak/users/john.smith
 ```
 
