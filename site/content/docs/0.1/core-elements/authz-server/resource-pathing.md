@@ -64,7 +64,7 @@ To reference a specific ledger in an **Authorization Server**, use the following
 ```text
    protocol    host     account                ledger
   ┌───┴────┐┌───┴───┐ ┌────┴─────┐         ┌─────┴─────┐
-  permguard@localhost/676095239339/ledgers/magicfarmacia
+  localhost/273165098782/magicfarmacia
 ```
 
 A policy can be referenced using the following URI format:
@@ -72,5 +72,5 @@ A policy can be referenced using the following URI format:
 ```text
    protocol    host     account                ledger                   policy
   ┌───┴────┐┌───┴───┐ ┌────┴─────┐         ┌─────┴─────┐          ┌───────┴────────┐
-  permguard@localhost/676095239339/ledgers/magicfarmacia/policies/assign-role-branch
+  localhost/273165098782/magicfarmacia/policies/assign-role-branch
 ```

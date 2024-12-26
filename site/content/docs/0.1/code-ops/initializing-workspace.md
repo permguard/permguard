@@ -88,5 +88,5 @@ There are advanced cases where a Permguard ledger has already been created and i
 In this case, it is just necessary to clone the Permguard ledger:
 
 ```bash
- permguard clone permguard@localhost/676095239339/ledgers/magicfarmacia
+permguard clone localhost/273165098782/magicfarmacia
 ```
