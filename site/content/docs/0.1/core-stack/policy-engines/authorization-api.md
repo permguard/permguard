@@ -54,13 +54,13 @@ An example `REQUEST` payload illustrating the subject, resource, action, and tem
 ```json
 {
   "principal": {
-    "identity_token": "string",
-    "access_token": "string"
+    "identity_token": "eyJhbGciOiJI...",
+    "access_token": "eyJhbGciOiJI..."
   },
   "policy_store": {
     "type": "ledger",
-    "id": "string",
-    "version": "string"
+    "id": "magicfarmacia",
+    "version": "722164f552f2c8e582d4ef79270c7ec94b3633e8172af6ea53ffe1fdf64d66de"
   },
   "entities": {
     "schema": "cedar",
