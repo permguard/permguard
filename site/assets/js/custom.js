@@ -39,7 +39,7 @@ def check_permissions(token: str, system: str, resource: str, action: str):
 has_permissions = check_permissions(token, system, "inventory", "view")`,
   after: `has_permissions =
     jwt,
-    "permguard@localhost/581616507495/permguard/authn/identity/actor/pharmacist",
+    "permguard@localhost/676095239339/identities/keycloak/users/john.smith",
     "magicfarmacia",
     "inventory",
     "view"
@@ -73,7 +73,7 @@ func checkPermissions(token, system, resource, action string) bool {
 hasPermissions := checkPermissions(token, system, "inventory", "view")`,
   after: `hasPermissions := permguard.Check(
     jwt,
-    "permguard@localhost/581616507495/permguard/authn/identity/actor/pharmacist",
+    "permguard@localhost/676095239339/identities/keycloak/users/john.smith",
     "magicfarmacia",
     "inventory",
     "view",

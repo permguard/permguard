@@ -82,7 +82,7 @@ func CreateCommandForWorkspaceRemoteRemove(deps azcli.CliDependenciesProvider, v
 
 Examples:
   # remove a remote ledger from the configuration
-  permguard remote remove dev`),
+  permguard remote remove origin`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForRemoteRemoveWorkspace(args, deps, cmd, v)
 		},

@@ -33,7 +33,7 @@ This command checks out the contents of a remote ledger to the local permguard w
 
 Examples:
   # check out the contents of a remote ledger to the local permguard workspace
-  permguard checkout dev/268786704340/magicfarmacia
+  permguard checkout origin/676095239339/ledgers/magicfarmacia
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
 
@@ -58,7 +58,7 @@ The output from your current version of Permguard may differ from the example pr
 The `permguard checkout` command allows you to check out a remote ledger locally.
 
 ```bash
-permguard checkout origin/273165098782/magicfarmacia
+permguard checkout origin/676095239339/ledgers/magicfarmacia
 ```
 
 output:
@@ -73,7 +73,7 @@ Ledger magicfarmacia has been added.
   </summary>
 
 ```bash
-permguard checkout origin/273165098782/magicfarmacia --output json
+permguard checkout origin/676095239339/ledgers/magicfarmacia --output json
 ```
 
 output:

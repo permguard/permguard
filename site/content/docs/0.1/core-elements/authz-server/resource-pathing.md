@@ -31,8 +31,38 @@ This **Authorization Service** is responsible for managing multiple elements suc
 An environment can include multiple **Authorization Servers**, making it essential to reference each one explicitly. This is because there is no guarantee that the same resource will be unique across all servers.
 {{< /callout >}}
 
+To reference a specific application in an **Authorization Server**, use the following URI format:
+
 ```text
-   protocol            host             account
-  ┌───┴────┐┌───────────┴───────────┐ ┌────┴─────┐
-  permguard@nitro.aws-eu.permguard.io/676095239339
+   protocol    host     account
+  ┌───┴────┐┌───┴───┐ ┌────┴─────┐
+  permguard@localhost/676095239339
+```
+
+## Identity Source and Identity Pathing
+
+To reference a specific identity source in an **Authorization Server**, use the following URI format:
+
+```text
+   protocol    host     accoun            identity-source
+  ┌───┴────┐┌───┴───┐ ┌────┴─────┐            ┌──┴───┐
+  permguard@localhost/676095239339/identities/keycloak
+```
+
+A user identity can be referenced using the following URI format:
+
+```text
+   protocol    host     account          identity-source      user
+  ┌───┴────┐┌───┴───┐ ┌────┴─────┐            ┌──┴───┐       ┌──┴─┐
+  permguard@localhost/676095239339/identities/keycloak/users/1001
+```
+
+## Ledger Pathing
+
+To reference a specific ledger in an **Authorization Server**, use the following URI format:
+
+```text
+   protocol    host     account                ledger
+  ┌───┴────┐┌───┴───┐ ┌────┴─────┐         ┌─────┴─────┐
+  permguard@localhost/676095239339/ledgers/magicfarmacia
 ```
