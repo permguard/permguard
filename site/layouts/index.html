@@ -360,11 +360,13 @@ hasPermissions := checkPermissions(token, system, "inventory", "view")
 </code></pre>
       <pre slot="second">
 <code class="language-go">hasPermissions := permguard.Check(
-  jwt,
-  "permguard@localhost/273165098782/identities/keycloak/users/john.smith",
-  "magicfarmacia",
-  "inventory",
-  "view",
+  principal,
+  policyStore,
+  entities,
+  subject,
+  resource,
+  action,
+  context
 )
 </code>
 </pre>

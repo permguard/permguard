@@ -38,11 +38,13 @@ def check_permissions(token: str, system: str, resource: str, action: str):
 
 has_permissions = check_permissions(token, system, "inventory", "view")`,
   after: `has_permissions =
-    jwt,
-    "permguard@localhost/273165098782/identities/keycloak/users/john.smith",
-    "magicfarmacia",
-    "inventory",
-    "view"
+    principal,
+    policy_store,
+    entities,
+    subject,
+    resource,
+    action,
+    context
 )`,
 };
 
@@ -72,11 +74,13 @@ func checkPermissions(token, system, resource, action string) bool {
 
 hasPermissions := checkPermissions(token, system, "inventory", "view")`,
   after: `hasPermissions := permguard.Check(
-    jwt,
-    "permguard@localhost/273165098782/identities/keycloak/users/john.smith",
-    "magicfarmacia",
-    "inventory",
-    "view",
+    principal,
+    policyStore,
+    entities,
+    subject,
+    resource,
+    action,
+    context
 )`,
 };
 
