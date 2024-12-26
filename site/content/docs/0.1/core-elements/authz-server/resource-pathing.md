@@ -34,7 +34,7 @@ An environment can include multiple **Authorization Servers**, making it essenti
 To reference a specific application in an **Authorization Server**, use the following URI format:
 
 ```text
-  protocol    host     account
+ protocol    host     account
 ┌───┴────┐┌───┴───┐ ┌────┴─────┐
 permguard@localhost/273165098782
 ```
@@ -44,7 +44,7 @@ permguard@localhost/273165098782
 To reference a specific identity source in an **Authorization Server**, use the following URI format:
 
 ```text
-  protocol    host     account                identity-source
+ protocol    host     account                 identity-source
 ┌───┴────┐┌───┴───┐ ┌────┴─────┐                  ┌──┴───┐
 permguard@localhost/273165098782/authn/identities/keycloak
 ```
@@ -70,7 +70,7 @@ permguard@localhost/273165098782/authz/ledgers/magicfarmacia
 A policy can be referenced using the following URI format:
 
 ```text
- protocol    host     account                      ledger                   policy
-┌───┴────┐┌───┴───┐ ┌────┴─────┐               ┌─────┴─────┐          ┌───────┴────────┐
-permguard@localhost/273165098782/authz/ledgers/magicfarmacia/policies/assign-role-branch
+ protocol    host     account                      ledger                                 version                                            policy
+┌───┴────┐┌───┴───┐ ┌────┴─────┐               ┌─────┴─────┐ ┌───────────────────────────────┴───────────────────────────────┐         ┌───────┴────────┐
+permguard@localhost/273165098782/authz/ledgers/magicfarmacia/722164f552f2c8e582d4ef79270c7ec94b3633e8172af6ea53ffe1fdf64d66de/policies/assign-role-branch
 ```
