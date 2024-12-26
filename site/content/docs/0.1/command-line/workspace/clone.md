@@ -33,7 +33,7 @@ This command clones a remote ledger to the local permguard workspace.
 
 Examples:
   # clone a remote ledger to the local permguard workspace
-  permguard clone 268786704340/magicfarmacia
+  permguard clone permguard@localhost/676095239339/ledgers/magicfarmacia
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
 
