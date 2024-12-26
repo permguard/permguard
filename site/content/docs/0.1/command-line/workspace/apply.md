@@ -64,7 +64,7 @@ permguard apply
 output:
 
 ```bash
-Initiating the planning process for ledger head/676095239339/fd1ac44e4afa4fc4beec622494d3175a.
+Initiating the planning process for ledger head/273165098782/fd1ac44e4afa4fc4beec622494d3175a.
 Planning process completed successfully.
 The following changes have been identified and are ready to be applied:
 
@@ -75,9 +75,9 @@ The following changes have been identified and are ready to be applied:
 
 unchanged 2, created 1, modified 0, deleted 1
 
-Initiating the apply process for ledger head/676095239339/fd1ac44e4afa4fc4beec622494d3175a.
+Initiating the apply process for ledger head/273165098782/fd1ac44e4afa4fc4beec622494d3175a.
 Apply process completed successfully.
-Your workspace is synchronized with the remote ledger: head/676095239339/fd1ac44e4afa4fc4beec622494d3175a.
+Your workspace is synchronized with the remote ledger: head/273165098782/fd1ac44e4afa4fc4beec622494d3175a.
 ```
 
 <details>

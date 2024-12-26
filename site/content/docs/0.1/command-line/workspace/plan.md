@@ -64,7 +64,7 @@ permguard plan
 output:
 
 ```bash
-Initiating the planning process for ledger head/676095239339/fd1ac44e4afa4fc4beec622494d3175a.
+Initiating the planning process for ledger head/273165098782/fd1ac44e4afa4fc4beec622494d3175a.
 Planning process completed successfully.
 The following changes have been identified and are ready to be applied:
 

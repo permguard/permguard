@@ -26,7 +26,7 @@ To ensure that changes are provisioned correctly, you must first check out the a
 You can check out a ledger using the `checkout` command:
 
 ```bash
- permguard checkout origin/676095239339/magicfarmacia
+ permguard checkout origin/273165098782/magicfarmacia
 ```
 
 In this command, the first parameter is the remote, followed by the application ID, and finally the ledger identifier. The format used is `<remote>/<application-id>/<ledger-name>`.

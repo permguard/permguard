@@ -82,7 +82,7 @@ func CreateCommandForWorkspaceCheckout(deps azcli.CliDependenciesProvider, v *vi
 
 Examples:
   # check out the contents of a remote ledger to the local permguard workspace
-  permguard checkout origin/676095239339/magicfarmacia`),
+  permguard checkout origin/273165098782/magicfarmacia`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCheckoutWorkspace(args, deps, cmd, v)
 		},

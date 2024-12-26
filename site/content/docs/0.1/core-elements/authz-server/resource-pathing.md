@@ -34,9 +34,9 @@ An environment can include multiple **Authorization Servers**, making it essenti
 To reference a specific application in an **Authorization Server**, use the following URI format:
 
 ```text
-   protocol    host     account
-  ┌───┴────┐┌───┴───┐ ┌────┴─────┐
-  permguard@localhost/676095239339
+  protocol    host     account
+┌───┴────┐┌───┴───┐ ┌────┴─────┐
+permguard@localhost/273165098782
 ```
 
 ## Identity Source and Identity Pathing
@@ -44,17 +44,17 @@ To reference a specific application in an **Authorization Server**, use the foll
 To reference a specific identity source in an **Authorization Server**, use the following URI format:
 
 ```text
-   protocol    host     accoun            identity-source
-  ┌───┴────┐┌───┴───┐ ┌────┴─────┐            ┌──┴───┐
-  permguard@localhost/676095239339/identities/keycloak
+  protocol    host     account                identity-source
+┌───┴────┐┌───┴───┐ ┌────┴─────┐                  ┌──┴───┐
+permguard@localhost/273165098782/authn/identities/keycloak
 ```
 
 A user identity can be referenced using the following URI format:
 
 ```text
-   protocol    host     account          identity-source         user
-  ┌───┴────┐┌───┴───┐ ┌────┴─────┐            ┌──┴───┐       ┌───┴────┐
-  permguard@localhost/676095239339/identities/keycloak/users/john.smith
+ protocol    host     account                 identity-source       user
+┌───┴────┐┌───┴───┐ ┌────┴─────┐                  ┌──┴───┐       ┌───┴────┐
+permguard@localhost/273165098782/authn/identities/keycloak/users/john.smith
 ```
 
 ## Ledger Pathing
@@ -62,15 +62,15 @@ A user identity can be referenced using the following URI format:
 To reference a specific ledger in an **Authorization Server**, use the following URI format:
 
 ```text
-   protocol    host     account                ledger
-  ┌───┴────┐┌───┴───┐ ┌────┴─────┐         ┌─────┴─────┐
-  localhost/273165098782/magicfarmacia
+ protocol    host     account                      ledger
+┌───┴────┐┌───┴───┐ ┌────┴─────┐               ┌─────┴─────┐
+permguard@localhost/273165098782/authz/ledgers/magicfarmacia
 ```
 
 A policy can be referenced using the following URI format:
 
 ```text
-   protocol    host     account                ledger                   policy
-  ┌───┴────┐┌───┴───┐ ┌────┴─────┐         ┌─────┴─────┐          ┌───────┴────────┐
-  localhost/273165098782/magicfarmacia/policies/assign-role-branch
+ protocol    host     account                      ledger                   policy
+┌───┴────┐┌───┴───┐ ┌────┴─────┐               ┌─────┴─────┐          ┌───────┴────────┐
+permguard@localhost/273165098782/authz/ledgers/magicfarmacia/policies/assign-role-branch
 ```

@@ -78,7 +78,7 @@ Finally, initialize the workspace and associate it with a Permguard `remote` ser
 ```bash
  permguard init
  permguard remote add origin localhost
- permguard checkout origin/676095239339/magicfarmacia
+ permguard checkout origin/273165098782/magicfarmacia
 ```
 
 ## Clone an existing ledger
