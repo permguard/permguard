@@ -77,8 +77,8 @@ Finally, initialize the workspace and associate it with a Permguard `remote` ser
 
 ```bash
  permguard init
- permguard remote add dev server.permguard.com
- permguard checkout dev/268786704340/magicfarmacia
+ permguard remote add origin localhost
+ permguard checkout origin/676095239339/ledgers/magicfarmacia
 ```
 
 ## Clone an existing ledger
@@ -88,5 +88,5 @@ There are advanced cases where a Permguard ledger has already been created and i
 In this case, it is just necessary to clone the Permguard ledger:
 
 ```bash
- permguard clone permguard@server.permguard.com/268786704340/magicfarmacia
+ permguard clone permguard@localhost/676095239339/ledgers/magicfarmacia
 ```
