@@ -36,7 +36,7 @@ The request payload includes the following elements:
   The store containing the policies used to evaluate the request. It includes a `type`, an `id`, and a `version`. The payload is designed to support different types of policy stores, including those that are immutable and versioned, to address various requirements.
 
 - **`entities`**:
-  Objects represent principals, subjects, actions, and resources. The system supports multiple policy engines, each with its own entity schema. Entities are defined using a `schema` name and a list of `items` that adhere to this schema. Integration with a Policy Information Point (PIP) enables additional entities to be merged with those included in the request.
+  Objects represent principals, subjects, actions, and resources. The payload supports multiple policy engines, each with its own entity schema. Entities are defined using a `schema` name and a list of `items` that adhere to this schema. Integration with a Policy Information Point (PIP) has to enable additional entities to be merged with those included in the request.
 
 - **`subject`, `resource`, `action`, `context`**:
   These elements describe the subject (the entity requesting access), the resource (the entity being accessed), the action (the operation performed on the resource), and the context (the temporal details of the request). These elements aim to align with widely recognized authorization specifications such as [OpenID AuthZEN](https://openid.net/wg/authzen/specifications/).
