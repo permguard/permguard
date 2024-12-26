@@ -32,7 +32,7 @@ An environment can include multiple **Authorization Servers**, making it essenti
 {{< /callout >}}
 
 ```text
-   protocol             host              account
+   protocol           host              account
   ┌───┴────┐┌───────────┴───────────┐ ┌────┴─────┐
   permguard@nitro.aws-eu.permguard.io/676095239339
 ```
