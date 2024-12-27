@@ -23,6 +23,7 @@ In **PermGuard**, an **Authorization Server** is a logical server that includes 
 
 - **Application Administration Point (AAP)**
 - **Policy Administration Point (PAP)**
+- **Policy Information Point (PIP)**
 - **Policy Decision Point (PDP)**
 
 This **Authorization Service** is responsible for managing multiple elements such as users, actors, tenants, ledgers, and more. Given the complexity of these resources, it is crucial to establish a clear and structured pathing mechanism for each resource to ensure efficient management and access control.

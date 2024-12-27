@@ -33,6 +33,10 @@ The `Application Administration Point (AAP)` serves as the central repository fo
 
 The `Policy Administration Point (PAP)`  serves as the central repository for managing the application policies. Furthermore, it provides an administration API.
 
+## Policy Information Point (PIP)
+
+The `Policy Information Point (PIP)` is the service responsible for providing additional information to the `Policy Decision Point (PDP)` to make informed decisions. It can be deployed as either a `remote service` or a `proximity service`.
+
 ## Policy Decision Point (PDP)
 
 The `Policy Decision Point (PDP)` is the service responsible for evaluating policies and making decisions based on them. It can be deployed as either a `remote service` or a `proximity service`.
