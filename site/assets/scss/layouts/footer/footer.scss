@@ -26,6 +26,8 @@
 }
 
 .legal-notice {
+  margin-left: calc(var(--bs-gutter-x) * -0.25);
+  margin-right: calc(var(--bs-gutter-x) * -0.25);
   margin-top: 2.5rem;
   flex-wrap: wrap;
   gap: 50px;
