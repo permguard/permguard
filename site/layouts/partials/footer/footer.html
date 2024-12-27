@@ -128,12 +128,14 @@
       </nav>
     </nav>
 
-    <div class="d-flex justify-content-between legal-notice">
-      <div class="d-flex gap-2 align-items-center">
+    <div
+      class="d-flex justify-content-between legal-notice flex-column flex-md-row gap-2"
+    >
+      <div class="d-flex gap-2 align-items-md-center flex-column flex-md-row">
         <p class="text-white text-small fw-medium legal-notice__title mb-0">
           © 2024, Nitro Agility Srl. All rights reserved.
         </p>
-        <span>•</span>
+        <span class="d-none d-md-inline">•</span>
         <a
           href="https://creativecommons.org/licenses/by-sa/4.0/"
           class="text-white text-small fw-medium"
@@ -143,7 +145,7 @@
       </div>
 
       <div class="d-flex legal-notice__row">
-        <p class="text-white text-small fw-medium legal-notice__title">
+        <p class="text-white text-small fw-medium legal-notice__title mb-0">
           Brought to you by
           <a
             class="legal-notice__link"
