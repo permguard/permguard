@@ -47,9 +47,18 @@ The request payload includes the following elements:
 Normally, the principal can specify only subjects linked to its identity. However, it can act for other subjects if it has permission, for example, when a subject gives delegation to the principal to act on its behalf.
 
 If the principal does not have permission to act on a subject, the request will return an error to block unauthorized actions.
+
+The main idea of passing the principal with its access token is to protect against certain types of attacks, including:
+
+1. Authorization Inference Attack
+2. Excessive Data Exposure
+3. Side-Channel Attack on Authorization
+4. Privilege Escalation
+
+This approach makes the PDP more secure by ensuring that information is not exposed to the PEP unless it is within the authorized context. It also supports the concept of trusted delegation, allowing principals to act on behalf of others securely when permitted.
 {{< /callout >}}
 
-An example `REQUEST` payload illustrating the subject, resource, action, and temporal context.
+An example of `REQUEST` payload.
 
 ```json
 {
