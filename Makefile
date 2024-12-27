@@ -109,8 +109,8 @@ build-release:
 	chmod +x dist/server-aap
 	go build -o dist/server-pap ./cmd/server-pap
 	chmod +x dist/server-pap
-	go build -o dist/server-idp ./cmd/server-idp
-	chmod +x dist/server-idp
+	go build -o dist/server-pip ./cmd/server-pip
+	chmod +x dist/server-pip
 	go build -o dist/server-pdp ./cmd/server-pdp
 	chmod +x dist/server-pdp
 	go build -o dist/permguard ./cmd/cli

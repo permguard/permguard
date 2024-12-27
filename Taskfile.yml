@@ -126,9 +126,9 @@ tasks:
     cmds:
       - go run cmd/server-pap/main.go {{.CLI_ARGS}}
     silent: false
-  server-idp:
+  server-pip:
     cmds:
-      - go run cmd/server-idp/main.go {{.CLI_ARGS}}
+      - go run cmd/server-pip/main.go {{.CLI_ARGS}}
     silent: false
   server-pdp:
     cmds:
