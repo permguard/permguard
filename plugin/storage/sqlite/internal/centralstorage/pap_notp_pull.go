@@ -24,7 +24,7 @@ import (
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
 	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
-	notpagpackets "github.com/permguard/permguard/internal/agents/notp/statemachines/packets"
+	notpagpackets "github.com/permguard/permguard/internal/transport/notp/statemachines/packets"
 )
 
 // OnPullHandleRequestCurrentState handles the request for the current state.

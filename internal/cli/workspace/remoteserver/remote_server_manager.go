@@ -19,11 +19,11 @@ package remoteserver
 import (
 	"fmt"
 
-	aziclients "github.com/permguard/permguard/internal/agents/clients"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	aziclients "github.com/permguard/permguard/internal/transport/clients"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azmodels "github.com/permguard/permguard/pkg/transport/models"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"

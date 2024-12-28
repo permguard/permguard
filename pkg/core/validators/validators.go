@@ -30,12 +30,12 @@ func ValidateCodeID(entity string, applicationID int64) error {
 		ApplicationID int64 `validate:"required,gt=0"`
 	}{ApplicationID: applicationID}
 	if isValid, err := azvalidators.ValidateInstance(vApplicationID); err != nil || !isValid {
-		return fmt.Errorf("storage: %s name %d is not valid. %w", entity, vApplicationID.ApplicationID, azerrors.ErrClientID)
+		return fmt.Errorf("validators: %s name %d is not valid. %w", entity, vApplicationID.ApplicationID, azerrors.ErrClientID)
 	}
 	min := int64(100000000000)
 	max := int64(999999999999)
 	if applicationID < min || applicationID > max {
-		return fmt.Errorf("storage: %s name %d is not valid. it must be between %d and %d. %w", entity, applicationID, min, max, azerrors.ErrClientID)
+		return fmt.Errorf("validators: %s name %d is not valid. it must be between %d and %d. %w", entity, applicationID, min, max, azerrors.ErrClientID)
 	}
 	return nil
 }
@@ -57,11 +57,11 @@ func formatAsUUID(s string) string {
 // ValidateSHA256 validates a SHA256 hash.
 func ValidateSHA256(entity string, hash string) error {
 	if len(hash) != 64 {
-		return fmt.Errorf("storage: %s hash %s is not valid. %w", entity, hash, azerrors.ErrClientSHA256)
+		return fmt.Errorf("validators: %s hash %s is not valid. %w", entity, hash, azerrors.ErrClientSHA256)
 	}
 	for _, c := range hash {
 		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-			return fmt.Errorf("storage: %s hash %s contains invalid characters. %w", entity, hash, azerrors.ErrClientSHA256)
+			return fmt.Errorf("validators: %s hash %s contains invalid characters. %w", entity, hash, azerrors.ErrClientSHA256)
 		}
 	}
 	return nil
@@ -74,7 +74,7 @@ func ValidateUUID(entity string, id string) error {
 		ID string `validate:"required,uuid4"`
 	}{ID: formattedID}
 	if isValid, err := azvalidators.ValidateInstance(vID); err != nil || !isValid {
-		return fmt.Errorf("storage: %s name %s is not valid. %w", entity, vID.ID, azerrors.ErrClientUUID)
+		return fmt.Errorf("validators: %s name %s is not valid. %w", entity, vID.ID, azerrors.ErrClientUUID)
 	}
 	return nil
 }
@@ -89,7 +89,7 @@ func ValidateIdentityUserName(entity string, name string) error {
 		Email string `validate:"required,email"`
 	}{Email: name}
 	if isValid, err := azvalidators.ValidateInstance(vEmail); err != nil || !isValid {
-		return fmt.Errorf("storage: %s identity name %s is not valid. %w", entity, vEmail.Email, azerrors.ErrClientName)
+		return fmt.Errorf("validators: %s identity name %s is not valid. %w", entity, vEmail.Email, azerrors.ErrClientName)
 	}
 	return nil
 }
@@ -98,16 +98,16 @@ func ValidateIdentityUserName(entity string, name string) error {
 func ValidateName(entity string, name string) error {
 	sanitized := strings.ToLower(strings.TrimSpace(name))
 	if strings.HasPrefix(name, "permguard") {
-		return fmt.Errorf("storage: %s name %s is not valid. it cannot have 'permguard' as a prefix. %w", entity, name, azerrors.ErrClientName)
+		return fmt.Errorf("validators: %s name %s is not valid. it cannot have 'permguard' as a prefix. %w", entity, name, azerrors.ErrClientName)
 	}
 	if name != sanitized {
-		return fmt.Errorf("storage: %s name %s is not valid. it must be in lower case. %w", entity, name, azerrors.ErrClientName)
+		return fmt.Errorf("validators: %s name %s is not valid. it must be in lower case. %w", entity, name, azerrors.ErrClientName)
 	}
 	vName := struct {
 		Name string `validate:"required,name"`
 	}{Name: name}
 	if isValid, err := azvalidators.ValidateInstance(vName); err != nil || !isValid {
-		return fmt.Errorf("storage: %s name %s is not valid. %w", entity, vName.Name, azerrors.ErrClientName)
+		return fmt.Errorf("validators: %s name %s is not valid. %w", entity, vName.Name, azerrors.ErrClientName)
 	}
 	return nil
 }

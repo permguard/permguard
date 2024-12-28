@@ -17,9 +17,9 @@
 package controllers
 
 import (
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azStorage "github.com/permguard/permguard/pkg/agents/storage"
+	azmodels "github.com/permguard/permguard/pkg/transport/models"
 )
 
 // AAPController is the controller for the AAP service.

@@ -17,7 +17,7 @@
 package clients
 
 import (
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azmodels "github.com/permguard/permguard/pkg/transport/models"
 )
 
 // GrpcAAPClient is the gRPC AAP client servicer.

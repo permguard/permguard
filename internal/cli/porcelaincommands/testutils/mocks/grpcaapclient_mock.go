@@ -20,7 +20,7 @@ package mocks
 import (
 	mock "github.com/stretchr/testify/mock"
 
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azmodels "github.com/permguard/permguard/pkg/transport/models"
 )
 
 // GrpcAAPClientMock is a mock type for the CliDependencies type.

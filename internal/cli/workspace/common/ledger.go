@@ -21,8 +21,8 @@ import (
 	"strconv"
 	"strings"
 
-	azvalidators "github.com/permguard/permguard/pkg/agents/storage/validators"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azvalidators "github.com/permguard/permguard/pkg/core/validators"
 )
 
 // LedgerInfo contains the ledger information.

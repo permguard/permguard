@@ -17,7 +17,7 @@
 package storage
 
 import (
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azmodels "github.com/permguard/permguard/pkg/transport/models"
 )
 
 // AAPCentralStorage is the interface for the AAP central storage.

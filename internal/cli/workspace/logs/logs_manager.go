@@ -26,7 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
-	azvalidators "github.com/permguard/permguard/pkg/agents/storage/validators"
+	azvalidators "github.com/permguard/permguard/pkg/core/validators"
 )
 
 type LogAction string

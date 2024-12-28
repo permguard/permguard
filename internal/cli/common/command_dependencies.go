@@ -17,10 +17,10 @@
 package common
 
 import (
-	aziclients "github.com/permguard/permguard/internal/agents/clients"
-	azclients "github.com/permguard/permguard/pkg/agents/clients"
+	aziclients "github.com/permguard/permguard/internal/transport/clients"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
+	azclients "github.com/permguard/permguard/pkg/transport/clients"
 )
 
 // cliDependencies implements the Cli dependencies.

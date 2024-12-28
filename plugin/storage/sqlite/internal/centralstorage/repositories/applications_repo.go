@@ -26,8 +26,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
-	azvalidators "github.com/permguard/permguard/pkg/agents/storage/validators"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azvalidators "github.com/permguard/permguard/pkg/core/validators"
 )
 
 // GenerateApplicationID generates a random application id.

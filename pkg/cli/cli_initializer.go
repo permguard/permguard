@@ -20,8 +20,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azclients "github.com/permguard/permguard/pkg/agents/clients"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
+	azclients "github.com/permguard/permguard/pkg/transport/clients"
 )
 
 // CliDependenciesProvider is the cli dependencies provider.
