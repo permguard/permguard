@@ -19,7 +19,7 @@ package workspace
 import (
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
-	azlang "github.com/permguard/permguard/pkg/core/languages"
+	azlang "github.com/permguard/permguard/pkg/languages"
 )
 
 // getCurrentHeadContext gets the current head context.

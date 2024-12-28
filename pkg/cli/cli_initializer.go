@@ -20,7 +20,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azlang "github.com/permguard/permguard/pkg/core/languages"
+	azlang "github.com/permguard/permguard/pkg/languages"
 	azclients "github.com/permguard/permguard/pkg/transport/clients"
 )
 
