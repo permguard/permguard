@@ -22,11 +22,11 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azmodels "github.com/permguard/permguard/pkg/transport/models"
 
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
-	notpagstatemachines "github.com/permguard/permguard/internal/agents/notp/statemachines"
+	notpagstatemachines "github.com/permguard/permguard/internal/transport/notp/statemachines"
 )
 
 const (

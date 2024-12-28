@@ -19,7 +19,7 @@ package v1
 import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azmodels "github.com/permguard/permguard/pkg/transport/models"
 )
 
 func MapGrpcLedgerResponseToAgentLedger(ledger *LedgerResponse) (*azmodels.Ledger, error) {

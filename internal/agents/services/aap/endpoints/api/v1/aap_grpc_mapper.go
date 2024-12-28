@@ -19,7 +19,7 @@ package v1
 import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azmodels "github.com/permguard/permguard/pkg/transport/models"
 )
 
 // MapPointerStringToString maps a pointer string to a string.

@@ -20,9 +20,9 @@ package mocks
 import (
 	mock "github.com/stretchr/testify/mock"
 
-	azclients "github.com/permguard/permguard/pkg/agents/clients"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azlang "github.com/permguard/permguard/pkg/core/languages"
+	azclients "github.com/permguard/permguard/pkg/transport/clients"
 )
 
 // CliDependenciesMock is a mock type for the CliDependencies type.

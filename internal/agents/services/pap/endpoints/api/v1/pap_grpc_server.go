@@ -24,15 +24,15 @@ import (
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azmodels "github.com/permguard/permguard/pkg/transport/models"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
 	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
 	notptransport "github.com/permguard/permguard-notp-protocol/pkg/notp/transport"
-	azagentnotpsm "github.com/permguard/permguard/internal/agents/notp/statemachines"
+	azagentnotpsm "github.com/permguard/permguard/internal/transport/notp/statemachines"
 )
 
 const (

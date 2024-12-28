@@ -17,7 +17,7 @@
 package centralstorage
 
 import (
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azmodels "github.com/permguard/permguard/pkg/transport/models"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 

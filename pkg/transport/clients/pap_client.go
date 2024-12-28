@@ -17,7 +17,7 @@
 package clients
 
 import (
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azmodels "github.com/permguard/permguard/pkg/transport/models"
 )
 
 // GrpcPAPClient is the gRPC PAP client servicer.

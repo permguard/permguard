@@ -19,8 +19,8 @@ package v1
 import (
 	"context"
 
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
+	azmodels "github.com/permguard/permguard/pkg/transport/models"
 	grpc "google.golang.org/grpc"
 )
 

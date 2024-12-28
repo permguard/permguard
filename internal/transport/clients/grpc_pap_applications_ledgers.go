@@ -21,8 +21,8 @@ import (
 	"io"
 
 	azapiv1pap "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azmodels "github.com/permguard/permguard/pkg/transport/models"
 )
 
 // CreateLedger creates a new ledger.

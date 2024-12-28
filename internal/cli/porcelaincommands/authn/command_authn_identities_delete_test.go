@@ -26,9 +26,9 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	aztestutils "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
 	azmocks "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
 	azconfigs "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azmodels "github.com/permguard/permguard/pkg/transport/models"
 )
 
 // TestDeleteCommandForIdentitiesDelete tests the deleteCommandForIdentitiesDelete function.

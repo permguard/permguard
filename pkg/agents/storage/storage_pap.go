@@ -20,7 +20,7 @@ import (
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
 	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
-	azmodels "github.com/permguard/permguard/pkg/agents/models"
+	azmodels "github.com/permguard/permguard/pkg/transport/models"
 )
 
 // PAPCentralStorage is the interface for the AAP central storage.
