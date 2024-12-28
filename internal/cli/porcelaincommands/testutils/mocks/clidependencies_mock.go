@@ -21,7 +21,7 @@ import (
 	mock "github.com/stretchr/testify/mock"
 
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azlang "github.com/permguard/permguard/pkg/core/languages"
+	azlang "github.com/permguard/permguard/pkg/languages"
 	azclients "github.com/permguard/permguard/pkg/transport/clients"
 )
 

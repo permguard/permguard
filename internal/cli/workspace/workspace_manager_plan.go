@@ -22,7 +22,7 @@ import (
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azlang "github.com/permguard/permguard/pkg/core/languages"
+	azlang "github.com/permguard/permguard/pkg/languages"
 )
 
 // plan generates a plan of changes to apply to the remote ledger based on the differences between the local and remote states.

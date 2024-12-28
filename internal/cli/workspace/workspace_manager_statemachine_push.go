@@ -19,7 +19,7 @@ package workspace
 import (
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azlang "github.com/permguard/permguard/pkg/core/languages"
+	azlang "github.com/permguard/permguard/pkg/languages"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"

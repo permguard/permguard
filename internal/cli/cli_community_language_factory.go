@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azlang "github.com/permguard/permguard/pkg/core/languages"
+	azlang "github.com/permguard/permguard/pkg/languages"
 	azplangcedar "github.com/permguard/permguard/plugin/languages/cedar"
 )
 

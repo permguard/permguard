@@ -33,7 +33,7 @@ import (
 	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
 	azicliwksremotesrv "github.com/permguard/permguard/internal/cli/workspace/remoteserver"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azlang "github.com/permguard/permguard/pkg/core/languages"
+	azlang "github.com/permguard/permguard/pkg/languages"
 )
 
 const (
