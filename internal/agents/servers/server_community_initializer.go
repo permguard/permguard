@@ -44,7 +44,7 @@ Copyright © 2022 Nitro Agility S.r.l.
 
 %s
 
-  Find more information at: https://www.permguard.com/docs/0.1/devops/deployment/cli-flags/`
+  Find more information at: https://www.permguard.com/docs/0.1/devops/cli-flags/`
 	hostInfos := map[azservices.HostKind]*azservices.HostInfo{
 		azservices.HostAllInOne: {Name: "AllInOne", Use: "all-in-one", Short: "The official Permguard Server - Start all services", Long: fmt.Sprintf(template, "Using this option all services are started.")},
 		azservices.HostAAP:      {Name: "AAP (Application Administration Point)", Use: "pdp", Short: "The official Permguard Server - Start the AAP service", Long: fmt.Sprintf(template, "Using this option the Application Administration Point (AAP) service is started.")},
@@ -54,7 +54,7 @@ Copyright © 2022 Nitro Agility S.r.l.
 	}
 	hosts := []azservices.HostKind{azservices.HostAllInOne, azservices.HostAAP, azservices.HostPAP, azservices.HostPIP, azservices.HostPDP}
 	storages := []azstorage.StorageKind{azstorage.StorageSQLite}
-	services := []azservices.ServiceKind{azservices.ServiceAAP, azservices.ServicePAP, azservices.ServiceIDP, azservices.ServicePDP}
+	services := []azservices.ServiceKind{azservices.ServiceAAP, azservices.ServicePAP, azservices.ServicePIP, azservices.ServicePDP}
 
 	if !host.IsValid(hosts) {
 		panic(fmt.Sprintf("server: invalid server kind: %s", host))
@@ -154,7 +154,7 @@ func (c *CommunityServerInitializer) GetServicesFactories() (map[azservices.Serv
 			}
 			factories[serviceKind] = *fcty
 			continue
-		case azservices.ServiceIDP:
+		case azservices.ServicePIP:
 			continue
 		case azservices.ServicePDP:
 			fFactCfg := func() (azservices.ServiceFactoryConfig, error) { return azipdp.NewPDPServiceFactoryConfig() }

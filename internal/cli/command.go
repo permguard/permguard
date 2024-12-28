@@ -34,7 +34,7 @@ func runECommand(cmd *cobra.Command) error {
 }
 
 // Run the provisionier.
-func Run(commandsInitializer azcli.CliInitializer) {
+func Run(cliInitializer azcli.CliInitializer) {
 	// Create the command.
 	v, err := azoptions.NewViperFromConfig(func(v *viper.Viper) error {
 		v.SetDefault(azoptions.FlagName(aziclicommon.FlagPrefixAAP, aziclicommon.FlagSuffixAAPTarget), "localhost:9091")
@@ -44,7 +44,7 @@ func Run(commandsInitializer azcli.CliInitializer) {
 	if err != nil {
 		os.Exit(1)
 	}
-	langFct, err := commandsInitializer.GetLanguageFactory()
+	langFct, err := cliInitializer.GetLanguageFactory()
 	if err != nil {
 		os.Exit(1)
 	}
@@ -52,12 +52,12 @@ func Run(commandsInitializer azcli.CliInitializer) {
 	if err != nil {
 		os.Exit(1)
 	}
-	commands, err := commandsInitializer.GetCliCommands(depsProvider, v)
+	commands, err := cliInitializer.GetCliCommands(depsProvider, v)
 	if err != nil {
 		os.Exit(1)
 	}
 
-	cmdInfo := commandsInitializer.GetCliInfo()
+	cmdInfo := cliInitializer.GetCliInfo()
 	command := &cobra.Command{
 		SilenceErrors: true,
 		SilenceUsage:  true,
