@@ -24,7 +24,7 @@ In today’s digital ecosystem, **identity has become the foundation** of most s
 Permguard may seem complex, but it’s not: its internal architecture is sophisticated, yet integration is simple—perfect for everything from 'Hello World' apps to enterprise solutions. Just run the server, define your policy, and integrate it.
 {{< /callout >}}
 
-### The Problem with Authorization Today
+## The Problem with Authorization Today
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d22.png"/>
@@ -37,7 +37,7 @@ Most systems treat **authorization** as a secondary concern, tightly coupled to 
 - **Governance Complexity**: Without a clear and dedicated layer, managing permissions becomes inconsistent and difficult to scale.
 - **Integration Challenges**: Existing solutions are either too specific to an application or too generic, making it hard to meet the diverse needs of modern systems.
 
-### The Need for a Dedicated Authorization Layer
+## The Need for a Dedicated Authorization Layer
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d8.png"/>
@@ -50,7 +50,7 @@ Just like authentication has matured with dedicated identity providers and stand
 - **Governance-Friendly**: Built with transparency, making it easy to audit and align with compliance requirements.
 - **Flexible and Interoperable**: Capable of integrating with various identity providers while maintaining a consistent authorization model.
 
-### Integration with Your Own Identity Provider
+## Integration with Your Own Identity Provider
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d11.png"/>
@@ -60,7 +60,7 @@ Permguard follows the **Bring Your Own Identity (BYOI)** approach, allowing you 
 
 Using **APIs** or **CLI tools**, organizations can import identity data from their chosen provider into Permguard, such as user actors or groups. Importantly, interactions with identity providers are not built into Permguard itself. This design choice ensures that Permguard remains vendor-agnostic, focusing exclusively on authorization.
 
-### What Permguard Brings to the Table
+## What Permguard Brings to the Table
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d9.png"/>
@@ -74,7 +74,7 @@ Using **APIs** or **CLI tools**, organizations can import identity data from the
 
 - **Integration-First Design**: Permguard supports multiple policy languages and flexible APIs, making it easy to integrate into existing systems.
 
-### A Future of Simplified Authorization
+## A Future of Simplified Authorization
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d12.png"/>

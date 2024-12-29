@@ -24,7 +24,7 @@ To illustrate the integration process and demonstrate features throughout the do
 
 Below is a specific scenario where an identity representing a pharmacy manager requires access to inventory information across all branches.
 
-### Policy and Permissions Definition
+## Policy and Permissions Definition
 
 The first step is to define a policy and associate it with an actor by specifying the required permissions.
 
@@ -36,7 +36,7 @@ permit(
 );
 ```
 
-### Performing Permission Evaluation
+## Performing Permission Evaluation
 
 After creating and associating the policy with the actor, the next step is to perform the permission evaluation within the application.
 
