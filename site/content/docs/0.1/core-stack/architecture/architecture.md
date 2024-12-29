@@ -35,10 +35,10 @@ The `Policy Administration Point (PAP)`  serves as the central repository for ma
 
 ## Policy Information Point (PIP)
 
-The `Policy Information Point (PIP)` is the service responsible for providing additional information to the `Policy Decision Point (PDP)` to make informed decisions. It can be deployed as either a `remote service` or a `proximity service`.
+The `Policy Information Point (PIP)` is the service responsible for providing additional information to the `Policy Decision Point (PDP)` to make informed decisions.
 
 ## Policy Decision Point (PDP)
 
 The `Policy Decision Point (PDP)` is the service responsible for evaluating policies and making decisions based on them. It can be deployed as either a `remote service` or a `proximity service`.
 
-The key difference lies in the fact that the `remote service` return consistent decisions to the caller but may experience high latency. In contrast, `proximity service`s are deployed in proximity to the caller, providing low latency as they operate on an eventual consistent basis. This ensures faster decision returns as they synchronize policies. It's important to note that this service can be out of sync, especially in the event of network partitioning.
+The key difference lies in the fact that the `remote service` returns consistent decisions to the caller but may experience high latency or interruption and unavailability because of network partitioning. In contrast, `proximity service`s are deployed in proximity to the caller, providing low latency as they operate on an eventual consistent basis. This ensures faster decision returns as they synchronize policies. It's important to note that this service can be out of sync, especially in the event of network partitioning.
