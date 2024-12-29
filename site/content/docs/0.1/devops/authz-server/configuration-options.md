@@ -29,10 +29,10 @@ Each server provides a set of CLI options to configure startup parameters, runti
 Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
-**--debug**: *enables debug mode (default `false`).*
+**\--debug**: *enables debug mode (default `false`).*
 
 ---
-**--log.level**: *specifies the log level (default `INFO`, options: `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
+**\--log.level**: *specifies the log level (default `INFO`, options: `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
 
 <details>
   <summary>Options</summary>
@@ -51,7 +51,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
 
-**--storage.central.engine**: *data storage engine to be used for central data (default `sqlite`).*
+**\--storage.central.engine**: *data storage engine to be used for central data (default `sqlite`).*
 
 ---
 
@@ -60,7 +60,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 <details>
   <summary>SQLITE</summary>
 
-**--storage.engine.sqlite.dbname**: *sqlite database name (default **permguard**).*
+**\--storage.engine.sqlite.dbname**: *sqlite database name (default **permguard**).*
 
 ---
 
@@ -68,7 +68,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
 
-**--server.appdata**: *directory to be used as application data (default `./`).*
+**\--server.appdata**: *directory to be used as application data (default `./`).*
 
 ---
 
@@ -76,19 +76,19 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 {{< callout >}} Application Administration Point. {{< /callout >}}
 
-**--storage.aap.central.engine**: *data storage engine to be used for the AAP central data. This overrides the `--storage.central.engine` option. Default: `sqlite`.*
+**\--storage.aap.central.engine**: *data storage engine to be used for the AAP central data. This overrides the `--storage.central.engine` option. Default: `sqlite`.*
 
 ---
 
-**--server.aap.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
+**\--server.aap.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
 
 ---
 
-**--server.aap.enable.default.creation bool**: *enables the creation of default entities (e.g., tenants, identity sources) during data creation. (default `false`).*
+**\--server.aap.enable.default.creation bool**: *enables the creation of default entities (e.g., tenants, identity sources) during data creation. (default `false`).*
 
 ---
 
-**--server.aap.grpc.port int**: *port to be used for exposing the aap grpc services. (default `9091`).*
+**\--server.aap.grpc.port int**: *port to be used for exposing the aap grpc services. (default `9091`).*
 
 ---
 
@@ -96,11 +96,31 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 {{< callout >}} Policy Administration Point. {{< /callout >}}
 
-**--server.pap.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
+**\--storage.pap.central.engine**: *data storage engine to be used for the PAP central data. This overrides the `--storage.central.engine` option. Default: `sqlite`.*
 
 ---
 
-**--server.pap.grpc.port int**: *port to be used for exposing the pap grpc services. (default `9092`).*
+**\--server.pap.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
+
+---
+
+**\--server.pap.grpc.port int**: *port to be used for exposing the pap grpc services. (default `9092`).*
+
+---
+
+### server-pip
+
+{{< callout >}} Policy Information Point. {{< /callout >}}
+
+**\--storage.pip.central.engine**: *data storage engine to be used for the PIP central data. This overrides the `--storage.central.engine` option. Default: `sqlite`.*
+
+---
+
+**\--server.pip.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
+
+---
+
+**\--server.pip.grpc.port int**: *port to be used for exposing the pip grpc services. (default `9096`).*
 
 ---
 
@@ -108,11 +128,15 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 {{< callout >}} Policy Decision Point. {{< /callout >}}
 
-**--server.pdp.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
+**\--storage.pdp.central.engine**: *data storage engine to be used for the PDP central data. This overrides the `--storage.central.engine` option. Default: `sqlite`.*
 
 ---
 
-**--server.pdp.grpc.port int**: *port to be used for exposing the pdp grpc services. (default `9096`).*
+**\--server.pdp.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
+
+---
+
+**\--server.pdp.grpc.port int**: *port to be used for exposing the pdp grpc services. (default `9096`).*
 
 ---
 
@@ -121,10 +145,10 @@ Regardless of the chosen distribution, the binary accepts the following options:
 Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
-**--debug**: *enables debug mode (default `false`).*
+**\--debug**: *enables debug mode (default `false`).*
 
 ---
-**--log.level**: *specifies log level (default `INFO`, options: `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
+**\--log.level**: *specifies log level (default `INFO`, options: `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
 
 <details>
   <summary>Options</summary>
@@ -146,7 +170,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 <details>
   <summary>SQLITE</summary>
 
-**--storage.engine.sqlite.filepath**: *sqlite database file path (default `.`).*
+**\--storage.engine.sqlite.filepath**: *sqlite database file path (default `.`).*
 
 ---
 
