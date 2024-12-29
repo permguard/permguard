@@ -29,10 +29,10 @@ Each server provides a set of CLI options to configure startup parameters, runti
 Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
-**--debug**: *Enable debug mode (default `false`).*
+**--debug**: *enables debug mode (default `false`).*
 
 ---
-**--log.level**: *Set log level (default `INFO`, options: `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
+**--log.level**: *specifies the log level (default `INFO`, options: `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
 
 <details>
   <summary>Options</summary>
@@ -51,11 +51,11 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
 
-**--storage.central.engine**: *Data storage engine to be used for central data (default `sqlite`).*
+**--storage.central.engine**: *data storage engine to be used for central data (default `sqlite`).*
 
 ---
 
-**Storage Engines**: Storage engine options are used to configure the storage engine responsible for data persistence in the services.
+**Storage Engines**: storage engine options are used to configure the storage engine responsible for data persistence in the services.
 
 <details>
   <summary>SQLITE</summary>
@@ -68,7 +68,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
 
-**--server.appdata**: *Directory to be used as application data (default `./`).*
+**--server.appdata**: *directory to be used as application data (default `./`).*
 
 ---
 
@@ -76,11 +76,15 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 {{< callout >}} Application Administration Point. {{< /callout >}}
 
+**--storage.aap.central.engine**: *data storage engine to be used for the AAP central data. This overrides the `--storage.central.engine` option. Default: `sqlite`.*
+
+---
+
 **--server.aap.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
 
 ---
 
-**--server.aap.enable.default.creation bool**: *the creation of default entities (e.g., tenants, identity sources) during data creation. (default `false`).*
+**--server.aap.enable.default.creation bool**: *enables the creation of default entities (e.g., tenants, identity sources) during data creation. (default `false`).*
 
 ---
 
@@ -117,10 +121,10 @@ Regardless of the chosen distribution, the binary accepts the following options:
 Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
-**--debug**: *Enable debug mode (default `false`).*
+**--debug**: *enables debug mode (default `false`).*
 
 ---
-**--log.level**: *Set log level (default `INFO`, options: `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
+**--log.level**: *specifies log level (default `INFO`, options: `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
 
 <details>
   <summary>Options</summary>
