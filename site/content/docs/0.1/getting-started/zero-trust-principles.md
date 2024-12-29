@@ -87,7 +87,7 @@ These models are incrementally synchronized to application nodes as git-like com
 
 To ensure proper functionality, these models must have the following characteristics:
 
-- **Transferable and Verifiable:** Operates smoothly across systems and environments, with verifiable origins certified by the central PDP.
+- **Transferable and Verifiable:** Operates smoothly across systems and environments, with verifiable origins certified by the `Authorization Server`.
 
 - **Versionable and Immutable:** Ensures integrity, auditability, and backward compatibility for secure and reliable operations.
 
