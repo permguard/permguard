@@ -2,7 +2,7 @@ img-comparison-slider {
   visibility: hidden;
 }
 
-img-comparison-slider [slot='second'] {
+img-comparison-slider [slot="second"] {
   display: none;
 }
 
@@ -10,6 +10,10 @@ img-comparison-slider.rendered {
   visibility: inherit;
 }
 
-img-comparison-slider.rendered [slot='second'] {
+img-comparison-slider.rendered [slot="second"] {
   display: unset;
+}
+
+.DocSearch-Commands-Key {
+  color: rgba(255, 255, 255, 0.9);
 }

@@ -1,0 +1,44 @@
+.thulite-steps {
+  --bullet-size: calc(var(--sl-line-height)* 1rem);
+  --bullet-margin: .375rem;
+  list-style: none;
+  counter-reset: steps-counter var(--sl-steps-start, 0);
+  padding-inline-start: 0;
+  margin-top: 1.5rem;
+}
+
+.thulite-steps>li {
+  counter-increment: steps-counter;
+  position: relative;
+  padding-inline-start: calc(var(--bullet-size) + 1rem);
+  padding-bottom: 1px;
+  min-height: calc(var(--bullet-size) + var(--bullet-margin));
+}
+
+.thulite-steps>li:before {
+  content: counter(steps-counter);
+  position: absolute;
+  top: 0;
+  inset-inline-start: 0;
+  width: var(--bullet-size);
+  height: var(--bullet-size);
+  line-height: var(--bullet-size);
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+  text-align: center;
+  color: var(--sl-color-white);
+  background-color: var(--sl-color-gray-6);
+  border-radius: 99rem;
+  box-shadow: inset 0 0 0 1px var(--sl-color-gray-5);
+}
+
+.thulite-steps>li:after {
+  --guide-width: 1px;
+  content: "";
+  position: absolute;
+  top: calc(var(--bullet-size) + var(--bullet-margin));
+  bottom: var(--bullet-margin);
+  inset-inline-start: calc((var(--bullet-size) - var(--guide-width)) / 2);
+  width: var(--guide-width);
+  background-color: var(--sl-color-hairline-light);
+}
