@@ -24,7 +24,7 @@
     Permguard</a
   >
     <!-- FlexSearch mobile -->
-    {{ partial "main/showFlexSearch" . }}
+    <!-- {{ partial "main/showFlexSearch" . }}
     {{ $showFlexSearch := .Scratch.Get "showFlexSearch" -}}
     {{ if $showFlexSearch -}}
     <button type="button" id="searchToggleMobile" class="btn btn-link nav-link mx-2 d-lg-none" aria-label="Search website">
@@ -34,7 +34,7 @@
         <line x1="21" y1="21" x2="15" y2="15"></line>
       </svg>
     </button>
-    {{ end -}}
+    {{ end -}} -->
 
     <!-- DocSearch mobile -->
 {{ if site.Params.add_ons.docSearch -}}
@@ -274,7 +274,7 @@
         {{ end -}}
 
                 <!-- FlexSearch desktop -->
-                {{ partial "main/showFlexSearch" . }}
+                <!-- {{ partial "main/showFlexSearch" . }}
                 {{ $showFlexSearch := .Scratch.Get "showFlexSearch" -}}
                 {{ if $showFlexSearch -}}
                 <button type="button" id="searchToggleDesktop" class="btn btn-link nav-link p-2 d-none d-lg-block" aria-label="Search website">
@@ -284,7 +284,7 @@
                     <line x1="21" y1="21" x2="15" y2="15"></line>
                   </svg>
                 </button>
-                {{ end -}}
+                {{ end -}} -->
 
                 <!-- DocSearch desktop -->
 {{ if site.Params.add_ons.docSearch -}}
@@ -318,8 +318,8 @@
 {{ end -}}
 
 <!-- Search modal -->
-{{ if site.Params.doks.flexSearch -}}
+<!-- {{ if site.Params.doks.flexSearch -}}
 {{ partial "header/search-modal" . }}
-{{ end -}}
+{{ end -}} -->
 
 
