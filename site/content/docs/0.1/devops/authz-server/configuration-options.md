@@ -1,6 +1,6 @@
 ---
-title: "Cli Flags"
-slug: "Cli Flags"
+title: "Configuration Options"
+slug: "Configuration Options"
 description: ""
 summary: ""
 date: 2023-08-15T21:01:37+01:00
@@ -9,8 +9,8 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "cli-flags-85030aefbc53456496023ea81b6941f9"
-weight: 6006
+    identifier: "configuration-options-85030aefbc53456496023ea81b6941f9"
+weight: 6102
 toc: true
 seo:
   title: "" # custom title (optional)
@@ -18,12 +18,12 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-The CLI flags provide a method for executing the permguard binaries via the command line.
-There are multiple executables that can be run, generally they can be divided between servers and provisioners.
+The PermGuard platform consists of multiple servers, which can be run individually or as an all-in-one instance.
+Each server provides a set of CLI options to configure startup parameters, runtime behaviors, and integrations, ensuring flexibility for diverse use cases.
 
 ## Servers
 
-Irrespective of the chosen distribution, the binary supports the following flags:
+Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
 **--debug**: *Enable debug mode (default `false`).*
@@ -56,7 +56,7 @@ Irrespective of the chosen distribution, the binary supports the following flags
 
 ---
 
-**Storage Engines**: Storage engine flags are used to configure the storage engine to be used for the central and proximity data.
+**Storage Engines**: Storage engine options are used to configure the storage engine to be used for the central and proximity data.
 
 <details>
   <summary>SQLITE</summary>
@@ -115,7 +115,7 @@ Irrespective of the chosen distribution, the binary supports the following flags
 
 ## Provisioners
 
-Irrespective of the chosen distribution, the binary supports the following flags:
+Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
 **--debug**: *Enable debug mode (default `false`).*
