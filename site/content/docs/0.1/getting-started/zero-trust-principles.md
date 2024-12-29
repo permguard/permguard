@@ -78,7 +78,7 @@ The ZTAuth\* architecture supports administrative services like:
   <img alt="Permguard Policies" src="/images/diagrams/d5.png"/>
 </div>
 
-However, **ZTAuth\*** introduces a significant difference: it defines **Auth\*** models that can be transferred to `proximity PDP`.
+However, **ZTAuth\*** introduces a significant difference: it defines **Auth\*** models that can be transferred to `Proximity PDPs`.
 These models are incrementally synchronized to application nodes as git-like commit-based snapshots.
 
 <div style="text-align: center">

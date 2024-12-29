@@ -79,8 +79,3 @@ func NewSQLiteStorageFactory(storageFctyCfg *SQLiteStorageFactoryConfig) (*SQLit
 func (f *SQLiteStorageFactory) CreateCentralStorage(storageContext *azstorage.StorageContext) (azstorage.CentralStorage, error) {
 	return azicentralstorage.NewSQLiteCentralStorage(storageContext, f.sqliteConnector)
 }
-
-// CreateProximityStorage returns the proximity storage.
-func (f *SQLiteStorageFactory) CreateProximityStorage(storageContext *azstorage.StorageContext) (azstorage.ProximityStorage, error) {
-	return nil, azerrors.WrapSystemError(azerrors.ErrNotImplemented, "storage: proximity storage not implemented by the sqlite plugin")
-}

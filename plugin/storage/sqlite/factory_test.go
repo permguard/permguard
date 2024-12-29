@@ -50,10 +50,6 @@ func TestSQLiteStorageFactory(t *testing.T) {
 	assert.NotNil(centralstorage, "central storage should not be nil")
 	assert.Nil(err, "error should be nil")
 
-	proximitystorage, err := storageFcty.CreateProximityStorage(storageCtx)
-	assert.Nil(proximitystorage, "proximity storage should be nil")
-	assert.NotNil(err, "error should not be nil")
-
 	centralAAPStorage, err := centralstorage.GetAAPCentralStorage()
 	assert.NotNil(centralAAPStorage, "central AAP storage should not be nil")
 	assert.Nil(err, "error should be nil")

@@ -33,6 +33,4 @@ type ServerInitializer interface {
 	GetHostInfo() *azservices.HostInfo
 	// HasCentralStorage returns true if a central storage is required.
 	HasCentralStorage() bool
-	// HasProximityStorage returns true if a proximity storage is required.
-	HasProximityStorage() bool
 }

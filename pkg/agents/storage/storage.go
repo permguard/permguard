@@ -21,6 +21,3 @@ type CentralStorage interface {
 	GetAAPCentralStorage() (AAPCentralStorage, error)
 	GetPAPCentralStorage() (PAPCentralStorage, error)
 }
-
-// ProximityStorage is the interface for the proximity storage.
-type ProximityStorage any

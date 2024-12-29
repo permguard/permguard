@@ -72,11 +72,6 @@ func (c *CommunityServerInitializer) HasCentralStorage() bool {
 	return true
 }
 
-// HasProximityStorage returns true if a proximity storage is required.
-func (c *CommunityServerInitializer) HasProximityStorage() bool {
-	return azservices.HostAllInOne.Equal(c.host) || azservices.HostPDP.Equal(c.host)
-}
-
 // GetHost returns the service kind set as host.
 func (c *CommunityServerInitializer) GetHost() azservices.HostKind {
 	return c.host
@@ -88,13 +83,13 @@ func (c *CommunityServerInitializer) GetHostInfo() *azservices.HostInfo {
 }
 
 // GetStorages returns the active storage kinds.
-func (c *CommunityServerInitializer) GetStorages(centralStorageEngine azstorage.StorageKind, proximityStorageEngine azstorage.StorageKind) []azstorage.StorageKind {
+func (c *CommunityServerInitializer) GetStorages(centralStorageEngine azstorage.StorageKind) []azstorage.StorageKind {
 	storages := []azstorage.StorageKind{}
 	for _, storageKind := range c.storages {
 		if azstorage.StorageNone.Equal(storageKind) {
 			continue
 		}
-		if centralStorageEngine == storageKind || proximityStorageEngine == storageKind {
+		if centralStorageEngine == storageKind {
 			storages = append(storages, storageKind)
 		}
 	}
@@ -102,9 +97,9 @@ func (c *CommunityServerInitializer) GetStorages(centralStorageEngine azstorage.
 }
 
 // GetStoragesFactories returns the storage factories providers.
-func (c *CommunityServerInitializer) GetStoragesFactories(centralStorageEngine azstorage.StorageKind, proximityStorageEngine azstorage.StorageKind) (map[azstorage.StorageKind]azstorage.StorageFactoryProvider, error) {
+func (c *CommunityServerInitializer) GetStoragesFactories(centralStorageEngine azstorage.StorageKind) (map[azstorage.StorageKind]azstorage.StorageFactoryProvider, error) {
 	factories := map[azstorage.StorageKind]azstorage.StorageFactoryProvider{}
-	for _, storageKind := range c.GetStorages(centralStorageEngine, proximityStorageEngine) {
+	for _, storageKind := range c.GetStorages(centralStorageEngine) {
 		switch storageKind {
 		case azstorage.StorageSQLite:
 			fFactCfg := func() (azstorage.StorageFactoryConfig, error) { return azisqlite.NewSQLiteStorageFactoryConfig() }
