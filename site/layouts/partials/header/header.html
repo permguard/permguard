@@ -24,7 +24,7 @@
     Permguard</a
   >
     <!-- FlexSearch mobile -->
-    {{ partial "main/showFlexSearch" . }}
+    <!-- {{ partial "main/showFlexSearch" . }}
     {{ $showFlexSearch := .Scratch.Get "showFlexSearch" -}}
     {{ if $showFlexSearch -}}
     <button type="button" id="searchToggleMobile" class="btn btn-link nav-link mx-2 d-lg-none" aria-label="Search website">
@@ -34,7 +34,19 @@
         <line x1="21" y1="21" x2="15" y2="15"></line>
       </svg>
     </button>
-    {{ end -}}
+    {{ end -}} -->
+
+    <!-- DocSearch mobile -->
+{{ if site.Params.add_ons.docSearch -}}
+<div id="docsearch" class="d-none" tabindex="-1" aria-disabled="true"></div>
+<button type="button" id="searchToggleMobile" class="btn btn-link nav-link mx-2 d-lg-none" aria-label="Search website">
+  <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+    <circle cx="10" cy="10" r="7"></circle>
+    <line x1="21" y1="21" x2="15" y2="15"></line>
+  </svg>
+</button>
+{{ end -}}
 
     <!-- Section navigation -->
     {{ if (in site.Params.doks.sectionNav .Section) -}}
@@ -262,7 +274,7 @@
         {{ end -}}
 
                 <!-- FlexSearch desktop -->
-                {{ partial "main/showFlexSearch" . }}
+                <!-- {{ partial "main/showFlexSearch" . }}
                 {{ $showFlexSearch := .Scratch.Get "showFlexSearch" -}}
                 {{ if $showFlexSearch -}}
                 <button type="button" id="searchToggleDesktop" class="btn btn-link nav-link p-2 d-none d-lg-block" aria-label="Search website">
@@ -272,8 +284,18 @@
                     <line x1="21" y1="21" x2="15" y2="15"></line>
                   </svg>
                 </button>
-                {{ end -}}
+                {{ end -}} -->
 
+                <!-- DocSearch desktop -->
+{{ if site.Params.add_ons.docSearch -}}
+<button type="button" id="searchToggleDesktop" class="btn btn-link nav-link mx-2 d-none d-lg-block" aria-label="Search website">
+  <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+    <circle cx="10" cy="10" r="7"></circle>
+    <line x1="21" y1="21" x2="15" y2="15"></line>
+  </svg>
+</button>
+{{ end -}}
 
         <!-- Navbar button mobile -->
         {{ if site.Params.doks.navBarButton -}}
@@ -296,8 +318,8 @@
 {{ end -}}
 
 <!-- Search modal -->
-{{ if site.Params.doks.flexSearch -}}
+<!-- {{ if site.Params.doks.flexSearch -}}
 {{ partial "header/search-modal" . }}
-{{ end -}}
+{{ end -}} -->
 
 
