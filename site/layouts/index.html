@@ -58,7 +58,8 @@
         <div class="description__card__info-container">
           <h3>Applications</h3>
           <p>
-            Create and configure an Application, optionally including its Tenants.
+            Create and configure an Application, optionally including its
+            Tenants.
           </p>
         </div>
       </div>
@@ -80,9 +81,7 @@
         <img src="/images/home/cards/ledgers.webp" alt="Ledgers" />
         <div class="description__card__info-container">
           <h3>Ledgers</h3>
-          <p>
-            Create a Policy Ledger and set up its Schema and Policies.
-          </p>
+          <p>Create a Policy Ledger and set up its Schema and Policies.</p>
         </div>
       </div>
     </article>
@@ -123,11 +122,18 @@
   </div>
 </section>
 
-<div class="responsive-iframe">
+<div
+  class="section px-xl-4 px-xxl-0 cookieconsent-banner cookieconsent-optout-marketing"
+>
+  Please
+  <a href="javascript:Cookiebot.renew()">accept marketing-cookies</a>
+  to watch this video.
+</div>
+<div class="responsive-iframe cookieconsent-optin-marketing">
   <iframe
     width="100%"
     height="315"
-    src="https://www.youtube.com/embed/xldmDqLUOt8?si=z80I9e-IBpug6uNi&rel=0&modestbranding=1"
+    src="https://www.youtube-nocookie.com/embed/xldmDqLUOt8?si=z80I9e-IBpug6uNi&rel=0&modestbranding=1"
     title="YouTube video player"
     frameborder="0"
     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
@@ -164,10 +170,11 @@
         Permguard Server
       </h2>
       <p class="permguard-server__description text-center text-lg-start">
-        Start the PermGuard Authorization Server to serve as the central authority for managing
-        Applications, Identity Sources, Identities, Tenants, Policy Ledgers, and more.
-        Keep in mind that PermGuard requires integration with an external authentication provider,
-        as it does not handle authentication itself.
+        Start the PermGuard Authorization Server to serve as the central
+        authority for managing Applications, Identity Sources, Identities,
+        Tenants, Policy Ledgers, and more. Keep in mind that PermGuard requires
+        integration with an external authentication provider, as it does not
+        handle authentication itself.
       </p>
     </hgroup>
     <div class="col-16 col-lg-8 d-flex">
@@ -202,8 +209,8 @@
         Workspace
       </h2>
       <p class="workspace__description text-center text-lg-start">
-        Initialize a local workspace and check out a remote Policy Ledger
-        from a PermGuard Authorization Server using the PermGuard Command Line.
+        Initialize a local workspace and check out a remote Policy Ledger from a
+        PermGuard Authorization Server using the PermGuard Command Line.
       </p>
     </hgroup>
   </div>
@@ -216,8 +223,12 @@
       Policy as Code (PAC)
     </h2>
     <p class="code__description">
-      Implement your authorization model using schemas and write policies in supported languages.
-      <a href="https://www.cedarpolicy.com" target="_blank">Cedar Policy Language</a>  is now available, with additional languages coming soon.
+      Implement your authorization model using schemas and write policies in
+      supported languages.
+      <a href="https://www.cedarpolicy.com" target="_blank"
+        >Cedar Policy Language</a
+      >
+      is now available, with additional languages coming soon.
     </p>
   </hgroup>
 
@@ -576,10 +587,10 @@ async def view_inventory(token: str = Depends(oauth2_scheme)):
       <br />
       Proximity nodes independently pull updates via the NOTP (Negotiated Object
       Transfer Protocol), allowing each node to reference specific points in
-      time while optimizing bandwidth usage. Policies are stored in immutable blobs.
-      This approach, combined with the abstract language layer, allows Permguard to
-      extend seamlessly with other languages, ensuring there is no dependency on
-      code-specific APIs.
+      time while optimizing bandwidth usage. Policies are stored in immutable
+      blobs. This approach, combined with the abstract language layer, allows
+      Permguard to extend seamlessly with other languages, ensuring there is no
+      dependency on code-specific APIs.
     </p>
   </hgroup>
   <img
