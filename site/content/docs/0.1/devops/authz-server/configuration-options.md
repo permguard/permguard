@@ -18,7 +18,10 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-The PermGuard platform consists of multiple servers, which can be run individually or as an all-in-one instance.
+**PermGuard** consists of multiple services that make up the **Authorization Server**. These services can be deployed as a single `all-in-one` instance or separately.
+
+For production environments, using the `all-in-one` distribution is not recommended. A distributed deployment is preferred as it allows each service to scale independently, improving both flexibility and performance.
+
 Each server provides a set of CLI options to configure startup parameters, runtime behaviors, and integrations, ensuring flexibility for diverse use cases.
 
 ## Servers
