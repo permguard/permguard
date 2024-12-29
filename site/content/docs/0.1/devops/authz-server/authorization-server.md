@@ -21,8 +21,6 @@ seo:
 
 **PermGuard** is composed of multiple services that together form the **Authorization Server**. These services can be deployed either as a single instance using the `all-in-one` distribution or separately, with each service running in its own instance.
 
-For production environments, using the `all-in-one` distribution is not recommended. A distributed deployment is preferred as it allows each service to scale independently, improving both flexibility and performance.
-
 {{< callout context="note" icon="info-circle" >}}
 Services can be configured using either environment variables or [CLI options](/docs/0.1/devops/authz-server/configuration-options/). Each CLI option has a corresponding environment variable named `PERMGUARD_<OPTION_NAME>`. For example, the `--debug` option maps to the `PERMGUARD_DEBUG` environment variable.
 {{< /callout >}}
