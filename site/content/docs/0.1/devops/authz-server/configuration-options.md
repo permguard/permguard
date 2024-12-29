@@ -55,11 +55,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
 
-**--storage.proximity.engine**: *Data storage engine to be used for proximity data (default `sqlite`).*
-
----
-
-**Storage Engines**: Storage engine options are used to configure the storage engine to be used for the central and proximity data.
+**Storage Engines**: Storage engine options are used to configure the storage engine responsible for data persistence in the services.
 
 <details>
   <summary>SQLITE</summary>
