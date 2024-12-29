@@ -9,6 +9,10 @@ mainSections = ["docs"]
 [social]
   twitter = "permguard"
 
+# Add-ons
+[add_ons]
+  docSearch = true # false (default) or true
+
 # Doks (@hyas/doks-core)
 [doks]
   # Color mode
