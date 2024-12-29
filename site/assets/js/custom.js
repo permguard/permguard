@@ -52,7 +52,7 @@ const GO_CODE = {
   before: `
 func checkPermissions(token, system, resource, action string) bool {
     payload := decodeJWT(token)
-    actors, ok := payload["actorrs"].([]string)
+    actors, ok := payload["actors"].([]string)
     if !ok {
         return false
     }
