@@ -53,7 +53,7 @@ var configValueLogLevels = []string{flagValLogLevelDebug, flagValLogLevelInfo, f
 // AddFlagsForCommon adds the common flags to the flag set.
 func AddFlagsForCommon(flagSet *flag.FlagSet) error {
 	flagSet.Bool(flagDebug, false, "enable debug mode")
-	flagSet.String(flagLogLevel, flagValLogLevelInfo, "set log level")
+	flagSet.String(flagLogLevel, flagValLogLevelInfo, "specifies log level")
 	return nil
 }
 
