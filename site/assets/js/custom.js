@@ -233,7 +233,6 @@ function addCopyToClipboardCedar() {
   "use strict";
 
   var cb = document.getElementsByClassName("language-cedar");
-  console.log(cb);
 
   for (var i = 0; i < cb.length; ++i) {
     var element = cb[i];
