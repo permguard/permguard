@@ -41,7 +41,6 @@ type ServerConfig struct {
 	logLevel               string
 	appData                string
 	centralStorageEngine   azstorage.StorageKind
-	proximityStorageEngine azstorage.StorageKind
 	storages               []azstorage.StorageKind
 	storagesFactories      map[azstorage.StorageKind]azstorage.StorageFactoryProvider
 	services               []azservices.ServiceKind
@@ -49,14 +48,13 @@ type ServerConfig struct {
 }
 
 // newServerConfig creates a new server factory configuration.
-func newServerConfig(host azservices.HostKind, centralStorageEngine azstorage.StorageKind, proximityStorageEngine azstorage.StorageKind,
+func newServerConfig(host azservices.HostKind, centralStorageEngine azstorage.StorageKind,
 	storages []azstorage.StorageKind, storagesFactories map[azstorage.StorageKind]azstorage.StorageFactoryProvider,
 	services []azservices.ServiceKind, servicesFactories map[azservices.ServiceKind]azservices.ServiceFactoryProvider,
 ) (*ServerConfig, error) {
 	return &ServerConfig{
 		host:                   host,
 		centralStorageEngine:   centralStorageEngine,
-		proximityStorageEngine: proximityStorageEngine,
 		storages:               azcopier.CopySlice(storages),
 		storagesFactories:      azcopier.CopyMap(storagesFactories),
 		services:               azcopier.CopySlice(services),
@@ -72,11 +70,6 @@ func (c *ServerConfig) GetHost() azservices.HostKind {
 // GetCentralStorageEngine returns the central storage engine.
 func (c *ServerConfig) GetCentralStorageEngine() azstorage.StorageKind {
 	return c.centralStorageEngine
-}
-
-// GetProximityStorageEngine returns the proximity storage engine.
-func (c *ServerConfig) GetProximityStorageEngine() azstorage.StorageKind {
-	return c.proximityStorageEngine
 }
 
 // GetStorages returns service kinds.

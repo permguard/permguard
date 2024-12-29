@@ -29,14 +29,13 @@ import (
 type ServerFactoryConfig struct {
 	config                 *ServerConfig
 	centralStorageEngine   azstorage.StorageKind
-	proximityStorageEngine azstorage.StorageKind
 }
 
 // NewServerFactoryConfig creates a new server factory configuration.
-func NewServerFactoryConfig(initializer azservers.ServerInitializer, centralStorageEngine azstorage.StorageKind, proximityStorageEngine azstorage.StorageKind) (*ServerFactoryConfig, error) {
+func NewServerFactoryConfig(initializer azservers.ServerInitializer, centralStorageEngine azstorage.StorageKind) (*ServerFactoryConfig, error) {
 	host := initializer.GetHost()
-	storages := initializer.GetStorages(centralStorageEngine, proximityStorageEngine)
-	storagesFactories, err := initializer.GetStoragesFactories(centralStorageEngine, proximityStorageEngine)
+	storages := initializer.GetStorages(centralStorageEngine)
+	storagesFactories, err := initializer.GetStoragesFactories(centralStorageEngine)
 	if err != nil {
 		return nil, err
 	}
@@ -45,14 +44,13 @@ func NewServerFactoryConfig(initializer azservers.ServerInitializer, centralStor
 	if err != nil {
 		return nil, err
 	}
-	serverConfig, err := newServerConfig(host, centralStorageEngine, proximityStorageEngine, storages, storagesFactories, services, servicesFactories)
+	serverConfig, err := newServerConfig(host, centralStorageEngine, storages, storagesFactories, services, servicesFactories)
 	if err != nil {
 		return nil, err
 	}
 	return &ServerFactoryConfig{
 		config:                 serverConfig,
 		centralStorageEngine:   centralStorageEngine,
-		proximityStorageEngine: proximityStorageEngine,
 	}, nil
 }
 

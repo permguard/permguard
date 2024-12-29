@@ -24,15 +24,13 @@ import (
 type StorageConnector struct {
 	factories              map[StorageKind]StorageFactoryProvider
 	centralStorageEngine   StorageKind
-	proximityStorageEngine StorageKind
 }
 
 // NewStorageConnector creates a new storage connector.
-func NewStorageConnector(centralStorageEngine StorageKind, proximityStorageEngine StorageKind, facatories map[StorageKind]StorageFactoryProvider) (*StorageConnector, error) {
+func NewStorageConnector(centralStorageEngine StorageKind, facatories map[StorageKind]StorageFactoryProvider) (*StorageConnector, error) {
 	return &StorageConnector{
 		factories:              facatories,
 		centralStorageEngine:   centralStorageEngine,
-		proximityStorageEngine: proximityStorageEngine,
 	}, nil
 }
 
@@ -47,17 +45,4 @@ func (s StorageConnector) GetCentralStorage(runtimeCotext azruntime.RuntimeConte
 		return nil, err
 	}
 	return factory.CreateCentralStorage(storageCtx)
-}
-
-// GetProximityStorage returns the proximity storage.
-func (s StorageConnector) GetProximityStorage(runtimeCotext azruntime.RuntimeContext) (ProximityStorage, error) {
-	storageCtx, err := NewStorageContext(runtimeCotext, s.proximityStorageEngine)
-	if err != nil {
-		return nil, err
-	}
-	factory, err := s.factories[s.proximityStorageEngine].CreateFactory()
-	if err != nil {
-		return nil, err
-	}
-	return factory.CreateProximityStorage(storageCtx)
 }

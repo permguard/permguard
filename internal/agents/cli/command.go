@@ -39,8 +39,6 @@ const (
 	flagPrefixDataStorage          = "storage"
 	flagSuffixDataStorageCentral   = "central.engine"
 	flagValDefDataStorageCentral   = "sqlite"
-	flagSuffixDataStorageProximity = "proximity.engine"
-	flagValDefDataStorageProximity = "sqlite"
 )
 
 //go:embed "art.txt"
@@ -52,12 +50,6 @@ func addFlagsForCentralStorage(flagSet *flag.FlagSet) error {
 	return nil
 }
 
-// addFlagsForProximityStorage adds the flags for the proximity storage.
-func addFlagsForProximityStorage(flagSet *flag.FlagSet) error {
-	flagSet.String(azoptions.FlagName(flagPrefixDataStorage, flagSuffixDataStorageProximity), flagValDefDataStorageProximity, "data storage type to be used for proximity data")
-	return nil
-}
-
 // addFlagsForServerInitalizer adds the flags for the server initializer.
 func addFlagsForServerInitalizer(serverInitializer azservers.ServerInitializer, v *viper.Viper, command *cobra.Command, serverFactoryCfg *aziservers.ServerFactoryConfig, funcs []func(*flag.FlagSet) error) {
 	var err error
@@ -65,13 +57,6 @@ func addFlagsForServerInitalizer(serverInitializer azservers.ServerInitializer, 
 
 	if serverInitializer.HasCentralStorage() {
 		err = azoptions.AddCobraFlags(command, v, addFlagsForCentralStorage)
-		if err != nil {
-			fmt.Printf(msgErroOnAddFlags, err.Error())
-			os.Exit(1)
-		}
-	}
-	if serverInitializer.HasProximityStorage() {
-		err = azoptions.AddCobraFlags(command, v, addFlagsForProximityStorage)
 		if err != nil {
 			fmt.Printf(msgErroOnAddFlags, err.Error())
 			os.Exit(1)
@@ -155,7 +140,6 @@ func Run(serverInitializer azservers.ServerInitializer, startup func(*zap.Logger
 	}
 
 	centralStorageEngine := azstorage.StorageNone
-	proximityStorageEngine := azstorage.StorageNone
 	if serverInitializer.HasCentralStorage() {
 		centralStorageEngine, err = azstorage.NewStorageKindFromString(stringFromArgs("--", azoptions.FlagName(flagPrefixDataStorage, flagSuffixDataStorageCentral), flagValDefDataStorageCentral, os.Args, v))
 		if err != nil {
@@ -163,15 +147,8 @@ func Run(serverInitializer azservers.ServerInitializer, startup func(*zap.Logger
 			os.Exit(1)
 		}
 	}
-	if serverInitializer.HasProximityStorage() {
-		proximityStorageEngine, err = azstorage.NewStorageKindFromString(stringFromArgs("--", azoptions.FlagName(flagPrefixDataStorage, flagSuffixDataStorageProximity), flagValDefDataStorageProximity, os.Args, v))
-		if err != nil {
-			fmt.Printf("Bootstrapper cannot parse the proximity storage engine %s\n", err.Error())
-			os.Exit(1)
-		}
-	}
 
-	serverFactoryCfg, err := aziservers.NewServerFactoryConfig(serverInitializer, centralStorageEngine, proximityStorageEngine)
+	serverFactoryCfg, err := aziservers.NewServerFactoryConfig(serverInitializer, centralStorageEngine)
 	if err != nil {
 		fmt.Printf("Bootstrapper cannot inizialize the server factory config %s\n", err.Error())
 		os.Exit(1)

@@ -29,6 +29,4 @@ type StorageFactoryConfig interface {
 type StorageFactory interface {
 	// CreateCentralStorage creates a central storage.
 	CreateCentralStorage(storageContext *StorageContext) (CentralStorage, error)
-	// CreateProximityStorage creates a proximity storage.
-	CreateProximityStorage(storageContext *StorageContext) (ProximityStorage, error)
 }

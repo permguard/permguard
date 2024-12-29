@@ -101,7 +101,7 @@ func (s *Server) Serve(ctx context.Context, onShutdown func()) (bool, error) {
 		return false, nil
 	}
 
-	storageConnector, err := azstorage.NewStorageConnector(s.config.GetCentralStorageEngine(), s.config.GetProximityStorageEngine(), s.config.GetStoragesFactories())
+	storageConnector, err := azstorage.NewStorageConnector(s.config.GetCentralStorageEngine(), s.config.GetStoragesFactories())
 	if err != nil {
 		logger.Error("Bootstrapper cannot create the storage connector", zap.Error(err))
 		s.startLock.Unlock()
