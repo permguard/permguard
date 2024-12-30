@@ -62,7 +62,7 @@ mainSections = ["docs"]
 
   # Versioning
   docsVersioning = true
-  docsVersions = ["0.1"]
+  docsVersions = ["0.1", "0.2"]
 
   # UX
   headerBar = false # true (default) or false

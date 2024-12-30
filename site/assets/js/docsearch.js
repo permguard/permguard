@@ -8,12 +8,17 @@ docsearch({
   debug: false,
   insights: true,
   start_urls: [
-    "https://www.permguard.com/",
     {
-      url: "https://www.permguard.com/docs/(?P<version>.*?)/",
-      variables: {
-        version: ["latest", "3.3", "3.2"],
-      },
+      url: "https://www.permguard.com/docs/",
+      tags: ["version:0.2"],
+    },
+    {
+      url: "https://www.permguard.com/docs/0.1/",
+      tags: ["version:0.1"],
+    },
+    {
+      url: "https://www.permguard.com/docs/0.2/",
+      tags: ["version:0.2"],
     },
   ],
 });
