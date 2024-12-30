@@ -106,8 +106,8 @@ func (c *AAPServiceConfig) GetPort() int {
 }
 
 // GetStorageCentralEngine returns the storage central engine.
-func (c *AAPServiceConfig) GetStorageCentralEngine() string {
-	return c.config[flagCentralEngine].(string)
+func (c *AAPServiceConfig) GetStorageCentralEngine() azstorage.StorageKind {
+	return c.config[flagCentralEngine].(azstorage.StorageKind )
 }
 
 // GetDataFetchMaxPageSize returns the maximum number of items to fetch per request.

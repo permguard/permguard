@@ -100,8 +100,8 @@ func (c *PAPServiceConfig) GetPort() int {
 }
 
 // GetStorageCentralEngine returns the storage central engine.
-func (c *PAPServiceConfig) GetStorageCentralEngine() string {
-	return c.config[flagCentralEngine].(string)
+func (c *PAPServiceConfig) GetStorageCentralEngine() azstorage.StorageKind {
+	return c.config[flagCentralEngine].(azstorage.StorageKind)
 }
 
 // GetDataFetchMaxPageSize returns the maximum number of items to fetch per request.
