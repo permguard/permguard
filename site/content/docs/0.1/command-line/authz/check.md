@@ -24,7 +24,7 @@ This command checks an authorization request.
 
 Examples:
   # check an authorization request
-  permguard authz check --appid 268786704340 --file /path/to/authorization_request.json
+  permguard check --appid 268786704340 --file /path/to/authorization_request.json
 
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
@@ -52,7 +52,7 @@ The output from your current version of Permguard may differ from the example pr
 The `permguard check` command allows to check an authorization request.
 
 ```bash
-permguard authz check --appid 268786704340 --file /path/to/authorization_request.json
+permguard check --appid 268786704340 --file /path/to/authorization_request.json
 ```
 
 output:
@@ -66,7 +66,7 @@ output:
   </summary>
 
 ```bash
-permguard authz check --appid 268786704340 --file /path/to/authorization_request.json -o json
+permguard check --appid 268786704340 --file /path/to/authorization_request.json -o json
 ```
 
 output:
