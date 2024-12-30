@@ -23,8 +23,8 @@ import (
 
 	azcopier "github.com/permguard/permguard-core/pkg/extensions/copier"
 	azvalidators "github.com/permguard/permguard-core/pkg/extensions/validators"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
+	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
@@ -71,10 +71,7 @@ func (c *PDPServiceConfig) InitFromViper(v *viper.Viper) error {
 	// retrieve the data fetch max page size
 	flagName = azoptions.FlagName(flagServerPDPPrefix, flagCentralEngine)
 	centralStorageEngine := v.GetString(flagName)
-	if len(centralStorageEngine) == 0 {
-		return azerrors.WrapSystemError(azerrors.ErrCliArguments, "core: invalid central sotrage engine")
-	}
-	storageCEng, err:= azstorage.NewStorageKindFromString(centralStorageEngine)
+	storageCEng, err := azstorage.NewStorageKindFromString(centralStorageEngine)
 	if err != nil {
 		return azerrors.WrapSystemError(azerrors.ErrCliArguments, "core: invalid central sotrage engine")
 	}
