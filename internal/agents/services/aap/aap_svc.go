@@ -55,7 +55,8 @@ func (f *AAPService) GetEndpoints() ([]azservices.EndpointInitializer, error) {
 		f.config.GetService(),
 		f.config.GetPort(),
 		func(grpcServer *grpc.Server, srvCtx *azservices.ServiceContext, endptCtx *azservices.EndpointContext, storageConnector *azstorage.StorageConnector) error {
-			centralStorage, err := storageConnector.GetCentralStorage(endptCtx)
+			storageKind := f.config.GetStorageCentralEngine()
+			centralStorage, err := storageConnector.GetCentralStorage(storageKind, endptCtx)
 			if err != nil {
 				return err
 			}
