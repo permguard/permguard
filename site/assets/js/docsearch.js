@@ -7,6 +7,15 @@ docsearch({
   indexName: "permguard",
   debug: false,
   insights: true,
+  start_urls: [
+    "https://www.permguard.com/",
+    {
+      url: "https://www.permguard.com/docs/(?P<version>.*?)/",
+      variables: {
+        version: ["latest", "3.3", "3.2"],
+      },
+    },
+  ],
 });
 
 const onClick = function () {
