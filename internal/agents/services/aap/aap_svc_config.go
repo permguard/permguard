@@ -23,6 +23,7 @@ import (
 
 	azcopier "github.com/permguard/permguard-core/pkg/extensions/copier"
 	azvalidators "github.com/permguard/permguard-core/pkg/extensions/validators"
+	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
@@ -75,7 +76,11 @@ func (c *AAPServiceConfig) InitFromViper(v *viper.Viper) error {
 	if len(centralStorageEngine) == 0 {
 		return azerrors.WrapSystemError(azerrors.ErrCliArguments, "core: invalid central sotrage engine")
 	}
-	c.config[flagCentralEngine] = centralStorageEngine
+	storageCEng, err:= azstorage.NewStorageKindFromString(centralStorageEngine)
+	if err != nil {
+		return azerrors.WrapSystemError(azerrors.ErrCliArguments, "core: invalid central sotrage engine")
+	}
+	c.config[flagCentralEngine] = storageCEng
 	// retrieve the data fetch max page size
 	flagName = azoptions.FlagName(flagServerAAPPrefix, flagDataFetchMaxPageSize)
 	dataFetchMaxPageSize := v.GetInt(flagName)
