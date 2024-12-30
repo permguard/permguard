@@ -22,18 +22,23 @@ import (
 
 // StorageConnector is the storage connector.
 type StorageConnector struct {
-	factories            map[StorageKind]StorageFactoryProvider
+	defaultStorageKind StorageKind
+	factories          map[StorageKind]StorageFactoryProvider
 }
 
 // NewStorageConnector creates a new storage connector.
-func NewStorageConnector(facatories map[StorageKind]StorageFactoryProvider) (*StorageConnector, error) {
+func NewStorageConnector(defaultStorageKind StorageKind, facatories map[StorageKind]StorageFactoryProvider) (*StorageConnector, error) {
 	return &StorageConnector{
-		factories:            facatories,
+		defaultStorageKind: defaultStorageKind,
+		factories:          facatories,
 	}, nil
 }
 
 // GetCentralStorage returns the central storage.
 func (s StorageConnector) GetCentralStorage(storageKind StorageKind, runtimeCotext azruntime.RuntimeContext) (CentralStorage, error) {
+	if storageKind == "" {
+		storageKind = s.defaultStorageKind
+	}
 	storageCtx, err := NewStorageContext(runtimeCotext, storageKind)
 	if err != nil {
 		return nil, err
