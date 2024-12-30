@@ -34,7 +34,7 @@ const (
 	flagSuffixGrpcPort        = "grpc.port"
 	flagCentralEngine         = "engine.central"
 	flagDataFetchMaxPageSize  = "data.fetch.maxpagesize"
-	flagEnableDefaultCreation = "enable.default.creation"
+	flagEnableDefaultCreation = "data.enable.default.creation"
 )
 
 // AAPServiceConfig holds the configuration for the server.
@@ -54,7 +54,7 @@ func NewAAPServiceConfig() (*AAPServiceConfig, error) {
 // AddFlags adds flags.
 func (c *AAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(azoptions.FlagName(flagServerAAPPrefix, flagSuffixGrpcPort), 9091, "port to be used for exposing the aap grpc services")
-	flagSet.String(azoptions.FlagName(flagServerAAPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage.engine.central option")
+	flagSet.String(azoptions.FlagName(flagStorageAAPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage.engine.central option")
 	flagSet.Int(azoptions.FlagName(flagServerAAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
 	flagSet.Bool(azoptions.FlagName(flagServerAAPPrefix, flagEnableDefaultCreation), false, "the creation of default entities (e.g., tenants, identity sources) during data creation")
 	return nil
