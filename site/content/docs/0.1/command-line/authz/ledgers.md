@@ -74,7 +74,7 @@ permguard authz ledgers create --appid 268786704340 --name magicfarmacia --outpu
 
 output:
 
-```bash
+```json
 {
   "ledgers": [
     {
@@ -115,7 +115,7 @@ permguard authz ledgers list --appid 268786704340 --output json
 
 output:
 
-```bash
+```json
 {
   "ledgers": [
     {

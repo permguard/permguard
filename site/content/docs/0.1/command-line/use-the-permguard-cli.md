@@ -39,17 +39,18 @@ The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility 
 
 Permguard is an Open Source Multi-Application, Multi-Tenant, Zero-Trust Auth* Provider.
 
-  Find more information at: https://www.permguard.com/docs/using-the-cli/how-to-use/
+  Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
 
 Usage:
   permguard [flags]
   permguard [command]
 
 Available Commands:
-  apps        Manage applications on the remote server
   apply       Apply the plan to the remote ledger
+  apps        Manage applications on the remote server
   authn       Manage tenants and identities on the remote server
   authz       Manage ledgers on the remote server
+  check       Check an authorization request
   checkout    Check out the contents of a remote ledger to the local permguard workspace
   clone       Clone a remote ledger to the local permguard workspace
   completion  Generate the autocompletion script for the specified shell
@@ -57,12 +58,12 @@ Available Commands:
   help        Help about any command
   history     Show the history
   init        Initialize a permguard workspace
+  ledger      Manage the ledger
   objects     Manage the object store
   plan        Generate a plan of changes to apply to the remote ledger based on the differences between the local and remote states
   pull        Fetch the latest changes from the remote ledger and constructs the remote state.
-  refresh     Scan source files in the current directory and synchronizes the local state
+  refresh     Scan source files in the current workspace and synchronizes the local state
   remote      Manage remote server for tracking and interaction
-  ledger      Manage the ledger
   validate    Validate the local state for consistency and correctness
 
 Flags:
