@@ -36,15 +36,15 @@ const (
 
 // ServerConfig holds the configuration for the server.
 type ServerConfig struct {
-	host                   azservices.HostKind
-	debug                  bool
-	logLevel               string
-	appData                string
-	centralStorageEngine   azstorage.StorageKind
-	storages               []azstorage.StorageKind
-	storagesFactories      map[azstorage.StorageKind]azstorage.StorageFactoryProvider
-	services               []azservices.ServiceKind
-	servicesFactories      map[azservices.ServiceKind]azservices.ServiceFactoryProvider
+	host                 azservices.HostKind
+	debug                bool
+	logLevel             string
+	appData              string
+	centralStorageEngine azstorage.StorageKind
+	storages             []azstorage.StorageKind
+	storagesFactories    map[azstorage.StorageKind]azstorage.StorageFactoryProvider
+	services             []azservices.ServiceKind
+	servicesFactories    map[azservices.ServiceKind]azservices.ServiceFactoryProvider
 }
 
 // newServerConfig creates a new server factory configuration.
@@ -53,12 +53,12 @@ func newServerConfig(host azservices.HostKind, centralStorageEngine azstorage.St
 	services []azservices.ServiceKind, servicesFactories map[azservices.ServiceKind]azservices.ServiceFactoryProvider,
 ) (*ServerConfig, error) {
 	return &ServerConfig{
-		host:                   host,
-		centralStorageEngine:   centralStorageEngine,
-		storages:               azcopier.CopySlice(storages),
-		storagesFactories:      azcopier.CopyMap(storagesFactories),
-		services:               azcopier.CopySlice(services),
-		servicesFactories:      azcopier.CopyMap(servicesFactories),
+		host:                 host,
+		centralStorageEngine: centralStorageEngine,
+		storages:             azcopier.CopySlice(storages),
+		storagesFactories:    azcopier.CopyMap(storagesFactories),
+		services:             azcopier.CopySlice(services),
+		servicesFactories:    azcopier.CopyMap(servicesFactories),
 	}, nil
 }
 

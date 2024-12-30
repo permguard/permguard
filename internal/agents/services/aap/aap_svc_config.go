@@ -29,8 +29,10 @@ import (
 )
 
 const (
+	flagStorageAAPPrefix      = "storage.aap"
 	flagServerAAPPrefix       = "server.aap"
 	flagSuffixGrpcPort        = "grpc.port"
+	flagCentralEngine         = "engine.central"
 	flagDataFetchMaxPageSize  = "data.fetch.maxpagesize"
 	flagEnableDefaultCreation = "enable.default.creation"
 )
@@ -52,6 +54,7 @@ func NewAAPServiceConfig() (*AAPServiceConfig, error) {
 // AddFlags adds flags.
 func (c *AAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(azoptions.FlagName(flagServerAAPPrefix, flagSuffixGrpcPort), 9091, "port to be used for exposing the aap grpc services")
+	flagSet.String(azoptions.FlagName(flagServerAAPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage.engine.central option")
 	flagSet.Int(azoptions.FlagName(flagServerAAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
 	flagSet.Bool(azoptions.FlagName(flagServerAAPPrefix, flagEnableDefaultCreation), false, "the creation of default entities (e.g., tenants, identity sources) during data creation")
 	return nil
@@ -66,6 +69,13 @@ func (c *AAPServiceConfig) InitFromViper(v *viper.Viper) error {
 		return azerrors.WrapSystemError(azerrors.ErrCliArguments, "core: invalid port")
 	}
 	c.config[flagSuffixGrpcPort] = grpcPort
+	// retrieve the data fetch max page size
+	flagName = azoptions.FlagName(flagServerAAPPrefix, flagCentralEngine)
+	centralStorageEngine := v.GetString(flagName)
+	if len(centralStorageEngine) == 0 {
+		return azerrors.WrapSystemError(azerrors.ErrCliArguments, "core: invalid central sotrage engine")
+	}
+	c.config[flagCentralEngine] = centralStorageEngine
 	// retrieve the data fetch max page size
 	flagName = azoptions.FlagName(flagServerAAPPrefix, flagDataFetchMaxPageSize)
 	dataFetchMaxPageSize := v.GetInt(flagName)
@@ -88,6 +98,11 @@ func (c *AAPServiceConfig) GetConfigData() map[string]any {
 // GetPort returns the port.
 func (c *AAPServiceConfig) GetPort() int {
 	return c.config[flagSuffixGrpcPort].(int)
+}
+
+// GetStorageCentralEngine returns the storage central engine.
+func (c *AAPServiceConfig) GetStorageCentralEngine() string {
+	return c.config[flagCentralEngine].(string)
 }
 
 // GetDataFetchMaxPageSize returns the maximum number of items to fetch per request.

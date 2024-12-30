@@ -27,8 +27,8 @@ import (
 
 // ServerFactoryConfig holds the configuration for the server factory.
 type ServerFactoryConfig struct {
-	config                 *ServerConfig
-	centralStorageEngine   azstorage.StorageKind
+	config               *ServerConfig
+	centralStorageEngine azstorage.StorageKind
 }
 
 // NewServerFactoryConfig creates a new server factory configuration.
@@ -49,8 +49,8 @@ func NewServerFactoryConfig(initializer azservers.ServerInitializer, centralStor
 		return nil, err
 	}
 	return &ServerFactoryConfig{
-		config:                 serverConfig,
-		centralStorageEngine:   centralStorageEngine,
+		config:               serverConfig,
+		centralStorageEngine: centralStorageEngine,
 	}, nil
 }
 
