@@ -54,14 +54,12 @@ func (s *CommunityCliInitializer) GetCliCommands(deps azcli.CliDependenciesProvi
 	authnCmd := azicliauthn.CreateCommandForAuthN(deps, v)
 	authzCmd := azicliauthz.CreateCommandForAuthZ(deps, v)
 	configCmd := azicliconfigs.CreateCommandForConfig(deps, v)
-	checkCmd := azicliauthz.CreateCommandForCheck(deps, v)
 	wksCmds := azicliwks.CreateCommandsForWorkspace(deps, v)
 	return append([]*cobra.Command{
 		applicationsCmd,
 		authnCmd,
 		authzCmd,
 		configCmd,
-		checkCmd,
 	}, wksCmds...), nil
 }
 

@@ -50,7 +50,6 @@ Available Commands:
   apps        Manage applications on the remote server
   authn       Manage tenants and identities on the remote server
   authz       Manage ledgers on the remote server
-  check       Check an authorization request
   checkout    Check out the contents of a remote ledger to the local permguard workspace
   clone       Clone a remote ledger to the local permguard workspace
   completion  Generate the autocompletion script for the specified shell

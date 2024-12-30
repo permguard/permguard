@@ -40,5 +40,6 @@ func CreateCommandForAuthZ(deps azcli.CliDependenciesProvider, v *viper.Viper) *
 		},
 	}
 	command.AddCommand(createCommandForLedgers(deps, v))
+	command.AddCommand(createCommandForCheck(deps, v))
 	return command
 }
