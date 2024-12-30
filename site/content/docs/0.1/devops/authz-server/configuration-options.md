@@ -84,7 +84,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
 
-**\--server.aap.enable.default.creation bool**: *enables the creation of default entities (e.g., tenants, identity sources) during data creation. (default `false`).*
+**\--server.aap.data.enable.default.creation bool**: *enables the creation of default entities (e.g., tenants, identity sources) during data creation. (default `false`).*
 
 ---
 
