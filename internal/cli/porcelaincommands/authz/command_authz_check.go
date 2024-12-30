@@ -45,7 +45,7 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 }
 
 // createCommandForCheck creates a command for executing check.
-func CreateCommandForCheck(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForCheck(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "check",
 		Short: "Check an authorization request",
@@ -53,7 +53,7 @@ func CreateCommandForCheck(deps azcli.CliDependenciesProvider, v *viper.Viper) *
 
 Examples:
   # check an authorization request
-  permguard check --appid 268786704340 --file /path/to/authorization_request.json
+  permguard authz check --appid 268786704340 --file /path/to/authorization_request.json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCheck(deps, cmd, v)

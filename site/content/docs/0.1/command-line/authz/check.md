@@ -20,17 +20,26 @@ seo:
 Using the `check` command, it is possible to check authz requests.
 
 ```text
+  ____                                               _
+ |  _ \ ___ _ __ _ __ ___   __ _ _   _  __ _ _ __ __| |
+ | |_) / _ \ '__| '_ ` _ \ / _` | | | |/ _` | '__/ _` |
+ |  __/  __/ |  | | | | | | (_| | |_| | (_| | | | (_| |
+ |_|   \___|_|  |_| |_| |_|\__, |\__,_|\__,_|_|  \__,_|
+                           |___/
+
+The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
+
 This command checks an authorization request.
 
 Examples:
   # check an authorization request
-  permguard check --appid 268786704340 --file /path/to/authorization_request.json
+  permguard authz check --appid 268786704340 --file /path/to/authorization_request.json
 
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
 
 Usage:
-  permguard check [flags]
+  permguard authz check [flags]
 
 Flags:
       --appid int     application id
@@ -49,10 +58,10 @@ The output from your current version of Permguard may differ from the example pr
 
 ## Check an Authorization Request
 
-The `permguard check` command allows to check an authorization request.
+The `permguard authz check` command allows to check an authorization request.
 
 ```bash
-permguard check --appid 268786704340 --file /path/to/authorization_request.json
+permguard authz check --appid 268786704340 --file /path/to/authorization_request.json
 ```
 
 output:
@@ -66,7 +75,7 @@ output:
   </summary>
 
 ```bash
-permguard check --appid 268786704340 --file /path/to/authorization_request.json -o json
+permguard authz check --appid 268786704340 --file /path/to/authorization_request.json -o json
 ```
 
 output:
