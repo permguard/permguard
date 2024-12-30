@@ -29,8 +29,10 @@ import (
 )
 
 const (
+	flagStoragePDPPrefix     = "storage.pdp"
 	flagServerPDPPrefix      = "server.pdp"
 	flagSuffixGrpcPort       = "grpc.port"
+	flagCentralEngine        = "engine.central"
 	flagDataFetchMaxPageSize = "data.fetch.maxpagesize"
 )
 
@@ -51,6 +53,7 @@ func NewPDPServiceConfig() (*PDPServiceConfig, error) {
 // AddFlags adds flags.
 func (c *PDPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(azoptions.FlagName(flagServerPDPPrefix, flagSuffixGrpcPort), 9096, "port to be used for exposing the pdp grpc services")
+	flagSet.String(azoptions.FlagName(flagServerPDPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage.engine.central option")
 	flagSet.Int(azoptions.FlagName(flagServerPDPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
 	return nil
 }
@@ -64,6 +67,13 @@ func (c *PDPServiceConfig) InitFromViper(v *viper.Viper) error {
 		return azerrors.WrapSystemError(azerrors.ErrCliArguments, "core: invalid port")
 	}
 	c.config[flagSuffixGrpcPort] = grpcPort
+	// retrieve the data fetch max page size
+	flagName = azoptions.FlagName(flagServerPDPPrefix, flagCentralEngine)
+	centralStorageEngine := v.GetString(flagName)
+	if len(centralStorageEngine) == 0 {
+		return azerrors.WrapSystemError(azerrors.ErrCliArguments, "core: invalid central sotrage engine")
+	}
+	c.config[flagCentralEngine] = centralStorageEngine
 	// retrieve the data fetch max page size
 	flagName = azoptions.FlagName(flagServerPDPPrefix, flagDataFetchMaxPageSize)
 	dataFetchMaxPageSize := v.GetInt(flagName)
@@ -82,6 +92,16 @@ func (c *PDPServiceConfig) GetConfigData() map[string]any {
 // GetPort returns the port.
 func (c *PDPServiceConfig) GetPort() int {
 	return c.config[flagSuffixGrpcPort].(int)
+}
+
+// GetStorageCentralEngine returns the storage central engine.
+func (c *PDPServiceConfig) GetStorageCentralEngine() string {
+	return c.config[flagCentralEngine].(string)
+}
+
+// GetDataFetchMaxPageSize returns the maximum number of items to fetch per request.
+func (c *PDPServiceConfig) GetDataFetchMaxPageSize() int {
+	return c.config[flagDataFetchMaxPageSize].(int)
 }
 
 // GetService returns the service kind.

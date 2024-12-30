@@ -29,8 +29,10 @@ import (
 )
 
 const (
+	flagStoragePAPPrefix     = "storage.pap"
 	flagServerPAPPrefix      = "server.pap"
 	flagSuffixGrpcPort       = "grpc.port"
+	flagCentralEngine        = "engine.central"
 	flagDataFetchMaxPageSize = "data.fetch.maxpagesize"
 )
 
@@ -51,6 +53,7 @@ func NewPAPServiceConfig() (*PAPServiceConfig, error) {
 // AddFlags adds flags.
 func (c *PAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(azoptions.FlagName(flagServerPAPPrefix, flagSuffixGrpcPort), 9092, "port to be used for exposing the pap grpc services")
+	flagSet.String(azoptions.FlagName(flagServerPAPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage.engine.central option")
 	flagSet.Int(azoptions.FlagName(flagServerPAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
 	return nil
 }
@@ -64,6 +67,13 @@ func (c *PAPServiceConfig) InitFromViper(v *viper.Viper) error {
 		return azerrors.WrapSystemError(azerrors.ErrCliArguments, "core: invalid port")
 	}
 	c.config[flagSuffixGrpcPort] = grpcPort
+	// retrieve the data fetch max page size
+	flagName = azoptions.FlagName(flagServerPAPPrefix, flagCentralEngine)
+	centralStorageEngine := v.GetString(flagName)
+	if len(centralStorageEngine) == 0 {
+		return azerrors.WrapSystemError(azerrors.ErrCliArguments, "core: invalid central sotrage engine")
+	}
+	c.config[flagCentralEngine] = centralStorageEngine
 	// retrieve the data fetch max page size
 	flagName = azoptions.FlagName(flagServerPAPPrefix, flagDataFetchMaxPageSize)
 	dataFetchMaxPageSize := v.GetInt(flagName)
@@ -82,6 +92,16 @@ func (c *PAPServiceConfig) GetConfigData() map[string]any {
 // GetPort returns the port.
 func (c *PAPServiceConfig) GetPort() int {
 	return c.config[flagSuffixGrpcPort].(int)
+}
+
+// GetStorageCentralEngine returns the storage central engine.
+func (c *PAPServiceConfig) GetStorageCentralEngine() string {
+	return c.config[flagCentralEngine].(string)
+}
+
+// GetDataFetchMaxPageSize returns the maximum number of items to fetch per request.
+func (c *PAPServiceConfig) GetDataFetchMaxPageSize() int {
+	return c.config[flagDataFetchMaxPageSize].(int)
 }
 
 // GetService returns the service kind.

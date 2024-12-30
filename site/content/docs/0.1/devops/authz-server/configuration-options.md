@@ -51,7 +51,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
 
-**\--storage.central.engine**: *data storage engine to be used for central data (default `sqlite`).*
+**\--storage.engine.central**: *data storage engine to be used for central data (default `sqlite`).*
 
 ---
 
@@ -76,7 +76,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 {{< callout >}} Application Administration Point. {{< /callout >}}
 
-**\--storage.aap.central.engine**: *data storage engine to be used for the AAP central data. This overrides the `--storage.central.engine` option. Default: `sqlite`.*
+**\--storage.aap.engine.central**: *data storage engine to be used for the AAP central data. This overrides the `--storage.engine.central` option. Default: `sqlite`.*
 
 ---
 
@@ -96,7 +96,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 {{< callout >}} Policy Administration Point. {{< /callout >}}
 
-**\--storage.pap.central.engine**: *data storage engine to be used for the PAP central data. This overrides the `--storage.central.engine` option. Default: `sqlite`.*
+**\--storage.pap.engine.central**: *data storage engine to be used for the PAP central data. This overrides the `--storage.engine.central` option. Default: `sqlite`.*
 
 ---
 
@@ -112,7 +112,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 {{< callout >}} Policy Information Point. {{< /callout >}}
 
-**\--storage.pip.central.engine**: *data storage engine to be used for the PIP central data. This overrides the `--storage.central.engine` option. Default: `sqlite`.*
+**\--storage.pip.engine.central**: *data storage engine to be used for the PIP central data. This overrides the `--storage.engine.central` option. Default: `sqlite`.*
 
 ---
 
@@ -128,7 +128,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 {{< callout >}} Policy Decision Point. {{< /callout >}}
 
-**\--storage.pdp.central.engine**: *data storage engine to be used for the PDP central data. This overrides the `--storage.central.engine` option. Default: `sqlite`.*
+**\--storage.pdp.engine.central**: *data storage engine to be used for the PDP central data. This overrides the `--storage.engine.central` option. Default: `sqlite`.*
 
 ---
 

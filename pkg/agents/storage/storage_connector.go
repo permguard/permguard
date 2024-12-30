@@ -22,15 +22,15 @@ import (
 
 // StorageConnector is the storage connector.
 type StorageConnector struct {
-	factories              map[StorageKind]StorageFactoryProvider
-	centralStorageEngine   StorageKind
+	factories            map[StorageKind]StorageFactoryProvider
+	centralStorageEngine StorageKind
 }
 
 // NewStorageConnector creates a new storage connector.
 func NewStorageConnector(centralStorageEngine StorageKind, facatories map[StorageKind]StorageFactoryProvider) (*StorageConnector, error) {
 	return &StorageConnector{
-		factories:              facatories,
-		centralStorageEngine:   centralStorageEngine,
+		factories:            facatories,
+		centralStorageEngine: centralStorageEngine,
 	}, nil
 }
 
