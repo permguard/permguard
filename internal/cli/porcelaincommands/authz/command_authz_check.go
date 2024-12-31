@@ -17,7 +17,10 @@
 package authz
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -26,6 +29,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -34,13 +38,43 @@ const (
 )
 
 // runECommandForCheck runs the command for executing check.
-func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	_, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	printer.PrintMap(map[string]any{})
+	handleInputError := func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter, err error, message string) error {
+		if ctx.IsTerminalOutput() {
+			printer.Println(message)
+		}
+		if err != nil {
+			printer.Error(azerrors.WrapMessageError(azerrors.ErrCliArguments, err, message))
+		} else {
+			printer.Error(azerrors.WrapSystemError(azerrors.ErrCliArguments, message))
+		}
+		return aziclicommon.ErrCommandSilent
+	}
+	var input *os.File
+	if len(args) > 0 {
+		input, err = os.Open(args[0])
+		if err != nil {
+			return handleInputError(ctx, printer, err, "Invalid input for the authz check.")
+		}
+		defer input.Close()
+	} else {
+		input = os.Stdin
+	}
+
+	scanner := bufio.NewScanner(input)
+	var builder strings.Builder
+	for scanner.Scan() {
+		builder.WriteString(scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		return handleInputError(ctx, printer, err, "Invalid input for the authz check.")
+	}
+	printer.Print(builder.String())
 	return nil
 }
 
@@ -56,14 +90,12 @@ Examples:
   permguard authz check --appid 268786704340 --file /path/to/authorization_request.json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForCheck(deps, cmd, v)
+			return runECommandForCheck(deps, cmd, v, args)
 		},
 	}
 
 	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id")
 	v.BindPFlag(azoptions.FlagName(commandNameForCheck, aziclicommon.FlagCommonApplicationID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonApplicationID))
 
-	command.PersistentFlags().StringP(aziclicommon.FlagCommonFile, aziclicommon.FlagCommonFileShort, "", "file containing the authorization request")
-	v.BindPFlag(azoptions.FlagName(commandNameForCheck, aziclicommon.FlagCommonFile), command.PersistentFlags().Lookup(aziclicommon.FlagCommonFile))
 	return command
 }
