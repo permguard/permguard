@@ -1,24 +1,27 @@
 import docsearch from "@docsearch/js";
 
+var FALLBACK_VERSION = "0.1";
+
+function getVersion() {
+  var versionMatch = window.location.href.toString().match(/\/docs\/([^/]+)/);
+  var version = versionMatch ? versionMatch[1] : FALLBACK_VERSION;
+
+  return version;
+}
+
 docsearch({
   container: "#docsearch",
   appId: "12ZDGY7DFM",
-  apiKey: "5efc65320edcbb3b963c363925374d52",
-  indexName: "permguard",
+  apiKey: "f8906cf9282829730e92917673da2199",
+  indexName: "permguard_index",
   debug: false,
   insights: true,
-  start_urls: [
-    "https://www.permguard.com/",
-    {
-      url: "https://www.permguard.com/docs/(?P<version>.*?)/",
-      variables: {
-        version: ["latest", "3.3", "3.2"],
-      },
-    },
-  ],
+  searchParameters: {
+    filters: `version:${getVersion()} OR version:non-versionable`,
+  },
 });
 
-const onClick = function () {
+var onClick = function () {
   document.getElementsByClassName("DocSearch-Button")[0].click();
 };
 
