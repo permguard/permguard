@@ -62,24 +62,36 @@ An example of `REQUEST` payload.
 
 ```json
 {
-  "principal": {
-    "identity_token": "eyJhbGciOiJI...",
-    "access_token": "eyJhbGciOiJI..."
-  },
-  "policy_store": {
-    "type": "ledger",
-    "id": "magicfarmacia",
-    "version": "722164f552f2c8e582d4ef79270c7ec94b3633e8172af6ea53ffe1fdf64d66de"
-  },
-  "entities": {
-    "schema": "cedar",
-    "items": [
-      {
-        "uid": { "type": "Branch", "id": "96902499c04246f0bbe8f2e67a165a64" },
-        "attrs": { "name": "Milan Office" },
-        "parents": []
+  "authorization_context": {
+    "policy_store": {
+      "type": "ledger",
+      "id": "magicfarmacia",
+      "version": "722164f552f2c8e582d4ef79270c7ec94b3633e8172af6ea53ffe1fdf64d66de"
+    },
+    "principal": {
+      "type": "user",
+      "id": "john.smith@acmecorp.com",
+      "source": "keycloak",
+      "tokens": {
+        "identity_token": "eyJhbGciOiJI...",
+        "access_token": "eyJhbGciOiJI..."
       }
-    ]
+    },
+    "entities": {
+      "schema": "cedar",
+      "items": [
+        {
+          "uid": {
+            "type": "Branch",
+            "id": "96902499c04246f0bbe8f2e67a165a64"
+          },
+          "attrs": {
+            "name": "Milan Office"
+          },
+          "parents": []
+        }
+      ]
+    }
   },
   "subject": {
     "type": "user",
@@ -102,7 +114,33 @@ An example of `REQUEST` payload.
   },
   "context": {
     "time": "2024-12-26T23:02-45:00"
-  }
+  },
+  "evaluations": [
+    {
+      "subject": {
+        "type": "user",
+        "id": "john.smith@acmecorp.com",
+        "source": "keycloak",
+        "properties": {}
+      },
+      "resource": {
+        "type": "employee",
+        "id": "8796159789",
+        "properties": {
+          "branch": {
+            "id": "96902499c04246f0bbe8f2e67a165a64"
+          }
+        }
+      },
+      "action": {
+        "name": "assignRole",
+        "properties": {}
+      },
+      "context": {
+        "time": "2024-12-26T23:02-45:00"
+      }
+    }
+  ]
 }
 ```
 
