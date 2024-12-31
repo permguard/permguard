@@ -1,6 +1,6 @@
 import docsearch from "@docsearch/js";
 
-var FALLBACK_VERSION = "0.1";
+var FALLBACK_VERSION = "0.2";
 
 function getVersion() {
   var versionMatch = window.location.href.toString().match(/\/docs\/([^/]+)/);
