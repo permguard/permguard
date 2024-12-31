@@ -27,8 +27,9 @@ By integrating **Zero Trust**, Permguard provides a robust foundation for securi
 It helps you easily manage permissions by defining who can do what in your system.
 
 <div style="text-align: center">
-  <img alt="Permguard Policies" src="/images/diagrams/d1.png"/>
+  <img alt="Permguard Policies" src="/images/diagrams/d1.webp"/>
 </div>
+</br>
 
 Designed for `cloud-native`, `edge`, and multi-tenant environments, PermGuard allows you to update your authorization policies without changing your application code, saving time and effort.
 
@@ -41,7 +42,7 @@ Permguard may seem complex, but it’s not: its internal architecture is sophist
 **Permguard** can be deployed anywhere: `public or private clouds`, `managed infrastructure`, `Kubernetes`, `serverless` systems, or even in `partially connected` environments where consistent connectivity is a challenge. It is also ideal for use in `edge nodes` and `IoT` ecosystems, ensuring secure and consistent permission management across diverse setups.
 
 <div style="text-align: center">
-  <img alt="Permguard" src="/images/diagrams/d13.png"/>
+  <img alt="Permguard" src="/images/diagrams/d13.webp"/>
 </div>
 
 It follows a `Bring Your Own Identity (BYOI)` approach, meaning it works with your existing authentication system instead of replacing it.
@@ -55,14 +56,14 @@ The solution is `language-agnostic`, supporting multiple policy languages, start
 Developers can use their preferred language from the ones integrated, while ensuring all federated PermGuard servers work seamlessly together, even if they use different languages internally.
 
 <div style="text-align: center">
-  <img alt="Permguard" src="/images/diagrams/d18.png"/>
+  <img alt="Permguard" src="/images/diagrams/d18.webp"/>
 </div>
 
 `PermGuard` uses a common `schema` to define `Namepsaces` `Resources`, and `Actions`, ensuring consistency.
 Each language is integrated with a small abstraction layer that doesn’t limit developers, except for a few reserved keywords.
 
 <div style="text-align: center">
-  <img alt="Permguard" src="/images/diagrams/d19.png"/>
+  <img alt="Permguard" src="/images/diagrams/d19.webp"/>
 </div>
 
 {{< callout context="note" icon="info-circle" >}}
@@ -72,7 +73,7 @@ To enforce the access control process, the application can integrate one of the 
 This approach allows detailed permissions to specify who or what can access resources, while keeping the system flexible and easy to use.
 
 <div style="text-align: center">
-  <img alt="Permguard" src="/images/diagrams/d14.png"/>
+  <img alt="Permguard" src="/images/diagrams/d14.webp"/>
 </div>
 
 - `Who`: *Identities (Users and Actors)*
