@@ -22,7 +22,7 @@ seo:
 **Permguard** is designed with Zero Trust principles at its core, leveraging the **ZTAuth\*** architecture to ensure secure, scalable, and reliable authorization in modern, distributed environments.
 
 <div style="text-align: center">
-  <img alt="Permguard" src="/images/diagrams/ztauth.png"/>
+  <img alt="Permguard" src="/images/diagrams/ztauth.webp"/>
 </div>
 
 {{< callout context="tip" icon="rocket" >}}
@@ -53,7 +53,7 @@ Permguard may seem complex, but it’s not: its internal architecture is sophist
 - **ZTAuth\* (Zero Trust Auth\*)**: Ensures secure, identity-based execution of actions on resources by enforcing least privilege at the application boundary. Built for eventual consistency, the security model is incrementally synchronized across applicative nodes in an immutable, versioned manner.
 
 <div style="text-align: center">
-  <img alt="Permguard" src="/images/diagrams/d15.png"/>
+  <img alt="Permguard" src="/images/diagrams/d15.webpp"/>
 </div><br/>
 
 Looking at the diagram, you can see the difference between **ZTAuth\*** and **Zero Trust Network Access (ZTNA)**. ZTNA protects network boundaries, while **ZTAuth\***  secures applications, giving detailed control and consistent security.
@@ -75,14 +75,14 @@ The ZTAuth\* architecture supports administrative services like:
 - **Policy Enforcement Point (PEP):** Enforces decisions made by the PDP.
 
 <div style="text-align: center">
-  <img alt="Permguard Policies" src="/images/diagrams/d5.png"/>
+  <img alt="Permguard Policies" src="/images/diagrams/d5.webp"/>
 </div>
 
 However, **ZTAuth\*** introduces a significant difference: it defines **Auth\*** models that can be transferred to `Proximity` nodes.
 These models are incrementally synchronized to application nodes as git-like commit-based snapshots.
 
 <div style="text-align: center">
-  <img alt="Permguard" src="/images/diagrams/d16.png"/>
+  <img alt="Permguard" src="/images/diagrams/d16.webp"/>
 </div><br/>
 
 To ensure proper functionality, these models must have the following characteristics:
@@ -102,7 +102,7 @@ To ensure proper functionality, these models must have the following characteris
 Every resource action at the application boundary is verified against strict, identity-based security policies aligned with an authorization schema.
 
 <div style="text-align: center">
-  <img alt="Permguard" src="/images/diagrams/d17.png"/>
+  <img alt="Permguard" src="/images/diagrams/d17.webp"/>
 </div>
 
 The **application boundary** refers not only to APIs exposed to external consumers but also to interactions between machines or services within the application ecosystem. These interactions can involve various protocols and technologies, including synchronous requests, asynchronous messaging, and event-driven architectures. By covering all these layers, **ZTAuth\*** ensures that security policies are enforced consistently across different communication methods.

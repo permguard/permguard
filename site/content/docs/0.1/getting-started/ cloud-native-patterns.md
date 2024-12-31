@@ -22,7 +22,7 @@ seo:
 A common use case for **Permguard** is in the context of cloud-native applications, where an identity can initiate an action via an API. This action can then be split into events that are dispatched and processed by multiple microservices.
 
 <div style="text-align: center">
-  <img alt="Permguard Policies" src="/images/diagrams/d2.png"/>
+  <img alt="Permguard Policies" src="/images/diagrams/d2.webp"/>
 </div>
 
 Permguard focuses on [AuthN](/docs/0.1/core-elements/authn-authz/authn-vs-authz/) therefore it does not provide any authentication mechanism. It is assumed that the user is already authenticated and the JWT token is available.
@@ -74,7 +74,7 @@ else:
 In the context of asynchronous operations, there is no guarantee about when the operations will be executed. This can result in a scenario where permissions are revoked after the operation has already been initiated.
 
 <div style="text-align: center">
-  <img alt="Permguard Policies" src="/images/diagrams/d3.png"/>
+  <img alt="Permguard Policies" src="/images/diagrams/d3.webp"/>
 </div>
 
 By leveraging **Permguard**, if the operation has been revoked, the policy evaluation will return false, resulting in the denial of the operation. Consequently, the operation will not be executed, contributing to a higher level of security within the application.
@@ -85,7 +85,7 @@ In scenarios involving asynchronous operations, it's typical for an application 
 Storing tokens in events can pose security risks, and there's also a high likelihood that the token would expire before it's consumed.
 
 <div style="text-align: center">
-  <img alt="Permguard Policies" src="/images/diagrams/d4.png"/>
+  <img alt="Permguard Policies" src="/images/diagrams/d4.webp"/>
 </div>
 
 It is possible to publish a signed event and subsequently validate the event and finally perform permission checks with **Permguard**.
