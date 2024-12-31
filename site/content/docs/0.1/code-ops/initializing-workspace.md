@@ -43,7 +43,7 @@ A **Permguard** workspace contains the following files:
 When starting a new project, the first step is to create an application:
 
 ```bash
-permguard applications create --name magicfarmacia-dev --output json
+permguard apps create --name magicfarmacia-dev --output json
 {
   "applications": [
     {

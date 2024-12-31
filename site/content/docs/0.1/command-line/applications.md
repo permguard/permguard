@@ -23,8 +23,8 @@ Using the `apps` command, it is possible to manage Applications on the remote se
 This command manages applications.
 
 Usage:
-  Permguard applications [flags]
-  Permguard applications [command]
+  Permguard apps [flags]
+  Permguard apps [command]
 
 Available Commands:
   create      Create an application
@@ -40,7 +40,7 @@ Global Flags:
   -v, --verbose          true for verbose output
   -w, --workdir string   workdir (default ".")
 
-Use "Permguard applications [command] --help" for more information about a command.
+Use "Permguard apps [command] --help" for more information about a command.
 ```
 
 {{< callout context="caution" icon="alert-triangle" >}}
@@ -49,10 +49,10 @@ The output from your current version of Permguard may differ from the example pr
 
 ## Create an Application
 
-The `permguard applications create` command allows to create an application for the input name.
+The `permguard apps create` command allows to create an application for the input name.
 
 ```bash
-permguard applications create --name magicfarmacia-dev
+permguard apps create --name magicfarmacia-dev
 ```
 
 output:
@@ -67,7 +67,7 @@ output:
   </summary>
 
 ```bash
-permguard applications create --name magicfarmacia-dev --output json
+permguard apps create --name magicfarmacia-dev --output json
 ```
 
 output:
@@ -89,10 +89,10 @@ output:
 
 ## Fetch Applications
 
-The `permguard applications list` command allows for the retrieval of all applications.
+The `permguard apps list` command allows for the retrieval of all applications.
 
 ```bash
-permguard applications list
+permguard apps list
 ```
 
 output:
@@ -109,7 +109,7 @@ output:
   </summary>
 
 ```bash
-permguard applications list --output json
+permguard apps list --output json
 ```
 
 output:
