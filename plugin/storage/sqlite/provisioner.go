@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	flagPath = "filepath"
+	flagDbDir = "dbdir"
 	flagUp   = "up"
 	flagDown = "down"
 )
@@ -46,7 +46,7 @@ type SQLiteStorageProvisioner struct {
 	debug    bool
 	logLevel string
 	logger   *zap.Logger
-	filePath string
+	dbDir string
 	up       bool
 	down     bool
 	config   *azidb.SQLiteConnectionConfig
@@ -69,7 +69,7 @@ func (p *SQLiteStorageProvisioner) AddFlags(flagSet *flag.FlagSet) error {
 	if err != nil {
 		return err
 	}
-	flagSet.String(flagPath, ".", "file path to the database")
+	flagSet.String(flagDbDir, ".", "file path to the database")
 	flagSet.Bool(flagUp, false, "provision the database")
 	flagSet.Bool(flagDown, false, "deprovision the database")
 	err = p.config.AddFlags(flagSet)
@@ -87,7 +87,7 @@ func (p *SQLiteStorageProvisioner) InitFromViper(v *viper.Viper) error {
 	}
 	p.debug = debug
 	p.logLevel = logLevel
-	p.filePath = v.GetString(flagPath)
+	p.dbDir = v.GetString(flagDbDir)
 	p.up = v.GetBool(flagUp)
 	p.down = v.GetBool(flagDown)
 	err = p.config.InitFromViper(v)
@@ -103,12 +103,12 @@ func (p *SQLiteStorageProvisioner) InitFromViper(v *viper.Viper) error {
 
 // setup sets up the database.
 func (p *SQLiteStorageProvisioner) setup() (*sql.DB, error) {
-	filePath := p.filePath
+	dbDir := p.dbDir
 	dbName := p.config.GetDBName()
 	if !strings.HasSuffix(dbName, ".db") {
 		dbName += ".db"
 	}
-	dbPath := filepath.Join(filePath, dbName)
+	dbPath := filepath.Join(dbDir, dbName)
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, err

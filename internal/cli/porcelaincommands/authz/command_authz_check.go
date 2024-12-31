@@ -87,7 +87,7 @@ func createCommandForCheck(deps azcli.CliDependenciesProvider, v *viper.Viper) *
 
 Examples:
   # check an authorization request
-  permguard authz check --appid 268786704340 --file /path/to/authorization_request.json
+  permguard authz check --appid 268786704340 /path/to/authorization_request.json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCheck(deps, cmd, v, args)

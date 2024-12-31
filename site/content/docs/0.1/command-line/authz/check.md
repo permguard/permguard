@@ -24,7 +24,7 @@ This command checks an authorization request.
 
 Examples:
   # check an authorization request
-  permguard authz check --appid 268786704340 --file /path/to/authorization_request.json
+  permguard authz check --appid 268786704340 /path/to/authorization_request.json
 
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
@@ -34,7 +34,6 @@ Usage:
 
 Flags:
       --appid int     application id
-  -f, --file string   file containing the authorization request
   -h, --help          help for check
 
 Global Flags:
@@ -52,7 +51,65 @@ The output from your current version of Permguard may differ from the example pr
 The `permguard authz check` command allows to check an authorization request.
 
 ```bash
-permguard authz check --appid 268786704340 --file /path/to/authorization_request.json
+permguard authz check --appid 268786704340 /path/to/authorization_request.json
+```
+
+Below are other methods to pass the input:
+
+```bash
+permguard authz check --appid 268786704340 < /path/to/authorization_request.json
+```
+
+```bash
+cat /path/to/authorization_request.json | permguard authz check --appid 268786704340
+```
+
+```bash
+permguard authz check --appid 268786704340 <<EOF
+{
+  "principal": {
+    "identity_token": "eyJhbGciOiJI...",
+    "access_token": "eyJhbGciOiJI..."
+  },
+  "policy_store": {
+    "type": "ledger",
+    "id": "magicfarmacia",
+    "version": "722164f552f2c8e582d4ef79270c7ec94b3633e8172af6ea53ffe1fdf64d66de"
+  },
+  "entities": {
+    "schema": "cedar",
+    "items": [
+      {
+        "uid": { "type": "Branch", "id": "96902499c04246f0bbe8f2e67a165a64" },
+        "attrs": { "name": "Milan Office" },
+        "parents": []
+      }
+    ]
+  },
+  "subject": {
+    "type": "user",
+    "id": "john.smith@acmecorp.com",
+    "source": "keycloak",
+    "properties": {}
+  },
+  "resource": {
+    "type": "employee",
+    "id": "8796159789",
+    "properties": {
+      "branch": {
+        "id": "96902499c04246f0bbe8f2e67a165a64"
+      }
+    }
+  },
+  "action": {
+    "name": "assignRole",
+    "properties": {}
+  },
+  "context": {
+    "time": "2024-12-26T23:02-45:00"
+  }
+}
+EOF
 ```
 
 output:
@@ -66,7 +123,7 @@ output:
   </summary>
 
 ```bash
-permguard authz check --appid 268786704340 --file /path/to/authorization_request.json -o json
+permguard authz check --appid 268786704340 /path/to/authorization_request.json -o json
 ```
 
 output:

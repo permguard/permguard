@@ -102,10 +102,10 @@ tasks:
   # Up and Down tasks
   up:
     cmds:
-      - go run ./cmd/provisioner-db-sqlite/main.go --up --filepath ./samples/volume --debug
+      - go run ./cmd/provisioner-db-sqlite/main.go --up --dbdir ./samples/volume --debug
   down:
     cmds:
-      - go run ./cmd/provisioner-db-sqlite/main.go --down  --filepath ./samples/volume --debug
+      - go run ./cmd/provisioner-db-sqlite/main.go --down  --dbdir ./samples/volume --debug
   up-magicfarmacia:
     cmds:
       - sh ./samples/domains/magicfarmacia/magicfarmacia.sh
