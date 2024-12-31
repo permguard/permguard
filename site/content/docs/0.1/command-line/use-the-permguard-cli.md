@@ -82,7 +82,7 @@ To obtain detailed help for a specific command, users can utilize the --help opt
 For instance, to access help information about the `applications` subcommand, users can execute the following command:
 
 ```bash
-permguard applications --help
+permguard apps --help
 ```
 
 It's important to note that the output of the command line can be either in the default `TERMINAL` or `JSON` format by setting the output flag.
@@ -90,11 +90,11 @@ It's important to note that the output of the command line can be either in the 
 For instance to list all applications in the default terminal format, users can execute the following command:
 
 ```bash
-permguard applications list
+permguard apps list
 ```
 
 To list all applications in JSON format, users can execute the following command:
 
 ```bash
-permguard applications list --output json
+permguard apps list --output json
 ```
