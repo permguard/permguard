@@ -99,7 +99,7 @@ build-all-in-one:
 	mkdir -p dist
 	go build -o dist/server-all-in-one ./cmd/server-all-in-one
 	chmod +x dist/server-all-in-one
-	go run ./cmd/provisioner-db-sqlite/main.go --up --filepath ./dist --debug
+	go run ./cmd/provisioner-db-sqlite/main.go --up --dbdir ./dist --debug
 
 build-release:
 	mkdir -p dist
