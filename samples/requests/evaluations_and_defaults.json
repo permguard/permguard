@@ -34,7 +34,9 @@
     "type": "user",
     "id": "john.smith@acmecorp.com",
     "source": "keycloak",
-    "properties": {}
+    "properties": {
+      "department": "Pharmacy"
+    }
   },
   "resource": {
     "type": "employee",
@@ -45,36 +47,20 @@
       }
     }
   },
-  "action": {
-    "name": "assignRole",
-    "properties": {}
-  },
   "context": {
     "time": "2024-12-26T23:02-45:00"
   },
   "evaluations": [
     {
-      "subject": {
-        "type": "user",
-        "id": "john.smith@acmecorp.com",
-        "source": "keycloak",
-        "properties": {}
-      },
-      "resource": {
-        "type": "employee",
-        "id": "8796159789",
-        "properties": {
-          "branch": {
-            "id": "96902499c04246f0bbe8f2e67a165a64"
-          }
-        }
-      },
       "action": {
         "name": "assignRole",
         "properties": {}
-      },
-      "context": {
-        "time": "2024-12-26T23:02-45:00"
+      }
+    },
+    {
+      "action": {
+        "name": "viewOrders",
+        "properties": {}
       }
     }
   ]

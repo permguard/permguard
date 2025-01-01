@@ -41,6 +41,9 @@ The request payload includes the following elements:
 - **`subject`, `resource`, `action`, `context`**:
   These elements describe the subject (the entity requesting access), the resource (the entity being accessed), the action (the operation performed on the resource), and the context (the temporal details of the request). These elements aim to align with widely recognized authorization specifications such as [OpenID AuthZEN](https://openid.net/wg/authzen/specifications/).
 
+- **`evaluations`**:
+  The evaluations represent a list of access requests that a principal can perform to evaluate multiple access decisions within the scope of a single message exchange, acting on behalf of other subjects (a process also referred to as "boxcarring" requests).
+
 {{< callout context="note" icon="info-circle" >}}
 **Permguard** follows Zero Trust principles, and the Authorization API is built the same way. The principal can send authorization requests only for subjects it is allowed to act on.
 
@@ -58,7 +61,20 @@ The main idea of passing the principal with its access token is to protect again
 This approach makes the PDP more secure by ensuring that information is not exposed to the PEP unless it is within the authorized context. It also supports the concept of trusted delegation, allowing principals to act on behalf of others securely when permitted.
 {{< /callout >}}
 
-An example of `REQUEST` payload.
+### Response Payload
+
+The response payload includes the following elements:
+
+- **`decision`**:
+  The decision element specifies whether the request is allowed or denied. The decision is a boolean value (`true` or `false`).
+- **`context`**:
+  The context element provides additional information about the decision, including the reason for the decision. The context includes an `id` and `reason_admin` and `reason_user` objects. The `reason_admin` object contains information for the administrator, while the `reason_user` object contains information for the user.
+
+### Simple Message Exchange
+
+Here a simple example of a message exchange between the `PEP` and the `PDP`.
+
+**Request Payload**:
 
 ```json
 {
@@ -97,7 +113,9 @@ An example of `REQUEST` payload.
     "type": "user",
     "id": "john.smith@acmecorp.com",
     "source": "keycloak",
-    "properties": {}
+    "properties": {
+      "department": "Pharmacy"
+    }
   },
   "resource": {
     "type": "employee",
@@ -114,6 +132,67 @@ An example of `REQUEST` payload.
   },
   "context": {
     "time": "2024-12-26T23:02-45:00"
+  }
+}
+```
+
+**Response Payload**:
+
+```json
+{
+  "decision": false,
+  "context": {
+    "id": "e91df3711cb046f18c7576303dbeccda",
+    "reason_admin": {
+      "status": "403",
+      "message": "Request failed policy 3df18a05380d4ddab164e6b8e82bd37b"
+    },
+    "reason_user": {
+      "status": "403",
+      "message": "Access denied due to insufficient privileges. Please contact your administrator."
+    }
+  }
+}
+```
+
+### Message Exchange with Evaluations
+
+Here an example of a message exchange with evaluations between the `PEP` and the `PDP`.
+
+**Request Payload**:
+
+```json
+{
+  "authorization_context": {
+    "policy_store": {
+      "type": "ledger",
+      "id": "magicfarmacia",
+      "version": "722164f552f2c8e582d4ef79270c7ec94b3633e8172af6ea53ffe1fdf64d66de"
+    },
+    "principal": {
+      "type": "user",
+      "id": "john.smith@acmecorp.com",
+      "source": "keycloak",
+      "tokens": {
+        "identity_token": "eyJhbGciOiJI...",
+        "access_token": "eyJhbGciOiJI..."
+      }
+    },
+    "entities": {
+      "schema": "cedar",
+      "items": [
+        {
+          "uid": {
+            "type": "Branch",
+            "id": "96902499c04246f0bbe8f2e67a165a64"
+          },
+          "attrs": {
+            "name": "Milan Office"
+          },
+          "parents": []
+        }
+      ]
+    }
   },
   "evaluations": [
     {
@@ -139,27 +218,205 @@ An example of `REQUEST` payload.
       "context": {
         "time": "2024-12-26T23:02-45:00"
       }
+    },
+    {
+      "subject": {
+        "type": "user",
+        "id": "john.smith@acmecorp.com",
+        "source": "keycloak",
+        "properties": {}
+      },
+      "resource": {
+        "type": "employee",
+        "id": "8796159789",
+        "properties": {
+          "branch": {
+            "id": "96902499c04246f0bbe8f2e67a165a64"
+          }
+        }
+      },
+      "action": {
+        "name": "viewOrders",
+        "properties": {}
+      },
+      "context": {
+        "time": "2024-12-26T23:02-45:00"
+      }
     }
   ]
 }
 ```
 
-### Response Payload
-
-An example `RESPONSE` payload containing the authorization decision, contextual information for administrators, and localized error messages for users.
+**Response Payload**:
 
 ```json
 {
-  "decision": true,
+  "decision": false,
   "context": {
     "id": "e91df3711cb046f18c7576303dbeccda",
     "reason_admin": {
-      "en": "Request failed policy 24a422fd0fcf454b8e2d4f13e98cce2b"
+      "status": "403",
+      "message": "Request failed because of evaluations."
     },
     "reason_user": {
-      "en-403": "Access denied due to insufficient privileges. Please contact your administrator.",
-      "it-403": "Accesso negato a causa di privilegi insufficienti. Si prega di contattare il proprio amministratore."
+      "status": "403",
+      "message": "Access denied due to insufficient privileges. Please contact your administrator."
     }
-  }
+  },
+  "evaluations": [
+    {
+      "decision": false,
+      "context": {
+        "id": "e91df3711cb046f18c7576303dbeccda",
+        "reason_admin": {
+          "status": "403",
+          "message": "Request failed policy 3df18a05380d4ddab164e6b8e82bd37b"
+        },
+        "reason_user": {
+          "status": "403",
+          "message": "Access denied due to insufficient privileges. Please contact your administrator."
+        }
+      }
+    },
+    {
+      "decision": false,
+      "context": {
+        "id": "83628fb761fc4622aaf2f70c5338093c",
+        "reason_admin": {
+          "status": "403",
+          "message": "Request failed policy 78df7ffa88a44795bac156339ae1d0da"
+        },
+        "reason_user": {
+          "status": "403",
+          "message": "Access denied due to insufficient privileges. Please contact your administrator."
+        }
+      }
+    }
+  ]
+}
+```
+
+### Message Exchange with Evaluations and Defaults
+
+Here an example of a message exchange with evaluations and defaults between the `PEP` and the `PDP`.
+
+**Request Payload**:
+
+```json
+{
+  "authorization_context": {
+    "policy_store": {
+      "type": "ledger",
+      "id": "magicfarmacia",
+      "version": "722164f552f2c8e582d4ef79270c7ec94b3633e8172af6ea53ffe1fdf64d66de"
+    },
+    "principal": {
+      "type": "user",
+      "id": "john.smith@acmecorp.com",
+      "source": "keycloak",
+      "tokens": {
+        "identity_token": "eyJhbGciOiJI...",
+        "access_token": "eyJhbGciOiJI..."
+      }
+    },
+    "entities": {
+      "schema": "cedar",
+      "items": [
+        {
+          "uid": {
+            "type": "Branch",
+            "id": "96902499c04246f0bbe8f2e67a165a64"
+          },
+          "attrs": {
+            "name": "Milan Office"
+          },
+          "parents": []
+        }
+      ]
+    }
+  },
+  "subject": {
+    "type": "user",
+    "id": "john.smith@acmecorp.com",
+    "source": "keycloak",
+    "properties": {
+      "department": "Pharmacy"
+    }
+  },
+  "resource": {
+    "type": "employee",
+    "id": "8796159789",
+    "properties": {
+      "branch": {
+        "id": "96902499c04246f0bbe8f2e67a165a64"
+      }
+    }
+  },
+  "context": {
+    "time": "2024-12-26T23:02-45:00"
+  },
+  "evaluations": [
+    {
+      "action": {
+        "name": "assignRole",
+        "properties": {}
+      }
+    },
+    {
+      "action": {
+        "name": "viewOrders",
+        "properties": {}
+      }
+    }
+  ]
+}
+```
+
+**Response Payload**:
+
+```json
+{
+  "decision": false,
+  "context": {
+    "id": "e91df3711cb046f18c7576303dbeccda",
+    "reason_admin": {
+      "status": "403",
+      "message": "Request failed because of evaluations."
+    },
+    "reason_user": {
+      "status": "403",
+      "message": "Access denied due to insufficient privileges. Please contact your administrator."
+    }
+  },
+  "evaluations": [
+    {
+      "decision": false,
+      "context": {
+        "id": "e91df3711cb046f18c7576303dbeccda",
+        "reason_admin": {
+          "status": "403",
+          "message": "Request failed policy 3df18a05380d4ddab164e6b8e82bd37b"
+        },
+        "reason_user": {
+          "status": "403",
+          "message": "Access denied due to insufficient privileges. Please contact your administrator."
+        }
+      }
+    },
+    {
+      "decision": false,
+      "context": {
+        "id": "83628fb761fc4622aaf2f70c5338093c",
+        "reason_admin": {
+          "status": "403",
+          "message": "Request failed policy 78df7ffa88a44795bac156339ae1d0da"
+        },
+        "reason_user": {
+          "status": "403",
+          "message": "Access denied due to insufficient privileges. Please contact your administrator."
+        }
+      }
+    }
+  ]
 }
 ```
