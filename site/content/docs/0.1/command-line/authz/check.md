@@ -17,6 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
+
 Using the `check` command, it is possible to check authz requests.
 
 ```text
@@ -139,12 +140,14 @@ EOF
 output:
 
 ```bash
+
 ```
 
 <details>
   <summary>
     JSON Output
   </summary>
+</details>
 
 ```bash
 permguard authz check --appid 268786704340 /path/to/authorization_request.json -o json
