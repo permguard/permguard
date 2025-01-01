@@ -102,24 +102,32 @@ permguard authz check --appid 268786704340 <<EOF
     "type": "user",
     "id": "john.smith@acmecorp.com",
     "source": "keycloak",
-    "properties": {}
+    "properties": {
+      "department": "Pharmacy"
+    }
+  },
+  "resource": {
+    "type": "employee",
+    "id": "8796159789",
+    "properties": {
+      "branch": {
+        "id": "96902499c04246f0bbe8f2e67a165a64"
+      }
+    }
   },
   "context": {
     "time": "2024-12-26T23:02-45:00"
   },
   "evaluations": [
     {
-      "resource": {
-        "type": "employee",
-        "id": "8796159789",
-        "properties": {
-          "branch": {
-            "id": "96902499c04246f0bbe8f2e67a165a64"
-          }
-        }
-      },
       "action": {
         "name": "assignRole",
+        "properties": {}
+      }
+    },
+    {
+      "action": {
+        "name": "viewOrders",
         "properties": {}
       }
     }
