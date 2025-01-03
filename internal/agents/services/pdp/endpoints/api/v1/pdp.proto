@@ -37,7 +37,7 @@ message Principal {
 	string Type = 1;
 	string ID = 2;
 	optional string Source = 3;
-	optional Token Tokens = 4;
+	optional Token Token = 4;
 }
 
 message Entities {
@@ -59,7 +59,7 @@ message Resource {
 }
 
 message Action {
-	string name = 1;
+	string Name = 1;
 	optional google.protobuf.Struct Properties = 2;
 }
 
