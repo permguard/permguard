@@ -18,8 +18,10 @@ package authz
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/fatih/color"
@@ -30,6 +32,7 @@ import (
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 
 const (
@@ -49,7 +52,7 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 			printer.Println(message)
 		}
 		if err != nil {
-			printer.Error(azerrors.WrapMessageError(azerrors.ErrCliArguments, err, message))
+			printer.Error(azerrors.WrapMessageError(err, nil, message))
 		} else {
 			printer.Error(azerrors.WrapSystemError(azerrors.ErrCliArguments, message))
 		}
@@ -57,7 +60,8 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 	}
 	var input *os.File
 	if len(args) > 0 {
-		input, err = os.Open(args[0])
+		jsonPath := filepath.Join(ctx.GetWorkDir(), args[0])
+		input, err = os.Open(jsonPath)
 		if err != nil {
 			return handleInputError(ctx, printer, err, "Invalid input for the authz check.")
 		}
@@ -74,7 +78,13 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 	if err := scanner.Err(); err != nil {
 		return handleInputError(ctx, printer, err, "Invalid input for the authz check.")
 	}
-	printer.Print(builder.String())
+	jsonString := builder.String()
+	var authzReq azmodelspdp.AuthorizationCheckRequest
+	err = json.Unmarshal([]byte(jsonString), &authzReq)
+	if err != nil {
+		return handleInputError(ctx, printer, err, "Invalid input for the authz check.")
+	}
+	printer.Println(fmt.Sprintf("Checking authorization request for application %s...", authzReq.AuthorizationContext.PolicyStore.ID))
 	return nil
 }
 
