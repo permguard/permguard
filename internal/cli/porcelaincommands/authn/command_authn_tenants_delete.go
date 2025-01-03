@@ -24,9 +24,9 @@ import (
 	"github.com/spf13/viper"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azmodelsaap "github.com/permguard/permguard/pkg/transport/models/aap"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
 )
 
 const (
@@ -65,7 +65,7 @@ func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		tenantName := tenant.Name
 		output[tenantID] = tenantName
 	} else if ctx.IsJSONOutput() {
-		output["tenant"] = []*azmodels.Tenant{tenant}
+		output["tenant"] = []*azmodelsaap.Tenant{tenant}
 	}
 	printer.PrintlnMap(output)
 	return nil

@@ -24,9 +24,9 @@ import (
 	"github.com/spf13/viper"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azmodelsaap "github.com/permguard/permguard/pkg/transport/models/aap"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
 )
 
 const (
@@ -51,7 +51,7 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 	}
 	applicationID := v.GetInt64(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonApplicationID))
 	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
-	identitySource := &azmodels.IdentitySource{
+	identitySource := &azmodelsaap.IdentitySource{
 		ApplicationID: applicationID,
 		Name:          name,
 	}
@@ -81,7 +81,7 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 		identitieSourceName := identitySource.Name
 		output[identitySourceID] = identitieSourceName
 	} else if ctx.IsJSONOutput() {
-		output["identity_sources"] = []*azmodels.IdentitySource{identitySource}
+		output["identity_sources"] = []*azmodelsaap.IdentitySource{identitySource}
 	}
 	printer.PrintlnMap(output)
 	return nil

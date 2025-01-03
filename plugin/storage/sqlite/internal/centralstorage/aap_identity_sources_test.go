@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelaap "github.com/permguard/permguard/pkg/transport/models/aap"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
@@ -70,7 +70,7 @@ func TestCreateIdentitySourceWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inIdentitySource := &azmodels.IdentitySource{}
+		inIdentitySource := &azmodelaap.IdentitySource{}
 		outIdentitySources, err := storage.CreateIdentitySource(inIdentitySource)
 		assert.Nil(outIdentitySources, "identity sources should be nil")
 		assert.Error(err)
@@ -101,7 +101,7 @@ func TestCreateIdentitySourceWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertIdentitySource", mock.Anything, true, mock.Anything).Return(dbOutIdentitySource, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inIdentitySource := &azmodels.IdentitySource{}
+	inIdentitySource := &azmodelaap.IdentitySource{}
 	outIdentitySources, err := storage.CreateIdentitySource(inIdentitySource)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outIdentitySources, "identity sources should not be nil")
@@ -152,7 +152,7 @@ func TestUpdateIdentitySourceWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inIdentitySource := &azmodels.IdentitySource{}
+		inIdentitySource := &azmodelaap.IdentitySource{}
 		outIdentitySources, err := storage.UpdateIdentitySource(inIdentitySource)
 		assert.Nil(outIdentitySources, "identity sources should be nil")
 		assert.Error(err)
@@ -183,7 +183,7 @@ func TestUpdateIdentitySourceWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertIdentitySource", mock.Anything, false, mock.Anything).Return(dbOutIdentitySource, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inIdentitySource := &azmodels.IdentitySource{}
+	inIdentitySource := &azmodelaap.IdentitySource{}
 	outIdentitySources, err := storage.UpdateIdentitySource(inIdentitySource)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outIdentitySources, "identity sources should not be nil")
@@ -299,7 +299,7 @@ func TestFetchIdentitySourceWithErrors(t *testing.T) {
 	{ // Test with invalid identity source id
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outIdentitySources, err := storage.FetchIdentitySources(1, 100, 232956849236, map[string]any{azmodels.FieldIdentitySourceIdentitySourceID: 232956849236})
+		outIdentitySources, err := storage.FetchIdentitySources(1, 100, 232956849236, map[string]any{azmodelaap.FieldIdentitySourceIdentitySourceID: 232956849236})
 		assert.Nil(outIdentitySources, "identity sources should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -307,7 +307,7 @@ func TestFetchIdentitySourceWithErrors(t *testing.T) {
 	{ // Test with invalid identity source name
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outIdentitySources, err := storage.FetchIdentitySources(1, 100, 232956849236, map[string]any{azmodels.FieldIdentitySourceName: 2})
+		outIdentitySources, err := storage.FetchIdentitySources(1, 100, 232956849236, map[string]any{azmodelaap.FieldIdentitySourceName: 2})
 		assert.Nil(outIdentitySources, "identity sources should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -348,7 +348,7 @@ func TestFetchIdentitySourceWithSuccess(t *testing.T) {
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLRepo.On("FetchIdentitySources", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutIdentitySources, nil)
 
-	outIdentitySources, err := storage.FetchIdentitySources(1, 100, 232956849236, map[string]any{azmodels.FieldIdentitySourceIdentitySourceID: azirepos.GenerateUUID(), azmodels.FieldIdentitySourceName: "rent-a-car2"})
+	outIdentitySources, err := storage.FetchIdentitySources(1, 100, 232956849236, map[string]any{azmodelaap.FieldIdentitySourceIdentitySourceID: azirepos.GenerateUUID(), azmodelaap.FieldIdentitySourceName: "rent-a-car2"})
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outIdentitySources, "identity sources should not be nil")
 	assert.Equal(len(outIdentitySources), len(dbOutIdentitySources), "identity sources and dbIdentitySources should have the same length")

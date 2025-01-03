@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelaap "github.com/permguard/permguard/pkg/transport/models/aap"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
@@ -79,7 +79,7 @@ func TestCreateApplicationWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inApplication := &azmodels.Application{}
+		inApplication := &azmodelaap.Application{}
 		outApplications, err := storage.CreateApplication(inApplication)
 		assert.Nil(outApplications, "applications should be nil")
 		assert.Error(err)
@@ -112,7 +112,7 @@ func TestCreateApplicationWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertLedger", mock.Anything, true, mock.Anything).Return(nil, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inApplication := &azmodels.Application{}
+	inApplication := &azmodelaap.Application{}
 	outApplications, err := storage.CreateApplication(inApplication)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outApplications, "applications should not be nil")
@@ -172,7 +172,7 @@ func TestUpdateApplicationWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inApplication := &azmodels.Application{}
+		inApplication := &azmodelaap.Application{}
 		outApplications, err := storage.UpdateApplication(inApplication)
 		assert.Nil(outApplications, "applications should be nil")
 		assert.Error(err)
@@ -202,7 +202,7 @@ func TestUpdateApplicationWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertApplication", mock.Anything, false, mock.Anything).Return(dbOutApplication, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inApplication := &azmodels.Application{}
+	inApplication := &azmodelaap.Application{}
 	outApplications, err := storage.UpdateApplication(inApplication)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outApplications, "applications should not be nil")
@@ -317,7 +317,7 @@ func TestFetchApplicationWithErrors(t *testing.T) {
 	{ // Test with invalid application id
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outApplications, err := storage.FetchApplications(1, 100, map[string]any{azmodels.FieldApplicationApplicationID: "not valid"})
+		outApplications, err := storage.FetchApplications(1, 100, map[string]any{azmodelaap.FieldApplicationApplicationID: "not valid"})
 		assert.Nil(outApplications, "applications should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -325,7 +325,7 @@ func TestFetchApplicationWithErrors(t *testing.T) {
 	{ // Test with invalid application name
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outApplications, err := storage.FetchApplications(1, 100, map[string]any{azmodels.FieldApplicationName: 2})
+		outApplications, err := storage.FetchApplications(1, 100, map[string]any{azmodelaap.FieldApplicationName: 2})
 		assert.Nil(outApplications, "applications should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -364,7 +364,7 @@ func TestFetchApplicationWithSuccess(t *testing.T) {
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLRepo.On("FetchApplications", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutApplications, nil)
 
-	outApplications, err := storage.FetchApplications(1, 100, map[string]any{azmodels.FieldApplicationApplicationID: int64(506074038324), azmodels.FieldApplicationName: "rent-a-car2"})
+	outApplications, err := storage.FetchApplications(1, 100, map[string]any{azmodelaap.FieldApplicationApplicationID: int64(506074038324), azmodelaap.FieldApplicationName: "rent-a-car2"})
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outApplications, "applications should not be nil")
 	assert.Equal(len(dbOutApplications), len(outApplications), "applications  and dbApplications should have the same length")

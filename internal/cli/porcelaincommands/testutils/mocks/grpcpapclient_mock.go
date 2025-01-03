@@ -20,7 +20,7 @@ package mocks
 import (
 	mock "github.com/stretchr/testify/mock"
 
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
 // GrpcPAPClientMock is a mock type for the CliDependencies type.
@@ -29,70 +29,70 @@ type GrpcPAPClientMock struct {
 }
 
 // CreateLedger creates a ledger.
-func (m *GrpcPAPClientMock) CreateLedger(applicationID int64, kind string, name string) (*azmodels.Ledger, error) {
+func (m *GrpcPAPClientMock) CreateLedger(applicationID int64, kind string, name string) (*azmodelspap.Ledger, error) {
 	args := m.Called(applicationID, kind, name)
-	var r0 *azmodels.Ledger
-	if val, ok := args.Get(0).(*azmodels.Ledger); ok {
+	var r0 *azmodelspap.Ledger
+	if val, ok := args.Get(0).(*azmodelspap.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
 // UpdateLedger updates a ledger.
-func (m *GrpcPAPClientMock) UpdateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error) {
+func (m *GrpcPAPClientMock) UpdateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error) {
 	args := m.Called(ledger)
-	var r0 *azmodels.Ledger
-	if val, ok := args.Get(0).(*azmodels.Ledger); ok {
+	var r0 *azmodelspap.Ledger
+	if val, ok := args.Get(0).(*azmodelspap.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
 // DeleteLedger deletes a ledger.
-func (m *GrpcPAPClientMock) DeleteLedger(applicationID int64, ledgerID string) (*azmodels.Ledger, error) {
+func (m *GrpcPAPClientMock) DeleteLedger(applicationID int64, ledgerID string) (*azmodelspap.Ledger, error) {
 	args := m.Called(applicationID, ledgerID)
-	var r0 *azmodels.Ledger
-	if val, ok := args.Get(0).(*azmodels.Ledger); ok {
+	var r0 *azmodelspap.Ledger
+	if val, ok := args.Get(0).(*azmodelspap.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
 // FetchLedgers returns all ledgers.
-func (m *GrpcPAPClientMock) FetchLedgers(page int32, pageSize int32, applicationID int64) ([]azmodels.Ledger, error) {
+func (m *GrpcPAPClientMock) FetchLedgers(page int32, pageSize int32, applicationID int64) ([]azmodelspap.Ledger, error) {
 	args := m.Called(page, pageSize, applicationID)
-	var r0 []azmodels.Ledger
-	if val, ok := args.Get(0).([]azmodels.Ledger); ok {
+	var r0 []azmodelspap.Ledger
+	if val, ok := args.Get(0).([]azmodelspap.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
 // FetchLedgersByID returns all ledgers filtering by ledger id.
-func (m *GrpcPAPClientMock) FetchLedgersByID(page int32, pageSize int32, applicationID int64, ledgerID string) ([]azmodels.Ledger, error) {
+func (m *GrpcPAPClientMock) FetchLedgersByID(page int32, pageSize int32, applicationID int64, ledgerID string) ([]azmodelspap.Ledger, error) {
 	args := m.Called(page, pageSize, applicationID, ledgerID)
-	var r0 []azmodels.Ledger
-	if val, ok := args.Get(0).([]azmodels.Ledger); ok {
+	var r0 []azmodelspap.Ledger
+	if val, ok := args.Get(0).([]azmodelspap.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
 // FetchLedgersByName returns all ledgers filtering by name.
-func (m *GrpcPAPClientMock) FetchLedgersByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Ledger, error) {
+func (m *GrpcPAPClientMock) FetchLedgersByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodelspap.Ledger, error) {
 	args := m.Called(page, pageSize, applicationID, name)
-	var r0 []azmodels.Ledger
-	if val, ok := args.Get(0).([]azmodels.Ledger); ok {
+	var r0 []azmodelspap.Ledger
+	if val, ok := args.Get(0).([]azmodelspap.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
 // FetchLedgersBy returns all ledgers filtering by ledger id and name.
-func (m *GrpcPAPClientMock) FetchLedgersBy(page int32, pageSize int32, applicationID int64, ledgerID string, kind string, name string) ([]azmodels.Ledger, error) {
+func (m *GrpcPAPClientMock) FetchLedgersBy(page int32, pageSize int32, applicationID int64, ledgerID string, kind string, name string) ([]azmodelspap.Ledger, error) {
 	args := m.Called(page, pageSize, applicationID, ledgerID, kind, name)
-	var r0 []azmodels.Ledger
-	if val, ok := args.Get(0).([]azmodels.Ledger); ok {
+	var r0 []azmodelspap.Ledger
+	if val, ok := args.Get(0).([]azmodelspap.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)

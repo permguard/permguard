@@ -17,44 +17,44 @@
 package storage
 
 import (
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelsaap "github.com/permguard/permguard/pkg/transport/models/aap"
 )
 
 // AAPCentralStorage is the interface for the AAP central storage.
 type AAPCentralStorage interface {
 	// CreateApplication creates a new application.
-	CreateApplication(application *azmodels.Application) (*azmodels.Application, error)
+	CreateApplication(application *azmodelsaap.Application) (*azmodelsaap.Application, error)
 	// UpdateApplication updates an application.
-	UpdateApplication(application *azmodels.Application) (*azmodels.Application, error)
+	UpdateApplication(application *azmodelsaap.Application) (*azmodelsaap.Application, error)
 	// DeleteApplication deletes an application.
-	DeleteApplication(applicationID int64) (*azmodels.Application, error)
+	DeleteApplication(applicationID int64) (*azmodelsaap.Application, error)
 	// FetchApplications returns all applications filtering by search criteria.
-	FetchApplications(page int32, pageSize int32, fields map[string]any) ([]azmodels.Application, error)
+	FetchApplications(page int32, pageSize int32, fields map[string]any) ([]azmodelsaap.Application, error)
 
 	// CreateIdentitySource creates a new identity source.
-	CreateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error)
+	CreateIdentitySource(identitySource *azmodelsaap.IdentitySource) (*azmodelsaap.IdentitySource, error)
 	// UpdateIdentitySource updates an identity source.
-	UpdateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error)
+	UpdateIdentitySource(identitySource *azmodelsaap.IdentitySource) (*azmodelsaap.IdentitySource, error)
 	// DeleteIdentitySource deletes an identity source.
-	DeleteIdentitySource(applicationID int64, identitySourceID string) (*azmodels.IdentitySource, error)
+	DeleteIdentitySource(applicationID int64, identitySourceID string) (*azmodelsaap.IdentitySource, error)
 	// FetchIdentitySources gets all identity sources.
-	FetchIdentitySources(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.IdentitySource, error)
+	FetchIdentitySources(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelsaap.IdentitySource, error)
 
 	// CreateIdentity creates a new identity.
-	CreateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error)
+	CreateIdentity(identity *azmodelsaap.Identity) (*azmodelsaap.Identity, error)
 	// UpdateIdentity updates an identity.
-	UpdateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error)
+	UpdateIdentity(identity *azmodelsaap.Identity) (*azmodelsaap.Identity, error)
 	// DeleteIdentity deletes an identity.
-	DeleteIdentity(applicationID int64, identityID string) (*azmodels.Identity, error)
+	DeleteIdentity(applicationID int64, identityID string) (*azmodelsaap.Identity, error)
 	// FetchIdentities gets all identities.
-	FetchIdentities(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Identity, error)
+	FetchIdentities(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelsaap.Identity, error)
 
 	// CreateTenant creates a new tenant.
-	CreateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error)
+	CreateTenant(tenant *azmodelsaap.Tenant) (*azmodelsaap.Tenant, error)
 	// UpdateTenant updates a tenant.
-	UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error)
+	UpdateTenant(tenant *azmodelsaap.Tenant) (*azmodelsaap.Tenant, error)
 	// DeleteTenant deletes a tenant.
-	DeleteTenant(applicationID int64, tenantID string) (*azmodels.Tenant, error)
+	DeleteTenant(applicationID int64, tenantID string) (*azmodelsaap.Tenant, error)
 	// FetchTenants gets all tenants.
-	FetchTenants(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Tenant, error)
+	FetchTenants(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelsaap.Tenant, error)
 }

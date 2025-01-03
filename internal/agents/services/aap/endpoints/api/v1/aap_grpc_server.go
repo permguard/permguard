@@ -20,7 +20,7 @@ import (
 	"context"
 
 	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelsaap "github.com/permguard/permguard/pkg/transport/models/aap"
 	grpc "google.golang.org/grpc"
 )
 
@@ -29,40 +29,40 @@ type AAPService interface {
 	Setup() error
 
 	// CreateApplication creates a new application.
-	CreateApplication(application *azmodels.Application) (*azmodels.Application, error)
+	CreateApplication(application *azmodelsaap.Application) (*azmodelsaap.Application, error)
 	// UpdateApplication updates an application.
-	UpdateApplication(application *azmodels.Application) (*azmodels.Application, error)
+	UpdateApplication(application *azmodelsaap.Application) (*azmodelsaap.Application, error)
 	// DeleteApplication deletes an application.
-	DeleteApplication(applicationID int64) (*azmodels.Application, error)
+	DeleteApplication(applicationID int64) (*azmodelsaap.Application, error)
 	// FetchApplications returns all applications.
-	FetchApplications(page int32, pageSize int32, filter map[string]any) ([]azmodels.Application, error)
+	FetchApplications(page int32, pageSize int32, filter map[string]any) ([]azmodelsaap.Application, error)
 
 	// CreateIdentitySource creates a new identity source.
-	CreateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error)
+	CreateIdentitySource(identitySource *azmodelsaap.IdentitySource) (*azmodelsaap.IdentitySource, error)
 	// UpdateIdentitySource updates an identity source.
-	UpdateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error)
+	UpdateIdentitySource(identitySource *azmodelsaap.IdentitySource) (*azmodelsaap.IdentitySource, error)
 	// DeleteIdentitySource deletes an identity source.
-	DeleteIdentitySource(applicationID int64, identitySourceID string) (*azmodels.IdentitySource, error)
+	DeleteIdentitySource(applicationID int64, identitySourceID string) (*azmodelsaap.IdentitySource, error)
 	// FetchIdentitySources returns all identity sources.
-	FetchIdentitySources(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.IdentitySource, error)
+	FetchIdentitySources(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelsaap.IdentitySource, error)
 
 	// CreateIdentity creates a new identity.
-	CreateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error)
+	CreateIdentity(identity *azmodelsaap.Identity) (*azmodelsaap.Identity, error)
 	// UpdateIdentity updates an identity.
-	UpdateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error)
+	UpdateIdentity(identity *azmodelsaap.Identity) (*azmodelsaap.Identity, error)
 	// DeleteIdentity deletes an identity.
-	DeleteIdentity(applicationID int64, identityID string) (*azmodels.Identity, error)
+	DeleteIdentity(applicationID int64, identityID string) (*azmodelsaap.Identity, error)
 	// FetchIdentities returns all identities.
-	FetchIdentities(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Identity, error)
+	FetchIdentities(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelsaap.Identity, error)
 
 	// CreateTenant creates a new tenant.
-	CreateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error)
+	CreateTenant(tenant *azmodelsaap.Tenant) (*azmodelsaap.Tenant, error)
 	// UpdateTenant updates a tenant.
-	UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error)
+	UpdateTenant(tenant *azmodelsaap.Tenant) (*azmodelsaap.Tenant, error)
 	// DeleteTenant deletes a tenant.
-	DeleteTenant(applicationID int64, tenantID string) (*azmodels.Tenant, error)
+	DeleteTenant(applicationID int64, tenantID string) (*azmodelsaap.Tenant, error)
 	// FetchTenants returns all tenants.
-	FetchTenants(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Tenant, error)
+	FetchTenants(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelsaap.Tenant, error)
 }
 
 // NewV1AAPServer creates a new AAP server.
@@ -82,7 +82,7 @@ type V1AAPServer struct {
 
 // CreateApplication creates a new application.
 func (s *V1AAPServer) CreateApplication(ctx context.Context, applicationRequest *ApplicationCreateRequest) (*ApplicationResponse, error) {
-	application, err := s.service.CreateApplication(&azmodels.Application{Name: applicationRequest.Name})
+	application, err := s.service.CreateApplication(&azmodelsaap.Application{Name: applicationRequest.Name})
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +91,7 @@ func (s *V1AAPServer) CreateApplication(ctx context.Context, applicationRequest 
 
 // UpdateApplication updates an application.
 func (s *V1AAPServer) UpdateApplication(ctx context.Context, applicationRequest *ApplicationUpdateRequest) (*ApplicationResponse, error) {
-	application, err := s.service.UpdateApplication((&azmodels.Application{ApplicationID: applicationRequest.ApplicationID, Name: applicationRequest.Name}))
+	application, err := s.service.UpdateApplication((&azmodelsaap.Application{ApplicationID: applicationRequest.ApplicationID, Name: applicationRequest.Name}))
 	if err != nil {
 		return nil, err
 	}
@@ -111,10 +111,10 @@ func (s *V1AAPServer) DeleteApplication(ctx context.Context, applicationRequest 
 func (s *V1AAPServer) FetchApplications(applicationRequest *ApplicationFetchRequest, stream grpc.ServerStreamingServer[ApplicationResponse]) error {
 	fields := map[string]any{}
 	if applicationRequest.ApplicationID != nil {
-		fields[azmodels.FieldApplicationApplicationID] = *applicationRequest.ApplicationID
+		fields[azmodelsaap.FieldApplicationApplicationID] = *applicationRequest.ApplicationID
 	}
 	if applicationRequest.Name != nil {
-		fields[azmodels.FieldApplicationName] = *applicationRequest.Name
+		fields[azmodelsaap.FieldApplicationName] = *applicationRequest.Name
 
 	}
 	page := int32(0)
@@ -141,7 +141,7 @@ func (s *V1AAPServer) FetchApplications(applicationRequest *ApplicationFetchRequ
 
 // CreateIdentitySource creates a new identity source.
 func (s *V1AAPServer) CreateIdentitySource(ctx context.Context, identitySourceRequest *IdentitySourceCreateRequest) (*IdentitySourceResponse, error) {
-	identitySource, err := s.service.CreateIdentitySource(&azmodels.IdentitySource{ApplicationID: identitySourceRequest.ApplicationID, Name: identitySourceRequest.Name})
+	identitySource, err := s.service.CreateIdentitySource(&azmodelsaap.IdentitySource{ApplicationID: identitySourceRequest.ApplicationID, Name: identitySourceRequest.Name})
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +150,7 @@ func (s *V1AAPServer) CreateIdentitySource(ctx context.Context, identitySourceRe
 
 // UpdateIdentitySource updates an identity source.
 func (s *V1AAPServer) UpdateIdentitySource(ctx context.Context, identitySourceRequest *IdentitySourceUpdateRequest) (*IdentitySourceResponse, error) {
-	identitySource, err := s.service.UpdateIdentitySource((&azmodels.IdentitySource{IdentitySourceID: identitySourceRequest.IdentitySourceID, ApplicationID: identitySourceRequest.ApplicationID, Name: identitySourceRequest.Name}))
+	identitySource, err := s.service.UpdateIdentitySource((&azmodelsaap.IdentitySource{IdentitySourceID: identitySourceRequest.IdentitySourceID, ApplicationID: identitySourceRequest.ApplicationID, Name: identitySourceRequest.Name}))
 	if err != nil {
 		return nil, err
 	}
@@ -169,12 +169,12 @@ func (s *V1AAPServer) DeleteIdentitySource(ctx context.Context, identitySourceRe
 // FetchIdentitySources returns all identity sources.
 func (s *V1AAPServer) FetchIdentitySources(identitySourceRequest *IdentitySourceFetchRequest, stream grpc.ServerStreamingServer[IdentitySourceResponse]) error {
 	fields := map[string]any{}
-	fields[azmodels.FieldIdentitySourceApplicationID] = identitySourceRequest.ApplicationID
+	fields[azmodelsaap.FieldIdentitySourceApplicationID] = identitySourceRequest.ApplicationID
 	if identitySourceRequest.Name != nil {
-		fields[azmodels.FieldIdentitySourceName] = *identitySourceRequest.Name
+		fields[azmodelsaap.FieldIdentitySourceName] = *identitySourceRequest.Name
 	}
 	if identitySourceRequest.IdentitySourceID != nil {
-		fields[azmodels.FieldIdentitySourceIdentitySourceID] = *identitySourceRequest.IdentitySourceID
+		fields[azmodelsaap.FieldIdentitySourceIdentitySourceID] = *identitySourceRequest.IdentitySourceID
 	}
 	page := int32(0)
 	if identitySourceRequest.Page != nil {
@@ -200,7 +200,7 @@ func (s *V1AAPServer) FetchIdentitySources(identitySourceRequest *IdentitySource
 
 // CreateIdentity creates a new identity.
 func (s *V1AAPServer) CreateIdentity(ctx context.Context, identityRequest *IdentityCreateRequest) (*IdentityResponse, error) {
-	identity, err := s.service.CreateIdentity(&azmodels.Identity{ApplicationID: identityRequest.ApplicationID, IdentitySourceID: identityRequest.IdentitySourceID, Kind: identityRequest.Kind, Name: identityRequest.Name})
+	identity, err := s.service.CreateIdentity(&azmodelsaap.Identity{ApplicationID: identityRequest.ApplicationID, IdentitySourceID: identityRequest.IdentitySourceID, Kind: identityRequest.Kind, Name: identityRequest.Name})
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +209,7 @@ func (s *V1AAPServer) CreateIdentity(ctx context.Context, identityRequest *Ident
 
 // UpdateIdentity updates an identity.
 func (s *V1AAPServer) UpdateIdentity(ctx context.Context, identityRequest *IdentityUpdateRequest) (*IdentityResponse, error) {
-	identity, err := s.service.UpdateIdentity((&azmodels.Identity{IdentityID: identityRequest.IdentityID, ApplicationID: identityRequest.ApplicationID, Kind: identityRequest.Kind, Name: identityRequest.Name}))
+	identity, err := s.service.UpdateIdentity((&azmodelsaap.Identity{IdentityID: identityRequest.IdentityID, ApplicationID: identityRequest.ApplicationID, Kind: identityRequest.Kind, Name: identityRequest.Name}))
 	if err != nil {
 		return nil, err
 	}
@@ -228,18 +228,18 @@ func (s *V1AAPServer) DeleteIdentity(ctx context.Context, identityRequest *Ident
 // FetchIdentities returns all identities.
 func (s *V1AAPServer) FetchIdentities(identityRequest *IdentityFetchRequest, stream grpc.ServerStreamingServer[IdentityResponse]) error {
 	fields := map[string]any{}
-	fields[azmodels.FieldIdentityApplicationID] = identityRequest.ApplicationID
+	fields[azmodelsaap.FieldIdentityApplicationID] = identityRequest.ApplicationID
 	if identityRequest.IdentitySourceID != nil {
-		fields[azmodels.FieldIdentityIdentitySourceID] = *identityRequest.IdentitySourceID
+		fields[azmodelsaap.FieldIdentityIdentitySourceID] = *identityRequest.IdentitySourceID
 	}
 	if identityRequest.IdentityID != nil {
-		fields[azmodels.FieldIdentityIdentityID] = *identityRequest.IdentityID
+		fields[azmodelsaap.FieldIdentityIdentityID] = *identityRequest.IdentityID
 	}
 	if identityRequest.Kind != nil {
-		fields[azmodels.FieldIdentityKind] = *identityRequest.Kind
+		fields[azmodelsaap.FieldIdentityKind] = *identityRequest.Kind
 	}
 	if identityRequest.Name != nil {
-		fields[azmodels.FieldIdentityName] = *identityRequest.Name
+		fields[azmodelsaap.FieldIdentityName] = *identityRequest.Name
 	}
 	page := int32(0)
 	if identityRequest.Page != nil {
@@ -265,7 +265,7 @@ func (s *V1AAPServer) FetchIdentities(identityRequest *IdentityFetchRequest, str
 
 // CreateTenant creates a new tenant.
 func (s *V1AAPServer) CreateTenant(ctx context.Context, tenantRequest *TenantCreateRequest) (*TenantResponse, error) {
-	tenant, err := s.service.CreateTenant(&azmodels.Tenant{ApplicationID: tenantRequest.ApplicationID, Name: tenantRequest.Name})
+	tenant, err := s.service.CreateTenant(&azmodelsaap.Tenant{ApplicationID: tenantRequest.ApplicationID, Name: tenantRequest.Name})
 	if err != nil {
 		return nil, err
 	}
@@ -274,7 +274,7 @@ func (s *V1AAPServer) CreateTenant(ctx context.Context, tenantRequest *TenantCre
 
 // UpdateTenant updates a tenant.
 func (s *V1AAPServer) UpdateTenant(ctx context.Context, tenantRequest *TenantUpdateRequest) (*TenantResponse, error) {
-	tenant, err := s.service.UpdateTenant((&azmodels.Tenant{TenantID: tenantRequest.TenantID, ApplicationID: tenantRequest.ApplicationID, Name: tenantRequest.Name}))
+	tenant, err := s.service.UpdateTenant((&azmodelsaap.Tenant{TenantID: tenantRequest.TenantID, ApplicationID: tenantRequest.ApplicationID, Name: tenantRequest.Name}))
 	if err != nil {
 		return nil, err
 	}
@@ -293,12 +293,12 @@ func (s *V1AAPServer) DeleteTenant(ctx context.Context, tenantRequest *TenantDel
 // FetchTenants returns all tenants.
 func (s *V1AAPServer) FetchTenants(tenantRequest *TenantFetchRequest, stream grpc.ServerStreamingServer[TenantResponse]) error {
 	fields := map[string]any{}
-	fields[azmodels.FieldTenantApplicationID] = tenantRequest.ApplicationID
+	fields[azmodelsaap.FieldTenantApplicationID] = tenantRequest.ApplicationID
 	if tenantRequest.Name != nil {
-		fields[azmodels.FieldTenantName] = *tenantRequest.Name
+		fields[azmodelsaap.FieldTenantName] = *tenantRequest.Name
 	}
 	if tenantRequest.TenantID != nil {
-		fields[azmodels.FieldTenantTenantID] = *tenantRequest.TenantID
+		fields[azmodelsaap.FieldTenantTenantID] = *tenantRequest.TenantID
 	}
 	page := int32(0)
 	if tenantRequest.Page != nil {

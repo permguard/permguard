@@ -17,17 +17,17 @@
 package centralstorage
 
 import (
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // mapLedgerToAgentLedger maps a Ledger to a model Ledger.
-func mapLedgerToAgentLedger(ledger *azirepos.Ledger) (*azmodels.Ledger, error) {
+func mapLedgerToAgentLedger(ledger *azirepos.Ledger) (*azmodelspap.Ledger, error) {
 	kind, err := azirepos.ConvertLedgerKindToString(ledger.Kind)
 	if err != nil {
 		return nil, err
 	}
-	return &azmodels.Ledger{
+	return &azmodelspap.Ledger{
 		LedgerID:      ledger.LedgerID,
 		CreatedAt:     ledger.CreatedAt,
 		UpdatedAt:     ledger.UpdatedAt,

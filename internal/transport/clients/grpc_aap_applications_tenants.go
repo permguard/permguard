@@ -22,11 +22,11 @@ import (
 
 	azapiv1aap "github.com/permguard/permguard/internal/agents/services/aap/endpoints/api/v1"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelaap "github.com/permguard/permguard/pkg/transport/models/aap"
 )
 
 // CreateTenant creates a new tenant.
-func (c *GrpcAAPClient) CreateTenant(applicationID int64, name string) (*azmodels.Tenant, error) {
+func (c *GrpcAAPClient) CreateTenant(applicationID int64, name string) (*azmodelaap.Tenant, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
@@ -39,7 +39,7 @@ func (c *GrpcAAPClient) CreateTenant(applicationID int64, name string) (*azmodel
 }
 
 // UpdateTenant updates a tenant.
-func (c *GrpcAAPClient) UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error) {
+func (c *GrpcAAPClient) UpdateTenant(tenant *azmodelaap.Tenant) (*azmodelaap.Tenant, error) {
 	if tenant == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientGeneric, "client: invalid tenant instance")
 	}
@@ -59,7 +59,7 @@ func (c *GrpcAAPClient) UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant,
 }
 
 // DeleteTenant deletes a tenant.
-func (c *GrpcAAPClient) DeleteTenant(applicationID int64, tenantID string) (*azmodels.Tenant, error) {
+func (c *GrpcAAPClient) DeleteTenant(applicationID int64, tenantID string) (*azmodelaap.Tenant, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
@@ -72,22 +72,22 @@ func (c *GrpcAAPClient) DeleteTenant(applicationID int64, tenantID string) (*azm
 }
 
 // FetchTenants returns all tenants.
-func (c *GrpcAAPClient) FetchTenants(page int32, pageSize int32, applicationID int64) ([]azmodels.Tenant, error) {
+func (c *GrpcAAPClient) FetchTenants(page int32, pageSize int32, applicationID int64) ([]azmodelaap.Tenant, error) {
 	return c.FetchTenantsBy(page, pageSize, applicationID, "", "")
 }
 
 // FetchTenantsByID returns all tenants filtering by tenant id.
-func (c *GrpcAAPClient) FetchTenantsByID(page int32, pageSize int32, applicationID int64, tenantID string) ([]azmodels.Tenant, error) {
+func (c *GrpcAAPClient) FetchTenantsByID(page int32, pageSize int32, applicationID int64, tenantID string) ([]azmodelaap.Tenant, error) {
 	return c.FetchTenantsBy(page, pageSize, applicationID, tenantID, "")
 }
 
 // FetchTenantsByName returns all tenants filtering by name.
-func (c *GrpcAAPClient) FetchTenantsByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Tenant, error) {
+func (c *GrpcAAPClient) FetchTenantsByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodelaap.Tenant, error) {
 	return c.FetchTenantsBy(page, pageSize, applicationID, "", name)
 }
 
 // FetchTenantsBy returns all tenants filtering by tenant id and name.
-func (c *GrpcAAPClient) FetchTenantsBy(page int32, pageSize int32, applicationID int64, tenantID string, name string) ([]azmodels.Tenant, error) {
+func (c *GrpcAAPClient) FetchTenantsBy(page int32, pageSize int32, applicationID int64, tenantID string, name string) ([]azmodelaap.Tenant, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
@@ -108,7 +108,7 @@ func (c *GrpcAAPClient) FetchTenantsBy(page int32, pageSize int32, applicationID
 	if err != nil {
 		return nil, err
 	}
-	tenants := []azmodels.Tenant{}
+	tenants := []azmodelaap.Tenant{}
 	for {
 		response, err := stream.Recv()
 		if err == io.EOF {

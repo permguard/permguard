@@ -28,7 +28,7 @@ import (
 	azmocks "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
 	azconfigs "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelaap "github.com/permguard/permguard/pkg/transport/models/aap"
 )
 
 // TestDeleteCommandForTenantsDelete tests the deleteCommandForTenantsDelete function.
@@ -107,7 +107,7 @@ func TestCliTenantsDeleteWithSuccess(t *testing.T) {
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		aapClient := azmocks.NewGrpcAAPClientMock()
-		tenant := &azmodels.Tenant{
+		tenant := &azmodelaap.Tenant{
 			TenantID:      "c3160a533ab24fbcb1eab7a09fd85f36",
 			ApplicationID: 581616507495,
 			Name:          "materabranch",
@@ -123,7 +123,7 @@ func TestCliTenantsDeleteWithSuccess(t *testing.T) {
 			tenantID := tenant.TenantID
 			outputPrinter[tenantID] = tenant.Name
 		} else {
-			outputPrinter["tenant"] = []*azmodels.Tenant{tenant}
+			outputPrinter["tenant"] = []*azmodelaap.Tenant{tenant}
 		}
 		printerMock.On("PrintMap", outputPrinter).Return()
 		printerMock.On("PrintlnMap", outputPrinter).Return()

@@ -23,7 +23,7 @@ import (
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
 	notpagstatemachines "github.com/permguard/permguard/internal/transport/notp/statemachines"
@@ -96,10 +96,10 @@ func (s SQLiteCentralStoragePAP) extractMetaData(ctx *notpstatemachines.HandlerC
 }
 
 // readLedgerFromHandlerContext reads the ledger from the handler context.
-func (s SQLiteCentralStoragePAP) readLedgerFromHandlerContext(handlerCtx *notpstatemachines.HandlerContext) (*azmodels.Ledger, error) {
+func (s SQLiteCentralStoragePAP) readLedgerFromHandlerContext(handlerCtx *notpstatemachines.HandlerContext) (*azmodelspap.Ledger, error) {
 	applicationID, ledgerID := s.extractMetaData(handlerCtx)
 	fields := map[string]any{
-		azmodels.FieldLedgerLedgerID: ledgerID,
+		azmodelspap.FieldLedgerLedgerID: ledgerID,
 	}
 	ledgers, err := s.FetchLedgers(1, 1, applicationID, fields)
 	if err != nil {

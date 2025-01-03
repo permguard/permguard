@@ -19,7 +19,7 @@ package controllers
 import (
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azStorage "github.com/permguard/permguard/pkg/agents/storage"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelsaap "github.com/permguard/permguard/pkg/transport/models/aap"
 )
 
 // AAPController is the controller for the AAP service.
@@ -43,81 +43,81 @@ func NewAAPController(serviceContext *azservices.ServiceContext, aapCentralStora
 }
 
 // CreateApplication creates a new application.
-func (s AAPController) CreateApplication(application *azmodels.Application) (*azmodels.Application, error) {
+func (s AAPController) CreateApplication(application *azmodelsaap.Application) (*azmodelsaap.Application, error) {
 	return s.storage.CreateApplication(application)
 }
 
 // UpdateApplication updates an application.
-func (s AAPController) UpdateApplication(application *azmodels.Application) (*azmodels.Application, error) {
+func (s AAPController) UpdateApplication(application *azmodelsaap.Application) (*azmodelsaap.Application, error) {
 	return s.storage.UpdateApplication(application)
 }
 
 // DeleteApplication delete an application.
-func (s AAPController) DeleteApplication(applicationID int64) (*azmodels.Application, error) {
+func (s AAPController) DeleteApplication(applicationID int64) (*azmodelsaap.Application, error) {
 	return s.storage.DeleteApplication(applicationID)
 }
 
 // FetchApplications returns all applications filtering by search criteria.
-func (s AAPController) FetchApplications(page int32, pageSize int32, fields map[string]any) ([]azmodels.Application, error) {
+func (s AAPController) FetchApplications(page int32, pageSize int32, fields map[string]any) ([]azmodelsaap.Application, error) {
 	return s.storage.FetchApplications(page, pageSize, fields)
 }
 
 // CreateIdentitySource creates a new identity source.
-func (s AAPController) CreateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error) {
+func (s AAPController) CreateIdentitySource(identitySource *azmodelsaap.IdentitySource) (*azmodelsaap.IdentitySource, error) {
 	return s.storage.CreateIdentitySource(identitySource)
 }
 
 // UpdateIdentitySource updates an identity source.
-func (s AAPController) UpdateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error) {
+func (s AAPController) UpdateIdentitySource(identitySource *azmodelsaap.IdentitySource) (*azmodelsaap.IdentitySource, error) {
 	return s.storage.UpdateIdentitySource(identitySource)
 }
 
 // DeleteIdentitySource delete an identity source.
-func (s AAPController) DeleteIdentitySource(applicationID int64, identitySourceID string) (*azmodels.IdentitySource, error) {
+func (s AAPController) DeleteIdentitySource(applicationID int64, identitySourceID string) (*azmodelsaap.IdentitySource, error) {
 	return s.storage.DeleteIdentitySource(applicationID, identitySourceID)
 }
 
 // FetchIdentitySources returns all identity sources filtering by search criteria.
-func (s AAPController) FetchIdentitySources(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.IdentitySource, error) {
+func (s AAPController) FetchIdentitySources(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelsaap.IdentitySource, error) {
 	return s.storage.FetchIdentitySources(page, pageSize, applicationID, fields)
 }
 
 // CreateIdentity creates a new identity.
-func (s AAPController) CreateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error) {
+func (s AAPController) CreateIdentity(identity *azmodelsaap.Identity) (*azmodelsaap.Identity, error) {
 	return s.storage.CreateIdentity(identity)
 }
 
 // UpdateIdentity updates an identity.
-func (s AAPController) UpdateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error) {
+func (s AAPController) UpdateIdentity(identity *azmodelsaap.Identity) (*azmodelsaap.Identity, error) {
 	return s.storage.UpdateIdentity(identity)
 }
 
 // DeleteIdentity delete an identity.
-func (s AAPController) DeleteIdentity(applicationID int64, identityID string) (*azmodels.Identity, error) {
+func (s AAPController) DeleteIdentity(applicationID int64, identityID string) (*azmodelsaap.Identity, error) {
 	return s.storage.DeleteIdentity(applicationID, identityID)
 }
 
 // FetchIdentities returns all identities filtering by search criteria.
-func (s AAPController) FetchIdentities(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Identity, error) {
+func (s AAPController) FetchIdentities(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelsaap.Identity, error) {
 	return s.storage.FetchIdentities(page, pageSize, applicationID, fields)
 }
 
 // CreateTenant creates a new tenant.
-func (s AAPController) CreateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error) {
+func (s AAPController) CreateTenant(tenant *azmodelsaap.Tenant) (*azmodelsaap.Tenant, error) {
 	return s.storage.CreateTenant(tenant)
 }
 
 // UpdateTenant updates a tenant.
-func (s AAPController) UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error) {
+func (s AAPController) UpdateTenant(tenant *azmodelsaap.Tenant) (*azmodelsaap.Tenant, error) {
 	return s.storage.UpdateTenant(tenant)
 }
 
 // DeleteTenant delete a tenant.
-func (s AAPController) DeleteTenant(applicationID int64, tenantID string) (*azmodels.Tenant, error) {
+func (s AAPController) DeleteTenant(applicationID int64, tenantID string) (*azmodelsaap.Tenant, error) {
 	return s.storage.DeleteTenant(applicationID, tenantID)
 }
 
 // FetchTenants returns all tenants filtering by search criteria.
-func (s AAPController) FetchTenants(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Tenant, error) {
+func (s AAPController) FetchTenants(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelsaap.Tenant, error) {
 	return s.storage.FetchTenants(page, pageSize, applicationID, fields)
 }

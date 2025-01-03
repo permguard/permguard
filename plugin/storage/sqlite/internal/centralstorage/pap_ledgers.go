@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
@@ -29,7 +29,7 @@ const (
 )
 
 // CreateLedger creates a new ledger.
-func (s SQLiteCentralStoragePAP) CreateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error) {
+func (s SQLiteCentralStoragePAP) CreateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error) {
 	if ledger == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - ledger is nil")
 	}
@@ -65,7 +65,7 @@ func (s SQLiteCentralStoragePAP) CreateLedger(ledger *azmodels.Ledger) (*azmodel
 }
 
 // UpdateLedger updates a ledger.
-func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error) {
+func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error) {
 	if ledger == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - ledger is nil")
 	}
@@ -102,7 +102,7 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *azmodels.Ledger) (*azmodel
 }
 
 // DeleteLedger deletes a ledger.
-func (s SQLiteCentralStoragePAP) DeleteLedger(applicationID int64, ledgerID string) (*azmodels.Ledger, error) {
+func (s SQLiteCentralStoragePAP) DeleteLedger(applicationID int64, ledgerID string) (*azmodelspap.Ledger, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
@@ -123,7 +123,7 @@ func (s SQLiteCentralStoragePAP) DeleteLedger(applicationID int64, ledgerID stri
 }
 
 // FetchLedgers returns all ledgers.
-func (s SQLiteCentralStoragePAP) FetchLedgers(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Ledger, error) {
+func (s SQLiteCentralStoragePAP) FetchLedgers(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelspap.Ledger, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
@@ -132,16 +132,16 @@ func (s SQLiteCentralStoragePAP) FetchLedgers(page int32, pageSize int32, applic
 		return nil, err
 	}
 	var filterID *string
-	if _, ok := fields[azmodels.FieldLedgerLedgerID]; ok {
-		ledgerID, ok := fields[azmodels.FieldLedgerLedgerID].(string)
+	if _, ok := fields[azmodelspap.FieldLedgerLedgerID]; ok {
+		ledgerID, ok := fields[azmodelspap.FieldLedgerLedgerID].(string)
 		if !ok {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger id is not valid (ledger id: %s)", ledgerID))
 		}
 		filterID = &ledgerID
 	}
 	var filterName *string
-	if _, ok := fields[azmodels.FieldLedgerName]; ok {
-		ledgerName, ok := fields[azmodels.FieldLedgerName].(string)
+	if _, ok := fields[azmodelspap.FieldLedgerName]; ok {
+		ledgerName, ok := fields[azmodelspap.FieldLedgerName].(string)
 		if !ok {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger name is not valid (ledger name: %s)", ledgerName))
 		}
@@ -151,7 +151,7 @@ func (s SQLiteCentralStoragePAP) FetchLedgers(page int32, pageSize int32, applic
 	if err != nil {
 		return nil, err
 	}
-	ledgers := make([]azmodels.Ledger, len(dbLedgers))
+	ledgers := make([]azmodelspap.Ledger, len(dbLedgers))
 	for i, a := range dbLedgers {
 		ledger, err := mapLedgerToAgentLedger(&a)
 		if err != nil {

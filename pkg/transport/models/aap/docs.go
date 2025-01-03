@@ -14,20 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package centralstorage
-
-import (
-	azmodelaap "github.com/permguard/permguard/pkg/transport/models/aap"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
-)
-
-// mapTenantToAgentTenant maps a Tenant to a model Tenant.
-func mapTenantToAgentTenant(tenant *azirepos.Tenant) (*azmodelaap.Tenant, error) {
-	return &azmodelaap.Tenant{
-		TenantID:      tenant.TenantID,
-		CreatedAt:     tenant.CreatedAt,
-		UpdatedAt:     tenant.UpdatedAt,
-		ApplicationID: tenant.ApplicationID,
-		Name:          tenant.Name,
-	}, nil
-}
+// Package models implements the agent AAP (Policy Decision Point) models.
+package aap

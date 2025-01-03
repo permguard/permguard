@@ -24,11 +24,11 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azmodelsaap "github.com/permguard/permguard/pkg/transport/models/aap"
 	aztestutils "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
 	azmocks "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
 	azconfigs "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
 )
 
 // TestDeleteCommandForIdentitySourcesDelete tests the deleteCommandForIdentitySourcesDelete function.
@@ -107,7 +107,7 @@ func TestCliIdentitySourcesDeleteWithSuccess(t *testing.T) {
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		aapClient := azmocks.NewGrpcAAPClientMock()
-		identitysource := &azmodels.IdentitySource{
+		identitysource := &azmodelsaap.IdentitySource{
 			IdentitySourceID: "c3160a533ab24fbcb1eab7a09fd85f36",
 			ApplicationID:    581616507495,
 			Name:             "materabranch",
@@ -123,7 +123,7 @@ func TestCliIdentitySourcesDeleteWithSuccess(t *testing.T) {
 			identitysourceID := identitysource.IdentitySourceID
 			outputPrinter[identitysourceID] = identitysource.Name
 		} else {
-			outputPrinter["identity_sources"] = []*azmodels.IdentitySource{identitysource}
+			outputPrinter["identity_sources"] = []*azmodelsaap.IdentitySource{identitysource}
 		}
 		printerMock.On("PrintMap", outputPrinter).Return()
 		printerMock.On("PrintlnMap", outputPrinter).Return()

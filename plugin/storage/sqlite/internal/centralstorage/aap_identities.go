@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelaap "github.com/permguard/permguard/pkg/transport/models/aap"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
@@ -29,7 +29,7 @@ const (
 )
 
 // CreateIdentity creates a new identity.
-func (s SQLiteCentralStorageAAP) CreateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error) {
+func (s SQLiteCentralStorageAAP) CreateIdentity(identity *azmodelaap.Identity) (*azmodelaap.Identity, error) {
 	if identity == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - identity is nil")
 	}
@@ -63,7 +63,7 @@ func (s SQLiteCentralStorageAAP) CreateIdentity(identity *azmodels.Identity) (*a
 }
 
 // UpdateIdentity updates an identity.
-func (s SQLiteCentralStorageAAP) UpdateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error) {
+func (s SQLiteCentralStorageAAP) UpdateIdentity(identity *azmodelaap.Identity) (*azmodelaap.Identity, error) {
 	if identity == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - identity is nil")
 	}
@@ -98,7 +98,7 @@ func (s SQLiteCentralStorageAAP) UpdateIdentity(identity *azmodels.Identity) (*a
 }
 
 // DeleteIdentity deletes an identity.
-func (s SQLiteCentralStorageAAP) DeleteIdentity(applicationID int64, identityID string) (*azmodels.Identity, error) {
+func (s SQLiteCentralStorageAAP) DeleteIdentity(applicationID int64, identityID string) (*azmodelaap.Identity, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
@@ -119,7 +119,7 @@ func (s SQLiteCentralStorageAAP) DeleteIdentity(applicationID int64, identityID 
 }
 
 // FetchIdentities returns all identities.
-func (s SQLiteCentralStorageAAP) FetchIdentities(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Identity, error) {
+func (s SQLiteCentralStorageAAP) FetchIdentities(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelaap.Identity, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
@@ -128,16 +128,16 @@ func (s SQLiteCentralStorageAAP) FetchIdentities(page int32, pageSize int32, app
 		return nil, err
 	}
 	var filterID *string
-	if _, ok := fields[azmodels.FieldIdentityIdentityID]; ok {
-		identityID, ok := fields[azmodels.FieldIdentityIdentityID].(string)
+	if _, ok := fields[azmodelaap.FieldIdentityIdentityID]; ok {
+		identityID, ok := fields[azmodelaap.FieldIdentityIdentityID].(string)
 		if !ok {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (identity id: %s)", identityID))
 		}
 		filterID = &identityID
 	}
 	var filterName *string
-	if _, ok := fields[azmodels.FieldIdentityName]; ok {
-		identityName, ok := fields[azmodels.FieldIdentityName].(string)
+	if _, ok := fields[azmodelaap.FieldIdentityName]; ok {
+		identityName, ok := fields[azmodelaap.FieldIdentityName].(string)
 		if !ok {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity name is not valid (identity name: %s)", identityName))
 		}
@@ -147,7 +147,7 @@ func (s SQLiteCentralStorageAAP) FetchIdentities(page int32, pageSize int32, app
 	if err != nil {
 		return nil, err
 	}
-	identities := make([]azmodels.Identity, len(dbIdentities))
+	identities := make([]azmodelaap.Identity, len(dbIdentities))
 	for i, a := range dbIdentities {
 		identity, err := mapIdentityToAgentIdentity(&a)
 		if err != nil {

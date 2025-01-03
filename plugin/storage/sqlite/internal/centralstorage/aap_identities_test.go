@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelaap "github.com/permguard/permguard/pkg/transport/models/aap"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
@@ -70,7 +70,7 @@ func TestCreateIdentityWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inIdentity := &azmodels.Identity{
+		inIdentity := &azmodelaap.Identity{
 			Kind: "user",
 		}
 		outIdentities, err := storage.CreateIdentity(inIdentity)
@@ -105,7 +105,7 @@ func TestCreateIdentityWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertIdentity", mock.Anything, true, mock.Anything).Return(dbOutIdentity, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inIdentity := &azmodels.Identity{
+	inIdentity := &azmodelaap.Identity{
 		Kind: "user",
 	}
 	outIdentities, err := storage.CreateIdentity(inIdentity)
@@ -158,7 +158,7 @@ func TestUpdateIdentityWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inIdentity := &azmodels.Identity{
+		inIdentity := &azmodelaap.Identity{
 			Kind: "user",
 		}
 		outIdentities, err := storage.UpdateIdentity(inIdentity)
@@ -193,7 +193,7 @@ func TestUpdateIdentityWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertIdentity", mock.Anything, false, mock.Anything).Return(dbOutIdentity, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inIdentity := &azmodels.Identity{
+	inIdentity := &azmodelaap.Identity{
 		Kind: "user",
 	}
 	outIdentities, err := storage.UpdateIdentity(inIdentity)
@@ -313,7 +313,7 @@ func TestFetchIdentityWithErrors(t *testing.T) {
 	{ // Test with invalid identity id
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]any{azmodels.FieldIdentityIdentityID: 232956849236})
+		outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]any{azmodelaap.FieldIdentityIdentityID: 232956849236})
 		assert.Nil(outIdentities, "identities should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -321,7 +321,7 @@ func TestFetchIdentityWithErrors(t *testing.T) {
 	{ // Test with invalid identity name
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]any{azmodels.FieldIdentityName: 2})
+		outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]any{azmodelaap.FieldIdentityName: 2})
 		assert.Nil(outIdentities, "identities should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -366,7 +366,7 @@ func TestFetchIdentityWithSuccess(t *testing.T) {
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLRepo.On("FetchIdentities", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutIdentities, nil)
 
-	outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]any{azmodels.FieldIdentityIdentityID: azirepos.GenerateUUID(), azmodels.FieldIdentityName: "rent-a-car2"})
+	outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]any{azmodelaap.FieldIdentityIdentityID: azirepos.GenerateUUID(), azmodelaap.FieldIdentityName: "rent-a-car2"})
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outIdentities, "identities should not be nil")
 	assert.Equal(len(outIdentities), len(dbOutIdentities), "identities and dbIdentities should have the same length")

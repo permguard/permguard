@@ -26,7 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelaap "github.com/permguard/permguard/pkg/transport/models/aap"
 )
 
 // runECommandForUpsertApplication runs the command for creating or updating an application.
@@ -47,12 +47,12 @@ func runECommandForUpsertApplication(deps azcli.CliDependenciesProvider, cmd *co
 		return aziclicommon.ErrCommandSilent
 	}
 	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
-	var application *azmodels.Application
+	var application *azmodelaap.Application
 	if isCreate {
 		application, err = client.CreateApplication(name)
 	} else {
 		applicationID := v.GetInt64(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonApplicationID))
-		inputApplication := &azmodels.Application{
+		inputApplication := &azmodelaap.Application{
 			ApplicationID: applicationID,
 			Name:          name,
 		}
@@ -76,7 +76,7 @@ func runECommandForUpsertApplication(deps azcli.CliDependenciesProvider, cmd *co
 		applicationID := fmt.Sprintf("%d", application.ApplicationID)
 		output[applicationID] = application.Name
 	} else if ctx.IsJSONOutput() {
-		output["applications"] = []*azmodels.Application{application}
+		output["applications"] = []*azmodelaap.Application{application}
 	}
 	printer.PrintlnMap(output)
 	return nil

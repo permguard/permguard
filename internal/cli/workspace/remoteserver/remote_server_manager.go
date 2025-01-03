@@ -20,10 +20,10 @@ import (
 	"fmt"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	aziclients "github.com/permguard/permguard/internal/transport/clients"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
@@ -43,7 +43,7 @@ func NewRemoteServerManager(ctx *aziclicommon.CliCommandContext) (*RemoteServerM
 }
 
 // GetServerRemoteLedger gets the remote ledger from the server.
-func (m *RemoteServerManager) GetServerRemoteLedger(remoteInfo *azicliwkscommon.RemoteInfo, ledgerInfo *azicliwkscommon.LedgerInfo) (*azmodels.Ledger, error) {
+func (m *RemoteServerManager) GetServerRemoteLedger(remoteInfo *azicliwkscommon.RemoteInfo, ledgerInfo *azicliwkscommon.LedgerInfo) (*azmodelspap.Ledger, error) {
 	if remoteInfo == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliInput, "cli: remote info is nil")
 	}
