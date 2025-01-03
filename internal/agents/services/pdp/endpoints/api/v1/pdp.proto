@@ -22,14 +22,14 @@ package policydecisionpoint;
 
 option go_package = "github.com/permguard/permguard/internal/hosts/api/pdp/v1";
 
-// PolicyStore is the store where the policy is stored
+// PolicyStore is the store where the policies are stored.
 message PolicyStore {
 	string Type = 1;
 	string ID = 2;
 	optional string Version = 3;
 }
 
-// Principal is the principal that is making the request
+// Principal is the principal that is making the request.
 message Principal {
 	string Type = 1;
 	string ID = 2;
@@ -38,13 +38,13 @@ message Principal {
 	optional string AccessToken = 5;
 }
 
-// Entities is the entities that are involved in the request for the policy decision context
+// Entities is the entities that are involved in the request for the authorization decision context.
 message Entities {
 	string Schema = 1;
 	google.protobuf.Struct Data = 2;
 }
 
-// Subject is the subject on which the policy decision is made
+// Subject is the subject on which the authorization decision are made.
 message Subject {
 	string Type = 1;
 	string ID = 2;
@@ -52,29 +52,29 @@ message Subject {
 	optional google.protobuf.Struct Properties = 4;
 }
 
-// Resource is the resource on which the policy decision is made
+// Resource is the resource on which the authorization decision are made.
 message Resource {
 	string Type = 1;
 	string ID = 2;
 	optional google.protobuf.Struct Properties = 3;
 }
 
-// Action is the action on which the policy decision is made
+// Action is the action on which the authorization decision are made.
 message Action {
 	string Name = 1;
 	optional google.protobuf.Struct Properties = 2;
 }
 
-// AuthorizationCheck request
+// AuthorizationCheck Request
 
-// AuthorizationContextRequest is the input context for the policy decision
+// AuthorizationContextRequest is the input context for the authorization decision.
 message AuthorizationContextRequest {
 	optional PolicyStore PolicyStore = 1;
 	optional Principal Principal = 2;
 	optional Entities Entities = 3;
 }
 
-// EvaluationRequest is the evaluation of the policy decision
+// EvaluationRequest is the evaluation of the authorization decision.
 message EvaluationRequest {
 	optional Subject Subject = 1;
 	optional Resource Resource = 2;
@@ -82,7 +82,7 @@ message EvaluationRequest {
 	optional google.protobuf.Struct Context = 4;
 }
 
-// AuthorizationCheckRequest is the request for the policy decision
+// AuthorizationCheckRequest is the request for the authorization decision.
 message AuthorizationCheckRequest {
 	optional AuthorizationContextRequest AuthorizationContext = 1;
 	optional Subject Subject = 2;
@@ -92,35 +92,35 @@ message AuthorizationCheckRequest {
 	repeated EvaluationRequest Evaluations = 6;
 }
 
-// AuthorizationCheck response
+// AuthorizationCheck Response
 
-// ReasonResponse is the reason for the response
+// ReasonResponse is the reason for the response.
 message ReasonResponse {
 	string Code = 1;
 	string Message = 2;
 }
 
-// ContextResponse is the context for the response
+// ContextResponse is the context for the response.
 message ContextResponse {
 	string Id = 1;
 	ReasonResponse ReasonAdmin = 2;
 	ReasonResponse ReasonUser = 3;
 }
 
-// EvaluationResponse is the evaluation of the response
+// EvaluationResponse is the evaluation of the response.
 message EvaluationResponse {
 	bool Decision = 1;
 	ContextResponse Context = 2;
 }
 
-// AuthorizationCheckResponse is the response for the policy decision
+// AuthorizationCheckResponse is the response for the authorization decision.
 message AuthorizationCheckResponse {
 	bool Decision = 1;
 	ContextResponse Context = 2;
 	repeated EvaluationResponse Evaluations = 3;
 }
 
-// V1PDPService	is the service for the Policy Decision Point
+// V1PDPService	is the service for the Policy Decision Point.
 service V1PDPService {
 	rpc AuthorizationCheck(AuthorizationCheckRequest) returns (AuthorizationCheckResponse) {}
 }
