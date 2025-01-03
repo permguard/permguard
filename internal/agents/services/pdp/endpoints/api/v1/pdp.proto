@@ -89,6 +89,30 @@ message AuthorizationCheckResponse {
 	string Reason = 2;
 }
 
+message ResponseReason {
+	string Code = 1;
+	string Message = 2;
+}
+
+message ResponseContext {
+	string Id = 1;
+	ResponseReason ReasonAdmin = 2;
+	ResponseReason ReasonUser = 3;
+}
+
+message ResponseEvaluation {
+	bool Decision = 1;
+	ResponseContext Context = 2;
+}
+
+message AuthorizationCheckResponse {
+	bool Decision = 1;
+	ResponseContext Context = 2;
+	repeat ResponseEvaluation Evaluations = 3;
+}
+
+
+
 // V1PDPService	is the service for the Policy Decision Point
 service V1PDPService {
 	rpc AuthorizationCheck(AuthorizationCheckRequest) returns (AuthorizationCheckResponse) {}
