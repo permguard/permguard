@@ -67,14 +67,14 @@ message Action {
 
 // AuthorizationCheck Request
 
-// AuthorizationContextRequest is the input context for the authorization decision.
+// AuthorizationContextRequest is the input context for making the authorization decision.
 message AuthorizationContextRequest {
 	optional PolicyStore PolicyStore = 1;
 	optional Principal Principal = 2;
 	optional Entities Entities = 3;
 }
 
-// EvaluationRequest is the evaluation of the authorization decision.
+// EvaluationRequest represents the request to evaluate the authorization decision.
 message EvaluationRequest {
 	optional Subject Subject = 1;
 	optional Resource Resource = 2;
@@ -82,7 +82,7 @@ message EvaluationRequest {
 	optional google.protobuf.Struct Context = 4;
 }
 
-// AuthorizationCheckRequest is the request for the authorization decision.
+// AuthorizationCheckRequest represents the request to perform an authorization decision.
 message AuthorizationCheckRequest {
 	optional AuthorizationContextRequest AuthorizationContext = 1;
 	optional Subject Subject = 2;
@@ -94,29 +94,29 @@ message AuthorizationCheckRequest {
 
 // AuthorizationCheck Response
 
-// ReasonResponse is the reason for the response.
+ // ReasonResponse provides the rationale for the response.
 message ReasonResponse {
 	string Code = 1;
 	string Message = 2;
 }
 
-// ContextResponse is the context for the response.
+// ContextResponse represents the context included in the response.
 message ContextResponse {
 	string Id = 1;
 	ReasonResponse ReasonAdmin = 2;
 	ReasonResponse ReasonUser = 3;
 }
 
-// EvaluationResponse is the evaluation of the response.
+// EvaluationResponse represents the result of the evaluation process.
 message EvaluationResponse {
 	bool Decision = 1;
-	ContextResponse Context = 2;
+	optional ContextResponse Context = 2;
 }
 
-// AuthorizationCheckResponse is the response for the authorization decision.
+// AuthorizationCheckResponse represents the outcome of the authorization decision.
 message AuthorizationCheckResponse {
 	bool Decision = 1;
-	ContextResponse Context = 2;
+	optional ContextResponse Context = 2;
 	repeated EvaluationResponse Evaluations = 3;
 }
 
