@@ -29,18 +29,13 @@ message PolicyStore {
 	optional string Version = 3;
 }
 
-// Token is the token used to authenticate the request
-message Token {
-	optional string IdentityToken = 1;
-	optional string AccessToken = 2;
-}
-
 // Principal is the principal that is making the request
 message Principal {
 	string Type = 1;
 	string ID = 2;
 	optional string Source = 3;
-	optional Token Token = 4;
+	optional string IdentityToken = 4;
+	optional string AccessToken = 5;
 }
 
 // Entities is the entities that are involved in the request for the policy decision context
@@ -64,13 +59,20 @@ message Resource {
 	optional google.protobuf.Struct Properties = 3;
 }
 
-// Action is the action that is being performed on the resource
+// Action is the action on which the policy decision is made
 message Action {
 	string Name = 1;
 	optional google.protobuf.Struct Properties = 2;
 }
 
 // AuthorizationCheck request
+
+// AuthorizationContextRequest is the input context for the policy decision
+message AuthorizationContextRequest {
+	optional PolicyStore PolicyStore = 1;
+	optional Principal Principal = 2;
+	optional Entities Entities = 3;
+}
 
 // EvaluationRequest is the evaluation of the policy decision
 message EvaluationRequest {
@@ -80,20 +82,14 @@ message EvaluationRequest {
 	optional google.protobuf.Struct Context = 4;
 }
 
-// AuthorizationContextRequest is the input context for the policy decision
-message AuthorizationContextRequest {
-	optional PolicyStore PolicyStore = 1;
-	optional Principal Principal = 2;
-	optional Entities Entities = 3;
-}
-
 // AuthorizationCheckRequest is the request for the policy decision
 message AuthorizationCheckRequest {
 	optional AuthorizationContextRequest AuthorizationContext = 1;
 	optional Subject Subject = 2;
 	optional Resource Resource = 3;
-	optional google.protobuf.Struct Context = 4;
-	repeated EvaluationRequest Evaluations = 5;
+	optional Action Action = 4;
+	optional google.protobuf.Struct Context = 5;
+	repeated EvaluationRequest Evaluations = 6;
 }
 
 // AuthorizationCheck response

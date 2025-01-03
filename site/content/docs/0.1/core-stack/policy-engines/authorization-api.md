@@ -88,10 +88,8 @@ Here a simple example of a message exchange between the `PEP` and the `PDP`.
       "type": "user",
       "id": "john.smith@acmecorp.com",
       "source": "keycloak",
-      "tokens": {
-        "identity_token": "eyJhbGciOiJI...",
-        "access_token": "eyJhbGciOiJI..."
-      }
+      "identity_token": "eyJhbGciOiJI...",
+      "access_token": "eyJhbGciOiJI..."
     },
     "entities": {
       "schema": "cedar",
@@ -173,10 +171,8 @@ Here an example of a message exchange with evaluations between the `PEP` and the
       "type": "user",
       "id": "john.smith@acmecorp.com",
       "source": "keycloak",
-      "tokens": {
-        "identity_token": "eyJhbGciOiJI...",
-        "access_token": "eyJhbGciOiJI..."
-      }
+      "identity_token": "eyJhbGciOiJI...",
+      "access_token": "eyJhbGciOiJI..."
     },
     "entities": {
       "schema": "cedar",
@@ -314,10 +310,8 @@ Here an example of a message exchange with evaluations and defaults between the 
       "type": "user",
       "id": "john.smith@acmecorp.com",
       "source": "keycloak",
-      "tokens": {
-        "identity_token": "eyJhbGciOiJI...",
-        "access_token": "eyJhbGciOiJI..."
-      }
+      "identity_token": "eyJhbGciOiJI...",
+      "access_token": "eyJhbGciOiJI..."
     },
     "entities": {
       "schema": "cedar",
