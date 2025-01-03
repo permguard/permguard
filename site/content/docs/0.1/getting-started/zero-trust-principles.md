@@ -53,7 +53,7 @@ Permguard may seem complex, but it’s not: its internal architecture is sophist
 - **ZTAuth\* (Zero Trust Auth\*)**: Ensures secure, identity-based execution of actions on resources by enforcing least privilege at the application boundary. Built for eventual consistency, the security model is incrementally synchronized across applicative nodes in an immutable, versioned manner.
 
 <div style="text-align: center">
-  <img alt="Permguard" src="/images/diagrams/d15.webpp"/>
+  <img alt="Permguard" src="/images/diagrams/d15.webp"/>
 </div><br/>
 
 Looking at the diagram, you can see the difference between **ZTAuth\*** and **Zero Trust Network Access (ZTNA)**. ZTNA protects network boundaries, while **ZTAuth\***  secures applications, giving detailed control and consistent security.
