@@ -16,10 +16,80 @@
 
 syntax="proto3";
 
+import "google/protobuf/struct.proto";
+
 package policydecisionpoint;
 
 option go_package = "github.com/permguard/permguard/internal/hosts/api/pdp/v1";
 
+message PolicyStore {
+	string Type = 1;
+	string ID = 2;
+	optional string Version = 3;
+}
+
+message Token {
+	optional string IdentityToken = 1;
+	optional string AccessToken = 2;
+}
+
+message Principal {
+	string Type = 1;
+	string ID = 2;
+	optional string Source = 3;
+	optional Token Tokens = 4;
+}
+
+message Entities {
+	string Schema = 1;
+	google.protobuf.Struct Data = 2;
+}
+
+message Subject {
+	string Type = 1;
+	string ID = 2;
+	optional string Source = 3;
+	optional google.protobuf.Struct Properties = 4;
+}
+
+message Resource {
+	string Type = 1;
+	string ID = 2;
+	optional google.protobuf.Struct Properties = 3;
+}
+
+message Action {
+	string name = 1;
+	optional google.protobuf.Struct Properties = 2;
+}
+
+message Evaluation {
+	optional Subject Subject = 1;
+	optional Resource Resource = 2;
+	optional Action Action = 3;
+	optional google.protobuf.Struct Context = 4;
+}
+
+message AuthorizationContext {
+	optional PolicyStore PolicyStore = 1;
+	optional Principal Principal = 2;
+	optional Entities Entities = 3;
+}
+
+message AuthorizationCheckRequest {
+	optional AuthorizationContext AuthorizationContext = 1;
+	optional Subject Subject = 2;
+	optional Resource Resource = 3;
+	optional google.protobuf.Struct Context = 4;
+	optional Evaluation Evaluation = 5;
+}
+
+message AuthorizationCheckResponse {
+	bool Authorized = 1;
+	string Reason = 2;
+}
+
 // V1PDPService	is the service for the Policy Decision Point
 service V1PDPService {
+	rpc AuthorizationCheck(AuthorizationCheckRequest) returns (AuthorizationCheckResponse) {}
 }
