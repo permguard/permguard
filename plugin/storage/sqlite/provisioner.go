@@ -34,8 +34,8 @@ import (
 
 const (
 	flagDbDir = "dbdir"
-	flagUp   = "up"
-	flagDown = "down"
+	flagUp    = "up"
+	flagDown  = "down"
 )
 
 //go:embed migrations/*.sql
@@ -46,7 +46,7 @@ type SQLiteStorageProvisioner struct {
 	debug    bool
 	logLevel string
 	logger   *zap.Logger
-	dbDir string
+	dbDir    string
 	up       bool
 	down     bool
 	config   *azidb.SQLiteConnectionConfig

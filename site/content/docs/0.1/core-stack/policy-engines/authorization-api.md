@@ -142,11 +142,11 @@ Here a simple example of a message exchange between the `PEP` and the `PDP`.
   "context": {
     "id": "e91df3711cb046f18c7576303dbeccda",
     "reason_admin": {
-      "status": "403",
+      "code": "403",
       "message": "Request failed policy 3df18a05380d4ddab164e6b8e82bd37b"
     },
     "reason_user": {
-      "status": "403",
+      "code": "403",
       "message": "Access denied due to insufficient privileges. Please contact your administrator."
     }
   }
@@ -251,11 +251,11 @@ Here an example of a message exchange with evaluations between the `PEP` and the
   "context": {
     "id": "e91df3711cb046f18c7576303dbeccda",
     "reason_admin": {
-      "status": "403",
+      "code": "403",
       "message": "Request failed because of evaluations."
     },
     "reason_user": {
-      "status": "403",
+      "code": "403",
       "message": "Access denied due to insufficient privileges. Please contact your administrator."
     }
   },
@@ -265,11 +265,11 @@ Here an example of a message exchange with evaluations between the `PEP` and the
       "context": {
         "id": "e91df3711cb046f18c7576303dbeccda",
         "reason_admin": {
-          "status": "403",
+          "code": "403",
           "message": "Request failed policy 3df18a05380d4ddab164e6b8e82bd37b"
         },
         "reason_user": {
-          "status": "403",
+          "code": "403",
           "message": "Access denied due to insufficient privileges. Please contact your administrator."
         }
       }
@@ -279,11 +279,11 @@ Here an example of a message exchange with evaluations between the `PEP` and the
       "context": {
         "id": "83628fb761fc4622aaf2f70c5338093c",
         "reason_admin": {
-          "status": "403",
+          "code": "403",
           "message": "Request failed policy 78df7ffa88a44795bac156339ae1d0da"
         },
         "reason_user": {
-          "status": "403",
+          "code": "403",
           "message": "Access denied due to insufficient privileges. Please contact your administrator."
         }
       }
@@ -374,11 +374,11 @@ Here an example of a message exchange with evaluations and defaults between the 
   "context": {
     "id": "e91df3711cb046f18c7576303dbeccda",
     "reason_admin": {
-      "status": "403",
+      "code": "403",
       "message": "Request failed because of evaluations."
     },
     "reason_user": {
-      "status": "403",
+      "code": "403",
       "message": "Access denied due to insufficient privileges. Please contact your administrator."
     }
   },
@@ -388,11 +388,11 @@ Here an example of a message exchange with evaluations and defaults between the 
       "context": {
         "id": "e91df3711cb046f18c7576303dbeccda",
         "reason_admin": {
-          "status": "403",
+          "code": "403",
           "message": "Request failed policy 3df18a05380d4ddab164e6b8e82bd37b"
         },
         "reason_user": {
-          "status": "403",
+          "code": "403",
           "message": "Access denied due to insufficient privileges. Please contact your administrator."
         }
       }
@@ -402,11 +402,11 @@ Here an example of a message exchange with evaluations and defaults between the 
       "context": {
         "id": "83628fb761fc4622aaf2f70c5338093c",
         "reason_admin": {
-          "status": "403",
+          "code": "403",
           "message": "Request failed policy 78df7ffa88a44795bac156339ae1d0da"
         },
         "reason_user": {
-          "status": "403",
+          "code": "403",
           "message": "Access denied due to insufficient privileges. Please contact your administrator."
         }
       }
