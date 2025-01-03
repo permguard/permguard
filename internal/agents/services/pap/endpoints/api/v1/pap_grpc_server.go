@@ -26,7 +26,7 @@ import (
 
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
@@ -44,13 +44,13 @@ const (
 type PAPService interface {
 	Setup() error
 	// CreateLedger creates a new ledger.
-	CreateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error)
+	CreateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error)
 	// UpdateLedger updates an ledger.
-	UpdateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error)
+	UpdateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error)
 	// DeleteLedger deletes an ledger.
-	DeleteLedger(applicationID int64, ledgerID string) (*azmodels.Ledger, error)
+	DeleteLedger(applicationID int64, ledgerID string) (*azmodelspap.Ledger, error)
 	// FetchLedgers gets all ledgers.
-	FetchLedgers(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Ledger, error)
+	FetchLedgers(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelspap.Ledger, error)
 	// OnPullHandleRequestCurrentState handles the request for the current state.
 	OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPullSendNotifyCurrentStateResponse notifies the current state.
@@ -94,7 +94,7 @@ type V1PAPServer struct {
 
 // CreateLedger creates a new ledger.
 func (s *V1PAPServer) CreateLedger(ctx context.Context, ledgerRequest *LedgerCreateRequest) (*LedgerResponse, error) {
-	ledger, err := s.service.CreateLedger(&azmodels.Ledger{ApplicationID: ledgerRequest.ApplicationID, Name: ledgerRequest.Name})
+	ledger, err := s.service.CreateLedger(&azmodelspap.Ledger{ApplicationID: ledgerRequest.ApplicationID, Name: ledgerRequest.Name})
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (s *V1PAPServer) CreateLedger(ctx context.Context, ledgerRequest *LedgerCre
 
 // UpdateLedger updates a ledger.
 func (s *V1PAPServer) UpdateLedger(ctx context.Context, ledgerRequest *LedgerUpdateRequest) (*LedgerResponse, error) {
-	ledger, err := s.service.UpdateLedger((&azmodels.Ledger{LedgerID: ledgerRequest.LedgerID, ApplicationID: ledgerRequest.ApplicationID, Name: ledgerRequest.Name}))
+	ledger, err := s.service.UpdateLedger((&azmodelspap.Ledger{LedgerID: ledgerRequest.LedgerID, ApplicationID: ledgerRequest.ApplicationID, Name: ledgerRequest.Name}))
 	if err != nil {
 		return nil, err
 	}
@@ -122,15 +122,15 @@ func (s *V1PAPServer) DeleteLedger(ctx context.Context, ledgerRequest *LedgerDel
 // FetchLedgers returns all ledgers.
 func (s *V1PAPServer) FetchLedgers(ledgerRequest *LedgerFetchRequest, stream grpc.ServerStreamingServer[LedgerResponse]) error {
 	fields := map[string]any{}
-	fields[azmodels.FieldLedgerApplicationID] = ledgerRequest.ApplicationID
+	fields[azmodelspap.FieldLedgerApplicationID] = ledgerRequest.ApplicationID
 	if ledgerRequest.Kind != nil {
-		fields[azmodels.FieldLedgerKind] = *ledgerRequest.Kind
+		fields[azmodelspap.FieldLedgerKind] = *ledgerRequest.Kind
 	}
 	if ledgerRequest.Name != nil {
-		fields[azmodels.FieldLedgerName] = *ledgerRequest.Name
+		fields[azmodelspap.FieldLedgerName] = *ledgerRequest.Name
 	}
 	if ledgerRequest.LedgerID != nil {
-		fields[azmodels.FieldLedgerLedgerID] = *ledgerRequest.LedgerID
+		fields[azmodelspap.FieldLedgerLedgerID] = *ledgerRequest.LedgerID
 	}
 	page := int32(0)
 	if ledgerRequest.Page != nil {

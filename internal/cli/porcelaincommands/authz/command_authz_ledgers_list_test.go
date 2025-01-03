@@ -24,11 +24,11 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 	aztestutils "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
 	azmocks "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
 	azconfigs "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
 )
 
 // TestListCommandForLedgersList tests the listCommandForLedgersList function.
@@ -107,7 +107,7 @@ func TestCliLedgersListWithSuccess(t *testing.T) {
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		papClient := azmocks.NewGrpcPAPClientMock()
-		ledgers := []azmodels.Ledger{
+		ledgers := []azmodelspap.Ledger{
 			{
 				LedgerID:      "c3160a533ab24fbcb1eab7a09fd85f36",
 				ApplicationID: 581616507495,

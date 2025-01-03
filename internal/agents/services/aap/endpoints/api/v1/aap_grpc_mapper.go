@@ -19,7 +19,7 @@ package v1
 import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelsaap "github.com/permguard/permguard/pkg/transport/models/aap"
 )
 
 // MapPointerStringToString maps a pointer string to a string.
@@ -32,8 +32,8 @@ func MapPointerStringToString(str *string) string {
 }
 
 // MapGrpcApplicationResponseToAgentApplication maps the gRPC application to the agent application.
-func MapGrpcApplicationResponseToAgentApplication(application *ApplicationResponse) (*azmodels.Application, error) {
-	return &azmodels.Application{
+func MapGrpcApplicationResponseToAgentApplication(application *ApplicationResponse) (*azmodelsaap.Application, error) {
+	return &azmodelsaap.Application{
 		ApplicationID: application.ApplicationID,
 		CreatedAt:     application.CreatedAt.AsTime(),
 		UpdatedAt:     application.UpdatedAt.AsTime(),
@@ -42,7 +42,7 @@ func MapGrpcApplicationResponseToAgentApplication(application *ApplicationRespon
 }
 
 // MapAgentApplicationToGrpcApplicationResponse maps the agent application to the gRPC application.
-func MapAgentApplicationToGrpcApplicationResponse(application *azmodels.Application) (*ApplicationResponse, error) {
+func MapAgentApplicationToGrpcApplicationResponse(application *azmodelsaap.Application) (*ApplicationResponse, error) {
 	return &ApplicationResponse{
 		ApplicationID: application.ApplicationID,
 		CreatedAt:     timestamppb.New(application.CreatedAt),
@@ -52,8 +52,8 @@ func MapAgentApplicationToGrpcApplicationResponse(application *azmodels.Applicat
 }
 
 // MapGrpcTenantResponseToAgentTenant maps the gRPC tenant to the agent tenant.
-func MapGrpcTenantResponseToAgentTenant(tenant *TenantResponse) (*azmodels.Tenant, error) {
-	return &azmodels.Tenant{
+func MapGrpcTenantResponseToAgentTenant(tenant *TenantResponse) (*azmodelsaap.Tenant, error) {
+	return &azmodelsaap.Tenant{
 		TenantID:      tenant.TenantID,
 		CreatedAt:     tenant.CreatedAt.AsTime(),
 		UpdatedAt:     tenant.UpdatedAt.AsTime(),
@@ -63,7 +63,7 @@ func MapGrpcTenantResponseToAgentTenant(tenant *TenantResponse) (*azmodels.Tenan
 }
 
 // MapAgentTenantToGrpcTenantResponse maps the agent tenant to the gRPC tenant.
-func MapAgentTenantToGrpcTenantResponse(tenant *azmodels.Tenant) (*TenantResponse, error) {
+func MapAgentTenantToGrpcTenantResponse(tenant *azmodelsaap.Tenant) (*TenantResponse, error) {
 	return &TenantResponse{
 		TenantID:      tenant.TenantID,
 		CreatedAt:     timestamppb.New(tenant.CreatedAt),
@@ -74,8 +74,8 @@ func MapAgentTenantToGrpcTenantResponse(tenant *azmodels.Tenant) (*TenantRespons
 }
 
 // MapGrpcIdentitySourceResponseToAgentIdentitySource maps the gRPC identity source to the agent identity source.
-func MapGrpcIdentitySourceResponseToAgentIdentitySource(identitySource *IdentitySourceResponse) (*azmodels.IdentitySource, error) {
-	return &azmodels.IdentitySource{
+func MapGrpcIdentitySourceResponseToAgentIdentitySource(identitySource *IdentitySourceResponse) (*azmodelsaap.IdentitySource, error) {
+	return &azmodelsaap.IdentitySource{
 		IdentitySourceID: identitySource.IdentitySourceID,
 		CreatedAt:        identitySource.CreatedAt.AsTime(),
 		UpdatedAt:        identitySource.UpdatedAt.AsTime(),
@@ -85,7 +85,7 @@ func MapGrpcIdentitySourceResponseToAgentIdentitySource(identitySource *Identity
 }
 
 // MapAgentIdentitySourceToGrpcIdentitySourceResponse maps the agent identity source to the gRPC identity source.
-func MapAgentIdentitySourceToGrpcIdentitySourceResponse(identitySource *azmodels.IdentitySource) (*IdentitySourceResponse, error) {
+func MapAgentIdentitySourceToGrpcIdentitySourceResponse(identitySource *azmodelsaap.IdentitySource) (*IdentitySourceResponse, error) {
 	return &IdentitySourceResponse{
 		IdentitySourceID: identitySource.IdentitySourceID,
 		CreatedAt:        timestamppb.New(identitySource.CreatedAt),
@@ -96,8 +96,8 @@ func MapAgentIdentitySourceToGrpcIdentitySourceResponse(identitySource *azmodels
 }
 
 // MapGrpcIdentityResponseToAgentIdentity maps the gRPC identity to the agent identity.
-func MapGrpcIdentityResponseToAgentIdentity(identity *IdentityResponse) (*azmodels.Identity, error) {
-	return &azmodels.Identity{
+func MapGrpcIdentityResponseToAgentIdentity(identity *IdentityResponse) (*azmodelsaap.Identity, error) {
+	return &azmodelsaap.Identity{
 		IdentityID:       identity.IdentityID,
 		CreatedAt:        identity.CreatedAt.AsTime(),
 		UpdatedAt:        identity.UpdatedAt.AsTime(),
@@ -109,7 +109,7 @@ func MapGrpcIdentityResponseToAgentIdentity(identity *IdentityResponse) (*azmode
 }
 
 // MapAgentIdentityToGrpcIdentityResponse maps the agent identity to the gRPC identity.
-func MapAgentIdentityToGrpcIdentityResponse(identity *azmodels.Identity) (*IdentityResponse, error) {
+func MapAgentIdentityToGrpcIdentityResponse(identity *azmodelsaap.Identity) (*IdentityResponse, error) {
 	return &IdentityResponse{
 		IdentityID:       identity.IdentityID,
 		CreatedAt:        timestamppb.New(identity.CreatedAt),

@@ -20,12 +20,12 @@ import (
 	"fmt"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelaap "github.com/permguard/permguard/pkg/transport/models/aap"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // CreateApplication creates a new application.
-func (s SQLiteCentralStorageAAP) CreateApplication(application *azmodels.Application) (*azmodels.Application, error) {
+func (s SQLiteCentralStorageAAP) CreateApplication(application *azmodelaap.Application) (*azmodelaap.Application, error) {
 	if application == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - application is nil")
 	}
@@ -76,7 +76,7 @@ func (s SQLiteCentralStorageAAP) CreateApplication(application *azmodels.Applica
 }
 
 // UpdateApplication updates an application.
-func (s SQLiteCentralStorageAAP) UpdateApplication(application *azmodels.Application) (*azmodels.Application, error) {
+func (s SQLiteCentralStorageAAP) UpdateApplication(application *azmodelaap.Application) (*azmodelaap.Application, error) {
 	if application == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - application is nil")
 	}
@@ -104,7 +104,7 @@ func (s SQLiteCentralStorageAAP) UpdateApplication(application *azmodels.Applica
 }
 
 // DeleteApplication deletes an application.
-func (s SQLiteCentralStorageAAP) DeleteApplication(applicationID int64) (*azmodels.Application, error) {
+func (s SQLiteCentralStorageAAP) DeleteApplication(applicationID int64) (*azmodelaap.Application, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
@@ -125,7 +125,7 @@ func (s SQLiteCentralStorageAAP) DeleteApplication(applicationID int64) (*azmode
 }
 
 // FetchApplications returns all applications.
-func (s SQLiteCentralStorageAAP) FetchApplications(page int32, pageSize int32, fields map[string]any) ([]azmodels.Application, error) {
+func (s SQLiteCentralStorageAAP) FetchApplications(page int32, pageSize int32, fields map[string]any) ([]azmodelaap.Application, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
@@ -134,16 +134,16 @@ func (s SQLiteCentralStorageAAP) FetchApplications(page int32, pageSize int32, f
 		return nil, err
 	}
 	var filterID *int64
-	if _, ok := fields[azmodels.FieldApplicationApplicationID]; ok {
-		applicationID, ok := fields[azmodels.FieldApplicationApplicationID].(int64)
+	if _, ok := fields[azmodelaap.FieldApplicationApplicationID]; ok {
+		applicationID, ok := fields[azmodelaap.FieldApplicationApplicationID].(int64)
 		if !ok {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - application id is not valid (application id: %d)", applicationID))
 		}
 		filterID = &applicationID
 	}
 	var filterName *string
-	if _, ok := fields[azmodels.FieldApplicationName]; ok {
-		applicationName, ok := fields[azmodels.FieldApplicationName].(string)
+	if _, ok := fields[azmodelaap.FieldApplicationName]; ok {
+		applicationName, ok := fields[azmodelaap.FieldApplicationName].(string)
 		if !ok {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - application name is not valid (application name: %s)", applicationName))
 		}
@@ -153,7 +153,7 @@ func (s SQLiteCentralStorageAAP) FetchApplications(page int32, pageSize int32, f
 	if err != nil {
 		return nil, err
 	}
-	applications := make([]azmodels.Application, len(dbApplications))
+	applications := make([]azmodelaap.Application, len(dbApplications))
 	for i, a := range dbApplications {
 		application, err := mapApplicationToAgentApplication(&a)
 		if err != nil {

@@ -22,11 +22,11 @@ import (
 
 	azapiv1aap "github.com/permguard/permguard/internal/agents/services/aap/endpoints/api/v1"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelaap "github.com/permguard/permguard/pkg/transport/models/aap"
 )
 
 // CreateApplication creates a new application.
-func (c *GrpcAAPClient) CreateApplication(name string) (*azmodels.Application, error) {
+func (c *GrpcAAPClient) CreateApplication(name string) (*azmodelaap.Application, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
@@ -39,7 +39,7 @@ func (c *GrpcAAPClient) CreateApplication(name string) (*azmodels.Application, e
 }
 
 // UpdateApplication updates an application.
-func (c *GrpcAAPClient) UpdateApplication(application *azmodels.Application) (*azmodels.Application, error) {
+func (c *GrpcAAPClient) UpdateApplication(application *azmodelaap.Application) (*azmodelaap.Application, error) {
 	if application == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientGeneric, "client: invalid application instance")
 	}
@@ -58,7 +58,7 @@ func (c *GrpcAAPClient) UpdateApplication(application *azmodels.Application) (*a
 }
 
 // DeleteApplication deletes an application.
-func (c *GrpcAAPClient) DeleteApplication(applicationID int64) (*azmodels.Application, error) {
+func (c *GrpcAAPClient) DeleteApplication(applicationID int64) (*azmodelaap.Application, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
@@ -71,22 +71,22 @@ func (c *GrpcAAPClient) DeleteApplication(applicationID int64) (*azmodels.Applic
 }
 
 // FetchApplications returns all applications.
-func (c *GrpcAAPClient) FetchApplications(page int32, pageSize int32) ([]azmodels.Application, error) {
+func (c *GrpcAAPClient) FetchApplications(page int32, pageSize int32) ([]azmodelaap.Application, error) {
 	return c.FetchApplicationsBy(page, pageSize, 0, "")
 }
 
 // FetchApplicationsByID returns all applications filtering by application id.
-func (c *GrpcAAPClient) FetchApplicationsByID(page int32, pageSize int32, applicationID int64) ([]azmodels.Application, error) {
+func (c *GrpcAAPClient) FetchApplicationsByID(page int32, pageSize int32, applicationID int64) ([]azmodelaap.Application, error) {
 	return c.FetchApplicationsBy(page, pageSize, applicationID, "")
 }
 
 // FetchApplicationsByName returns all applications filtering by name.
-func (c *GrpcAAPClient) FetchApplicationsByName(page int32, pageSize int32, name string) ([]azmodels.Application, error) {
+func (c *GrpcAAPClient) FetchApplicationsByName(page int32, pageSize int32, name string) ([]azmodelaap.Application, error) {
 	return c.FetchApplicationsBy(page, pageSize, 0, name)
 }
 
 // FetchApplicationsBy returns all applications filtering by application id and name.
-func (c *GrpcAAPClient) FetchApplicationsBy(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Application, error) {
+func (c *GrpcAAPClient) FetchApplicationsBy(page int32, pageSize int32, applicationID int64, name string) ([]azmodelaap.Application, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
@@ -104,7 +104,7 @@ func (c *GrpcAAPClient) FetchApplicationsBy(page int32, pageSize int32, applicat
 	if err != nil {
 		return nil, err
 	}
-	applications := []azmodels.Application{}
+	applications := []azmodelaap.Application{}
 	for {
 		response, err := stream.Recv()
 		if err == io.EOF {

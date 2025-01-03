@@ -24,9 +24,9 @@ import (
 	"github.com/spf13/viper"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
 )
 
 const (
@@ -65,7 +65,7 @@ func runECommandForDeleteLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		ledgerName := ledger.Name
 		output[ledgerID] = ledgerName
 	} else if ctx.IsJSONOutput() {
-		output["ledgers"] = []*azmodels.Ledger{ledger}
+		output["ledgers"] = []*azmodelspap.Ledger{ledger}
 	}
 	printer.PrintlnMap(output)
 	return nil

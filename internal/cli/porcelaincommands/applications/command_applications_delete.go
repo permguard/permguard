@@ -26,7 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelaap "github.com/permguard/permguard/pkg/transport/models/aap"
 )
 
 const (
@@ -63,7 +63,7 @@ func runECommandForDeleteApplication(deps azcli.CliDependenciesProvider, cmd *co
 		applicationID := fmt.Sprintf("%d", application.ApplicationID)
 		output[applicationID] = application.Name
 	} else if ctx.IsJSONOutput() {
-		output["applications"] = []*azmodels.Application{application}
+		output["applications"] = []*azmodelaap.Application{application}
 	}
 	printer.PrintlnMap(output)
 	return nil

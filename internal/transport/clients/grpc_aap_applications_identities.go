@@ -22,11 +22,11 @@ import (
 
 	azapiv1aap "github.com/permguard/permguard/internal/agents/services/aap/endpoints/api/v1"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelaap "github.com/permguard/permguard/pkg/transport/models/aap"
 )
 
 // CreateIdentity creates a new identity.
-func (c *GrpcAAPClient) CreateIdentity(applicationID int64, identitySourceID string, kind string, name string) (*azmodels.Identity, error) {
+func (c *GrpcAAPClient) CreateIdentity(applicationID int64, identitySourceID string, kind string, name string) (*azmodelaap.Identity, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
@@ -39,7 +39,7 @@ func (c *GrpcAAPClient) CreateIdentity(applicationID int64, identitySourceID str
 }
 
 // UpdateIdentity updates an identity.
-func (c *GrpcAAPClient) UpdateIdentity(identity *azmodels.Identity) (*azmodels.Identity, error) {
+func (c *GrpcAAPClient) UpdateIdentity(identity *azmodelaap.Identity) (*azmodelaap.Identity, error) {
 	if identity == nil {
 		azerrors.WrapSystemError(azerrors.ErrClientGeneric, "client: invalid identity instance")
 	}
@@ -60,7 +60,7 @@ func (c *GrpcAAPClient) UpdateIdentity(identity *azmodels.Identity) (*azmodels.I
 }
 
 // DeleteIdentity deletes an identity.
-func (c *GrpcAAPClient) DeleteIdentity(applicationID int64, identityID string) (*azmodels.Identity, error) {
+func (c *GrpcAAPClient) DeleteIdentity(applicationID int64, identityID string) (*azmodelaap.Identity, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
@@ -73,22 +73,22 @@ func (c *GrpcAAPClient) DeleteIdentity(applicationID int64, identityID string) (
 }
 
 // FetchIdentities returns all identities.
-func (c *GrpcAAPClient) FetchIdentities(page int32, pageSize int32, applicationID int64) ([]azmodels.Identity, error) {
+func (c *GrpcAAPClient) FetchIdentities(page int32, pageSize int32, applicationID int64) ([]azmodelaap.Identity, error) {
 	return c.FetchIdentitiesBy(page, pageSize, applicationID, "", "", "", "")
 }
 
 // FetchIdentitiesByID returns all identities filtering by identity id.
-func (c *GrpcAAPClient) FetchIdentitiesByID(page int32, pageSize int32, applicationID int64, identityID string) ([]azmodels.Identity, error) {
+func (c *GrpcAAPClient) FetchIdentitiesByID(page int32, pageSize int32, applicationID int64, identityID string) ([]azmodelaap.Identity, error) {
 	return c.FetchIdentitiesBy(page, pageSize, applicationID, "", identityID, "", "")
 }
 
 // FetchIdentitiesByEmail returns all identities filtering by name.
-func (c *GrpcAAPClient) FetchIdentitiesByEmail(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Identity, error) {
+func (c *GrpcAAPClient) FetchIdentitiesByEmail(page int32, pageSize int32, applicationID int64, name string) ([]azmodelaap.Identity, error) {
 	return c.FetchIdentitiesBy(page, pageSize, applicationID, "", "", "", name)
 }
 
 // FetchIdentitiesBy returns all identities filtering by all criteria.
-func (c *GrpcAAPClient) FetchIdentitiesBy(page int32, pageSize int32, applicationID int64, identitySourceID string, identityID string, kind string, name string) ([]azmodels.Identity, error) {
+func (c *GrpcAAPClient) FetchIdentitiesBy(page int32, pageSize int32, applicationID int64, identitySourceID string, identityID string, kind string, name string) ([]azmodelaap.Identity, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
@@ -115,7 +115,7 @@ func (c *GrpcAAPClient) FetchIdentitiesBy(page int32, pageSize int32, applicatio
 	if err != nil {
 		return nil, err
 	}
-	identities := []azmodels.Identity{}
+	identities := []azmodelaap.Identity{}
 	for {
 		response, err := stream.Recv()
 		if err == io.EOF {

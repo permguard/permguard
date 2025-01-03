@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelaap "github.com/permguard/permguard/pkg/transport/models/aap"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
@@ -29,7 +29,7 @@ const (
 )
 
 // CreateTenant creates a new tenant.
-func (s SQLiteCentralStorageAAP) CreateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error) {
+func (s SQLiteCentralStorageAAP) CreateTenant(tenant *azmodelaap.Tenant) (*azmodelaap.Tenant, error) {
 	if tenant == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - tenant is nil")
 	}
@@ -57,7 +57,7 @@ func (s SQLiteCentralStorageAAP) CreateTenant(tenant *azmodels.Tenant) (*azmodel
 }
 
 // UpdateTenant updates a tenant.
-func (s SQLiteCentralStorageAAP) UpdateTenant(tenant *azmodels.Tenant) (*azmodels.Tenant, error) {
+func (s SQLiteCentralStorageAAP) UpdateTenant(tenant *azmodelaap.Tenant) (*azmodelaap.Tenant, error) {
 	if tenant == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - tenant is nil")
 	}
@@ -86,7 +86,7 @@ func (s SQLiteCentralStorageAAP) UpdateTenant(tenant *azmodels.Tenant) (*azmodel
 }
 
 // DeleteTenant deletes a tenant.
-func (s SQLiteCentralStorageAAP) DeleteTenant(applicationID int64, tenantID string) (*azmodels.Tenant, error) {
+func (s SQLiteCentralStorageAAP) DeleteTenant(applicationID int64, tenantID string) (*azmodelaap.Tenant, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
@@ -107,7 +107,7 @@ func (s SQLiteCentralStorageAAP) DeleteTenant(applicationID int64, tenantID stri
 }
 
 // FetchTenants returns all tenants.
-func (s SQLiteCentralStorageAAP) FetchTenants(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Tenant, error) {
+func (s SQLiteCentralStorageAAP) FetchTenants(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelaap.Tenant, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
@@ -116,16 +116,16 @@ func (s SQLiteCentralStorageAAP) FetchTenants(page int32, pageSize int32, applic
 		return nil, err
 	}
 	var filterID *string
-	if _, ok := fields[azmodels.FieldTenantTenantID]; ok {
-		tenantID, ok := fields[azmodels.FieldTenantTenantID].(string)
+	if _, ok := fields[azmodelaap.FieldTenantTenantID]; ok {
+		tenantID, ok := fields[azmodelaap.FieldTenantTenantID].(string)
 		if !ok {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (tenant id: %s)", tenantID))
 		}
 		filterID = &tenantID
 	}
 	var filterName *string
-	if _, ok := fields[azmodels.FieldTenantName]; ok {
-		tenantName, ok := fields[azmodels.FieldTenantName].(string)
+	if _, ok := fields[azmodelaap.FieldTenantName]; ok {
+		tenantName, ok := fields[azmodelaap.FieldTenantName].(string)
 		if !ok {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant name is not valid (tenant name: %s)", tenantName))
 		}
@@ -135,7 +135,7 @@ func (s SQLiteCentralStorageAAP) FetchTenants(page int32, pageSize int32, applic
 	if err != nil {
 		return nil, err
 	}
-	tenants := make([]azmodels.Tenant, len(dbTenants))
+	tenants := make([]azmodelaap.Tenant, len(dbTenants))
 	for i, a := range dbTenants {
 		tenant, err := mapTenantToAgentTenant(&a)
 		if err != nil {

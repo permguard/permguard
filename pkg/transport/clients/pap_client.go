@@ -17,23 +17,23 @@
 package clients
 
 import (
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelpap "github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
 // GrpcPAPClient is the gRPC PAP client servicer.
 type GrpcPAPClient interface {
 	// CreateLedger creates a ledger.
-	CreateLedger(applicationID int64, kind string, name string) (*azmodels.Ledger, error)
+	CreateLedger(applicationID int64, kind string, name string) (*azmodelpap.Ledger, error)
 	// UpdateLedger updates a ledger.
-	UpdateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error)
+	UpdateLedger(ledger *azmodelpap.Ledger) (*azmodelpap.Ledger, error)
 	// DeleteLedger deletes a ledger.
-	DeleteLedger(applicationID int64, ledgerID string) (*azmodels.Ledger, error)
+	DeleteLedger(applicationID int64, ledgerID string) (*azmodelpap.Ledger, error)
 	// FetchLedgers returns all ledgers.
-	FetchLedgers(page int32, pageSize int32, applicationID int64) ([]azmodels.Ledger, error)
+	FetchLedgers(page int32, pageSize int32, applicationID int64) ([]azmodelpap.Ledger, error)
 	// FetchLedgersByID returns all ledgers filtering by ledger id.
-	FetchLedgersByID(page int32, pageSize int32, applicationID int64, ledgerID string) ([]azmodels.Ledger, error)
+	FetchLedgersByID(page int32, pageSize int32, applicationID int64, ledgerID string) ([]azmodelpap.Ledger, error)
 	// FetchLedgersByName returns all ledgers filtering by name.
-	FetchLedgersByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodels.Ledger, error)
+	FetchLedgersByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodelpap.Ledger, error)
 	// FetchLedgersBy returns all ledgers filtering by ledger id and name.
-	FetchLedgersBy(page int32, pageSize int32, applicationID int64, ledgerID string, kind string, name string) ([]azmodels.Ledger, error)
+	FetchLedgersBy(page int32, pageSize int32, applicationID int64, ledgerID string, kind string, name string) ([]azmodelpap.Ledger, error)
 }

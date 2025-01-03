@@ -29,7 +29,7 @@ import (
 	azmocks "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
 	azconfigs "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelaap "github.com/permguard/permguard/pkg/transport/models/aap"
 )
 
 // TestCreateCommandForApplicationsCreate tests the createCommandForApplicationsCreate function.
@@ -108,7 +108,7 @@ func TestCliApplicationsCreateWithSuccess(t *testing.T) {
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		aapClient := azmocks.NewGrpcAAPClientMock()
-		application := &azmodels.Application{
+		application := &azmodelaap.Application{
 			ApplicationID: 581616507495,
 			Name:          "mycorporate",
 			CreatedAt:     time.Now(),
@@ -123,7 +123,7 @@ func TestCliApplicationsCreateWithSuccess(t *testing.T) {
 			applicationID := fmt.Sprintf("%d", application.ApplicationID)
 			outputPrinter[applicationID] = application.Name
 		} else {
-			outputPrinter["applications"] = []*azmodels.Application{application}
+			outputPrinter["applications"] = []*azmodelaap.Application{application}
 		}
 		printerMock.On("PrintMap", outputPrinter).Return()
 		printerMock.On("PrintlnMap", outputPrinter).Return()

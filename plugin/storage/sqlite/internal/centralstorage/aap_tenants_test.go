@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelaap "github.com/permguard/permguard/pkg/transport/models/aap"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
@@ -70,7 +70,7 @@ func TestCreateTenantWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inTenant := &azmodels.Tenant{}
+		inTenant := &azmodelaap.Tenant{}
 		outTenants, err := storage.CreateTenant(inTenant)
 		assert.Nil(outTenants, "tenants should be nil")
 		assert.Error(err)
@@ -101,7 +101,7 @@ func TestCreateTenantWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertTenant", mock.Anything, true, mock.Anything).Return(dbOutTenant, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inTenant := &azmodels.Tenant{}
+	inTenant := &azmodelaap.Tenant{}
 	outTenants, err := storage.CreateTenant(inTenant)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outTenants, "tenants should not be nil")
@@ -152,7 +152,7 @@ func TestUpdateTenantWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inTenant := &azmodels.Tenant{}
+		inTenant := &azmodelaap.Tenant{}
 		outTenants, err := storage.UpdateTenant(inTenant)
 		assert.Nil(outTenants, "tenants should be nil")
 		assert.Error(err)
@@ -183,7 +183,7 @@ func TestUpdateTenantWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertTenant", mock.Anything, false, mock.Anything).Return(dbOutTenant, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inTenant := &azmodels.Tenant{}
+	inTenant := &azmodelaap.Tenant{}
 	outTenants, err := storage.UpdateTenant(inTenant)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outTenants, "tenants should not be nil")
@@ -299,7 +299,7 @@ func TestFetchTenantWithErrors(t *testing.T) {
 	{ // Test with invalid tenant id
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]any{azmodels.FieldTenantTenantID: 232956849236})
+		outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]any{azmodelaap.FieldTenantTenantID: 232956849236})
 		assert.Nil(outTenants, "tenants should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -307,7 +307,7 @@ func TestFetchTenantWithErrors(t *testing.T) {
 	{ // Test with invalid tenant name
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteAAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]any{azmodels.FieldTenantName: 2})
+		outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]any{azmodelaap.FieldTenantName: 2})
 		assert.Nil(outTenants, "tenants should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -348,7 +348,7 @@ func TestFetchTenantWithSuccess(t *testing.T) {
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLRepo.On("FetchTenants", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutTenants, nil)
 
-	outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]any{azmodels.FieldTenantTenantID: azirepos.GenerateUUID(), azmodels.FieldTenantName: "rent-a-car2"})
+	outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]any{azmodelaap.FieldTenantTenantID: azirepos.GenerateUUID(), azmodelaap.FieldTenantName: "rent-a-car2"})
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outTenants, "tenants should not be nil")
 	assert.Equal(len(outTenants), len(dbOutTenants), "tenants and dbTenants should have the same length")

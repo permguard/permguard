@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelaap "github.com/permguard/permguard/pkg/transport/models/aap"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
@@ -29,7 +29,7 @@ const (
 )
 
 // CreateIdentitySource creates a new identity source.
-func (s SQLiteCentralStorageAAP) CreateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error) {
+func (s SQLiteCentralStorageAAP) CreateIdentitySource(identitySource *azmodelaap.IdentitySource) (*azmodelaap.IdentitySource, error) {
 	if identitySource == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - identity source is nil")
 	}
@@ -57,7 +57,7 @@ func (s SQLiteCentralStorageAAP) CreateIdentitySource(identitySource *azmodels.I
 }
 
 // UpdateIdentitySource updates an identity source.
-func (s SQLiteCentralStorageAAP) UpdateIdentitySource(identitySource *azmodels.IdentitySource) (*azmodels.IdentitySource, error) {
+func (s SQLiteCentralStorageAAP) UpdateIdentitySource(identitySource *azmodelaap.IdentitySource) (*azmodelaap.IdentitySource, error) {
 	if identitySource == nil {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - identity source is nil")
 	}
@@ -86,7 +86,7 @@ func (s SQLiteCentralStorageAAP) UpdateIdentitySource(identitySource *azmodels.I
 }
 
 // DeleteIdentitySource deletes an identity source.
-func (s SQLiteCentralStorageAAP) DeleteIdentitySource(applicationID int64, identitySourceID string) (*azmodels.IdentitySource, error) {
+func (s SQLiteCentralStorageAAP) DeleteIdentitySource(applicationID int64, identitySourceID string) (*azmodelaap.IdentitySource, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
@@ -107,7 +107,7 @@ func (s SQLiteCentralStorageAAP) DeleteIdentitySource(applicationID int64, ident
 }
 
 // FetchIdentitySources returns all identity sources.
-func (s SQLiteCentralStorageAAP) FetchIdentitySources(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.IdentitySource, error) {
+func (s SQLiteCentralStorageAAP) FetchIdentitySources(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelaap.IdentitySource, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
 		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
@@ -116,16 +116,16 @@ func (s SQLiteCentralStorageAAP) FetchIdentitySources(page int32, pageSize int32
 		return nil, err
 	}
 	var filterID *string
-	if _, ok := fields[azmodels.FieldIdentitySourceIdentitySourceID]; ok {
-		identitySourceID, ok := fields[azmodels.FieldIdentitySourceIdentitySourceID].(string)
+	if _, ok := fields[azmodelaap.FieldIdentitySourceIdentitySourceID]; ok {
+		identitySourceID, ok := fields[azmodelaap.FieldIdentitySourceIdentitySourceID].(string)
 		if !ok {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source id is not valid (identity source id: %s)", identitySourceID))
 		}
 		filterID = &identitySourceID
 	}
 	var filterName *string
-	if _, ok := fields[azmodels.FieldIdentitySourceName]; ok {
-		identitySourceName, ok := fields[azmodels.FieldIdentitySourceName].(string)
+	if _, ok := fields[azmodelaap.FieldIdentitySourceName]; ok {
+		identitySourceName, ok := fields[azmodelaap.FieldIdentitySourceName].(string)
 		if !ok {
 			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source name is not valid (identity source name: %s)", identitySourceName))
 		}
@@ -135,7 +135,7 @@ func (s SQLiteCentralStorageAAP) FetchIdentitySources(page int32, pageSize int32
 	if err != nil {
 		return nil, err
 	}
-	identitySources := make([]azmodels.IdentitySource, len(dbIdentitySources))
+	identitySources := make([]azmodelaap.IdentitySource, len(dbIdentitySources))
 	for i, a := range dbIdentitySources {
 		identitySource, err := mapIdentitySourceToAgentIdentitySource(&a)
 		if err != nil {

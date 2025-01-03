@@ -22,7 +22,7 @@ import (
 	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azStorage "github.com/permguard/permguard/pkg/agents/storage"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
 type PAPController struct {
@@ -44,22 +44,22 @@ func NewPAPController(serviceContext *azservices.ServiceContext, storage azStora
 }
 
 // CreateLedger creates a new ledger.
-func (s PAPController) CreateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error) {
+func (s PAPController) CreateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error) {
 	return s.storage.CreateLedger(ledger)
 }
 
 // UpdateLedger updates an ledger.
-func (s PAPController) UpdateLedger(ledger *azmodels.Ledger) (*azmodels.Ledger, error) {
+func (s PAPController) UpdateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error) {
 	return s.storage.UpdateLedger(ledger)
 }
 
 // DeleteLedger deletes an ledger.
-func (s PAPController) DeleteLedger(applicationID int64, ledgerID string) (*azmodels.Ledger, error) {
+func (s PAPController) DeleteLedger(applicationID int64, ledgerID string) (*azmodelspap.Ledger, error) {
 	return s.storage.DeleteLedger(applicationID, ledgerID)
 }
 
 // FetchLedgers gets all ledgers.
-func (s PAPController) FetchLedgers(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodels.Ledger, error) {
+func (s PAPController) FetchLedgers(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelspap.Ledger, error) {
 	return s.storage.FetchLedgers(page, pageSize, applicationID, fields)
 }
 

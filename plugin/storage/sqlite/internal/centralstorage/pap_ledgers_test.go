@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
+	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
@@ -70,7 +70,7 @@ func TestCreateLedgerWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inLedger := &azmodels.Ledger{}
+		inLedger := &azmodelspap.Ledger{}
 		outLedgers, err := storage.CreateLedger(inLedger)
 		assert.Nil(outLedgers, "ledgers should be nil")
 		assert.Error(err)
@@ -101,7 +101,7 @@ func TestCreateLedgerWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertLedger", mock.Anything, true, mock.Anything).Return(dbOutLedger, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inLedger := &azmodels.Ledger{}
+	inLedger := &azmodelspap.Ledger{}
 	outLedgers, err := storage.CreateLedger(inLedger)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outLedgers, "ledgers should not be nil")
@@ -152,7 +152,7 @@ func TestUpdateLedgerWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inLedger := &azmodels.Ledger{}
+		inLedger := &azmodelspap.Ledger{}
 		inLedger.Kind = azirepos.LedgerTypePolicy
 		outLedgers, err := storage.UpdateLedger(inLedger)
 		assert.Nil(outLedgers, "ledgers should be nil")
@@ -184,7 +184,7 @@ func TestUpdateLedgerWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertLedger", mock.Anything, false, mock.Anything).Return(dbOutLedger, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inLedger := &azmodels.Ledger{}
+	inLedger := &azmodelspap.Ledger{}
 	inLedger.Kind = azirepos.LedgerTypePolicy
 
 	outLedgers, err := storage.UpdateLedger(inLedger)
@@ -302,7 +302,7 @@ func TestFetchLedgerWithErrors(t *testing.T) {
 	{ // Test with invalid ledger id
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLitePAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outLedgers, err := storage.FetchLedgers(1, 100, 232956849236, map[string]any{azmodels.FieldLedgerLedgerID: 232956849236})
+		outLedgers, err := storage.FetchLedgers(1, 100, 232956849236, map[string]any{azmodelspap.FieldLedgerLedgerID: 232956849236})
 		assert.Nil(outLedgers, "ledgers should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -310,7 +310,7 @@ func TestFetchLedgerWithErrors(t *testing.T) {
 	{ // Test with invalid ledger name
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLitePAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outLedgers, err := storage.FetchLedgers(1, 100, 232956849236, map[string]any{azmodels.FieldLedgerName: 2})
+		outLedgers, err := storage.FetchLedgers(1, 100, 232956849236, map[string]any{azmodelspap.FieldLedgerName: 2})
 		assert.Nil(outLedgers, "ledgers should be nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
@@ -351,7 +351,7 @@ func TestFetchLedgerWithSuccess(t *testing.T) {
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLRepo.On("FetchLedgers", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutLedgers, nil)
 
-	outLedgers, err := storage.FetchLedgers(1, 100, 232956849236, map[string]any{azmodels.FieldLedgerLedgerID: azirepos.GenerateUUID(), azmodels.FieldLedgerName: "rent-a-car2"})
+	outLedgers, err := storage.FetchLedgers(1, 100, 232956849236, map[string]any{azmodelspap.FieldLedgerLedgerID: azirepos.GenerateUUID(), azmodelspap.FieldLedgerName: "rent-a-car2"})
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outLedgers, "ledgers should not be nil")
 	assert.Equal(len(outLedgers), len(dbOutLedgers), "ledgers and dbLedgers should have the same length")

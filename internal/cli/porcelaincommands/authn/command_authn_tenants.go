@@ -24,9 +24,9 @@ import (
 	"github.com/spf13/viper"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azmodelsaap "github.com/permguard/permguard/pkg/transport/models/aap"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azmodels "github.com/permguard/permguard/pkg/transport/models"
 )
 
 const (
@@ -51,7 +51,7 @@ func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	}
 	applicationID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonApplicationID))
 	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
-	tenant := &azmodels.Tenant{
+	tenant := &azmodelsaap.Tenant{
 		ApplicationID: applicationID,
 		Name:          name,
 	}
@@ -81,7 +81,7 @@ func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		tenantName := tenant.Name
 		output[tenantID] = tenantName
 	} else if ctx.IsJSONOutput() {
-		output["tenants"] = []*azmodels.Tenant{tenant}
+		output["tenants"] = []*azmodelsaap.Tenant{tenant}
 	}
 	printer.PrintlnMap(output)
 	return nil
