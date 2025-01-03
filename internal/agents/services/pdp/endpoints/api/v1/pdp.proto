@@ -22,8 +22,6 @@ package policydecisionpoint;
 
 option go_package = "github.com/permguard/permguard/internal/hosts/api/pdp/v1";
 
-// AuthorizationCheck request
-
 // PolicyStore is the store where the policy is stored
 message PolicyStore {
 	string Type = 1;
@@ -72,16 +70,18 @@ message Action {
 	optional google.protobuf.Struct Properties = 2;
 }
 
-// Evaluation is the evaluation of the policy decision
-message Evaluation {
+// AuthorizationCheck request
+
+// EvaluationRequest is the evaluation of the policy decision
+message EvaluationRequest {
 	optional Subject Subject = 1;
 	optional Resource Resource = 2;
 	optional Action Action = 3;
 	optional google.protobuf.Struct Context = 4;
 }
 
-// RequestAuthorizationContext is the input context for the policy decision
-message RequestAuthorizationContext {
+// AuthorizationContextRequest is the input context for the policy decision
+message AuthorizationContextRequest {
 	optional PolicyStore PolicyStore = 1;
 	optional Principal Principal = 2;
 	optional Entities Entities = 3;
@@ -89,39 +89,39 @@ message RequestAuthorizationContext {
 
 // AuthorizationCheckRequest is the request for the policy decision
 message AuthorizationCheckRequest {
-	optional RequestAuthorizationContext AuthorizationContext = 1;
+	optional AuthorizationContextRequest AuthorizationContext = 1;
 	optional Subject Subject = 2;
 	optional Resource Resource = 3;
 	optional google.protobuf.Struct Context = 4;
-	repeated Evaluation Evaluations = 5;
+	repeated EvaluationRequest Evaluations = 5;
 }
 
 // AuthorizationCheck response
 
-// ResponseReason is the reason for the response
-message ResponseReason {
+// ReasonResponse is the reason for the response
+message ReasonResponse {
 	string Code = 1;
 	string Message = 2;
 }
 
-// ResponseContext is the context for the response
-message ResponseContext {
+// ContextResponse is the context for the response
+message ContextResponse {
 	string Id = 1;
-	ResponseReason ReasonAdmin = 2;
-	ResponseReason ReasonUser = 3;
+	ReasonResponse ReasonAdmin = 2;
+	ReasonResponse ReasonUser = 3;
 }
 
-// ResponseEvaluation is the evaluation of the response
-message ResponseEvaluation {
+// EvaluationResponse is the evaluation of the response
+message EvaluationResponse {
 	bool Decision = 1;
-	ResponseContext Context = 2;
+	ContextResponse Context = 2;
 }
 
 // AuthorizationCheckResponse is the response for the policy decision
 message AuthorizationCheckResponse {
 	bool Decision = 1;
-	ResponseContext Context = 2;
-	repeated ResponseEvaluation Evaluations = 3;
+	ContextResponse Context = 2;
+	repeated EvaluationResponse Evaluations = 3;
 }
 
 // V1PDPService	is the service for the Policy Decision Point
