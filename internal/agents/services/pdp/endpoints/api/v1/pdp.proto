@@ -22,14 +22,14 @@ package policydecisionpoint;
 
 option go_package = "github.com/permguard/permguard/internal/hosts/api/pdp/v1";
 
-// PolicyStore is the store where the policies are stored.
+// PolicyStore is the location where policies are maintained.
 message PolicyStore {
 	string Type = 1;
 	string ID = 2;
 	optional string Version = 3;
 }
 
-// Principal is the principal that is making the request.
+// Principal represents the entity making the request.
 message Principal {
 	string Type = 1;
 	string ID = 2;
@@ -38,13 +38,13 @@ message Principal {
 	optional string AccessToken = 5;
 }
 
-// Entities is the entities that are involved in the request for the authorization decision context.
+// Entities represent the entities provided in the context for the authorization decision.
 message Entities {
 	string Schema = 1;
 	google.protobuf.Struct Data = 2;
 }
 
-// Subject is the subject on which the authorization decision are made.
+// Subject is the entity on which the authorization decision is made.
 message Subject {
 	string Type = 1;
 	string ID = 2;
@@ -52,14 +52,14 @@ message Subject {
 	optional google.protobuf.Struct Properties = 4;
 }
 
-// Resource is the resource on which the authorization decision are made.
+// Resource is the entity on which the authorization decision is made.
 message Resource {
 	string Type = 1;
 	string ID = 2;
 	optional google.protobuf.Struct Properties = 3;
 }
 
-// Action is the action on which the authorization decision are made.
+// Action is the operation on which the authorization decision is made.
 message Action {
 	string Name = 1;
 	optional google.protobuf.Struct Properties = 2;
