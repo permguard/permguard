@@ -78,10 +78,8 @@ permguard authz check --appid 268786704340 <<EOF
       "type": "user",
       "id": "john.smith@acmecorp.com",
       "source": "keycloak",
-      "tokens": {
-        "identity_token": "eyJhbGciOiJI...",
-        "access_token": "eyJhbGciOiJI..."
-      }
+      "identity_token": "eyJhbGciOiJI...",
+      "access_token": "eyJhbGciOiJI..."
     },
     "entities": {
       "schema": "cedar",
