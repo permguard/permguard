@@ -28,6 +28,7 @@ import (
 
 // expandedRequest represents the expanded request.
 type expandedRequest struct {
+	isRoot bool
 	subject *azmodelspdp.Subject
 	resource *azmodelspdp.Resource
 	action *azmodelspdp.Action
@@ -54,6 +55,7 @@ func authorizationCheckExpandRequest(request *azmodelspdp.AuthorizationCheckRequ
 	hasEvaluations := len(request.Evaluations) > 0
 	if !hasEvaluations {
 		expandedRequest := expandedRequest{
+			isRoot: true,
 			subject: request.Subject,
 			resource: request.Resource,
 			action: request.Action,
@@ -63,6 +65,7 @@ func authorizationCheckExpandRequest(request *azmodelspdp.AuthorizationCheckRequ
 	} else {
 		for _, evaluation := range request.Evaluations {
 			expandedRequest := expandedRequest{
+				isRoot: false,
 				subject: request.Subject,
 				resource: request.Resource,
 				action: request.Action,
@@ -102,6 +105,35 @@ func authorizationCheckVerifyPrincipal(principal *azmodelspdp.Principal, subject
 		return false
 	}
 	return true
+}
+
+// authorizationCheckContextResponse creates an authorization check context response.
+func authorizationCheckContextResponse(authzResponse *azauthz.AuthorizationDecision) *azmodelspdp.ContextResponse {
+	response := &azmodelspdp.ContextResponse{}
+	response.ID = authzResponse.GetID()
+	if authzResponse.GetAdminError() != nil {
+		response.ReasonAdmin = &azmodelspdp.ReasonResponse{
+			Code:    authzResponse.GetAdminError().GetCode(),
+			Message: authzResponse.GetAdminError().GetMessage(),
+		}
+	} else {
+		response.ReasonAdmin = &azmodelspdp.ReasonResponse{
+			Code:    azauthz.AuthzErrUnauthorizedCode,
+			Message: azauthz.AuthzErrUnauthorizedMessage,
+		}
+	}
+	if authzResponse.GetUserError() != nil {
+		response.ReasonUser = &azmodelspdp.ReasonResponse{
+			Code:    authzResponse.GetUserError().GetCode(),
+			Message: authzResponse.GetUserError().GetMessage(),
+		}
+	} else {
+		response.ReasonUser = &azmodelspdp.ReasonResponse{
+			Code:    azauthz.AuthzErrUnauthorizedCode,
+			Message: azauthz.AuthzErrUnauthorizedMessage,
+		}
+	}
+	return response
 }
 
 // authorizationCheckErrorResponse creates an authorization check error response.
@@ -164,7 +196,26 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 		}
 		policyStore := azauthz.PolicyStore{}
 		policyStore.AddPolicy("policyID", nil)
-		cedarLanguageAbs.AuthorizationCheck(&policyStore, &authzCtx)
+		authzResponse, err := cedarLanguageAbs.AuthorizationCheck(&policyStore, &authzCtx)
+		if err != nil {
+			return authorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
+		}
+		if expandedRequest.isRoot {
+			authzCheckResponse.Decision = authzResponse.GetDecision()
+			authzCheckResponse.Context = authorizationCheckContextResponse(authzResponse)
+		} else {
+
+		}
+	}
+	if len(authzCheckResponse.Evaluations) > 0 {
+		allTrue := true
+		for _, evaluation := range authzCheckResponse.Evaluations {
+			if !evaluation.Decision {
+				allTrue = false
+				break
+			}
+		}
+		authzCheckResponse.Decision = allTrue
 	}
 	return authzCheckResponse, nil
 }

@@ -16,12 +16,46 @@
 
 package authorization
 
+// AuthorizationError represents the authorization error.
 type AuthorizationError struct {
-	
+	code string
+	message string
+}
+
+// GetCode returns the code.
+func (a *AuthorizationError) GetCode() string {
+	return a.code
+}
+
+// GetMessage returns the message.
+func (a *AuthorizationError) GetMessage() string {
+	return a.message
 }
 
 // AuthorizationContext represents the authorization context.
 type AuthorizationDecision struct {
+	id string
 	decision bool
+	adminError *AuthorizationError
+	userError *AuthorizationError
+}
 
+// GetID returns the ID.
+func (a *AuthorizationDecision) GetID() string {
+	return a.id
+}
+
+// GetDecision returns the decision.
+func (a *AuthorizationDecision) GetDecision() bool {
+	return a.decision
+}
+
+// GetUserError returns the user error.
+func (a *AuthorizationDecision) GetAdminError() *AuthorizationError {
+	return a.adminError
+}
+
+// GetUserError returns the user error.
+func (a *AuthorizationDecision) GetUserError() *AuthorizationError {
+	return a.userError
 }
