@@ -96,9 +96,9 @@ func (c *PDPServiceConfig) GetPort() int {
 	return c.config[flagSuffixGrpcPort].(int)
 }
 
-// GetStorageCentralEngine returns the storage central engine.
-func (c *PDPServiceConfig) GetStorageCentralEngine() string {
-	return c.config[flagCentralEngine].(string)
+// PDPServiceConfig returns the storage central engine.
+func (c *PDPServiceConfig) GetStorageCentralEngine() azstorage.StorageKind {
+	return c.config[flagCentralEngine].(azstorage.StorageKind)
 }
 
 // GetDataFetchMaxPageSize returns the maximum number of items to fetch per request.

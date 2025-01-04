@@ -16,12 +16,12 @@
 
 package storage
 
-// CentralStorage is the interface for the central storage.
-type CentralStorage interface {
-	// GetAAPCentralStorage returns the AAP central storage.
-	GetAAPCentralStorage() (AAPCentralStorage, error)
-	// GetPAPCentralStorage returns the PAP central storage.
-	GetPAPCentralStorage() (PAPCentralStorage, error)
-	// GetPDPCentralStorage returns the PDP central storage.
-	GetPDPCentralStorage() (PDPCentralStorage, error)
+import (
+	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
+)
+
+// PDPCentralStorage is the interface for the PDP central storage.
+type PDPCentralStorage interface {
+	// AuthorizationCheck checks if the request is authorized.
+	AuthorizationCheck(request *azmodelspdp.AuthorizationCheckRequest) (*azmodelspdp.AuthorizationCheckResponse, error)
 }

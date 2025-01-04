@@ -14,20 +14,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package controllers
+package centralstorage
 
 import (
-	azservices "github.com/permguard/permguard/pkg/agents/services"
+	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 
-type PDPLocalController struct {
-	ctx   *azservices.ServiceContext
-	cache map[string]any
-}
-
-func NewPDPLocalController(serviceContext *azservices.ServiceContext) (*PDPLocalController, error) {
-	service := PDPLocalController{
-		ctx: serviceContext,
-	}
-	return &service, nil
+// CreateLedger creates a new ledger.
+func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckRequest) (*azmodelspdp.AuthorizationCheckResponse, error) {
+	return nil, nil
 }
