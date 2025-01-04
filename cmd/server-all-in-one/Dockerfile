@@ -47,7 +47,7 @@ ENV PERMGUARD_SERVER_APPDATA="/opt/permguard/volume"
 
 EXPOSE 9091
 EXPOSE 9092
-EXPOSE 9096
+EXPOSE 9094
 
 VOLUME ["/opt/permguard/volume"]
 

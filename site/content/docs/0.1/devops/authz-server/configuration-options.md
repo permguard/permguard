@@ -120,7 +120,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
 
-**\--server.pip.grpc.port int**: *port to be used for exposing the pip grpc services. (default `9096`).*
+**\--server.pip.grpc.port int**: *port to be used for exposing the pip grpc services. (default `9093`).*
 
 ---
 
@@ -136,7 +136,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
 
-**\--server.pdp.grpc.port int**: *port to be used for exposing the pdp grpc services. (default `9096`).*
+**\--server.pdp.grpc.port int**: *port to be used for exposing the pdp grpc services. (default `9094`).*
 
 ---
 
