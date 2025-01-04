@@ -181,6 +181,8 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 	if ledgerRef == azlangobjs.ZeroOID {
 		return authorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, azauthz.AuthzErrInternalErrorMessage, azauthz.AuthzErrInternalErrorMessage), nil
 	}
+	authzPolicyStore := azauthz.PolicyStore{}
+	authzPolicyStore.AddPolicy("policyID", nil)
 	cedarLanguageAbs, err := azplangcedar.NewCedarLanguageAbstraction()
 	if err != nil {
 		return authorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrBadRequestCode, err.Error(), azauthz.AuthzErrBadRequestMessage), nil
@@ -190,13 +192,15 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 			return authorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrUnauthorizedCode, azauthz.AuthzErrUnauthorizedMessage, azauthz.AuthzErrUnauthorizedMessage), nil
 		}
 		authzCtx := azauthz.AuthorizationContext{}
+		authzCtx.SetSubject(expandedRequest.subject.Type, expandedRequest.subject.ID, expandedRequest.subject.Source, expandedRequest.subject.Properties)
+		authzCtx.SetResource(expandedRequest.resource.Type, expandedRequest.resource.ID, expandedRequest.resource.Properties)
+		authzCtx.SetAction(expandedRequest.action.Name, expandedRequest.action.Properties)
+		authzCtx.SetContext(expandedRequest.context)
 		entities := request.AuthorizationContext.Entities
 		if  entities != nil {
 			authzCtx.SetEntities(entities.Schema, entities.Items)
 		}
-		policyStore := azauthz.PolicyStore{}
-		policyStore.AddPolicy("policyID", nil)
-		authzResponse, err := cedarLanguageAbs.AuthorizationCheck(&policyStore, &authzCtx)
+		authzResponse, err := cedarLanguageAbs.AuthorizationCheck(&authzPolicyStore, &authzCtx)
 		if err != nil {
 			return authorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
 		}
