@@ -44,6 +44,11 @@ func (c *cliDependencies) CreateGrpcPAPClient(aapTarget string) (azclients.GrpcP
 	return aziclients.NewGrpcPAPClient(aapTarget)
 }
 
+// CreateGrpcPDPClient creates a new gRPC client for the PDP service.
+func (c *cliDependencies) CreateGrpcPDPClient(aapTarget string) (azclients.GrpcPDPClient, error) {
+	return aziclients.NewGrpcPDPClient(aapTarget)
+}
+
 // CreateGrpcPAPClient creates a new gRPC client for the PAP service.
 func (c *cliDependencies) GetLanguageFactory() (azlang.LanguageFactory, error) {
 	return c.langFactory, nil

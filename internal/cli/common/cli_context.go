@@ -135,3 +135,9 @@ func (c *CliCommandContext) GetPAPTarget() string {
 	target := c.v.Get(azoptions.FlagName(FlagPrefixPAP, FlagSuffixPAPTarget))
 	return target.(string)
 }
+
+// GetPDPTarget returns the pdp target.
+func (c *CliCommandContext) GetPDPTarget() string {
+	target := c.v.Get(azoptions.FlagName(FlagPrefixPDP, FlagSuffixPDPTarget))
+	return target.(string)
+}
