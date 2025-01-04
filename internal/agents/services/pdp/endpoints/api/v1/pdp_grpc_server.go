@@ -17,11 +17,16 @@
 package v1
 
 import (
+	"context"
+
+	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 )
 
 // PDPService is the service for the PDP.
 type PDPService interface {
+	// AuthorizationCheck checks the authorization.
+	AuthorizationCheck(request *azmodelspdp.AuthorizationCheckRequest) (*azmodelspdp.AuthorizationCheckResponse, error)
 }
 
 // NewV1PDPServer creates a new PDP server.
@@ -37,4 +42,9 @@ type V1PDPServer struct {
 	UnimplementedV1PDPServiceServer
 	ctx     *azservices.EndpointContext
 	service PDPService
+}
+
+// AuthorizationCheck checks the authorization.
+func (s *V1PDPServer) AuthorizationCheck(ctx context.Context, request *AuthorizationCheckRequest) (*AuthorizationCheckResponse, error) {
+	return nil, nil
 }

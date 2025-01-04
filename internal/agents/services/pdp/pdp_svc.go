@@ -55,15 +55,23 @@ func (f *PDPService) GetEndpoints() ([]azservices.EndpointInitializer, error) {
 		f.config.GetService(),
 		f.config.GetPort(),
 		func(grpcServer *grpc.Server, srvCtx *azservices.ServiceContext, endptCtx *azservices.EndpointContext, storageConnector *azstorage.StorageConnector) error {
-			controller, err := azctrlpdp.NewPDPLocalController(srvCtx)
+			storageKind := f.config.GetStorageCentralEngine()
+			centralStorage, err := storageConnector.GetCentralStorage(storageKind, endptCtx)
+			if err != nil {
+				return err
+			}
+			pdpCentralStorage, err := centralStorage.GetPDPCentralStorage()
+			if err != nil {
+				return err
+			}
+			controller, err := azctrlpdp.NewPDPController(srvCtx, pdpCentralStorage)
 			if err != nil {
 				return nil
 			}
-			// TODO: Implement Setup
-			//err = controller.Setup()
-			// if err != nil {
-			// 	return err
-			// }
+			err = controller.Setup()
+			if err != nil {
+				return err
+			}
 			pdpServer, err := azapiv1pdp.NewV1PDPServer(endptCtx, controller)
 			azapiv1pdp.RegisterV1PDPServiceServer(grpcServer, pdpServer)
 			return err

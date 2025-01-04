@@ -35,6 +35,7 @@ func (s PAPController) Setup() error {
 	return nil
 }
 
+// NewPAPController creates a new PAP controller.
 func NewPAPController(serviceContext *azservices.ServiceContext, storage azStorage.PAPCentralStorage) (*PAPController, error) {
 	service := PAPController{
 		ctx:     serviceContext,
