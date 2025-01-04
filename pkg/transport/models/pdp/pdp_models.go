@@ -79,7 +79,7 @@ type EvaluationRequest struct {
 
 // AuthorizationCheckRequest represents the request to perform an authorization decision.
 type AuthorizationCheckRequest struct {
-	AuthorizationContext *AuthorizationContextRequest `json:"authorization_context,omitempty"`
+	AuthorizationContext *AuthorizationContextRequest `json:"authorization_context,omitempty" validate:"required"`
 	Subject              *Subject                     `json:"subject,omitempty"`
 	Resource             *Resource                    `json:"resource,omitempty"`
 	Action               *Action                      `json:"action,omitempty"`
