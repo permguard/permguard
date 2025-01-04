@@ -85,7 +85,7 @@ message EvaluationRequest {
 
 // AuthorizationCheckRequest represents the request to perform an authorization decision.
 message AuthorizationCheckRequest {
-	optional AuthorizationContextRequest AuthorizationContext = 2;
+	AuthorizationContextRequest AuthorizationContext = 2;
 	optional Subject Subject = 3;
 	optional Resource Resource = 4;
 	optional Action Action = 5;

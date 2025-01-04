@@ -84,7 +84,7 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 	if err != nil {
 		return handleInputError(ctx, printer, err, "Invalid input for the authz check.")
 	}
-	printer.Println(fmt.Sprintf("Checking authorization request for application %s...", authzReq.AuthorizationContext.PolicyStore.ID))
+	printer.Println(fmt.Sprintf("Application ID %d, PolicyStore ID %s...", authzReq.AuthorizationContext.ApplicationID, authzReq.AuthorizationContext.PolicyStore.ID))
 	return nil
 }
 
