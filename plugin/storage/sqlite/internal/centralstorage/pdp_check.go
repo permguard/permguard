@@ -204,7 +204,11 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 			authzCheckResponse.Decision = authzResponse.GetDecision()
 			authzCheckResponse.Context = authorizationCheckContextResponse(authzResponse)
 		} else {
-
+			evaluationResponse := azmodelspdp.EvaluationResponse{
+				Decision: authzResponse.GetDecision(),
+				Context:  authorizationCheckContextResponse(authzResponse),
+			}
+			authzCheckResponse.Evaluations = append(authzCheckResponse.Evaluations, evaluationResponse)
 		}
 	}
 	if len(authzCheckResponse.Evaluations) > 0 {
