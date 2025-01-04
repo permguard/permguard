@@ -69,6 +69,7 @@ cat /path/to/authorization_request.json | permguard authz check --appid 26878670
 permguard authz check --appid 268786704340 <<EOF
 {
   "authorization_context": {
+    "application_id": 268786704340,
     "policy_store": {
       "type": "ledger",
       "id": "magicfarmacia",

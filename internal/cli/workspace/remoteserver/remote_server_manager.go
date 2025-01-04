@@ -20,10 +20,10 @@ import (
 	"fmt"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	aziclients "github.com/permguard/permguard/internal/transport/clients"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"

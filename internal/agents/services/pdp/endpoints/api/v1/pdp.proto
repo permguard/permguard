@@ -69,9 +69,10 @@ message Action {
 
 // AuthorizationContextRequest is the input context for making the authorization decision.
 message AuthorizationContextRequest {
-	optional PolicyStore PolicyStore = 1;
-	optional Principal Principal = 2;
-	optional Entities Entities = 3;
+	int64 ApplicationID = 1;
+	PolicyStore PolicyStore = 2;
+	optional Principal Principal = 3;
+	optional Entities Entities = 4;
 }
 
 // EvaluationRequest represents the request to evaluate the authorization decision.
@@ -84,12 +85,12 @@ message EvaluationRequest {
 
 // AuthorizationCheckRequest represents the request to perform an authorization decision.
 message AuthorizationCheckRequest {
-	optional AuthorizationContextRequest AuthorizationContext = 1;
-	optional Subject Subject = 2;
-	optional Resource Resource = 3;
-	optional Action Action = 4;
-	optional google.protobuf.Struct Context = 5;
-	repeated EvaluationRequest Evaluations = 6;
+	optional AuthorizationContextRequest AuthorizationContext = 2;
+	optional Subject Subject = 3;
+	optional Resource Resource = 4;
+	optional Action Action = 5;
+	optional google.protobuf.Struct Context = 6;
+	repeated EvaluationRequest Evaluations = 7;
 }
 
 // AuthorizationCheck Response

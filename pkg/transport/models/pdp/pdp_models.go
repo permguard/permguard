@@ -34,7 +34,7 @@ type Principal struct {
 
 // Entities represent the entities provided in the context for the authorization decision.
 type Entities struct {
-	Schema string         `json:"schema,omitempty" validate:"required"`
+	Schema string           `json:"schema,omitempty" validate:"required"`
 	Data   []map[string]any `json:"data,omitempty" validate:"required"`
 }
 
@@ -63,9 +63,10 @@ type Action struct {
 
 // AuthorizationContextRequest is the input context for making the authorization decision.
 type AuthorizationContextRequest struct {
-	PolicyStore *PolicyStore `json:"policy_store,omitempty"`
-	Principal   *Principal   `json:"principal,omitempty"`
-	Entities    *Entities    `json:"entities,omitempty"`
+	ApplicationID int64        `json:"application_id" validate:"required,gt=0"`
+	PolicyStore   *PolicyStore `json:"policy_store,omitempty"`
+	Principal     *Principal   `json:"principal,omitempty"`
+	Entities      *Entities    `json:"entities,omitempty"`
 }
 
 // EvaluationRequest represents the request to evaluate the authorization decision.
