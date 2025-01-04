@@ -103,7 +103,7 @@ message ReasonResponse {
 
 // ContextResponse represents the context included in the response.
 message ContextResponse {
-	string Id = 1;
+	string ID = 1;
 	ReasonResponse ReasonAdmin = 2;
 	ReasonResponse ReasonUser = 3;
 }

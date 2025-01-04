@@ -356,6 +356,9 @@ func MapAgentAuthorizationContextRequestToGrpcAuthorizationContextRequest(reques
 
 // MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest maps the gRPC authorization check request to the agent authorization check request.
 func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *AuthorizationCheckRequest) (*azmodelspdp.AuthorizationCheckRequest, error) {
+	if request == nil {
+		return nil, nil
+	}
 	req := &azmodelspdp.AuthorizationCheckRequest{}
 	if request.AuthorizationContext != nil {
 		authorizationContext, err := MapGrpcAuthorizationContextRequestToAgentAuthorizationContextRequest(request.AuthorizationContext)
@@ -404,6 +407,9 @@ func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *A
 
 // MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest maps the agent authorization check request to the gRPC authorization check request.
 func MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest(request *azmodelspdp.AuthorizationCheckRequest) (*AuthorizationCheckRequest, error) {
+	if request == nil {
+		return nil, nil
+	}
 	req := &AuthorizationCheckRequest{}
 	if request.AuthorizationContext != nil {
 		authorizationContext, err := MapAgentAuthorizationContextRequestToGrpcAuthorizationContextRequest(request.AuthorizationContext)
@@ -454,12 +460,162 @@ func MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest(request *a
 	return req, nil
 }
 
+// MapGrpcReasonResponseToAgentReasonResponse maps the gRPC reason response to the agent reason response.
+func MapGrpcReasonResponseToAgentReasonResponse(reasonResponse *ReasonResponse) (*azmodelspdp.ReasonResponse, error) {
+	if reasonResponse == nil {
+		return nil, nil
+	}
+	target := &azmodelspdp.ReasonResponse{}
+	target.Code = reasonResponse.Code
+	target.Message = reasonResponse.Message
+	return target, nil
+}
+
+// MapAgentReasonResponseToGrpcReasonResponse maps the agent reason response to the gRPC reason response.
+func MapAgentReasonResponseToGrpcReasonResponse(reasonResponse *azmodelspdp.ReasonResponse) (*ReasonResponse, error) {
+	if reasonResponse == nil {
+		return nil, nil
+	}
+	target := &ReasonResponse{}
+	target.Code = reasonResponse.Code
+	target.Message = reasonResponse.Message
+	return target, nil
+}
+
+// MapGrpcContextResponseToAgentContextResponse maps the gRPC context response to the agent context response.
+func MapGrpcContextResponseToAgentContextResponse(contextResponse *ContextResponse) (*azmodelspdp.ContextResponse, error) {
+	if contextResponse == nil {
+		return nil, nil
+	}
+	target := &azmodelspdp.ContextResponse{}
+	target.ID = contextResponse.ID
+	if contextResponse.ReasonAdmin != nil {
+		reasonAdmin, err := MapGrpcReasonResponseToAgentReasonResponse(contextResponse.ReasonAdmin)
+		if err != nil {
+			return nil, err
+		}
+		target.ReasonAdmin = reasonAdmin
+	}
+	if contextResponse.ReasonUser != nil {
+		reasonUser, err := MapGrpcReasonResponseToAgentReasonResponse(contextResponse.ReasonUser)
+		if err != nil {
+			return nil, err
+		}
+		target.ReasonUser = reasonUser
+	}
+	return target, nil
+}
+
+// MapAgentContextResponseToGrpcContextResponse maps the agent context response to the gRPC context response.
+func MapAgentContextResponseToGrpcContextResponse(contextResponse *azmodelspdp.ContextResponse) (*ContextResponse, error) {
+	if contextResponse == nil {
+		return nil, nil
+	}
+	target := &ContextResponse{}
+	target.ID = contextResponse.ID
+	if contextResponse.ReasonAdmin != nil {
+		reasonAdmin, err := MapAgentReasonResponseToGrpcReasonResponse(contextResponse.ReasonAdmin)
+		if err != nil {
+			return nil, err
+		}
+		target.ReasonAdmin = reasonAdmin
+	}
+	if contextResponse.ReasonUser != nil {
+		reasonUser, err := MapAgentReasonResponseToGrpcReasonResponse(contextResponse.ReasonUser)
+		if err != nil {
+			return nil, err
+		}
+		target.ReasonUser = reasonUser
+	}
+	return target, nil
+}
+
+// MapGrpcEvaluationResponseToAgentEvaluationResponse maps the gRPC evaluation response to the agent evaluation response.
+func MapGrpcEvaluationResponseToAgentEvaluationResponse(evaluationResponse *EvaluationResponse) (*azmodelspdp.EvaluationResponse, error) {
+	if evaluationResponse == nil {
+		return nil, nil
+	}
+	target := &azmodelspdp.EvaluationResponse{}
+	target.Decision = evaluationResponse.Decision
+	if evaluationResponse.Context != nil {
+		context, err := MapGrpcContextResponseToAgentContextResponse(evaluationResponse.Context)
+		if err != nil {
+			return nil, err
+		}
+		target.Context = context
+	}
+	return target, nil
+}
+
+// MapAgentEvaluationResponseToGrpcEvaluationResponse maps the agent evaluation response to the gRPC evaluation response.
+func MapAgentEvaluationResponseToGrpcEvaluationResponse(evaluationResponse *azmodelspdp.EvaluationResponse) (*EvaluationResponse, error) {
+	if evaluationResponse == nil {
+		return nil, nil
+	}
+	target := &EvaluationResponse{}
+	target.Decision = evaluationResponse.Decision
+	if evaluationResponse.Context != nil {
+		context, err := MapAgentContextResponseToGrpcContextResponse(evaluationResponse.Context)
+		if err != nil {
+			return nil, err
+		}
+		target.Context = context
+	}
+	return target, nil
+}
+
 // MapAgentAuthorizationCheckResponseToGrpcAuthorizationCheckResponse maps the agent authorization check response to the gRPC authorization check response.
 func MapAgentAuthorizationCheckResponseToGrpcAuthorizationCheckResponse(response *azmodelspdp.AuthorizationCheckResponse) (*AuthorizationCheckResponse, error) {
-	return &AuthorizationCheckResponse{}, nil
+	if response == nil {
+		return nil, nil
+	}
+	target := &AuthorizationCheckResponse{}
+	target.Decision = response.Decision
+	if response.Context != nil {
+		context, err := MapAgentContextResponseToGrpcContextResponse(response.Context)
+		if err != nil {
+			return nil, err
+		}
+		target.Context = context
+	}
+	if response.Evaluations != nil {
+		evaluations := []*EvaluationResponse{}
+		for _, evaluationResponse := range response.Evaluations {
+			evaluation, err := MapAgentEvaluationResponseToGrpcEvaluationResponse(&evaluationResponse)
+			if err != nil {
+				return nil, err
+			}
+			evaluations = append(evaluations, evaluation)
+		}
+		target.Evaluations = evaluations
+	}
+	return target, nil
 }
 
 // MapGrpcAuthorizationCheckResponseToAgentAuthorizationCheckResponse maps the gRPC authorization check response to the agent authorization check response.
 func MapGrpcAuthorizationCheckResponseToAgentAuthorizationCheckResponse(response *AuthorizationCheckResponse) (*azmodelspdp.AuthorizationCheckResponse, error) {
-	return &azmodelspdp.AuthorizationCheckResponse{}, nil
+	if response == nil {
+		return nil, nil
+	}
+	target := &azmodelspdp.AuthorizationCheckResponse{}
+	target.Decision = response.Decision
+	if response.Context != nil {
+		context, err := MapGrpcContextResponseToAgentContextResponse(response.Context)
+		if err != nil {
+			return nil, err
+		}
+		target.Context = context
+	}
+	if response.Evaluations != nil {
+		evaluations := []azmodelspdp.EvaluationResponse{}
+		for _, evaluationResponse := range response.Evaluations {
+			evaluation, err := MapGrpcEvaluationResponseToAgentEvaluationResponse(evaluationResponse)
+			if err != nil {
+				return nil, err
+			}
+			evaluations = append(evaluations, *evaluation)
+		}
+		target.Evaluations = evaluations
+	}
+	return target, nil
 }
