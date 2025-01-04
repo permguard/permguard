@@ -94,7 +94,7 @@ Here a simple example of a message exchange between the `PEP` and the `PDP`.
     },
     "entities": {
       "schema": "cedar",
-      "data": [
+      "items": [
         {
           "uid": {
             "type": "Branch",
@@ -178,7 +178,7 @@ Here an example of a message exchange with evaluations between the `PEP` and the
     },
     "entities": {
       "schema": "cedar",
-      "data": [
+      "items": [
         {
           "uid": {
             "type": "Branch",
@@ -318,7 +318,7 @@ Here an example of a message exchange with evaluations and defaults between the 
     },
     "entities": {
       "schema": "cedar",
-      "data": [
+      "items": [
         {
           "uid": {
             "type": "Branch",

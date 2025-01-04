@@ -41,7 +41,7 @@ message Principal {
 // Entities represent the entities provided in the context for the authorization decision.
 message Entities {
 	string Schema = 1;
-	google.protobuf.Struct Data = 2;
+	repeated google.protobuf.Struct Items = 2;
 }
 
 // Subject is the entity on which the authorization decision is made.

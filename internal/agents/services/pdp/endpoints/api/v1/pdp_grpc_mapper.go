@@ -17,38 +17,449 @@
 package v1
 
 import (
+	"google.golang.org/protobuf/types/known/structpb"
+
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 
+// MapGrpcPolicyStoreToAgentPolicyStore maps the gRPC policy store to the agent policy store.
+func MapGrpcPolicyStoreToAgentPolicyStore(policyStore *PolicyStore) (*azmodelspdp.PolicyStore, error) {
+	if policyStore == nil {
+		return nil, nil
+	}
+	target := &azmodelspdp.PolicyStore{}
+	target.ID = policyStore.ID
+	target.Type = policyStore.Type
+	if policyStore.Version != nil {
+		target.Version = *policyStore.Version
+	}
+	return target, nil
+}
+
+// MapAgentPolicyStoreToGrpcPolicyStore maps the agent policy store to the gRPC policy store.
+func MapAgentPolicyStoreToGrpcPolicyStore(policyStore *azmodelspdp.PolicyStore) (*PolicyStore, error) {
+	if policyStore == nil {
+		return nil, nil
+	}
+	target := &PolicyStore{}
+	target.ID = policyStore.ID
+	target.Type = policyStore.Type
+	if policyStore.Version != "" {
+		target.Version = &policyStore.Version
+	}
+	return target, nil
+}
+
+// MapGrpcPrincipalToAgentPrincipal maps the gRPC principal to the agent principal.
+func MapGrpcPrincipalToAgentPrincipal(principal *Principal) (*azmodelspdp.Principal, error) {
+	if principal == nil {
+		return nil, nil
+	}
+	target := &azmodelspdp.Principal{}
+	target.ID = principal.ID
+	target.Type = principal.Type
+	if principal.Source != nil {
+		target.Source = *principal.Source
+	}
+	if principal.IdentityToken != nil {
+		target.IdentityToken = *principal.IdentityToken
+	}
+	if principal.AccessToken != nil {
+		target.AccessToken = *principal.AccessToken
+	}
+	return target, nil
+}
+
+// MapAgentPrincipalToGrpcPrincipal maps the agent principal to the gRPC principal.
+func MapAgentPrincipalToGrpcPrincipal(principal *azmodelspdp.Principal) (*Principal, error) {
+	if principal == nil {
+		return nil, nil
+	}
+	target := &Principal{}
+	target.ID = principal.ID
+	target.Type = principal.Type
+	if principal.Source != "" {
+		target.Source = &principal.Source
+	}
+	if principal.IdentityToken != "" {
+		target.IdentityToken = &principal.IdentityToken
+	}
+	if principal.AccessToken != "" {
+		target.AccessToken = &principal.AccessToken
+	}
+	return target, nil
+}
+
+// MapGrpcEntitiesToAgentEntities maps the gRPC entities to the agent entities.
+func MapGrpcEntitiesToAgentEntities(entities *Entities) (*azmodelspdp.Entities, error) {
+	if entities == nil {
+		return nil, nil
+	}
+	target := &azmodelspdp.Entities{}
+	target.Schema = entities.Schema
+	if entities.Items != nil {
+		items := []map[string]any{}
+		for _, item := range entities.Items {
+			items = append(items, item.AsMap())
+		}
+		target.Items = items
+	}
+	return target, nil
+}
+
+// MapAgentEntitiesToGrpcEntities maps the agent entities to the gRPC entities.
+func MapAgentEntitiesToGrpcEntities(entities *azmodelspdp.Entities) (*Entities, error) {
+	if entities == nil {
+		return nil, nil
+	}
+	target := &Entities{}
+	target.Schema = entities.Schema
+	if entities.Items != nil {
+		items := []*structpb.Struct{}
+		for _, item := range entities.Items {
+			data, err := structpb.NewStruct(item)
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, data)
+		}
+		target.Items = items
+	}
+	return target, nil
+}
+
+// MapGrpcSubjectToAgentSubject maps the gRPC subject to the agent subject.
+func MapGrpcSubjectToAgentSubject(subject *Subject) (*azmodelspdp.Subject, error) {
+	if subject == nil {
+		return nil, nil
+	}
+	target := &azmodelspdp.Subject{}
+	target.ID = subject.ID
+	target.Type = subject.Type
+	if subject.Source != nil {
+		target.Source = *subject.Source
+	}
+	if subject.Properties != nil {
+		target.Properties = subject.Properties.AsMap()
+	}
+	return target, nil
+}
+
+// MapAgentSubjectToGrpcSubject maps the agent subject to the gRPC subject.
+func MapAgentSubjectToGrpcSubject(subject *azmodelspdp.Subject) (*Subject, error) {
+	if subject == nil {
+		return nil, nil
+	}
+	target := &Subject{}
+	target.ID = subject.ID
+	target.Type = subject.Type
+	if subject.Source != "" {
+		target.Source = &subject.Source
+	}
+	if subject.Properties != nil {
+		data, err := structpb.NewStruct(subject.Properties)
+		if err != nil {
+			return nil, err
+		}
+		target.Properties = data
+	}
+	return target, nil
+}
+
+// MapGrpcResourceToAgentResource maps the gRPC resource to the agent resource.
+func MapGrpcResourceToAgentResource(resource *Resource) (*azmodelspdp.Resource, error) {
+	if resource == nil {
+		return nil, nil
+	}
+	target := &azmodelspdp.Resource{}
+	target.ID = resource.ID
+	target.Type = resource.Type
+	if resource.Properties != nil {
+		target.Properties = resource.Properties.AsMap()
+	}
+	return target, nil
+}
+
+// MapAgentResourceToGrpcResource maps the agent resource to the gRPC resource.
+func MapAgentResourceToGrpcResource(resource *azmodelspdp.Resource) (*Resource, error) {
+	if resource == nil {
+		return nil, nil
+	}
+	target := &Resource{}
+	target.ID = resource.ID
+	target.Type = resource.Type
+	if resource.Properties != nil {
+		data, err := structpb.NewStruct(resource.Properties)
+		if err != nil {
+			return nil, err
+		}
+		target.Properties = data
+	}
+	return target, nil
+}
+
+// MapGrpcActionToAgentAction maps the gRPC action to the agent action.
+func MapGrpcActionToAgentAction(action *Action) (*azmodelspdp.Action, error) {
+	if action == nil {
+		return nil, nil
+	}
+	target := &azmodelspdp.Action{}
+	target.Name = action.Name
+	if action.Properties != nil {
+		target.Properties = action.Properties.AsMap()
+	}
+	return target, nil
+}
+
+// MapAgentActionToGrpcAction maps the agent action to the gRPC action.
+func MapAgentActionToGrpcAction(action *azmodelspdp.Action) (*Action, error) {
+	if action == nil {
+		return nil, nil
+	}
+	target := &Action{}
+	target.Name = action.Name
+	if action.Properties != nil {
+		data, err := structpb.NewStruct(action.Properties)
+		if err != nil {
+			return nil, err
+		}
+		target.Properties = data
+	}
+	return target, nil
+}
+
+// MapGrpcEvaluationRequestToAgentEvaluationRequest maps the gRPC evaluation request to the agent evaluation request.
+func MapGrpcEvaluationRequestToAgentEvaluationRequest(evaluationRequest *EvaluationRequest) (*azmodelspdp.EvaluationRequest, error) {
+	if evaluationRequest == nil {
+		return nil, nil
+	}
+	target := &azmodelspdp.EvaluationRequest{}
+	if evaluationRequest.Subject != nil {
+		subject, err := MapGrpcSubjectToAgentSubject(evaluationRequest.Subject)
+		if err != nil {
+			return nil, err
+		}
+		target.Subject = subject
+	}
+	if evaluationRequest.Resource != nil {
+		resource, err := MapGrpcResourceToAgentResource(evaluationRequest.Resource)
+		if err != nil {
+			return nil, err
+		}
+		target.Resource = resource
+	}
+	if evaluationRequest.Action != nil {
+		action, err := MapGrpcActionToAgentAction(evaluationRequest.Action)
+		if err != nil {
+			return nil, err
+		}
+		target.Action = action
+	}
+	if evaluationRequest.Context != nil {
+		target.Context = evaluationRequest.Context.AsMap()
+	}
+	return target, nil
+}
+
+// MapAgentEvaluationRequestToGrpcEvaluationRequest maps the agent evaluation request to the gRPC evaluation request.
+func MapAgentEvaluationRequestToGrpcEvaluationRequest(evaluationRequest *azmodelspdp.EvaluationRequest) (*EvaluationRequest, error) {
+	if evaluationRequest == nil {
+		return nil, nil
+	}
+	target := &EvaluationRequest{}
+	if evaluationRequest.Subject != nil {
+		subject, err := MapAgentSubjectToGrpcSubject(evaluationRequest.Subject)
+		if err != nil {
+			return nil, err
+		}
+		target.Subject = subject
+	}
+	if evaluationRequest.Resource != nil {
+		resource, err := MapAgentResourceToGrpcResource(evaluationRequest.Resource)
+		if err != nil {
+			return nil, err
+		}
+		target.Resource = resource
+	}
+	if evaluationRequest.Action != nil {
+		action, err := MapAgentActionToGrpcAction(evaluationRequest.Action)
+		if err != nil {
+			return nil, err
+		}
+		target.Action = action
+	}
+	if evaluationRequest.Context != nil {
+		data, err := structpb.NewStruct(evaluationRequest.Context)
+		if err != nil {
+			return nil, err
+		}
+		target.Context = data
+	}
+	return target, nil
+}
+
+// MapGrpcAuthorizationContextRequestToAgentAuthorizationContextRequest maps the gRPC authorization context request to the agent authorization context request.
+func MapGrpcAuthorizationContextRequestToAgentAuthorizationContextRequest(request *AuthorizationContextRequest) (*azmodelspdp.AuthorizationContextRequest, error) {
+	req := &azmodelspdp.AuthorizationContextRequest{}
+	req.ApplicationID = request.ApplicationID
+	if request.PolicyStore != nil {
+		policyStore, err := MapGrpcPolicyStoreToAgentPolicyStore(request.PolicyStore)
+		if err != nil {
+			return nil, err
+		}
+		req.PolicyStore = policyStore
+	}
+	if request.Principal != nil {
+		principal, err := MapGrpcPrincipalToAgentPrincipal(request.Principal)
+		if err != nil {
+			return nil, err
+		}
+		req.Principal = principal
+	}
+	if request.Entities != nil {
+		entities, err := MapGrpcEntitiesToAgentEntities(request.Entities)
+		if err != nil {
+			return nil, err
+		}
+		req.Entities = entities
+	}
+	return req, nil
+}
+
+// MapAgentAuthorizationContextRequestToGrpcAuthorizationContextRequest maps the agent authorization context request to the gRPC authorization context request.
+func MapAgentAuthorizationContextRequestToGrpcAuthorizationContextRequest(request *azmodelspdp.AuthorizationContextRequest) (*AuthorizationContextRequest, error) {
+	req := &AuthorizationContextRequest{}
+	req.ApplicationID = request.ApplicationID
+	if request.PolicyStore != nil {
+		policyStore, err := MapAgentPolicyStoreToGrpcPolicyStore(request.PolicyStore)
+		if err != nil {
+			return nil, err
+		}
+		req.PolicyStore = policyStore
+	}
+	if request.Principal != nil {
+		principal, err := MapAgentPrincipalToGrpcPrincipal(request.Principal)
+		if err != nil {
+			return nil, err
+		}
+		req.Principal = principal
+	}
+	if request.Entities != nil {
+		entities, err := MapAgentEntitiesToGrpcEntities(request.Entities)
+		if err != nil {
+			return nil, err
+		}
+		req.Entities = entities
+	}
+	return req, nil
+}
+
 // MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest maps the gRPC authorization check request to the agent authorization check request.
 func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *AuthorizationCheckRequest) (*azmodelspdp.AuthorizationCheckRequest, error) {
-	req :=  &azmodelspdp.AuthorizationCheckRequest{}
+	req := &azmodelspdp.AuthorizationCheckRequest{}
 	if request.AuthorizationContext != nil {
-
+		authorizationContext, err := MapGrpcAuthorizationContextRequestToAgentAuthorizationContextRequest(request.AuthorizationContext)
+		if err != nil {
+			return nil, err
+		}
+		req.AuthorizationContext = authorizationContext
+	}
+	if request.Subject != nil {
+		subject, err := MapGrpcSubjectToAgentSubject(request.Subject)
+		if err != nil {
+			return nil, err
+		}
+		req.Subject = subject
+	}
+	if request.Resource != nil {
+		resource, err := MapGrpcResourceToAgentResource(request.Resource)
+		if err != nil {
+			return nil, err
+		}
+		req.Resource = resource
+	}
+	if request.Action != nil {
+		action, err := MapGrpcActionToAgentAction(request.Action)
+		if err != nil {
+			return nil, err
+		}
+		req.Action = action
+	}
+	if request.Context != nil {
+		req.Context = request.Context.AsMap()
 	}
 	if request.Evaluations != nil {
-		for _, evaluation := range request.Evaluations {
-			if evaluation != nil {
+		evaluations := []azmodelspdp.EvaluationRequest{}
+		for _, evaluationRequest := range request.Evaluations {
+			evaluation, err := MapGrpcEvaluationRequestToAgentEvaluationRequest(evaluationRequest)
+			if err != nil {
+				return nil, err
 			}
+			evaluations = append(evaluations, *evaluation)
 		}
+		req.Evaluations = evaluations
 	}
 	return req, nil
 }
 
 // MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest maps the agent authorization check request to the gRPC authorization check request.
 func MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest(request *azmodelspdp.AuthorizationCheckRequest) (*AuthorizationCheckRequest, error) {
-	return &AuthorizationCheckRequest{
-	}, nil
+	req := &AuthorizationCheckRequest{}
+	if request.AuthorizationContext != nil {
+		authorizationContext, err := MapAgentAuthorizationContextRequestToGrpcAuthorizationContextRequest(request.AuthorizationContext)
+		if err != nil {
+			return nil, err
+		}
+		req.AuthorizationContext = authorizationContext
+	}
+	if request.Subject != nil {
+		subject, err := MapAgentSubjectToGrpcSubject(request.Subject)
+		if err != nil {
+			return nil, err
+		}
+		req.Subject = subject
+	}
+	if request.Resource != nil {
+		resource, err := MapAgentResourceToGrpcResource(request.Resource)
+		if err != nil {
+			return nil, err
+		}
+		req.Resource = resource
+	}
+	if request.Action != nil {
+		action, err := MapAgentActionToGrpcAction(request.Action)
+		if err != nil {
+			return nil, err
+		}
+		req.Action = action
+	}
+	if request.Context != nil {
+		data, err := structpb.NewStruct(request.Context)
+		if err != nil {
+			return nil, err
+		}
+		req.Context = data
+	}
+	if request.Evaluations != nil {
+		evaluations := []*EvaluationRequest{}
+		for _, evaluationRequest := range request.Evaluations {
+			evaluation, err := MapAgentEvaluationRequestToGrpcEvaluationRequest(&evaluationRequest)
+			if err != nil {
+				return nil, err
+			}
+			evaluations = append(evaluations, evaluation)
+		}
+		req.Evaluations = evaluations
+	}
+	return req, nil
 }
 
 // MapAgentAuthorizationCheckResponseToGrpcAuthorizationCheckResponse maps the agent authorization check response to the gRPC authorization check response.
 func MapAgentAuthorizationCheckResponseToGrpcAuthorizationCheckResponse(response *azmodelspdp.AuthorizationCheckResponse) (*AuthorizationCheckResponse, error) {
-	return &AuthorizationCheckResponse{
-	}, nil
+	return &AuthorizationCheckResponse{}, nil
 }
 
 // MapGrpcAuthorizationCheckResponseToAgentAuthorizationCheckResponse maps the gRPC authorization check response to the agent authorization check response.
 func MapGrpcAuthorizationCheckResponseToAgentAuthorizationCheckResponse(response *AuthorizationCheckResponse) (*azmodelspdp.AuthorizationCheckResponse, error) {
-	return &azmodelspdp.AuthorizationCheckResponse{
-	}, nil
+	return &azmodelspdp.AuthorizationCheckResponse{}, nil
 }
