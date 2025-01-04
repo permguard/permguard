@@ -24,6 +24,7 @@ import (
 	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
 	azlangvalidators "github.com/permguard/permguard-abs-language/pkg/languages/validators"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azauthz "github.com/permguard/permguard/pkg/authorization"
 	azids "github.com/permguard/permguard-core/pkg/extensions/ids"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/languages"
@@ -323,4 +324,9 @@ func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(langID, lang
 		return nil, azerrors.WrapSystemError(azerrors.ErrLanguageFile, "cedar: invalid backend language type")
 	}
 	return frontendContent, nil
+}
+
+// AuthorizationCheck checks the authorization.
+func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.PolicyStore, authzCtx *azauthz.AuthorizationContext) (*azauthz.AuthorizationDecision, error) {
+	return nil, nil
 }

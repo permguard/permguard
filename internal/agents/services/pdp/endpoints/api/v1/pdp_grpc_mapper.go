@@ -30,9 +30,6 @@ func MapGrpcPolicyStoreToAgentPolicyStore(policyStore *PolicyStore) (*azmodelspd
 	target := &azmodelspdp.PolicyStore{}
 	target.ID = policyStore.ID
 	target.Type = policyStore.Type
-	if policyStore.Version != nil {
-		target.Version = *policyStore.Version
-	}
 	return target, nil
 }
 
@@ -44,9 +41,6 @@ func MapAgentPolicyStoreToGrpcPolicyStore(policyStore *azmodelspdp.PolicyStore) 
 	target := &PolicyStore{}
 	target.ID = policyStore.ID
 	target.Type = policyStore.Type
-	if policyStore.Version != "" {
-		target.Version = &policyStore.Version
-	}
 	return target, nil
 }
 

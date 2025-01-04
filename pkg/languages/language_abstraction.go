@@ -18,6 +18,7 @@ package languages
 
 import (
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azauthz "github.com/permguard/permguard/pkg/authorization"
 )
 
 // LanguageSpecification is the interface for the language specification.
@@ -66,4 +67,6 @@ type LanguageAbastraction interface {
 	CreateSchemaContentBytes(blocks []byte) ([]byte, string, error)
 	// ConvertBytesToFrontendLanguage converts bytes to the frontend language.
 	ConvertBytesToFrontendLanguage(langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error)
+	// AuthorizationCheck checks the authorization.
+	AuthorizationCheck(policyStore *azauthz.PolicyStore, authzCtx *azauthz.AuthorizationContext) (*azauthz.AuthorizationDecision, error)
 }
