@@ -84,7 +84,7 @@ permguard authz check --appid 268786704340 <<EOF
     },
     "entities": {
       "schema": "cedar",
-      "data": [
+      "items": [
         {
           "uid": {
             "type": "Branch",

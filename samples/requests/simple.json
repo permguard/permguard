@@ -15,7 +15,7 @@
     },
     "entities": {
       "schema": "cedar",
-      "data": [
+      "items": [
         {
           "uid": {
             "type": "Branch",

@@ -113,8 +113,8 @@ func (s SQLiteCentralStorage) GetAAPCentralStorage() (azstorage.AAPCentralStorag
 func (s SQLiteCentralStorage) GetPAPCentralStorage() (azstorage.PAPCentralStorage, error) {
 	return newSQLitePAPCentralStorage(s.ctx, s.sqliteConnector, nil, nil)
 }
+
 // GetPDPCentralStorage returns the PDP central storage.
 func (s SQLiteCentralStorage) GetPDPCentralStorage() (azstorage.PDPCentralStorage, error) {
 	return newSQLitePDPCentralStorage(s.ctx, s.sqliteConnector, nil, nil)
 }
-

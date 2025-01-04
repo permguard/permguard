@@ -35,7 +35,7 @@ type Principal struct {
 // Entities represent the entities provided in the context for the authorization decision.
 type Entities struct {
 	Schema string           `json:"schema,omitempty" validate:"required"`
-	Data   []map[string]any `json:"data,omitempty" validate:"required"`
+	Items  []map[string]any `json:"items,omitempty" validate:"required"`
 }
 
 // Subject is the entity on which the authorization decision is made.

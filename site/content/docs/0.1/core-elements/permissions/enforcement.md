@@ -47,7 +47,7 @@ To complete the enforcement process, the PEP queries the Policy Decision Point (
     },
     "entities": {
       "schema": "cedar",
-      "data": [
+      "items": [
         {
           "uid": {
             "type": "Branch",
