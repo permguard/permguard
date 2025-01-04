@@ -32,6 +32,8 @@ type CliDependenciesProvider interface {
 	CreateGrpcAAPClient(aapTarget string) (azclients.GrpcAAPClient, error)
 	// CreateGrpcPAPClient creates a new gRPC client for the PAP service.
 	CreateGrpcPAPClient(aapTarget string) (azclients.GrpcPAPClient, error)
+	// CreateGrpcPDPClient creates a new gRPC client for the PDP service.
+	CreateGrpcPDPClient(aapTarget string) (azclients.GrpcPDPClient, error)
 	// GetLanguageFactory returns the language factory.
 	GetLanguageFactory() (azlang.LanguageFactory, error)
 }

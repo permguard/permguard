@@ -22,6 +22,7 @@ import (
 	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
+// MapGrpcLedgerResponseToAgentLedger maps the gRPC ledger to the agent ledger.
 func MapGrpcLedgerResponseToAgentLedger(ledger *LedgerResponse) (*azmodelspap.Ledger, error) {
 	return &azmodelspap.Ledger{
 		LedgerID:      ledger.LedgerID,

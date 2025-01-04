@@ -19,8 +19,8 @@ package v1
 import (
 	"context"
 
-	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
+	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 
 // PDPService is the service for the PDP.
@@ -46,5 +46,10 @@ type V1PDPServer struct {
 
 // AuthorizationCheck checks the authorization.
 func (s *V1PDPServer) AuthorizationCheck(ctx context.Context, request *AuthorizationCheckRequest) (*AuthorizationCheckResponse, error) {
-	return nil, nil
+	req, err := MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request)
+	authzResponse, err := s.service.AuthorizationCheck(req)
+	if err != nil {
+		return nil, err
+	}
+	return MapAgentAuthorizationCheckResponseToGrpcAuthorizationCheckResponse(authzResponse)
 }

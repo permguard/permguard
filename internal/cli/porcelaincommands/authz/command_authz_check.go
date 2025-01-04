@@ -84,7 +84,19 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 	if err != nil {
 		return handleInputError(ctx, printer, err, "Invalid input for the authz check.")
 	}
-	printer.Println(fmt.Sprintf("Application ID %d, PolicyStore ID %s...", authzReq.AuthorizationContext.ApplicationID, authzReq.AuthorizationContext.PolicyStore.ID))
+
+	pdpTarget := ctx.GetPAPTarget()
+	client, err := deps.CreateGrpcPDPClient(pdpTarget)
+	if err != nil {
+		printer.Error(fmt.Errorf("invalid pdp target %s", pdpTarget))
+		return aziclicommon.ErrCommandSilent
+	}
+	authzResp, err := client.AuthorizationCheck(&authzReq)
+	if err != nil {
+		printer.Error(err)
+		return aziclicommon.ErrCommandSilent
+	}
+	printer.Println(fmt.Sprintf("Response %t", authzResp.Decision))
 	return nil
 }
 

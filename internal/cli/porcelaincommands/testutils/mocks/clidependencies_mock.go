@@ -60,6 +60,16 @@ func (m *CliDependenciesMock) CreateGrpcPAPClient(papTarget string) (azclients.G
 	return r0, args.Error(1)
 }
 
+// CreateGrpcPDPClient creates a new gRPC PDP client.
+func (m *CliDependenciesMock) CreateGrpcPDPClient(pdpTarget string) (azclients.GrpcPDPClient, error) {
+	args := m.Called(pdpTarget)
+	var r0 azclients.GrpcPDPClient
+	if val, ok := args.Get(0).(azclients.GrpcPDPClient); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
+}
+
 // GetLanguageFactory returns the language factory.
 func (m *CliDependenciesMock) GetLanguageFactory() (azlang.LanguageFactory, error) {
 	args := m.Called()

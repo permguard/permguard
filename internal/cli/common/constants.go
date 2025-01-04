@@ -45,6 +45,8 @@ const (
 	FlagSuffixAAPTarget       = "target"
 	FlagPrefixPAP             = "pap"
 	FlagSuffixPAPTarget       = "target"
+	FlagPrefixPDP             = "pdp"
+	FlagSuffixPDPTarget       = "target"
 )
 
 //go:embed "art.txt"

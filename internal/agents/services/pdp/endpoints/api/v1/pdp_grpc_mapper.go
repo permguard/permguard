@@ -15,3 +15,31 @@
 // SPDX-License-Identifier: Apache-2.0
 
 package v1
+
+import (
+	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
+)
+
+// MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest maps the gRPC authorization check request to the agent authorization check request.
+func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(ledger *AuthorizationCheckRequest) (*azmodelspdp.AuthorizationCheckRequest, error) {
+	return &azmodelspdp.AuthorizationCheckRequest{
+	}, nil
+}
+
+// MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest maps the agent authorization check request to the gRPC authorization check request.
+func MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest(ledger *azmodelspdp.AuthorizationCheckRequest) (*AuthorizationCheckRequest, error) {
+	return &AuthorizationCheckRequest{
+	}, nil
+}
+
+// MapAgentAuthorizationCheckResponseToGrpcAuthorizationCheckResponse maps the agent authorization check response to the gRPC authorization check response.
+func MapAgentAuthorizationCheckResponseToGrpcAuthorizationCheckResponse(ledger *azmodelspdp.AuthorizationCheckResponse) (*AuthorizationCheckResponse, error) {
+	return &AuthorizationCheckResponse{
+	}, nil
+}
+
+// MapGrpcAuthorizationCheckResponseToAgentAuthorizationCheckResponse maps the gRPC authorization check response to the agent authorization check response.
+func MapGrpcAuthorizationCheckResponseToAgentAuthorizationCheckResponse(ledger *AuthorizationCheckResponse) (*azmodelspdp.AuthorizationCheckResponse, error) {
+	return &azmodelspdp.AuthorizationCheckResponse{
+	}, nil
+}
