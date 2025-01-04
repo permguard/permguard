@@ -40,5 +40,5 @@ and it can be removed using the remote command:
 If the Permguard server ports differ from the default values (`aap`:`9091` and `pap`:`9092`), you can specify the custom port numbers using the `--aap` and `--pap` flag:
 
 ```bash
- permguard remote add origin localhost --aap 9095 --pap 9096
+ permguard remote add origin localhost --aap 9091 --pap 9092
 ```

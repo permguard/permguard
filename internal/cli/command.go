@@ -39,6 +39,7 @@ func Run(cliInitializer azcli.CliInitializer) {
 	v, err := azoptions.NewViperFromConfig(func(v *viper.Viper) error {
 		v.SetDefault(azoptions.FlagName(aziclicommon.FlagPrefixAAP, aziclicommon.FlagSuffixAAPTarget), "localhost:9091")
 		v.SetDefault(azoptions.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget), "localhost:9092")
+		v.SetDefault(azoptions.FlagName(aziclicommon.FlagPrefixPDP, aziclicommon.FlagSuffixPDPTarget), "localhost:9094")
 		return v.WriteConfig()
 	})
 	if err != nil {
