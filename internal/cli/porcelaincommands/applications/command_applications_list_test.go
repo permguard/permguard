@@ -25,11 +25,11 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azmodelsaap "github.com/permguard/permguard/pkg/transport/models/aap"
 	aztestutils "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
 	azmocks "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
 	azconfigs "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azmodelsaap "github.com/permguard/permguard/pkg/transport/models/aap"
 )
 
 // TestListCommandForApplicationsList tests the listCommandForApplicationsList function.

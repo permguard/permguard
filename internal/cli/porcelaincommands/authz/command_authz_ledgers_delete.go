@@ -24,9 +24,9 @@ import (
 	"github.com/spf13/viper"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
 const (

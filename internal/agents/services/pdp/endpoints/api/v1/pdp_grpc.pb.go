@@ -42,7 +42,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// V1PDPService	is the service for the Policy Decision Point
+// V1PDPService	is the service for the Policy Decision Point.
 type V1PDPServiceClient interface {
 	AuthorizationCheck(ctx context.Context, in *AuthorizationCheckRequest, opts ...grpc.CallOption) (*AuthorizationCheckResponse, error)
 }
@@ -69,7 +69,7 @@ func (c *v1PDPServiceClient) AuthorizationCheck(ctx context.Context, in *Authori
 // All implementations must embed UnimplementedV1PDPServiceServer
 // for forward compatibility.
 //
-// V1PDPService	is the service for the Policy Decision Point
+// V1PDPService	is the service for the Policy Decision Point.
 type V1PDPServiceServer interface {
 	AuthorizationCheck(context.Context, *AuthorizationCheckRequest) (*AuthorizationCheckResponse, error)
 	mustEmbedUnimplementedV1PDPServiceServer()

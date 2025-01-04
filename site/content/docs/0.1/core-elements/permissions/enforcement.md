@@ -32,6 +32,7 @@ To complete the enforcement process, the PEP queries the Policy Decision Point (
 ```json
 {
   "authorization_context": {
+    "application_id": 268786704340,
     "policy_store": {
       "type": "ledger",
       "id": "magicfarmacia",
