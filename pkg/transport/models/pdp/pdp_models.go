@@ -20,7 +20,6 @@ package pdp
 type PolicyStore struct {
 	Type    string `json:"type,omitempty"`
 	ID      string `json:"id,omitempty" validate:"required"`
-	Version string `json:"version,omitempty"`
 }
 
 // Principal represents the entity making the request.

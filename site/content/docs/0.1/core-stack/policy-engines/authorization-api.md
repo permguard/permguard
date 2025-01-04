@@ -82,8 +82,7 @@ Here a simple example of a message exchange between the `PEP` and the `PDP`.
     "application_id": 268786704340,
     "policy_store": {
       "type": "ledger",
-      "id": "magicfarmacia",
-      "version": "722164f552f2c8e582d4ef79270c7ec94b3633e8172af6ea53ffe1fdf64d66de"
+      "id": "fd1ac44e4afa4fc4beec622494d3175a"
     },
     "principal": {
       "type": "user",
@@ -166,8 +165,7 @@ Here an example of a message exchange with evaluations between the `PEP` and the
     "application_id": 268786704340,
     "policy_store": {
       "type": "ledger",
-      "id": "magicfarmacia",
-      "version": "722164f552f2c8e582d4ef79270c7ec94b3633e8172af6ea53ffe1fdf64d66de"
+      "id": "fd1ac44e4afa4fc4beec622494d3175a"
     },
     "principal": {
       "type": "user",
@@ -306,8 +304,7 @@ Here an example of a message exchange with evaluations and defaults between the 
     "application_id": 268786704340,
     "policy_store": {
       "type": "ledger",
-      "id": "magicfarmacia",
-      "version": "722164f552f2c8e582d4ef79270c7ec94b3633e8172af6ea53ffe1fdf64d66de"
+      "id": "fd1ac44e4afa4fc4beec622494d3175a"
     },
     "principal": {
       "type": "user",

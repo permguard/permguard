@@ -17,10 +17,154 @@
 package centralstorage
 
 import (
+	"strings"
+
+	azauthz "github.com/permguard/permguard/pkg/authorization"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
+	azplangcedar "github.com/permguard/permguard/plugin/languages/cedar"
 )
+
+// expandedRequest represents the expanded request.
+type expandedRequest struct {
+	subject *azmodelspdp.Subject
+	resource *azmodelspdp.Resource
+	action *azmodelspdp.Action
+	context map[string]any
+}
+
+// verify verifies the expanded request.
+func (r *expandedRequest) verify() error {
+	if r.subject == nil {
+		return azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid input subject.")
+	}
+	if r.resource == nil {
+		return azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid input resource.")
+	}
+	if r.action == nil {
+		return azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid input action.")
+	}
+	return nil
+}
+
+// authorizationCheckExpandRequest expands the request.
+func authorizationCheckExpandRequest(request *azmodelspdp.AuthorizationCheckRequest) ([]expandedRequest, error) {
+	expandedRequests := []expandedRequest{}
+	hasEvaluations := len(request.Evaluations) > 0
+	if !hasEvaluations {
+		expandedRequest := expandedRequest{
+			subject: request.Subject,
+			resource: request.Resource,
+			action: request.Action,
+			context: request.Context,
+		}
+		expandedRequests = append(expandedRequests, expandedRequest)
+	} else {
+		for _, evaluation := range request.Evaluations {
+			expandedRequest := expandedRequest{
+				subject: request.Subject,
+				resource: request.Resource,
+				action: request.Action,
+				context: request.Context,
+			}
+			if evaluation.Subject != nil {
+				expandedRequest.subject = evaluation.Subject
+			}
+			if evaluation.Resource != nil {
+				expandedRequest.resource = evaluation.Resource
+			}
+			if evaluation.Action != nil {
+				expandedRequest.action = evaluation.Action
+			}
+			expandedRequests = append(expandedRequests, expandedRequest)
+		}
+	}
+	for _, expandedRequest := range expandedRequests {
+		err := expandedRequest.verify()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return expandedRequests, nil
+}
+
+// authorizationCheckVerifyPrincipal verifies the principal.
+func authorizationCheckVerifyPrincipal(principal *azmodelspdp.Principal, subject *azmodelspdp.Subject) bool {
+	if principal == nil {
+		return true
+	}
+	if principal.ID != subject.ID {
+		return false
+	} else if principal.Type != subject.Type {
+		return false
+	} else if principal.Source != subject.Source {
+		return false
+	}
+	return true
+}
+
+// authorizationCheckErrorResponse creates an authorization check error response.
+func authorizationCheckErrorResponse(authzCheckResponse *azmodelspdp.AuthorizationCheckResponse, erroCode string, adminReason  string, userReason string) *azmodelspdp.AuthorizationCheckResponse {
+	authzCheckResponse.Context.ReasonAdmin = &azmodelspdp.ReasonResponse{
+		Code:    erroCode,
+		Message: adminReason,
+	}
+	authzCheckResponse.Context.ReasonUser = &azmodelspdp.ReasonResponse{
+		Code:    erroCode,
+		Message: userReason,
+	}
+	return authzCheckResponse
+}
 
 // CreateLedger creates a new ledger.
 func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckRequest) (*azmodelspdp.AuthorizationCheckResponse, error) {
-	return nil, nil
+	authzCheckResponse := &azmodelspdp.AuthorizationCheckResponse{}
+	authzCheckResponse.Decision = false
+	if request == nil || request.AuthorizationContext == nil || request.AuthorizationContext.PolicyStore == nil {
+		return authorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, azauthz.AuthzErrBadRequestMessage), nil
+	}
+	expandedRequests, err := authorizationCheckExpandRequest(request)
+	if err != nil {
+		return authorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrBadRequestCode, err.Error(), azauthz.AuthzErrBadRequestMessage), nil
+	}
+	policyStore := request.AuthorizationContext.PolicyStore
+	if strings.ToLower(policyStore.Type) != "ledger" {
+		return authorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, azauthz.AuthzErrBadRequestMessage), nil
+	}
+	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
+	if err != nil {
+		return authorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrBadRequestCode, err.Error(), azauthz.AuthzErrBadRequestMessage), nil
+	}
+	applicationID := request.AuthorizationContext.ApplicationID
+	dbLedgers, err := s.sqlRepo.FetchLedgers(db, 1, 2, applicationID, &policyStore.ID, nil)
+	if err != nil {
+		return authorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrBadRequestCode, err.Error(), azauthz.AuthzErrBadRequestMessage), nil
+	}
+	if len(dbLedgers) != 1 {
+		return authorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, azauthz.AuthzErrBadRequestMessage), nil
+	}
+	ledger := dbLedgers[0]
+	ledgerRef := ledger.Ref
+	if ledgerRef == azlangobjs.ZeroOID {
+		return authorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, azauthz.AuthzErrInternalErrorMessage, azauthz.AuthzErrInternalErrorMessage), nil
+	}
+	cedarLanguageAbs, err := azplangcedar.NewCedarLanguageAbstraction()
+	if err != nil {
+		return authorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrBadRequestCode, err.Error(), azauthz.AuthzErrBadRequestMessage), nil
+	}
+	for _, expandedRequest := range expandedRequests {
+		if !authorizationCheckVerifyPrincipal(request.AuthorizationContext.Principal, expandedRequest.subject) {
+			return authorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrUnauthorizedCode, azauthz.AuthzErrUnauthorizedMessage, azauthz.AuthzErrUnauthorizedMessage), nil
+		}
+		authzCtx := azauthz.AuthorizationContext{}
+		entities := request.AuthorizationContext.Entities
+		if  entities != nil {
+			authzCtx.SetEntities(entities.Schema, entities.Items)
+		}
+		policyStore := azauthz.PolicyStore{}
+		policyStore.AddPolicy("policyID", nil)
+		cedarLanguageAbs.AuthorizationCheck(&policyStore, &authzCtx)
+	}
+	return authzCheckResponse, nil
 }

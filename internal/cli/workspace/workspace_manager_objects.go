@@ -190,7 +190,7 @@ func (m *WorkspaceManager) getBlobMap(blob any) (map[string]any, error) {
 		return nil, azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: blob content is not a byte array")
 	}
 	contentMap := make(map[string]any)
-	var result map[string]interface{}
+	var result map[string]any
 	err := json.Unmarshal(content, &result)
 	if err != nil {
 		contentMap["content"] = base64.StdEncoding.EncodeToString(content)

@@ -26,7 +26,6 @@ option go_package = "github.com/permguard/permguard/internal/hosts/api/pdp/v1";
 message PolicyStore {
 	string Type = 1;
 	string ID = 2;
-	optional string Version = 3;
 }
 
 // Principal represents the entity making the request.
