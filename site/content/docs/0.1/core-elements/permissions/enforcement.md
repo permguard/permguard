@@ -39,7 +39,7 @@ To complete the enforcement process, the PEP queries the Policy Decision Point (
     },
     "principal": {
       "type": "user",
-      "id": "john.smith@acmecorp.com",
+      "id": "amy.smith@acmecorp.com",
       "source": "keycloak",
       "identity_token": "eyJhbGciOiJI...",
       "access_token": "eyJhbGciOiJI..."
@@ -49,11 +49,20 @@ To complete the enforcement process, the PEP queries the Policy Decision Point (
       "items": [
         {
           "uid": {
-            "type": "Branch",
-            "id": "96902499c04246f0bbe8f2e67a165a64"
+            "type": "Permguard::IAM::User",
+            "id": "amy.smith@acmecorp.com"
           },
           "attrs": {
-            "name": "Milan Office"
+          },
+          "parents": []
+        },
+        {
+          "uid": {
+            "type": "Magicfarmacia::Platform::BranchInfo",
+            "id": "subscription"
+          },
+          "attrs": {
+            "active": true
           },
           "parents": []
         }
@@ -62,34 +71,28 @@ To complete the enforcement process, the PEP queries the Policy Decision Point (
   },
   "subject": {
     "type": "user",
-    "id": "john.smith@acmecorp.com",
+    "id": "amy.smith@acmecorp.com",
     "source": "keycloak",
-    "properties": {
-      "department": "Pharmacy"
-    }
+    "properties": {}
   },
   "resource": {
-    "type": "employee",
-    "id": "8796159789",
-    "properties": {
-      "branch": {
-        "id": "96902499c04246f0bbe8f2e67a165a64"
-      }
-    }
+    "type": "Magicfarmacia::Platform::BranchInfo",
+    "id": "subscription",
+    "properties": {}
   },
   "context": {
-    "time": "2024-12-26T23:02-45:00"
+    "isSuperUser": true
   },
   "evaluations": [
     {
       "action": {
-        "name": "assignRole",
+        "name": "MagicFarmacia::Platform::Action::view",
         "properties": {}
       }
     },
     {
       "action": {
-        "name": "viewOrders",
+        "name": "MagicFarmacia::Platform::Action::delete",
         "properties": {}
       }
     }

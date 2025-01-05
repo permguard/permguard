@@ -76,7 +76,7 @@ permguard authz check --appid 268786704340 <<EOF
     },
     "principal": {
       "type": "user",
-      "id": "john.smith@acmecorp.com",
+      "id": "amy.smith@acmecorp.com",
       "source": "keycloak",
       "identity_token": "eyJhbGciOiJI...",
       "access_token": "eyJhbGciOiJI..."
@@ -86,11 +86,20 @@ permguard authz check --appid 268786704340 <<EOF
       "items": [
         {
           "uid": {
-            "type": "Branch",
-            "id": "96902499c04246f0bbe8f2e67a165a64"
+            "type": "Permguard::IAM::User",
+            "id": "amy.smith@acmecorp.com"
           },
           "attrs": {
-            "name": "Milan Office"
+          },
+          "parents": []
+        },
+        {
+          "uid": {
+            "type": "Magicfarmacia::Platform::BranchInfo",
+            "id": "subscription"
+          },
+          "attrs": {
+            "active": true
           },
           "parents": []
         }
@@ -99,34 +108,28 @@ permguard authz check --appid 268786704340 <<EOF
   },
   "subject": {
     "type": "user",
-    "id": "john.smith@acmecorp.com",
+    "id": "amy.smith@acmecorp.com",
     "source": "keycloak",
-    "properties": {
-      "department": "Pharmacy"
-    }
+    "properties": {}
   },
   "resource": {
-    "type": "employee",
-    "id": "8796159789",
-    "properties": {
-      "branch": {
-        "id": "96902499c04246f0bbe8f2e67a165a64"
-      }
-    }
+    "type": "Magicfarmacia::Platform::BranchInfo",
+    "id": "subscription",
+    "properties": {}
   },
   "context": {
-    "time": "2024-12-26T23:02-45:00"
+    "isSuperUser": true
   },
   "evaluations": [
     {
       "action": {
-        "name": "assignRole",
+        "name": "MagicFarmacia::Platform::Action::view",
         "properties": {}
       }
     },
     {
       "action": {
-        "name": "viewOrders",
+        "name": "MagicFarmacia::Platform::Action::delete",
         "properties": {}
       }
     }
