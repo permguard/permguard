@@ -29,11 +29,45 @@ Below is a specific scenario where an identity representing a pharmacy manager r
 The first step is to define a policy and associate it with an actor by specifying the required permissions.
 
 ```cedar  {title="magicfarmacia.cedar"}
+@id("platform-administrator")
 permit(
-    principal in Actor::"administer-platform-branches",
-    action in Action::"create",
-    resource in Resource::"pharmacy-branch"
-);
+  principal == Permguard::IAM::Actor::"platform-admin",
+  action in [MagicFarmacia::Platform::Action::"view", MagicFarmacia::Platform::Action::"create", MagicFarmacia::Platform::Action::"update", MagicFarmacia::Platform::Action::"delete"],
+  resource == MagicFarmacia::Platform::BranchInfo::"subscription"
+)
+unless {
+  principal has isSuperUser && principal.isSuperUser == false
+};
+
+@id("platform-manager")
+permit(
+  principal == Permguard::IAM::Actor::"platform-manager",
+  action in [MagicFarmacia::Platform::Action::"view", MagicFarmacia::Platform::Action::"update"],
+  resource == MagicFarmacia::Platform::BranchInfo::"subscription"
+)
+unless {
+  principal has isSuperUser && principal.isSuperUser == false
+};
+
+@id("platform-auditor")
+permit(
+  principal == Permguard::IAM::Actor::"platform-auditor",
+  action == MagicFarmacia::Platform::Action::"view",
+  resource == MagicFarmacia::Platform::BranchInfo::"subscription"
+)
+unless {
+  principal has isSuperUser && principal.isSuperUser == false
+};
+
+@id("platform-superuser")
+permit(
+  principal,
+  action == MagicFarmacia::Platform::Action::"view",
+  resource == MagicFarmacia::Platform::BranchInfo::"subscription"
+)
+unless {
+  principal has isSuperUser && principal.isSuperUser == false
+};
 ```
 
 ## Performing Permission Evaluation
