@@ -31,7 +31,7 @@ The first step is to define a policy and associate it with an actor by specifyin
 ```cedar  {title="magicfarmacia.cedar"}
 @id("platform-administrator")
 permit(
-  principal == Permguard::IAM::Actor::"platform-admin",
+  principal in Permguard::IAM::Actor::"platform-admin",
   action in [MagicFarmacia::Platform::Action::"view", MagicFarmacia::Platform::Action::"create", MagicFarmacia::Platform::Action::"update", MagicFarmacia::Platform::Action::"delete"],
   resource == MagicFarmacia::Platform::BranchInfo::"subscription"
 )
@@ -41,7 +41,7 @@ unless {
 
 @id("platform-manager")
 permit(
-  principal == Permguard::IAM::Actor::"platform-manager",
+  principal in Permguard::IAM::Actor::"platform-admin",
   action in [MagicFarmacia::Platform::Action::"view", MagicFarmacia::Platform::Action::"update"],
   resource == MagicFarmacia::Platform::BranchInfo::"subscription"
 )
@@ -51,7 +51,7 @@ unless {
 
 @id("platform-auditor")
 permit(
-  principal == Permguard::IAM::Actor::"platform-auditor",
+  principal in Permguard::IAM::Actor::"platform-auditor",
   action == MagicFarmacia::Platform::Action::"view",
   resource == MagicFarmacia::Platform::BranchInfo::"subscription"
 )
