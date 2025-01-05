@@ -9,7 +9,7 @@
         "program": "./cmd/cli/main.go",
         // "args": ["clone", "localhost/273165098782/magicfarmacia", "-w", "/Users/nicolagallo/source/tmp/", "-o", "json"],
         // "args": ["authz", "ledgers", "create", "--name", "branches", "--appid", "851990457443", "-w", "/Users/nicolagallo/source/tmp/", "-o", "json"],
-        "args": ["authz", "check", "requests/evaluations.json", "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar", "-v"],
+        "args": ["authz", "check", "requests/evaluations.json", "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar", "-v", "-o", "json"],
         "env": {
             "PERMGUARD_DEBUG": "TRUE",
         },

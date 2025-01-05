@@ -33,7 +33,7 @@ The request payload includes the following elements:
   The identity of the user or system making the request. For instance, in a web application acting as a PEP, the principal is the authenticated user sending the API request. The principal is represented by an `identity_token` and an `access_token`. This is distinct from the API-Key used to authenticate the PEP with the PDP.
 
 - **`policy_store`**:
-  The store containing the policies used to evaluate the request. It includes a `type`, an `id`, and a `version`. The payload is designed to support different types of policy stores, including those that are immutable and versioned, to address various requirements.
+  The store containing the policies used to evaluate the request. It includes a `type`, and `id`. The payload is designed to support different types of policy stores, including those that are immutable and versioned, to address various requirements.
 
 - **`entities`**:
   Objects represent principals, subjects, actions, and resources. The payload supports multiple policy engines, each with its own entity schema. Entities are defined using a `schema` name and a list of `items` that adhere to this schema. Integration with a Policy Information Point (PIP) has to enable additional entities to be merged with those included in the request.
