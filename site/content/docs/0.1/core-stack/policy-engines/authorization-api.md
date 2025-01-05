@@ -86,7 +86,7 @@ Here a simple example of a message exchange between the `PEP` and the `PDP`.
     },
     "principal": {
       "type": "user",
-      "id": "john.smith@acmecorp.com",
+      "id": "amy.smith@acmecorp.com",
       "source": "keycloak",
       "identity_token": "eyJhbGciOiJI...",
       "access_token": "eyJhbGciOiJI..."
@@ -96,11 +96,20 @@ Here a simple example of a message exchange between the `PEP` and the `PDP`.
       "items": [
         {
           "uid": {
-            "type": "Branch",
-            "id": "96902499c04246f0bbe8f2e67a165a64"
+            "type": "Permguard::IAM::User",
+            "id": "amy.smith@acmecorp.com"
           },
           "attrs": {
-            "name": "Milan Office"
+          },
+          "parents": []
+        },
+        {
+          "uid": {
+            "type": "Magicfarmacia::Platform::BranchInfo",
+            "id": "subscription"
+          },
+          "attrs": {
+            "active": true
           },
           "parents": []
         }
@@ -109,27 +118,21 @@ Here a simple example of a message exchange between the `PEP` and the `PDP`.
   },
   "subject": {
     "type": "user",
-    "id": "john.smith@acmecorp.com",
+    "id": "amy.smith@acmecorp.com",
     "source": "keycloak",
-    "properties": {
-      "department": "Pharmacy"
-    }
+    "properties": {}
   },
   "resource": {
-    "type": "employee",
-    "id": "8796159789",
-    "properties": {
-      "branch": {
-        "id": "96902499c04246f0bbe8f2e67a165a64"
-      }
-    }
+    "type": "Magicfarmacia::Platform::BranchInfo",
+    "id": "subscription",
+    "properties": {}
   },
   "action": {
-    "name": "assignRole",
+    "name": "MagicFarmacia::Platform::Action::view",
     "properties": {}
   },
   "context": {
-    "time": "2024-12-26T23:02-45:00"
+    "isSuperUser": true
   }
 }
 ```
@@ -169,7 +172,7 @@ Here an example of a message exchange with evaluations between the `PEP` and the
     },
     "principal": {
       "type": "user",
-      "id": "john.smith@acmecorp.com",
+      "id": "amy.smith@acmecorp.com",
       "source": "keycloak",
       "identity_token": "eyJhbGciOiJI...",
       "access_token": "eyJhbGciOiJI..."
@@ -179,11 +182,20 @@ Here an example of a message exchange with evaluations between the `PEP` and the
       "items": [
         {
           "uid": {
-            "type": "Branch",
-            "id": "96902499c04246f0bbe8f2e67a165a64"
+            "type": "Permguard::IAM::User",
+            "id": "amy.smith@acmecorp.com"
           },
           "attrs": {
-            "name": "Milan Office"
+          },
+          "parents": []
+        },
+        {
+          "uid": {
+            "type": "Magicfarmacia::Platform::BranchInfo",
+            "id": "subscription"
+          },
+          "attrs": {
+            "active": true
           },
           "parents": []
         }
@@ -194,13 +206,13 @@ Here an example of a message exchange with evaluations between the `PEP` and the
     {
       "subject": {
         "type": "user",
-        "id": "john.smith@acmecorp.com",
+        "id": "amy.smith@acmecorp.com",
         "source": "keycloak",
         "properties": {}
       },
       "resource": {
-        "type": "employee",
-        "id": "8796159789",
+        "type": "Magicfarmacia::Platform::BranchInfo",
+        "id": "subscription",
         "properties": {
           "branch": {
             "id": "96902499c04246f0bbe8f2e67a165a64"
@@ -208,23 +220,23 @@ Here an example of a message exchange with evaluations between the `PEP` and the
         }
       },
       "action": {
-        "name": "assignRole",
+        "name": "MagicFarmacia::Platform::Action::view",
         "properties": {}
       },
       "context": {
-        "time": "2024-12-26T23:02-45:00"
+        "isSuperUser": true
       }
     },
     {
       "subject": {
         "type": "user",
-        "id": "john.smith@acmecorp.com",
+        "id": "amy.smith@acmecorp.com",
         "source": "keycloak",
         "properties": {}
       },
       "resource": {
-        "type": "employee",
-        "id": "8796159789",
+        "type": "Magicfarmacia::Platform::BranchInfo",
+        "id": "subscription",
         "properties": {
           "branch": {
             "id": "96902499c04246f0bbe8f2e67a165a64"
@@ -232,11 +244,11 @@ Here an example of a message exchange with evaluations between the `PEP` and the
         }
       },
       "action": {
-        "name": "viewOrders",
+        "name": "MagicFarmacia::Platform::Action::delete",
         "properties": {}
       },
       "context": {
-        "time": "2024-12-26T23:02-45:00"
+        "isSuperUser": true
       }
     }
   ]
@@ -308,7 +320,7 @@ Here an example of a message exchange with evaluations and defaults between the 
     },
     "principal": {
       "type": "user",
-      "id": "john.smith@acmecorp.com",
+      "id": "amy.smith@acmecorp.com",
       "source": "keycloak",
       "identity_token": "eyJhbGciOiJI...",
       "access_token": "eyJhbGciOiJI..."
@@ -318,11 +330,20 @@ Here an example of a message exchange with evaluations and defaults between the 
       "items": [
         {
           "uid": {
-            "type": "Branch",
-            "id": "96902499c04246f0bbe8f2e67a165a64"
+            "type": "Permguard::IAM::User",
+            "id": "amy.smith@acmecorp.com"
           },
           "attrs": {
-            "name": "Milan Office"
+          },
+          "parents": []
+        },
+        {
+          "uid": {
+            "type": "Magicfarmacia::Platform::BranchInfo",
+            "id": "subscription"
+          },
+          "attrs": {
+            "active": true
           },
           "parents": []
         }
@@ -331,34 +352,28 @@ Here an example of a message exchange with evaluations and defaults between the 
   },
   "subject": {
     "type": "user",
-    "id": "john.smith@acmecorp.com",
+    "id": "amy.smith@acmecorp.com",
     "source": "keycloak",
-    "properties": {
-      "department": "Pharmacy"
-    }
+    "properties": {}
   },
   "resource": {
-    "type": "employee",
-    "id": "8796159789",
-    "properties": {
-      "branch": {
-        "id": "96902499c04246f0bbe8f2e67a165a64"
-      }
-    }
+    "type": "Magicfarmacia::Platform::BranchInfo",
+    "id": "subscription",
+    "properties": {}
   },
   "context": {
-    "time": "2024-12-26T23:02-45:00"
+    "isSuperUser": true
   },
   "evaluations": [
     {
       "action": {
-        "name": "assignRole",
+        "name": "MagicFarmacia::Platform::Action::view",
         "properties": {}
       }
     },
     {
       "action": {
-        "name": "viewOrders",
+        "name": "MagicFarmacia::Platform::Action::delete",
         "properties": {}
       }
     }
