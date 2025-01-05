@@ -96,7 +96,12 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 		printer.Error(err)
 		return aziclicommon.ErrCommandSilent
 	}
-	printer.Println(fmt.Sprintf("Response %t", authzResp.Decision))
+	if ctx.IsTerminalOutput() {
+	} else if ctx.IsJSONOutput() {
+		var output = map[string]any{}
+		output["authorization_check"] = authzResp
+		printer.PrintlnMap(output)
+	}
 	return nil
 }
 
