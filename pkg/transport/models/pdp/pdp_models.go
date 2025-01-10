@@ -18,8 +18,8 @@ package pdp
 
 // PolicyStore is the location where policies are maintained.
 type PolicyStore struct {
-	Type    string `json:"type,omitempty"`
-	ID      string `json:"id,omitempty" validate:"required"`
+	Type string `json:"type,omitempty"`
+	ID   string `json:"id,omitempty" validate:"required"`
 }
 
 // Principal represents the entity making the request.
@@ -70,20 +70,26 @@ type AuthorizationContextRequest struct {
 
 // EvaluationRequest represents the request to evaluate the authorization decision.
 type EvaluationRequest struct {
-	Subject  *Subject       `json:"subject,omitempty"`
-	Resource *Resource      `json:"resource,omitempty"`
-	Action   *Action        `json:"action,omitempty"`
-	Context  map[string]any `json:"context,omitempty"`
+	RequestID string         `json:"request_id,omitempty"`
+	Subject   *Subject       `json:"subject,omitempty"`
+	Resource  *Resource      `json:"resource,omitempty"`
+	Action    *Action        `json:"action,omitempty"`
+	Context   map[string]any `json:"context,omitempty"`
 }
 
 // AuthorizationCheckRequest represents the request to perform an authorization decision.
 type AuthorizationCheckRequest struct {
 	AuthorizationContext *AuthorizationContextRequest `json:"authorization_context,omitempty" validate:"required"`
-	Subject              *Subject                     `json:"subject,omitempty"`
-	Resource             *Resource                    `json:"resource,omitempty"`
-	Action               *Action                      `json:"action,omitempty"`
-	Context              map[string]any               `json:"context,omitempty"`
 	Evaluations          []EvaluationRequest          `json:"evaluations,omitempty"`
+}
+
+// AuthorizationCheckWithDefaultsRequest represents the request to perform an authorization decision with defaults.
+type AuthorizationCheckWithDefaultsRequest struct {
+	AuthorizationCheckRequest
+	Subject  *Subject       `json:"subject,omitempty"`
+	Resource *Resource      `json:"resource,omitempty"`
+	Action   *Action        `json:"action,omitempty"`
+	Context  map[string]any `json:"context,omitempty"`
 }
 
 // AuthorizationCheck Response

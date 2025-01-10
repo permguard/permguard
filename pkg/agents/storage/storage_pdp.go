@@ -23,5 +23,5 @@ import (
 // PDPCentralStorage is the interface for the PDP central storage.
 type PDPCentralStorage interface {
 	// AuthorizationCheck checks if the request is authorized.
-	AuthorizationCheck(request *azmodelspdp.AuthorizationCheckRequest) (*azmodelspdp.AuthorizationCheckResponse, error)
+	AuthorizationCheck(request *azmodelspdp.AuthorizationCheckWithDefaultsRequest) (*azmodelspdp.AuthorizationCheckResponse, error)
 }

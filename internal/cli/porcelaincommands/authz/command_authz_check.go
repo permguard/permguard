@@ -79,7 +79,7 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 		return handleInputError(ctx, printer, err, "Invalid input for the authz check.")
 	}
 	jsonString := builder.String()
-	var authzReq azmodelspdp.AuthorizationCheckRequest
+	var authzReq azmodelspdp.AuthorizationCheckWithDefaultsRequest
 	err = json.Unmarshal([]byte(jsonString), &authzReq)
 	if err != nil {
 		return handleInputError(ctx, printer, err, "Invalid input for the authz check.")

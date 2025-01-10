@@ -17,8 +17,11 @@
 package controllers
 
 import (
+	"strings"
+
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azStorage "github.com/permguard/permguard/pkg/agents/storage"
+	azauthz "github.com/permguard/permguard/pkg/authorization"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 
@@ -42,6 +45,22 @@ func NewPDPController(serviceContext *azservices.ServiceContext, storage azStora
 }
 
 // AuthorizationCheck checks if the request is authorized.
-func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckRequest) (*azmodelspdp.AuthorizationCheckResponse, error) {
+func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckWithDefaultsRequest) (*azmodelspdp.AuthorizationCheckResponse, error) {
+	if request == nil || request.AuthorizationContext == nil || request.AuthorizationContext.PolicyStore == nil {
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, azauthz.AuthzErrBadRequestMessage), nil
+	}
+	policyStore := request.AuthorizationContext.PolicyStore
+	if strings.ToLower(policyStore.Type) != "ledger" {
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, azauthz.AuthzErrBadRequestMessage), nil
+	}
+	expReq, err := authorizationCheckExpandAuthorizationCheckWithDefaults(request)
+	if err != nil {
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, azauthz.AuthzErrBadRequestMessage), nil
+	}
+	for _, evaluation := range expReq.Evaluations {
+		if !authorizationCheckVerifyPrincipal(request.AuthorizationContext.Principal, evaluation.Subject) {
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrUnauthorizedCode, azauthz.AuthzErrUnauthorizedMessage, azauthz.AuthzErrUnauthorizedMessage), nil
+		}
+	}
 	return s.storage.AuthorizationCheck(request)
 }
