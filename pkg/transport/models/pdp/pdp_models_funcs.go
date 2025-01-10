@@ -14,14 +14,17 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package clients
+package pdp
 
-import (
-	azmodelpdp "github.com/permguard/permguard/pkg/transport/models/pdp"
-)
-
-// GrpcPDPClient is the gRPC PDP client servicer.
-type GrpcPDPClient interface {
-	// AuthorizationCheck checks the authorization.
-	AuthorizationCheck(request *azmodelpdp.AuthorizationCheckWithDefaultsRequest) (*azmodelpdp.AuthorizationCheckResponse, error)
+// NewAuthorizationCheckErrorResponse creates an authorization check error response.
+func NewAuthorizationCheckErrorResponse(authzCheckResponse *AuthorizationCheckResponse, erroCode string, adminReason string, userReason string) *AuthorizationCheckResponse {
+	authzCheckResponse.Context.ReasonAdmin = &ReasonResponse{
+		Code:    erroCode,
+		Message: adminReason,
+	}
+	authzCheckResponse.Context.ReasonUser = &ReasonResponse{
+		Code:    erroCode,
+		Message: userReason,
+	}
+	return authzCheckResponse
 }

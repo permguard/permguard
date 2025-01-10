@@ -26,7 +26,7 @@ import (
 // PDPService is the service for the PDP.
 type PDPService interface {
 	// AuthorizationCheck checks the authorization.
-	AuthorizationCheck(request *azmodelspdp.AuthorizationCheckRequest) (*azmodelspdp.AuthorizationCheckResponse, error)
+	AuthorizationCheck(request *azmodelspdp.AuthorizationCheckWithDefaultsRequest) (*azmodelspdp.AuthorizationCheckResponse, error)
 }
 
 // NewV1PDPServer creates a new PDP server.
