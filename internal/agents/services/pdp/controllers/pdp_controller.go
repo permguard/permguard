@@ -62,5 +62,5 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrUnauthorizedCode, azauthz.AuthzErrUnauthorizedMessage, azauthz.AuthzErrUnauthorizedMessage), nil
 		}
 	}
-	return s.storage.AuthorizationCheck(request)
+	return s.storage.AuthorizationCheck(&request.AuthorizationCheckRequest)
 }

@@ -24,8 +24,8 @@ import (
 func authorizationCheckExpandAuthorizationCheckWithDefaults(request *azmodelspdp.AuthorizationCheckWithDefaultsRequest) (*azmodelspdp.AuthorizationCheckRequest, error) {
 	expReq := &azmodelspdp.AuthorizationCheckRequest{}
 	expReq.AuthorizationContext = request.AuthorizationContext
-	hasEvaluations := len(request.Evaluations) > 0
-	if !hasEvaluations {
+
+	if len(request.Evaluations) == 0 {
 		expRequest := azmodelspdp.EvaluationRequest{
 			Subject:  request.Subject,
 			Resource: request.Resource,
@@ -51,6 +51,9 @@ func authorizationCheckExpandAuthorizationCheckWithDefaults(request *azmodelspdp
 			if evaluation.Action != nil {
 				expRequest.Action = evaluation.Action
 			}
+			if evaluation.Context != nil {
+				expRequest.Context = evaluation.Context
+			}
 			expReq.Evaluations = append(expReq.Evaluations, expRequest)
 		}
 	}
@@ -62,6 +65,7 @@ func authorizationCheckVerifyPrincipal(principal *azmodelspdp.Principal, subject
 	if principal == nil {
 		return true
 	}
+
 	if principal.ID != subject.ID {
 		return false
 	} else if principal.Type != subject.Type {

@@ -18,7 +18,7 @@ package authorization
 
 // AuthorizationError represents the authorization error.
 type AuthorizationError struct {
-	code string
+	code    string
 	message string
 }
 
@@ -34,10 +34,10 @@ func (a *AuthorizationError) GetMessage() string {
 
 // AuthorizationContext represents the authorization context.
 type AuthorizationDecision struct {
-	id string
-	decision bool
+	id         string
+	decision   bool
 	adminError *AuthorizationError
-	userError *AuthorizationError
+	userError  *AuthorizationError
 }
 
 // GetID returns the ID.

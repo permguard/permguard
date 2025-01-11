@@ -24,8 +24,8 @@ import (
 	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
 	azlangvalidators "github.com/permguard/permguard-abs-language/pkg/languages/validators"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
-	azauthz "github.com/permguard/permguard/pkg/authorization"
 	azids "github.com/permguard/permguard-core/pkg/extensions/ids"
+	azauthz "github.com/permguard/permguard/pkg/authorization"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/languages"
 )

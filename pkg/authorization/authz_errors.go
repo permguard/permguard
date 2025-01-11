@@ -18,22 +18,22 @@ package authorization
 
 const (
 	// AuthzErrBadRequestCode is the error code for bad request.
-	AuthzErrBadRequestCode    = "400"
+	AuthzErrBadRequestCode = "400"
 	// AuthzErrBadRequestMessage is the error message for bad request.
 	AuthzErrBadRequestMessage = "Bad Request"
 
 	// AuthzErrUnauthorizedCode is the error code for unauthorized.
-	AuthzErrUnauthorizedCode    = "401"
+	AuthzErrUnauthorizedCode = "401"
 	// AuthzErrUnauthorizedMessage is the error message for unauthorized.
 	AuthzErrUnauthorizedMessage = "Unauthorized"
 
 	// AuthzErrForbiddenCode is the error code for forbidden.
-	AuthzErrForbiddenCode    = "403"
+	AuthzErrForbiddenCode = "403"
 	// AuthzErrForbiddenMessage is the error message for forbidden.
 	AuthzErrForbiddenMessage = "Forbidden"
 
 	// AuthzErrInternalErrorCode is the error code for internal server error.
-	AuthzErrInternalErrorCode    = "500"
+	AuthzErrInternalErrorCode = "500"
 	// AuthzErrInternalErrorMessage is the error message for internal server error.
 	AuthzErrInternalErrorMessage = "Internal Server Error"
 )

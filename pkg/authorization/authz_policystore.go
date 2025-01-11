@@ -22,7 +22,7 @@ import (
 
 // StoreItem represents the store item.
 type StoreItem struct {
-	id   string
+	id     string
 	object *azlangobjs.Object
 }
 
@@ -38,7 +38,8 @@ func (s *StoreItem) GetObject() *azlangobjs.Object {
 
 // PolicyStore represents the policy store.
 type PolicyStore struct {
-	schema []StoreItem
+	schema   []StoreItem
+	version  string
 	policies []StoreItem
 }
 
@@ -51,6 +52,16 @@ func (ps *PolicyStore) AddSchema(schemaID string, object *azlangobjs.Object) {
 // GetSchemas returns the schemas of the policy store.
 func (ps *PolicyStore) GetSchemas() []StoreItem {
 	return ps.schema
+}
+
+// SetVersion sets the version of the policy store.
+func (ps *PolicyStore) SetVersion(version string) {
+	ps.version = version
+}
+
+// GetVersion returns the version of the policy store.
+func (ps *PolicyStore) GetVersion() string {
+	return ps.version
 }
 
 // AddPolicy adds a policy to the policy store.
