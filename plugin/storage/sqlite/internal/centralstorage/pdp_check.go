@@ -23,46 +23,51 @@ import (
 	azplangcedar "github.com/permguard/permguard/plugin/languages/cedar"
 )
 
-// authorizationCheckContextResponse creates an authorization check context response.
-func authorizationCheckContextResponse(authzResponse *azauthz.AuthorizationDecision) *azmodelspdp.ContextResponse {
-	response := &azmodelspdp.ContextResponse{}
-	response.ID = authzResponse.GetID()
-	if authzResponse.GetAdminError() != nil {
-		response.ReasonAdmin = &azmodelspdp.ReasonResponse{
-			Code:    authzResponse.GetAdminError().GetCode(),
-			Message: authzResponse.GetAdminError().GetMessage(),
+// authorizationCheckBuildContextResponse builds the context response for the authorization check.
+func authorizationCheckBuildContextResponse(authzDecision *azauthz.AuthorizationDecision) *azmodelspdp.ContextResponse {
+	ctxResponse := &azmodelspdp.ContextResponse{}
+	ctxResponse.ID = authzDecision.GetID()
+
+	adminError := authzDecision.GetAdminError()
+	if adminError != nil {
+		ctxResponse.ReasonAdmin = &azmodelspdp.ReasonResponse{
+			Code:    adminError.GetCode(),
+			Message: adminError.GetMessage(),
 		}
 	} else {
-		response.ReasonAdmin = &azmodelspdp.ReasonResponse{
-			Code:    azauthz.AuthzErrUnauthorizedCode,
-			Message: azauthz.AuthzErrUnauthorizedMessage,
+		ctxResponse.ReasonAdmin = &azmodelspdp.ReasonResponse{
+			Code:    azauthz.AuthzErrInternalErrorCode,
+			Message: azauthz.AuthzErrInternalErrorMessage,
 		}
 	}
-	if authzResponse.GetUserError() != nil {
-		response.ReasonUser = &azmodelspdp.ReasonResponse{
-			Code:    authzResponse.GetUserError().GetCode(),
-			Message: authzResponse.GetUserError().GetMessage(),
+
+	userError := authzDecision.GetUserError()
+	if userError != nil {
+		ctxResponse.ReasonUser = &azmodelspdp.ReasonResponse{
+			Code:    userError.GetCode(),
+			Message: userError.GetMessage(),
 		}
 	} else {
-		response.ReasonUser = &azmodelspdp.ReasonResponse{
-			Code:    azauthz.AuthzErrUnauthorizedCode,
-			Message: azauthz.AuthzErrUnauthorizedMessage,
+		ctxResponse.ReasonUser = &azmodelspdp.ReasonResponse{
+			Code:    azauthz.AuthzErrInternalErrorCode,
+			Message: azauthz.AuthzErrInternalErrorMessage,
 		}
 	}
-	return response
+	return ctxResponse
 }
 
-// CreateLedger creates a new ledger.
-func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckWithDefaultsRequest) (*azmodelspdp.AuthorizationCheckResponse, error) {
+// AuthorizationCheck performs the authorization check.
+func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckRequest) (*azmodelspdp.AuthorizationCheckResponse, error) {
 	authzCheckResponse := &azmodelspdp.AuthorizationCheckResponse{}
 	authzCheckResponse.Decision = false
+	authzCtx := request.AuthorizationContext
+
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrBadRequestCode, err.Error(), azauthz.AuthzErrBadRequestMessage), nil
 	}
-	applicationID := request.AuthorizationContext.ApplicationID
-	policyStore := request.AuthorizationContext.PolicyStore
-	dbLedgers, err := s.sqlRepo.FetchLedgers(db, 1, 2, applicationID, &policyStore.ID, nil)
+
+	dbLedgers, err := s.sqlRepo.FetchLedgers(db, 1, 2, authzCtx.ApplicationID, &authzCtx.PolicyStore.ID, nil)
 	if err != nil {
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrBadRequestCode, err.Error(), azauthz.AuthzErrBadRequestMessage), nil
 	}
@@ -74,12 +79,17 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 	if ledgerRef == azlangobjs.ZeroOID {
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, azauthz.AuthzErrInternalErrorMessage, azauthz.AuthzErrInternalErrorMessage), nil
 	}
+
 	authzPolicyStore := azauthz.PolicyStore{}
+	authzPolicyStore.SetVersion(ledgerRef)
+	//TODO: Load policies
 	authzPolicyStore.AddPolicy("policyID", nil)
+
 	cedarLanguageAbs, err := azplangcedar.NewCedarLanguageAbstraction()
 	if err != nil {
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrBadRequestCode, err.Error(), azauthz.AuthzErrBadRequestMessage), nil
 	}
+
 	for _, expandedRequest := range request.Evaluations {
 		authzCtx := azauthz.AuthorizationContext{}
 		authzCtx.SetSubject(expandedRequest.Subject.Type, expandedRequest.Subject.ID, expandedRequest.Subject.Source, expandedRequest.Subject.Properties)
@@ -96,19 +106,17 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 		}
 		evaluationResponse := azmodelspdp.EvaluationResponse{
 			Decision: authzResponse.GetDecision(),
-			Context:  authorizationCheckContextResponse(authzResponse),
+			Context:  authorizationCheckBuildContextResponse(authzResponse),
 		}
 		authzCheckResponse.Evaluations = append(authzCheckResponse.Evaluations, evaluationResponse)
 	}
-	if len(authzCheckResponse.Evaluations) > 0 {
-		allTrue := true
-		for _, evaluation := range authzCheckResponse.Evaluations {
-			if !evaluation.Decision {
-				allTrue = false
-				break
-			}
+	allTrue := true
+	for _, evaluation := range authzCheckResponse.Evaluations {
+		if !evaluation.Decision {
+			allTrue = false
+			break
 		}
-		authzCheckResponse.Decision = allTrue
 	}
+	authzCheckResponse.Decision = allTrue
 	return authzCheckResponse, nil
 }
