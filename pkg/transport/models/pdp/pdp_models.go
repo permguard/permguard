@@ -60,6 +60,11 @@ type Action struct {
 
 // AuthorizationCheck Request
 
+const (
+	// PolicyLedgerType represents the type of the policy store.
+	PolicyLedgerType = "policy"
+)
+
 // AuthorizationContextRequest is the input context for making the authorization decision.
 type AuthorizationContextRequest struct {
 	ApplicationID int64        `json:"application_id" validate:"required,gt=0"`
