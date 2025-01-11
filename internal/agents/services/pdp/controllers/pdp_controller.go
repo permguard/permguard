@@ -55,12 +55,12 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 	}
 	expReq, err := authorizationCheckExpandAuthorizationCheckWithDefaults(request)
 	if err != nil {
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, azauthz.AuthzErrBadRequestMessage), nil
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, err.Error(), azauthz.AuthzErrBadRequestMessage), nil
 	}
 	for _, evaluation := range expReq.Evaluations {
 		if !authorizationCheckVerifyPrincipal(request.AuthorizationContext.Principal, evaluation.Subject) {
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrUnauthorizedCode, azauthz.AuthzErrUnauthorizedMessage, azauthz.AuthzErrUnauthorizedMessage), nil
 		}
 	}
-	return s.storage.AuthorizationCheck(&request.AuthorizationCheckRequest)
+	return s.storage.AuthorizationCheck(expReq)
 }

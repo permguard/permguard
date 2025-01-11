@@ -60,6 +60,9 @@ func authorizationCheckBuildContextResponse(authzDecision *azauthz.Authorization
 func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckRequest) (*azmodelspdp.AuthorizationCheckResponse, error) {
 	authzCheckResponse := &azmodelspdp.AuthorizationCheckResponse{}
 	authzCheckResponse.Decision = false
+	authzCheckResponse.Context = &azmodelspdp.ContextResponse{}
+	authzCheckResponse.Evaluations = []azmodelspdp.EvaluationResponse{}
+
 	authzCtx := request.AuthorizationContext
 
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
@@ -104,19 +107,25 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 		if err != nil {
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
 		}
+		if authzResponse == nil {
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, azauthz.AuthzErrInternalErrorCode, azauthz.AuthzErrInternalErrorMessage), nil
+		}
 		evaluationResponse := azmodelspdp.EvaluationResponse{
 			Decision: authzResponse.GetDecision(),
 			Context:  authorizationCheckBuildContextResponse(authzResponse),
 		}
 		authzCheckResponse.Evaluations = append(authzCheckResponse.Evaluations, evaluationResponse)
 	}
-	allTrue := true
-	for _, evaluation := range authzCheckResponse.Evaluations {
-		if !evaluation.Decision {
-			allTrue = false
-			break
+	evaluations := authzCheckResponse.Evaluations
+	if len(evaluations) > 0 {
+		allTrue := true
+		for _, evaluation := range authzCheckResponse.Evaluations {
+			if !evaluation.Decision {
+				allTrue = false
+				break
+			}
 		}
+		authzCheckResponse.Decision = allTrue
 	}
-	authzCheckResponse.Decision = allTrue
 	return authzCheckResponse, nil
 }

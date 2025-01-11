@@ -94,7 +94,7 @@ type V1PAPServer struct {
 
 // CreateLedger creates a new ledger.
 func (s *V1PAPServer) CreateLedger(ctx context.Context, ledgerRequest *LedgerCreateRequest) (*LedgerResponse, error) {
-	ledger, err := s.service.CreateLedger(&azmodelspap.Ledger{ApplicationID: ledgerRequest.ApplicationID, Name: ledgerRequest.Name})
+	ledger, err := s.service.CreateLedger(&azmodelspap.Ledger{ApplicationID: ledgerRequest.ApplicationID, Name: ledgerRequest.Name, Kind: ledgerRequest.Kind})
 	if err != nil {
 		return nil, err
 	}
