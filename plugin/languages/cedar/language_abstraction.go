@@ -17,6 +17,7 @@
 package cedar
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/cedar-policy/cedar-go"
@@ -328,5 +329,12 @@ func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(langID, lang
 
 // AuthorizationCheck checks the authorization.
 func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.PolicyStore, authzCtx *azauthz.AuthorizationContext) (*azauthz.AuthorizationDecision, error) {
+	for _, policy := range policyStore.GetPolicies() {
+		objInfo, err := abs.objMng.GetObjectInfo(policy.GetObject())
+		if err != nil {
+			return nil, err
+		}
+		fmt.Println(objInfo.GetInstanceBytes())
+	}
 	return nil, nil
 }
