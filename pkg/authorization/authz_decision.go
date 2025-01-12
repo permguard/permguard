@@ -40,6 +40,16 @@ type AuthorizationDecision struct {
 	userError  *AuthorizationError
 }
 
+// NewAuthorizationDecision creates a new authorization decision.
+func NewAuthorizationDecision(id string, decision bool, adminError *AuthorizationError, userError *AuthorizationError) (*AuthorizationDecision, error) {
+	return &AuthorizationDecision{
+		id:         id,
+		decision:   decision,
+		adminError: adminError,
+		userError:  userError,
+	}, nil
+}
+
 // GetID returns the ID.
 func (a *AuthorizationDecision) GetID() string {
 	return a.id
