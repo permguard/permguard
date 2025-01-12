@@ -19,6 +19,7 @@ package centralstorage
 import (
 	"github.com/jmoiron/sqlx"
 
+	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azauthz "github.com/permguard/permguard/pkg/authorization"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
@@ -146,7 +147,17 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 		if err != nil {
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
 		}
-		authzPolicyStore.AddPolicy(oid, obj)
+		objHeader, _, err := objMng.DeserializeBlob(obj.GetContent())
+		if err != nil {
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
+		}
+		if objHeader.GetCodeTypeID() == azlangtypes.ClassTypeSchemaID {
+			authzPolicyStore.AddSchema(oid, obj)
+		} else if objHeader.GetCodeTypeID() == azlangtypes.ClassTypePolicyID {
+			authzPolicyStore.AddPolicy(oid, obj)
+		} else {
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, azauthz.AuthzErrInternalErrorCode, azauthz.AuthzErrInternalErrorMessage), nil
+		}
 	}
 
 	cedarLanguageAbs, err := azplangcedar.NewCedarLanguageAbstraction()

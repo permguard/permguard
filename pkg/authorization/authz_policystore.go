@@ -38,20 +38,20 @@ func (s *StoreItem) GetObject() *azlangobjs.Object {
 
 // PolicyStore represents the policy store.
 type PolicyStore struct {
-	schema   []StoreItem
+	schemas   []StoreItem
 	version  string
 	policies []StoreItem
 }
 
 // AddPolicy adds a policy to the policy store.
 func (ps *PolicyStore) AddSchema(schemaID string, object *azlangobjs.Object) {
-	policy := StoreItem{id: schemaID, object: object}
-	ps.policies = append(ps.policies, policy)
+	schema := StoreItem{id: schemaID, object: object}
+	ps.schemas = append(ps.schemas, schema)
 }
 
 // GetSchemas returns the schemas of the policy store.
 func (ps *PolicyStore) GetSchemas() []StoreItem {
-	return ps.schema
+	return ps.schemas
 }
 
 // SetVersion sets the version of the policy store.
