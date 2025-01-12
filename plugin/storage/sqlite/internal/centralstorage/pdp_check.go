@@ -17,8 +17,11 @@
 package centralstorage
 
 import (
+	"github.com/jmoiron/sqlx"
+
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azauthz "github.com/permguard/permguard/pkg/authorization"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 	azplangcedar "github.com/permguard/permguard/plugin/languages/cedar"
 )
@@ -56,6 +59,46 @@ func authorizationCheckBuildContextResponse(authzDecision *azauthz.Authorization
 	return ctxResponse
 }
 
+// authorizationCheckReadKey reads the key value for the authorization check.
+func authorizationCheckReadKey(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azlangobjs.ObjectManager, key string) (string, []byte, error) {
+	if db == nil {
+		return "", nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: invalid database")
+	}
+	if objMng == nil {
+		return "", nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: invalid object manager")
+	}
+	keyValue, err := s.sqlRepo.GetKeyValue(db, key)
+	if err != nil {
+		return "", nil, err
+	}
+	if keyValue == nil {
+		return "", nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: key value is nil")
+	}
+	object, err := objMng.DeserializeObjectFromBytes(keyValue.Value)
+	if err != nil {
+		return "", nil, err
+	}
+	objectType, instanceBytes, err := objMng.GetInstanceBytesFromBytes(object)
+	return objectType, instanceBytes, err
+}
+
+// authorizationCheckReadTree reads the tree object for the authorization check.
+func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azlangobjs.ObjectManager, commitID string) (*azlangobjs.Tree, error) {
+	_, ocontent, err := authorizationCheckReadKey(s, db, objMng, commitID)
+	if err != nil {
+		return nil, err
+	}
+	commitObj, err := objMng.DeserializeCommit(ocontent)
+	if err != nil {
+		return nil, err
+	}
+	_, ocontent, err = authorizationCheckReadKey(s, db, objMng, commitObj.GetTree())
+	if err != nil {
+		return nil, err
+	}
+	return objMng.DeserializeTree(ocontent)
+}
+
 // AuthorizationCheck performs the authorization check.
 func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckRequest) (*azmodelspdp.AuthorizationCheckResponse, error) {
 	authzCheckResponse := &azmodelspdp.AuthorizationCheckResponse{}
@@ -85,8 +128,26 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 
 	authzPolicyStore := azauthz.PolicyStore{}
 	authzPolicyStore.SetVersion(ledgerRef)
-	//TODO: Load policies
-	authzPolicyStore.AddPolicy("policyID", nil)
+
+	objMng, err := azlangobjs.NewObjectManager()
+	if err != nil {
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
+	}
+	treeObj, err := authorizationCheckReadTree(&s, db, objMng, ledgerRef)
+	if err != nil {
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
+	}
+	for _, entry := range treeObj.GetEntries() {
+		oid, ocontent, err := authorizationCheckReadKey(&s, db, objMng, entry.GetOID())
+		if err != nil {
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
+		}
+		obj, err := objMng.DeserializeObjectFromBytes(ocontent)
+		if err != nil {
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
+		}
+		authzPolicyStore.AddPolicy(oid, obj)
+	}
 
 	cedarLanguageAbs, err := azplangcedar.NewCedarLanguageAbstraction()
 	if err != nil {
