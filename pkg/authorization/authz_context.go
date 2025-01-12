@@ -36,6 +36,11 @@ func (a *AuthorizationContext) SetSubject(kind string, id string, source string,
 	return nil
 }
 
+// GetSubject returns the subject of the authorization context.
+func (a *AuthorizationContext) GetSubject() *Subject {
+	return a.subject
+}
+
 // SetResource sets the resource of the authorization context.
 func (a *AuthorizationContext) SetResource(kind string, id string, properties map[string]any) error {
 	a.resource = &Resource{
@@ -46,12 +51,23 @@ func (a *AuthorizationContext) SetResource(kind string, id string, properties ma
 	return nil
 }
 
+// GetResource returns the resource of the authorization context.
+func (a *AuthorizationContext) GetResource() *Resource {
+	return a.resource
+}
+
+// SetAction sets the action of the authorization context.
 func (a *AuthorizationContext) SetAction(id string, properties map[string]any) error {
 	a.action = &Action{
 		id:         id,
 		properties: properties,
 	}
 	return nil
+}
+
+// GetAction returns the action of the authorization context.
+func (a *AuthorizationContext) GetAction() *Action {
+	return a.action
 }
 
 // SetEntities sets the entities of the authorization context.
@@ -63,8 +79,18 @@ func (a *AuthorizationContext) SetEntities(schema string, items []map[string]any
 	return nil
 }
 
+// GetEntities returns the entities of the authorization context.
+func (a *AuthorizationContext) GetEntities() *Entities {
+	return a.entities
+}
+
 // SetContext sets the context of the authorization context.
 func (a *AuthorizationContext) SetContext(context map[string]any) error {
 	a.context = context
 	return nil
+}
+
+// GetContext returns the context of the authorization context.
+func (a *AuthorizationContext) GetContext() map[string]any {
+	return a.context
 }

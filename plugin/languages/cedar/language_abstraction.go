@@ -17,7 +17,7 @@
 package cedar
 
 import (
-	"fmt"
+	"encoding/json"
 	"strings"
 
 	"github.com/cedar-policy/cedar-go"
@@ -329,9 +329,38 @@ func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(langID, lang
 
 // AuthorizationCheck checks the authorization.
 func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.PolicyStore, authzCtx *azauthz.AuthorizationContext) (*azauthz.AuthorizationDecision, error) {
+	ps := cedar.NewPolicySet()
 	for _, policy := range policyStore.GetPolicies() {
 		objInfo := policy.GetObjectInfo()
-		fmt.Println(string(objInfo.GetInstance().([]byte)))
+		policyBytes := objInfo.GetInstance().([]byte)
+		var policy cedar.Policy
+		if err := policy.UnmarshalJSON(policyBytes); err != nil {
+			return nil, err
+		}
 	}
-	return nil, nil
+	authzEntities := authzCtx.GetEntities()
+	jsonEntities, err := json.Marshal(authzEntities.GetItems())
+	if err != nil {
+		return nil, err
+	}
+
+	var entities cedar.EntityMap
+	if err := json.Unmarshal(jsonEntities, &entities); err != nil {
+		return nil, err
+	}
+	req := cedar.Request{
+		Principal: cedar.NewEntityUID("User", "alice"),
+		Action:    cedar.NewEntityUID("Action", "view"),
+		Resource:  cedar.NewEntityUID("Photo", "0123456789"),
+		Context:   cedar.NewRecord(cedar.RecordMap{
+			"demoRequest": cedar.True,
+        }),
+	}
+
+	ok, _ := ps.IsAuthorized(entities, req)
+	authzDecision, err := azauthz.NewAuthorizationDecision("", bool(ok), nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	return authzDecision, nil
 }
