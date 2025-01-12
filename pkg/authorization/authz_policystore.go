@@ -22,30 +22,24 @@ import (
 
 // StoreItem represents the store item.
 type StoreItem struct {
-	id     string
-	object *azlangobjs.Object
+	objectInfo *azlangobjs.ObjectInfo
 }
 
-// GetID returns the ID of the policy.
-func (s *StoreItem) GetID() string {
-	return s.id
-}
-
-// GetObject returns the object of the policy.
-func (s *StoreItem) GetObject() *azlangobjs.Object {
-	return s.object
+// GetObject returns the object info.
+func (s *StoreItem) GetObjectInfo() *azlangobjs.ObjectInfo {
+	return s.objectInfo
 }
 
 // PolicyStore represents the policy store.
 type PolicyStore struct {
-	schemas   []StoreItem
+	schemas  []StoreItem
 	version  string
 	policies []StoreItem
 }
 
 // AddPolicy adds a policy to the policy store.
-func (ps *PolicyStore) AddSchema(schemaID string, object *azlangobjs.Object) {
-	schema := StoreItem{id: schemaID, object: object}
+func (ps *PolicyStore) AddSchema(schemaID string, objectInfo *azlangobjs.ObjectInfo) {
+	schema := StoreItem{objectInfo: objectInfo}
 	ps.schemas = append(ps.schemas, schema)
 }
 
@@ -65,8 +59,8 @@ func (ps *PolicyStore) GetVersion() string {
 }
 
 // AddPolicy adds a policy to the policy store.
-func (ps *PolicyStore) AddPolicy(policyID string, object *azlangobjs.Object) {
-	policy := StoreItem{id: policyID, object: object}
+func (ps *PolicyStore) AddPolicy(policyID string, objectInfo *azlangobjs.ObjectInfo) {
+	policy := StoreItem{objectInfo: objectInfo}
 	ps.policies = append(ps.policies, policy)
 }
 

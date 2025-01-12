@@ -60,22 +60,31 @@ func authorizationCheckBuildContextResponse(authzDecision *azauthz.Authorization
 	return ctxResponse
 }
 
-// authorizationCheckReadKey reads the key value for the authorization check.
-func authorizationCheckReadKey(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azlangobjs.ObjectManager, key string) (string, []byte, error) {
+// authorizationCheckReadBytes reads the key value for the authorization check.
+func authorizationCheckReadKeyValue(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azlangobjs.ObjectManager, key string) ([]byte, error) {
 	if db == nil {
-		return "", nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: invalid database")
+		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: invalid database")
 	}
 	if objMng == nil {
-		return "", nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: invalid object manager")
+		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: invalid object manager")
 	}
 	keyValue, err := s.sqlRepo.GetKeyValue(db, key)
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 	if keyValue == nil {
-		return "", nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: key value is nil")
+		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: key value is nil")
 	}
-	object, err := objMng.DeserializeObjectFromBytes(keyValue.Value)
+	return keyValue.Value, nil
+}
+
+// authorizationCheckReadBytes reads the key value for the authorization check.
+func authorizationCheckReadBytes(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azlangobjs.ObjectManager, key string) (string, []byte, error) {
+	value, err := authorizationCheckReadKeyValue(s, db, objMng, key)
+	if err != nil {
+		return "", nil, err
+	}
+	object, err := objMng.DeserializeObjectFromBytes(value)
 	if err != nil {
 		return "", nil, err
 	}
@@ -85,7 +94,7 @@ func authorizationCheckReadKey(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *
 
 // authorizationCheckReadTree reads the tree object for the authorization check.
 func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azlangobjs.ObjectManager, commitID string) (*azlangobjs.Tree, error) {
-	_, ocontent, err := authorizationCheckReadKey(s, db, objMng, commitID)
+	_, ocontent, err := authorizationCheckReadBytes(s, db, objMng, commitID)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +102,7 @@ func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng 
 	if err != nil {
 		return nil, err
 	}
-	_, ocontent, err = authorizationCheckReadKey(s, db, objMng, commitObj.GetTree())
+	_, ocontent, err = authorizationCheckReadBytes(s, db, objMng, commitObj.GetTree())
 	if err != nil {
 		return nil, err
 	}
@@ -139,22 +148,21 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
 	}
 	for _, entry := range treeObj.GetEntries() {
-		oid, ocontent, err := authorizationCheckReadKey(&s, db, objMng, entry.GetOID())
+		value, err := authorizationCheckReadKeyValue(&s, db, objMng, entry.GetOID())
 		if err != nil {
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
 		}
-		obj, err := objMng.DeserializeObjectFromBytes(ocontent)
+		obj, err := objMng.DeserializeObjectFromBytes(value)
 		if err != nil {
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
 		}
-		objHeader, _, err := objMng.DeserializeBlob(obj.GetContent())
-		if err != nil {
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
-		}
-		if objHeader.GetCodeTypeID() == azlangtypes.ClassTypeSchemaID {
-			authzPolicyStore.AddSchema(oid, obj)
-		} else if objHeader.GetCodeTypeID() == azlangtypes.ClassTypePolicyID {
-			authzPolicyStore.AddPolicy(oid, obj)
+		objInfo, err := objMng.GetObjectInfo(obj)
+		objInfoHeader := objInfo.GetHeader()
+		oid := objInfo.GetOID()
+		if objInfoHeader.GetCodeTypeID() == azlangtypes.ClassTypeSchemaID {
+			authzPolicyStore.AddSchema(oid, objInfo)
+		} else if objInfoHeader.GetCodeTypeID() == azlangtypes.ClassTypePolicyID {
+			authzPolicyStore.AddPolicy(oid, objInfo)
 		} else {
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, azauthz.AuthzErrInternalErrorCode, azauthz.AuthzErrInternalErrorMessage), nil
 		}
