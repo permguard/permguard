@@ -135,7 +135,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 			LanguageType:    secObj.GetLanguageType(),
 		}
 		if codeFile.HasErrors {
-			codeFile.ErrorMessage = azerrors.GetSystemErrorMessage(secObj.GetError())
+			codeFile.ErrorMessage = azerrors.ConvertToSystemError(secObj.GetError()).Message()
 		} else {
 			obj := secObj.GetObject()
 			codeFile.OID = obj.GetOID()
@@ -178,7 +178,7 @@ func (m *WorkspaceManager) blobifyPermCodeFile(absLang azlang.LanguageAbastracti
 			LanguageType:    secObj.GetLanguageType(),
 		}
 		if codeFile.HasErrors {
-			codeFile.ErrorMessage = azerrors.GetSystemErrorMessage(secObj.GetError())
+			codeFile.ErrorMessage = azerrors.ConvertToSystemError(secObj.GetError()).Message()
 		} else {
 			obj := secObj.GetObject()
 			codeFile.OID = obj.GetOID()

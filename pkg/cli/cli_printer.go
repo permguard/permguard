@@ -248,10 +248,8 @@ func (cp *CliPrinterTerminal) extractCodeAndMessage(input string) (string, strin
 }
 
 // createOutputWithputError creates the output with the error.
-func (cp *CliPrinterTerminal) createOutputWithputError(code string, msg string) map[string]any {
+func (cp *CliPrinterTerminal) createOutputWithputError(errCode string, errMsg string) map[string]any {
 	var output map[string]any
-	errCode := code
-	errMsg := msg
 	if cp.verbose {
 		if cp.output == OutputJSON {
 			output = map[string]any{"errorCode": errCode, "errorMessage": errMsg}
@@ -259,20 +257,11 @@ func (cp *CliPrinterTerminal) createOutputWithputError(code string, msg string) 
 			output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, errCode, errMsg)}
 		}
 	} else {
-		code = "00000"
-		message := "unknown error"
-		sysErr := azerrors.ConvertToSystemError(azerrors.GetErrorFromCode(errCode))
-		if sysErr == nil {
-			sysErr = azerrors.ConvertToSystemError(azerrors.GetSuperClassErrorFromCode(errCode))
-		}
-		if sysErr != nil {
-			code = sysErr.Code()
-			message = sysErr.Message()
-		}
+		sysErr := azerrors.NewSystemError(errCode).(azerrors.SystemError)
 		if cp.output == OutputJSON {
-			output = map[string]any{"errorCode": code, "errorMessage": message}
+			output = map[string]any{"errorCode": sysErr.Code(), "errorMessage": sysErr.Message()}
 		} else {
-			output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, code, message)}
+			output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, sysErr.Code(), sysErr.Message())}
 		}
 	}
 	return output

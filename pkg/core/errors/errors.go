@@ -55,10 +55,14 @@ func (e SystemError) Equal(err error) bool {
 
 // NewSystemError create a system error with the input error code.
 func NewSystemError(errCode string) error {
+	defErrCode := errCode
 	if !isErrorCodeDefined(errCode) {
-		return NewSystemError("00000")
+		defErrCode = getSuperClassFromCode(errCode)
+		if defErrCode == "00000" && errCode[:2] != "00" {
+			errCode = defErrCode
+		}
 	}
-	errMessage := errorCodes[errCode]
+	errMessage := strings.ToLower(errorCodes[defErrCode])
 	return SystemError{
 		error:      fmt.Errorf(errorMessageCodeMsg, errCode, errMessage),
 		errCode:    errCode,
@@ -68,86 +72,50 @@ func NewSystemError(errCode string) error {
 
 // NewSystemErrorWithMessage create a system error with the input error code and message.
 func NewSystemErrorWithMessage(errCode string, errMessage string) error {
-	errMessage = strings.TrimSuffix(errMessage, ".")
-	if isErrorCodeDefined(errCode) {
-		return NewSystemError(errCode)
-	} else if errMessage == "" {
-		return NewSystemError("00000")
+	sysErr := NewSystemError(errCode).(SystemError)
+	cleanMessage := strings.TrimSpace(strings.TrimSuffix(errMessage, "."))
+	if len(cleanMessage) == 0 {
+		return sysErr
 	}
-	return SystemError{
-		error:      fmt.Errorf(errorMessageCodeMsg, errCode, errMessage),
-		errCode:    errCode,
-		errMessage: errMessage,
+	cleanMessage = strings.ToLower(transformErroMessageString(sysErr.errMessage, cleanMessage))
+	if len(cleanMessage) > 0 {
+		sysErr.error = fmt.Errorf(errorMessageCodeMsg, errCode, cleanMessage)
+		sysErr.errMessage = cleanMessage
 	}
+	return sysErr
 }
 
 // WrapSystemError wrap a system error.
 func WrapSystemError(err error, errMessage string) error {
 	errMessage = strings.TrimSuffix(errMessage, ".")
 	sysErr := ConvertToSystemError(err)
-	if sysErr == nil || len(sysErr.errCode) != 5 {
+	if sysErr == nil {
 		return NewSystemErrorWithMessage("", errMessage)
 	}
-	return SystemError{
-		error:      fmt.Errorf(errorMessageCodeMsg, sysErr.errCode, errMessage),
-		errCode:    sysErr.errCode,
-		errMessage: errMessage,
-	}
+	return NewSystemErrorWithMessage(sysErr.errCode, errMessage)
 }
 
 // WrapMessageError wrap a message error.
-func WrapMessageError(sourceErr error, targetErr error, errDomain string) error {
-	tgtCode := "00000"
-	tgtMessage := sourceErr.Error()
+func WrapMessageError(err error, errMessage string, targetErr error) error {
+	sysErr := WrapSystemError(err, errMessage).(SystemError)
 	if targetErr == nil {
-		sysSourceErr := ConvertToSystemError(sourceErr)
-		if sysSourceErr == nil || len(sysSourceErr.errCode) != 5 {
-			return NewSystemErrorWithMessage("", tgtMessage)
-		}
-		tgtCode = sysSourceErr.errCode
-		tgtMessage = sysSourceErr.errMessage
-	} else {
-		sysTargetErr := ConvertToSystemError(targetErr)
-		if sysTargetErr == nil || len(sysTargetErr.errCode) != 5 {
-			return NewSystemErrorWithMessage("", tgtMessage)
-		}
-		tgtCode = sysTargetErr.errCode
-		tgtMessage = sysTargetErr.errMessage
+		sysErr.errMessage = fmt.Sprintf("%s. %s", sysErr.errMessage, err.Error())
 	}
-	parts := strings.SplitN(tgtMessage, ":", 2)
-	if len(parts) == 2 {
-		msg := strings.TrimLeft(parts[1], " ")
-		tgtMessage = fmt.Sprintf("%s: %s", errDomain, msg)
-	}
-	return SystemError{
-		error:      fmt.Errorf(errorMessageCodeMsg, tgtCode, tgtMessage),
-		errCode:    tgtCode,
-		errMessage: tgtMessage,
-	}
-}
-
-// IsSystemError checks if the error is a SystemError.
-func IsSystemError(err error) bool {
-	var sysErr = &SystemError{}
-	return errors.As(err, sysErr)
+	return sysErr
 }
 
 // ConvertToSystemError converts the error to a SystemError.
 func ConvertToSystemError(err error) *SystemError {
 	var sysErr = &SystemError{}
 	if errors.As(err, sysErr) {
+		if !isErrorCodeDefined(sysErr.errCode) {
+			if !isErrorCodeDefined(getSuperClassFromCode(sysErr.errCode)) {
+				return nil
+			}
+		}
 		return sysErr
 	}
 	return nil
-}
-
-// GetSystemErrorMessage returns the system error message.
-func GetSystemErrorMessage(err error) string {
-	var sysErr = &SystemError{}
-	if errors.As(err, sysErr) {
-		return sysErr.errMessage
-	}
-	return err.Error()
 }
 
 // IsErrorInClass verify if the error is in the class of the input mask.
@@ -165,33 +133,6 @@ func IsErrorInClass(err error, mask string) bool {
 		}
 	}
 	return true
-}
-
-// GetErrorFromCode returns the error with the input code.
-func GetErrorFromCode(code string) error {
-	return NewSystemError(code)
-}
-
-// GetSuperClassErrorFromCode returns the superclass error with the input code.
-func GetSuperClassErrorFromCode(code string) error {
-	superclassCode := code[:2]
-	for i := 2; i < len(code); i++ {
-		superclassCode += "0"
-	}
-	errorCode := errorCodes[superclassCode]
-	if errorCode == "" {
-		return ErrUnknown
-	}
-	return NewSystemError(superclassCode)
-}
-
-// IsErrorWithCode verify if the error is a valid systemerror with the input code
-func IsErrorWithCode(err error, errCode string) bool {
-	sysErr := ConvertToSystemError(err)
-	if sysErr == nil {
-		return false
-	}
-	return sysErr.errCode == errCode
 }
 
 // AreErrorsEqual checks if the input errors are equal.
