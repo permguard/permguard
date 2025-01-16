@@ -62,11 +62,11 @@ func TestNewSystemErrorWithMessage(t *testing.T) {
 		expectedMessage string
 	}{
 		{"00000", "", "00000", "core: unknown error"},
-		{"00000", "not valid", "00000", "core: unknown error"},
-		{"00191", "", "00000", "core: unknown error"},
-		{"00181", "not valid", "00181", "not valid"},
-		{"04100", "not valid", "04100", "client: invalid client parameter"},
-		{"04151", "new custom error", "04151", "new custom error"},
+		{"00000", "not valid", "00000", "core: not valid"},
+		{"00191", "", "00191", "core: unknown error"},
+		{"00181", "not valid", "00181", "core: not valid"},
+		{"04100", "not valid", "04100", "client: not valid"},
+		{"04151", "new custom error", "04151", "client: new custom error"},
 	}
 	for _, tc := range testCases {
 		result := ConvertToSystemError(NewSystemErrorWithMessage(tc.code, tc.message))
@@ -88,9 +88,7 @@ func TestNewSystemError(t *testing.T) {
 		{fmt.Errorf("%q: %w", "sample2", fmt.Errorf("%q: %w", "sample1", ErrClientID)), true},
 	}
 	for _, tc := range testCases {
-		isSysErr := IsSystemError(tc.err)
 		sysErr := ConvertToSystemError(tc.err)
-		assert.True(isSysErr == tc.expected, "IsSystemError(%s) = %v (expected %v)", tc.err, isSysErr, tc.expected)
 		if tc.expected {
 			assert.True(sysErr != nil, "ConvertToSystemError(%s) = %v (expected not nil)", tc.err, sysErr)
 		} else {
@@ -108,8 +106,8 @@ func TestSystemError(t *testing.T) {
 		expectedMessage string
 	}{
 		{"00000", "00000", "core: unknown error"},
-		{"00181", "00000", "core: unknown error"},
-		{"04141", "00000", "core: unknown error"},
+		{"00181", "00181", "core: unknown error"},
+		{"04141", "04141", "client: generic error"},
 		{"04101", "04101", "client: invalid pagination parameter"},
 	}
 	for _, tc := range testCases {

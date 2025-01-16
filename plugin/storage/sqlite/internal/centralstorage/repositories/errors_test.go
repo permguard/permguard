@@ -56,7 +56,7 @@ func TestWrapSqlite3Error(t *testing.T) {
 		t.Run(message, func(t *testing.T) {
 			err := WrapSqlite3Error(message, test.ErrorIn)
 			assert.Error(t, err)
-			assert.True(t, azerrors.IsSystemError(test.ErrorOut))
+			assert.NotNil(t, azerrors.ConvertToSystemError(test.ErrorOut))
 		})
 	}
 }

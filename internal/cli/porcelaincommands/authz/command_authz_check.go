@@ -52,7 +52,7 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 			printer.Println(message)
 		}
 		if err != nil {
-			printer.Error(azerrors.WrapMessageError(err, nil, message))
+			printer.Error(azerrors.WrapMessageError(azerrors.ErrCliArguments, message, err))
 		} else {
 			printer.Error(azerrors.WrapSystemError(azerrors.ErrCliArguments, message))
 		}
@@ -63,7 +63,7 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 		jsonPath := filepath.Join(ctx.GetWorkDir(), args[0])
 		input, err = os.Open(jsonPath)
 		if err != nil {
-			return handleInputError(ctx, printer, err, "Invalid input for the authz check.")
+			return handleInputError(ctx, printer, err, "invalid input for the authz check.")
 		}
 		defer input.Close()
 	} else {

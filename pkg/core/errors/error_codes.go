@@ -16,6 +16,11 @@
 
 package errors
 
+import (
+	"fmt"
+	"strings"
+)
+
 var errorCodes = map[string]string{
 	// 00000: Unknown Errors
 	"00000": "core: unknown error",
@@ -148,4 +153,27 @@ var (
 // isErrorCodeDefined checks if the error code has been defined.
 func isErrorCodeDefined(code string) bool {
 	return errorCodes[code] != ""
+}
+
+// transformErroMessageString transforms the error message string.
+func transformErroMessageString(input, errorMessage string) string {
+	parts := strings.Split(input, ":")
+	if len(parts) == 0 {
+		return ""
+	}
+	firstPart := strings.TrimSpace(parts[0])
+	return fmt.Sprintf("%s: %s", firstPart, errorMessage)
+}
+
+// getSuperClassFromCode returns the superclass of the error code.
+func getSuperClassFromCode(code string) string {
+	superclassCode := code[:2]
+	for i := 2; i < len(code); i++ {
+		superclassCode += "0"
+	}
+	errorCode := errorCodes[superclassCode]
+	if errorCode == "" {
+		return "00000"
+	}
+	return superclassCode
 }
