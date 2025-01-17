@@ -24,7 +24,7 @@ import (
 
 var errorCodes = map[string]string{
 	// 00000: Unknown Errors
-	"00000": "core: unknown error",
+	ZeroErrorCode: "core: unknown error",
 
 	// 001xx: Implementation Errors
 	"00100": "code: generic error",
@@ -88,6 +88,8 @@ var errorCodes = map[string]string{
 }
 
 const (
+	// ZeroErrorCode is the zero error code.
+	ZeroErrorCode = "00000"
 	// Error mask for the generic error classes.
 	ErrorCodeMaskGeneric = "00xxx"
 	// Error mask for the code implementation errors.
@@ -104,7 +106,7 @@ const (
 
 var (
 	// 00000 generic system error.
-	ErrUnknown error = NewSystemError("00000")
+	ErrUnknown error = NewSystemError(ZeroErrorCode)
 	// 001xx implementation errors.
 	ErrImplementation error = NewSystemError("00100")
 	ErrNotImplemented error = NewSystemError("00101")
@@ -179,7 +181,7 @@ func getSuperClassFromCodeWithIndex(code string, index int) string {
 	}
 	errorCode := errorCodes[superclassCode]
 	if errorCode == "" {
-		return "00000"
+		return ZeroErrorCode
 	}
 	return superclassCode
 }
@@ -200,10 +202,10 @@ func isValidErrorCodeFormat(input string) bool {
 // getSuperClassFromCode returns the superclass of the error code.
 func getSuperClassFromCode(code string) string {
 	if !isValidErrorCodeFormat(code) {
-		return "00000"
+		return ZeroErrorCode
 	}
 	classCode := getSuperClassFromCodeWithIndex(code, 3)
-	if classCode != "00000" {
+	if classCode != ZeroErrorCode {
 		return classCode
 	}
 	return getSuperClassFromCodeWithIndex(code, 2)

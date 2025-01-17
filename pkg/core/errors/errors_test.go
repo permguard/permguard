@@ -33,8 +33,8 @@ func TestIsErrorInClass(t *testing.T) {
 		expected bool
 	}{
 		{"01xxx", errors.New("not a valid error"), false},
-		{"00000", ErrUnknown, true},
-		{"00000", fmt.Errorf("%q: %w", "sample", ErrUnknown), true},
+		{ZeroErrorCode, ErrUnknown, true},
+		{ZeroErrorCode, fmt.Errorf("%q: %w", "sample", ErrUnknown), true},
 		{"000xx", ErrUnknown, true},
 		{"00xxx", ErrUnknown, true},
 		{"01xxx", ErrUnknown, false},
@@ -61,8 +61,8 @@ func TestNewSystemErrorWithMessage(t *testing.T) {
 		expectedCode    string
 		expectedMessage string
 	}{
-		{"00000", "", "00000", "core: unknown error"},
-		{"00000", "not valid", "00000", "core: not valid"},
+		{ZeroErrorCode, "", ZeroErrorCode, "core: unknown error"},
+		{ZeroErrorCode, "not valid", ZeroErrorCode, "core: not valid"},
 		{"00191", "", "00191", "code: generic error"},
 		{"00181", "not valid", "00181", "code: not valid"},
 		{"04100", "not valid", "04100", "client: not valid"},
@@ -105,7 +105,7 @@ func TestSystemError(t *testing.T) {
 		expectedCode    string
 		expectedMessage string
 	}{
-		{"00000", "00000", "core: unknown error"},
+		{ZeroErrorCode, ZeroErrorCode, "core: unknown error"},
 		{"00181", "00181", "code: generic error"},
 		{"04141", "04141", "client: invalid client parameter"},
 		{"04101", "04101", "client: invalid pagination parameter"},

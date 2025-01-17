@@ -270,7 +270,7 @@ func (cp *CliPrinterTerminal) createOutputWithputError(errCode string, errMsg st
 // createOutputWithError creates the output with the error.
 func (cp *CliPrinterTerminal) createOutputWithError(errInputMsg string) map[string]any {
 	var output map[string]any
-	code := "00000"
+	code := azerrors.ZeroErrorCode
 	if cp.verbose {
 		if cp.output == OutputJSON {
 			output = map[string]any{"errorCode": code, "errorMessage": errInputMsg}
