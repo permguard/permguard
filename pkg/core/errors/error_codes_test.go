@@ -33,7 +33,7 @@ func TestIsErrorCodeDefined(t *testing.T) {
 		{"01", false},
 		{"0122342342342", false},
 		{"01223a42342342", false},
-		{"00000", true},
+		{ZeroErrorCode, true},
 		{"00105", false},
 	}
 	for _, tc := range testCases {

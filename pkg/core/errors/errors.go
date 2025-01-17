@@ -56,12 +56,12 @@ func (e SystemError) Equal(err error) bool {
 // NewSystemError create a system error with the input error code.
 func NewSystemError(errCode string) error {
 	if !isValidErrorCodeFormat(errCode) {
-		errCode = "00000"
+		errCode = ZeroErrorCode
 	}
 	defErrCode := errCode
 	if !isErrorCodeDefined(errCode) {
 		defErrCode = getSuperClassFromCode(errCode)
-		if defErrCode == "00000" && errCode[:2] != "00" {
+		if defErrCode == ZeroErrorCode && errCode[:2] != ZeroErrorCode[:2] {
 			errCode = defErrCode
 		}
 	}
@@ -76,7 +76,7 @@ func NewSystemError(errCode string) error {
 // NewSystemErrorWithMessage create a system error with the input error code and message.
 func NewSystemErrorWithMessage(errCode string, errMessage string) error {
 	if !isValidErrorCodeFormat(errCode) {
-		errCode = "00000"
+		errCode = ZeroErrorCode
 	}
 	sysErr := NewSystemError(errCode).(SystemError)
 	cleanMessage := strings.TrimSpace(strings.TrimSuffix(errMessage, "."))
