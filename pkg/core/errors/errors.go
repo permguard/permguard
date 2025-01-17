@@ -55,6 +55,9 @@ func (e SystemError) Equal(err error) bool {
 
 // NewSystemError create a system error with the input error code.
 func NewSystemError(errCode string) error {
+	if !isValidErrorCodeFormat(errCode) {
+		errCode = "00000"
+	}
 	defErrCode := errCode
 	if !isErrorCodeDefined(errCode) {
 		defErrCode = getSuperClassFromCode(errCode)
@@ -72,6 +75,9 @@ func NewSystemError(errCode string) error {
 
 // NewSystemErrorWithMessage create a system error with the input error code and message.
 func NewSystemErrorWithMessage(errCode string, errMessage string) error {
+	if !isValidErrorCodeFormat(errCode) {
+		errCode = "00000"
+	}
 	sysErr := NewSystemError(errCode).(SystemError)
 	cleanMessage := strings.TrimSpace(strings.TrimSuffix(errMessage, "."))
 	if len(cleanMessage) == 0 {
@@ -79,7 +85,7 @@ func NewSystemErrorWithMessage(errCode string, errMessage string) error {
 	}
 	cleanMessage = strings.ToLower(transformErroMessageString(sysErr.errMessage, cleanMessage))
 	if len(cleanMessage) > 0 {
-		sysErr.error = fmt.Errorf(errorMessageCodeMsg, errCode, cleanMessage)
+		sysErr.error = fmt.Errorf(errorMessageCodeMsg, sysErr.errCode, cleanMessage)
 		sysErr.errMessage = cleanMessage
 	}
 	return sysErr
@@ -102,7 +108,7 @@ func ConvertToSystemError(err error) *SystemError {
 // IsErrorInClass verify if the error is in the class of the input mask.
 func IsErrorInClass(err error, mask string) bool {
 	sysErr := ConvertToSystemError(err)
-	if sysErr == nil || len(sysErr.errCode) != 5 {
+	if sysErr == nil {
 		return false
 	}
 	mask = strings.ToLower(mask)
