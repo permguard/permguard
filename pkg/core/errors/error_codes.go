@@ -19,6 +19,7 @@ package errors
 import (
 	"fmt"
 	"strings"
+	"unicode"
 )
 
 var errorCodes = map[string]string{
@@ -183,8 +184,24 @@ func getSuperClassFromCodeWithIndex(code string, index int) string {
 	return superclassCode
 }
 
+// isValidErrorCodeFormat checks if the error code is in the correct format.
+func isValidErrorCodeFormat(input string) bool {
+	if len(input) != 5 {
+		return false
+	}
+	for _, r := range input {
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
+}
+
 // getSuperClassFromCode returns the superclass of the error code.
 func getSuperClassFromCode(code string) string {
+	if !isValidErrorCodeFormat(code) {
+		return "00000"
+	}
 	classCode := getSuperClassFromCodeWithIndex(code, 3)
 	if classCode != "00000" {
 		return classCode
