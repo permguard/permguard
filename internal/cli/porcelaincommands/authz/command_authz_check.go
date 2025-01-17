@@ -52,9 +52,9 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 			printer.Println(message)
 		}
 		if err != nil {
-			printer.Error(azerrors.WrapMessageError(azerrors.ErrCliArguments, message, err))
+			printer.Error(azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, message, err))
 		} else {
-			printer.Error(azerrors.WrapSystemError(azerrors.ErrCliArguments, message))
+			printer.Error(azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliArguments, message))
 		}
 		return aziclicommon.ErrCommandSilent
 	}

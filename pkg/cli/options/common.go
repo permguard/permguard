@@ -62,7 +62,7 @@ func InitFromViperForCommon(v *viper.Viper) (bool, string, error) {
 	debug := v.GetBool(flagDebug)
 	logLevel := strings.ToUpper(v.GetString(flagLogLevel))
 	if !slices.Contains(configValueLogLevels, strings.ToUpper(logLevel)) {
-		return false, "", azerrors.WrapSystemError(azerrors.ErrCliGeneric, "core: invalid log level")
+		return false, "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "core: invalid log level")
 	}
 	return debug, logLevel, nil
 }

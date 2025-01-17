@@ -32,7 +32,7 @@ type GrpcPAPClient struct {
 // NewGrpcPAPClient creates a new gRPC client for the PAP service.
 func NewGrpcPAPClient(target string) (*GrpcPAPClient, error) {
 	if target == "" {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientGeneric, "client: target is required")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "client: target is required")
 	}
 	return &GrpcPAPClient{
 		target: target,

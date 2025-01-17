@@ -143,7 +143,7 @@ func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azlangobjs
 			var err error
 			header := objInfo.GetHeader()
 			if header == nil {
-				azerrors.WrapSystemError(azerrors.ErrClientGeneric, "cli: object header is nil")
+				azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "cli: object header is nil")
 			}
 			langID := header.GetLanguageID()
 			langVersionID := header.GetLanguageVersionID()
@@ -185,7 +185,7 @@ func (m *WorkspaceManager) execMapObjectContent(oid string, objInfo azlangobjs.O
 			var err error
 			header := objInfo.GetHeader()
 			if header == nil {
-				azerrors.WrapSystemError(azerrors.ErrClientGeneric, "cli: object header is nil")
+				azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "cli: object header is nil")
 			}
 			langID := header.GetLanguageID()
 			langTypeID := header.GetLanguageTypeID()

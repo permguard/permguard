@@ -32,7 +32,7 @@ type GrpcPDPClient struct {
 // NewGrpcPDPClient creates a new gRPC client for the PDP service.
 func NewGrpcPDPClient(target string) (*GrpcPDPClient, error) {
 	if target == "" {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientGeneric, "client: target is required")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "client: target is required")
 	}
 	return &GrpcPDPClient{
 		target: target,

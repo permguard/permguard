@@ -63,7 +63,7 @@ func (m *WorkspaceManager) OnPullHandleRequestCurrentStateResponse(handlerCtx *n
 		return handlerReturn, nil
 	}
 	if localRefSPacket.HasConflicts {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, "workspace: conflicts detected in the remote ledger.")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliWorkspace, "workspace: conflicts detected in the remote ledger.")
 	}
 	handlerCtx.Set(RemoteCommitIDKey, localRefSPacket.RefCommit)
 	handlerCtx.Set(RemoteCommitsCountKey, localRefSPacket.NumberOfCommits)

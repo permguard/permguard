@@ -32,7 +32,7 @@ type GrpcAAPClient struct {
 // NewGrpcAAPClient creates a new gRPC client for the AAP service.
 func NewGrpcAAPClient(target string) (*GrpcAAPClient, error) {
 	if target == "" {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientGeneric, "client: target is required")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "client: target is required")
 	}
 	return &GrpcAAPClient{
 		target: target,

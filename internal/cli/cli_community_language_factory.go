@@ -46,7 +46,7 @@ func NewCommunityLanguageFactory() (*CommunityLanguageFactory, error) {
 func (c *CommunityLanguageFactory) GetLanguageAbastraction(language string) (azlang.LanguageAbastraction, error) {
 	langAbs, exists := c.languages[language]
 	if !exists {
-		return nil, azerrors.WrapSystemError(azerrors.ErrConfigurationGeneric, fmt.Sprintf("cli: %s is an invalid language", language))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, fmt.Sprintf("cli: %s is an invalid language", language))
 	}
 	return langAbs, nil
 }

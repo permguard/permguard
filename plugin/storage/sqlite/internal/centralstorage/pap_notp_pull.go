@@ -30,7 +30,7 @@ import (
 // OnPullHandleRequestCurrentState handles the request for the current state.
 func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	if len(packets) == 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid input packets for notify current state.")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "storage: invalid input packets for notify current state.")
 	}
 	remoteRefSPacket := &notpagpackets.RemoteRefStatePacket{}
 	err := notppackets.ConvertPacketable(packets[0], remoteRefSPacket)
@@ -38,7 +38,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 		return nil, err
 	}
 	if remoteRefSPacket.RefCommit == "" || remoteRefSPacket.RefPrevCommit == "" {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid remote ref state packet.")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "storage: invalid remote ref state packet.")
 	}
 	ledger, err := s.readLedgerFromHandlerContext(handlerCtx)
 	if err != nil {

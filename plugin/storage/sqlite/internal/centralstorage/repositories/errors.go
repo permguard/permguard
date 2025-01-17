@@ -48,7 +48,7 @@ func readErroMapParam(key string, params map[string]string) string {
 func WrapSqlite3ErrorWithParams(msg string, err error, params map[string]string) error {
 	sqliteErr, ok := err.(sqlite3.Error)
 	if !ok {
-		return azerrors.WrapSystemError(azerrors.ErrStorageGeneric, fmt.Sprintf("storage: (%s)", msg))
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageGeneric, fmt.Sprintf("storage: (%s)", msg))
 	}
 	switch sqliteErr.Code {
 	case sqlite3.ErrConstraint:
@@ -56,16 +56,16 @@ func WrapSqlite3ErrorWithParams(msg string, err error, params map[string]string)
 			if sqliteErr.ExtendedCode == sqlite3.ErrConstraintForeignKey {
 				foreignKey := readErroMapParam(WrapSqlite3ParamForeignKey, params)
 				if foreignKey != "" {
-					return azerrors.WrapSystemError(azerrors.ErrStorageConstraintForeignKey, fmt.Sprintf("storage: %s validation failed: the provided application id does not exist - %s", foreignKey, msg))
+					return azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageConstraintForeignKey, fmt.Sprintf("storage: %s validation failed: the provided application id does not exist - %s", foreignKey, msg))
 				}
-				return azerrors.WrapSystemError(azerrors.ErrStorageConstraintForeignKey, fmt.Sprintf("storage: foreign key constraint failed - %s", msg))
+				return azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageConstraintForeignKey, fmt.Sprintf("storage: foreign key constraint failed - %s", msg))
 			}
-			return azerrors.WrapSystemError(azerrors.ErrStorageConstraintUnique, fmt.Sprintf("storage: unique constraint failed - %s", msg))
+			return azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageConstraintUnique, fmt.Sprintf("storage: unique constraint failed - %s", msg))
 		}
-		return azerrors.WrapSystemError(azerrors.ErrStorageConstraintUnique, fmt.Sprintf("storage: constraint failed - %s", msg))
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageConstraintUnique, fmt.Sprintf("storage: constraint failed - %s", msg))
 	case sqlite3.ErrNotFound:
-		return azerrors.WrapSystemError(azerrors.ErrStorageNotFound, fmt.Sprintf("storage: record not found - %s", msg))
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageNotFound, fmt.Sprintf("storage: record not found - %s", msg))
 	default:
-		return azerrors.WrapSystemError(azerrors.ErrStorageGeneric, fmt.Sprintf("storage: generic error (%s)", msg))
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageGeneric, fmt.Sprintf("storage: generic error (%s)", msg))
 	}
 }

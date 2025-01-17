@@ -47,7 +47,7 @@ func ConvertLedgerKindToID(kind string) (int16, error) {
 	cKey := strings.ToLower(kind)
 	value, ok := ledgersMap[cKey]
 	if !ok {
-		return 0, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger kind %s is not valid", kind))
+		return 0, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger kind %s is not valid", kind))
 	}
 	return value, nil
 }
@@ -65,17 +65,17 @@ func ConvertLedgerKindToString(id int16) (string, error) {
 // UpsertLedger creates or updates a ledger.
 func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*Ledger, error) {
 	if ledger == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger data is missing or malformed (%s)", LogLedgerEntry(ledger)))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger data is missing or malformed (%s)", LogLedgerEntry(ledger)))
 	}
 	if err := azvalidators.ValidateCodeID("ledger", ledger.ApplicationID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidApplicationID, ledger.ApplicationID))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidApplicationID, ledger.ApplicationID))
 	}
 	if !isCreate && azvalidators.ValidateUUID("ledger", ledger.LedgerID) != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger id is not valid (%s)", LogLedgerEntry(ledger)))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger id is not valid (%s)", LogLedgerEntry(ledger)))
 	}
 	if err := azvalidators.ValidateName("ledger", ledger.Name); err != nil {
 		errorMessage := "storage: invalid client input - ledger name is not valid (%s)"
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogLedgerEntry(ledger)))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogLedgerEntry(ledger)))
 	}
 
 	applicationID := ledger.ApplicationID
@@ -118,29 +118,29 @@ func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*L
 // UpdateLedgerRef updates the ref of a ledger.
 func (r *Repository) UpdateLedgerRef(tx *sql.Tx, applicationID int64, ledgerID, currentRef, newRef string) error {
 	if err := azvalidators.ValidateCodeID("ledger", applicationID); err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidApplicationID, applicationID))
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidApplicationID, applicationID))
 	}
 	if err := azvalidators.ValidateUUID("ledger", ledgerID); err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger id is not valid (id: %s)", ledgerID))
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger id is not valid (id: %s)", ledgerID))
 	}
 	if err := azvalidators.ValidateSHA256("ledger", currentRef); err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - current ref is not valid (ref: %s)", currentRef))
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - current ref is not valid (ref: %s)", currentRef))
 	}
 	if err := azvalidators.ValidateSHA256("ledger", newRef); err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - new ref is not valid (ref: %s)", newRef))
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - new ref is not valid (ref: %s)", newRef))
 	}
 
 	var dbCurrentRef string
 	err := tx.QueryRow("SELECT ref FROM ledgers WHERE application_id = ? AND ledger_id = ?", applicationID, ledgerID).Scan(&dbCurrentRef)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return azerrors.WrapSystemError(azerrors.ErrClientNotFound, fmt.Sprintf("ledger not found (application_id: %d, ledger_id: %s)", applicationID, ledgerID))
+			return azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientNotFound, fmt.Sprintf("ledger not found (application_id: %d, ledger_id: %s)", applicationID, ledgerID))
 		}
 		return WrapSqlite3Error("failed to retrieve current ref for ledger", err)
 	}
 
 	if dbCurrentRef != currentRef {
-		return azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("current ref mismatch (expected: %s, got: %s)", dbCurrentRef, currentRef))
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("current ref mismatch (expected: %s, got: %s)", dbCurrentRef, currentRef))
 	}
 
 	result, err := tx.Exec("UPDATE ledgers SET ref = ? WHERE application_id = ? AND ledger_id = ?", newRef, applicationID, ledgerID)
@@ -153,7 +153,7 @@ func (r *Repository) UpdateLedgerRef(tx *sql.Tx, applicationID int64, ledgerID, 
 		return WrapSqlite3Error("failed to get rows affected for update ref", err)
 	}
 	if rows != 1 {
-		return azerrors.WrapSystemError(azerrors.ErrClientUpdateConflict, fmt.Sprintf("update failed, no rows affected (application_id: %d, ledger_id: %s)", applicationID, ledgerID))
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientUpdateConflict, fmt.Sprintf("update failed, no rows affected (application_id: %d, ledger_id: %s)", applicationID, ledgerID))
 	}
 	return nil
 }
@@ -161,10 +161,10 @@ func (r *Repository) UpdateLedgerRef(tx *sql.Tx, applicationID int64, ledgerID, 
 // DeleteLedger deletes a ledger.
 func (r *Repository) DeleteLedger(tx *sql.Tx, applicationID int64, ledgerID string) (*Ledger, error) {
 	if err := azvalidators.ValidateCodeID("ledger", applicationID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidApplicationID, applicationID))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidApplicationID, applicationID))
 	}
 	if err := azvalidators.ValidateUUID("ledger", ledgerID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger id is not valid (id: %s)", ledgerID))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - ledger id is not valid (id: %s)", ledgerID))
 	}
 
 	var dbLedger Ledger
@@ -194,10 +194,10 @@ func (r *Repository) DeleteLedger(tx *sql.Tx, applicationID int64, ledgerID stri
 // FetchLedgers retrieves ledgers.
 func (r *Repository) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]Ledger, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	if err := azvalidators.ValidateCodeID("ledger", applicationID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageLedgerInvalidApplicationID, applicationID))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf(errorMessageLedgerInvalidApplicationID, applicationID))
 	}
 
 	var dbLedgers []Ledger
@@ -212,7 +212,7 @@ func (r *Repository) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, appli
 	if filterID != nil {
 		ledgerID := *filterID
 		if err := azvalidators.ValidateUUID("ledger", ledgerID); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - ledger id is not valid (id: %s)", ledgerID))
+			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - ledger id is not valid (id: %s)", ledgerID))
 		}
 		conditions = append(conditions, "ledger_id = ?")
 		args = append(args, ledgerID)
@@ -221,7 +221,7 @@ func (r *Repository) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, appli
 	if filterName != nil {
 		ledgerName := *filterName
 		if err := azvalidators.ValidateName("ledger", ledgerName); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - ledger name is not valid (name: %s)", ledgerName))
+			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - ledger name is not valid (name: %s)", ledgerName))
 		}
 		ledgerName = "%" + ledgerName + "%"
 		conditions = append(conditions, "name LIKE ?")

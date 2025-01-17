@@ -68,7 +68,7 @@ type Service struct {
 func newService(serviceCfg *ServiceConfig, hostContext *azservices.HostContext) (*Service, error) {
 	svcCfgReader, err := serviceCfg.serviceable.GetServiceConfigReader()
 	if err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrConfigurationGeneric, "config: cannot get service config reader")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "config: cannot get service config reader")
 	}
 	serviceCtx, err := azservices.NewServiceContext(hostContext, serviceCfg.serviceable.GetService(), svcCfgReader)
 	if err != nil {

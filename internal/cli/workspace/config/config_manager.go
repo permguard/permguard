@@ -62,7 +62,7 @@ func (m *ConfigManager) readConfig() (*config, error) {
 func (m *ConfigManager) saveConfig(override bool, cfg *config) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
 	}
 	fileName := m.getConfigFile()
 	if override {
@@ -71,7 +71,7 @@ func (m *ConfigManager) saveConfig(override bool, cfg *config) error {
 		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermguardDir, fileName, data, 0644, false)
 	}
 	if err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", fileName))
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", fileName))
 	}
 	return nil
 }
@@ -96,7 +96,7 @@ func (m *ConfigManager) GetRemoteInfo(remote string) (*azicliwkscommon.RemoteInf
 		return nil, err
 	}
 	if _, ok := cfg.Remotes[remote]; !ok {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", remote))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", remote))
 	}
 	cfgRemote := cfg.Remotes[remote]
 	return azicliwkscommon.NewRemoteInfo(cfgRemote.Server, cfgRemote.AAPPort, cfgRemote.PAPPort)
@@ -109,7 +109,7 @@ func (m *ConfigManager) GetLedgerInfo(ledgerURI string) (*azicliwkscommon.RefInf
 		return nil, err
 	}
 	if _, ok := cfg.Ledgers[ledgerURI]; !ok {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", ledgerURI))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", ledgerURI))
 	}
 	cfgLedger := cfg.Ledgers[ledgerURI]
 	refInfo, err := azicliwkscommon.NewRefInfoFromLedgerName(cfgLedger.Remote, cfgLedger.ApplicationID, cfgLedger.LedgerName)

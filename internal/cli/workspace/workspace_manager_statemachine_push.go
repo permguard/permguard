@@ -64,7 +64,7 @@ func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *no
 		return handlerReturn, nil
 	}
 	if localRefSPacket.HasConflicts {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, "workspace: conflicts detected in the remote ledger.")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliWorkspace, "workspace: conflicts detected in the remote ledger.")
 	}
 	handlerCtx.Set(RemoteCommitIDKey, localRefSPacket.RefCommit)
 	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)

@@ -63,7 +63,7 @@ type SQLiteStorageFactory struct {
 // NewSQLiteStorageFactory creates a new server factory configuration.
 func NewSQLiteStorageFactory(storageFctyCfg *SQLiteStorageFactoryConfig) (*SQLiteStorageFactory, error) {
 	if storageFctyCfg == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrConfigurationGeneric, "storage: storage factory configuration cannot be nil")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "storage: storage factory configuration cannot be nil")
 	}
 	connection, err := azidb.NewSQLiteConnection(storageFctyCfg.config)
 	if err != nil {

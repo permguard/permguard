@@ -74,7 +74,7 @@ func (m *WorkspaceManager) getHistory(commit string) ([]azicliwkscommon.CommitIn
 // getCommitString gets the commit string.
 func (m *WorkspaceManager) getCommitString(oid string, commit *azlangobjs.Commit) (string, error) {
 	if commit == nil {
-		return "", azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: commit is nil")
+		return "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "cli: commit is nil")
 	}
 
 	tree := commit.GetTree()
@@ -100,7 +100,7 @@ func (m *WorkspaceManager) getCommitString(oid string, commit *azlangobjs.Commit
 // getCommitMap gets the commit map.
 func (m *WorkspaceManager) getCommitMap(oid string, commit *azlangobjs.Commit) (map[string]any, error) {
 	if commit == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: commit is nil")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "cli: commit is nil")
 	}
 
 	output := make(map[string]any)
@@ -120,7 +120,7 @@ func (m *WorkspaceManager) getCommitMap(oid string, commit *azlangobjs.Commit) (
 // getTreeString gets the tree string.
 func (m *WorkspaceManager) getTreeString(oid string, tree *azlangobjs.Tree) (string, error) {
 	if tree == nil {
-		return "", azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: tree is nil")
+		return "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "cli: tree is nil")
 	}
 
 	var output strings.Builder
@@ -144,7 +144,7 @@ func (m *WorkspaceManager) getTreeString(oid string, tree *azlangobjs.Tree) (str
 // getTreeMap gets the tree map.
 func (m *WorkspaceManager) getTreeMap(oid string, tree *azlangobjs.Tree) (map[string]any, error) {
 	if tree == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: tree is nil")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "cli: tree is nil")
 	}
 
 	output := make(map[string]any)
@@ -171,11 +171,11 @@ func (m *WorkspaceManager) getTreeMap(oid string, tree *azlangobjs.Tree) (map[st
 // getBlobString gets the blob string.
 func (m *WorkspaceManager) getBlobString(blob any) ([]byte, bool, error) {
 	if blob == nil {
-		return nil, false, azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: tree is nil")
+		return nil, false, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "cli: tree is nil")
 	}
 	content, hasContent := blob.([]byte)
 	if !hasContent {
-		return nil, false, azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: blob content is not a byte array")
+		return nil, false, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "cli: blob content is not a byte array")
 	}
 	return content, true, nil
 }
@@ -183,11 +183,11 @@ func (m *WorkspaceManager) getBlobString(blob any) ([]byte, bool, error) {
 // getBlobString gets the blob map.
 func (m *WorkspaceManager) getBlobMap(blob any) (map[string]any, error) {
 	if blob == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: tree is nil")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "cli: tree is nil")
 	}
 	content, hasContent := blob.([]byte)
 	if !hasContent {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: blob content is not a byte array")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "cli: blob content is not a byte array")
 	}
 	contentMap := make(map[string]any)
 	var result map[string]any
