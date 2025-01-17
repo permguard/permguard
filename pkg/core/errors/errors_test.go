@@ -63,8 +63,8 @@ func TestNewSystemErrorWithMessage(t *testing.T) {
 	}{
 		{"00000", "", "00000", "core: unknown error"},
 		{"00000", "not valid", "00000", "core: not valid"},
-		{"00191", "", "00191", "core: unknown error"},
-		{"00181", "not valid", "00181", "core: not valid"},
+		{"00191", "", "00191", "code: generic error"},
+		{"00181", "not valid", "00181", "code: not valid"},
 		{"04100", "not valid", "04100", "client: not valid"},
 		{"04151", "new custom error", "04151", "client: new custom error"},
 	}
@@ -106,8 +106,8 @@ func TestSystemError(t *testing.T) {
 		expectedMessage string
 	}{
 		{"00000", "00000", "core: unknown error"},
-		{"00181", "00181", "core: unknown error"},
-		{"04141", "04141", "client: generic error"},
+		{"00181", "00181", "code: generic error"},
+		{"04141", "04141", "client: invalid client parameter"},
 		{"04101", "04101", "client: invalid pagination parameter"},
 	}
 	for _, tc := range testCases {

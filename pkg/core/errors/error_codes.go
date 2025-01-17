@@ -26,6 +26,7 @@ var errorCodes = map[string]string{
 	"00000": "core: unknown error",
 
 	// 001xx: Implementation Errors
+	"00100": "code: generic error",
 	"00101": "code: feature not implemented",
 
 	// 01xxx: Configuration Errors
@@ -104,6 +105,7 @@ var (
 	// 00000 generic system error.
 	ErrUnknown error = NewSystemError("00000")
 	// 001xx implementation errors.
+	ErrImplementation error = NewSystemError("00100")
 	ErrNotImplemented error = NewSystemError("00101")
 	// 01xxx configuration errors.
 	ErrConfigurationGeneric error = NewSystemError("01000")
@@ -165,10 +167,13 @@ func transformErroMessageString(input, errorMessage string) string {
 	return fmt.Sprintf("%s: %s", firstPart, errorMessage)
 }
 
-// getSuperClassFromCode returns the superclass of the error code.
-func getSuperClassFromCode(code string) string {
-	superclassCode := code[:2]
-	for i := 2; i < len(code); i++ {
+// getSuperClassFromCodeWithIndex returns the superclass of the error code with the index.
+func getSuperClassFromCodeWithIndex(code string, index int) string {
+	if index < 2 || index > 3 {
+		index = 2
+	}
+	superclassCode := code[:index]
+	for i := index; i < len(code); i++ {
 		superclassCode += "0"
 	}
 	errorCode := errorCodes[superclassCode]
@@ -176,4 +181,13 @@ func getSuperClassFromCode(code string) string {
 		return "00000"
 	}
 	return superclassCode
+}
+
+// getSuperClassFromCode returns the superclass of the error code.
+func getSuperClassFromCode(code string) string {
+	classCode := getSuperClassFromCodeWithIndex(code, 3)
+	if classCode != "00000" {
+		return classCode
+	}
+	return getSuperClassFromCodeWithIndex(code, 2)
 }

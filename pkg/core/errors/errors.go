@@ -85,25 +85,6 @@ func NewSystemErrorWithMessage(errCode string, errMessage string) error {
 	return sysErr
 }
 
-// WrapSystemError wrap a system error.
-func WrapSystemError(err error, errMessage string) error {
-	errMessage = strings.TrimSuffix(errMessage, ".")
-	sysErr := ConvertToSystemError(err)
-	if sysErr == nil {
-		return NewSystemErrorWithMessage("", errMessage)
-	}
-	return NewSystemErrorWithMessage(sysErr.errCode, errMessage)
-}
-
-// WrapMessageError wrap a message error.
-func WrapMessageError(err error, errMessage string, targetErr error) error {
-	sysErr := WrapSystemError(err, errMessage).(SystemError)
-	if targetErr == nil {
-		sysErr.errMessage = fmt.Sprintf("%s. %s", sysErr.errMessage, err.Error())
-	}
-	return sysErr
-}
-
 // ConvertToSystemError converts the error to a SystemError.
 func ConvertToSystemError(err error) *SystemError {
 	var sysErr = &SystemError{}
@@ -143,4 +124,23 @@ func AreErrorsEqual(err1, err2 error) bool {
 		return false
 	}
 	return sysErr1.errCode == sysErr2.errCode
+}
+
+// WrapSystemError wrap a system error.
+func WrapSystemError(err error, errMessage string) error {
+	errMessage = strings.TrimSuffix(errMessage, ".")
+	sysErr := ConvertToSystemError(err)
+	if sysErr == nil {
+		return NewSystemErrorWithMessage("", errMessage)
+	}
+	return NewSystemErrorWithMessage(sysErr.errCode, errMessage)
+}
+
+// WrapMessageError wrap a message error.
+func WrapMessageError(err error, errMessage string, targetErr error) error {
+	sysErr := WrapSystemError(err, errMessage).(SystemError)
+	if targetErr == nil {
+		sysErr.errMessage = fmt.Sprintf("%s. %s", sysErr.errMessage, err.Error())
+	}
+	return sysErr
 }
