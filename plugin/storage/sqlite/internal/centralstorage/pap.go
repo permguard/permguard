@@ -35,7 +35,7 @@ type SQLiteCentralStoragePAP struct {
 // newSQLitePAPCentralStorage creates a new SQLitePAPCentralStorage.
 func newSQLitePAPCentralStorage(storageContext *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, ledger SqliteRepo, sqlExec SqliteExecutor) (*SQLiteCentralStoragePAP, error) {
 	if storageContext == nil || sqliteConnector == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "storage: storageContext is nil")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "storageContext is nil")
 	}
 	if ledger == nil {
 		ledger = &azirepos.Repository{}

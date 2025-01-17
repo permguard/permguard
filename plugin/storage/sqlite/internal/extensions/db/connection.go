@@ -93,7 +93,7 @@ type SQLiteConnection struct {
 // NewSQLiteConnection creates a connection.
 func NewSQLiteConnection(connectionCgf *SQLiteConnectionConfig) (SQLiteConnector, error) {
 	if connectionCgf == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "storage: sqlite connection configuration cannot be nil")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "sqlite connection configuration cannot be nil")
 	}
 	return &SQLiteConnection{
 		config: connectionCgf,
@@ -114,7 +114,7 @@ func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *azstorage.StorageCon
 	}
 	hostCfgReader, err := ctx.GetHostConfigReader()
 	if err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageGeneric, "storage: cannot get host config reader")
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageGeneric, "cannot get host config reader", err)
 	}
 	filePath := hostCfgReader.GetAppData()
 	dbName := c.config.GetDBName()
@@ -124,7 +124,7 @@ func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *azstorage.StorageCon
 	dbPath := filepath.Join(filePath, dbName)
 	db, err := sqlx.Connect("sqlite3", dbPath)
 	if err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageGeneric, "storage: cannot connect to sqlite")
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageGeneric, "cannot connect to sqlite", err)
 	}
 	db.Exec("PRAGMA foreign_keys = ON;")
 	c.db = db
@@ -140,7 +140,7 @@ func (c *SQLiteConnection) Disconnect(logger *zap.Logger, ctx *azstorage.Storage
 	}
 	err := c.db.Close()
 	if err != nil {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageGeneric, "storage: cannot disconnect from sqlite")
+		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageGeneric, "cannot disconnect from sqlite", err)
 	}
 	c.db = nil
 	return nil

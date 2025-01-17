@@ -29,10 +29,10 @@ import (
 // UpsertKeyValue creates or updates a key-value pair.
 func (r *Repository) UpsertKeyValue(tx *sql.Tx, keyValue *KeyValue) (*KeyValue, error) {
 	if keyValue == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "storage: invalid client input - key-value data is missing or malformed")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid client input - key-value data is missing or malformed")
 	}
 	if keyValue.Key == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "storage: invalid client input - key is missing or empty")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid client input - key is missing or empty")
 	}
 
 	key := keyValue.Key
@@ -67,7 +67,7 @@ func (r *Repository) UpsertKeyValue(tx *sql.Tx, keyValue *KeyValue) (*KeyValue, 
 // GetKeyValue retrieves the value for a given key from the key-value store.
 func (r *Repository) GetKeyValue(db *sqlx.DB, key string) (*KeyValue, error) {
 	if key == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "storage: invalid client input - key is missing or empty")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid client input - key is missing or empty")
 	}
 
 	var dbKeyValue KeyValue
@@ -77,7 +77,7 @@ func (r *Repository) GetKeyValue(db *sqlx.DB, key string) (*KeyValue, error) {
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageNotFound, fmt.Sprintf("storage: no value found for key (%s)", key))
+			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageNotFound, fmt.Sprintf("no value found for key (%s)", key), err)
 		}
 		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve key-value pair - operation 'retrieve-key-value' encountered an issue (key: %s)", key), err)
 	}

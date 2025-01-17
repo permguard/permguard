@@ -39,19 +39,19 @@ const (
 func ConvertStringWithLedgerIDToRefInfo(ref string) (*RefInfo, error) {
 	refObs := strings.Split(ref, refSeparator)
 	if len(refObs) != 5 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: malformed ref")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "malformed ref")
 	}
 	if refObs[0] != refsPrefix {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: invalid ref")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid ref")
 	}
 	sourceType := refObs[1]
 	if sourceType != remotePrefix && sourceType != headPrefix {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: invalid source type")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid source type")
 	}
 	remote := refObs[2]
 	applicationID, err := strconv.ParseInt(refObs[3], 10, 64)
 	if err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: failed to parse application ID")
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, "failed to parse application ID", err)
 	}
 	ledger := refObs[4]
 	return &RefInfo{
@@ -100,13 +100,13 @@ type RefInfo struct {
 // NewRefInfo creates a new ref information.
 func NewRefInfoFromLedgerName(remote string, applicationID int64, ledgerName string) (*RefInfo, error) {
 	if len(remote) == 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: invalid remote")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid remote")
 	}
 	if applicationID <= 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: invalid application ID")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid application ID")
 	}
 	if len(ledgerName) == 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: invalid ledger name")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid ledger name")
 	}
 	return &RefInfo{
 		sourceType:    remotePrefix,
@@ -119,7 +119,7 @@ func NewRefInfoFromLedgerName(remote string, applicationID int64, ledgerName str
 // BuildRefInfoFromLedgerID builds the ref information from the ledger ID.
 func BuildRefInfoFromLedgerID(refInfo *RefInfo, ledgerID string) (*RefInfo, error) {
 	if refInfo == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: invalid ref info")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid ref info")
 	}
 	szRemote, err := SanitizeRemote(refInfo.remote)
 	if err != nil {

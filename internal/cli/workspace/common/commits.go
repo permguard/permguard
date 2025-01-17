@@ -30,10 +30,10 @@ type CommitInfo struct {
 // NewCommitInfo creates a new CommitInfo.
 func NewCommitInfo(oid string, commit *azlangobjs.Commit) (*CommitInfo, error) {
 	if oid == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: invalid commit oid")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid commit oid")
 	}
 	if commit == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: invalid commit")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid commit")
 	}
 	return &CommitInfo{
 		oid:    oid,

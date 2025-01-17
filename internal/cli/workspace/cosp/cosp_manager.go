@@ -113,7 +113,7 @@ func (m *COSPManager) SaveCodeSourceObject(oid string, content []byte) (bool, er
 	path := filepath.Join(folder, name)
 	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, folder)
 	if err != nil {
-		return false, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to save object %s", oid))
+		return false, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("failed to save object %s", oid), err)
 	}
 	return m.persMgr.WriteFile(azicliwkspers.PermguardDir, path, content, 0644, true)
 }
@@ -133,7 +133,7 @@ func (m *COSPManager) ReadCodeSourceObject(oid string) (*azlangobjs.Object, erro
 func (m *COSPManager) saveConfig(name string, override bool, cfg any) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
+		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "failed to marshal config", err)
 	}
 	if override {
 		_, err = m.persMgr.WriteFile(azicliwkspers.PermguardDir, name, data, 0644, false)
@@ -141,7 +141,7 @@ func (m *COSPManager) saveConfig(name string, override bool, cfg any) error {
 		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermguardDir, name, data, 0644, false)
 	}
 	if err != nil {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", name))
+		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("failed to write config file %s", name), err)
 	}
 	return nil
 }
@@ -169,7 +169,7 @@ func (m *COSPManager) readCodeSourceConfig() (*codeLocalConfig, error) {
 func (m *COSPManager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, m.getCodeSourceDir())
 	if err != nil {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: failed to create code plan")
+		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "failed to create code plan", err)
 	}
 	path := filepath.Join(m.getCodeSourceDir(), hiddenCodeMapFile)
 	rowFunc := func(record any) []string {
@@ -192,7 +192,7 @@ func (m *COSPManager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 	}
 	err = m.persMgr.WriteCSVStream(azicliwkspers.PermguardDir, path, nil, codeFiles, rowFunc, true)
 	if err != nil {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: failed to write code map")
+		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "failed to write code map", err)
 	}
 	return nil
 }
@@ -238,7 +238,7 @@ func (m *COSPManager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 	}
 	err := m.persMgr.ReadCSVStream(azicliwkspers.PermguardDir, path, nil, recordFunc, true)
 	if err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: failed to read code map")
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "failed to read code map", err)
 	}
 
 	return codeFiles, nil
@@ -259,7 +259,7 @@ func (m *COSPManager) ReadCodeSourceCodeState() ([]CodeObjectState, error) {
 // BuildCodeSourceCodeStateForTree builds the code object state for the input tree.
 func (m *COSPManager) BuildCodeSourceCodeStateForTree(tree *azlangobjs.Tree) ([]CodeObjectState, error) {
 	if tree == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "cli: tree is nil")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "tree is nil")
 	}
 	codeObjectStates := []CodeObjectState{}
 	for _, entry := range tree.GetEntries() {
@@ -286,7 +286,7 @@ func (m *COSPManager) SaveRemoteCodePlan(ref string, codeObjects []CodeObjectSta
 	path := filepath.Join(m.getCodeDir(), strings.ToLower(ref))
 	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, path)
 	if err != nil {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: failed to create code plan")
+		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "failed to create code plan", err)
 	}
 	path = filepath.Join(path, hiddenCodePlanFile)
 	return m.saveCodeObjectStates(path, codeObjects)
@@ -307,25 +307,25 @@ func (m *COSPManager) CleanCode(ref string) (bool, error) {
 // convertCodeFileToCodeObjectState converts the code file to the code object.
 func (m *COSPManager) convertCodeFileToCodeObjectState(codeFile CodeFile) (*CodeObjectState, error) {
 	if codeFile.OName == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "cli: code file name is empty.")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "code file name is empty.")
 	}
 	if codeFile.OID == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "cli: code file OID is empty.")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "code file OID is empty.")
 	}
 	if codeFile.CodeID == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "cli: code file CodeID is empty.")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "code file CodeID is empty.")
 	}
 	if codeFile.CodeType == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "cli: code file CodeType is empty.")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "code file CodeType is empty.")
 	}
 	if codeFile.Language == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "cli: code file Language is empty.")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "code file Language is empty.")
 	}
 	if codeFile.LanguageVersion == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "cli: code file LanguageVersion is empty.")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "code file LanguageVersion is empty.")
 	}
 	if codeFile.LanguageType == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "cli: code file LanguageType is empty.")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "code file LanguageType is empty.")
 	}
 	return &CodeObjectState{
 		CodeObject: CodeObject{
@@ -359,7 +359,7 @@ func (m *COSPManager) saveCodeObjectStates(path string, codeObjects []CodeObject
 	}
 	err := m.persMgr.WriteCSVStream(azicliwkspers.PermguardDir, path, nil, codeObjects, rowFunc, true)
 	if err != nil {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: failed to write code object state")
+		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "failed to write code object state", err)
 	}
 	return nil
 }
@@ -389,7 +389,7 @@ func (m *COSPManager) readCodeObjectStates(path string) ([]CodeObjectState, erro
 	}
 	err := m.persMgr.ReadCSVStream(azicliwkspers.PermguardDir, path, nil, recordFunc, true)
 	if err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: failed to read code state")
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "failed to read code state", err)
 	}
 	return codeObjects, nil
 }
@@ -449,7 +449,7 @@ func (m *COSPManager) SaveObject(oid string, content []byte) (bool, error) {
 	path := filepath.Join(folder, name)
 	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, folder)
 	if err != nil {
-		return false, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to save object %s", oid))
+		return false, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("failed to save object %s", oid), err)
 	}
 	return m.persMgr.WriteFile(azicliwkspers.PermguardDir, path, content, 0644, true)
 }
@@ -532,7 +532,7 @@ func (m *COSPManager) GetCommit(commitID string) (*azlangobjs.Commit, error) {
 		return nil, err
 	}
 	if objInfo.GetType() != azlangobjs.ObjectTypeCommit {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: oid %s is not a valid commit", commitID))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("oid %s is not a valid commit", commitID))
 	}
 	commit := objInfo.GetInstance().(*azlangobjs.Commit)
 	return commit, nil

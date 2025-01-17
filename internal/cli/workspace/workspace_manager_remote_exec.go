@@ -217,7 +217,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", "Not all commits were successfully pulled. Please retry the operation.", nil, true)
 		}
-		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordExists, "Not all commits were successfully pulled."))
+		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordExists, "not all commits were successfully pulled."))
 	} else {
 		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 		if !committed || localCommitID == "" || remoteCommitID == "" {
@@ -308,7 +308,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 					}
 					header := objInfo.GetHeader()
 					if header == nil {
-						azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "cli: object header is nil")
+						azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "object header is nil")
 					}
 					langID := header.GetLanguageID()
 					langVersionID := header.GetLanguageVersionID()
@@ -316,7 +316,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 					langCodeBlock, err := absLang.ConvertBytesToFrontendLanguage(langID, langVersionID, langTypeID, codeBlock)
 					codeBlocks = append(codeBlocks, langCodeBlock)
 				default:
-					return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: invalid class type"))
+					return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "invalid class type"))
 				}
 			}
 		}
@@ -341,7 +341,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			langSpec := absLang.GetLanguageSpecification()
 			schemaFileNames := langSpec.GetSupportedSchemaFileNames()
 			if len(schemaFileNames) < 1 {
-				return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: no schema file names are supported"))
+				return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "no schema file names are supported"))
 			}
 			schemaFileName := schemaFileNames[0]
 			m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, schemaFileName, schemaBlock, 0644, false)
@@ -391,12 +391,12 @@ func (m *WorkspaceManager) ExecCloneLedger(language, ledgerURI string, aapPort, 
 	var output map[string]any
 	ledgerURI = strings.ToLower(ledgerURI)
 	if !strings.HasPrefix(ledgerURI, "permguard@") {
-		return failedOpErr(output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: invalid ledger URI"))
+		return failedOpErr(output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid ledger URI"))
 	}
 	ledgerURI = strings.TrimPrefix(ledgerURI, "permguard@")
 	elements := strings.Split(ledgerURI, "/")
 	if len(elements) != 3 {
-		return failedOpErr(output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: invalid ledger URI"))
+		return failedOpErr(output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid ledger URI"))
 	}
 
 	uriServer := elements[0]
@@ -423,7 +423,7 @@ func (m *WorkspaceManager) ExecCloneLedger(language, ledgerURI string, aapPort, 
 		}
 	}
 	if aborted {
-		return failedOpErr(output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: operation has been aborted"))
+		return failedOpErr(output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "operation has been aborted"))
 	}
 	return output, nil
 }

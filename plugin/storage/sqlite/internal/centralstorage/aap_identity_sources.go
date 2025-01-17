@@ -31,7 +31,7 @@ const (
 // CreateIdentitySource creates a new identity source.
 func (s SQLiteCentralStorageAAP) CreateIdentitySource(identitySource *azmodelaap.IdentitySource) (*azmodelaap.IdentitySource, error) {
 	if identitySource == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "storage: invalid client input - identity source is nil")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid client input - identity source is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -59,7 +59,7 @@ func (s SQLiteCentralStorageAAP) CreateIdentitySource(identitySource *azmodelaap
 // UpdateIdentitySource updates an identity source.
 func (s SQLiteCentralStorageAAP) UpdateIdentitySource(identitySource *azmodelaap.IdentitySource) (*azmodelaap.IdentitySource, error) {
 	if identitySource == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "storage: invalid client input - identity source is nil")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid client input - identity source is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -109,7 +109,7 @@ func (s SQLiteCentralStorageAAP) DeleteIdentitySource(applicationID int64, ident
 // FetchIdentitySources returns all identity sources.
 func (s SQLiteCentralStorageAAP) FetchIdentitySources(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelaap.IdentitySource, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -119,7 +119,7 @@ func (s SQLiteCentralStorageAAP) FetchIdentitySources(page int32, pageSize int32
 	if _, ok := fields[azmodelaap.FieldIdentitySourceIdentitySourceID]; ok {
 		identitySourceID, ok := fields[azmodelaap.FieldIdentitySourceIdentitySourceID].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source id is not valid (identity source id: %s)", identitySourceID))
+			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity source id is not valid (identity source id: %s)", identitySourceID))
 		}
 		filterID = &identitySourceID
 	}
@@ -127,7 +127,7 @@ func (s SQLiteCentralStorageAAP) FetchIdentitySources(page int32, pageSize int32
 	if _, ok := fields[azmodelaap.FieldIdentitySourceName]; ok {
 		identitySourceName, ok := fields[azmodelaap.FieldIdentitySourceName].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity source name is not valid (identity source name: %s)", identitySourceName))
+			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity source name is not valid (identity source name: %s)", identitySourceName))
 		}
 		filterName = &identitySourceName
 	}
@@ -139,7 +139,7 @@ func (s SQLiteCentralStorageAAP) FetchIdentitySources(page int32, pageSize int32
 	for i, a := range dbIdentitySources {
 		identitySource, err := mapIdentitySourceToAgentIdentitySource(&a)
 		if err != nil {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert identity source entity (%s)", azirepos.LogIdentitySourceEntry(&a)))
+			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageEntityMapping, fmt.Sprintf("failed to convert identity source entity (%s)", azirepos.LogIdentitySourceEntry(&a)), err)
 		}
 		identitySources[i] = *identitySource
 	}

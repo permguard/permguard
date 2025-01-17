@@ -67,7 +67,7 @@ func (c *AAPServiceConfig) InitFromViper(v *viper.Viper) error {
 	flagName := azoptions.FlagName(flagServerAAPPrefix, flagSuffixGrpcPort)
 	grpcPort := v.GetInt(flagName)
 	if !azvalidators.IsValidPort(grpcPort) {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliArguments, "core: invalid port")
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliArguments, "invalid port")
 	}
 	c.config[flagSuffixGrpcPort] = grpcPort
 	// retrieve the data fetch max page size
@@ -75,14 +75,14 @@ func (c *AAPServiceConfig) InitFromViper(v *viper.Viper) error {
 	centralStorageEngine := v.GetString(flagName)
 	storageCEng, err := azstorage.NewStorageKindFromString(centralStorageEngine)
 	if err != nil {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliArguments, "core: invalid central sotrage engine")
+		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "invalid central sotrage engine", err)
 	}
 	c.config[flagCentralEngine] = storageCEng
 	// retrieve the data fetch max page size
 	flagName = azoptions.FlagName(flagServerAAPPrefix, flagDataFetchMaxPageSize)
 	dataFetchMaxPageSize := v.GetInt(flagName)
 	if dataFetchMaxPageSize <= 0 {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliArguments, "core: invalid data fetch max page size")
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliArguments, "invalid data fetch max page size")
 	}
 	c.config[flagDataFetchMaxPageSize] = dataFetchMaxPageSize
 	// retrieve the enable default creation

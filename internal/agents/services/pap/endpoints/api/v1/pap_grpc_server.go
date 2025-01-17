@@ -191,7 +191,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.RespondCurrentStateMessage:
 				return s.service.OnPullSendNotifyCurrentStateResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid message code %d", statePacket.MessageCode))
+				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.PublisherNegotiationStateID:
@@ -201,7 +201,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.RespondNegotiationRequestMessage:
 				return s.service.OnPullHandleNegotiationResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid message code %d", statePacket.MessageCode))
+				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.PublisherDataStreamStateID:
@@ -209,7 +209,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.ExchangeDataStreamMessage:
 				return s.service.OnPullHandleExchangeDataStream(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid message code %d", statePacket.MessageCode))
+				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.PublisherCommitStateID:
@@ -217,7 +217,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.CommitMessage:
 				return s.service.OnPullHandleCommit(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid message code %d", statePacket.MessageCode))
+				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.ProcessNotifyObjectsStateID:
@@ -227,7 +227,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.RespondCurrentStateMessage:
 				return s.service.OnPushSendNotifyCurrentStateResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid message code %d", statePacket.MessageCode))
+				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.SubscriberNegotiationStateID:
@@ -237,7 +237,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.RespondNegotiationRequestMessage:
 				return s.service.OnPushHandleNegotiationResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid message code %d", statePacket.MessageCode))
+				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.SubscriberDataStreamStateID:
@@ -245,7 +245,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.ExchangeDataStreamMessage:
 				return s.service.OnPushHandleExchangeDataStream(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid message code %d", statePacket.MessageCode))
+				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.SubscriberCommitStateID:
@@ -253,10 +253,10 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.CommitMessage:
 				return s.service.OnPushSendCommit(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid message code %d", statePacket.MessageCode))
+				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 		default:
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("server: invalid state %d", handlerCtx.GetCurrentStateID()))
+			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("invalid state %d", handlerCtx.GetCurrentStateID()))
 		}
 	}
 	stateMachine, err := notpstatemachines.NewLeaderStateMachine(hostHandler, transportLayer)
@@ -270,16 +270,16 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
 	md, ok := metadata.FromIncomingContext(stream.Context())
 	if !ok {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "server: notp stream missing metadata")
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "notp stream missing metadata")
 
 	}
 	applicationID, ok := md[azagentnotpsm.ApplicationIDKey]
 	if !ok || len(applicationID) == 0 {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "server: notp stream missing application id")
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "notp stream missing application id")
 	}
 	respositoryID, ok := md[azagentnotpsm.LedgerIDKey]
 	if !ok || len(respositoryID) == 0 {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "server: notp stream missing ledger id")
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "notp stream missing ledger id")
 	}
 
 	stateMachine, err := s.createWiredStateMachine(stream)
@@ -291,7 +291,7 @@ func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, Pa
 	bag[azagentnotpsm.LedgerIDKey] = respositoryID[0]
 	_, err = stateMachine.Run(bag, notpstatemachines.UnknownFlowType)
 	if err != nil {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("server: notp stream unhandled err %s", err.Error()))
+		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, "notp stream unhandled err", err)
 	}
 	return nil
 }

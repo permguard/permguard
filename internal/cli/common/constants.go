@@ -79,4 +79,4 @@ func BuildCliLongTemplate(content string) string {
 }
 
 // ErrCommandSilent is an error that is used to indicate that the command should not print an error message.
-var ErrCommandSilent = azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "core: silent error")
+var ErrCommandSilent = azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "silent error")

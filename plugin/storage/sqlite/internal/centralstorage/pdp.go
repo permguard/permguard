@@ -35,7 +35,7 @@ type SQLiteCentralStoragePDP struct {
 // newSQLitePDPCentralStorage creates a new SQLitePDPCentralStorage.
 func newSQLitePDPCentralStorage(storageContext *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, ledger SqliteRepo, sqlExec SqliteExecutor) (*SQLiteCentralStoragePDP, error) {
 	if storageContext == nil || sqliteConnector == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "storage: storageContext is nil")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "storageContext is nil")
 	}
 	if ledger == nil {
 		ledger = &azirepos.Repository{}

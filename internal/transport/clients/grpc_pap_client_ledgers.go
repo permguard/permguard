@@ -41,7 +41,7 @@ func (c *GrpcPAPClient) CreateLedger(applicationID int64, kind string, name stri
 // UpdateLedger updates an ledger.
 func (c *GrpcPAPClient) UpdateLedger(ledger *azmodelpap.Ledger) (*azmodelpap.Ledger, error) {
 	if ledger == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "client: invalid ledger instance")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "invalid ledger instance")
 	}
 	client, err := c.createGRPCClient()
 	if err != nil {

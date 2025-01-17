@@ -34,13 +34,13 @@ type RemoteInfo struct {
 // NewRemoteInfo creates a new remote info.
 func NewRemoteInfo(server string, aapPort, papPort int) (*RemoteInfo, error) {
 	if server == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: invalid server")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid server")
 	}
 	if aapPort <= 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: invalid aap port")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid aap port")
 	}
 	if papPort <= 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: invalid pap port")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid pap port")
 	}
 	return &RemoteInfo{
 		server:  server,
@@ -67,11 +67,11 @@ func (i *RemoteInfo) GetPAPPort() int {
 // SanitizeRemote sanitizes the remote name.
 func SanitizeRemote(remote string) (string, error) {
 	if len(remote) == 0 {
-		return "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: invalid remote name")
+		return "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid remote name")
 	}
 	remote = strings.ToLower(remote)
 	if !azvalidators.ValidateSimpleName(remote) {
-		return "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid remote name %s", remote))
+		return "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid remote name %s", remote))
 	}
 	return remote, nil
 }
