@@ -152,18 +152,18 @@ func WrapSystemErrorWithMessage(err error, errMessage string) error {
 }
 
 // WrapHandledSysError wrap an handled error and a system error.
-func WrapHandledSysError(err error, targetErr error) error {
+func WrapHandledSysError(err error, handledErr error) error {
 	sysErr := WrapSystemError(err).(SystemError)
-	if targetErr == nil {
+	if handledErr == nil {
 		sysErr.errMessage = fmt.Sprintf("%s. %s", sysErr.errMessage, err.Error())
 	}
 	return sysErr
 }
 
 // WrapHandledSysErrorWithMessage wrap an handled error and a system error with a message.
-func WrapHandledSysErrorWithMessage(err error, errMessage string, targetErr error) error {
+func WrapHandledSysErrorWithMessage(err error, errMessage string, handledErr error) error {
 	sysErr := WrapSystemErrorWithMessage(err, errMessage).(SystemError)
-	if targetErr == nil {
+	if handledErr == nil {
 		sysErr.errMessage = fmt.Sprintf("%s. %s", sysErr.errMessage, err.Error())
 	}
 	return sysErr
