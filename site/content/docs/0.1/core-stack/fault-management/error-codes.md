@@ -31,6 +31,7 @@ seo:
 
 | Error Code | Description                       |
 |------------|-----------------------------------|
+| 00100      | code: generic error               |
 | 00101      | code: feature not implemented     |
 
 ## 01xxx Configuration errors
