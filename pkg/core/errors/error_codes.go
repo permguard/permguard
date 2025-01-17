@@ -160,14 +160,17 @@ func isErrorCodeDefined(code string) bool {
 	return errorCodes[code] != ""
 }
 
-// transformErroMessageString transforms the error message string.
-func transformErroMessageString(input, errorMessage string) string {
-	parts := strings.Split(input, ":")
-	if len(parts) == 0 {
-		return ""
+// isValidErrorCodeFormat checks if the error code is in the correct format.
+func isValidErrorCodeFormat(input string) bool {
+	if len(input) != 5 {
+		return false
 	}
-	firstPart := strings.TrimSpace(parts[0])
-	return fmt.Sprintf("%s: %s", firstPart, errorMessage)
+	for _, r := range input {
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
 }
 
 // getSuperClassFromCodeWithIndex returns the superclass of the error code with the index.
@@ -186,19 +189,6 @@ func getSuperClassFromCodeWithIndex(code string, index int) string {
 	return superclassCode
 }
 
-// isValidErrorCodeFormat checks if the error code is in the correct format.
-func isValidErrorCodeFormat(input string) bool {
-	if len(input) != 5 {
-		return false
-	}
-	for _, r := range input {
-		if !unicode.IsDigit(r) {
-			return false
-		}
-	}
-	return true
-}
-
 // getSuperClassFromCode returns the superclass of the error code.
 func getSuperClassFromCode(code string) string {
 	if !isValidErrorCodeFormat(code) {
@@ -209,4 +199,14 @@ func getSuperClassFromCode(code string) string {
 		return classCode
 	}
 	return getSuperClassFromCodeWithIndex(code, 2)
+}
+
+// transformErroMessageString transforms the error message string.
+func transformErroMessageString(input, errorMessage string) string {
+	parts := strings.Split(input, ":")
+	if len(parts) == 0 {
+		return ""
+	}
+	firstPart := strings.TrimSpace(parts[0])
+	return fmt.Sprintf("%s: %s", firstPart, errorMessage)
 }
