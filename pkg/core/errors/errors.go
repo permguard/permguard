@@ -165,7 +165,7 @@ func WrapHandledSysError(err error, handledErr error) error {
 func WrapHandledSysErrorWithMessage(err error, errMessage string, handledErr error) error {
 	sysErr := WrapSystemErrorWithMessage(err, errMessage).(SystemError)
 	if handledErr != nil {
-		sysErr.errMessage = handledErr.Error()
+		sysErr.errMessage = fmt.Sprintf("%s - [handled] %s", sysErr.errMessage, handledErr.Error())
 		sysErr.error = fmt.Errorf(errorMessageCodeMsg, sysErr.errCode, sysErr.errMessage)
 	}
 	return sysErr
