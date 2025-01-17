@@ -51,7 +51,7 @@ func runECommandForAAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 		return aziclicommon.ErrCommandSilent
 	}
 	if len(args) == 0 {
-		printer.Error(azerrors.WrapSystemError(azerrors.ErrCliGeneric, "core: invalid input"))
+		printer.Error(azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "core: invalid input"))
 		return aziclicommon.ErrCommandSilent
 	}
 	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixAAP, aziclicommon.FlagSuffixAAPTarget), args[0])
@@ -75,7 +75,7 @@ func runECommandForPAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 		return aziclicommon.ErrCommandSilent
 	}
 	if len(args) == 0 {
-		printer.Error(azerrors.WrapSystemError(azerrors.ErrCliGeneric, "core: invalid input"))
+		printer.Error(azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "core: invalid input"))
 		return aziclicommon.ErrCommandSilent
 	}
 	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget), args[0])

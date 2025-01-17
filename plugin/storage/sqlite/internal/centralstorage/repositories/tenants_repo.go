@@ -36,17 +36,17 @@ const (
 // UpsertTenant creates or updates an tenant.
 func (r *Repository) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant, error) {
 	if tenant == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant data is missing or malformed (%s)", LogTenantEntry(tenant)))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant data is missing or malformed (%s)", LogTenantEntry(tenant)))
 	}
 	if err := azvalidators.ValidateCodeID("tenant", tenant.ApplicationID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidApplicationID, tenant.ApplicationID))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidApplicationID, tenant.ApplicationID))
 	}
 	if !isCreate && azvalidators.ValidateUUID("tenant", tenant.TenantID) != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (%s)", LogTenantEntry(tenant)))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (%s)", LogTenantEntry(tenant)))
 	}
 	if err := azvalidators.ValidateName("tenant", tenant.Name); err != nil {
 		errorMessage := "storage: invalid client input - tenant name is not valid (%s)"
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogTenantEntry(tenant)))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogTenantEntry(tenant)))
 	}
 
 	applicationID := tenant.ApplicationID
@@ -86,10 +86,10 @@ func (r *Repository) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*T
 // DeleteTenant deletes an tenant.
 func (r *Repository) DeleteTenant(tx *sql.Tx, applicationID int64, tenantID string) (*Tenant, error) {
 	if err := azvalidators.ValidateCodeID("tenant", applicationID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidApplicationID, applicationID))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidApplicationID, applicationID))
 	}
 	if err := azvalidators.ValidateUUID("tenant", tenantID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (id: %s)", tenantID))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - tenant id is not valid (id: %s)", tenantID))
 	}
 
 	var dbTenant Tenant
@@ -117,10 +117,10 @@ func (r *Repository) DeleteTenant(tx *sql.Tx, applicationID int64, tenantID stri
 // FetchTenants retrieves tenants.
 func (r *Repository) FetchTenants(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]Tenant, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	if err := azvalidators.ValidateCodeID("tenant", applicationID); err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf(errorMessageTenantInvalidApplicationID, applicationID))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf(errorMessageTenantInvalidApplicationID, applicationID))
 	}
 
 	var dbTenants []Tenant
@@ -135,7 +135,7 @@ func (r *Repository) FetchTenants(db *sqlx.DB, page int32, pageSize int32, appli
 	if filterID != nil {
 		tenantID := *filterID
 		if err := azvalidators.ValidateUUID("tenant", tenantID); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - tenant id is not valid (id: %s)", tenantID))
+			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - tenant id is not valid (id: %s)", tenantID))
 		}
 		conditions = append(conditions, "tenant_id = ?")
 		args = append(args, tenantID)
@@ -144,7 +144,7 @@ func (r *Repository) FetchTenants(db *sqlx.DB, page int32, pageSize int32, appli
 	if filterName != nil {
 		tenantName := *filterName
 		if err := azvalidators.ValidateName("tenant", tenantName); err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - tenant name is not valid (name: %s)", tenantName))
+			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - tenant name is not valid (name: %s)", tenantName))
 		}
 		tenantName = "%" + tenantName + "%"
 		conditions = append(conditions, "name LIKE ?")

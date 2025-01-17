@@ -195,7 +195,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	langSpec := absLang.GetLanguageSpecification()
 	schemaFileNames := langSpec.GetSupportedSchemaFileNames()
 	if len(schemaFileNames) < 1 {
-		return "", nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: no schema file names are supported")
+		return "", nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: no schema file names are supported")
 	}
 	schemaFileName := schemaFileNames[0]
 	schemaFileCount := 0
@@ -212,7 +212,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 			schemaFileCount++
 			blbCodeFiles = m.blobifyPermSchemaFile(schemaFileCount, path, wkdir, mode, blbCodeFiles, absLang, data, file)
 		} else {
-			return "", nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: file type is not supported")
+			return "", nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: file type is not supported")
 		}
 	}
 	if schemaFileCount == 0 {
@@ -232,7 +232,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	}
 	for _, blobCodeFile := range blbCodeFiles {
 		if blobCodeFile.HasErrors {
-			return "", blbCodeFiles, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: blobification process failed because of errors in the code files")
+			return "", blbCodeFiles, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: blobification process failed because of errors in the code files")
 		}
 	}
 	codeObsState, err := m.cospMgr.ConvertCodeFilesToCodeObjectStates(blbCodeFiles)
@@ -244,20 +244,20 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	}
 	tree, err := azlangobjs.NewTree()
 	if err != nil {
-		return "", blbCodeFiles, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree object cannot be created")
+		return "", blbCodeFiles, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: tree object cannot be created")
 	}
 	for _, codeObjState := range codeObsState {
 		treeItem, err := azlangobjs.NewTreeEntry(codeObjState.OType, codeObjState.OID, codeObjState.OName, codeObjState.CodeID, codeObjState.CodeType, codeObjState.Language, codeObjState.LanguageVersion, codeObjState.LanguageType)
 		if err != nil {
-			return "", nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree item cannot be created")
+			return "", nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: tree item cannot be created")
 		}
 		if err := tree.AddEntry(treeItem); err != nil {
-			return "", blbCodeFiles, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree item cannot be added to the tree because of errors in the code files")
+			return "", blbCodeFiles, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: tree item cannot be added to the tree because of errors in the code files")
 		}
 	}
 	treeObj, err := absLang.CreateTreeObject(tree)
 	if err != nil {
-		return "", blbCodeFiles, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, "cli: tree object cannot be created")
+		return "", blbCodeFiles, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: tree object cannot be created")
 	}
 	if _, err = m.cospMgr.SaveCodeSourceObject(treeObj.GetOID(), treeObj.GetContent()); err != nil {
 		return "", blbCodeFiles, err

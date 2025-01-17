@@ -48,7 +48,7 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 		return output, err
 	}
 	if azicliwkscommon.IsReservedKeyword(remote) {
-		return output, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: remote %s is a reserved keyword", remote))
+		return output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("cli: remote %s is a reserved keyword", remote))
 	}
 	server = strings.ToLower(server)
 	cfg, err := m.readConfig()
@@ -57,7 +57,7 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 	}
 	for rmt := range cfg.Remotes {
 		if remote == rmt {
-			return output, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: remote %s already exists", remote))
+			return output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: remote %s already exists", remote))
 		}
 	}
 	cfgRemote := remoteConfig{
@@ -98,11 +98,11 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 		return output, err
 	}
 	if _, ok := cfg.Remotes[remote]; !ok {
-		return output, azerrors.WrapSystemError(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", remote))
+		return output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordNotFound, fmt.Sprintf("cli: remote %s does not exist", remote))
 	}
 	for ledger := range cfg.Ledgers {
 		if cfg.Ledgers[ledger].Remote == remote {
-			return output, azerrors.WrapSystemError(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: remote %s is used by ledger %s", remote, ledger))
+			return output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordExists, fmt.Sprintf("cli: remote %s is used by ledger %s", remote, ledger))
 		}
 	}
 	cfgRemote := cfg.Remotes[remote]

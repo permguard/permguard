@@ -65,7 +65,7 @@ func (c *PDPServiceConfig) InitFromViper(v *viper.Viper) error {
 	flagName := azoptions.FlagName(flagServerPDPPrefix, flagSuffixGrpcPort)
 	grpcPort := v.GetInt(flagName)
 	if !azvalidators.IsValidPort(grpcPort) {
-		return azerrors.WrapSystemError(azerrors.ErrCliArguments, "core: invalid port")
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliArguments, "core: invalid port")
 	}
 	c.config[flagSuffixGrpcPort] = grpcPort
 	// retrieve the data fetch max page size
@@ -73,14 +73,14 @@ func (c *PDPServiceConfig) InitFromViper(v *viper.Viper) error {
 	centralStorageEngine := v.GetString(flagName)
 	storageCEng, err := azstorage.NewStorageKindFromString(centralStorageEngine)
 	if err != nil {
-		return azerrors.WrapSystemError(azerrors.ErrCliArguments, "core: invalid central sotrage engine")
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliArguments, "core: invalid central sotrage engine")
 	}
 	c.config[flagCentralEngine] = storageCEng
 	// retrieve the data fetch max page size
 	flagName = azoptions.FlagName(flagServerPDPPrefix, flagDataFetchMaxPageSize)
 	dataFetchMaxPageSize := v.GetInt(flagName)
 	if dataFetchMaxPageSize <= 0 {
-		return azerrors.WrapSystemError(azerrors.ErrCliArguments, "core: invalid data fetch max page size")
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliArguments, "core: invalid data fetch max page size")
 	}
 	c.config[flagDataFetchMaxPageSize] = dataFetchMaxPageSize
 	return nil

@@ -41,7 +41,7 @@ func (c *GrpcAAPClient) CreateApplication(name string) (*azmodelaap.Application,
 // UpdateApplication updates an application.
 func (c *GrpcAAPClient) UpdateApplication(application *azmodelaap.Application) (*azmodelaap.Application, error) {
 	if application == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientGeneric, "client: invalid application instance")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "client: invalid application instance")
 	}
 	client, err := c.createGRPCClient()
 	if err != nil {

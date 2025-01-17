@@ -125,13 +125,13 @@ func (m *WorkspaceManager) execInternalAddRemote(internal bool, remote string, s
 	}
 
 	if !azvalidators.IsValidHostname(server) {
-		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid server %s", server)))
+		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid server %s", server)))
 	}
 	if !azvalidators.IsValidPort(aapPort) {
-		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid aap port %d", aapPort)))
+		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid aap port %d", aapPort)))
 	}
 	if !azvalidators.IsValidPort(papPort) {
-		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid pap port %d", papPort)))
+		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid pap port %d", papPort)))
 	}
 
 	output, err := m.cfgMgr.ExecAddRemote(remote, server, aapPort, papPort, nil, out)
@@ -186,7 +186,7 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out aziclicommon.Prin
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "remote", "Failed to delete remote: it is associated with the current HEAD.", nil, true)
 		}
-		return failedOpErr(nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspace, fmt.Sprintf("cli: cannot remove the remote used by the currently checked out application %s", remote)))
+		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliWorkspace, fmt.Sprintf("cli: cannot remove the remote used by the currently checked out application %s", remote)))
 	}
 	output, err = m.cfgMgr.ExecRemoveRemote(remote, nil, out)
 	return output, err

@@ -27,7 +27,7 @@ import (
 // CreateApplication creates a new application.
 func (s SQLiteCentralStorageAAP) CreateApplication(application *azmodelaap.Application) (*azmodelaap.Application, error) {
 	if application == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - application is nil")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "storage: invalid client input - application is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -78,7 +78,7 @@ func (s SQLiteCentralStorageAAP) CreateApplication(application *azmodelaap.Appli
 // UpdateApplication updates an application.
 func (s SQLiteCentralStorageAAP) UpdateApplication(application *azmodelaap.Application) (*azmodelaap.Application, error) {
 	if application == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, "storage: invalid client input - application is nil")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "storage: invalid client input - application is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -127,7 +127,7 @@ func (s SQLiteCentralStorageAAP) DeleteApplication(applicationID int64) (*azmode
 // FetchApplications returns all applications.
 func (s SQLiteCentralStorageAAP) FetchApplications(page int32, pageSize int32, fields map[string]any) ([]azmodelaap.Application, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
-		return nil, azerrors.WrapSystemError(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -137,7 +137,7 @@ func (s SQLiteCentralStorageAAP) FetchApplications(page int32, pageSize int32, f
 	if _, ok := fields[azmodelaap.FieldApplicationApplicationID]; ok {
 		applicationID, ok := fields[azmodelaap.FieldApplicationApplicationID].(int64)
 		if !ok {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - application id is not valid (application id: %d)", applicationID))
+			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - application id is not valid (application id: %d)", applicationID))
 		}
 		filterID = &applicationID
 	}
@@ -145,7 +145,7 @@ func (s SQLiteCentralStorageAAP) FetchApplications(page int32, pageSize int32, f
 	if _, ok := fields[azmodelaap.FieldApplicationName]; ok {
 		applicationName, ok := fields[azmodelaap.FieldApplicationName].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemError(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - application name is not valid (application name: %s)", applicationName))
+			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - application name is not valid (application name: %s)", applicationName))
 		}
 		filterName = &applicationName
 	}
@@ -157,7 +157,7 @@ func (s SQLiteCentralStorageAAP) FetchApplications(page int32, pageSize int32, f
 	for i, a := range dbApplications {
 		application, err := mapApplicationToAgentApplication(&a)
 		if err != nil {
-			return nil, azerrors.WrapSystemError(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert application entity (%s)", azirepos.LogApplicationEntry(&a)))
+			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert application entity (%s)", azirepos.LogApplicationEntry(&a)))
 		}
 		applications[i] = *application
 	}

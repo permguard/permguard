@@ -148,7 +148,7 @@ func (m *WorkspaceManager) tryLock() (*flock.Flock, error) {
 	fileLock := flock.New(lockFile)
 	lock, err := fileLock.TryLock()
 	if !lock || err != nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: could not acquire the lock, another process is using it %s", m.getLockFile()))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: could not acquire the lock, another process is using it %s", m.getLockFile()))
 	}
 	return fileLock, nil
 }
@@ -157,7 +157,7 @@ func (m *WorkspaceManager) tryLock() (*flock.Flock, error) {
 func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out aziclicommon.PrinterOutFunc) error {
 	out(nil, "", "The current working directory is not a valid Permguard workspace.", nil, true)
 	out(nil, "", "Please initialize the workspace by running the 'init' command.", nil, true)
-	return azerrors.WrapSystemError(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeHiddenDir()))
+	return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("cli: %s is not a permguard workspace directory", m.getHomeHiddenDir()))
 }
 
 // getCurrentHeadInfo returns the current head info.
@@ -166,7 +166,7 @@ func (m *WorkspaceManager) getCurrentHeadInfo(out aziclicommon.PrinterOutFunc) (
 	if err != nil || headInfo.GetRef() == "" {
 		out(nil, "", "No ledger is configured in the current workspace.", nil, true)
 		out(nil, "", "Please checkout a ledger and try again.", nil, true)
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliWorkspaceInvaliHead, "cli: invalid head configuration")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliWorkspaceInvaliHead, "cli: invalid head configuration")
 	}
 	return headInfo, nil
 }

@@ -110,7 +110,7 @@ type CliPrinterTerminal struct {
 func NewCliPrinterTerminal(verbose bool, output string) (*CliPrinterTerminal, error) {
 	out := strings.ToUpper(output)
 	if out != OutputTerminal && out != OutputJSON {
-		return nil, azerrors.WrapSystemError(azerrors.ErrCliGeneric, "cli: invalid output")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "cli: invalid output")
 	}
 	return &CliPrinterTerminal{
 		verbose: verbose,

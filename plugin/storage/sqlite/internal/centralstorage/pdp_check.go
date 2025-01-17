@@ -63,17 +63,17 @@ func authorizationCheckBuildContextResponse(authzDecision *azauthz.Authorization
 // authorizationCheckReadBytes reads the key value for the authorization check.
 func authorizationCheckReadKeyValue(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azlangobjs.ObjectManager, key string) ([]byte, error) {
 	if db == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: invalid database")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageGeneric, "storage: invalid database")
 	}
 	if objMng == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: invalid object manager")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageGeneric, "storage: invalid object manager")
 	}
 	keyValue, err := s.sqlRepo.GetKeyValue(db, key)
 	if err != nil {
 		return nil, err
 	}
 	if keyValue == nil {
-		return nil, azerrors.WrapSystemError(azerrors.ErrStorageGeneric, "storage: key value is nil")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageGeneric, "storage: key value is nil")
 	}
 	return keyValue.Value, nil
 }
