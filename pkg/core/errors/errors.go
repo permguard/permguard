@@ -44,6 +44,11 @@ func (e SystemError) Message() string {
 	return e.errMessage
 }
 
+// Error returns the error message.
+func (e SystemError) Error() string {
+	return fmt.Sprintf(errorMessageCodeMsg, e.errCode, e.errMessage)
+}
+
 // Equal checks if the error is equal to the input error.
 func (e SystemError) Equal(err error) bool {
 	sysErr := ConvertToSystemError(err)
@@ -163,8 +168,8 @@ func WrapHandledSysError(err error, handledErr error) error {
 // WrapHandledSysErrorWithMessage wrap an handled error and a system error with a message.
 func WrapHandledSysErrorWithMessage(err error, errMessage string, handledErr error) error {
 	sysErr := WrapSystemErrorWithMessage(err, errMessage).(SystemError)
-	if handledErr == nil {
-		sysErr.errMessage = fmt.Sprintf("%s. %s", sysErr.errMessage, err.Error())
+	if handledErr != nil {
+		sysErr.errMessage = fmt.Sprintf("%s. %s", sysErr.errMessage, handledErr.Error())
 	}
 	return sysErr
 }
