@@ -31,7 +31,7 @@ const (
 // CreateIdentity creates a new identity.
 func (s SQLiteCentralStorageAAP) CreateIdentity(identity *azmodelaap.Identity) (*azmodelaap.Identity, error) {
 	if identity == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "storage: invalid client input - identity is nil")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid client input - identity is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -43,7 +43,7 @@ func (s SQLiteCentralStorageAAP) CreateIdentity(identity *azmodelaap.Identity) (
 	}
 	kind, err := azirepos.ConvertIdentityKindToID(identity.Kind)
 	if err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity kind %s is not valid", identity.Kind))
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity kind %s is not valid", identity.Kind), err)
 	}
 	dbInIdentity := &azirepos.Identity{
 		ApplicationID:    identity.ApplicationID,
@@ -65,7 +65,7 @@ func (s SQLiteCentralStorageAAP) CreateIdentity(identity *azmodelaap.Identity) (
 // UpdateIdentity updates an identity.
 func (s SQLiteCentralStorageAAP) UpdateIdentity(identity *azmodelaap.Identity) (*azmodelaap.Identity, error) {
 	if identity == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "storage: invalid client input - identity is nil")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid client input - identity is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -77,7 +77,7 @@ func (s SQLiteCentralStorageAAP) UpdateIdentity(identity *azmodelaap.Identity) (
 	}
 	kind, err := azirepos.ConvertIdentityKindToID(identity.Kind)
 	if err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity kind %s is not valid", identity.Kind))
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity kind %s is not valid", identity.Kind), err)
 	}
 	dbInIdentity := &azirepos.Identity{
 		IdentityID:       identity.IdentityID,
@@ -121,7 +121,7 @@ func (s SQLiteCentralStorageAAP) DeleteIdentity(applicationID int64, identityID 
 // FetchIdentities returns all identities.
 func (s SQLiteCentralStorageAAP) FetchIdentities(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelaap.Identity, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -131,7 +131,7 @@ func (s SQLiteCentralStorageAAP) FetchIdentities(page int32, pageSize int32, app
 	if _, ok := fields[azmodelaap.FieldIdentityIdentityID]; ok {
 		identityID, ok := fields[azmodelaap.FieldIdentityIdentityID].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (identity id: %s)", identityID))
+			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity id is not valid (identity id: %s)", identityID))
 		}
 		filterID = &identityID
 	}
@@ -139,7 +139,7 @@ func (s SQLiteCentralStorageAAP) FetchIdentities(page int32, pageSize int32, app
 	if _, ok := fields[azmodelaap.FieldIdentityName]; ok {
 		identityName, ok := fields[azmodelaap.FieldIdentityName].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity name is not valid (identity name: %s)", identityName))
+			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity name is not valid (identity name: %s)", identityName))
 		}
 		filterName = &identityName
 	}
@@ -151,7 +151,7 @@ func (s SQLiteCentralStorageAAP) FetchIdentities(page int32, pageSize int32, app
 	for i, a := range dbIdentities {
 		identity, err := mapIdentityToAgentIdentity(&a)
 		if err != nil {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageEntityMapping, fmt.Sprintf("storage: failed to convert identity entity (%s)", azirepos.LogIdentityEntry(&a)))
+			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageEntityMapping, fmt.Sprintf("failed to convert identity entity (%s)", azirepos.LogIdentityEntry(&a)), err)
 		}
 		identities[i] = *identity
 	}

@@ -28,7 +28,7 @@ type HeadInfo struct {
 // NewHeadInfo creates a new HeadInfo.
 func NewHeadInfo(ref string) (*HeadInfo, error) {
 	if len(ref) == 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: invalid ref")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid ref")
 	}
 	return &HeadInfo{
 		ref: ref,

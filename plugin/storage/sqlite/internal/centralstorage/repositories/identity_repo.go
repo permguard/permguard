@@ -30,7 +30,7 @@ import (
 
 const (
 	// errorMessageIdentityInvalidApplicationID is the error message identity invalid application id.
-	errorMessageIdentityInvalidApplicationID = "storage: invalid client input - application id is not valid (id: %d)"
+	errorMessageIdentityInvalidApplicationID = "invalid client input - application id is not valid (id: %d)"
 )
 
 // identitiesMap is a map of identity kinds to IDs.
@@ -44,7 +44,7 @@ func ConvertIdentityKindToID(kind string) (int16, error) {
 	cKey := strings.ToLower(kind)
 	value, ok := identitiesMap[cKey]
 	if !ok {
-		return 0, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity kind %s is not valid", kind))
+		return 0, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity kind %s is not valid", kind))
 	}
 	return value, nil
 }
@@ -62,26 +62,26 @@ func ConvertIdentityKindToString(id int16) (string, error) {
 // UpsertIdentity creates or updates an identity.
 func (r *Repository) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*Identity, error) {
 	if identity == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity data is missing or malformed (%s)", LogIdentityEntry(identity)))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity data is missing or malformed (%s)", LogIdentityEntry(identity)))
 	}
 	if err := azvalidators.ValidateCodeID("identity", identity.ApplicationID); err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentityInvalidApplicationID, identity.ApplicationID))
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentityInvalidApplicationID, identity.ApplicationID), err)
 	}
 	if !isCreate && azvalidators.ValidateUUID("identity", identity.IdentityID) != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (%s)", LogIdentityEntry(identity)))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity id is not valid (%s)", LogIdentityEntry(identity)))
 	}
 	if isCreate && azvalidators.ValidateUUID("identity", identity.IdentitySourceID) != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (%s)", LogIdentityEntry(identity)))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity id is not valid (%s)", LogIdentityEntry(identity)))
 	}
 	if identity.Kind == identitiesMap["user"] {
 		if err := azvalidators.ValidateIdentityUserName("identity", identity.Name); err != nil {
-			errorMessage := "storage: invalid client input - identity name is not valid (%s)"
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogIdentityEntry(identity)))
+			errorMessage := "invalid client input - identity name is not valid (%s)"
+			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogIdentityEntry(identity)), err)
 		}
 	} else {
 		if err := azvalidators.ValidateName("identity", identity.Name); err != nil {
-			errorMessage := "storage: invalid client input - identity name is not valid (%s)"
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogIdentityEntry(identity)))
+			errorMessage := "invalid client input - identity name is not valid (%s)"
+			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogIdentityEntry(identity)), err)
 		}
 	}
 
@@ -126,10 +126,10 @@ func (r *Repository) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identit
 // DeleteIdentity deletes an identity.
 func (r *Repository) DeleteIdentity(tx *sql.Tx, applicationID int64, identityID string) (*Identity, error) {
 	if err := azvalidators.ValidateCodeID("identity", applicationID); err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentityInvalidApplicationID, applicationID))
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentityInvalidApplicationID, applicationID), err)
 	}
 	if err := azvalidators.ValidateUUID("identity", identityID); err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - identity id is not valid (id: %s)", identityID))
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity id is not valid (id: %s)", identityID), err)
 	}
 	var dbIdentity Identity
 	err := tx.QueryRow("SELECT application_id, identity_id, created_at, updated_at, identity_source_id, kind, name FROM identities WHERE application_id = ? and identity_id = ?", applicationID, identityID).Scan(
@@ -158,10 +158,10 @@ func (r *Repository) DeleteIdentity(tx *sql.Tx, applicationID int64, identityID 
 // FetchIdentities retrieves identities.
 func (r *Repository) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]Identity, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	if err := azvalidators.ValidateCodeID("identity", applicationID); err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf(errorMessageIdentityInvalidApplicationID, applicationID))
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf(errorMessageIdentityInvalidApplicationID, applicationID), err)
 	}
 
 	var dbIdentities []Identity
@@ -176,7 +176,7 @@ func (r *Repository) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, ap
 	if filterID != nil {
 		identityID := *filterID
 		if err := azvalidators.ValidateUUID("identity", identityID); err != nil {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - identity id is not valid (id: %s)", identityID))
+			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf("invalid client input - identity id is not valid (id: %s)", identityID), err)
 		}
 		conditions = append(conditions, "identity_id = ?")
 		args = append(args, identityID)
@@ -185,7 +185,7 @@ func (r *Repository) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, ap
 	if filterName != nil {
 		identityName := *filterName
 		if err := azvalidators.ValidateIdentityUserName("identity", identityName); err != nil {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - identity name is not valid (name: %s)", identityName))
+			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientName, fmt.Sprintf("invalid client input - identity name is not valid (name: %s)", identityName), err)
 		}
 		identityName = "%" + identityName + "%"
 		conditions = append(conditions, "name LIKE ?")

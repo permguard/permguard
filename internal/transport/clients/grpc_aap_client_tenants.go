@@ -41,7 +41,7 @@ func (c *GrpcAAPClient) CreateTenant(applicationID int64, name string) (*azmodel
 // UpdateTenant updates a tenant.
 func (c *GrpcAAPClient) UpdateTenant(tenant *azmodelaap.Tenant) (*azmodelaap.Tenant, error) {
 	if tenant == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "client: invalid tenant instance")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "invalid tenant instance")
 	}
 	client, err := c.createGRPCClient()
 	if err != nil {

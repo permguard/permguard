@@ -33,23 +33,23 @@ func TestWrapSqlite3Error(t *testing.T) {
 	}{
 		"here a sample error 1": {
 			errors.New("here a sample error 1"),
-			azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageConstraintUnique, "storage: constraint failed - here a sample error 1"),
+			azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageConstraintUnique, "constraint failed - here a sample error 1"),
 		},
 		"here a sample error 2": {
 			sqlite3.Error{Code: sqlite3.ErrConstraint},
-			azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageConstraintUnique, "storage: constraint failed - here a sample error 2"),
+			azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageConstraintUnique, "constraint failed - here a sample error 2"),
 		},
 		"here a sample error 3": {
 			sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique},
-			azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageConstraintUnique, "storage: unique constraint failed - here a sample error 3"),
+			azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageConstraintUnique, "unique constraint failed - here a sample error 3"),
 		},
 		"here a sample error 4": {
 			sqlite3.Error{Code: sqlite3.ErrNotFound},
-			azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageNotFound, "storage: record not found - here a sample error 4"),
+			azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageNotFound, "record not found - here a sample error 4"),
 		},
 		"here a sample error 5": {
 			sqlite3.Error{Code: sqlite3.ErrAuth},
-			azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageGeneric, "storage: generic error (here a sample error 5)"),
+			azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageGeneric, "generic error (here a sample error 5)"),
 		},
 	}
 	for message, test := range tests {

@@ -43,14 +43,14 @@ func GenerateApplicationID() int64 {
 // UpsertApplication creates or updates an application.
 func (r *Repository) UpsertApplication(tx *sql.Tx, isCreate bool, application *Application) (*Application, error) {
 	if application == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - application data is missing or malformed (%s)", LogApplicationEntry(application)))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - application data is missing or malformed (%s)", LogApplicationEntry(application)))
 	}
 	if !isCreate && azvalidators.ValidateCodeID("application", application.ApplicationID) != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - application id is not valid (%s)", LogApplicationEntry(application)))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - application id is not valid (%s)", LogApplicationEntry(application)))
 	}
 	if err := azvalidators.ValidateName("application", application.Name); err != nil {
-		errorMessage := "storage: invalid client input - application name is not valid (%s)"
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogApplicationEntry(application)))
+		errorMessage := "invalid client input - application name is not valid (%s)"
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogApplicationEntry(application)), err)
 	}
 
 	applicationID := application.ApplicationID
@@ -87,7 +87,7 @@ func (r *Repository) UpsertApplication(tx *sql.Tx, isCreate bool, application *A
 // DeleteApplication deletes an application.
 func (r *Repository) DeleteApplication(tx *sql.Tx, applicationID int64) (*Application, error) {
 	if err := azvalidators.ValidateCodeID("application", applicationID); err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("storage: invalid client input - application id is not valid (id: %d)", applicationID))
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - application id is not valid (id: %d)", applicationID), err)
 	}
 
 	var dbApplication Application
@@ -114,7 +114,7 @@ func (r *Repository) DeleteApplication(tx *sql.Tx, applicationID int64) (*Applic
 // FetchApplications retrieves applications.
 func (r *Repository) FetchApplications(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]Application, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	var dbApplications []Application
 
@@ -125,7 +125,7 @@ func (r *Repository) FetchApplications(db *sqlx.DB, page int32, pageSize int32, 
 	if filterID != nil {
 		applicationID := *filterID
 		if err := azvalidators.ValidateCodeID("application", applicationID); err != nil {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf("storage: invalid client input - application id is not valid (id: %d)", applicationID))
+			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf("invalid client input - application id is not valid (id: %d)", applicationID), err)
 		}
 		conditions = append(conditions, "application_id = ?")
 		args = append(args, applicationID)
@@ -134,7 +134,7 @@ func (r *Repository) FetchApplications(db *sqlx.DB, page int32, pageSize int32, 
 	if filterName != nil {
 		applicationName := *filterName
 		if err := azvalidators.ValidateName("application", applicationName); err != nil {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientName, fmt.Sprintf("storage: invalid client input - application name is not valid (name: %s)", applicationName))
+			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientName, fmt.Sprintf("invalid client input - application name is not valid (name: %s)", applicationName), err)
 		}
 		applicationName = "%" + applicationName + "%"
 		conditions = append(conditions, "name LIKE ?")

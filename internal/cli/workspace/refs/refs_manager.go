@@ -92,7 +92,7 @@ func (m *RefManager) GenerateRef(remote string, applicationID int64, ledgerID st
 func (m *RefManager) saveConfig(name string, override bool, cfg any) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: failed to marshal config")
+		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "failed to marshal config", err)
 	}
 	if override {
 		_, err = m.persMgr.WriteFile(azicliwkspers.PermguardDir, name, data, 0644, false)
@@ -100,7 +100,7 @@ func (m *RefManager) saveConfig(name string, override bool, cfg any) error {
 		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermguardDir, name, data, 0644, false)
 	}
 	if err != nil {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("cli: failed to write config file %s", name))
+		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("failed to write config file %s", name), err)
 	}
 	return nil
 }
@@ -177,7 +177,7 @@ func (m *RefManager) GetRefUpstreamRef(ref string) (string, error) {
 		return "", err
 	}
 	if refCfg == nil {
-		return "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: invalid ref config file")
+		return "", azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "invalid ref config file", err)
 
 	}
 	return refCfg.Objects.UpstreamRef, nil
@@ -190,7 +190,7 @@ func (m *RefManager) GetRefLedgerID(ref string) (string, error) {
 		return "", err
 	}
 	if refCfg == nil {
-		return "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: invalid ref config file")
+		return "", azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "invalid ref config file", err)
 
 	}
 	return refCfg.Objects.LedgerID, nil
@@ -203,7 +203,7 @@ func (m *RefManager) GetRefCommit(ref string) (string, error) {
 		return "", err
 	}
 	if refCfg == nil {
-		return "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: invalid ref config file")
+		return "", azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "invalid ref config file", err)
 	}
 	return refCfg.Objects.Commit, nil
 }
@@ -247,7 +247,7 @@ func (m *RefManager) GetCurrentHeadCommit() (string, error) {
 // GetRefInfo gets the ref information.
 func (m *RefManager) GetRefInfo(ref string) (*azicliwkscommon.RefInfo, error) {
 	if len(ref) == 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: invalid ref")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid ref")
 	}
 	return azicliwkscommon.ConvertStringWithLedgerIDToRefInfo(ref)
 }

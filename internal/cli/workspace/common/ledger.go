@@ -65,36 +65,36 @@ func GetLedgerURIFromLedgerInfo(ledgerInfo *LedgerInfo) (string, error) {
 // GetLedgerInfoFromURI gets the ledger information from the URI.
 func GetLedgerInfoFromURI(ledgerURI string) (*LedgerInfo, error) {
 	if len(ledgerURI) == 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: invalid ledger uri")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid ledger uri")
 	}
 	result := &LedgerInfo{}
 	ledgerURI = strings.ToLower(ledgerURI)
 	items := strings.Split(ledgerURI, "/")
 	if len(items) < 3 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid ledger %s", ledgerURI))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid ledger %s", ledgerURI))
 	}
 
 	remoteName, err := SanitizeRemote(items[0])
 	if err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid remote %s", remoteName))
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid remote %s", remoteName), err)
 	}
 	result.remote = remoteName
 
 	applicationIDStr := items[1]
 	applicationID, err := strconv.ParseInt(applicationIDStr, 10, 64)
 	if err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid application id %s", applicationIDStr))
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid application id %s", applicationIDStr), err)
 	}
 	err = azvalidators.ValidateCodeID("ledger", applicationID)
 	if err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid application id %s", applicationIDStr))
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid application id %s", applicationIDStr), err)
 	}
 	result.applicationID = applicationID
 
 	ledgerName := items[2]
 	err = azvalidators.ValidateName("ledger", ledgerName)
 	if err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("cli: invalid ledger name %s", ledgerName))
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid ledger name %s", ledgerName), err)
 	}
 	result.ledger = ledgerName
 	return result, nil
@@ -103,7 +103,7 @@ func GetLedgerInfoFromURI(ledgerURI string) (*LedgerInfo, error) {
 // SanitizeLedger sanitizes the remote name.
 func SanitizeLedger(ledgerURI string) (string, error) {
 	if len(ledgerURI) == 0 {
-		return "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "cli: invalid ledger uri")
+		return "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid ledger uri")
 	}
 	ledgerURI = strings.ToLower(ledgerURI)
 	if _, err := GetLedgerInfoFromURI(ledgerURI); err != nil {

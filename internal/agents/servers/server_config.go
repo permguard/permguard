@@ -131,7 +131,7 @@ func (c *ServerConfig) InitFromViper(v *viper.Viper) error {
 	c.logLevel = logLevel
 	c.appData = v.GetString(azoptions.FlagName(flagPrefixServer, flagSuffixAppData))
 	if !azvalidators.IsValidPath(c.appData) {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliArguments, "core: invalid app data directory")
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliArguments, "invalid app data directory")
 	}
 	for _, fcty := range c.storagesFactories {
 		config, err := fcty.GetFactoryConfig()

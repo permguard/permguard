@@ -41,7 +41,7 @@ func (c *GrpcAAPClient) CreateIdentity(applicationID int64, identitySourceID str
 // UpdateIdentity updates an identity.
 func (c *GrpcAAPClient) UpdateIdentity(identity *azmodelaap.Identity) (*azmodelaap.Identity, error) {
 	if identity == nil {
-		azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "client: invalid identity instance")
+		azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "invalid identity instance")
 	}
 	client, err := c.createGRPCClient()
 	if err != nil {

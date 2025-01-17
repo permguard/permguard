@@ -104,11 +104,11 @@ func (abs *CedarLanguageAbstraction) ReadObjectContentBytes(obj *azlangobjs.Obje
 	}
 	objHeader := objInfo.GetHeader()
 	if !objHeader.IsNativeLanguage() {
-		return 0, nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "cedar: invalid object type")
+		return 0, nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "invalid object type")
 	}
 	instance, ok := objInfo.GetInstance().([]byte)
 	if !ok {
-		return 0, nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "cedar: invalid object instance")
+		return 0, nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "invalid object instance")
 	}
 	return objHeader.GetCodeTypeID(), instance, nil
 }
@@ -127,7 +127,7 @@ func (abs *CedarLanguageAbstraction) ConvertObjectToCommit(obj *azlangobjs.Objec
 
 	value, ok := objInfo.GetInstance().(*azlangobjs.Commit)
 	if !ok {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "cedar: invalid object type")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "invalid object type")
 	}
 	return value, nil
 }
@@ -146,7 +146,7 @@ func (abs *CedarLanguageAbstraction) ConvertObjectToTree(obj *azlangobjs.Object)
 
 	value, ok := objInfo.GetInstance().(*azlangobjs.Tree)
 	if !ok {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "cedar: invalid object type")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "invalid object type")
 	}
 	return value, nil
 }
@@ -155,7 +155,7 @@ func (abs *CedarLanguageAbstraction) ConvertObjectToTree(obj *azlangobjs.Object)
 func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, data []byte) (*azlangobjs.MultiSectionsObject, error) {
 	langSpec := abs.GetLanguageSpecification()
 	if langSpec.GetFrontendLanguage() != LanguageCedar {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "cedar: unsupported frontend language")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "unsupported frontend language")
 	}
 
 	policySet, err := cedar.NewPolicySetFromBytes(filePath, data)
@@ -250,7 +250,7 @@ func (abs *CedarLanguageAbstraction) CreateMultiPolicyContentBytes(blocks [][]by
 func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error) {
 	langSpec := abs.GetLanguageSpecification()
 	if langSpec.GetFrontendLanguage() != LanguageCedar {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "cedar: unsupported frontend language")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "unsupported frontend language")
 	}
 
 	const (
@@ -296,7 +296,7 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data [
 // CreateSchemaContentBytes creates a schema content bytes.
 func (abs *CedarLanguageAbstraction) CreateSchemaContentBytes(blocks []byte) ([]byte, string, error) {
 	if len(blocks) == 0 {
-		return nil, "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "cedar: empty schema content")
+		return nil, "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "empty schema content")
 	}
 	return blocks, LanguageSchemaFileName, nil
 }
@@ -305,10 +305,10 @@ func (abs *CedarLanguageAbstraction) CreateSchemaContentBytes(blocks []byte) ([]
 func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error) {
 	langSpec := abs.GetLanguageSpecification()
 	if langSpec.GetBackendLanguageID() != langID {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "cedar: invalid backend language")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "invalid backend language")
 	}
 	if langSpec.GetLanguageVersionID() != langVersionID {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "cedar: invalid backend language version")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "invalid backend language version")
 	}
 	var frontendContent []byte
 	switch langTypeID {
@@ -316,13 +316,13 @@ func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(langID, lang
 		var cedarPolicy cedar.Policy
 		err := cedarPolicy.UnmarshalJSON(content)
 		if err != nil {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "cedar: invalid policy content")
+			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguageFile, "invalid policy content", err)
 		}
 		frontendContent = cedarPolicy.MarshalCedar()
 	case LanguageSchemaTypeID:
 		frontendContent = content
 	default:
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "cedar: invalid backend language type")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "invalid backend language type")
 	}
 	return frontendContent, nil
 }

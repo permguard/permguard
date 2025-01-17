@@ -41,7 +41,7 @@ func (c *GrpcAAPClient) CreateIdentitySource(applicationID int64, name string) (
 // UpdateIdentitySource updates an identity source.
 func (c *GrpcAAPClient) UpdateIdentitySource(identitySource *azmodelaap.IdentitySource) (*azmodelaap.IdentitySource, error) {
 	if identitySource == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "client: invalid identity source instance")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "invalid identity source instance")
 	}
 	client, err := c.createGRPCClient()
 	if err != nil {

@@ -34,7 +34,7 @@ func (m *WorkspaceManager) plan(currentCodeObsStates []azicliwkscosp.CodeObjectS
 func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, absLang azlang.LanguageAbastraction) (*azlangobjs.Tree, *azlangobjs.Object, error) {
 	tree, err := azlangobjs.NewTree()
 	if err != nil {
-		return nil, nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: tree cannot be created")
+		return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree cannot be created", err)
 	}
 	for _, planItem := range plan {
 		if planItem.State == azicliwkscosp.CodeObjectStateDelete {
@@ -42,15 +42,15 @@ func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, a
 		}
 		treeItem, err := azlangobjs.NewTreeEntry(planItem.OType, planItem.OID, planItem.OName, planItem.CodeID, planItem.CodeType, planItem.Language, planItem.LanguageVersion, planItem.LanguageType)
 		if err != nil {
-			return nil, nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: tree item cannot be created")
+			return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be created", err)
 		}
 		if err := tree.AddEntry(treeItem); err != nil {
-			return nil, nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: tree item cannot be added to the tree because of errors in the code files")
+			return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be added to the tree because of errors in the code files", err)
 		}
 	}
 	treeObj, err := absLang.CreateTreeObject(tree)
 	if err != nil {
-		return nil, nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: tree object cannot be created")
+		return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree object cannot be created", err)
 	}
 	return tree, treeObj, nil
 }
@@ -59,11 +59,11 @@ func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, a
 func (m *WorkspaceManager) buildPlanCommit(tree string, parentCommitID string, absLang azlang.LanguageAbastraction) (*azlangobjs.Commit, *azlangobjs.Object, error) {
 	commit, err := azlangobjs.NewCommit(tree, parentCommitID, "", time.Now(), "", time.Now(), "cli commit")
 	if err != nil {
-		return nil, nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: commit cannot be created")
+		return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "commit cannot be created", err)
 	}
 	commitObj, err := absLang.CreateCommitObject(commit)
 	if err != nil {
-		return nil, nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: commit object cannot be created")
+		return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "commit object cannot be created", err)
 	}
 	return commit, commitObj, nil
 }

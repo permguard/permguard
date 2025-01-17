@@ -258,5 +258,5 @@ func (m *WorkspaceManager) execInternalValidate(internal bool, out aziclicommon.
 		}
 		out(nil, "", "\nPlease fix the errors to proceed.", nil, true)
 	}
-	return failedOpErr(output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "cli: validation errors found in code files within the workspace. please check the logs for more details."))
+	return failedOpErr(output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "validation errors found in code files within the workspace. please check the logs for more details."))
 }

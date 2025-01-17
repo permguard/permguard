@@ -66,7 +66,7 @@ func GetObjectForType[T any](objMng *azlangobjs.ObjectManager, obj *azlangobjs.O
 	instance := objInfo.GetInstance()
 	value, ok := instance.(*T)
 	if !ok {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "storage: invalid object type")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "invalid object type")
 	}
 	return value, nil
 }
@@ -106,7 +106,7 @@ func (s SQLiteCentralStoragePAP) readLedgerFromHandlerContext(handlerCtx *notpst
 		return nil, err
 	}
 	if len(ledgers) == 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "storage: ledger not found.")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "ledger not found.")
 	}
 	return &ledgers[0], nil
 }
