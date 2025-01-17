@@ -352,9 +352,9 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 		Principal: cedar.NewEntityUID("User", "alice"),
 		Action:    cedar.NewEntityUID("Action", "view"),
 		Resource:  cedar.NewEntityUID("Photo", "0123456789"),
-		Context:   cedar.NewRecord(cedar.RecordMap{
+		Context: cedar.NewRecord(cedar.RecordMap{
 			"demoRequest": cedar.True,
-        }),
+		}),
 	}
 
 	ok, _ := ps.IsAuthorized(entities, req)
