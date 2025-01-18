@@ -69,8 +69,8 @@ var errorCodes = map[string]string{
 	"06400": "language: generic semantic error",
 
 	// 07xxx: Policy Server Errors
-	"07000": "authzserver: generic error",
-	"07100": "authzcheck: generic error",
+	"07100": "pdp: generic error",
+	"07110": "pdp: authorization check error",
 
 	// 08xxx: Command Line Interface Errors
 	"08000": "cli: generic error",
@@ -144,7 +144,8 @@ var (
 	ErrLanguageSyntax    error = NewSystemError("06300")
 	ErrLanguangeSemantic error = NewSystemError("06400")
 	// 07xxx authorization check.
-	ErrAuthzCheck error = NewSystemError("07000")
+	ErrPdpGeneric    error = NewSystemError("07100")
+	ErrPdpAuthzCheck error = NewSystemError("07110")
 	// 08xxx: Command Line Interface Errors
 	ErrCliGeneric             error = NewSystemError("08000")
 	ErrCliArguments           error = NewSystemError("08001")

@@ -94,8 +94,8 @@ seo:
 
 | Error Code | Description                                      |
 |------------|--------------------------------------------------|
-| 07000      | authzserver: generic error                       |
-| 07100      | authzcheck: generic error                        |
+| 07100      | pdp: generic error                               |
+| 07110      | pdp: authorization check error                   |
 
 ## 08xxx: Command Line Interface Errors
 
