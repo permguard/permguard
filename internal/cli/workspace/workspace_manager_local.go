@@ -102,7 +102,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 			Section:      0,
 			Mode:         mode,
 			HasErrors:    true,
-			ErrorMessage: "permcode: only one schema file is permitted in the workspace. please ensure that there are no duplicate schema files",
+			ErrorMessage: "language: only one schema file is permitted in the workspace. please ensure that there are no duplicate schema files",
 		}
 		blbCodeFiles = append(blbCodeFiles, codeFile)
 	} else {
@@ -147,7 +147,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 }
 
 // blobifyPermSchemaFile blobify a permguard code file.
-func (m *WorkspaceManager) blobifyPermCodeFile(absLang azlang.LanguageAbastraction, path string, data []byte, file azicliwkscosp.CodeFile, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile) []azicliwkscosp.CodeFile {
+func (m *WorkspaceManager) blobifylanguageFile(absLang azlang.LanguageAbastraction, path string, data []byte, file azicliwkscosp.CodeFile, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile) []azicliwkscosp.CodeFile {
 	multiSecObj, err := absLang.CreatePolicyBlobObjects(path, data)
 	if err != nil {
 		codeFile := &azicliwkscosp.CodeFile{
@@ -207,7 +207,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 			return "", nil, err
 		}
 		if file.Type == azicliwkscosp.CodeFileTypeOfCodeType {
-			blbCodeFiles = m.blobifyPermCodeFile(absLang, path, data, file, wkdir, mode, blbCodeFiles)
+			blbCodeFiles = m.blobifylanguageFile(absLang, path, data, file, wkdir, mode, blbCodeFiles)
 		} else if file.Type == azicliwkscosp.CodeFileOfSchemaType {
 			schemaFileCount++
 			blbCodeFiles = m.blobifyPermSchemaFile(schemaFileCount, path, wkdir, mode, blbCodeFiles, absLang, data, file)
@@ -223,7 +223,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 			HasErrors:    true,
 			CodeID:       azlangtypes.ClassTypeSchema,
 			CodeType:     azlangtypes.ClassTypeSchema,
-			ErrorMessage: fmt.Sprintf("permcode: the schema file '%s' is missing. please ensure there are no duplicate schema files and that the required schema file is present.", schemaFileName),
+			ErrorMessage: fmt.Sprintf("language: the schema file '%s' is missing. please ensure there are no duplicate schema files and that the required schema file is present.", schemaFileName),
 		}
 		blbCodeFiles = append(blbCodeFiles, codeFile)
 	}
@@ -295,7 +295,7 @@ func (m *WorkspaceManager) retrieveCodeMap() ([]azicliwkscosp.CodeFile, []azicli
 
 	for _, dupFile := range duplicateFiles {
 		dupFile.HasErrors = true
-		dupFile.ErrorMessage = "permcode: duplicate object name found in the code files. please ensure that there are no duplicate object names"
+		dupFile.ErrorMessage = "language: duplicate object name found in the code files. please ensure that there are no duplicate object names"
 		invalidFiles = append(invalidFiles, dupFile)
 	}
 
