@@ -62,10 +62,15 @@ var errorCodes = map[string]string{
 	"05120": "storage: entity not found in storage",
 
 	// 06xxx: Language Errors
-	"06000": "permcode: generic error",
-	"06100": "permcode: generic file error",
-	"06200": "permcode: generic syntax error",
-	"06300": "permcode: generic semantic error",
+	"06000": "language: generic error",
+	"06100": "language: generic object error",
+	"06200": "language: generic file error",
+	"06300": "language: generic syntax error",
+	"06400": "language: generic semantic error",
+
+	// 07xxx: Policy Server Errors
+	"07000": "authzserver: generic error",
+	"07100": "authzcheck: generic error",
 
 	// 08xxx: Command Line Interface Errors
 	"08000": "cli: generic error",
@@ -134,10 +139,12 @@ var (
 	ErrStorageNotFound             error = NewSystemError("05120")
 	// 06xxx language.
 	ErrLanguageGeneric   error = NewSystemError("06000")
-	ErrLanguageFile      error = NewSystemError("06100")
-	ErrLanguageSyntax    error = NewSystemError("06200")
-	ErrLanguangeSemantic error = NewSystemError("06300")
-
+	ErrObjects           error = NewSystemError("06100")
+	ErrLanguageFile      error = NewSystemError("06200")
+	ErrLanguageSyntax    error = NewSystemError("06300")
+	ErrLanguangeSemantic error = NewSystemError("06400")
+	// 07xxx authorization check.
+	ErrAuthzCheck error = NewSystemError("07000")
 	// 08xxx: Command Line Interface Errors
 	ErrCliGeneric             error = NewSystemError("08000")
 	ErrCliArguments           error = NewSystemError("08001")

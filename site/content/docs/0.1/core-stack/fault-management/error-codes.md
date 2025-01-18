@@ -85,9 +85,17 @@ seo:
 | Error Code | Description                                      |
 |------------|--------------------------------------------------|
 | 06000      | language: generic error                          |
-| 06100      | language: generic file error                     |
-| 06200      | language: generic syntax error                   |
-| 06300      | language: generic semantic error                 |
+| 06100      | language: generic object error                   |
+| 06200      | language: generic file error                     |
+| 06300      | language: generic syntax error                   |
+| 06400      | language: generic semantic error                 |
+
+### 07xxx: Policy Server Errors
+
+| Error Code | Description                                      |
+|------------|--------------------------------------------------|
+| 07000      | authzserver: generic error                       |
+| 07100      | authzcheck: generic error                        |
 
 ## 08xxx: Command Line Interface Errors
 
