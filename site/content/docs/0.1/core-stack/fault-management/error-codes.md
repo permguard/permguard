@@ -96,6 +96,8 @@ seo:
 |------------|--------------------------------------------------|
 | 07100      | pdp: generic error                               |
 | 07110      | pdp: authorization check error                   |
+| 07111      | pdp: authorization check bad request error       |
+| 07112      | pdp: authorization check evaluation error        |
 
 ## 08xxx: Command Line Interface Errors
 
