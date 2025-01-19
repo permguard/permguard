@@ -71,6 +71,8 @@ var errorCodes = map[string]string{
 	// 07xxx: Policy Server Errors
 	"07100": "pdp: generic error",
 	"07110": "pdp: authorization check error",
+	"07111": "pdp: authorization check bad request error",
+	"07112": "pdp: authorization check evaluation error",
 
 	// 08xxx: Command Line Interface Errors
 	"08000": "cli: generic error",
@@ -143,9 +145,11 @@ var (
 	ErrLanguageFile      error = NewSystemError("06200")
 	ErrLanguageSyntax    error = NewSystemError("06300")
 	ErrLanguangeSemantic error = NewSystemError("06400")
-	// 07xxx authorization check.
-	ErrPdpGeneric    error = NewSystemError("07100")
-	ErrPdpAuthzCheck error = NewSystemError("07110")
+	// 07xxx: Policy Server Errors.
+	ErrPdGeneric                      error = NewSystemError("07100")
+	ErrPdpAuthzCheckFailed            error = NewSystemError("07110")
+	ErrPdpAuthzCheckInvalidRequest    error = NewSystemError("07111")
+	ErrPdpAuthzCheckEvaluationFailure error = NewSystemError("07112")
 	// 08xxx: Command Line Interface Errors
 	ErrCliGeneric             error = NewSystemError("08000")
 	ErrCliArguments           error = NewSystemError("08001")
