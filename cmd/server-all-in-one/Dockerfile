@@ -14,7 +14,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 # Build Stage
-FROM golang:1.23.2-alpine AS builder
+FROM golang:1.23.5-alpine AS builder
 
 RUN apk add --no-cache make gcc musl-dev
 
