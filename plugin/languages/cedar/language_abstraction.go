@@ -18,6 +18,7 @@ package cedar
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/cedar-policy/cedar-go"
@@ -337,27 +338,42 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 		if err := policy.UnmarshalJSON(policyBytes); err != nil {
 			return nil, err
 		}
+		codeID := objInfo.GetHeader().GetCodeID()
+		ps.Add(cedar.PolicyID(codeID), &policy)
 	}
+
 	authzEntities := authzCtx.GetEntities()
 	jsonEntities, err := json.Marshal(authzEntities.GetItems())
+	fmt.Print(string(jsonEntities))
 	if err != nil {
 		return nil, err
 	}
-
 	var entities cedar.EntityMap
 	if err := json.Unmarshal(jsonEntities, &entities); err != nil {
 		return nil, err
 	}
+
+	subject := authzCtx.GetSubject().GetID()
+
+	action := authzCtx.GetAction().GetID()
+	actiondIndex := strings.LastIndex(action, "::")
+	actionType := action[:actiondIndex]
+	actionID := action[actiondIndex+len("::"):]
+
+	resourceType := authzCtx.GetResource().GetKind()
+	resourceID := authzCtx.GetResource().GetID()
+
 	req := cedar.Request{
-		Principal: cedar.NewEntityUID("User", "alice"),
-		Action:    cedar.NewEntityUID("Action", "view"),
-		Resource:  cedar.NewEntityUID("Photo", "0123456789"),
+		Principal: cedar.NewEntityUID("Permguard::IAM::User", cedar.String(subject)),
+		Action:    cedar.NewEntityUID(cedar.EntityType(actionType), cedar.String(actionID)),
+		Resource:  cedar.NewEntityUID(cedar.EntityType(resourceType), cedar.String(resourceID)),
 		Context: cedar.NewRecord(cedar.RecordMap{
-			"demoRequest": cedar.True,
+			//"isSuperUser": cedar.True,
 		}),
 	}
 
-	ok, _ := ps.IsAuthorized(entities, req)
+	ok, diagnostic := ps.IsAuthorized(entities, req)
+	fmt.Print(diagnostic)
 	authzDecision, err := azauthz.NewAuthorizationDecision("", bool(ok), nil, nil)
 	if err != nil {
 		return nil, err
