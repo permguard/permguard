@@ -371,7 +371,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 		Action:    cedar.NewEntityUID(cedar.EntityType(actionType), cedar.String(actionID)),
 		Resource:  cedar.NewEntityUID(cedar.EntityType(resourceType), cedar.String(resourceID)),
 		Context: cedar.NewRecord(cedar.RecordMap{
-			"principal": cedar.False,
+			"isSuperUser": cedar.False,
 		}),
 	}
 
