@@ -38,7 +38,7 @@ func authorizationCheckBuildContextResponse(authzDecision *azauthz.Authorization
 			Code:    adminError.GetCode(),
 			Message: adminError.GetMessage(),
 		}
-	} else {
+	} else if authzDecision.GetDecision() == false {
 		ctxResponse.ReasonAdmin = &azmodelspdp.ReasonResponse{
 			Code:    azauthz.AuthzErrInternalErrorCode,
 			Message: azauthz.AuthzErrInternalErrorMessage,
@@ -51,8 +51,8 @@ func authorizationCheckBuildContextResponse(authzDecision *azauthz.Authorization
 			Code:    userError.GetCode(),
 			Message: userError.GetMessage(),
 		}
-	} else {
-		ctxResponse.ReasonUser = &azmodelspdp.ReasonResponse{
+	} else if authzDecision.GetDecision() == false {
+			ctxResponse.ReasonUser = &azmodelspdp.ReasonResponse{
 			Code:    azauthz.AuthzErrInternalErrorCode,
 			Message: azauthz.AuthzErrInternalErrorMessage,
 		}
