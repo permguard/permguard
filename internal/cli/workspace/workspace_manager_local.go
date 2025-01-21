@@ -178,7 +178,13 @@ func (m *WorkspaceManager) blobifylanguageFile(absLang azlang.LanguageAbastracti
 			LanguageType:    secObj.GetLanguageType(),
 		}
 		if codeFile.HasErrors {
-			codeFile.ErrorMessage = azerrors.ConvertToSystemError(secObj.GetError()).Message()
+			secErr := secObj.GetError()
+			errMessage := secErr.Error()
+			sysErr := azerrors.ConvertToSystemError(secErr)
+			if sysErr != nil {
+				errMessage = sysErr.Message()
+			}
+			codeFile.ErrorMessage = errMessage
 		} else {
 			obj := secObj.GetObject()
 			codeFile.OID = obj.GetOID()

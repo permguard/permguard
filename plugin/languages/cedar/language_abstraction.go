@@ -344,7 +344,6 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 
 	authzEntities := authzCtx.GetEntities()
 	jsonEntities, err := json.Marshal(authzEntities.GetItems())
-	fmt.Print(string(jsonEntities))
 	if err != nil {
 		return nil, err
 	}
@@ -370,14 +369,16 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 		Principal: cedar.NewEntityUID("Permguard::IAM::User", cedar.String(subject)),
 		Action:    cedar.NewEntityUID(cedar.EntityType(actionType), cedar.String(actionID)),
 		Resource:  cedar.NewEntityUID(cedar.EntityType(resourceType), cedar.String(resourceID)),
-		Context: cedar.NewRecord(cedar.RecordMap{
-			"isSuperUser": cedar.False,
-		}),
+		Context:   cedar.NewRecord(cedar.RecordMap{}),
 	}
 
-	ok, diagnostic := ps.IsAuthorized(entities, req)
-	fmt.Print(diagnostic)
-	authzDecision, err := azauthz.NewAuthorizationDecision("", bool(ok), nil, nil)
+	ok, _ := ps.IsAuthorized(entities, req)
+	var adminError, userError *azauthz.AuthorizationError
+	if !ok {
+		adminError, _ = azauthz.NewAuthorizationError(azauthz.AuthzErrForbiddenCode, azauthz.AuthzErrForbiddenMessage)
+		userError, _ = azauthz.NewAuthorizationError(azauthz.AuthzErrForbiddenCode, azauthz.AuthzErrForbiddenMessage)
+	}
+	authzDecision, err := azauthz.NewAuthorizationDecision("", bool(ok), adminError, userError)
 	if err != nil {
 		return nil, err
 	}
