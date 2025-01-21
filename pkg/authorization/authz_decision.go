@@ -32,6 +32,14 @@ func (a *AuthorizationError) GetMessage() string {
 	return a.message
 }
 
+// NewAuthorizationError creates a new authorization error.
+func NewAuthorizationError(code string, message string) (*AuthorizationError, error) {
+	return &AuthorizationError{
+		code:    code,
+		message: message,
+	}, nil
+}
+
 // AuthorizationContext represents the authorization context.
 type AuthorizationDecision struct {
 	id         string
