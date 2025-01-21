@@ -357,6 +357,9 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 
 	action := authzCtx.GetAction().GetID()
 	actiondIndex := strings.LastIndex(action, "::")
+	if actiondIndex == -1 {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageSyntax, fmt.Sprintf("[cedar] action format is invalid: %s", action))
+	}
 	actionType := action[:actiondIndex]
 	actionID := action[actiondIndex+len("::"):]
 
