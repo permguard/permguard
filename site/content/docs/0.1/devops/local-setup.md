@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "local-setup-c40852f47b5584a34ecb8daa68c0c1de"
-weight: 6004
+weight: 7004
 toc: true
 seo:
   title: "" # custom title (optional)

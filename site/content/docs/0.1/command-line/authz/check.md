@@ -9,7 +9,7 @@ menu:
   docs:
     parent: ""
     identifier: "check-69711397-a43d-49f2-908d-575e47d68958"
-weight: 5203
+weight: 6203
 toc: true
 seo:
   title: "" # custom title (optional)
@@ -95,8 +95,8 @@ permguard authz check --appid 268786704340 <<EOF
         },
         {
           "uid": {
-            "type": "Magicfarmacia::Platform::BranchInfo",
-            "id": "subscription"
+            "type": "MagicFarmacia::Platform::Subscription",
+            "id": "e3a786fd07e24bfa95ba4341d3695ae8"
           },
           "attrs": {
             "active": true
@@ -113,8 +113,8 @@ permguard authz check --appid 268786704340 <<EOF
     "properties": {}
   },
   "resource": {
-    "type": "Magicfarmacia::Platform::BranchInfo",
-    "id": "subscription",
+    "type": "MagicFarmacia::Platform::Subscription",
+    "id": "e3a786fd07e24bfa95ba4341d3695ae8",
     "properties": {}
   },
   "context": {

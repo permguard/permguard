@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "python-e9b6c2735d3d52de476beeb4a3bdfe7b"
-weight: 5002
+weight: 6002
 toc: true
 seo:
   title: "" # custom title (optional)

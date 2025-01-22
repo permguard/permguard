@@ -26,8 +26,8 @@
         },
         {
           "uid": {
-            "type": "Magicfarmacia::Platform::BranchInfo",
-            "id": "subscription"
+            "type": "MagicFarmacia::Platform::Subscription",
+            "id": "e3a786fd07e24bfa95ba4341d3695ae8"
           },
           "attrs": {
             "active": true
@@ -46,8 +46,8 @@
         "properties": {}
       },
       "resource": {
-        "type": "Magicfarmacia::Platform::BranchInfo",
-        "id": "subscription",
+        "type": "MagicFarmacia::Platform::Subscription",
+        "id": "e3a786fd07e24bfa95ba4341d3695ae8",
         "properties": {
           "branch": {
             "id": "96902499c04246f0bbe8f2e67a165a64"
@@ -70,8 +70,8 @@
         "properties": {}
       },
       "resource": {
-        "type": "Magicfarmacia::Platform::BranchInfo",
-        "id": "subscription",
+        "type": "MagicFarmacia::Platform::Subscription",
+        "id": "e3a786fd07e24bfa95ba4341d3695ae8",
         "properties": {
           "branch": {
             "id": "96902499c04246f0bbe8f2e67a165a64"

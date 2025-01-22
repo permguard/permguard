@@ -34,118 +34,92 @@ Below is a sample schema:
 
 ```yaml
 {
-  "MagicFarmacia:Platform": {
-    "entityTypes": {
-      "Branch": {
-        "shape": {
-          "type": "Record",
-          "attributes": {
-            "city": "String"
-          }
-        }
-      }
-    },
-    "actions": {
-      "upsert": {
-        "appliesTo": {
-          "principalTypes": [
-            "Identity"
-          ],
-          "resourceTypes": [
-            "Branch"
-          ]
-        }
-      },
-      "delete": {
-        "appliesTo": {
-          "principalTypes": [
-            "Identity"
-          ],
-          "resourceTypes": [
-            "Branch"
-          ]
-        }
-      }
-    }
-  },
-  "MagicFarmacia:Branch": {
-    "entityTypes": {
-      "Staff": {
-        "shape": {
-          "type": "Record",
-          "attributes": {
-            "id": "String"
-          }
-        }
-      },
-      "Inventory": {
-        "shape": {
-          "type": "Record",
-          "attributes": {
-            "id": "String"
-          }
-        }
-      },
-      "Order": {
-        "shape": {
-          "type": "Record",
-          "attributes": {
-            "id": "String"
-          }
-        }
-      },
-      "Report": {
-        "shape": {
-          "type": "Record",
-          "attributes": {
-            "id": "String"
-          }
-        }
-      }
-    },
-    "actions": {
-      "manage": {
-        "appliesTo": {
-          "principalTypes": [
-            "Identity"
-          ],
-          "resourceTypes": [
-            "Staff",
-            "Inventory",
-            "Order",
-            "Report"
-          ]
-        }
-      },
-      "assignRole": {
-        "appliesTo": {
-          "principalTypes": [
-            "Identity"
-          ],
-          "resourceTypes": [
-            "Staff"
-          ],
-          "context": {
+    "MagicFarmacia::Platform": {
+      "entityTypes": {
+        "Branch": {
+          "shape": {
+            "type": "Record",
             "attributes": {
-              "id": "String"
+              "city": {
+                "type": "String"
+              }
+            }
+          },
+          "memberOfTypes": [
+            "Account"
+          ]
+        },
+        "Account": {
+          "shape": {
+            "type": "Record",
+            "attributes": {
+              "active": {
+                "type": "Boolean"
+              }
+            }
+          },
+          "memberOfTypes": []
+        }
+      },
+      "actions": {
+        "create": {
+          "appliesTo": {
+            "principalTypes": [
+              "Permguard::IAM::User",
+              "Permguard::IAM::Actor"
+            ],
+            "resourceTypes": [
+              "Account",
+              "Branch"
+            ]
+          }
+        },
+        "update": {
+          "appliesTo": {
+            "principalTypes": [
+              "Permguard::IAM::User",
+              "Permguard::IAM::Actor"
+            ],
+            "resourceTypes": [
+              "Account",
+              "Branch"
+            ]
+          }
+        },
+        "delete": {
+          "appliesTo": {
+            "principalTypes": [
+              "Permguard::IAM::User",
+              "Permguard::IAM::Actor"
+            ],
+            "resourceTypes": [
+              "Account",
+              "Branch"
+            ]
+          }
+        },
+        "view": {
+          "appliesTo": {
+            "principalTypes": [
+              "Permguard::IAM::User",
+              "Permguard::IAM::Actor"
+            ],
+            "resourceTypes": [
+              "Account",
+              "Branch"
+            ],
+            "context": {
+              "type": "Record",
+              "attributes": {
+                "isSuperUser": {
+                  "type": "Boolean",
+                  "required": true
+                }
+              }
             }
           }
-        }
-      },
-      "view": {
-        "appliesTo": {
-          "principalTypes": [
-            "Identity"
-          ],
-          "resourceTypes": [
-            "Staff",
-            "Inventory",
-            "Order",
-            "Report"
-          ]
         }
       }
     }
   }
-}
 ```
