@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "golang-22c1d9c576c29224094d8bf16da5fd92"
-weight: 5001
+weight: 6001
 toc: true
 seo:
   title: "" # custom title (optional)

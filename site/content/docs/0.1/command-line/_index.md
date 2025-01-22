@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "command-line-cefa15e06e2f2285e418192ea1781e20"
-weight: 5000
+weight: 6000
 toc: true
 seo:
   title: "" # custom title (optional)

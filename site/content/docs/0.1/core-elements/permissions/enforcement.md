@@ -58,8 +58,8 @@ To complete the enforcement process, the PEP queries the Policy Decision Point (
         },
         {
           "uid": {
-            "type": "Magicfarmacia::Platform::BranchInfo",
-            "id": "subscription"
+            "type": "MagicFarmacia::Platform::Subscription",
+            "id": "e3a786fd07e24bfa95ba4341d3695ae8"
           },
           "attrs": {
             "active": true
@@ -76,8 +76,8 @@ To complete the enforcement process, the PEP queries the Policy Decision Point (
     "properties": {}
   },
   "resource": {
-    "type": "Magicfarmacia::Platform::BranchInfo",
-    "id": "subscription",
+    "type": "MagicFarmacia::Platform::Subscription",
+    "id": "e3a786fd07e24bfa95ba4341d3695ae8",
     "properties": {}
   },
   "context": {

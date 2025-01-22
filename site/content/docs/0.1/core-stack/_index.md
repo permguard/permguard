@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "core-tech-6a7b0edaf27d9bc80a753502fd0eec8e"
-weight: 8000
+weight: 9000
 toc: true
 seo:
   title: "" # custom title (optional)

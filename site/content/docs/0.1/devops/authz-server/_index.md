@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "authz-server-436017e0f3074f96810e26d7a9af215a"
-weight: 6100
+weight: 7100
 toc: true
 seo:
   title: "" # custom title (optional)

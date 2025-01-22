@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "authorization-server-51e885211e99e6d718992b041375f958"
-weight: 6101
+weight: 7101
 toc: true
 seo:
   title: "" # custom title (optional)

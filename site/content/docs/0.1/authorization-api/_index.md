@@ -1,16 +1,17 @@
 ---
-title: "DevOps"
-slug: "DevOps"
+title: "Authorization API"
+slug: "Authorization API"
 description: ""
 summary: ""
-date: 2023-08-01T00:27:20+01:00
-lastmod: 2023-08-01T00:27:20+01:00
+date: 2023-08-21T22:49:19+01:00
+lastmod: 2023-08-21T22:49:19+01:00
 draft: false
+
 menu:
   docs:
     parent: ""
-    identifier: "devops-aed2943821e4ff1fd325f6230d12c750"
-weight: 7000
+    identifier: "authorization-api-b370f03501e441b8b5aeddd70afc1e16"
+weight: 5100
 toc: true
 seo:
   title: "" # custom title (optional)

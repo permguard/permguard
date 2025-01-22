@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "supported-sdks-40c65780be145463e7949e8eb50b77f9"
-weight: 5000
+weight: 6000
 toc: true
 seo:
   title: "" # custom title (optional)

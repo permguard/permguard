@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "languages-0a04a38c-af1b-4289-9a56-8c31b1cb6e2d"
-weight: 8200
+weight: 9200
 toc: true
 seo:
   title: "" # custom title (optional)

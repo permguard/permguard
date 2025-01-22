@@ -6,7 +6,7 @@ summary: "Permguard is an Open Source Multi-Application, Multi-Tenant, Zero-Trus
 date: 2024-12-16T01:15:00+01:00
 lastmod: 2024-12-16T01:15:00+01:00
 draft: false
-weight: 50
+weight: 60
 categories: []
 tags: []
 contributors: []

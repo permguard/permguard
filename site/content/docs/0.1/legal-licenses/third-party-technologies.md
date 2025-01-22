@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "third-party-technologies-e3954b069d68457f90d108860b59dd87"
-weight: 9001
+weight: 10001
 toc: true
 seo:
   title: "" # custom title (optional)

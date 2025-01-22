@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "authorization-api-ceea086189c54d57a2f17e0586920c8e"
-weight: 8202
+weight: 5201
 toc: true
 seo:
   title: "" # custom title (optional)
@@ -105,8 +105,8 @@ Here a simple example of a message exchange between the `PEP` and the `PDP`.
         },
         {
           "uid": {
-            "type": "Magicfarmacia::Platform::BranchInfo",
-            "id": "subscription"
+            "type": "MagicFarmacia::Platform::Subscription",
+            "id": "e3a786fd07e24bfa95ba4341d3695ae8"
           },
           "attrs": {
             "active": true
@@ -123,8 +123,8 @@ Here a simple example of a message exchange between the `PEP` and the `PDP`.
     "properties": {}
   },
   "resource": {
-    "type": "Magicfarmacia::Platform::BranchInfo",
-    "id": "subscription",
+    "type": "MagicFarmacia::Platform::Subscription",
+    "id": "e3a786fd07e24bfa95ba4341d3695ae8",
     "properties": {}
   },
   "action": {
@@ -191,8 +191,8 @@ Here an example of a message exchange with evaluations between the `PEP` and the
         },
         {
           "uid": {
-            "type": "Magicfarmacia::Platform::BranchInfo",
-            "id": "subscription"
+            "type": "MagicFarmacia::Platform::Subscription",
+            "id": "e3a786fd07e24bfa95ba4341d3695ae8"
           },
           "attrs": {
             "active": true
@@ -211,8 +211,8 @@ Here an example of a message exchange with evaluations between the `PEP` and the
         "properties": {}
       },
       "resource": {
-        "type": "Magicfarmacia::Platform::BranchInfo",
-        "id": "subscription",
+        "type": "MagicFarmacia::Platform::Subscription",
+        "id": "e3a786fd07e24bfa95ba4341d3695ae8",
         "properties": {
           "branch": {
             "id": "96902499c04246f0bbe8f2e67a165a64"
@@ -235,8 +235,8 @@ Here an example of a message exchange with evaluations between the `PEP` and the
         "properties": {}
       },
       "resource": {
-        "type": "Magicfarmacia::Platform::BranchInfo",
-        "id": "subscription",
+        "type": "MagicFarmacia::Platform::Subscription",
+        "id": "e3a786fd07e24bfa95ba4341d3695ae8",
         "properties": {
           "branch": {
             "id": "96902499c04246f0bbe8f2e67a165a64"
@@ -339,8 +339,8 @@ Here an example of a message exchange with evaluations and defaults between the 
         },
         {
           "uid": {
-            "type": "Magicfarmacia::Platform::BranchInfo",
-            "id": "subscription"
+            "type": "MagicFarmacia::Platform::Subscription",
+            "id": "e3a786fd07e24bfa95ba4341d3695ae8"
           },
           "attrs": {
             "active": true
@@ -357,8 +357,8 @@ Here an example of a message exchange with evaluations and defaults between the 
     "properties": {}
   },
   "resource": {
-    "type": "Magicfarmacia::Platform::BranchInfo",
-    "id": "subscription",
+    "type": "MagicFarmacia::Platform::Subscription",
+    "id": "e3a786fd07e24bfa95ba4341d3695ae8",
     "properties": {}
   },
   "context": {

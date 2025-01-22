@@ -33,7 +33,7 @@ The first step is to define a policy and associate it with an actor by specifyin
 permit(
   principal in Permguard::IAM::Actor::"platform-admin",
   action in [MagicFarmacia::Platform::Action::"view", MagicFarmacia::Platform::Action::"create", MagicFarmacia::Platform::Action::"update", MagicFarmacia::Platform::Action::"delete"],
-  resource == MagicFarmacia::Platform::BranchInfo::"subscription"
+  resource == MagicFarmacia::Platform::Subscription::"e3a786fd07e24bfa95ba4341d3695ae8"
 )
 unless {
   principal has isSuperUser && principal.isSuperUser == false
@@ -43,7 +43,7 @@ unless {
 permit(
   principal in Permguard::IAM::Actor::"platform-admin",
   action in [MagicFarmacia::Platform::Action::"view", MagicFarmacia::Platform::Action::"update"],
-  resource == MagicFarmacia::Platform::BranchInfo::"subscription"
+  resource == MagicFarmacia::Platform::Subscription::"e3a786fd07e24bfa95ba4341d3695ae8"
 )
 unless {
   principal has isSuperUser && principal.isSuperUser == false
@@ -53,7 +53,7 @@ unless {
 permit(
   principal in Permguard::IAM::Actor::"platform-auditor",
   action == MagicFarmacia::Platform::Action::"view",
-  resource == MagicFarmacia::Platform::BranchInfo::"subscription"
+  resource == MagicFarmacia::Platform::Subscription::"e3a786fd07e24bfa95ba4341d3695ae8"
 )
 unless {
   principal has isSuperUser && principal.isSuperUser == false
@@ -63,7 +63,7 @@ unless {
 permit(
   principal,
   action == MagicFarmacia::Platform::Action::"view",
-  resource == MagicFarmacia::Platform::BranchInfo::"subscription"
+  resource == MagicFarmacia::Platform::Subscription::"e3a786fd07e24bfa95ba4341d3695ae8"
 )
 unless {
   principal has isSuperUser && principal.isSuperUser == false
