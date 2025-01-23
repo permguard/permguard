@@ -96,15 +96,6 @@ Here a simple example of a message exchange between the `PEP` and the `PDP`.
       "items": [
         {
           "uid": {
-            "type": "Permguard::IAM::User",
-            "id": "amy.smith@acmecorp.com"
-          },
-          "attrs": {
-          },
-          "parents": []
-        },
-        {
-          "uid": {
             "type": "MagicFarmacia::Platform::Subscription",
             "id": "e3a786fd07e24bfa95ba4341d3695ae8"
           },
@@ -120,7 +111,9 @@ Here a simple example of a message exchange between the `PEP` and the `PDP`.
     "type": "user",
     "id": "amy.smith@acmecorp.com",
     "source": "keycloak",
-    "properties": {}
+    "properties": {
+      "isSuperUser": true
+    }
   },
   "resource": {
     "type": "MagicFarmacia::Platform::Subscription",
@@ -132,7 +125,7 @@ Here a simple example of a message exchange between the `PEP` and the `PDP`.
     "properties": {}
   },
   "context": {
-    "isSuperUser": true
+    "time": "2025-01-23T16:17:46+00:00"
   }
 }
 ```
@@ -182,15 +175,6 @@ Here an example of a message exchange with evaluations between the `PEP` and the
       "items": [
         {
           "uid": {
-            "type": "Permguard::IAM::User",
-            "id": "amy.smith@acmecorp.com"
-          },
-          "attrs": {
-          },
-          "parents": []
-        },
-        {
-          "uid": {
             "type": "MagicFarmacia::Platform::Subscription",
             "id": "e3a786fd07e24bfa95ba4341d3695ae8"
           },
@@ -208,7 +192,9 @@ Here an example of a message exchange with evaluations between the `PEP` and the
         "type": "user",
         "id": "amy.smith@acmecorp.com",
         "source": "keycloak",
-        "properties": {}
+        "properties": {
+          "isSuperUser": true
+        }
       },
       "resource": {
         "type": "MagicFarmacia::Platform::Subscription",
@@ -224,7 +210,7 @@ Here an example of a message exchange with evaluations between the `PEP` and the
         "properties": {}
       },
       "context": {
-        "isSuperUser": true
+        "time": "2025-01-23T16:17:46+00:00"
       }
     },
     {
@@ -232,7 +218,9 @@ Here an example of a message exchange with evaluations between the `PEP` and the
         "type": "user",
         "id": "amy.smith@acmecorp.com",
         "source": "keycloak",
-        "properties": {}
+        "properties": {
+          "isSuperUser": true
+        }
       },
       "resource": {
         "type": "MagicFarmacia::Platform::Subscription",
@@ -248,7 +236,7 @@ Here an example of a message exchange with evaluations between the `PEP` and the
         "properties": {}
       },
       "context": {
-        "isSuperUser": true
+        "time": "2025-01-23T16:17:46+00:00"
       }
     }
   ]
@@ -330,15 +318,6 @@ Here an example of a message exchange with evaluations and defaults between the 
       "items": [
         {
           "uid": {
-            "type": "Permguard::IAM::User",
-            "id": "amy.smith@acmecorp.com"
-          },
-          "attrs": {
-          },
-          "parents": []
-        },
-        {
-          "uid": {
             "type": "MagicFarmacia::Platform::Subscription",
             "id": "e3a786fd07e24bfa95ba4341d3695ae8"
           },
@@ -354,7 +333,9 @@ Here an example of a message exchange with evaluations and defaults between the 
     "type": "user",
     "id": "amy.smith@acmecorp.com",
     "source": "keycloak",
-    "properties": {}
+    "properties": {
+      "isSuperUser": true
+    }
   },
   "resource": {
     "type": "MagicFarmacia::Platform::Subscription",
@@ -362,7 +343,7 @@ Here an example of a message exchange with evaluations and defaults between the 
     "properties": {}
   },
   "context": {
-    "isSuperUser": true
+    "time": "2025-01-23T16:17:46+00:00"
   },
   "evaluations": [
     {
