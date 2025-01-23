@@ -49,15 +49,6 @@ To complete the enforcement process, the PEP queries the Policy Decision Point (
       "items": [
         {
           "uid": {
-            "type": "Permguard::IAM::User",
-            "id": "amy.smith@acmecorp.com"
-          },
-          "attrs": {
-          },
-          "parents": []
-        },
-        {
-          "uid": {
             "type": "MagicFarmacia::Platform::Subscription",
             "id": "e3a786fd07e24bfa95ba4341d3695ae8"
           },
@@ -73,7 +64,9 @@ To complete the enforcement process, the PEP queries the Policy Decision Point (
     "type": "user",
     "id": "amy.smith@acmecorp.com",
     "source": "keycloak",
-    "properties": {}
+    "properties": {
+      "isSuperUser": true
+    }
   },
   "resource": {
     "type": "MagicFarmacia::Platform::Subscription",
@@ -81,7 +74,7 @@ To complete the enforcement process, the PEP queries the Policy Decision Point (
     "properties": {}
   },
   "context": {
-    "isSuperUser": true
+    "time": "2025-01-23T16:17:46+00:00"
   },
   "evaluations": [
     {
