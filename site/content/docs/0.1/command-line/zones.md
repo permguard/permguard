@@ -49,10 +49,10 @@ The output from your current version of Permguard may differ from the example pr
 
 ## Create a zone
 
-The `permguard zone create` command allows to create a zone for the input name.
+The `permguard zones create` command allows to create a zone for the input name.
 
 ```bash
-permguard zone create --name magicfarmacia-dev
+permguard zones create --name magicfarmacia-dev
 ```
 
 output:
@@ -67,7 +67,7 @@ output:
   </summary>
 
 ```bash
-permguard zone create --name magicfarmacia-dev --output json
+permguard zones create --name magicfarmacia-dev --output json
 ```
 
 output:
@@ -89,10 +89,10 @@ output:
 
 ## Fetch Zones
 
-The `permguard zone list` command allows for the retrieval of all zones.
+The `permguard zones list` command allows for the retrieval of all zones.
 
 ```bash
-permguard zone list
+permguard zones list
 ```
 
 output:
@@ -109,7 +109,7 @@ output:
   </summary>
 
 ```bash
-permguard zone list --output json
+permguard zones list --output json
 ```
 
 output:

@@ -82,7 +82,7 @@ To obtain detailed help for a specific command, users can utilize the --help opt
 For instance, to access help information about the `zones` subcommand, users can execute the following command:
 
 ```bash
-permguard zone --help
+permguard zones --help
 ```
 
 It's important to note that the output of the command line can be either in the default `TERMINAL` or `JSON` format by setting the output flag.
@@ -90,11 +90,11 @@ It's important to note that the output of the command line can be either in the 
 For instance to list all zones in the default terminal format, users can execute the following command:
 
 ```bash
-permguard zone list
+permguard zones list
 ```
 
 To list all zones in JSON format, users can execute the following command:
 
 ```bash
-permguard zone list --output json
+permguard zones list --output json
 ```

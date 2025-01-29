@@ -43,7 +43,7 @@ A **Permguard** workspace contains the following files:
 When starting a new project, the first step is to create a zone:
 
 ```bash
-permguard zone create --name magicfarmacia-dev --output json
+permguard zones create --name magicfarmacia-dev --output json
 {
   "zones": [
     {
