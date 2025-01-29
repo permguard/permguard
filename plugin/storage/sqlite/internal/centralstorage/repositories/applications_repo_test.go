@@ -31,58 +31,58 @@ import (
 	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
 )
 
-// registerApplicationForUpsertMocking registers an application for upsert mocking.
-func registerApplicationForUpsertMocking(isCreate bool) (*Application, string, *sqlmock.Rows) {
-	application := &Application{
-		ApplicationID: 581616507495,
-		Name:          "rent-a-car",
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+// registerZoneForUpsertMocking registers a zone for upsert mocking.
+func registerZoneForUpsertMocking(isCreate bool) (*Zone, string, *sqlmock.Rows) {
+	zone := &Zone{
+		ZoneID:    581616507495,
+		Name:      "rent-a-car",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 	var sql string
 	if isCreate {
-		sql = `INSERT INTO applications \(application_id, name\) VALUES \(\?, \?\)`
+		sql = `INSERT INTO zones \(zone_id, name\) VALUES \(\?, \?\)`
 	} else {
-		sql = `UPDATE applications SET name = \? WHERE application_id = \?`
+		sql = `UPDATE zones SET name = \? WHERE zone_id = \?`
 	}
-	sqlRows := sqlmock.NewRows([]string{"application_id", "created_at", "updated_at", "name"}).
-		AddRow(application.ApplicationID, application.CreatedAt, application.UpdatedAt, application.Name)
-	return application, sql, sqlRows
+	sqlRows := sqlmock.NewRows([]string{"zone_id", "created_at", "updated_at", "name"}).
+		AddRow(zone.ZoneID, zone.CreatedAt, zone.UpdatedAt, zone.Name)
+	return zone, sql, sqlRows
 }
 
-// registerApplicationForDeleteMocking registers an application for delete mocking.
-func registerApplicationForDeleteMocking() (string, *Application, *sqlmock.Rows, string) {
-	application := &Application{
-		ApplicationID: 581616507495,
-		Name:          "rent-a-car",
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+// registerZoneForDeleteMocking registers a zone for delete mocking.
+func registerZoneForDeleteMocking() (string, *Zone, *sqlmock.Rows, string) {
+	zone := &Zone{
+		ZoneID:    581616507495,
+		Name:      "rent-a-car",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
-	var sqlSelect = `SELECT application_id, created_at, updated_at, name FROM applications WHERE application_id = \?`
-	var sqlDelete = `DELETE FROM applications WHERE application_id = \?`
-	sqlRows := sqlmock.NewRows([]string{"application_id", "created_at", "updated_at", "name"}).
-		AddRow(application.ApplicationID, application.CreatedAt, application.UpdatedAt, application.Name)
-	return sqlSelect, application, sqlRows, sqlDelete
+	var sqlSelect = `SELECT zone_id, created_at, updated_at, name FROM zones WHERE zone_id = \?`
+	var sqlDelete = `DELETE FROM zones WHERE zone_id = \?`
+	sqlRows := sqlmock.NewRows([]string{"zone_id", "created_at", "updated_at", "name"}).
+		AddRow(zone.ZoneID, zone.CreatedAt, zone.UpdatedAt, zone.Name)
+	return sqlSelect, zone, sqlRows, sqlDelete
 }
 
-// registerApplicationForFetchMocking registers an application for fetch mocking.
-func registerApplicationForFetchMocking() (string, []Application, *sqlmock.Rows) {
-	applications := []Application{
+// registerZoneForFetchMocking registers a zone for fetch mocking.
+func registerZoneForFetchMocking() (string, []Zone, *sqlmock.Rows) {
+	zones := []Zone{
 		{
-			ApplicationID: 581616507495,
-			Name:          "rent-a-car",
-			CreatedAt:     time.Now(),
-			UpdatedAt:     time.Now(),
+			ZoneID:    581616507495,
+			Name:      "rent-a-car",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		},
 	}
-	var sqlSelect = "SELECT * FROM applications WHERE application_id = ? AND name LIKE ? ORDER BY application_id ASC LIMIT ? OFFSET ?"
-	sqlRows := sqlmock.NewRows([]string{"application_id", "created_at", "updated_at", "name"}).
-		AddRow(applications[0].ApplicationID, applications[0].CreatedAt, applications[0].UpdatedAt, applications[0].Name)
-	return sqlSelect, applications, sqlRows
+	var sqlSelect = "SELECT * FROM zones WHERE zone_id = ? AND name LIKE ? ORDER BY zone_id ASC LIMIT ? OFFSET ?"
+	sqlRows := sqlmock.NewRows([]string{"zone_id", "created_at", "updated_at", "name"}).
+		AddRow(zones[0].ZoneID, zones[0].CreatedAt, zones[0].UpdatedAt, zones[0].Name)
+	return sqlSelect, zones, sqlRows
 }
 
-// TestRepoUpsertApplicationWithInvalidInput tests the upsert of an application with invalid input.
-func TestRepoUpsertApplicationWithInvalidInput(t *testing.T) {
+// TestRepoUpsertZoneWithInvalidInput tests the upsert of a zone with invalid input.
+func TestRepoUpsertZoneWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
 	ledger := Repository{}
 
@@ -91,23 +91,23 @@ func TestRepoUpsertApplicationWithInvalidInput(t *testing.T) {
 
 	tx, _ := sqlDB.Begin()
 
-	{ // Test with nil application
-		_, err := ledger.UpsertApplication(tx, true, nil)
+	{ // Test with nil zone
+		_, err := ledger.UpsertZone(tx, true, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
-	{ // Test with invalid application id
-		dbInApplication := &Application{
-			ApplicationID: 0,
-			Name:          "rent-a-car",
+	{ // Test with invalid zone id
+		dbInZone := &Zone{
+			ZoneID: 0,
+			Name:   "rent-a-car",
 		}
-		_, err := ledger.UpsertApplication(tx, false, dbInApplication)
+		_, err := ledger.UpsertZone(tx, false, dbInZone)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
-	{ // Test with invalid application name
+	{ // Test with invalid zone name
 		tests := []string{
 			"",
 			" ",
@@ -115,25 +115,25 @@ func TestRepoUpsertApplicationWithInvalidInput(t *testing.T) {
 			"1aX",
 			"X-@x"}
 		for _, test := range tests {
-			applicationName := test
+			zoneName := test
 			_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
 			defer sqlDB.Close()
 
 			tx, _ := sqlDB.Begin()
 
-			dbInApplication := &Application{
-				Name: applicationName,
+			dbInZone := &Zone{
+				Name: zoneName,
 			}
-			dbOutApplication, err := ledger.UpsertApplication(tx, true, dbInApplication)
+			dbOutZone, err := ledger.UpsertZone(tx, true, dbInZone)
 			assert.NotNil(err, "error should be not nil")
 			assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
-			assert.Nil(dbOutApplication, "applications should be nil")
+			assert.Nil(dbOutZone, "zones should be nil")
 		}
 	}
 }
 
-// TestRepoUpsertApplicationWithSuccess tests the upsert of an application with success.
-func TestRepoUpsertApplicationWithSuccess(t *testing.T) {
+// TestRepoUpsertZoneWithSuccess tests the upsert of a zone with success.
+func TestRepoUpsertZoneWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 	ledger := Repository{}
 
@@ -146,44 +146,44 @@ func TestRepoUpsertApplicationWithSuccess(t *testing.T) {
 		defer sqlDB.Close()
 
 		isCreate := test
-		application, sql, sqlApplicationRows := registerApplicationForUpsertMocking(isCreate)
+		zone, sql, sqlZoneRows := registerZoneForUpsertMocking(isCreate)
 
 		sqlDBMock.ExpectBegin()
-		var dbInApplication *Application
+		var dbInZone *Zone
 		if isCreate {
-			dbInApplication = &Application{
-				Name: application.Name,
+			dbInZone = &Zone{
+				Name: zone.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(sqlmock.AnyArg(), application.Name).
+				WithArgs(sqlmock.AnyArg(), zone.Name).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 		} else {
-			dbInApplication = &Application{
-				ApplicationID: application.ApplicationID,
-				Name:          application.Name,
+			dbInZone = &Zone{
+				ZoneID: zone.ZoneID,
+				Name:   zone.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(application.Name, application.ApplicationID).
+				WithArgs(zone.Name, zone.ZoneID).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 		}
 
-		sqlDBMock.ExpectQuery(`SELECT application_id, created_at, updated_at, name FROM applications WHERE application_id = \?`).
+		sqlDBMock.ExpectQuery(`SELECT zone_id, created_at, updated_at, name FROM zones WHERE zone_id = \?`).
 			WithArgs(sqlmock.AnyArg()).
-			WillReturnRows(sqlApplicationRows)
+			WillReturnRows(sqlZoneRows)
 
 		tx, _ := sqlDB.Begin()
-		dbOutApplication, err := ledger.UpsertApplication(tx, isCreate, dbInApplication)
+		dbOutZone, err := ledger.UpsertZone(tx, isCreate, dbInZone)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
-		assert.NotNil(dbOutApplication, "application should be not nil")
-		assert.Equal(application.ApplicationID, dbOutApplication.ApplicationID, "application id is not correct")
-		assert.Equal(application.Name, dbOutApplication.Name, "application name is not correct")
+		assert.NotNil(dbOutZone, "zone should be not nil")
+		assert.Equal(zone.ZoneID, dbOutZone.ZoneID, "zone id is not correct")
+		assert.Equal(zone.Name, dbOutZone.Name, "zone name is not correct")
 		assert.Nil(err, "error should be nil")
 	}
 }
 
-// TestRepoCreateApplicationWithSuccess tests the upsert of an application with success.
-func TestRepoUpsertApplicationWithErrors(t *testing.T) {
+// TestRepoCreateZoneWithSuccess tests the upsert of a zone with success.
+func TestRepoUpsertZoneWithErrors(t *testing.T) {
 	assert := assert.New(t)
 	ledger := Repository{}
 
@@ -196,40 +196,40 @@ func TestRepoUpsertApplicationWithErrors(t *testing.T) {
 		defer sqlDB.Close()
 
 		isCreate := test
-		application, sql, _ := registerApplicationForUpsertMocking(isCreate)
+		zone, sql, _ := registerZoneForUpsertMocking(isCreate)
 
 		sqlDBMock.ExpectBegin()
 
-		var dbInApplication *Application
+		var dbInZone *Zone
 		if isCreate {
-			dbInApplication = &Application{
-				Name: application.Name,
+			dbInZone = &Zone{
+				Name: zone.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(sqlmock.AnyArg(), application.Name).
+				WithArgs(sqlmock.AnyArg(), zone.Name).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 		} else {
-			dbInApplication = &Application{
-				ApplicationID: application.ApplicationID,
-				Name:          application.Name,
+			dbInZone = &Zone{
+				ZoneID: zone.ZoneID,
+				Name:   zone.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(application.Name, application.ApplicationID).
+				WithArgs(zone.Name, zone.ZoneID).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 		}
 
 		tx, _ := sqlDB.Begin()
-		dbOutApplication, err := ledger.UpsertApplication(tx, isCreate, dbInApplication)
+		dbOutZone, err := ledger.UpsertZone(tx, isCreate, dbInZone)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
-		assert.Nil(dbOutApplication, "application should be nil")
+		assert.Nil(dbOutZone, "zone should be nil")
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrStorageConstraintUnique, err), "error should be errstorageconstraintunique")
 	}
 }
 
-// TestRepoDeleteApplicationWithInvalidInput tests the delete of an application with invalid input.
-func TestRepoDeleteApplicationWithInvalidInput(t *testing.T) {
+// TestRepoDeleteZoneWithInvalidInput tests the delete of a zone with invalid input.
+func TestRepoDeleteZoneWithInvalidInput(t *testing.T) {
 	ledger := Repository{}
 
 	assert := assert.New(t)
@@ -238,45 +238,45 @@ func TestRepoDeleteApplicationWithInvalidInput(t *testing.T) {
 
 	tx, _ := sqlDB.Begin()
 
-	{ // Test with invalid application id
-		_, err := ledger.DeleteApplication(tx, 0)
+	{ // Test with invalid zone id
+		_, err := ledger.DeleteZone(tx, 0)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 }
 
-// TestRepoDeleteApplicationWithSuccess tests the delete of an application with success.
-func TestRepoDeleteApplicationWithSuccess(t *testing.T) {
+// TestRepoDeleteZoneWithSuccess tests the delete of a zone with success.
+func TestRepoDeleteZoneWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 	ledger := Repository{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
-	sqlSelect, application, sqlApplicationRows, sqlDelete := registerApplicationForDeleteMocking()
+	sqlSelect, zone, sqlZoneRows, sqlDelete := registerZoneForDeleteMocking()
 
 	sqlDBMock.ExpectBegin()
 
 	sqlDBMock.ExpectQuery(sqlSelect).
-		WithArgs(application.ApplicationID).
-		WillReturnRows(sqlApplicationRows)
+		WithArgs(zone.ZoneID).
+		WillReturnRows(sqlZoneRows)
 
 	sqlDBMock.ExpectExec(sqlDelete).
-		WithArgs(application.ApplicationID).
+		WithArgs(zone.ZoneID).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	tx, _ := sqlDB.Begin()
-	dbOutApplication, err := ledger.DeleteApplication(tx, application.ApplicationID)
+	dbOutZone, err := ledger.DeleteZone(tx, zone.ZoneID)
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
-	assert.NotNil(dbOutApplication, "application should be not nil")
-	assert.Equal(application.ApplicationID, dbOutApplication.ApplicationID, "application id is not correct")
-	assert.Equal(application.Name, dbOutApplication.Name, "application name is not correct")
+	assert.NotNil(dbOutZone, "zone should be not nil")
+	assert.Equal(zone.ZoneID, dbOutZone.ZoneID, "zone id is not correct")
+	assert.Equal(zone.Name, dbOutZone.Name, "zone name is not correct")
 	assert.Nil(err, "error should be nil")
 }
 
-// TestRepoDeleteApplicationWithErrors tests the delete of an application with errors.
-func TestRepoDeleteApplicationWithErrors(t *testing.T) {
+// TestRepoDeleteZoneWithErrors tests the delete of a zone with errors.
+func TestRepoDeleteZoneWithErrors(t *testing.T) {
 	assert := assert.New(t)
 	ledger := Repository{}
 
@@ -289,7 +289,7 @@ func TestRepoDeleteApplicationWithErrors(t *testing.T) {
 		_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 		defer sqlDB.Close()
 
-		sqlSelect, application, sqlApplicationRows, sqlDelete := registerApplicationForDeleteMocking()
+		sqlSelect, zone, sqlZoneRows, sqlDelete := registerZoneForDeleteMocking()
 
 		sqlDBMock.ExpectBegin()
 
@@ -300,7 +300,7 @@ func TestRepoDeleteApplicationWithErrors(t *testing.T) {
 		} else {
 			sqlDBMock.ExpectQuery(sqlSelect).
 				WithArgs(sqlmock.AnyArg()).
-				WillReturnRows(sqlApplicationRows)
+				WillReturnRows(sqlZoneRows)
 		}
 
 		if test == 2 {
@@ -314,10 +314,10 @@ func TestRepoDeleteApplicationWithErrors(t *testing.T) {
 		}
 
 		tx, _ := sqlDB.Begin()
-		dbOutApplication, err := ledger.DeleteApplication(tx, application.ApplicationID)
+		dbOutZone, err := ledger.DeleteZone(tx, zone.ZoneID)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
-		assert.Nil(dbOutApplication, "application should be nil")
+		assert.Nil(dbOutZone, "zone should be nil")
 		assert.NotNil(err, "error should be not nil")
 
 		if test == 1 {
@@ -328,8 +328,8 @@ func TestRepoDeleteApplicationWithErrors(t *testing.T) {
 	}
 }
 
-// TestRepoFetchApplicationWithInvalidInput tests the fetch of applications with invalid input.
-func TestRepoFetchApplicationWithInvalidInput(t *testing.T) {
+// TestRepoFetchZoneWithInvalidInput tests the fetch of zones with invalid input.
+func TestRepoFetchZoneWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
 	ledger := Repository{}
 
@@ -337,63 +337,63 @@ func TestRepoFetchApplicationWithInvalidInput(t *testing.T) {
 	defer sqlDB.Close()
 
 	{ // Test with invalid page
-		_, err := ledger.FetchApplications(sqlDB, 0, 100, nil, nil)
+		_, err := ledger.FetchZones(sqlDB, 0, 100, nil, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid page size
-		_, err := ledger.FetchApplications(sqlDB, 1, 0, nil, nil)
+		_, err := ledger.FetchZones(sqlDB, 1, 0, nil, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
-	{ // Test with invalid application id
-		applicationID := int64(0)
-		_, err := ledger.FetchApplications(sqlDB, 1, 1, &applicationID, nil)
+	{ // Test with invalid zone id
+		zoneID := int64(0)
+		_, err := ledger.FetchZones(sqlDB, 1, 1, &zoneID, nil)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
 	}
 
-	{ // Test with invalid application id
-		applicationName := "@"
-		_, err := ledger.FetchApplications(sqlDB, 1, 1, nil, &applicationName)
+	{ // Test with invalid zone id
+		zoneName := "@"
+		_, err := ledger.FetchZones(sqlDB, 1, 1, nil, &zoneName)
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientName, err), "error should be errclientname")
 	}
 }
 
-// TestRepoFetchApplicationWithSuccess tests the fetch of applications with success.
-func TestRepoFetchApplicationWithSuccess(t *testing.T) {
+// TestRepoFetchZoneWithSuccess tests the fetch of zones with success.
+func TestRepoFetchZoneWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 	ledger := Repository{}
 
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
-	sqlSelect, sqlApplications, sqlApplicationRows := registerApplicationForFetchMocking()
+	sqlSelect, sqlZones, sqlZoneRows := registerZoneForFetchMocking()
 
 	page := int32(1)
 	pageSize := int32(100)
-	applicationName := "%" + sqlApplications[0].Name + "%"
+	zoneName := "%" + sqlZones[0].Name + "%"
 	sqlDBMock.ExpectQuery(regexp.QuoteMeta(sqlSelect)).
-		WithArgs(sqlApplications[0].ApplicationID, applicationName, pageSize, page-1).
-		WillReturnRows(sqlApplicationRows)
+		WithArgs(sqlZones[0].ZoneID, zoneName, pageSize, page-1).
+		WillReturnRows(sqlZoneRows)
 
-	dbOutApplication, err := ledger.FetchApplications(sqlDB, page, pageSize, &sqlApplications[0].ApplicationID, &sqlApplications[0].Name)
+	dbOutZone, err := ledger.FetchZones(sqlDB, page, pageSize, &sqlZones[0].ZoneID, &sqlZones[0].Name)
 
-	orderedSQLApplications := make([]Application, len(sqlApplications))
-	copy(orderedSQLApplications, sqlApplications)
-	sort.Slice(orderedSQLApplications, func(i, j int) bool {
-		return orderedSQLApplications[i].ApplicationID < orderedSQLApplications[j].ApplicationID
+	orderedSQLZones := make([]Zone, len(sqlZones))
+	copy(orderedSQLZones, sqlZones)
+	sort.Slice(orderedSQLZones, func(i, j int) bool {
+		return orderedSQLZones[i].ZoneID < orderedSQLZones[j].ZoneID
 	})
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
-	assert.NotNil(dbOutApplication, "application should be not nil")
-	assert.Len(orderedSQLApplications, len(dbOutApplication), "applications len should be correct")
-	for i, application := range dbOutApplication {
-		assert.Equal(application.ApplicationID, orderedSQLApplications[i].ApplicationID, "application id is not correct")
-		assert.Equal(application.Name, orderedSQLApplications[i].Name, "application name is not correct")
+	assert.NotNil(dbOutZone, "zone should be not nil")
+	assert.Len(orderedSQLZones, len(dbOutZone), "zones len should be correct")
+	for i, zone := range dbOutZone {
+		assert.Equal(zone.ZoneID, orderedSQLZones[i].ZoneID, "zone id is not correct")
+		assert.Equal(zone.Name, orderedSQLZones[i].Name, "zone name is not correct")
 	}
 	assert.Nil(err, "error should be nil")
 }

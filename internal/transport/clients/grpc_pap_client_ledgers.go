@@ -26,12 +26,12 @@ import (
 )
 
 // CreateLedger creates a new ledger.
-func (c *GrpcPAPClient) CreateLedger(applicationID int64, kind string, name string) (*azmodelpap.Ledger, error) {
+func (c *GrpcPAPClient) CreateLedger(zoneID int64, kind string, name string) (*azmodelpap.Ledger, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	ledger, err := client.CreateLedger(context.Background(), &azapiv1pap.LedgerCreateRequest{ApplicationID: applicationID, Name: name, Kind: kind})
+	ledger, err := client.CreateLedger(context.Background(), &azapiv1pap.LedgerCreateRequest{ZoneID: zoneID, Name: name, Kind: kind})
 	if err != nil {
 		return nil, err
 	}
@@ -48,10 +48,10 @@ func (c *GrpcPAPClient) UpdateLedger(ledger *azmodelpap.Ledger) (*azmodelpap.Led
 		return nil, err
 	}
 	updatedLedger, err := client.UpdateLedger(context.Background(), &azapiv1pap.LedgerUpdateRequest{
-		LedgerID:      ledger.LedgerID,
-		ApplicationID: ledger.ApplicationID,
-		Kind:          ledger.Kind,
-		Name:          ledger.Name,
+		LedgerID: ledger.LedgerID,
+		ZoneID:   ledger.ZoneID,
+		Kind:     ledger.Kind,
+		Name:     ledger.Name,
 	})
 	if err != nil {
 		return nil, err
@@ -60,12 +60,12 @@ func (c *GrpcPAPClient) UpdateLedger(ledger *azmodelpap.Ledger) (*azmodelpap.Led
 }
 
 // DeleteLedger deletes an ledger.
-func (c *GrpcPAPClient) DeleteLedger(applicationID int64, ledgerID string) (*azmodelpap.Ledger, error) {
+func (c *GrpcPAPClient) DeleteLedger(zoneID int64, ledgerID string) (*azmodelpap.Ledger, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	ledger, err := client.DeleteLedger(context.Background(), &azapiv1pap.LedgerDeleteRequest{ApplicationID: applicationID, LedgerID: ledgerID})
+	ledger, err := client.DeleteLedger(context.Background(), &azapiv1pap.LedgerDeleteRequest{ZoneID: zoneID, LedgerID: ledgerID})
 	if err != nil {
 		return nil, err
 	}
@@ -73,22 +73,22 @@ func (c *GrpcPAPClient) DeleteLedger(applicationID int64, ledgerID string) (*azm
 }
 
 // FetchLedgers returns all ledgers.
-func (c *GrpcPAPClient) FetchLedgers(page int32, pageSize int32, applicationID int64) ([]azmodelpap.Ledger, error) {
-	return c.FetchLedgersBy(page, pageSize, applicationID, "", "", "")
+func (c *GrpcPAPClient) FetchLedgers(page int32, pageSize int32, zoneID int64) ([]azmodelpap.Ledger, error) {
+	return c.FetchLedgersBy(page, pageSize, zoneID, "", "", "")
 }
 
 // FetchLedgersByID returns all ledgers filtering by ledger id.
-func (c *GrpcPAPClient) FetchLedgersByID(page int32, pageSize int32, applicationID int64, ledgerID string) ([]azmodelpap.Ledger, error) {
-	return c.FetchLedgersBy(page, pageSize, applicationID, ledgerID, "", "")
+func (c *GrpcPAPClient) FetchLedgersByID(page int32, pageSize int32, zoneID int64, ledgerID string) ([]azmodelpap.Ledger, error) {
+	return c.FetchLedgersBy(page, pageSize, zoneID, ledgerID, "", "")
 }
 
 // FetchLedgersByName returns all ledgers filtering by name.
-func (c *GrpcPAPClient) FetchLedgersByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodelpap.Ledger, error) {
-	return c.FetchLedgersBy(page, pageSize, applicationID, "", "", name)
+func (c *GrpcPAPClient) FetchLedgersByName(page int32, pageSize int32, zoneID int64, name string) ([]azmodelpap.Ledger, error) {
+	return c.FetchLedgersBy(page, pageSize, zoneID, "", "", name)
 }
 
 // FetchLedgersBy returns all ledgers filtering by ledger id and name.
-func (c *GrpcPAPClient) FetchLedgersBy(page int32, pageSize int32, applicationID int64, ledgerID string, kind string, name string) ([]azmodelpap.Ledger, error) {
+func (c *GrpcPAPClient) FetchLedgersBy(page int32, pageSize int32, zoneID int64, ledgerID string, kind string, name string) ([]azmodelpap.Ledger, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
@@ -96,8 +96,8 @@ func (c *GrpcPAPClient) FetchLedgersBy(page int32, pageSize int32, applicationID
 	ledgerFetchRequest := &azapiv1pap.LedgerFetchRequest{}
 	ledgerFetchRequest.Page = &page
 	ledgerFetchRequest.PageSize = &pageSize
-	if applicationID > 0 {
-		ledgerFetchRequest.ApplicationID = applicationID
+	if zoneID > 0 {
+		ledgerFetchRequest.ZoneID = zoneID
 	}
 	if kind != "" {
 		ledgerFetchRequest.Kind = &kind

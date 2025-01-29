@@ -79,15 +79,15 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 			out(nil, "checkout", "Remote verified successfully.", nil, true)
 		}
 		// Add the ledger
-		ref := m.rfsMgr.GenerateRef(ledgerInfo.GetRemote(), ledgerInfo.GetApplicationID(), srvLedger.LedgerID)
-		output, err = m.cfgMgr.ExecAddLedger(ledgerURI, ref, ledgerInfo.GetRemote(), ledgerInfo.GetLedger(), srvLedger.LedgerID, ledgerInfo.GetApplicationID(), nil, out)
+		ref := m.rfsMgr.GenerateRef(ledgerInfo.GetRemote(), ledgerInfo.GetZoneID(), srvLedger.LedgerID)
+		output, err = m.cfgMgr.ExecAddLedger(ledgerURI, ref, ledgerInfo.GetRemote(), ledgerInfo.GetLedger(), srvLedger.LedgerID, ledgerInfo.GetZoneID(), nil, out)
 		if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
 			return failedOpErr(output, err)
 		}
 		// Checkout the head
 		remoteCommitID := azlangobjs.ZeroOID
 		var remoteRef, headRef string
-		remoteRef, headRef, output, err = m.rfsMgr.ExecCheckoutRefFilesForRemote(ledgerInfo.GetRemote(), ledgerInfo.GetApplicationID(), ledgerInfo.GetLedger(), srvLedger.LedgerID, remoteCommitID, output, out)
+		remoteRef, headRef, output, err = m.rfsMgr.ExecCheckoutRefFilesForRemote(ledgerInfo.GetRemote(), ledgerInfo.GetZoneID(), ledgerInfo.GetLedger(), srvLedger.LedgerID, remoteCommitID, output, out)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -115,7 +115,7 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	remoteRef := azicliwkscommon.GenerateHeadRef(refInfo.GetApplicationID(), refInfo.GetLedger())
+	remoteRef := azicliwkscommon.GenerateHeadRef(refInfo.GetZoneID(), refInfo.GetLedger())
 	_, output, err = m.rfsMgr.ExecCheckoutHead(remoteRef, output, out)
 	if err != nil {
 		return failedOpErr(nil, err)
@@ -192,7 +192,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		HeadContextKey:         headCtx,
 	}
 
-	ctx, err := m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetApplicationID(), headCtx.GetLedgerID(), bag, m)
+	ctx, err := m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetZoneID(), headCtx.GetLedgerID(), bag, m)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
@@ -381,7 +381,7 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 }
 
 // ExecCloneLedger clones a ledger.
-func (m *WorkspaceManager) ExecCloneLedger(language, ledgerURI string, aapPort, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecCloneLedger(language, ledgerURI string, zapPort, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", fmt.Sprintf("Failed to clone the ledger %s.", aziclicommon.KeywordText(ledgerURI)), nil, true)
 		return output, err
@@ -400,7 +400,7 @@ func (m *WorkspaceManager) ExecCloneLedger(language, ledgerURI string, aapPort, 
 	}
 
 	uriServer := elements[0]
-	uriApplicationID := elements[1]
+	uriZoneID := elements[1]
 	uriLedger := elements[2]
 
 	output, err := m.ExecInitWorkspace(language, out)
@@ -411,9 +411,9 @@ func (m *WorkspaceManager) ExecCloneLedger(language, ledgerURI string, aapPort, 
 			return failedOpErr(nil, err)
 		}
 		defer fileLock.Unlock()
-		output, err = m.execInternalAddRemote(true, OriginRemoteName, uriServer, aapPort, papPort, out)
+		output, err = m.execInternalAddRemote(true, OriginRemoteName, uriServer, zapPort, papPort, out)
 		if err == nil {
-			ledgerURI := fmt.Sprintf("%s/%s/%s", OriginRemoteName, uriApplicationID, uriLedger)
+			ledgerURI := fmt.Sprintf("%s/%s/%s", OriginRemoteName, uriZoneID, uriLedger)
 			output, err = m.execInternalCheckoutLedger(true, ledgerURI, out)
 			if err != nil {
 				aborted = true

@@ -49,9 +49,9 @@ func (s SQLiteCentralStoragePAP) CreateLedger(ledger *azmodelspap.Ledger) (*azmo
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - ledger kind %s is not valid", ledger.Kind), err)
 	}
 	dbInLedger := &azirepos.Ledger{
-		ApplicationID: ledger.ApplicationID,
-		Name:          ledger.Name,
-		Kind:          kind,
+		ZoneID: ledger.ZoneID,
+		Name:   ledger.Name,
+		Kind:   kind,
 	}
 	dbOutLedger, err := s.sqlRepo.UpsertLedger(tx, true, dbInLedger)
 	if err != nil {
@@ -85,10 +85,10 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *azmodelspap.Ledger) (*azmo
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - ledger kind %s is not valid", ledger.Kind), err)
 	}
 	dbInLedger := &azirepos.Ledger{
-		LedgerID:      ledger.LedgerID,
-		ApplicationID: ledger.ApplicationID,
-		Kind:          kind,
-		Name:          ledger.Name,
+		LedgerID: ledger.LedgerID,
+		ZoneID:   ledger.ZoneID,
+		Kind:     kind,
+		Name:     ledger.Name,
 	}
 	dbOutLedger, err := s.sqlRepo.UpsertLedger(tx, false, dbInLedger)
 	if err != nil {
@@ -102,7 +102,7 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *azmodelspap.Ledger) (*azmo
 }
 
 // DeleteLedger deletes a ledger.
-func (s SQLiteCentralStoragePAP) DeleteLedger(applicationID int64, ledgerID string) (*azmodelspap.Ledger, error) {
+func (s SQLiteCentralStoragePAP) DeleteLedger(zoneID int64, ledgerID string) (*azmodelspap.Ledger, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
@@ -111,7 +111,7 @@ func (s SQLiteCentralStoragePAP) DeleteLedger(applicationID int64, ledgerID stri
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbOutLedger, err := s.sqlRepo.DeleteLedger(tx, applicationID, ledgerID)
+	dbOutLedger, err := s.sqlRepo.DeleteLedger(tx, zoneID, ledgerID)
 	if err != nil {
 		tx.Rollback()
 		return nil, err
@@ -123,7 +123,7 @@ func (s SQLiteCentralStoragePAP) DeleteLedger(applicationID int64, ledgerID stri
 }
 
 // FetchLedgers returns all ledgers.
-func (s SQLiteCentralStoragePAP) FetchLedgers(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelspap.Ledger, error) {
+func (s SQLiteCentralStoragePAP) FetchLedgers(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelspap.Ledger, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
@@ -147,7 +147,7 @@ func (s SQLiteCentralStoragePAP) FetchLedgers(page int32, pageSize int32, applic
 		}
 		filterName = &ledgerName
 	}
-	dbLedgers, err := s.sqlRepo.FetchLedgers(db, page, pageSize, applicationID, filterID, filterName)
+	dbLedgers, err := s.sqlRepo.FetchLedgers(db, page, pageSize, zoneID, filterID, filterName)
 	if err != nil {
 		return nil, err
 	}

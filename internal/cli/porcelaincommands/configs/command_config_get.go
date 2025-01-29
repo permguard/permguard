@@ -27,14 +27,14 @@ import (
 	azcli "github.com/permguard/permguard/pkg/cli"
 )
 
-// runECommandForAAPGet runs the command for getting the aap gRPC target.
-func runECommandForAAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+// runECommandForZAPGet runs the command for getting the zap gRPC target.
+func runECommandForZAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	printer.PrintlnMap(map[string]any{"aap_target": ctx.GetAAPTarget()})
+	printer.PrintlnMap(map[string]any{"zap_target": ctx.GetZAPTarget()})
 	return nil
 }
 
@@ -50,13 +50,13 @@ func runECommandForPAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 }
 
 // CreateCommandForConfig for managing config.
-func createCommandForConfigAAPGet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigZAPGet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "aap-get-target",
-		Short: "Get the app grpc target",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command gets the aap grpc target.`),
+		Use:   "zap-get-target",
+		Short: "Get the zone grpc target",
+		Long:  aziclicommon.BuildCliLongTemplate(`This command gets the zap grpc target.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForAAPGet(deps, cmd, v)
+			return runECommandForZAPGet(deps, cmd, v)
 		},
 	}
 	return command

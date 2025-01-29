@@ -25,7 +25,7 @@ This command checks an authorization request.
 
 Examples:
   # check an authorization request
-  permguard authz check --appid 268786704340 /path/to/authorization_request.json
+  permguard authz check --zoneid 268786704340 /path/to/authorization_request.json
 
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
@@ -34,7 +34,7 @@ Usage:
   permguard authz check [flags]
 
 Flags:
-      --appid int     application id
+      --zoneid int     zone id
   -h, --help          help for check
 
 Global Flags:
@@ -52,24 +52,24 @@ The output from your current version of Permguard may differ from the example pr
 The `permguard authz check` command allows to check an authorization request.
 
 ```bash
-permguard authz check --appid 268786704340 /path/to/authorization_request.json
+permguard authz check --zoneid 268786704340 /path/to/authorization_request.json
 ```
 
 Below are other methods to pass the input:
 
 ```bash
-permguard authz check --appid 268786704340 < /path/to/authorization_request.json
+permguard authz check --zoneid 268786704340 < /path/to/authorization_request.json
 ```
 
 ```bash
-cat /path/to/authorization_request.json | permguard authz check --appid 268786704340
+cat /path/to/authorization_request.json | permguard authz check --zoneid 268786704340
 ```
 
 ```bash
-permguard authz check --appid 268786704340 <<EOF
+permguard authz check --zoneid 268786704340 <<EOF
 {
   "authorization_context": {
-    "application_id": 268786704340,
+    "zone_id": 268786704340,
     "policy_store": {
       "type": "ledger",
       "id": "fd1ac44e4afa4fc4beec622494d3175a"
@@ -144,7 +144,7 @@ output:
 </details>
 
 ```bash
-permguard authz check --appid 268786704340 /path/to/authorization_request.json -o json
+permguard authz check --zoneid 268786704340 /path/to/authorization_request.json -o json
 ```
 
 output:

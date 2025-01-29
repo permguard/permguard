@@ -31,8 +31,8 @@ type CliContext interface {
 	IsTerminalOutput() bool
 	// IsJSONOutput returns true if the output is json.
 	IsJSONOutput() bool
-	// GetAAPTarget returns the aap target.
-	GetAAPTarget() string
+	// GetZAPTarget returns the zap target.
+	GetZAPTarget() string
 	// GetPAPTarget returns the pap target.
 	GetPAPTarget() string
 }

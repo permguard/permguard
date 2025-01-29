@@ -81,8 +81,8 @@ func TestNewSQLiteCentralStorage(t *testing.T) {
 		sqliteExec, err := NewSQLiteCentralStorage(mockStorageCtx, mockConnector)
 		assert.Nil(err)
 
-		aapcentralstorage, err := sqliteExec.GetAAPCentralStorage()
-		assert.NotNil(aapcentralstorage)
+		zapcentralstorage, err := sqliteExec.GetZAPCentralStorage()
+		assert.NotNil(zapcentralstorage)
 		assert.Nil(err)
 
 		papcentralstorage, err := sqliteExec.GetPAPCentralStorage()

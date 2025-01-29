@@ -59,45 +59,45 @@ cleanup() {
 # Trap to ensure cleanup is called on script exit
 trap cleanup EXIT
 
-# Capture the output from application creation
-output=$(go run ./cmd/cli/main.go applications create --name magicfarmacia-dev)
+# Capture the output from zone creation
+output=$(go run ./cmd/cli/main.go zones create --name magicfarmacia-dev)
 if [ $? -ne 0 ]; then
-    echo "Error creating application"
+    echo "Error creating zone"
     exit 1
 fi
-# Extract the application ID
-devapplication=$(echo $output | cut -d ':' -f 1)
+# Extract the zone ID
+devzone=$(echo $output | cut -d ':' -f 1)
 
-# Log the extracted application ID
-echo "Application ID: $devapplication"
+# Log the extracted zone ID
+echo "Zone ID: $devzone"
 
 # Execute each of the following commands, but don't exit on error
-go run ./cmd/cli/main.go authn tenants create --name matera-branch --appid $devapplication || echo "Failed to create Milan branch"
-go run ./cmd/cli/main.go authn tenants create --name milan-branch --appid $devapplication || echo "Failed to create Milan branch"
-go run ./cmd/cli/main.go authn tenants create --name pisa-branch --appid $devapplication || echo "Failed to create Florence branch"
-go run ./cmd/cli/main.go authn tenants create --name bari-branch --appid $devapplication || echo "Failed to create Naples branch"
+go run ./cmd/cli/main.go authn tenants create --name matera-branch --zoneid $devzone || echo "Failed to create Milan branch"
+go run ./cmd/cli/main.go authn tenants create --name milan-branch --zoneid $devzone || echo "Failed to create Milan branch"
+go run ./cmd/cli/main.go authn tenants create --name pisa-branch --zoneid $devzone || echo "Failed to create Florence branch"
+go run ./cmd/cli/main.go authn tenants create --name bari-branch --zoneid $devzone || echo "Failed to create Naples branch"
 
-go run ./cmd/cli/main.go authn tenants create --name london-branch --appid $devapplication || echo "Failed to create London branch"
-go run ./cmd/cli/main.go authn tenants create --name leeds-branch --appid $devapplication || echo "Failed to create Manchester branch"
-go run ./cmd/cli/main.go authn tenants create --name birmingham-branch --appid $devapplication || echo "Failed to create Birmingham branch"
+go run ./cmd/cli/main.go authn tenants create --name london-branch --zoneid $devzone || echo "Failed to create London branch"
+go run ./cmd/cli/main.go authn tenants create --name leeds-branch --zoneid $devzone || echo "Failed to create Manchester branch"
+go run ./cmd/cli/main.go authn tenants create --name birmingham-branch --zoneid $devzone || echo "Failed to create Birmingham branch"
 
 # Capture the output from identity source creation
-output=$(go run ./cmd/cli/main.go authn identitysources create --name google --appid $devapplication || echo "Failed to create Google identity source")
+output=$(go run ./cmd/cli/main.go authn identitysources create --name google --zoneid $devzone || echo "Failed to create Google identity source")
 if [ $? -ne 0 ]; then
     echo "Error creating the identity source"
     exit 1
 fi
-# Extract the application ID
+# Extract the zone ID
 devidsource=$(echo $output | cut -d ':' -f 1)
 
-go run ./cmd/cli/main.go authn identitysources create --name facebook --appid $devapplication || echo "Failed to create Facebook identity source"
+go run ./cmd/cli/main.go authn identitysources create --name facebook --zoneid $devzone || echo "Failed to create Facebook identity source"
 
-go run ./cmd/cli/main.go authn identities create --appid $devapplication --kind actor --name platform-administrator --identitysourceid $devidsource
-go run ./cmd/cli/main.go authn identities create --appid $devapplication --kind actor --name branch-manager --identitysourceid $devidsource
-go run ./cmd/cli/main.go authn identities create --appid $devapplication --kind actor --name inventory-manager --identitysourceid $devidsource
-go run ./cmd/cli/main.go authn identities create --appid $devapplication --kind actor --name pharmacist --identitysourceid $devidsource
-go run ./cmd/cli/main.go authn identities create --appid $devapplication --kind actor --name customer --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --zoneid $devzone --kind actor --name platform-administrator --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --zoneid $devzone --kind actor --name branch-manager --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --zoneid $devzone --kind actor --name inventory-manager --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --zoneid $devzone --kind actor --name pharmacist --identitysourceid $devidsource
+go run ./cmd/cli/main.go authn identities create --zoneid $devzone --kind actor --name customer --identitysourceid $devidsource
 
-go run ./cmd/cli/main.go authz ledgers create --name v0.1 --appid $devapplication || echo "Failed to create v0.1 ledger"
+go run ./cmd/cli/main.go authz ledgers create --name v0.1 --zoneid $devzone || echo "Failed to create v0.1 ledger"
 
 # Script ends here, triggering the cleanup function to terminate the server process

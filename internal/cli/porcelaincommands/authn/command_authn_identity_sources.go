@@ -26,7 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azmodelsaap "github.com/permguard/permguard/pkg/transport/models/aap"
+	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 const (
@@ -43,20 +43,20 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	aapTarget := ctx.GetAAPTarget()
-	client, err := deps.CreateGrpcAAPClient(aapTarget)
+	zapTarget := ctx.GetZAPTarget()
+	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
+		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	applicationID := v.GetInt64(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonApplicationID))
+	zoneID := v.GetInt64(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonZoneID))
 	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
-	identitySource := &azmodelsaap.IdentitySource{
-		ApplicationID: applicationID,
-		Name:          name,
+	identitySource := &azmodelszap.IdentitySource{
+		ZoneID: zoneID,
+		Name:   name,
 	}
 	if isCreate {
-		identitySource, err = client.CreateIdentitySource(applicationID, name)
+		identitySource, err = client.CreateIdentitySource(zoneID, name)
 	} else {
 		identitySourceID := v.GetString(azoptions.FlagName(flagPrefix, flagIdentitySourceID))
 		identitySource.IdentitySourceID = identitySourceID
@@ -81,7 +81,7 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 		identitieSourceName := identitySource.Name
 		output[identitySourceID] = identitieSourceName
 	} else if ctx.IsJSONOutput() {
-		output["identity_sources"] = []*azmodelsaap.IdentitySource{identitySource}
+		output["identity_sources"] = []*azmodelszap.IdentitySource{identitySource}
 	}
 	printer.PrintlnMap(output)
 	return nil
@@ -101,8 +101,8 @@ func createCommandForIdentitySources(deps azcli.CliDependenciesProvider, v *vipe
 		RunE:  runECommandForIdentitySources,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonApplicationID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonApplicationID))
+	command.PersistentFlags().Int64(aziclicommon.FlagCommonZoneID, 0, "zone id")
+	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonZoneID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonZoneID))
 
 	command.AddCommand(createCommandForIdentitySourceCreate(deps, v))
 	command.AddCommand(createCommandForIdentitySourceUpdate(deps, v))

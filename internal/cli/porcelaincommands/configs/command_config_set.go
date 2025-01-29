@@ -43,8 +43,8 @@ func viperWriteEndpoint(v *viper.Viper, key string, value string) error {
 	return v.WriteConfig()
 }
 
-// runECommandForAAPSet runs the command for setting the aap gRPC target.
-func runECommandForAAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+// runECommandForZAPSet runs the command for setting the zap gRPC target.
+func runECommandForZAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -54,10 +54,10 @@ func runECommandForAAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 		printer.Error(azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "invalid input"))
 		return aziclicommon.ErrCommandSilent
 	}
-	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixAAP, aziclicommon.FlagSuffixAAPTarget), args[0])
+	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixZAP, aziclicommon.FlagSuffixZAPTarget), args[0])
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to set the app value.")
+			printer.Println("Failed to set the zone value.")
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}
@@ -92,18 +92,18 @@ func runECommandForPAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 }
 
 // CreateCommandForConfig for managing config.
-func createCommandForConfigAAPSet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigZAPSet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "aap-set-target",
-		Short: "Set the app grpc target",
-		Long: aziclicommon.BuildCliLongTemplate(`This command sets the aap grpc target.
+		Use:   "zap-set-target",
+		Short: "Set the zone grpc target",
+		Long: aziclicommon.BuildCliLongTemplate(`This command sets the zap grpc target.
 
 Examples:
-# set the aap gRPC target to localhost:9091
-permguard config aap-set-target localhost:9091
+# set the zap gRPC target to localhost:9091
+permguard config zap-set-target localhost:9091
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runECommandForAAPSet(deps, cmd, v, args)
+			return runECommandForZAPSet(deps, cmd, v, args)
 		},
 	}
 	return command

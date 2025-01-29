@@ -26,7 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azmodelsaap "github.com/permguard/permguard/pkg/transport/models/aap"
+	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 const (
@@ -41,15 +41,15 @@ func runECommandForDeleteIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	aapTarget := ctx.GetAAPTarget()
-	client, err := deps.CreateGrpcAAPClient(aapTarget)
+	zapTarget := ctx.GetZAPTarget()
+	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
+		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	applicationID := v.GetInt64(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonApplicationID))
+	zoneID := v.GetInt64(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonZoneID))
 	identitySourceID := v.GetString(azoptions.FlagName(commandNameForIdentitySourcesDelete, flagIdentitySourceID))
-	identitySource, err := client.DeleteIdentitySource(applicationID, identitySourceID)
+	identitySource, err := client.DeleteIdentitySource(zoneID, identitySourceID)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
 			printer.Println("Failed to delete the identity source.")
@@ -65,7 +65,7 @@ func runECommandForDeleteIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 		identitySourceName := identitySource.Name
 		output[identitySourceID] = identitySourceName
 	} else if ctx.IsJSONOutput() {
-		output["identity_sources"] = []*azmodelsaap.IdentitySource{identitySource}
+		output["identity_sources"] = []*azmodelszap.IdentitySource{identitySource}
 	}
 	printer.PrintlnMap(output)
 	return nil
@@ -80,7 +80,7 @@ func createCommandForIdentitySourceDelete(deps azcli.CliDependenciesProvider, v 
 
 Examples:
   # delete an identity source and output the result in json format
-  permguard authn identitysources delete --appid 268786704340 --identitysourceid 1da1d9094501425085859c60429163c2 --output json
+  permguard authn identitysources delete --zoneid 268786704340 --identitysourceid 1da1d9094501425085859c60429163c2 --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteIdentitySource(deps, cmd, v)

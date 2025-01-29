@@ -100,7 +100,7 @@ type mockHostConfig struct {
 	appData string
 }
 
-// GetAppData returns the application data.
+// GetAppData returns the zone data.
 func (h *mockHostConfig) GetAppData() string {
 	return h.appData
 }

@@ -108,11 +108,11 @@ func TestCliLedgersDeleteWithSuccess(t *testing.T) {
 
 		papClient := azmocks.NewGrpcPAPClientMock()
 		ledger := &azmodelspap.Ledger{
-			LedgerID:      "c3160a533ab24fbcb1eab7a09fd85f36",
-			ApplicationID: 581616507495,
-			Name:          "materabranch",
-			CreatedAt:     time.Now(),
-			UpdatedAt:     time.Now(),
+			LedgerID:  "c3160a533ab24fbcb1eab7a09fd85f36",
+			ZoneID:    581616507495,
+			Name:      "materabranch",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		}
 		papClient.On("DeleteLedger", mock.Anything, mock.Anything).Return(ledger, nil)
 

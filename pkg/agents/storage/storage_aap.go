@@ -17,44 +17,44 @@
 package storage
 
 import (
-	azmodelsaap "github.com/permguard/permguard/pkg/transport/models/aap"
+	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
-// AAPCentralStorage is the interface for the AAP central storage.
-type AAPCentralStorage interface {
-	// CreateApplication creates a new application.
-	CreateApplication(application *azmodelsaap.Application) (*azmodelsaap.Application, error)
-	// UpdateApplication updates an application.
-	UpdateApplication(application *azmodelsaap.Application) (*azmodelsaap.Application, error)
-	// DeleteApplication deletes an application.
-	DeleteApplication(applicationID int64) (*azmodelsaap.Application, error)
-	// FetchApplications returns all applications filtering by search criteria.
-	FetchApplications(page int32, pageSize int32, fields map[string]any) ([]azmodelsaap.Application, error)
+// ZAPCentralStorage is the interface for the ZAP central storage.
+type ZAPCentralStorage interface {
+	// CreateZone creates a new zone.
+	CreateZone(zone *azmodelszap.Zone) (*azmodelszap.Zone, error)
+	// UpdateZone updates a zone.
+	UpdateZone(zone *azmodelszap.Zone) (*azmodelszap.Zone, error)
+	// DeleteZone deletes a zone.
+	DeleteZone(zoneID int64) (*azmodelszap.Zone, error)
+	// FetchZones returns all zones filtering by search criteria.
+	FetchZones(page int32, pageSize int32, fields map[string]any) ([]azmodelszap.Zone, error)
 
 	// CreateIdentitySource creates a new identity source.
-	CreateIdentitySource(identitySource *azmodelsaap.IdentitySource) (*azmodelsaap.IdentitySource, error)
+	CreateIdentitySource(identitySource *azmodelszap.IdentitySource) (*azmodelszap.IdentitySource, error)
 	// UpdateIdentitySource updates an identity source.
-	UpdateIdentitySource(identitySource *azmodelsaap.IdentitySource) (*azmodelsaap.IdentitySource, error)
+	UpdateIdentitySource(identitySource *azmodelszap.IdentitySource) (*azmodelszap.IdentitySource, error)
 	// DeleteIdentitySource deletes an identity source.
-	DeleteIdentitySource(applicationID int64, identitySourceID string) (*azmodelsaap.IdentitySource, error)
+	DeleteIdentitySource(zoneID int64, identitySourceID string) (*azmodelszap.IdentitySource, error)
 	// FetchIdentitySources gets all identity sources.
-	FetchIdentitySources(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelsaap.IdentitySource, error)
+	FetchIdentitySources(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelszap.IdentitySource, error)
 
 	// CreateIdentity creates a new identity.
-	CreateIdentity(identity *azmodelsaap.Identity) (*azmodelsaap.Identity, error)
+	CreateIdentity(identity *azmodelszap.Identity) (*azmodelszap.Identity, error)
 	// UpdateIdentity updates an identity.
-	UpdateIdentity(identity *azmodelsaap.Identity) (*azmodelsaap.Identity, error)
+	UpdateIdentity(identity *azmodelszap.Identity) (*azmodelszap.Identity, error)
 	// DeleteIdentity deletes an identity.
-	DeleteIdentity(applicationID int64, identityID string) (*azmodelsaap.Identity, error)
+	DeleteIdentity(zoneID int64, identityID string) (*azmodelszap.Identity, error)
 	// FetchIdentities gets all identities.
-	FetchIdentities(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelsaap.Identity, error)
+	FetchIdentities(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelszap.Identity, error)
 
 	// CreateTenant creates a new tenant.
-	CreateTenant(tenant *azmodelsaap.Tenant) (*azmodelsaap.Tenant, error)
+	CreateTenant(tenant *azmodelszap.Tenant) (*azmodelszap.Tenant, error)
 	// UpdateTenant updates a tenant.
-	UpdateTenant(tenant *azmodelsaap.Tenant) (*azmodelsaap.Tenant, error)
+	UpdateTenant(tenant *azmodelszap.Tenant) (*azmodelszap.Tenant, error)
 	// DeleteTenant deletes a tenant.
-	DeleteTenant(applicationID int64, tenantID string) (*azmodelsaap.Tenant, error)
+	DeleteTenant(zoneID int64, tenantID string) (*azmodelszap.Tenant, error)
 	// FetchTenants gets all tenants.
-	FetchTenants(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelsaap.Tenant, error)
+	FetchTenants(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelszap.Tenant, error)
 }

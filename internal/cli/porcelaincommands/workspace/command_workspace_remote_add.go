@@ -34,7 +34,7 @@ const (
 	// commandNameForWorkspacesRemoteAdd is the command name for workspaces remoteadd.
 	commandNameForWorkspacesRemoteAdd = "workspaces.remote.add"
 
-	flagAAP = "aap"
+	flagZAP = "zap"
 	flagPAP = "pap"
 )
 
@@ -61,9 +61,9 @@ func runECommandForRemoteAddWorkspace(args []string, deps azcli.CliDependenciesP
 	}
 	remote := args[0]
 	server := args[1]
-	aapPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesRemoteAdd, flagAAP))
+	zapPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesRemoteAdd, flagZAP))
 	papPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesRemoteAdd, flagPAP))
-	output, err := wksMgr.ExecAddRemote(remote, server, aapPort, papPort, outFunc(ctx, printer))
+	output, err := wksMgr.ExecAddRemote(remote, server, zapPort, papPort, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsJSONOutput() {
 			printer.ErrorWithOutput(output, err)
@@ -95,8 +95,8 @@ Examples:
 		},
 	}
 
-	command.Flags().Int(flagAAP, 9091, "specify the port number for the AAP")
-	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesRemoteAdd, flagAAP), command.Flags().Lookup(flagAAP))
+	command.Flags().Int(flagZAP, 9091, "specify the port number for the ZAP")
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesRemoteAdd, flagZAP), command.Flags().Lookup(flagZAP))
 	command.Flags().Int(flagPAP, 9092, "specify the port number for the PAP")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesRemoteAdd, flagPAP), command.Flags().Lookup(flagPAP))
 	return command

@@ -327,7 +327,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		HeadContextKey:           headCtx,
 	}
 
-	ctx, err := m.rmSrvtMgr.NOTPPush(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetApplicationID(), headCtx.GetLedgerID(), bag, m)
+	ctx, err := m.rmSrvtMgr.NOTPPush(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetZoneID(), headCtx.GetLedgerID(), bag, m)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}

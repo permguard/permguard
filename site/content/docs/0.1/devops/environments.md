@@ -18,8 +18,8 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-**Permguard** takes a firm stance on environments, discouraging the creation of multiple environments within a single application. Instead, each application must be labeled by the owner with a specific environment. This approach is enforced to minimize the security risks associated with the software.
+**Permguard** takes a firm stance on environments, discouraging the creation of multiple environments within a single zone. Instead, each zone must be labeled by the owner with a specific environment. This approach is enforced to minimize the security risks associated with the software.
 
 {{< callout context="danger" icon="alert-octagon" >}}
-Creating a schema within a single application to represent multiple environments of the same schema is strongly discouraged as it is considered a bad practice
+Creating a schema within a single zone to represent multiple environments of the same schema is strongly discouraged as it is considered a bad practice
 {{< /callout >}}

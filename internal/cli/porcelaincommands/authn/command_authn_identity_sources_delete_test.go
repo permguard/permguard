@@ -28,7 +28,7 @@ import (
 	azmocks "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
 	azconfigs "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelsaap "github.com/permguard/permguard/pkg/transport/models/aap"
+	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 // TestDeleteCommandForIdentitySourcesDelete tests the deleteCommandForIdentitySourcesDelete function.
@@ -58,7 +58,7 @@ func TestCliIdentitySourcesDeleteWithError(t *testing.T) {
 		outputs := []string{""}
 
 		v := viper.New()
-		v.Set(azconfigs.FlagName(aziclicommon.FlagPrefixAAP, aziclicommon.FlagSuffixAAPTarget), "localhost:9092")
+		v.Set(azconfigs.FlagName(aziclicommon.FlagPrefixZAP, aziclicommon.FlagSuffixZAPTarget), "localhost:9092")
 
 		depsMocks := azmocks.NewCliDependenciesMock()
 		cmd := createCommandForIdentitySourceDelete(depsMocks, v)
@@ -66,8 +66,8 @@ func TestCliIdentitySourcesDeleteWithError(t *testing.T) {
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, test.OutputType, "output format")
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
-		aapClient := azmocks.NewGrpcAAPClientMock()
-		aapClient.On("DeleteIdentitySource", mock.Anything, mock.Anything).Return(nil, azerrors.ErrClientParameter)
+		zapClient := azmocks.NewGrpcZAPClientMock()
+		zapClient.On("DeleteIdentitySource", mock.Anything, mock.Anything).Return(nil, azerrors.ErrClientParameter)
 
 		printerMock := azmocks.NewPrinterMock()
 		printerMock.On("Println", mock.Anything).Return()
@@ -75,7 +75,7 @@ func TestCliIdentitySourcesDeleteWithError(t *testing.T) {
 		printerMock.On("Error", azerrors.ErrClientParameter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
-		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
+		depsMocks.On("CreateGrpcZAPClient", mock.Anything).Return(zapClient, nil)
 
 		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
 		if test.HasError {
@@ -98,7 +98,7 @@ func TestCliIdentitySourcesDeleteWithSuccess(t *testing.T) {
 
 		v := viper.New()
 		v.Set("output", outputType)
-		v.Set(azconfigs.FlagName(aziclicommon.FlagPrefixAAP, aziclicommon.FlagSuffixAAPTarget), "localhost:9092")
+		v.Set(azconfigs.FlagName(aziclicommon.FlagPrefixZAP, aziclicommon.FlagSuffixZAPTarget), "localhost:9092")
 
 		depsMocks := azmocks.NewCliDependenciesMock()
 		cmd := createCommandForIdentitySourceDelete(depsMocks, v)
@@ -106,15 +106,15 @@ func TestCliIdentitySourcesDeleteWithSuccess(t *testing.T) {
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
-		aapClient := azmocks.NewGrpcAAPClientMock()
-		identitysource := &azmodelsaap.IdentitySource{
+		zapClient := azmocks.NewGrpcZAPClientMock()
+		identitysource := &azmodelszap.IdentitySource{
 			IdentitySourceID: "c3160a533ab24fbcb1eab7a09fd85f36",
-			ApplicationID:    581616507495,
+			ZoneID:           581616507495,
 			Name:             "materabranch",
 			CreatedAt:        time.Now(),
 			UpdatedAt:        time.Now(),
 		}
-		aapClient.On("DeleteIdentitySource", mock.Anything, mock.Anything).Return(identitysource, nil)
+		zapClient.On("DeleteIdentitySource", mock.Anything, mock.Anything).Return(identitysource, nil)
 
 		printerMock := azmocks.NewPrinterMock()
 		outputPrinter := map[string]any{}
@@ -123,13 +123,13 @@ func TestCliIdentitySourcesDeleteWithSuccess(t *testing.T) {
 			identitysourceID := identitysource.IdentitySourceID
 			outputPrinter[identitysourceID] = identitysource.Name
 		} else {
-			outputPrinter["identity_sources"] = []*azmodelsaap.IdentitySource{identitysource}
+			outputPrinter["identity_sources"] = []*azmodelszap.IdentitySource{identitysource}
 		}
 		printerMock.On("PrintMap", outputPrinter).Return()
 		printerMock.On("PrintlnMap", outputPrinter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
-		depsMocks.On("CreateGrpcAAPClient", mock.Anything).Return(aapClient, nil)
+		depsMocks.On("CreateGrpcZAPClient", mock.Anything).Return(zapClient, nil)
 
 		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
 		printerMock.AssertCalled(t, "PrintlnMap", outputPrinter)

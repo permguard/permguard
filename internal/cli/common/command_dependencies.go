@@ -34,19 +34,19 @@ func (c *cliDependencies) CreatePrinter(verbose bool, output string) (azcli.CliP
 	return printer, err
 }
 
-// CreateGrpcAAPClient creates a new gRPC client for the AAP service.
-func (c *cliDependencies) CreateGrpcAAPClient(aapTarget string) (azclients.GrpcAAPClient, error) {
-	return aziclients.NewGrpcAAPClient(aapTarget)
+// CreateGrpcZAPClient creates a new gRPC client for the ZAP service.
+func (c *cliDependencies) CreateGrpcZAPClient(zapTarget string) (azclients.GrpcZAPClient, error) {
+	return aziclients.NewGrpcZAPClient(zapTarget)
 }
 
 // CreateGrpcPAPClient creates a new gRPC client for the PAP service.
-func (c *cliDependencies) CreateGrpcPAPClient(aapTarget string) (azclients.GrpcPAPClient, error) {
-	return aziclients.NewGrpcPAPClient(aapTarget)
+func (c *cliDependencies) CreateGrpcPAPClient(zapTarget string) (azclients.GrpcPAPClient, error) {
+	return aziclients.NewGrpcPAPClient(zapTarget)
 }
 
 // CreateGrpcPDPClient creates a new gRPC client for the PDP service.
-func (c *cliDependencies) CreateGrpcPDPClient(aapTarget string) (azclients.GrpcPDPClient, error) {
-	return aziclients.NewGrpcPDPClient(aapTarget)
+func (c *cliDependencies) CreateGrpcPDPClient(zapTarget string) (azclients.GrpcPDPClient, error) {
+	return aziclients.NewGrpcPDPClient(zapTarget)
 }
 
 // CreateGrpcPAPClient creates a new gRPC client for the PAP service.

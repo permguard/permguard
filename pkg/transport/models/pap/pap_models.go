@@ -21,23 +21,23 @@ import (
 )
 
 const (
-	FieldLedgerApplicationID = "application_id"
-	FieldLedgerLedgerID      = "ledger_id"
-	FieldLedgerKind          = "kind"
-	FieldLedgerName          = "name"
-	FieldSchemaSchemaID      = "schema_id"
-	FieldSchemaApplicationID = "application_id"
+	FieldLedgerZoneID   = "zone_id"
+	FieldLedgerLedgerID = "ledger_id"
+	FieldLedgerKind     = "kind"
+	FieldLedgerName     = "name"
+	FieldSchemaSchemaID = "schema_id"
+	FieldSchemaZoneID   = "zone_id"
 )
 
 // Ledger is the ledger.
 type Ledger struct {
-	LedgerID      string    `json:"ledger_id" validate:"required,isuuid"`
-	CreatedAt     time.Time `json:"created_at" validate:"required"`
-	UpdatedAt     time.Time `json:"updated_at" validate:"required"`
-	ApplicationID int64     `json:"application_id" validate:"required,gt=0"`
-	Name          string    `json:"name"`
-	Kind          string    `json:"kind" validate:"required,oneof='policy'"`
-	Ref           string    `json:"ref"`
+	LedgerID  string    `json:"ledger_id" validate:"required,isuuid"`
+	CreatedAt time.Time `json:"created_at" validate:"required"`
+	UpdatedAt time.Time `json:"updated_at" validate:"required"`
+	ZoneID    int64     `json:"zone_id" validate:"required,gt=0"`
+	Name      string    `json:"name"`
+	Kind      string    `json:"kind" validate:"required,oneof='policy'"`
+	Ref       string    `json:"ref"`
 }
 
 // Schema is the schema.
@@ -45,7 +45,7 @@ type Schema struct {
 	SchemaID      string         `json:"schema_id" validate:"required,isuuid"`
 	CreatedAt     time.Time      `json:"created_at" validate:"required"`
 	UpdatedAt     time.Time      `json:"updated_at" validate:"required"`
-	ApplicationID int64          `json:"application_id" validate:"required,gt=0"`
+	ZoneID        int64          `json:"zone_id" validate:"required,gt=0"`
 	LedgerID      string         `json:"ledger_id" validate:"required,isuuid"`
 	LedgerName    string         `json:"ledger_name"`
 	SchemaDomains *SchemaDomains `json:"domains" validate:"required"`

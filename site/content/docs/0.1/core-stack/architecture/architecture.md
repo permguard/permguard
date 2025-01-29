@@ -25,13 +25,13 @@ seo:
   <img alt="Permguard Policies" src="/images/diagrams/d6.webp"/>
 </div>
 
-## Application Administration Point (AAP)
+## Zone Administration Point (ZAP)
 
-The `Application Administration Point (AAP)` serves as the central repository for managing application information and configurations. Furthermore, it provides an administration API.
+The `Zone Administration Point (ZAP)` serves as the central repository for managing zone information and configurations. Furthermore, it provides an administration API.
 
 ## Policy Administration Point (PAP)
 
-The `Policy Administration Point (PAP)`  serves as the central repository for managing the application policies. Furthermore, it provides an administration API.
+The `Policy Administration Point (PAP)`  serves as the central repository for managing the zone policies. Furthermore, it provides an administration API.
 
 ## Policy Information Point (PIP)
 

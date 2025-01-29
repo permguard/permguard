@@ -79,7 +79,7 @@ Here a simple example of a message exchange between the `PEP` and the `PDP`.
 ```json
 {
   "authorization_context": {
-    "application_id": 268786704340,
+    "zone_id": 268786704340,
     "policy_store": {
       "type": "ledger",
       "id": "fd1ac44e4afa4fc4beec622494d3175a"
@@ -158,7 +158,7 @@ Here an example of a message exchange with evaluations between the `PEP` and the
 ```json
 {
   "authorization_context": {
-    "application_id": 268786704340,
+    "zone_id": 268786704340,
     "policy_store": {
       "type": "ledger",
       "id": "fd1ac44e4afa4fc4beec622494d3175a"
@@ -301,7 +301,7 @@ Here an example of a message exchange with evaluations and defaults between the 
 ```json
 {
   "authorization_context": {
-    "application_id": 268786704340,
+    "zone_id": 268786704340,
     "policy_store": {
       "type": "ledger",
       "id": "fd1ac44e4afa4fc4beec622494d3175a"

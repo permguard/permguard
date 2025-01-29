@@ -18,8 +18,8 @@ package storage
 
 // CentralStorage is the interface for the central storage.
 type CentralStorage interface {
-	// GetAAPCentralStorage returns the AAP central storage.
-	GetAAPCentralStorage() (AAPCentralStorage, error)
+	// GetZAPCentralStorage returns the ZAP central storage.
+	GetZAPCentralStorage() (ZAPCentralStorage, error)
 	// GetPAPCentralStorage returns the PAP central storage.
 	GetPAPCentralStorage() (PAPCentralStorage, error)
 	// GetPDPCentralStorage returns the PDP central storage.

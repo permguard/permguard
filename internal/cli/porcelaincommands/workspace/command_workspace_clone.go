@@ -85,9 +85,9 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	aapPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagAAP))
+	zapPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagZAP))
 	papPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagPAP))
-	output, err := wksMgr.ExecCloneLedger(azplangcedar.LanguageName, ledgerURI, aapPort, papPort, outFunc(ctx, printer))
+	output, err := wksMgr.ExecCloneLedger(azplangcedar.LanguageName, ledgerURI, zapPort, papPort, outFunc(ctx, printer))
 	if err != nil {
 		azfiles.DeletePath(ledgerFolder)
 		if ctx.IsJSONOutput() {
@@ -120,8 +120,8 @@ Examples:
 		},
 	}
 
-	command.Flags().Int(flagAAP, 9091, "specify the port number for the AAP")
-	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesClone, flagAAP), command.Flags().Lookup(flagAAP))
+	command.Flags().Int(flagZAP, 9091, "specify the port number for the ZAP")
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesClone, flagZAP), command.Flags().Lookup(flagZAP))
 	command.Flags().Int(flagPAP, 9092, "specify the port number for the PAP")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesClone, flagPAP), command.Flags().Lookup(flagPAP))
 	return command

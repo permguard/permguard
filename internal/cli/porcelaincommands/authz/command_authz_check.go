@@ -114,15 +114,15 @@ func createCommandForCheck(deps azcli.CliDependenciesProvider, v *viper.Viper) *
 
 Examples:
   # check an authorization request
-  permguard authz check --appid 268786704340 /path/to/authorization_request.json
+  permguard authz check --zoneid 268786704340 /path/to/authorization_request.json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCheck(deps, cmd, v, args)
 		},
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id")
-	v.BindPFlag(azoptions.FlagName(commandNameForCheck, aziclicommon.FlagCommonApplicationID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonApplicationID))
+	command.PersistentFlags().Int64(aziclicommon.FlagCommonZoneID, 0, "zone id")
+	v.BindPFlag(azoptions.FlagName(commandNameForCheck, aziclicommon.FlagCommonZoneID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonZoneID))
 
 	return command
 }

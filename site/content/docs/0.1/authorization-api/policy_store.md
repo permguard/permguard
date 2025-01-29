@@ -24,7 +24,7 @@ The Policy Store is a repository that stores policy information.
 ```json
 {
   "authorization_context": {
-    "application_id": 694778299643,
+    "zone_id": 694778299643,
     "policy_store": {
       "type": "ledger",
       "id": "3b72d00fb7d247848757fb37be8d0814"

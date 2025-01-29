@@ -116,7 +116,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out aziclicommon.P
 }
 
 // execInternalAddRemote adds a remote.
-func (m *WorkspaceManager) execInternalAddRemote(internal bool, remote string, server string, aapPort int, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) execInternalAddRemote(internal bool, remote string, server string, zapPort int, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
 			out(nil, "", fmt.Sprintf("Failed to add remote %s.", aziclicommon.KeywordText(remote)), nil, true)
@@ -127,14 +127,14 @@ func (m *WorkspaceManager) execInternalAddRemote(internal bool, remote string, s
 	if !azvalidators.IsValidHostname(server) {
 		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid server %s", server)))
 	}
-	if !azvalidators.IsValidPort(aapPort) {
-		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid aap port %d", aapPort)))
+	if !azvalidators.IsValidPort(zapPort) {
+		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid zap port %d", zapPort)))
 	}
 	if !azvalidators.IsValidPort(papPort) {
 		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid pap port %d", papPort)))
 	}
 
-	output, err := m.cfgMgr.ExecAddRemote(remote, server, aapPort, papPort, nil, out)
+	output, err := m.cfgMgr.ExecAddRemote(remote, server, zapPort, papPort, nil, out)
 	if err != nil {
 		return failedOpErr(output, err)
 	}
@@ -142,7 +142,7 @@ func (m *WorkspaceManager) execInternalAddRemote(internal bool, remote string, s
 }
 
 // ExecAddRemote adds a remote.
-func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort int, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecAddRemote(remote string, server string, zapPort int, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", fmt.Sprintf("Failed to add remote %s.", aziclicommon.KeywordText(remote)), nil, true)
 		return output, err
@@ -158,7 +158,7 @@ func (m *WorkspaceManager) ExecAddRemote(remote string, server string, aapPort i
 	}
 	defer fileLock.Unlock()
 
-	return m.execInternalAddRemote(false, remote, server, aapPort, papPort, out)
+	return m.execInternalAddRemote(false, remote, server, zapPort, papPort, out)
 }
 
 // ExecRemoveRemote removes a remote.
@@ -186,7 +186,7 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out aziclicommon.Prin
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "remote", "Failed to delete remote: it is associated with the current HEAD.", nil, true)
 		}
-		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliWorkspace, fmt.Sprintf("cannot remove the remote used by the currently checked out application %s", remote)))
+		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliWorkspace, fmt.Sprintf("cannot remove the remote used by the currently checked out zone %s", remote)))
 	}
 	output, err = m.cfgMgr.ExecRemoveRemote(remote, nil, out)
 	return output, err

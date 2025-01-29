@@ -67,10 +67,10 @@ const (
 
 // AuthorizationContextRequest is the input context for making the authorization decision.
 type AuthorizationContextRequest struct {
-	ApplicationID int64        `json:"application_id" validate:"required,gt=0"`
-	PolicyStore   *PolicyStore `json:"policy_store,omitempty"`
-	Principal     *Principal   `json:"principal,omitempty"`
-	Entities      *Entities    `json:"entities,omitempty"`
+	ZoneID      int64        `json:"zone_id" validate:"required,gt=0"`
+	PolicyStore *PolicyStore `json:"policy_store,omitempty"`
+	Principal   *Principal   `json:"principal,omitempty"`
+	Entities    *Entities    `json:"entities,omitempty"`
 }
 
 // EvaluationRequest represents the request to evaluate the authorization decision.

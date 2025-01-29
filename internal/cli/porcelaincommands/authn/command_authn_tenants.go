@@ -26,7 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azmodelsaap "github.com/permguard/permguard/pkg/transport/models/aap"
+	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 const (
@@ -43,20 +43,20 @@ func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	aapTarget := ctx.GetAAPTarget()
-	client, err := deps.CreateGrpcAAPClient(aapTarget)
+	zapTarget := ctx.GetZAPTarget()
+	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
+		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	applicationID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonApplicationID))
+	zoneID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonZoneID))
 	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
-	tenant := &azmodelsaap.Tenant{
-		ApplicationID: applicationID,
-		Name:          name,
+	tenant := &azmodelszap.Tenant{
+		ZoneID: zoneID,
+		Name:   name,
 	}
 	if isCreate {
-		tenant, err = client.CreateTenant(applicationID, name)
+		tenant, err = client.CreateTenant(zoneID, name)
 	} else {
 		tenantID := v.GetString(azoptions.FlagName(flagPrefix, flagTenantID))
 		tenant.TenantID = tenantID
@@ -81,7 +81,7 @@ func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		tenantName := tenant.Name
 		output[tenantID] = tenantName
 	} else if ctx.IsJSONOutput() {
-		output["tenants"] = []*azmodelsaap.Tenant{tenant}
+		output["tenants"] = []*azmodelszap.Tenant{tenant}
 	}
 	printer.PrintlnMap(output)
 	return nil
@@ -101,8 +101,8 @@ func createCommandForTenants(deps azcli.CliDependenciesProvider, v *viper.Viper)
 		RunE:  runECommandForTenants,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id")
-	v.BindPFlag(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonApplicationID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonApplicationID))
+	command.PersistentFlags().Int64(aziclicommon.FlagCommonZoneID, 0, "zone id")
+	v.BindPFlag(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonZoneID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonZoneID))
 
 	command.AddCommand(createCommandForTenantCreate(deps, v))
 	command.AddCommand(createCommandForTenantUpdate(deps, v))

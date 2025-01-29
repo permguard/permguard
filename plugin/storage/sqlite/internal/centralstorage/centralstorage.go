@@ -27,42 +27,42 @@ import (
 )
 
 type SqliteRepo interface {
-	// UpsertApplication creates or updates an application.
-	UpsertApplication(tx *sql.Tx, isCreate bool, application *azirepos.Application) (*azirepos.Application, error)
-	// DeleteApplication deletes an application.
-	DeleteApplication(tx *sql.Tx, applicationID int64) (*azirepos.Application, error)
-	// FetchApplication fetches an application.
-	FetchApplications(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]azirepos.Application, error)
+	// UpsertZone creates or updates a zone.
+	UpsertZone(tx *sql.Tx, isCreate bool, zone *azirepos.Zone) (*azirepos.Zone, error)
+	// DeleteZone deletes a zone.
+	DeleteZone(tx *sql.Tx, zoneID int64) (*azirepos.Zone, error)
+	// FetchZone fetches a zone.
+	FetchZones(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]azirepos.Zone, error)
 
 	// UpsertIdentitySource creates or updates an identity source.
 	UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *azirepos.IdentitySource) (*azirepos.IdentitySource, error)
 	// DeleteIdentitySource deletes an identity source.
-	DeleteIdentitySource(tx *sql.Tx, applicationID int64, identitySourceID string) (*azirepos.IdentitySource, error)
+	DeleteIdentitySource(tx *sql.Tx, zoneID int64, identitySourceID string) (*azirepos.IdentitySource, error)
 	// FetchIdentitySources fetches identity sources.
-	FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]azirepos.IdentitySource, error)
+	FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]azirepos.IdentitySource, error)
 
 	// UpsertIdentity creates or updates an identity.
 	UpsertIdentity(tx *sql.Tx, isCreate bool, identity *azirepos.Identity) (*azirepos.Identity, error)
 	// DeleteIdentity deletes an identity.
-	DeleteIdentity(tx *sql.Tx, applicationID int64, identityID string) (*azirepos.Identity, error)
+	DeleteIdentity(tx *sql.Tx, zoneID int64, identityID string) (*azirepos.Identity, error)
 	// FetchIdentities fetches identities.
-	FetchIdentities(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]azirepos.Identity, error)
+	FetchIdentities(db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]azirepos.Identity, error)
 
 	// UpsertTenant creates or updates an tenant.
 	UpsertTenant(tx *sql.Tx, isCreate bool, tenant *azirepos.Tenant) (*azirepos.Tenant, error)
 	// DeleteTenant deletes an tenant.
-	DeleteTenant(tx *sql.Tx, applicationID int64, tenantID string) (*azirepos.Tenant, error)
+	DeleteTenant(tx *sql.Tx, zoneID int64, tenantID string) (*azirepos.Tenant, error)
 	// FetchTenant fetches an tenant.
-	FetchTenants(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]azirepos.Tenant, error)
+	FetchTenants(db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]azirepos.Tenant, error)
 
 	// UpsertLedger creates or updates a ledger.
 	UpsertLedger(tx *sql.Tx, isCreate bool, ledger *azirepos.Ledger) (*azirepos.Ledger, error)
 	// DeleteLedger deletes a ledger.
-	DeleteLedger(tx *sql.Tx, applicationID int64, ledgerID string) (*azirepos.Ledger, error)
+	DeleteLedger(tx *sql.Tx, zoneID int64, ledgerID string) (*azirepos.Ledger, error)
 	// FetchLedgers fetches ledgers.
-	FetchLedgers(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]azirepos.Ledger, error)
+	FetchLedgers(db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]azirepos.Ledger, error)
 	// UpdateLedgerRef updates the ledger ref.
-	UpdateLedgerRef(tx *sql.Tx, applicationID int64, ledgerID, currentRef, newRef string) error
+	UpdateLedgerRef(tx *sql.Tx, zoneID int64, ledgerID, currentRef, newRef string) error
 
 	// UpsertKeyValue creates or updates a key value.
 	UpsertKeyValue(tx *sql.Tx, keyValue *azirepos.KeyValue) (*azirepos.KeyValue, error)
@@ -104,9 +104,9 @@ func NewSQLiteCentralStorage(storageContext *azstorage.StorageContext, sqliteCon
 	}, nil
 }
 
-// GetAAPCentralStorage returns the AAP central storage.
-func (s SQLiteCentralStorage) GetAAPCentralStorage() (azstorage.AAPCentralStorage, error) {
-	return newSQLiteAAPCentralStorage(s.ctx, s.sqliteConnector, nil, nil)
+// GetZAPCentralStorage returns the ZAP central storage.
+func (s SQLiteCentralStorage) GetZAPCentralStorage() (azstorage.ZAPCentralStorage, error) {
+	return newSQLiteZAPCentralStorage(s.ctx, s.sqliteConnector, nil, nil)
 }
 
 // GetPAPCentralStorage returns the PAP central storage.

@@ -41,7 +41,7 @@ Usage:
   permguard clone [flags]
 
 Flags:
-      --aap int   aap port (default 9091)
+      --zap int   zap port (default 9091)
   -h, --help      help for clone
       --pap int   pap port (default 9092)
 

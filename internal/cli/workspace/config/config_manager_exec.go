@@ -39,7 +39,7 @@ func (m *ConfigManager) ExecInitialize(lang string) error {
 }
 
 // ExecAddRemote adds a remote.
-func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap int, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *ConfigManager) ExecAddRemote(remote string, server string, zap int, pap int, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -62,7 +62,7 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 	}
 	cfgRemote := remoteConfig{
 		Server:  server,
-		AAPPort: aap,
+		ZAPPort: zap,
 		PAPPort: pap,
 	}
 	cfg.Remotes[remote] = cfgRemote
@@ -73,8 +73,8 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, aap int, pap
 		remotes := []any{}
 		remoteObj := map[string]any{
 			"remote":     remote,
-			"aap_server": cfgRemote.Server,
-			"aap_port":   cfgRemote.AAPPort,
+			"zap_server": cfgRemote.Server,
+			"zap_port":   cfgRemote.ZAPPort,
 			"pap_server": cfgRemote.Server,
 			"pap_port":   cfgRemote.PAPPort,
 		}
@@ -112,8 +112,8 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 		remotes := []any{}
 		remoteObj := map[string]any{
 			"remote":     remote,
-			"aap_server": cfgRemote.Server,
-			"aap_port":   cfgRemote.AAPPort,
+			"zap_server": cfgRemote.Server,
+			"zap_port":   cfgRemote.ZAPPort,
 			"pap_server": cfgRemote.Server,
 			"pap_port":   cfgRemote.PAPPort,
 		}
@@ -153,8 +153,8 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out aziclicommon.
 		for cfgRemote := range cfg.Remotes {
 			remoteObj := map[string]any{
 				"remote":     cfgRemote,
-				"aap_server": cfg.Remotes[cfgRemote].Server,
-				"aap_port":   cfg.Remotes[cfgRemote].AAPPort,
+				"zap_server": cfg.Remotes[cfgRemote].Server,
+				"zap_port":   cfg.Remotes[cfgRemote].ZAPPort,
 				"pap_server": cfg.Remotes[cfgRemote].Server,
 				"pap_port":   cfg.Remotes[cfgRemote].PAPPort,
 			}
@@ -166,7 +166,7 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out aziclicommon.
 }
 
 // ExecAddLedger adds a ledger.
-func (m *ConfigManager) ExecAddLedger(ledgerURI, ref, remote, ledger, ledgerID string, application int64, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *ConfigManager) ExecAddLedger(ledgerURI, ref, remote, ledger, ledgerID string, zoneID int64, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -189,12 +189,12 @@ func (m *ConfigManager) ExecAddLedger(ledgerURI, ref, remote, ledger, ledgerID s
 			cfg.Ledgers[key] = ledger
 		}
 		cfgLedger = ledgerConfig{
-			Ref:           ref,
-			Remote:        remote,
-			ApplicationID: application,
-			LedgerName:    ledger,
-			LedgerID:      ledgerID,
-			IsHead:        true,
+			Ref:        ref,
+			Remote:     remote,
+			ZoneID:     zoneID,
+			LedgerName: ledger,
+			LedgerID:   ledgerID,
+			IsHead:     true,
 		}
 		cfg.Ledgers[ledgerURI] = cfgLedger
 		m.saveConfig(true, cfg)

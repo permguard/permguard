@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	ServiceAAP ServiceKind = "AAP"
+	ServiceZAP ServiceKind = "ZAP"
 	ServicePAP ServiceKind = "PAP"
 	ServicePIP ServiceKind = "PIP"
 	ServicePDP ServiceKind = "PDP"

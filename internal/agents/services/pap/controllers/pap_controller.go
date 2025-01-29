@@ -55,13 +55,13 @@ func (s PAPController) UpdateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Le
 }
 
 // DeleteLedger deletes an ledger.
-func (s PAPController) DeleteLedger(applicationID int64, ledgerID string) (*azmodelspap.Ledger, error) {
-	return s.storage.DeleteLedger(applicationID, ledgerID)
+func (s PAPController) DeleteLedger(zoneID int64, ledgerID string) (*azmodelspap.Ledger, error) {
+	return s.storage.DeleteLedger(zoneID, ledgerID)
 }
 
 // FetchLedgers gets all ledgers.
-func (s PAPController) FetchLedgers(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelspap.Ledger, error) {
-	return s.storage.FetchLedgers(page, pageSize, applicationID, fields)
+func (s PAPController) FetchLedgers(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelspap.Ledger, error) {
+	return s.storage.FetchLedgers(page, pageSize, zoneID, fields)
 }
 
 // OnPullHandleRequestCurrentState handles the request for the current state.

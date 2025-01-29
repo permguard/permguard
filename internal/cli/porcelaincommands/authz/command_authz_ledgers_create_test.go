@@ -108,11 +108,11 @@ func TestCliLedgersCreateWithSuccess(t *testing.T) {
 
 		papClient := azmocks.NewGrpcPAPClientMock()
 		ledger := &azmodelspap.Ledger{
-			LedgerID:      "c3160a533ab24fbcb1eab7a09fd85f36",
-			ApplicationID: 581616507495,
-			Name:          "v1.0",
-			CreatedAt:     time.Now(),
-			UpdatedAt:     time.Now(),
+			LedgerID:  "c3160a533ab24fbcb1eab7a09fd85f36",
+			ZoneID:    581616507495,
+			Name:      "v1.0",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		}
 		papClient.On("CreateLedger", mock.Anything, mock.Anything, mock.Anything).Return(ledger, nil)
 

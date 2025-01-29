@@ -28,12 +28,12 @@ import (
 type CliDependenciesProvider interface {
 	// CreatePrinter creates a new printer.
 	CreatePrinter(verbose bool, output string) (CliPrinter, error)
-	// CreateGrpcAAPClient creates a new gRPC client for the AAP service.
-	CreateGrpcAAPClient(aapTarget string) (azclients.GrpcAAPClient, error)
+	// CreateGrpcZAPClient creates a new gRPC client for the ZAP service.
+	CreateGrpcZAPClient(zapTarget string) (azclients.GrpcZAPClient, error)
 	// CreateGrpcPAPClient creates a new gRPC client for the PAP service.
-	CreateGrpcPAPClient(aapTarget string) (azclients.GrpcPAPClient, error)
+	CreateGrpcPAPClient(zapTarget string) (azclients.GrpcPAPClient, error)
 	// CreateGrpcPDPClient creates a new gRPC client for the PDP service.
-	CreateGrpcPDPClient(aapTarget string) (azclients.GrpcPDPClient, error)
+	CreateGrpcPDPClient(zapTarget string) (azclients.GrpcPDPClient, error)
 	// GetLanguageFactory returns the language factory.
 	GetLanguageFactory() (azlang.LanguageFactory, error)
 }

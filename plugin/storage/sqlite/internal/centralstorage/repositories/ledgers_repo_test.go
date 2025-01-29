@@ -34,40 +34,40 @@ import (
 // registerLedgerForUpsertMocking registers a ledger for upsert mocking.
 func registerLedgerForUpsertMocking(isCreate bool) (*Ledger, string, *sqlmock.Rows) {
 	ledger := &Ledger{
-		LedgerID:      GenerateUUID(),
-		ApplicationID: 581616507495,
-		Name:          "rent-a-car",
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
-		Kind:          1,
-		Ref:           "0000000000000000000000000000000000000000000000000000000000000000",
+		LedgerID:  GenerateUUID(),
+		ZoneID:    581616507495,
+		Name:      "rent-a-car",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Kind:      1,
+		Ref:       "0000000000000000000000000000000000000000000000000000000000000000",
 	}
 	var sql string
 	if isCreate {
-		sql = `INSERT INTO ledgers \(application_id, ledger_id, kind, name\) VALUES \(\?, \?, \?, \?\)`
+		sql = `INSERT INTO ledgers \(zone_id, ledger_id, kind, name\) VALUES \(\?, \?, \?, \?\)`
 	} else {
-		sql = `UPDATE ledgers SET name = \? WHERE application_id = \? and ledger_id = \?`
+		sql = `UPDATE ledgers SET name = \? WHERE zone_id = \? and ledger_id = \?`
 	}
-	sqlRows := sqlmock.NewRows([]string{"application_id", "ledger_id", "created_at", "updated_at", "kind", "name", "ref"}).
-		AddRow(ledger.ApplicationID, ledger.LedgerID, ledger.CreatedAt, ledger.UpdatedAt, ledger.Kind, ledger.Name, ledger.Ref)
+	sqlRows := sqlmock.NewRows([]string{"zone_id", "ledger_id", "created_at", "updated_at", "kind", "name", "ref"}).
+		AddRow(ledger.ZoneID, ledger.LedgerID, ledger.CreatedAt, ledger.UpdatedAt, ledger.Kind, ledger.Name, ledger.Ref)
 	return ledger, sql, sqlRows
 }
 
 // registerLedgerForDeleteMocking registers a ledger for delete mocking.
 func registerLedgerForDeleteMocking() (string, *Ledger, *sqlmock.Rows, string) {
 	ledger := &Ledger{
-		LedgerID:      GenerateUUID(),
-		ApplicationID: 581616507495,
-		Name:          "rent-a-car",
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
-		Kind:          1,
-		Ref:           "0000000000000000000000000000000000000000000000000000000000000000",
+		LedgerID:  GenerateUUID(),
+		ZoneID:    581616507495,
+		Name:      "rent-a-car",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Kind:      1,
+		Ref:       "0000000000000000000000000000000000000000000000000000000000000000",
 	}
-	var sqlSelect = `SELECT application_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE application_id = \? and ledger_id = \?`
-	var sqlDelete = `DELETE FROM ledgers WHERE application_id = \? and ledger_id = \?`
-	sqlRows := sqlmock.NewRows([]string{"application_id", "ledger_id", "created_at", "updated_at", "kind", "name", "ref"}).
-		AddRow(ledger.ApplicationID, ledger.LedgerID, ledger.CreatedAt, ledger.UpdatedAt, ledger.Kind, ledger.Name, ledger.Ref)
+	var sqlSelect = `SELECT zone_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE zone_id = \? and ledger_id = \?`
+	var sqlDelete = `DELETE FROM ledgers WHERE zone_id = \? and ledger_id = \?`
+	sqlRows := sqlmock.NewRows([]string{"zone_id", "ledger_id", "created_at", "updated_at", "kind", "name", "ref"}).
+		AddRow(ledger.ZoneID, ledger.LedgerID, ledger.CreatedAt, ledger.UpdatedAt, ledger.Kind, ledger.Name, ledger.Ref)
 	return sqlSelect, ledger, sqlRows, sqlDelete
 }
 
@@ -75,18 +75,18 @@ func registerLedgerForDeleteMocking() (string, *Ledger, *sqlmock.Rows, string) {
 func registerLedgerForFetchMocking() (string, []Ledger, *sqlmock.Rows) {
 	ledgers := []Ledger{
 		{
-			LedgerID:      GenerateUUID(),
-			ApplicationID: 581616507495,
-			Name:          "rent-a-car",
-			CreatedAt:     time.Now(),
-			UpdatedAt:     time.Now(),
-			Kind:          1,
-			Ref:           "0000000000000000000000000000000000000000000000000000000000000000",
+			LedgerID:  GenerateUUID(),
+			ZoneID:    581616507495,
+			Name:      "rent-a-car",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			Kind:      1,
+			Ref:       "0000000000000000000000000000000000000000000000000000000000000000",
 		},
 	}
-	var sqlSelect = "SELECT * FROM ledgers WHERE application_id = ? AND ledger_id = ? AND name LIKE ? ORDER BY ledger_id ASC LIMIT ? OFFSET ?"
-	sqlRows := sqlmock.NewRows([]string{"application_id", "ledger_id", "created_at", "updated_at", "kind", "name", "ref"}).
-		AddRow(ledgers[0].ApplicationID, ledgers[0].LedgerID, ledgers[0].CreatedAt, ledgers[0].UpdatedAt, ledgers[0].Kind, ledgers[0].Name, ledgers[0].Ref)
+	var sqlSelect = "SELECT * FROM ledgers WHERE zone_id = ? AND ledger_id = ? AND name LIKE ? ORDER BY ledger_id ASC LIMIT ? OFFSET ?"
+	sqlRows := sqlmock.NewRows([]string{"zone_id", "ledger_id", "created_at", "updated_at", "kind", "name", "ref"}).
+		AddRow(ledgers[0].ZoneID, ledgers[0].LedgerID, ledgers[0].CreatedAt, ledgers[0].UpdatedAt, ledgers[0].Kind, ledgers[0].Name, ledgers[0].Ref)
 	return sqlSelect, ledgers, sqlRows
 }
 
@@ -106,7 +106,7 @@ func TestRepoUpsertLedgerWithInvalidInput(t *testing.T) {
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
-	{ // Test with invalid application id
+	{ // Test with invalid zone id
 		dbInLedger := &Ledger{
 			LedgerID: GenerateUUID(),
 			Name:     "rent-a-car",
@@ -118,8 +118,8 @@ func TestRepoUpsertLedgerWithInvalidInput(t *testing.T) {
 
 	{ // Test with invalid ledger id
 		dbInLedger := &Ledger{
-			ApplicationID: 581616507495,
-			Name:          "rent-a-car",
+			ZoneID: 581616507495,
+			Name:   "rent-a-car",
 		}
 		_, err := ledger.UpsertLedger(tx, false, dbInLedger)
 		assert.NotNil(err, "error should be not nil")
@@ -171,26 +171,26 @@ func TestRepoUpsertLedgerWithSuccess(t *testing.T) {
 		var dbInLedger *Ledger
 		if isCreate {
 			dbInLedger = &Ledger{
-				ApplicationID: ledger.ApplicationID,
-				Name:          ledger.Name,
-				Kind:          1,
+				ZoneID: ledger.ZoneID,
+				Name:   ledger.Name,
+				Kind:   1,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(ledger.ApplicationID, sqlmock.AnyArg(), ledger.Kind, ledger.Name).
+				WithArgs(ledger.ZoneID, sqlmock.AnyArg(), ledger.Kind, ledger.Name).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 		} else {
 			dbInLedger = &Ledger{
-				LedgerID:      ledger.LedgerID,
-				ApplicationID: ledger.ApplicationID,
-				Name:          ledger.Name,
-				Kind:          1,
+				LedgerID: ledger.LedgerID,
+				ZoneID:   ledger.ZoneID,
+				Name:     ledger.Name,
+				Kind:     1,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(ledger.Name, ledger.ApplicationID, ledger.LedgerID).
+				WithArgs(ledger.Name, ledger.ZoneID, ledger.LedgerID).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 		}
 
-		sqlDBMock.ExpectQuery(`SELECT application_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE application_id = \? and ledger_id = \?`).
+		sqlDBMock.ExpectQuery(`SELECT zone_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE zone_id = \? and ledger_id = \?`).
 			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
 			WillReturnRows(sqlLedgerRows)
 
@@ -200,7 +200,7 @@ func TestRepoUpsertLedgerWithSuccess(t *testing.T) {
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.NotNil(dbOutLedger, "ledger should be not nil")
 		assert.Equal(ledger.LedgerID, dbOutLedger.LedgerID, "ledger id is not correct")
-		assert.Equal(ledger.ApplicationID, dbOutLedger.ApplicationID, "ledger application id is not correct")
+		assert.Equal(ledger.ZoneID, dbOutLedger.ZoneID, "ledger zone id is not correct")
 		assert.Equal(ledger.Name, dbOutLedger.Name, "ledger name is not correct")
 		assert.Nil(err, "error should be nil")
 	}
@@ -227,22 +227,22 @@ func TestRepoUpsertLedgerWithErrors(t *testing.T) {
 		var dbInLedger *Ledger
 		if isCreate {
 			dbInLedger = &Ledger{
-				ApplicationID: ledger.ApplicationID,
-				Name:          ledger.Name,
-				Kind:          1,
+				ZoneID: ledger.ZoneID,
+				Name:   ledger.Name,
+				Kind:   1,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(ledger.ApplicationID, sqlmock.AnyArg(), ledger.Kind, ledger.Name).
+				WithArgs(ledger.ZoneID, sqlmock.AnyArg(), ledger.Kind, ledger.Name).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 		} else {
 			dbInLedger = &Ledger{
-				LedgerID:      ledger.LedgerID,
-				ApplicationID: ledger.ApplicationID,
-				Name:          ledger.Name,
-				Kind:          1,
+				LedgerID: ledger.LedgerID,
+				ZoneID:   ledger.ZoneID,
+				Name:     ledger.Name,
+				Kind:     1,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(ledger.Name, ledger.ApplicationID, ledger.LedgerID).
+				WithArgs(ledger.Name, ledger.ZoneID, ledger.LedgerID).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 		}
 
@@ -266,7 +266,7 @@ func TestRepoDeleteLedgerWithInvalidInput(t *testing.T) {
 
 	tx, _ := sqlDB.Begin()
 
-	{ // Test with invalid application id
+	{ // Test with invalid zone id
 		_, err := ledger.DeleteLedger(tx, 0, GenerateUUID())
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
@@ -292,20 +292,20 @@ func TestRepoDeleteLedgerWithSuccess(t *testing.T) {
 	sqlDBMock.ExpectBegin()
 
 	sqlDBMock.ExpectQuery(sqlSelect).
-		WithArgs(ledger.ApplicationID, ledger.LedgerID).
+		WithArgs(ledger.ZoneID, ledger.LedgerID).
 		WillReturnRows(sqlLedgerRows)
 
 	sqlDBMock.ExpectExec(sqlDelete).
-		WithArgs(ledger.ApplicationID, ledger.LedgerID).
+		WithArgs(ledger.ZoneID, ledger.LedgerID).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	tx, _ := sqlDB.Begin()
-	dbOutLedger, err := repository.DeleteLedger(tx, ledger.ApplicationID, ledger.LedgerID)
+	dbOutLedger, err := repository.DeleteLedger(tx, ledger.ZoneID, ledger.LedgerID)
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutLedger, "ledger should be not nil")
 	assert.Equal(ledger.LedgerID, dbOutLedger.LedgerID, "ledger id should be correct")
-	assert.Equal(ledger.ApplicationID, dbOutLedger.ApplicationID, "ledger application id should be correct")
+	assert.Equal(ledger.ZoneID, dbOutLedger.ZoneID, "ledger zone id should be correct")
 	assert.Equal(ledger.Name, dbOutLedger.Name, "ledger name should be correct")
 	assert.Nil(err, "error should be nil")
 }
@@ -349,7 +349,7 @@ func TestRepoDeleteLedgerWithErrors(t *testing.T) {
 		}
 
 		tx, _ := sqlDB.Begin()
-		dbOutLedger, err := repository.DeleteLedger(tx, ledger.ApplicationID, ledger.LedgerID)
+		dbOutLedger, err := repository.DeleteLedger(tx, ledger.ZoneID, ledger.LedgerID)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutLedger, "ledger should be nil")
@@ -383,7 +383,7 @@ func TestRepoFetchLedgerWithInvalidInput(t *testing.T) {
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
-	{ // Test with invalid application id
+	{ // Test with invalid zone id
 		ledgerID := GenerateUUID()
 		_, err := ledger.FetchLedgers(sqlDB, 1, 1, 0, &ledgerID, nil)
 		assert.NotNil(err, "error should be not nil")
@@ -419,10 +419,10 @@ func TestRepoFetchLedgerWithSuccess(t *testing.T) {
 	pageSize := int32(100)
 	ledgerName := "%" + sqlLedgers[0].Name + "%"
 	sqlDBMock.ExpectQuery(regexp.QuoteMeta(sqlSelect)).
-		WithArgs(sqlLedgers[0].ApplicationID, sqlLedgers[0].LedgerID, ledgerName, pageSize, page-1).
+		WithArgs(sqlLedgers[0].ZoneID, sqlLedgers[0].LedgerID, ledgerName, pageSize, page-1).
 		WillReturnRows(sqlLedgerRows)
 
-	dbOutLedger, err := ledger.FetchLedgers(sqlDB, page, pageSize, sqlLedgers[0].ApplicationID, &sqlLedgers[0].LedgerID, &sqlLedgers[0].Name)
+	dbOutLedger, err := ledger.FetchLedgers(sqlDB, page, pageSize, sqlLedgers[0].ZoneID, &sqlLedgers[0].LedgerID, &sqlLedgers[0].Name)
 
 	orderedSQLLedgers := make([]Ledger, len(sqlLedgers))
 	copy(orderedSQLLedgers, sqlLedgers)
@@ -435,7 +435,7 @@ func TestRepoFetchLedgerWithSuccess(t *testing.T) {
 	assert.Len(orderedSQLLedgers, len(dbOutLedger), "ledgers len should be correct")
 	for i, ledger := range dbOutLedger {
 		assert.Equal(ledger.LedgerID, orderedSQLLedgers[i].LedgerID, "ledger id is not correct")
-		assert.Equal(ledger.ApplicationID, orderedSQLLedgers[i].ApplicationID, "ledger application id is not correct")
+		assert.Equal(ledger.ZoneID, orderedSQLLedgers[i].ZoneID, "ledger zone id is not correct")
 		assert.Equal(ledger.Name, orderedSQLLedgers[i].Name, "ledger name is not correct")
 	}
 	assert.Nil(err, "error should be nil")

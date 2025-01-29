@@ -51,14 +51,14 @@ func runECommandForUpsertLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	applicationID := v.GetInt64(azoptions.FlagName(commandNameForLedger, aziclicommon.FlagCommonApplicationID))
+	zoneID := v.GetInt64(azoptions.FlagName(commandNameForLedger, aziclicommon.FlagCommonZoneID))
 	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
 	ledger := &azmodelspap.Ledger{
-		ApplicationID: applicationID,
-		Name:          name,
+		ZoneID: zoneID,
+		Name:   name,
 	}
 	if isCreate {
-		ledger, err = client.CreateLedger(applicationID, "policy", name)
+		ledger, err = client.CreateLedger(zoneID, "policy", name)
 	} else {
 		ledgerID := v.GetString(azoptions.FlagName(flagPrefix, flagLedgerID))
 		ledger.LedgerID = ledgerID
@@ -103,8 +103,8 @@ func createCommandForLedgers(deps azcli.CliDependenciesProvider, v *viper.Viper)
 		RunE:  runECommandForLedgers,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id")
-	v.BindPFlag(azoptions.FlagName(commandNameForLedger, aziclicommon.FlagCommonApplicationID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonApplicationID))
+	command.PersistentFlags().Int64(aziclicommon.FlagCommonZoneID, 0, "zone id")
+	v.BindPFlag(azoptions.FlagName(commandNameForLedger, aziclicommon.FlagCommonZoneID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonZoneID))
 
 	command.AddCommand(createCommandForLedgerCreate(deps, v))
 	command.AddCommand(createCommandForLedgerUpdate(deps, v))

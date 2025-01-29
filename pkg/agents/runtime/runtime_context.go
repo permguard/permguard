@@ -38,7 +38,7 @@ type RuntimeContext interface {
 
 // HostConfigReader declares the host configuration reader.
 type HostConfigReader interface {
-	// GetAppData returns the application data.
+	// GetAppData returns the zone data.
 	GetAppData() string
 }
 

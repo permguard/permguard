@@ -72,23 +72,23 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
 
-### server-aap
+### server-zap
 
-{{< callout >}} Application Administration Point. {{< /callout >}}
+{{< callout >}} Zone Administration Point. {{< /callout >}}
 
-**\--storage.aap.engine.central**: *data storage engine to be used for the AAP central data. This overrides the `--storage.engine.central` option. Default: `sqlite`.*
-
----
-
-**\--server.aap.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
+**\--storage.zap.engine.central**: *data storage engine to be used for the ZAP central data. This overrides the `--storage.engine.central` option. Default: `sqlite`.*
 
 ---
 
-**\--server.aap.data.enable.default.creation bool**: *enables the creation of default entities (e.g., tenants, identity sources) during data creation. (default `false`).*
+**\--server.zap.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
 
 ---
 
-**\--server.aap.grpc.port int**: *port to be used for exposing the aap grpc services. (default `9091`).*
+**\--server.zap.data.enable.default.creation bool**: *enables the creation of default entities (e.g., tenants, identity sources) during data creation. (default `false`).*
+
+---
+
+**\--server.zap.grpc.port int**: *port to be used for exposing the zap grpc services. (default `9091`).*
 
 ---
 

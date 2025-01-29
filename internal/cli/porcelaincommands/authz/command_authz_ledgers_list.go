@@ -48,11 +48,11 @@ func runECommandForListLedgers(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 	}
 	page := v.GetInt32(azoptions.FlagName(commandNameForLedgersList, aziclicommon.FlagCommonPage))
 	pageSize := v.GetInt32(azoptions.FlagName(commandNameForLedgersList, aziclicommon.FlagCommonPageSize))
-	applicationID := v.GetInt64(azoptions.FlagName(commandNameForLedger, aziclicommon.FlagCommonApplicationID))
+	zoneID := v.GetInt64(azoptions.FlagName(commandNameForLedger, aziclicommon.FlagCommonZoneID))
 	ledgerID := v.GetString(azoptions.FlagName(commandNameForLedgersList, flagLedgerID))
 	kind := v.GetString(azoptions.FlagName(commandNameForLedgersList, flagLedgerKind))
 	name := v.GetString(azoptions.FlagName(commandNameForLedgersList, aziclicommon.FlagCommonName))
-	ledgers, err := client.FetchLedgersBy(page, pageSize, applicationID, ledgerID, kind, name)
+	ledgers, err := client.FetchLedgersBy(page, pageSize, zoneID, ledgerID, kind, name)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
 			printer.Println("Failed to list ledgers.")
@@ -85,11 +85,11 @@ func createCommandForLedgerList(deps azcli.CliDependenciesProvider, v *viper.Vip
 
 Examples:
   # list all ledgers and output in json format
-  permguard authz ledgers list --appid 268786704340 --output json
+  permguard authz ledgers list --zoneid 268786704340 --output json
   # list all ledgers filtered by name
-  permguard authz ledgers list --appid 268786704340 --name v1
+  permguard authz ledgers list --zoneid 268786704340 --name v1
   # list all ledgers filtered by ledger id
-  permguard authz ledgers list --appid 268786704340 --ledgerid 668f3771eacf4094ba8a80942ea5fd3f
+  permguard authz ledgers list --zoneid 268786704340 --ledgerid 668f3771eacf4094ba8a80942ea5fd3f
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListLedgers(deps, cmd, v)

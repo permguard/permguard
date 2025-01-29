@@ -17,8 +17,8 @@
 package statemachines
 
 const (
-	// ApplicationIDKey is the application ID key.
-	ApplicationIDKey = "applicationid"
+	// ZoneIDKey is the zone ID key.
+	ZoneIDKey = "zoneid"
 	// LedgerIDKey is the ledger ID key.
 	LedgerIDKey = "ledgerid"
 )

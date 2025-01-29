@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-Permguard provides a Command Line Interface (CLI) for managing authentication metadata (AuthN) and authorization metadata and configurations (AuthZ) for applications.
+Permguard provides a Command Line Interface (CLI) for managing authentication metadata (AuthN) and authorization metadata and configurations (AuthZ) for Zones.
 
 AuthZ administration is handled exclusively through the CLI, while AuthZ administration is managed via both the CLI and the Policy Language.
 
@@ -40,14 +40,14 @@ A **Permguard** workspace contains the following files:
 
 ## Initialize a new ledger
 
-When starting a new project, the first step is to create an application:
+When starting a new project, the first step is to create a zone:
 
 ```bash
-permguard apps create --name magicfarmacia-dev --output json
+permguard zone create --name magicfarmacia-dev --output json
 {
-  "applications": [
+  "zones": [
     {
-      "application_id": 268786704340,
+      "zone_id": 268786704340,
       "created_at": "2024-08-25T14:07:59.634Z",
       "updated_at": "2024-08-25T14:07:59.634Z",
       "name": "magicfarmacia-dev"
@@ -59,14 +59,14 @@ permguard apps create --name magicfarmacia-dev --output json
 Next, create a ledger:
 
 ```bash
-permguard authz ledgers create --appid 268786704340  --name magicfarmacia --output json
+permguard authz ledgers create --zoneid 268786704340  --name magicfarmacia --output json
 {
   "ledgers": [
     {
       "ledger_id": "668f3771eacf4094ba8a80942ea5fd3f",
       "created_at": "2024-08-25T14:50:38.003Z",
       "updated_at": "2024-08-25T14:50:38.003Z",
-      "application_id": 268786704340,
+      "zone_id": 268786704340,
       "name": "magicfarmacia"
     }
   ]

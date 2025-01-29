@@ -118,9 +118,9 @@ tasks:
     cmds:
       - go run cmd/server-all-in-one/main.go {{.CLI_ARGS}}
     silent: false
-  server-aap:
+  server-zap:
     cmds:
-      - go run cmd/server-aap/main.go {{.CLI_ARGS}}
+      - go run cmd/server-zap/main.go {{.CLI_ARGS}}
     silent: false
   server-pap:
     cmds:

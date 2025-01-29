@@ -23,17 +23,17 @@ import (
 // GrpcPAPClient is the gRPC PAP client servicer.
 type GrpcPAPClient interface {
 	// CreateLedger creates a ledger.
-	CreateLedger(applicationID int64, kind string, name string) (*azmodelpap.Ledger, error)
+	CreateLedger(zoneID int64, kind string, name string) (*azmodelpap.Ledger, error)
 	// UpdateLedger updates a ledger.
 	UpdateLedger(ledger *azmodelpap.Ledger) (*azmodelpap.Ledger, error)
 	// DeleteLedger deletes a ledger.
-	DeleteLedger(applicationID int64, ledgerID string) (*azmodelpap.Ledger, error)
+	DeleteLedger(zoneID int64, ledgerID string) (*azmodelpap.Ledger, error)
 	// FetchLedgers returns all ledgers.
-	FetchLedgers(page int32, pageSize int32, applicationID int64) ([]azmodelpap.Ledger, error)
+	FetchLedgers(page int32, pageSize int32, zoneID int64) ([]azmodelpap.Ledger, error)
 	// FetchLedgersByID returns all ledgers filtering by ledger id.
-	FetchLedgersByID(page int32, pageSize int32, applicationID int64, ledgerID string) ([]azmodelpap.Ledger, error)
+	FetchLedgersByID(page int32, pageSize int32, zoneID int64, ledgerID string) ([]azmodelpap.Ledger, error)
 	// FetchLedgersByName returns all ledgers filtering by name.
-	FetchLedgersByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodelpap.Ledger, error)
+	FetchLedgersByName(page int32, pageSize int32, zoneID int64, name string) ([]azmodelpap.Ledger, error)
 	// FetchLedgersBy returns all ledgers filtering by ledger id and name.
-	FetchLedgersBy(page int32, pageSize int32, applicationID int64, ledgerID string, kind string, name string) ([]azmodelpap.Ledger, error)
+	FetchLedgersBy(page int32, pageSize int32, zoneID int64, ledgerID string, kind string, name string) ([]azmodelpap.Ledger, error)
 }

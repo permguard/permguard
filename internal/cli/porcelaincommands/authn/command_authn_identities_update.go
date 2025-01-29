@@ -44,7 +44,7 @@ func createCommandForIdentityUpdate(deps azcli.CliDependenciesProvider, v *viper
 
 Examples:
   # update and identity and output the result in json format
-  permguard authn identities update --appid 268786704340 --identityid 804ecc6b562242069c7837f63fd1a3b3 --kind user --name nicolagallo --output json
+  permguard authn identities update --zoneid 268786704340 --identityid 804ecc6b562242069c7837f63fd1a3b3 --kind user --name nicolagallo --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForUpdateIdentity(deps, cmd, v)

@@ -20,91 +20,91 @@ import (
 	"context"
 	"io"
 
-	azapiv1aap "github.com/permguard/permguard/internal/agents/services/aap/endpoints/api/v1"
+	azapiv1zap "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelaap "github.com/permguard/permguard/pkg/transport/models/aap"
+	azmodelzap "github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
-// CreateApplication creates a new application.
-func (c *GrpcAAPClient) CreateApplication(name string) (*azmodelaap.Application, error) {
+// CreateZone creates a new zone.
+func (c *GrpcZAPClient) CreateZone(name string) (*azmodelzap.Zone, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	application, err := client.CreateApplication(context.Background(), &azapiv1aap.ApplicationCreateRequest{Name: name})
+	zone, err := client.CreateZone(context.Background(), &azapiv1zap.ZoneCreateRequest{Name: name})
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1aap.MapGrpcApplicationResponseToAgentApplication(application)
+	return azapiv1zap.MapGrpcZoneResponseToAgentZone(zone)
 }
 
-// UpdateApplication updates an application.
-func (c *GrpcAAPClient) UpdateApplication(application *azmodelaap.Application) (*azmodelaap.Application, error) {
-	if application == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "invalid application instance")
+// UpdateZone updates a zone.
+func (c *GrpcZAPClient) UpdateZone(zone *azmodelzap.Zone) (*azmodelzap.Zone, error) {
+	if zone == nil {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "invalid zone instance")
 	}
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	updatedApplication, err := client.UpdateApplication(context.Background(), &azapiv1aap.ApplicationUpdateRequest{
-		ApplicationID: application.ApplicationID,
-		Name:          application.Name,
+	updatedZone, err := client.UpdateZone(context.Background(), &azapiv1zap.ZoneUpdateRequest{
+		ZoneID: zone.ZoneID,
+		Name:   zone.Name,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1aap.MapGrpcApplicationResponseToAgentApplication(updatedApplication)
+	return azapiv1zap.MapGrpcZoneResponseToAgentZone(updatedZone)
 }
 
-// DeleteApplication deletes an application.
-func (c *GrpcAAPClient) DeleteApplication(applicationID int64) (*azmodelaap.Application, error) {
+// DeleteZone deletes a zone.
+func (c *GrpcZAPClient) DeleteZone(zoneID int64) (*azmodelzap.Zone, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	application, err := client.DeleteApplication(context.Background(), &azapiv1aap.ApplicationDeleteRequest{ApplicationID: applicationID})
+	zone, err := client.DeleteZone(context.Background(), &azapiv1zap.ZoneDeleteRequest{ZoneID: zoneID})
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1aap.MapGrpcApplicationResponseToAgentApplication(application)
+	return azapiv1zap.MapGrpcZoneResponseToAgentZone(zone)
 }
 
-// FetchApplications returns all applications.
-func (c *GrpcAAPClient) FetchApplications(page int32, pageSize int32) ([]azmodelaap.Application, error) {
-	return c.FetchApplicationsBy(page, pageSize, 0, "")
+// FetchZones returns all zones.
+func (c *GrpcZAPClient) FetchZones(page int32, pageSize int32) ([]azmodelzap.Zone, error) {
+	return c.FetchZonesBy(page, pageSize, 0, "")
 }
 
-// FetchApplicationsByID returns all applications filtering by application id.
-func (c *GrpcAAPClient) FetchApplicationsByID(page int32, pageSize int32, applicationID int64) ([]azmodelaap.Application, error) {
-	return c.FetchApplicationsBy(page, pageSize, applicationID, "")
+// FetchZonesByID returns all zones filtering by zone id.
+func (c *GrpcZAPClient) FetchZonesByID(page int32, pageSize int32, zoneID int64) ([]azmodelzap.Zone, error) {
+	return c.FetchZonesBy(page, pageSize, zoneID, "")
 }
 
-// FetchApplicationsByName returns all applications filtering by name.
-func (c *GrpcAAPClient) FetchApplicationsByName(page int32, pageSize int32, name string) ([]azmodelaap.Application, error) {
-	return c.FetchApplicationsBy(page, pageSize, 0, name)
+// FetchZonesByName returns all zones filtering by name.
+func (c *GrpcZAPClient) FetchZonesByName(page int32, pageSize int32, name string) ([]azmodelzap.Zone, error) {
+	return c.FetchZonesBy(page, pageSize, 0, name)
 }
 
-// FetchApplicationsBy returns all applications filtering by application id and name.
-func (c *GrpcAAPClient) FetchApplicationsBy(page int32, pageSize int32, applicationID int64, name string) ([]azmodelaap.Application, error) {
+// FetchZonesBy returns all zones filtering by zone id and name.
+func (c *GrpcZAPClient) FetchZonesBy(page int32, pageSize int32, zoneID int64, name string) ([]azmodelzap.Zone, error) {
 	client, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	applicationFetchRequest := &azapiv1aap.ApplicationFetchRequest{}
-	applicationFetchRequest.Page = &page
-	applicationFetchRequest.PageSize = &pageSize
-	if applicationID > 0 {
-		applicationFetchRequest.ApplicationID = &applicationID
+	zoneFetchRequest := &azapiv1zap.ZoneFetchRequest{}
+	zoneFetchRequest.Page = &page
+	zoneFetchRequest.PageSize = &pageSize
+	if zoneID > 0 {
+		zoneFetchRequest.ZoneID = &zoneID
 	}
 	if name != "" {
-		applicationFetchRequest.Name = &name
+		zoneFetchRequest.Name = &name
 	}
-	stream, err := client.FetchApplications(context.Background(), applicationFetchRequest)
+	stream, err := client.FetchZones(context.Background(), zoneFetchRequest)
 	if err != nil {
 		return nil, err
 	}
-	applications := []azmodelaap.Application{}
+	zones := []azmodelzap.Zone{}
 	for {
 		response, err := stream.Recv()
 		if err == io.EOF {
@@ -113,11 +113,11 @@ func (c *GrpcAAPClient) FetchApplicationsBy(page int32, pageSize int32, applicat
 		if err != nil {
 			return nil, err
 		}
-		application, err := azapiv1aap.MapGrpcApplicationResponseToAgentApplication(response)
+		zone, err := azapiv1zap.MapGrpcZoneResponseToAgentZone(response)
 		if err != nil {
 			return nil, err
 		}
-		applications = append(applications, *application)
+		zones = append(zones, *zone)
 	}
-	return applications, nil
+	return zones, nil
 }

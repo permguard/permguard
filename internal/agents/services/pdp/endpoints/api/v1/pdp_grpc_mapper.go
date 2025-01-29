@@ -295,7 +295,7 @@ func MapAgentEvaluationRequestToGrpcEvaluationRequest(evaluationRequest *azmodel
 // MapGrpcAuthorizationContextRequestToAgentAuthorizationContextRequest maps the gRPC authorization context request to the agent authorization context request.
 func MapGrpcAuthorizationContextRequestToAgentAuthorizationContextRequest(request *AuthorizationContextRequest) (*azmodelspdp.AuthorizationContextRequest, error) {
 	req := &azmodelspdp.AuthorizationContextRequest{}
-	req.ApplicationID = request.ApplicationID
+	req.ZoneID = request.ZoneID
 	if request.PolicyStore != nil {
 		policyStore, err := MapGrpcPolicyStoreToAgentPolicyStore(request.PolicyStore)
 		if err != nil {
@@ -323,7 +323,7 @@ func MapGrpcAuthorizationContextRequestToAgentAuthorizationContextRequest(reques
 // MapAgentAuthorizationContextRequestToGrpcAuthorizationContextRequest maps the agent authorization context request to the gRPC authorization context request.
 func MapAgentAuthorizationContextRequestToGrpcAuthorizationContextRequest(request *azmodelspdp.AuthorizationContextRequest) (*AuthorizationContextRequest, error) {
 	req := &AuthorizationContextRequest{}
-	req.ApplicationID = request.ApplicationID
+	req.ZoneID = request.ZoneID
 	if request.PolicyStore != nil {
 		policyStore, err := MapAgentPolicyStoreToGrpcPolicyStore(request.PolicyStore)
 		if err != nil {

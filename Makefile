@@ -48,7 +48,7 @@ mod:
 	go mod tidy
 
 protoc:
-	protoc internal/agents/services/aap/endpoints/api/v1/*.proto --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative --proto_path=.
+	protoc internal/agents/services/zap/endpoints/api/v1/*.proto --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative --proto_path=.
 	protoc internal/agents/services/pap/endpoints/api/v1/*.proto --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative --proto_path=.
 	protoc internal/agents/services/pdp/endpoints/api/v1/*.proto --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative --proto_path=.
 
@@ -105,8 +105,8 @@ build-release:
 	mkdir -p dist
 	go build -o dist/server-all-in-one ./cmd/server-all-in-one
 	chmod +x dist/server-all-in-one
-	go build -o dist/server-aap ./cmd/server-aap
-	chmod +x dist/server-aap
+	go build -o dist/server-zap ./cmd/server-zap
+	chmod +x dist/server-zap
 	go build -o dist/server-pap ./cmd/server-pap
 	chmod +x dist/server-pap
 	go build -o dist/server-pip ./cmd/server-pip

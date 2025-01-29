@@ -24,18 +24,18 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
-// ValidateCodeID validates an application ID.
-func ValidateCodeID(entity string, applicationID int64) error {
-	vApplicationID := struct {
-		ApplicationID int64 `validate:"required,gt=0"`
-	}{ApplicationID: applicationID}
-	if isValid, err := azvalidators.ValidateInstance(vApplicationID); err != nil || !isValid {
-		return fmt.Errorf("validators: %s name %d is not valid. %w", entity, vApplicationID.ApplicationID, azerrors.ErrClientID)
+// ValidateCodeID validates a zone ID.
+func ValidateCodeID(entity string, zoneID int64) error {
+	vZoneID := struct {
+		ZoneID int64 `validate:"required,gt=0"`
+	}{ZoneID: zoneID}
+	if isValid, err := azvalidators.ValidateInstance(vZoneID); err != nil || !isValid {
+		return fmt.Errorf("validators: %s name %d is not valid. %w", entity, vZoneID.ZoneID, azerrors.ErrClientID)
 	}
 	min := int64(100000000000)
 	max := int64(999999999999)
-	if applicationID < min || applicationID > max {
-		return fmt.Errorf("validators: %s name %d is not valid. it must be between %d and %d. %w", entity, applicationID, min, max, azerrors.ErrClientID)
+	if zoneID < min || zoneID > max {
+		return fmt.Errorf("validators: %s name %d is not valid. it must be between %d and %d. %w", entity, zoneID, min, max, azerrors.ErrClientID)
 	}
 	return nil
 }
