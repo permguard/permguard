@@ -158,8 +158,8 @@ func createCommandForConfigPDPSet(deps azcli.CliDependenciesProvider, v *viper.V
 		Long: aziclicommon.BuildCliLongTemplate(`This command sets the pdp grpc target.
 
 Examples:
-# set the pdp gRPC target to localhost:9091
-permguard config pdp-set-target localhost:9091
+# set the pdp gRPC target to localhost:9094
+permguard config pdp-set-target localhost:9094
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForPDPSet(deps, cmd, v, args)
