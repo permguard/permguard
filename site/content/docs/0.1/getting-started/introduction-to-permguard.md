@@ -31,7 +31,7 @@ It helps you easily manage permissions by defining who can do what in your syste
 </div>
 </br>
 
-Designed for `cloud-native`, `edge`, and multi-tenant environments, PermGuard allows you to update your authorization policies without changing your application code, saving time and effort.
+Designed for `cloud-native`, `edge`, and multi-tenant environments, Permguard allows you to update your authorization policies without changing your application code, saving time and effort.
 
 These policies are centrally managed, ensuring compliance with corporate governance.
 
@@ -49,17 +49,17 @@ It follows a `Bring Your Own Identity (BYOI)` approach, meaning it works with yo
 You can configure identity sources to migrate identities from your current `identity provider`, ensuring all permissions are managed consistently and centrally, no matter where you use **Permguard**.
 
 {{< callout context="note" icon="info-circle" >}}
-The main goal of PermGuard is to provide a robust authorization provider along with its own administrative and authorization components. It allows the association of identity sources through ingestion APIs, but these identity sources must be integrated using bespoke solutions. This approach ensures that PermGuard remains flexible and avoids unnecessary customizations and complexity in management.
+The main goal of Permguard is to provide a robust authorization provider along with its own administrative and authorization components. It allows the association of identity sources through ingestion APIs, but these identity sources must be integrated using bespoke solutions. This approach ensures that Permguard remains flexible and avoids unnecessary customizations and complexity in management.
 {{< /callout >}}
 
 The solution is `language-agnostic`, supporting multiple policy languages, starting with [Cedar Policy Language](https://www.cedarpolicy.com/en).
-Developers can use their preferred language from the ones integrated, while ensuring all federated PermGuard servers work seamlessly together, even if they use different languages internally.
+Developers can use their preferred language from the ones integrated, while ensuring all federated Permguard servers work seamlessly together, even if they use different languages internally.
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d18.webp"/>
 </div>
 
-`PermGuard` uses a common `schema` to define `Namepsaces` `Resources`, and `Actions`, ensuring consistency.
+`Permguard` uses a common `schema` to define `Namepsaces` `Resources`, and `Actions`, ensuring consistency.
 Each language is integrated with a small abstraction layer that doesn’t limit developers, except for a few reserved keywords.
 
 <div style="text-align: center">

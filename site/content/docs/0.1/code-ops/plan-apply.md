@@ -19,9 +19,9 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The primary function of the PermGuard CLI is to manage schemas and policies.
+The primary function of the Permguard CLI is to manage schemas and policies.
 
-Provisioning in PermGuard involves creating and managing these elements, which include schemas and policies.
+Provisioning in Permguard involves creating and managing these elements, which include schemas and policies.
 
 This is primarily done using the `plan` and `apply` commands.
 

@@ -143,4 +143,4 @@ To explore these concepts further, refer to the following articles:
 
 ---
 
-With PermGuard and ZTAuth\*, authorization becomes a central part of modern security, not just an extra step.
+With Permguard and ZTAuth\*, authorization becomes a central part of modern security, not just an extra step.

@@ -18,7 +18,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-**PermGuard** integrates `Cedar` as policy language. Here you can find the <a href="https://www.cedarpolicy.com/" target="_blank" rel="noopener noreferrer">official documentation</a>.
+**Permguard** integrates `Cedar` as policy language. Here you can find the <a href="https://www.cedarpolicy.com/" target="_blank" rel="noopener noreferrer">official documentation</a>.
 
 Policies are written using the `Cedar Policy Language`.
 

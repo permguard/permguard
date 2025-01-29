@@ -20,7 +20,7 @@ seo:
 ---
 The **schema** follows the official `JSON Schema` specification, available in the <a href="https://docs.cedarpolicy.com/schema/json-schema.html" target="_blank" rel="noopener noreferrer">official documentation</a>.
 
-PermGuard requires the file to be named `schema.json` and placed in the root of the workspace.
+Permguard requires the file to be named `schema.json` and placed in the root of the workspace.
 
 Below is an example of a directory structure that includes the schema file:
 
