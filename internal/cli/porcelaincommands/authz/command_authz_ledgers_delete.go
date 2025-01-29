@@ -41,7 +41,11 @@ func runECommandForDeleteLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	papTarget := ctx.GetPAPTarget()
+	papTarget, err := ctx.GetPAPTarget()
+	if err != nil {
+		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
+		return aziclicommon.ErrCommandSilent
+	}
 	client, err := deps.CreateGrpcPAPClient(papTarget)
 	if err != nil {
 		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))

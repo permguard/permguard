@@ -125,19 +125,28 @@ func (c *CliCommandContext) GetWorkDir() string {
 }
 
 // GetZAPTarget returns the zap target.
-func (c *CliCommandContext) GetZAPTarget() string {
+func (c *CliCommandContext) GetZAPTarget() (string, error) {
 	target := c.v.Get(azoptions.FlagName(FlagPrefixZAP, FlagSuffixZAPTarget))
-	return target.(string)
+	if target == nil {
+		return "", azerrors.WrapHandledSysError(azerrors.ErrCliConfiguration, fmt.Errorf("zap target is not set"))
+	}
+	return target.(string), nil
 }
 
 // GetPAPTarget returns the pap target.
-func (c *CliCommandContext) GetPAPTarget() string {
+func (c *CliCommandContext) GetPAPTarget() (string, error) {
 	target := c.v.Get(azoptions.FlagName(FlagPrefixPAP, FlagSuffixPAPTarget))
-	return target.(string)
+	if target == nil {
+		return "", azerrors.WrapHandledSysError(azerrors.ErrCliConfiguration, fmt.Errorf("pap target is not set"))
+	}
+	return target.(string), nil
 }
 
 // GetPDPTarget returns the pdp target.
-func (c *CliCommandContext) GetPDPTarget() string {
+func (c *CliCommandContext) GetPDPTarget() (string, error) {
 	target := c.v.Get(azoptions.FlagName(FlagPrefixPDP, FlagSuffixPDPTarget))
-	return target.(string)
+	if target == nil {
+		return "", azerrors.WrapHandledSysError(azerrors.ErrCliConfiguration, fmt.Errorf("pdp target is not set"))
+	}
+	return target.(string), nil
 }

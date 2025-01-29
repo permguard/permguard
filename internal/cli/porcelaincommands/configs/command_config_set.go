@@ -26,6 +26,7 @@ import (
 	azvalidators "github.com/permguard/permguard-core/pkg/extensions/validators"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azclioptions "github.com/permguard/permguard/pkg/cli/options"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
@@ -35,12 +36,10 @@ func viperWriteEndpoint(v *viper.Viper, key string, value string) error {
 	if !azvalidators.IsValidHostnamePort(value) {
 		return fmt.Errorf("invalid hostname port")
 	}
-	err := v.ReadInConfig()
-	if err != nil {
-		return err
+	valueMap := map[string]interface{}{
+		key: value,
 	}
-	v.Set(key, value)
-	return v.WriteConfig()
+	return azclioptions.OverrideViperFromConfig(v, valueMap)
 }
 
 // runECommandForZAPSet runs the command for setting the zap gRPC target.
@@ -91,11 +90,35 @@ func runECommandForPAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 	return nil
 }
 
+// runECommandForPDPSet runs the command for setting the pdp gRPC target.
+func runECommandForPDPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return aziclicommon.ErrCommandSilent
+	}
+	if len(args) == 0 {
+		printer.Error(azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "invalid input"))
+		return aziclicommon.ErrCommandSilent
+	}
+	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixPDP, aziclicommon.FlagSuffixPDPTarget), args[0])
+	if err != nil {
+		if ctx.IsTerminalOutput() {
+			printer.Println("Failed to set the zone value.")
+			if ctx.IsVerboseTerminalOutput() {
+				printer.Error(err)
+			}
+		}
+		return aziclicommon.ErrCommandSilent
+	}
+	return nil
+}
+
 // CreateCommandForConfig for managing config.
 func createCommandForConfigZAPSet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "zap-set-target",
-		Short: "Set the zone grpc target",
+		Short: "Set the zap grpc target",
 		Long: aziclicommon.BuildCliLongTemplate(`This command sets the zap grpc target.
 
 Examples:
@@ -122,6 +145,24 @@ permguard config pap-set-target localhost:9092
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForPAPSet(deps, cmd, v, args)
+		},
+	}
+	return command
+}
+
+// CreateCommandForConfig for managing config.
+func createCommandForConfigPDPSet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+	command := &cobra.Command{
+		Use:   "pdp-set-target",
+		Short: "Set the pdp grpc target",
+		Long: aziclicommon.BuildCliLongTemplate(`This command sets the pdp grpc target.
+
+Examples:
+# set the pdp gRPC target to localhost:9091
+permguard config pdp-set-target localhost:9091
+		`),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runECommandForPDPSet(deps, cmd, v, args)
 		},
 	}
 	return command

@@ -41,7 +41,11 @@ func runECommandForDeleteIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	zapTarget := ctx.GetZAPTarget()
+	zapTarget, err := ctx.GetZAPTarget()
+	if err != nil {
+		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
+		return aziclicommon.ErrCommandSilent
+	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
 		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
