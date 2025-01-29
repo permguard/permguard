@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-Using the `zone` command, it is possible to manage Zones on the remote server.
+Using the `zones` command, it is possible to manage Zones on the remote server.
 
 ```text
 This command manages zones.
