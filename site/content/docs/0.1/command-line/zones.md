@@ -23,8 +23,8 @@ Using the `zone` command, it is possible to manage Zones on the remote server.
 This command manages zones.
 
 Usage:
-  Permguard zone [flags]
-  Permguard zone [command]
+  Permguard zones [flags]
+  Permguard zones [command]
 
 Available Commands:
   create      Create a zone
@@ -40,7 +40,7 @@ Global Flags:
   -v, --verbose          true for verbose output
   -w, --workdir string   workdir (default ".")
 
-Use "Permguard zone [command] --help" for more information about a command.
+Use "Permguard zones [command] --help" for more information about a command.
 ```
 
 {{< callout context="caution" icon="alert-triangle" >}}
