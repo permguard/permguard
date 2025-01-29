@@ -43,7 +43,7 @@ func NewViper() (*viper.Viper, error) {
 }
 
 // NewViperFromConfig creates a new viper from the config.
-func NewViperFromConfig(onCreation func(*viper.Viper) error) (*viper.Viper, error) {
+func NewViperFromConfig(onCreation func(*viper.Viper) map[string]any) (*viper.Viper, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
@@ -64,10 +64,30 @@ func NewViperFromConfig(onCreation func(*viper.Viper) error) (*viper.Viper, erro
 		return nil, err
 	}
 	if created && onCreation != nil {
-		return v, onCreation(v)
+		mapValues := onCreation(v)
+		for mapValuesKey, mapValuesValue := range mapValues {
+			v.Set(mapValuesKey, mapValuesValue)
+		}
+		v.WriteConfig()
 	}
 	configureViper(v)
 	return v, nil
+}
+
+// OverrideViperFromConfig overrides the viper from the config.
+func OverrideViperFromConfig(v *viper.Viper, valueMap map[string]interface{}) error {
+	newViper, err := NewViperFromConfig(nil)
+	if err != nil {
+		return err
+	}
+	fileSettings := newViper.AllSettings()
+	for key, value := range fileSettings {
+		newViper.Set(key, value)
+	}
+	for key, value := range valueMap {
+		newViper.Set(key, value)
+	}
+	return newViper.WriteConfigAs(v.ConfigFileUsed())
 }
 
 // Viperize creates a new viper and a new cobra command.

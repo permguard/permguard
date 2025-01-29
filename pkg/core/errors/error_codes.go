@@ -76,12 +76,13 @@ var errorCodes = map[string]string{
 
 	// 08xxx: Command Line Interface Errors
 	"08000": "cli: generic error",
-	"08001": "cli: invalid arguments",
-	"08002": "cli: invalid input",
-	"08003": "cli: not a permguard workspace directory",
-	"08004": "cli: record already exists",
-	"08005": "cli: record not found",
-	"08006": "cli: record is malformed",
+	"08001": "cli: invalid configuration",
+	"08002": "cli: invalid arguments",
+	"08003": "cli: invalid input",
+	"08004": "cli: not a permguard workspace directory",
+	"08005": "cli: record already exists",
+	"08006": "cli: record not found",
+	"08007": "cli: record is malformed",
 
 	// 081xx: Command Line Interface File System Errors
 	"08100": "cli: file system error",
@@ -152,9 +153,10 @@ var (
 	ErrPdpAuthzCheckEvaluationFailure error = NewSystemError("07112")
 	// 08xxx: Command Line Interface Errors
 	ErrCliGeneric             error = NewSystemError("08000")
-	ErrCliArguments           error = NewSystemError("08001")
-	ErrCliInput               error = NewSystemError("08002")
-	ErrCliWorkspaceDir        error = NewSystemError("08003")
+	ErrCliConfiguration       error = NewSystemError("08001")
+	ErrCliArguments           error = NewSystemError("08002")
+	ErrCliInput               error = NewSystemError("08003")
+	ErrCliWorkspaceDir        error = NewSystemError("08004")
 	ErrCliRecordExists        error = NewSystemError("08004")
 	ErrCliRecordNotFound      error = NewSystemError("08005")
 	ErrCliRecordMalformed     error = NewSystemError("08006")

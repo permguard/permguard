@@ -34,7 +34,12 @@ func runECommandForZAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	printer.PrintlnMap(map[string]any{"zap_target": ctx.GetZAPTarget()})
+	zapTarget, err := ctx.GetZAPTarget()
+	if err != nil {
+		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
+		return aziclicommon.ErrCommandSilent
+	}
+	printer.PrintlnMap(map[string]any{"zap_target": zapTarget})
 	return nil
 }
 
@@ -45,7 +50,28 @@ func runECommandForPAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	printer.PrintlnMap(map[string]any{"pap_target": ctx.GetPAPTarget()})
+	papTarget, err := ctx.GetPAPTarget()
+	if err != nil {
+		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
+		return aziclicommon.ErrCommandSilent
+	}
+	printer.PrintlnMap(map[string]any{"pap_target": papTarget})
+	return nil
+}
+
+// runECommandForPDPGet runs the command for getting the pdp gRPC target.
+func runECommandForPDPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return aziclicommon.ErrCommandSilent
+	}
+	pdpTarget, err := ctx.GetPDPTarget()
+	if err != nil {
+		printer.Error(fmt.Errorf("invalid pdp target %s", pdpTarget))
+		return aziclicommon.ErrCommandSilent
+	}
+	printer.PrintlnMap(map[string]any{"pdp_target": pdpTarget})
 	return nil
 }
 
@@ -53,7 +79,7 @@ func runECommandForPAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 func createCommandForConfigZAPGet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "zap-get-target",
-		Short: "Get the zone grpc target",
+		Short: "Get the zap grpc target",
 		Long:  aziclicommon.BuildCliLongTemplate(`This command gets the zap grpc target.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForZAPGet(deps, cmd, v)
@@ -70,6 +96,19 @@ func createCommandForConfigPAPGet(deps azcli.CliDependenciesProvider, v *viper.V
 		Long:  aziclicommon.BuildCliLongTemplate(`This command gets the pap grpc target.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForPAPGet(deps, cmd, v)
+		},
+	}
+	return command
+}
+
+// CreateCommandForConfig for managing config.
+func createCommandForConfigPDPGet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+	command := &cobra.Command{
+		Use:   "pdp-get-target",
+		Short: "Get the pdp grpc target",
+		Long:  aziclicommon.BuildCliLongTemplate(`This command gets the pdp grpc target.`),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runECommandForPDPGet(deps, cmd, v)
 		},
 	}
 	return command

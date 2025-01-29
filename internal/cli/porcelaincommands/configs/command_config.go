@@ -41,5 +41,7 @@ func CreateCommandForConfig(deps azcli.CliDependenciesProvider, v *viper.Viper) 
 	command.AddCommand(createCommandForConfigZAPSet(deps, v))
 	command.AddCommand(createCommandForConfigPAPGet(deps, v))
 	command.AddCommand(createCommandForConfigPAPSet(deps, v))
+	command.AddCommand(createCommandForConfigPDPGet(deps, v))
+	command.AddCommand(createCommandForConfigPDPSet(deps, v))
 	return command
 }
