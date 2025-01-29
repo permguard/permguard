@@ -33,7 +33,7 @@ Available Commands:
   update      Update a tenant
 
 Flags:
-      --zoneid int   zone id
+      --zoneid int    zone id
   -h, --help          help for tenants
 
 Global Flags:

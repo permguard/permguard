@@ -34,7 +34,7 @@ Usage:
   permguard authz check [flags]
 
 Flags:
-      --zoneid int     zone id
+      --zoneid int    zone id
   -h, --help          help for check
 
 Global Flags:

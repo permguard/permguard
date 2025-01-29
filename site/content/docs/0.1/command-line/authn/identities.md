@@ -33,7 +33,7 @@ Available Commands:
   update      Update an identity
 
 Flags:
-      --zoneid int   zone id
+      --zoneid int    zone id
   -h, --help          help for identities
 
 Global Flags:
