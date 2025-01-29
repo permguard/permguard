@@ -1,8 +1,8 @@
 ---
 title: "Welcome to Permguard"
 slug: "Welcome to Permguard"
-description: "Permguard is an Open Source Multi-Application, Multi-Tenant, Zero-Trust Auth* Provider."
-summary: "Permguard is an Open Source Multi-Application, Multi-Tenant, Zero-Trust Auth* Provider."
+description: "Permguard is an Open Source Multi-Zone, Multi-Tenant, ZTAuth* Provider."
+summary: "Permguard is an Open Source Multi-Zone, Multi-Tenant, ZTAuth* Provider."
 date: 2024-12-16T01:15:00+01:00
 lastmod: 2024-12-16T01:15:00+01:00
 draft: false
@@ -31,7 +31,7 @@ Introducing Permguard: the Zero Trust, cloud-native solution built for the futur
 
 **Permguard** secures your application layer with Policy-as-Code, using Cedar Policy Language and extensible with other policy engines. Centralize policies and manage multi-namespace resources and user actions with PBAC.
 
-- Built for scale, **Permguard** supports multi-application and multi-tenant setups, perfect for complex environments. Developers can seamlessly plan and deploy permissions, backed by Git-like object storage that guarantees immutability and versioning out of the box to meet enterprise compliance needs.
+- Built for scale, **Permguard** supports multi-zone and multi-tenant setups, perfect for complex environments. Developers can seamlessly plan and deploy permissions, backed by Git-like object storage that guarantees immutability and versioning out of the box to meet enterprise compliance needs.
 
 - Designed for enterprise use, **Permguard** includes a toolchain that helps developers manage multiple versions and authorization models. It accommodates patterns that arise in complex cloud-native or microservices architectures, yet is versatile enough to be used even with simpler applications like a "Hello World" app.
 

@@ -32,16 +32,16 @@ type coreConfig struct {
 // remoteConfig represents the configuration for the remote.
 type remoteConfig struct {
 	Server  string `toml:"server"`
-	AAPPort int    `toml:"aapport"`
+	ZAPPort int    `toml:"zapport"`
 	PAPPort int    `toml:"papport"`
 }
 
 // ledgerConfig represents the configuration for the ledger.
 type ledgerConfig struct {
-	Ref           string `toml:"ref"`
-	Remote        string `toml:"remote"`
-	ApplicationID int64  `toml:"applicationid"`
-	LedgerName    string `toml:"ledgername"`
-	LedgerID      string `toml:"ledgerid"`
-	IsHead        bool   `toml:"head"`
+	Ref        string `toml:"ref"`
+	Remote     string `toml:"remote"`
+	ZoneID     int64  `toml:"zoneid"`
+	LedgerName string `toml:"ledgername"`
+	LedgerID   string `toml:"ledgerid"`
+	IsHead     bool   `toml:"head"`
 }

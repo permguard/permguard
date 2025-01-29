@@ -27,24 +27,24 @@ import (
 // RemoteInfo represents the remote information.
 type RemoteInfo struct {
 	server  string
-	aapPort int
+	zapPort int
 	papPort int
 }
 
 // NewRemoteInfo creates a new remote info.
-func NewRemoteInfo(server string, aapPort, papPort int) (*RemoteInfo, error) {
+func NewRemoteInfo(server string, zapPort, papPort int) (*RemoteInfo, error) {
 	if server == "" {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid server")
 	}
-	if aapPort <= 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid aap port")
+	if zapPort <= 0 {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid zap port")
 	}
 	if papPort <= 0 {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid pap port")
 	}
 	return &RemoteInfo{
 		server:  server,
-		aapPort: aapPort,
+		zapPort: zapPort,
 		papPort: papPort,
 	}, nil
 }
@@ -54,9 +54,9 @@ func (i *RemoteInfo) GetServer() string {
 	return i.server
 }
 
-// GetAAPPort returns the aap port.
-func (i *RemoteInfo) GetAAPPort() int {
-	return i.aapPort
+// GetZAPPort returns the zap port.
+func (i *RemoteInfo) GetZAPPort() int {
+	return i.zapPort
 }
 
 // GetPAPPort returns the pap port.

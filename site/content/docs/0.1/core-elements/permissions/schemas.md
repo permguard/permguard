@@ -46,18 +46,18 @@ Additionally, a schema can be further subdivided into namespaces, offering enhan
 In more details, each namespace can define multiple **resources** and corresponding **actions** that can be performed on those resources.
 
 {{< callout context="caution" icon="alert-triangle" >}}
-It's important to note that creating a `Resource` for every entity within the application is not mandatory, the same concept applies for `Actions`.
+It's important to note that creating a `Resource` for every entity within the zone is not mandatory, the same concept applies for `Actions`.
 However, it is advisable to create a Resource and an Action for each entity that requires modeling within the context of authorization.
-Typically, fewer Resources and Actions are modeled compared to the entities in the application to prevent tightly coupled authorization layers.
+Typically, fewer Resources and Actions are modeled compared to the entities in the zone to prevent tightly coupled authorization layers.
 {{< /callout >}}
 
 ## Resource
 
-A **Resource** serves as the central entity within **Permguard**. It represents a logical entity within the application that must be enriched with authorization policies.
+A **Resource** serves as the central entity within **Permguard**. It represents a logical entity within the zone that must be enriched with authorization policies.
 
-When creating authorization Resources, it's essential to consider `performance` and execution time required by the application to evaluate policies. This ensures optimal performance and efficient policy evaluation within the application context.
+When creating authorization Resources, it's essential to consider `performance` and execution time required by the zone to evaluate policies. This ensures optimal performance and efficient policy evaluation within the zone context.
 
-In summary, `Resources` in Permguard provide a structured approach to managing authorization policies, promoting flexibility and performance optimization within the application ecosystem.
+In summary, `Resources` in Permguard provide a structured approach to managing authorization policies, promoting flexibility and performance optimization within the zone ecosystem.
 
 ```json
 {

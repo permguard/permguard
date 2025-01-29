@@ -40,11 +40,11 @@ func (m *CliDependenciesMock) CreatePrinter(verbose bool, output string) (azcli.
 	return r0, args.Error(1)
 }
 
-// CreateGrpcAAPClient creates a new gRPC AAP client.
-func (m *CliDependenciesMock) CreateGrpcAAPClient(aapTarget string) (azclients.GrpcAAPClient, error) {
-	args := m.Called(aapTarget)
-	var r0 azclients.GrpcAAPClient
-	if val, ok := args.Get(0).(azclients.GrpcAAPClient); ok {
+// CreateGrpcZAPClient creates a new gRPC ZAP client.
+func (m *CliDependenciesMock) CreateGrpcZAPClient(zapTarget string) (azclients.GrpcZAPClient, error) {
+	args := m.Called(zapTarget)
+	var r0 azclients.GrpcZAPClient
+	if val, ok := args.Get(0).(azclients.GrpcZAPClient); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)

@@ -26,7 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azmodelsaap "github.com/permguard/permguard/pkg/transport/models/aap"
+	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 const (
@@ -41,15 +41,15 @@ func runECommandForDeleteIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	aapTarget := ctx.GetAAPTarget()
-	client, err := deps.CreateGrpcAAPClient(aapTarget)
+	zapTarget := ctx.GetZAPTarget()
+	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
+		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	applicationID := v.GetInt64(azoptions.FlagName(commandNameForIdentity, aziclicommon.FlagCommonApplicationID))
+	zoneID := v.GetInt64(azoptions.FlagName(commandNameForIdentity, aziclicommon.FlagCommonZoneID))
 	identityID := v.GetString(azoptions.FlagName(commandNameForIdentitiesDelete, flagIdentityID))
-	identity, err := client.DeleteIdentity(applicationID, identityID)
+	identity, err := client.DeleteIdentity(zoneID, identityID)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
 			printer.Println("Failed to delete the identity.")
@@ -65,7 +65,7 @@ func runECommandForDeleteIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 		identityName := identity.Name
 		output[identityID] = identityName
 	} else if ctx.IsJSONOutput() {
-		output["identities"] = []*azmodelsaap.Identity{identity}
+		output["identities"] = []*azmodelszap.Identity{identity}
 	}
 	printer.PrintlnMap(output)
 	return nil
@@ -80,7 +80,7 @@ func createCommandForIdentityDelete(deps azcli.CliDependenciesProvider, v *viper
 
 Examples:
   # delete an identity and output the result in json format
-  permguard authn identities delete --appid 268786704340 --identityid 1da1d9094501425085859c60429163c2 --output json
+  permguard authn identities delete --zoneid 268786704340 --identityid 1da1d9094501425085859c60429163c2 --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteIdentity(deps, cmd, v)

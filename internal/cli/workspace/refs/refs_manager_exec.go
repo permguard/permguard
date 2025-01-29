@@ -39,16 +39,16 @@ func (m *RefManager) ExecInitalize(lang string) error {
 }
 
 // ExecCheckoutRefFilesForRemote checks out the remote refs files for the remote.
-func (m *RefManager) ExecCheckoutRefFilesForRemote(remote string, applicationID int64, ledger string, ledgerID string, commit string, output map[string]any, out aziclicommon.PrinterOutFunc) (string, string, map[string]any, error) {
+func (m *RefManager) ExecCheckoutRefFilesForRemote(remote string, zoneID int64, ledger string, ledgerID string, commit string, output map[string]any, out aziclicommon.PrinterOutFunc) (string, string, map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
-	remoteRef := azicliwkscommon.GenerateRemoteRef(remote, applicationID, ledgerID)
+	remoteRef := azicliwkscommon.GenerateRemoteRef(remote, zoneID, ledgerID)
 	err := m.SaveRefConfig(ledgerID, remoteRef, commit)
 	if err != nil {
 		return "", "", output, err
 	}
-	headRef := azicliwkscommon.GenerateHeadRef(applicationID, ledgerID)
+	headRef := azicliwkscommon.GenerateHeadRef(zoneID, ledgerID)
 	err = m.SaveRefWithRemoteConfig(ledgerID, headRef, remoteRef, commit)
 	if err != nil {
 		return "", "", output, err

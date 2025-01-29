@@ -124,9 +124,9 @@ func (c *CliCommandContext) GetWorkDir() string {
 	return c.workDir
 }
 
-// GetAAPTarget returns the aap target.
-func (c *CliCommandContext) GetAAPTarget() string {
-	target := c.v.Get(azoptions.FlagName(FlagPrefixAAP, FlagSuffixAAPTarget))
+// GetZAPTarget returns the zap target.
+func (c *CliCommandContext) GetZAPTarget() string {
+	target := c.v.Get(azoptions.FlagName(FlagPrefixZAP, FlagSuffixZAPTarget))
 	return target.(string)
 }
 

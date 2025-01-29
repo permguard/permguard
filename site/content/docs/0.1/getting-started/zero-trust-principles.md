@@ -48,9 +48,9 @@ Permguard may seem complex, but it’s not: its internal architecture is sophist
 
 **Permguard** adopts the **ZTAuth\*** architecture to bring Zero Trust principles into the realm of authorization. To understand how this works, let’s use a comparison:
 
-- **ZTNA (Zero Trust Network Access)**: Ensures secure, identity-based access to networks or applications by applying least privilege at the network boundary.
+- **ZTNA (Zero Trust Network Access)**: Ensures secure, identity-based access to networks or zones by applying least privilege at the network boundary.
 
-- **ZTAuth\* (Zero Trust Auth\*)**: Ensures secure, identity-based execution of actions on resources by enforcing least privilege at the application boundary. Built for eventual consistency, the security model is incrementally synchronized across applicative nodes in an immutable, versioned manner.
+- **ZTAuth\* (Zero Trust Auth\*)**: Ensures secure, identity-based execution of actions on resources by enforcing least privilege at the applicative boundary. Built for eventual consistency, the security model is incrementally synchronized across applicative nodes in an immutable, versioned manner.
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d15.webp"/>
@@ -64,7 +64,7 @@ Asynchronous by Design: Built to Mirror Reality, Not Mask It — Robust Where Sy
 
 The ZTAuth\* architecture supports administrative services like:
 
-- **Application Administration Point (AAP)**: Manages applications and related configurations.
+- **Zone Administration Point (ZAP)**: Manages zones and related configurations.
 
 - **Policy Administration Point (PAP)**: Defines and manages policies.
 
@@ -79,7 +79,7 @@ The ZTAuth\* architecture supports administrative services like:
 </div>
 
 However, **ZTAuth\*** introduces a significant difference: it defines **Auth\*** models that can be transferred to `Proximity` nodes.
-These models are incrementally synchronized to application nodes as git-like commit-based snapshots.
+These models are incrementally synchronized to zone nodes as git-like commit-based snapshots.
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d16.webp"/>
@@ -99,15 +99,15 @@ To ensure proper functionality, these models must have the following characteris
 
 **ZTAuth\*** is designed to work with `eventual consistency`, supporting environments where connectivity is partial or network reliability is limited. Changes are packaged into versioned, immutable data structures and distributed asynchronously in incremental updates.
 
-Every resource action at the application boundary is verified against strict, identity-based security policies aligned with an authorization schema.
+Every resource action at the applicative boundary is verified against strict, identity-based security policies aligned with an authorization schema.
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d17.webp"/>
 </div>
 
-The **application boundary** refers not only to APIs exposed to external consumers but also to interactions between machines or services within the application ecosystem. These interactions can involve various protocols and technologies, including synchronous requests, asynchronous messaging, and event-driven architectures. By covering all these layers, **ZTAuth\*** ensures that security policies are enforced consistently across different communication methods.
+The **applicative boundary** refers not only to APIs exposed to external consumers but also to interactions between machines or services within the application ecosystem. These interactions can involve various protocols and technologies, including synchronous requests, asynchronous messaging, and event-driven architectures. By covering all these layers, **ZTAuth\*** ensures that security policies are enforced consistently across different communication methods.
 
-Today, the application boundary is no longer limited to traditional ingress APIs. It also includes:
+Today, the applicative boundary is no longer limited to traditional ingress APIs. It also includes:
 
 - Event streaming,
 
@@ -117,11 +117,11 @@ Today, the application boundary is no longer limited to traditional ingress APIs
 
 - IoT sensors,
 
-and many more technologies. These components all interact within and beyond the application boundary.
+and many more technologies. These components all interact within and beyond the applicative boundary.
 
-In the **ZTAuth\*** architecture, each application boundary—whether it represents a single microservice or a larger system—has a **Policy Decision Point (PDP)** deployed. Communication between application boundaries occurs when one boundary requests an action on a resource managed by another boundary. When the request is received, it is securely executed using identity-based policies and enforcing the principle of least privilege at the application boundary.
+In the **ZTAuth\*** architecture, each applicative boundary—whether it represents a single microservice or a larger system—has a **Policy Decision Point (PDP)** deployed. Communication between application boundaries occurs when one boundary requests an action on a resource managed by another boundary. When the request is received, it is securely executed using identity-based policies and enforcing the principle of least privilege at the applicative boundary.
 
-This approach makes it easier to envision how different organizations, operating across various networks, could securely federate their systems. With each application boundary enforcing its own policies while communicating securely with others, the model offers scalability and security for distributed environments.
+This approach makes it easier to envision how different organizations, operating across various networks, could securely federate their systems. With each applicative boundary enforcing its own policies while communicating securely with others, the model offers scalability and security for distributed environments.
 
 ---
 

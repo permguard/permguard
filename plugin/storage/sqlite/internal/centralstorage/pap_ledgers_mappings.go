@@ -28,12 +28,12 @@ func mapLedgerToAgentLedger(ledger *azirepos.Ledger) (*azmodelspap.Ledger, error
 		return nil, err
 	}
 	return &azmodelspap.Ledger{
-		LedgerID:      ledger.LedgerID,
-		CreatedAt:     ledger.CreatedAt,
-		UpdatedAt:     ledger.UpdatedAt,
-		ApplicationID: ledger.ApplicationID,
-		Name:          ledger.Name,
-		Kind:          kind,
-		Ref:           ledger.Ref,
+		LedgerID:  ledger.LedgerID,
+		CreatedAt: ledger.CreatedAt,
+		UpdatedAt: ledger.UpdatedAt,
+		ZoneID:    ledger.ZoneID,
+		Name:      ledger.Name,
+		Kind:      kind,
+		Ref:       ledger.Ref,
 	}, nil
 }

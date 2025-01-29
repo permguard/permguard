@@ -14,8 +14,7 @@
         Permguard
       </h1>
       <p class="text-white hero__description text-center mb-1">
-        Permguard is an Open Source Multi-Application, Multi-Tenant, Zero-Trust
-        Auth* Provider.
+        Permguard is an Open Source Multi-Zone, Multi-Tenant, ZTAuth* Provider.
       </p>
       {{ $currentPage := . -}} {{ $versions := site.Params.doks.docsVersions }}
       {{ $currentVersion := index $versions (sub (len $versions) 1) }}
@@ -45,7 +44,7 @@
 <!-- Section 2 -->
 <section class="section description px-xl-4 px-xxl-0">
   <p class="text-white text-center fw-medium description__text">
-    PemGuard is an Open Source Zero-Trust Auth* Provider for cloud-native, edge,
+    PemGuard is an Open Source ZTAuth* Provider for cloud-native, edge,
     and multi-tenant apps, decoupled from application code. It implements a
     centralized authorization layer using Policy-as-code, enabling enforcement
     of permission from anywhere, including VMs, Containers, and Serverless.
@@ -54,11 +53,11 @@
   <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-3 description__cards">
     <article class="col description__card-col">
       <div class="description__card">
-        <img src="/images/home/cards/applications.webp" alt="Applications" />
+        <img src="/images/home/cards/zones.webp" alt="Zones" />
         <div class="description__card__info-container">
-          <h3>Applications</h3>
+          <h3>Zones</h3>
           <p>
-            Create and configure an Application, optionally including its
+            Create and configure an Zone, optionally including its
             Tenants.
           </p>
         </div>
@@ -171,7 +170,7 @@
       </h2>
       <p class="permguard-server__description text-center text-lg-start">
         Start the PermGuard Authorization Server to serve as the central
-        authority for managing Applications, Identity Sources, Identities,
+        authority for managing Zones, Identity Sources, Identities,
         Tenants, Policy Ledgers, and more. Keep in mind that PermGuard requires
         integration with an external authentication provider, as it does not
         handle authentication itself.

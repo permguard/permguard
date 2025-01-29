@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	// errorMessageLedgerInvalidApplicationID is the error message ledger invalid application id.
-	errorMessageLedgerInvalidApplicationID = "invalid client input - application id is not valid (id: %d)"
+	// errorMessageLedgerInvalidZoneID is the error message ledger invalid zone id.
+	errorMessageLedgerInvalidZoneID = "invalid client input - zone id is not valid (id: %d)"
 )
 
 const (
@@ -67,8 +67,8 @@ func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*L
 	if ledger == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - ledger data is missing or malformed (%s)", LogLedgerEntry(ledger)))
 	}
-	if err := azvalidators.ValidateCodeID("ledger", ledger.ApplicationID); err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidApplicationID, ledger.ApplicationID), err)
+	if err := azvalidators.ValidateCodeID("ledger", ledger.ZoneID); err != nil {
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidZoneID, ledger.ZoneID), err)
 	}
 	if !isCreate && azvalidators.ValidateUUID("ledger", ledger.LedgerID) != nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - ledger id is not valid (%s)", LogLedgerEntry(ledger)))
@@ -78,7 +78,7 @@ func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*L
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogLedgerEntry(ledger)), err)
 	}
 
-	applicationID := ledger.ApplicationID
+	zoneID := ledger.ZoneID
 	ledgerID := ledger.LedgerID
 	ledgerName := ledger.Name
 	ledgerKind := ledger.Kind
@@ -86,22 +86,22 @@ func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*L
 	var err error
 	if isCreate {
 		ledgerID = GenerateUUID()
-		result, err = tx.Exec("INSERT INTO ledgers (application_id, ledger_id, kind, name) VALUES (?, ?, ?, ?)", applicationID, ledgerID, ledgerKind, ledgerName)
+		result, err = tx.Exec("INSERT INTO ledgers (zone_id, ledger_id, kind, name) VALUES (?, ?, ?, ?)", zoneID, ledgerID, ledgerKind, ledgerName)
 	} else {
-		result, err = tx.Exec("UPDATE ledgers SET name = ? WHERE application_id = ? and ledger_id = ?", ledgerName, applicationID, ledgerID)
+		result, err = tx.Exec("UPDATE ledgers SET name = ? WHERE zone_id = ? and ledger_id = ?", ledgerName, zoneID, ledgerID)
 	}
 	if err != nil || result == nil {
 		action := "update"
 		if isCreate {
 			action = "create"
 		}
-		params := map[string]string{WrapSqlite3ParamForeignKey: "application id"}
+		params := map[string]string{WrapSqlite3ParamForeignKey: "zone id"}
 		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s ledger - operation '%s-ledger' encountered an issue (%s)", action, action, LogLedgerEntry(ledger)), err, params)
 	}
 
 	var dbLedger Ledger
-	err = tx.QueryRow("SELECT application_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE application_id = ? and ledger_id = ?", applicationID, ledgerID).Scan(
-		&dbLedger.ApplicationID,
+	err = tx.QueryRow("SELECT zone_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID).Scan(
+		&dbLedger.ZoneID,
 		&dbLedger.LedgerID,
 		&dbLedger.CreatedAt,
 		&dbLedger.UpdatedAt,
@@ -116,9 +116,9 @@ func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*L
 }
 
 // UpdateLedgerRef updates the ref of a ledger.
-func (r *Repository) UpdateLedgerRef(tx *sql.Tx, applicationID int64, ledgerID, currentRef, newRef string) error {
-	if err := azvalidators.ValidateCodeID("ledger", applicationID); err != nil {
-		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidApplicationID, applicationID), err)
+func (r *Repository) UpdateLedgerRef(tx *sql.Tx, zoneID int64, ledgerID, currentRef, newRef string) error {
+	if err := azvalidators.ValidateCodeID("ledger", zoneID); err != nil {
+		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidZoneID, zoneID), err)
 	}
 	if err := azvalidators.ValidateUUID("ledger", ledgerID); err != nil {
 		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - ledger id is not valid (id: %s)", ledgerID), err)
@@ -131,10 +131,10 @@ func (r *Repository) UpdateLedgerRef(tx *sql.Tx, applicationID int64, ledgerID, 
 	}
 
 	var dbCurrentRef string
-	err := tx.QueryRow("SELECT ref FROM ledgers WHERE application_id = ? AND ledger_id = ?", applicationID, ledgerID).Scan(&dbCurrentRef)
+	err := tx.QueryRow("SELECT ref FROM ledgers WHERE zone_id = ? AND ledger_id = ?", zoneID, ledgerID).Scan(&dbCurrentRef)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientNotFound, fmt.Sprintf("ledger not found (application_id: %d, ledger_id: %s)", applicationID, ledgerID), err)
+			return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientNotFound, fmt.Sprintf("ledger not found (zone_id: %d, ledger_id: %s)", zoneID, ledgerID), err)
 		}
 		return WrapSqlite3Error("failed to retrieve current ref for ledger", err)
 	}
@@ -143,7 +143,7 @@ func (r *Repository) UpdateLedgerRef(tx *sql.Tx, applicationID int64, ledgerID, 
 		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("current ref mismatch (expected: %s, got: %s)", dbCurrentRef, currentRef))
 	}
 
-	result, err := tx.Exec("UPDATE ledgers SET ref = ? WHERE application_id = ? AND ledger_id = ?", newRef, applicationID, ledgerID)
+	result, err := tx.Exec("UPDATE ledgers SET ref = ? WHERE zone_id = ? AND ledger_id = ?", newRef, zoneID, ledgerID)
 	if err != nil {
 		return WrapSqlite3Error("failed to update ledger ref", err)
 	}
@@ -153,23 +153,23 @@ func (r *Repository) UpdateLedgerRef(tx *sql.Tx, applicationID int64, ledgerID, 
 		return WrapSqlite3Error("failed to get rows affected for update ref", err)
 	}
 	if rows != 1 {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientUpdateConflict, fmt.Sprintf("update failed, no rows affected (application_id: %d, ledger_id: %s)", applicationID, ledgerID))
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientUpdateConflict, fmt.Sprintf("update failed, no rows affected (zone_id: %d, ledger_id: %s)", zoneID, ledgerID))
 	}
 	return nil
 }
 
 // DeleteLedger deletes a ledger.
-func (r *Repository) DeleteLedger(tx *sql.Tx, applicationID int64, ledgerID string) (*Ledger, error) {
-	if err := azvalidators.ValidateCodeID("ledger", applicationID); err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidApplicationID, applicationID), err)
+func (r *Repository) DeleteLedger(tx *sql.Tx, zoneID int64, ledgerID string) (*Ledger, error) {
+	if err := azvalidators.ValidateCodeID("ledger", zoneID); err != nil {
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidZoneID, zoneID), err)
 	}
 	if err := azvalidators.ValidateUUID("ledger", ledgerID); err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - ledger id is not valid (id: %s)", ledgerID), err)
 	}
 
 	var dbLedger Ledger
-	err := tx.QueryRow("SELECT application_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE application_id = ? and ledger_id = ?", applicationID, ledgerID).Scan(
-		&dbLedger.ApplicationID,
+	err := tx.QueryRow("SELECT zone_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID).Scan(
+		&dbLedger.ZoneID,
 		&dbLedger.LedgerID,
 		&dbLedger.CreatedAt,
 		&dbLedger.UpdatedAt,
@@ -180,7 +180,7 @@ func (r *Repository) DeleteLedger(tx *sql.Tx, applicationID int64, ledgerID stri
 	if err != nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - ledger id is not valid (id: %s)", ledgerID), err)
 	}
-	res, err := tx.Exec("DELETE FROM ledgers WHERE application_id = ? and ledger_id = ?", applicationID, ledgerID)
+	res, err := tx.Exec("DELETE FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID)
 	if err != nil || res == nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete ledger - operation 'delete-ledger' encountered an issue (id: %s)", ledgerID), err)
 	}
@@ -192,12 +192,12 @@ func (r *Repository) DeleteLedger(tx *sql.Tx, applicationID int64, ledgerID stri
 }
 
 // FetchLedgers retrieves ledgers.
-func (r *Repository) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]Ledger, error) {
+func (r *Repository) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]Ledger, error) {
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
-	if err := azvalidators.ValidateCodeID("ledger", applicationID); err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf(errorMessageLedgerInvalidApplicationID, applicationID), err)
+	if err := azvalidators.ValidateCodeID("ledger", zoneID); err != nil {
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf(errorMessageLedgerInvalidZoneID, zoneID), err)
 	}
 
 	var dbLedgers []Ledger
@@ -206,8 +206,8 @@ func (r *Repository) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, appli
 	var conditions []string
 	var args []any
 
-	conditions = append(conditions, "application_id = ?")
-	args = append(args, applicationID)
+	conditions = append(conditions, "zone_id = ?")
+	args = append(args, zoneID)
 
 	if filterID != nil {
 		ledgerID := *filterID

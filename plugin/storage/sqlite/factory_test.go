@@ -50,12 +50,12 @@ func TestSQLiteStorageFactory(t *testing.T) {
 	assert.NotNil(centralstorage, "central storage should not be nil")
 	assert.Nil(err, "error should be nil")
 
-	centralAAPStorage, err := centralstorage.GetAAPCentralStorage()
-	assert.NotNil(centralAAPStorage, "central AAP storage should not be nil")
+	centralZAPStorage, err := centralstorage.GetZAPCentralStorage()
+	assert.NotNil(centralZAPStorage, "central ZAP storage should not be nil")
 	assert.Nil(err, "error should be nil")
 
 	centralPAPStorage, err := centralstorage.GetPAPCentralStorage()
-	assert.NotNil(centralPAPStorage, "central AAP storage should not be nil")
+	assert.NotNil(centralPAPStorage, "central ZAP storage should not be nil")
 	assert.Nil(err, "error should be nil")
 
 }

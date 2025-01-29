@@ -89,11 +89,11 @@ func TestCreateLedgerWithSuccess(t *testing.T) {
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLitePAPCentralStorageWithMocks()
 
 	dbOutLedger := &azirepos.Ledger{
-		ApplicationID: 232956849236,
-		LedgerID:      azirepos.GenerateUUID(),
-		Name:          "rent-a-car1",
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+		ZoneID:    232956849236,
+		LedgerID:  azirepos.GenerateUUID(),
+		Name:      "rent-a-car1",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
@@ -172,11 +172,11 @@ func TestUpdateLedgerWithSuccess(t *testing.T) {
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLitePAPCentralStorageWithMocks()
 
 	dbOutLedger := &azirepos.Ledger{
-		ApplicationID: 232956849236,
-		LedgerID:      azirepos.GenerateUUID(),
-		Name:          "rent-a-car1",
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+		ZoneID:    232956849236,
+		LedgerID:  azirepos.GenerateUUID(),
+		Name:      "rent-a-car1",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
@@ -231,7 +231,7 @@ func TestDeleteLedgerWithErrors(t *testing.T) {
 		}
 
 		inLedgerID := azirepos.GenerateUUID()
-		outLedgers, err := storage.DeleteLedger(azirepos.GenerateApplicationID(), inLedgerID)
+		outLedgers, err := storage.DeleteLedger(azirepos.GenerateZoneID(), inLedgerID)
 		assert.Nil(outLedgers, "ledgers should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
@@ -249,11 +249,11 @@ func TestDeleteLedgerWithSuccess(t *testing.T) {
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLitePAPCentralStorageWithMocks()
 
 	dbOutLedger := &azirepos.Ledger{
-		ApplicationID: 232956849236,
-		LedgerID:      azirepos.GenerateUUID(),
-		Name:          "rent-a-car1",
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+		ZoneID:    232956849236,
+		LedgerID:  azirepos.GenerateUUID(),
+		Name:      "rent-a-car1",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
@@ -262,7 +262,7 @@ func TestDeleteLedgerWithSuccess(t *testing.T) {
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
 	inLedgerID := azirepos.GenerateUUID()
-	outLedgers, err := storage.DeleteLedger(azirepos.GenerateApplicationID(), inLedgerID)
+	outLedgers, err := storage.DeleteLedger(azirepos.GenerateZoneID(), inLedgerID)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outLedgers, "ledgers should not be nil")
 	assert.Equal(dbOutLedger.LedgerID, outLedgers.LedgerID, "ledger id should be equal")
@@ -333,18 +333,18 @@ func TestFetchLedgerWithSuccess(t *testing.T) {
 
 	dbOutLedgers := []azirepos.Ledger{
 		{
-			ApplicationID: 232956849236,
-			LedgerID:      azirepos.GenerateUUID(),
-			Name:          "rent-a-car1",
-			CreatedAt:     time.Now(),
-			UpdatedAt:     time.Now(),
+			ZoneID:    232956849236,
+			LedgerID:  azirepos.GenerateUUID(),
+			Name:      "rent-a-car1",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		},
 		{
-			ApplicationID: 232956849236,
-			LedgerID:      azirepos.GenerateUUID(),
-			Name:          "rent-a-car2",
-			CreatedAt:     time.Now(),
-			UpdatedAt:     time.Now(),
+			ZoneID:    232956849236,
+			LedgerID:  azirepos.GenerateUUID(),
+			Name:      "rent-a-car2",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		},
 	}
 

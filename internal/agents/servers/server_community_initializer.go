@@ -20,9 +20,9 @@ import (
 	"fmt"
 
 	azcopier "github.com/permguard/permguard-core/pkg/extensions/copier"
-	aziaap "github.com/permguard/permguard/internal/agents/services/aap"
 	azipap "github.com/permguard/permguard/internal/agents/services/pap"
 	azipdp "github.com/permguard/permguard/internal/agents/services/pdp"
+	azizap "github.com/permguard/permguard/internal/agents/services/zap"
 	azservers "github.com/permguard/permguard/pkg/agents/servers"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
@@ -47,14 +47,14 @@ Copyright © 2022 Nitro Agility S.r.l.
   Find more information at: https://www.permguard.com/docs/0.1/devops/cli-flags/`
 	hostInfos := map[azservices.HostKind]*azservices.HostInfo{
 		azservices.HostAllInOne: {Name: "AllInOne", Use: "all-in-one", Short: "The official Permguard Server - Start all services", Long: fmt.Sprintf(template, "Using this option all services are started.")},
-		azservices.HostAAP:      {Name: "AAP (Application Administration Point)", Use: "pdp", Short: "The official Permguard Server - Start the AAP service", Long: fmt.Sprintf(template, "Using this option the Application Administration Point (AAP) service is started.")},
+		azservices.HostZAP:      {Name: "ZAP (Zone Administration Point)", Use: "pdp", Short: "The official Permguard Server - Start the ZAP service", Long: fmt.Sprintf(template, "Using this option the Zone Administration Point (ZAP) service is started.")},
 		azservices.HostPAP:      {Name: "PAP (Policy Administration Point)", Use: "pap", Short: "The official Permguard Server - Start the PAP service", Long: fmt.Sprintf(template, "Using this option the Policy Administration Point (PAP) service is started.")},
 		azservices.HostPIP:      {Name: "PIP (Policy Information Point)", Use: "pip", Short: "The official Permguard Server - Start the PIP service", Long: fmt.Sprintf(template, "Using this option the Policy Information Point (PIP) service is started.")},
 		azservices.HostPDP:      {Name: "PDP (Policy Decision Point)", Use: "pdp", Short: "The official Permguard Server - Start the PDP service", Long: fmt.Sprintf(template, "Using this option the Policy Decision Point (PDP) service is started.")},
 	}
-	hosts := []azservices.HostKind{azservices.HostAllInOne, azservices.HostAAP, azservices.HostPAP, azservices.HostPIP, azservices.HostPDP}
+	hosts := []azservices.HostKind{azservices.HostAllInOne, azservices.HostZAP, azservices.HostPAP, azservices.HostPIP, azservices.HostPDP}
 	storages := []azstorage.StorageKind{azstorage.StorageSQLite}
-	services := []azservices.ServiceKind{azservices.ServiceAAP, azservices.ServicePAP, azservices.ServicePIP, azservices.ServicePDP}
+	services := []azservices.ServiceKind{azservices.ServiceZAP, azservices.ServicePAP, azservices.ServicePIP, azservices.ServicePDP}
 
 	if !host.IsValid(hosts) {
 		panic(fmt.Sprintf("server: invalid server kind: %s", host))
@@ -127,10 +127,10 @@ func (c *CommunityServerInitializer) GetServicesFactories() (map[azservices.Serv
 	factories := map[azservices.ServiceKind]azservices.ServiceFactoryProvider{}
 	for _, serviceKind := range c.services {
 		switch serviceKind {
-		case azservices.ServiceAAP:
-			fFactCfg := func() (azservices.ServiceFactoryConfig, error) { return aziaap.NewAAPServiceFactoryConfig() }
+		case azservices.ServiceZAP:
+			fFactCfg := func() (azservices.ServiceFactoryConfig, error) { return azizap.NewZAPServiceFactoryConfig() }
 			fFact := func(config azservices.ServiceFactoryConfig) (azservices.ServiceFactory, error) {
-				return aziaap.NewAAPServiceFactory(config.(*aziaap.AAPServiceFactoryConfig))
+				return azizap.NewZAPServiceFactory(config.(*azizap.ZAPServiceFactoryConfig))
 			}
 			fcty, err := azservices.NewServiceFactoryProvider(fFactCfg, fFact)
 			if err != nil {

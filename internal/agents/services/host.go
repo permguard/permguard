@@ -67,7 +67,7 @@ func (h *HostConfig) GetServicesFactories() map[azservices.ServiceKind]azservice
 	return azcopier.CopyMap(h.servicesFactories)
 }
 
-// GetAppData returns the app data.
+// GetAppData returns the zone data.
 func (h *HostConfig) GetAppData() string {
 	return h.appData
 }

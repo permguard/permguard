@@ -68,7 +68,7 @@ message Action {
 
 // AuthorizationContextRequest is the input context for making the authorization decision.
 message AuthorizationContextRequest {
-	int64 ApplicationID = 1;
+	int64 ZoneID = 1;
 	PolicyStore PolicyStore = 2;
 	optional Principal Principal = 3;
 	optional Entities Entities = 4;

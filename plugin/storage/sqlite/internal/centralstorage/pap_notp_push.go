@@ -147,7 +147,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 			return nil, err
 		}
 		remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDKey)
-		err = s.sqlRepo.UpdateLedgerRef(tx, ledger.ApplicationID, ledger.LedgerID, ledger.Ref, remoteCommitID)
+		err = s.sqlRepo.UpdateLedgerRef(tx, ledger.ZoneID, ledger.LedgerID, ledger.Ref, remoteCommitID)
 		if err := tx.Commit(); err != nil {
 			return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 		}

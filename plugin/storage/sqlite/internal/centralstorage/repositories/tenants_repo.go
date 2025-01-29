@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	// errorMessageTenantInvalidApplicationID is the error message tenant invalid application id.
-	errorMessageTenantInvalidApplicationID = "invalid client input - application id is not valid (id: %d)"
+	// errorMessageTenantInvalidZoneID is the error message tenant invalid zone id.
+	errorMessageTenantInvalidZoneID = "invalid client input - zone id is not valid (id: %d)"
 )
 
 // UpsertTenant creates or updates an tenant.
@@ -38,8 +38,8 @@ func (r *Repository) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*T
 	if tenant == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - tenant data is missing or malformed (%s)", LogTenantEntry(tenant)))
 	}
-	if err := azvalidators.ValidateCodeID("tenant", tenant.ApplicationID); err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidApplicationID, tenant.ApplicationID), err)
+	if err := azvalidators.ValidateCodeID("tenant", tenant.ZoneID); err != nil {
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidZoneID, tenant.ZoneID), err)
 	}
 	if !isCreate && azvalidators.ValidateUUID("tenant", tenant.TenantID) != nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - tenant id is not valid (%s)", LogTenantEntry(tenant)))
@@ -49,29 +49,29 @@ func (r *Repository) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*T
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogTenantEntry(tenant)), err)
 	}
 
-	applicationID := tenant.ApplicationID
+	zoneID := tenant.ZoneID
 	tenantID := tenant.TenantID
 	tenantName := tenant.Name
 	var result sql.Result
 	var err error
 	if isCreate {
 		tenantID = GenerateUUID()
-		result, err = tx.Exec("INSERT INTO tenants (application_id, tenant_id, name) VALUES (?, ?, ?)", applicationID, tenantID, tenantName)
+		result, err = tx.Exec("INSERT INTO tenants (zone_id, tenant_id, name) VALUES (?, ?, ?)", zoneID, tenantID, tenantName)
 	} else {
-		result, err = tx.Exec("UPDATE tenants SET name = ? WHERE application_id = ? and tenant_id = ?", tenantName, applicationID, tenantID)
+		result, err = tx.Exec("UPDATE tenants SET name = ? WHERE zone_id = ? and tenant_id = ?", tenantName, zoneID, tenantID)
 	}
 	if err != nil || result == nil {
 		action := "update"
 		if isCreate {
 			action = "create"
 		}
-		params := map[string]string{WrapSqlite3ParamForeignKey: "application id"}
+		params := map[string]string{WrapSqlite3ParamForeignKey: "zone id"}
 		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s tenant - operation '%s-tenant' encountered an issue (%s)", action, action, LogTenantEntry(tenant)), err, params)
 	}
 
 	var dbTenant Tenant
-	err = tx.QueryRow("SELECT application_id, tenant_id, created_at, updated_at, name FROM tenants WHERE application_id = ? and tenant_id = ?", applicationID, tenantID).Scan(
-		&dbTenant.ApplicationID,
+	err = tx.QueryRow("SELECT zone_id, tenant_id, created_at, updated_at, name FROM tenants WHERE zone_id = ? and tenant_id = ?", zoneID, tenantID).Scan(
+		&dbTenant.ZoneID,
 		&dbTenant.TenantID,
 		&dbTenant.CreatedAt,
 		&dbTenant.UpdatedAt,
@@ -84,17 +84,17 @@ func (r *Repository) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*T
 }
 
 // DeleteTenant deletes an tenant.
-func (r *Repository) DeleteTenant(tx *sql.Tx, applicationID int64, tenantID string) (*Tenant, error) {
-	if err := azvalidators.ValidateCodeID("tenant", applicationID); err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidApplicationID, applicationID), err)
+func (r *Repository) DeleteTenant(tx *sql.Tx, zoneID int64, tenantID string) (*Tenant, error) {
+	if err := azvalidators.ValidateCodeID("tenant", zoneID); err != nil {
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidZoneID, zoneID), err)
 	}
 	if err := azvalidators.ValidateUUID("tenant", tenantID); err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - tenant id is not valid (id: %s)", tenantID), err)
 	}
 
 	var dbTenant Tenant
-	err := tx.QueryRow("SELECT application_id, tenant_id, created_at, updated_at, name FROM tenants WHERE application_id = ? and tenant_id = ?", applicationID, tenantID).Scan(
-		&dbTenant.ApplicationID,
+	err := tx.QueryRow("SELECT zone_id, tenant_id, created_at, updated_at, name FROM tenants WHERE zone_id = ? and tenant_id = ?", zoneID, tenantID).Scan(
+		&dbTenant.ZoneID,
 		&dbTenant.TenantID,
 		&dbTenant.CreatedAt,
 		&dbTenant.UpdatedAt,
@@ -103,7 +103,7 @@ func (r *Repository) DeleteTenant(tx *sql.Tx, applicationID int64, tenantID stri
 	if err != nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - tenant id is not valid (id: %s)", tenantID), err)
 	}
-	res, err := tx.Exec("DELETE FROM tenants WHERE application_id = ? and tenant_id = ?", applicationID, tenantID)
+	res, err := tx.Exec("DELETE FROM tenants WHERE zone_id = ? and tenant_id = ?", zoneID, tenantID)
 	if err != nil || res == nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete tenant - operation 'delete-tenant' encountered an issue (id: %s)", tenantID), err)
 	}
@@ -115,12 +115,12 @@ func (r *Repository) DeleteTenant(tx *sql.Tx, applicationID int64, tenantID stri
 }
 
 // FetchTenants retrieves tenants.
-func (r *Repository) FetchTenants(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]Tenant, error) {
+func (r *Repository) FetchTenants(db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]Tenant, error) {
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
-	if err := azvalidators.ValidateCodeID("tenant", applicationID); err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf(errorMessageTenantInvalidApplicationID, applicationID), err)
+	if err := azvalidators.ValidateCodeID("tenant", zoneID); err != nil {
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf(errorMessageTenantInvalidZoneID, zoneID), err)
 	}
 
 	var dbTenants []Tenant
@@ -129,8 +129,8 @@ func (r *Repository) FetchTenants(db *sqlx.DB, page int32, pageSize int32, appli
 	var conditions []string
 	var args []any
 
-	conditions = append(conditions, "application_id = ?")
-	args = append(args, applicationID)
+	conditions = append(conditions, "zone_id = ?")
+	args = append(args, zoneID)
 
 	if filterID != nil {
 		tenantID := *filterID

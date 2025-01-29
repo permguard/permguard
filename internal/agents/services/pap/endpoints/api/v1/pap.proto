@@ -29,7 +29,7 @@ option go_package = "github.com/permguard/permguard/internal/hosts/api/pap/v1";
 message LedgerFetchRequest {
   optional int32 Page = 1;
   optional int32 PageSize = 2;
-  int64 ApplicationID = 3;
+  int64 ZoneID = 3;
   optional string LedgerID = 4;
 	optional string Kind = 5;
   optional string Name = 6;
@@ -37,14 +37,14 @@ message LedgerFetchRequest {
 
 // Ledger create request.
 message LedgerCreateRequest {
-  int64 ApplicationID = 1;
+  int64 ZoneID = 1;
   string Kind = 2;
   string Name = 3;
 }
 
 // Ledger update request.
 message LedgerUpdateRequest {
-  int64 ApplicationID = 1;
+  int64 ZoneID = 1;
   string LedgerID = 2;
   string Kind = 3;
   string Name = 4;
@@ -52,14 +52,14 @@ message LedgerUpdateRequest {
 
 // Ledger delete request.
 message LedgerDeleteRequest {
-  int64 ApplicationID = 1;
+  int64 ZoneID = 1;
   string LedgerID = 2;
 }
 
 // Ledger response.
 message LedgerResponse {
   string LedgerID = 1;
-  int64 ApplicationID = 2;
+  int64 ZoneID = 2;
   google.protobuf.Timestamp CreatedAt = 3;
   google.protobuf.Timestamp UpdatedAt = 4;
   string Kind = 5;
@@ -71,7 +71,7 @@ message LedgerResponse {
 
 // Ledger stream request.
 message LedgerStreamRequest {
-  int64 ApplicationID = 1;
+  int64 ZoneID = 1;
   string LedgerID = 2;
 }
 

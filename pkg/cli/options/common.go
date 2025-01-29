@@ -37,7 +37,7 @@ const (
 	flagValLogLevelInfo = "INFO"
 	// WarnLevel logs are more important than Info, but don't need individual human review.
 	flagValLogLevelWarn = "WARN"
-	// ErrorLevel logs are high-priority. If an application is running smoothly, it shouldn't generate any error-level logs.
+	// ErrorLevel logs are high-priority. If a zone is running smoothly, it shouldn't generate any error-level logs.
 	flagValLogLevelError = "ERROR"
 	// DPanicLevel logs are particularly important errors. In development the logger panics after writing the message.
 	flagValLogLevelDPanic = "DPANIC"

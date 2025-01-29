@@ -32,7 +32,7 @@ When reviewing licenses, please ensure you are referencing the appropriate versi
 
 - **Opinionated Framework**: It provides a clear and structured layer for designing authorization and authentication models, offering best practices for modern identity and access management.
 
-- **Scalability and Flexibility**: Built with a focus on scalability, Permguard supports multi-application and multi-tenant environments, empowering organizations to manage access control efficiently.
+- **Scalability and Flexibility**: Built with a focus on scalability, Permguard supports multi-zone and multi-tenant environments, empowering organizations to manage access control efficiently.
 
 - **Zero Trust Compliance**: By adopting the **Zero Trust Auth** ([ZTAuth*](https://medium.com/ztauth)) architecture, Permguard implements versionable and composable **Auth\*** models that can be replicated in **proximity nodes**. This allows it to overcome the limitations of partially connected devices and ensures seamless policy enforcement across diverse environments.
 

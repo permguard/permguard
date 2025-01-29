@@ -52,7 +52,7 @@ func authorizationCheckBuildContextResponse(authzDecision *azauthz.Authorization
 			Message: userError.GetMessage(),
 		}
 	} else if authzDecision.GetDecision() == false {
-			ctxResponse.ReasonUser = &azmodelspdp.ReasonResponse{
+		ctxResponse.ReasonUser = &azmodelspdp.ReasonResponse{
 			Code:    azauthz.AuthzErrInternalErrorCode,
 			Message: azauthz.AuthzErrInternalErrorMessage,
 		}
@@ -123,7 +123,7 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrBadRequestCode, err.Error(), azauthz.AuthzErrBadRequestMessage), nil
 	}
 
-	dbLedgers, err := s.sqlRepo.FetchLedgers(db, 1, 2, authzCtx.ApplicationID, &authzCtx.PolicyStore.ID, nil)
+	dbLedgers, err := s.sqlRepo.FetchLedgers(db, 1, 2, authzCtx.ZoneID, &authzCtx.PolicyStore.ID, nil)
 	if err != nil {
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrBadRequestCode, err.Error(), azauthz.AuthzErrBadRequestMessage), nil
 	}

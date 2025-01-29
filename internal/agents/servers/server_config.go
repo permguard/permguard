@@ -92,7 +92,7 @@ func (c *ServerConfig) GetServicesFactories() map[azservices.ServiceKind]azservi
 	return azcopier.CopyMap(c.servicesFactories)
 }
 
-// GetAppData returns the app data.
+// GetAppData returns the zone data.
 func (c *ServerConfig) GetAppData() string {
 	return c.appData
 }
@@ -103,7 +103,7 @@ func (c *ServerConfig) AddFlags(flagSet *flag.FlagSet) error {
 	if err != nil {
 		return err
 	}
-	flagSet.String(azoptions.FlagName(flagPrefixServer, flagSuffixAppData), "./", "directory to be used as application data")
+	flagSet.String(azoptions.FlagName(flagPrefixServer, flagSuffixAppData), "./", "directory to be used as zone data")
 	for _, fcty := range c.storagesFactories {
 		config, _ := fcty.GetFactoryConfig()
 		err = config.AddFlags(flagSet)
@@ -131,7 +131,7 @@ func (c *ServerConfig) InitFromViper(v *viper.Viper) error {
 	c.logLevel = logLevel
 	c.appData = v.GetString(azoptions.FlagName(flagPrefixServer, flagSuffixAppData))
 	if !azvalidators.IsValidPath(c.appData) {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliArguments, "invalid app data directory")
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliArguments, "invalid zone data directory")
 	}
 	for _, fcty := range c.storagesFactories {
 		config, err := fcty.GetFactoryConfig()

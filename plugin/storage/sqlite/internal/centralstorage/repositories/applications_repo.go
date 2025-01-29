@@ -30,122 +30,122 @@ import (
 	azvalidators "github.com/permguard/permguard/pkg/core/validators"
 )
 
-// GenerateApplicationID generates a random application id.
-func GenerateApplicationID() int64 {
+// GenerateZoneID generates a random zone id.
+func GenerateZoneID() int64 {
 	const base = 100000000000
 	const maxRange = 900000000000
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	randomNumber := r.Int63n(maxRange)
-	applicationID := base + randomNumber
-	return applicationID
+	zoneID := base + randomNumber
+	return zoneID
 }
 
-// UpsertApplication creates or updates an application.
-func (r *Repository) UpsertApplication(tx *sql.Tx, isCreate bool, application *Application) (*Application, error) {
-	if application == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - application data is missing or malformed (%s)", LogApplicationEntry(application)))
+// UpsertZone creates or updates a zone.
+func (r *Repository) UpsertZone(tx *sql.Tx, isCreate bool, zone *Zone) (*Zone, error) {
+	if zone == nil {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - zone data is missing or malformed (%s)", LogZoneEntry(zone)))
 	}
-	if !isCreate && azvalidators.ValidateCodeID("application", application.ApplicationID) != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - application id is not valid (%s)", LogApplicationEntry(application)))
+	if !isCreate && azvalidators.ValidateCodeID("zone", zone.ZoneID) != nil {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - zone id is not valid (%s)", LogZoneEntry(zone)))
 	}
-	if err := azvalidators.ValidateName("application", application.Name); err != nil {
-		errorMessage := "invalid client input - application name is not valid (%s)"
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogApplicationEntry(application)), err)
+	if err := azvalidators.ValidateName("zone", zone.Name); err != nil {
+		errorMessage := "invalid client input - zone name is not valid (%s)"
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogZoneEntry(zone)), err)
 	}
 
-	applicationID := application.ApplicationID
-	applicationName := application.Name
+	zoneID := zone.ZoneID
+	zoneName := zone.Name
 	var result sql.Result
 	var err error
 	if isCreate {
-		applicationID = GenerateApplicationID()
-		result, err = tx.Exec("INSERT INTO applications (application_id, name) VALUES (?, ?)", applicationID, applicationName)
+		zoneID = GenerateZoneID()
+		result, err = tx.Exec("INSERT INTO zones (zone_id, name) VALUES (?, ?)", zoneID, zoneName)
 	} else {
-		result, err = tx.Exec("UPDATE applications SET name = ? WHERE application_id = ?", applicationName, applicationID)
+		result, err = tx.Exec("UPDATE zones SET name = ? WHERE zone_id = ?", zoneName, zoneID)
 	}
 	if err != nil || result == nil {
 		action := "update"
 		if isCreate {
 			action = "create"
 		}
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to %s application - operation '%s-application' encountered an issue (%s)", action, action, LogApplicationEntry(application)), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to %s zone - operation '%s-zone' encountered an issue (%s)", action, action, LogZoneEntry(zone)), err)
 	}
 
-	var dbApplication Application
-	err = tx.QueryRow("SELECT application_id, created_at, updated_at, name FROM applications WHERE application_id = ?", applicationID).Scan(
-		&dbApplication.ApplicationID,
-		&dbApplication.CreatedAt,
-		&dbApplication.UpdatedAt,
-		&dbApplication.Name,
+	var dbZone Zone
+	err = tx.QueryRow("SELECT zone_id, created_at, updated_at, name FROM zones WHERE zone_id = ?", zoneID).Scan(
+		&dbZone.ZoneID,
+		&dbZone.CreatedAt,
+		&dbZone.UpdatedAt,
+		&dbZone.Name,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve application - operation 'retrieve-created-application' encountered an issue (%s)", LogApplicationEntry(application)), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve zone - operation 'retrieve-created-zone' encountered an issue (%s)", LogZoneEntry(zone)), err)
 	}
-	return &dbApplication, nil
+	return &dbZone, nil
 }
 
-// DeleteApplication deletes an application.
-func (r *Repository) DeleteApplication(tx *sql.Tx, applicationID int64) (*Application, error) {
-	if err := azvalidators.ValidateCodeID("application", applicationID); err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - application id is not valid (id: %d)", applicationID), err)
+// DeleteZone deletes a zone.
+func (r *Repository) DeleteZone(tx *sql.Tx, zoneID int64) (*Zone, error) {
+	if err := azvalidators.ValidateCodeID("zone", zoneID); err != nil {
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - zone id is not valid (id: %d)", zoneID), err)
 	}
 
-	var dbApplication Application
-	err := tx.QueryRow("SELECT application_id, created_at, updated_at, name FROM applications WHERE application_id = ?", applicationID).Scan(
-		&dbApplication.ApplicationID,
-		&dbApplication.CreatedAt,
-		&dbApplication.UpdatedAt,
-		&dbApplication.Name,
+	var dbZone Zone
+	err := tx.QueryRow("SELECT zone_id, created_at, updated_at, name FROM zones WHERE zone_id = ?", zoneID).Scan(
+		&dbZone.ZoneID,
+		&dbZone.CreatedAt,
+		&dbZone.UpdatedAt,
+		&dbZone.Name,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - application id is not valid (id: %d)", applicationID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - zone id is not valid (id: %d)", zoneID), err)
 	}
-	res, err := tx.Exec("DELETE FROM applications WHERE application_id = ?", applicationID)
+	res, err := tx.Exec("DELETE FROM zones WHERE zone_id = ?", zoneID)
 	if err != nil || res == nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete application - operation 'delete-application' encountered an issue (id: %d)", applicationID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete zone - operation 'delete-zone' encountered an issue (id: %d)", zoneID), err)
 	}
 	rows, err := res.RowsAffected()
 	if err != nil || rows != 1 {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete application - operation 'delete-application' encountered an issue (id: %d)", applicationID), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete zone - operation 'delete-zone' encountered an issue (id: %d)", zoneID), err)
 	}
-	return &dbApplication, nil
+	return &dbZone, nil
 }
 
-// FetchApplications retrieves applications.
-func (r *Repository) FetchApplications(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]Application, error) {
+// FetchZones retrieves zones.
+func (r *Repository) FetchZones(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]Zone, error) {
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
-	var dbApplications []Application
+	var dbZones []Zone
 
-	baseQuery := "SELECT * FROM applications"
+	baseQuery := "SELECT * FROM zones"
 	var conditions []string
 	var args []any
 
 	if filterID != nil {
-		applicationID := *filterID
-		if err := azvalidators.ValidateCodeID("application", applicationID); err != nil {
-			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf("invalid client input - application id is not valid (id: %d)", applicationID), err)
+		zoneID := *filterID
+		if err := azvalidators.ValidateCodeID("zone", zoneID); err != nil {
+			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf("invalid client input - zone id is not valid (id: %d)", zoneID), err)
 		}
-		conditions = append(conditions, "application_id = ?")
-		args = append(args, applicationID)
+		conditions = append(conditions, "zone_id = ?")
+		args = append(args, zoneID)
 	}
 
 	if filterName != nil {
-		applicationName := *filterName
-		if err := azvalidators.ValidateName("application", applicationName); err != nil {
-			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientName, fmt.Sprintf("invalid client input - application name is not valid (name: %s)", applicationName), err)
+		zoneName := *filterName
+		if err := azvalidators.ValidateName("zone", zoneName); err != nil {
+			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientName, fmt.Sprintf("invalid client input - zone name is not valid (name: %s)", zoneName), err)
 		}
-		applicationName = "%" + applicationName + "%"
+		zoneName = "%" + zoneName + "%"
 		conditions = append(conditions, "name LIKE ?")
-		args = append(args, applicationName)
+		args = append(args, zoneName)
 	}
 
 	if len(conditions) > 0 {
 		baseQuery += " WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	baseQuery += " ORDER BY application_id ASC"
+	baseQuery += " ORDER BY zone_id ASC"
 
 	limit := pageSize
 	offset := (page - 1) * pageSize
@@ -153,10 +153,10 @@ func (r *Repository) FetchApplications(db *sqlx.DB, page int32, pageSize int32, 
 
 	args = append(args, limit, offset)
 
-	err := db.Select(&dbApplications, baseQuery, args...)
+	err := db.Select(&dbZones, baseQuery, args...)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve applications - operation 'retrieve-applications' encountered an issue with parameters %v", args), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve zones - operation 'retrieve-zones' encountered an issue with parameters %v", args), err)
 	}
 
-	return dbApplications, nil
+	return dbZones, nil
 }

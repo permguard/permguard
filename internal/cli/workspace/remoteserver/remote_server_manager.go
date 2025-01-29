@@ -50,8 +50,8 @@ func (m *RemoteServerManager) GetServerRemoteLedger(remoteInfo *azicliwkscommon.
 	if ledgerInfo == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "ledger info is nil")
 	}
-	appServer := fmt.Sprintf("%s:%d", remoteInfo.GetServer(), remoteInfo.GetAAPPort())
-	aapClient, err := aziclients.NewGrpcAAPClient(appServer)
+	zoneerver := fmt.Sprintf("%s:%d", remoteInfo.GetServer(), remoteInfo.GetZAPPort())
+	zapClient, err := aziclients.NewGrpcZAPClient(zoneerver)
 	if err != nil {
 		return nil, err
 	}
@@ -60,13 +60,13 @@ func (m *RemoteServerManager) GetServerRemoteLedger(remoteInfo *azicliwkscommon.
 	if err != nil {
 		return nil, err
 	}
-	applicationID := ledgerInfo.GetApplicationID()
+	zoneID := ledgerInfo.GetZoneID()
 	ledger := ledgerInfo.GetLedger()
-	srvApplications, err := aapClient.FetchApplicationsByID(1, 1, applicationID)
-	if err != nil || srvApplications == nil || len(srvApplications) == 0 {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("application %d does not exist", applicationID), err)
+	srvZones, err := zapClient.FetchZonesByID(1, 1, zoneID)
+	if err != nil || srvZones == nil || len(srvZones) == 0 {
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("zone %d does not exist", zoneID), err)
 	}
-	srvLedger, err := papClient.FetchLedgersByName(1, 1, applicationID, ledger)
+	srvLedger, err := papClient.FetchLedgersByName(1, 1, zoneID, ledger)
 	if err != nil || srvLedger == nil || len(srvLedger) == 0 {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("ledger %s does not exist", ledger), err)
 	}
@@ -94,7 +94,7 @@ type NOTPClient interface {
 }
 
 // NOTPPush push objects using the NOTP protocol.
-func (m *RemoteServerManager) NOTPPush(server string, papPort int, applicationID int64, ledgerID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
+func (m *RemoteServerManager) NOTPPush(server string, papPort int, zoneID int64, ledgerID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
 	pppServer := fmt.Sprintf("%s:%d", server, papPort)
 	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
 	if err != nil {
@@ -141,11 +141,11 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, applicationID
 			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid state %d", handlerCtx.GetCurrentStateID()))
 		}
 	}
-	return papClient.NOTPStream(hostHandler, applicationID, ledgerID, bag, notpstatemachines.PushFlowType)
+	return papClient.NOTPStream(hostHandler, zoneID, ledgerID, bag, notpstatemachines.PushFlowType)
 }
 
 // NOTPPull pull objects using the NOTP protocol.
-func (m *RemoteServerManager) NOTPPull(server string, papPort int, applicationID int64, ledgerID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
+func (m *RemoteServerManager) NOTPPull(server string, papPort int, zoneID int64, ledgerID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
 	pppServer := fmt.Sprintf("%s:%d", server, papPort)
 	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
 	if err != nil {
@@ -192,5 +192,5 @@ func (m *RemoteServerManager) NOTPPull(server string, papPort int, applicationID
 			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid state %d", handlerCtx.GetCurrentStateID()))
 		}
 	}
-	return papClient.NOTPStream(hostHandler, applicationID, ledgerID, bag, notpstatemachines.PullFlowType)
+	return papClient.NOTPStream(hostHandler, zoneID, ledgerID, bag, notpstatemachines.PullFlowType)
 }

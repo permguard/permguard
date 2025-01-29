@@ -21,13 +21,13 @@ CREATE TABLE tenants (
     updated_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
     name TEXT NOT NULL,
 	-- REFERENCES
-	application_id INTEGER NOT NULL REFERENCES applications(application_id) ON UPDATE CASCADE ON DELETE CASCADE,
+	zone_id INTEGER NOT NULL REFERENCES zones(zone_id) ON UPDATE CASCADE ON DELETE CASCADE,
 	-- CONSTRAINTS
-	CONSTRAINT tenants_applicationid_name_key UNIQUE (application_id, name)
+	CONSTRAINT tenants_zoneid_name_key UNIQUE (zone_id, name)
 );
 
 CREATE INDEX tenants_name_idx ON tenants(name);
-CREATE INDEX tenants_applicationid_idx ON tenants(application_id);
+CREATE INDEX tenants_zoneid_idx ON tenants(zone_id);
 
 -- Trigger to track changes in the `tenants` table after insert
 -- +goose StatementBegin
@@ -35,11 +35,11 @@ CREATE TRIGGER tenants_change_streams_after_insert
 AFTER INSERT ON tenants
 FOR EACH ROW
 BEGIN
-    INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
-		VALUES ('TENANT', 'INSERT', NEW.tenant_id, NEW.application_id,
+    INSERT INTO change_streams (change_entity, change_type, change_entity_id, zone_id, payload)
+		VALUES ('TENANT', 'INSERT', NEW.tenant_id, NEW.zone_id,
 				'{"tenant_id": "' || NEW.tenant_id || '", "created_at": "' || NEW.created_at ||
 				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name ||
-				'", "application_id": ' || NEW.application_id || '}');
+				'", "zone_id": ' || NEW.zone_id || '}');
 END;
 -- +goose StatementEnd
 
@@ -50,11 +50,11 @@ AFTER UPDATE ON tenants
 FOR EACH ROW
 BEGIN
     UPDATE tenants SET updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW') WHERE tenant_id = OLD.tenant_id;
-    INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
-		VALUES ('TENANT', 'UPDATE', NEW.tenant_id, NEW.application_id,
+    INSERT INTO change_streams (change_entity, change_type, change_entity_id, zone_id, payload)
+		VALUES ('TENANT', 'UPDATE', NEW.tenant_id, NEW.zone_id,
 				'{"tenant_id": "' || NEW.tenant_id || '", "created_at": "' || NEW.created_at ||
 				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name ||
-				'", "application_id": ' || NEW.application_id || '}');
+				'", "zone_id": ' || NEW.zone_id || '}');
 END;
 -- +goose StatementEnd
 
@@ -64,11 +64,11 @@ CREATE TRIGGER tenants_change_streams_after_delete
 AFTER DELETE ON tenants
 FOR EACH ROW
 BEGIN
-    INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
-		VALUES ('TENANT', 'DELETE', OLD.tenant_id, OLD.application_id,
+    INSERT INTO change_streams (change_entity, change_type, change_entity_id, zone_id, payload)
+		VALUES ('TENANT', 'DELETE', OLD.tenant_id, OLD.zone_id,
 				'{"tenant_id": "' || OLD.tenant_id || '", "created_at": "' || OLD.created_at ||
 				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name ||
-				'", "application_id": ' || OLD.application_id || '}');
+				'", "zone_id": ' || OLD.zone_id || '}');
 END;
 -- +goose StatementEnd
 

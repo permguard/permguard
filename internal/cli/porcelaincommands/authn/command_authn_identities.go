@@ -26,7 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azmodelsaap "github.com/permguard/permguard/pkg/transport/models/aap"
+	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 const (
@@ -45,23 +45,23 @@ func runECommandForUpsertIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	aapTarget := ctx.GetAAPTarget()
-	client, err := deps.CreateGrpcAAPClient(aapTarget)
+	zapTarget := ctx.GetZAPTarget()
+	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
+		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	applicationID := v.GetInt64(azoptions.FlagName(commandNameForIdentity, aziclicommon.FlagCommonApplicationID))
+	zoneID := v.GetInt64(azoptions.FlagName(commandNameForIdentity, aziclicommon.FlagCommonZoneID))
 	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
 	kind := v.GetString(azoptions.FlagName(flagPrefix, flagIdentityKind))
-	identity := &azmodelsaap.Identity{
-		ApplicationID: applicationID,
-		Kind:          kind,
-		Name:          name,
+	identity := &azmodelszap.Identity{
+		ZoneID: zoneID,
+		Kind:   kind,
+		Name:   name,
 	}
 	if isCreate {
 		identitySourceID := v.GetString(azoptions.FlagName(flagPrefix, flagIdentitySourceID))
-		identity, err = client.CreateIdentity(applicationID, identitySourceID, kind, name)
+		identity, err = client.CreateIdentity(zoneID, identitySourceID, kind, name)
 	} else {
 		identityID := v.GetString(azoptions.FlagName(flagPrefix, flagIdentityID))
 		identity.IdentityID = identityID
@@ -86,7 +86,7 @@ func runECommandForUpsertIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 		identityName := identity.Name
 		output[identityID] = identityName
 	} else if ctx.IsJSONOutput() {
-		output["identities"] = []*azmodelsaap.Identity{identity}
+		output["identities"] = []*azmodelszap.Identity{identity}
 	}
 	printer.PrintlnMap(output)
 	return nil
@@ -106,8 +106,8 @@ func createCommandForIdentities(deps azcli.CliDependenciesProvider, v *viper.Vip
 		RunE:  runECommandForIdentities,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonApplicationID, 0, "application id")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentity, aziclicommon.FlagCommonApplicationID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonApplicationID))
+	command.PersistentFlags().Int64(aziclicommon.FlagCommonZoneID, 0, "zone id")
+	v.BindPFlag(azoptions.FlagName(commandNameForIdentity, aziclicommon.FlagCommonZoneID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonZoneID))
 
 	command.AddCommand(createCommandForIdentityCreate(deps, v))
 	command.AddCommand(createCommandForIdentityUpdate(deps, v))

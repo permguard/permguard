@@ -23,13 +23,13 @@ CREATE TABLE ledgers (
 	kind INTEGER NOT NULL,
 	ref  TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000',
 	-- REFERENCES
-	application_id INTEGER NOT NULL REFERENCES applications(application_id) ON UPDATE CASCADE ON DELETE CASCADE,
+	zone_id INTEGER NOT NULL REFERENCES zones(zone_id) ON UPDATE CASCADE ON DELETE CASCADE,
 	-- CONSTRAINTS
-	CONSTRAINT ledgers_applicationid_name_key UNIQUE (application_id, name)
+	CONSTRAINT ledgers_zoneid_name_key UNIQUE (zone_id, name)
 );
 
 CREATE INDEX ledgers_name_idx ON ledgers(name);
-CREATE INDEX ledgers_applicationid_idx ON ledgers(application_id);
+CREATE INDEX ledgers_zoneid_idx ON ledgers(zone_id);
 
 -- Trigger to track changes in the `ledgers` table after insert
 -- +goose StatementBegin
@@ -37,11 +37,11 @@ CREATE TRIGGER ledgers_change_streams_after_insert
 AFTER INSERT ON ledgers
 FOR EACH ROW
 BEGIN
-    INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
-		VALUES ('LEDGER', 'INSERT', NEW.ledger_id, NEW.application_id,
+    INSERT INTO change_streams (change_entity, change_type, change_entity_id, zone_id, payload)
+		VALUES ('LEDGER', 'INSERT', NEW.ledger_id, NEW.zone_id,
 				'{"ledger_id": "' || NEW.ledger_id || '", "created_at": "' || NEW.created_at ||
 				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name || '", "kind": "' || NEW.kind ||
-				'", "application_id": ' || NEW.application_id || ', "ref": "' || NEW.ref || '"}');
+				'", "zone_id": ' || NEW.zone_id || ', "ref": "' || NEW.ref || '"}');
 END;
 -- +goose StatementEnd
 
@@ -52,11 +52,11 @@ AFTER UPDATE ON ledgers
 FOR EACH ROW
 BEGIN
     UPDATE ledgers SET updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW') WHERE ledger_id = OLD.ledger_id;
-    INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
-		VALUES ('LEDGER', 'UPDATE', NEW.ledger_id, NEW.application_id,
+    INSERT INTO change_streams (change_entity, change_type, change_entity_id, zone_id, payload)
+		VALUES ('LEDGER', 'UPDATE', NEW.ledger_id, NEW.zone_id,
 				'{"ledger_id": "' || NEW.ledger_id || '", "created_at": "' || NEW.created_at ||
 				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name || '", "kind": "' || NEW.kind ||
-				'", "application_id": ' || NEW.application_id || ', "ref": "' || NEW.ref || '"}');
+				'", "zone_id": ' || NEW.zone_id || ', "ref": "' || NEW.ref || '"}');
 END;
 -- +goose StatementEnd
 
@@ -66,11 +66,11 @@ CREATE TRIGGER ledgers_change_streams_after_delete
 AFTER DELETE ON ledgers
 FOR EACH ROW
 BEGIN
-    INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
-		VALUES ('LEDGER', 'DELETE', OLD.ledger_id, OLD.application_id,
+    INSERT INTO change_streams (change_entity, change_type, change_entity_id, zone_id, payload)
+		VALUES ('LEDGER', 'DELETE', OLD.ledger_id, OLD.zone_id,
 				'{"ledger_id": "' || OLD.ledger_id || '", "created_at": "' || OLD.created_at ||
 				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name || OLD.name || '", "kind": "' || OLD.kind ||
-				'", "application_id": ' || OLD.application_id || ', "ref": "' || OLD.ref || '"}');
+				'", "zone_id": ' || OLD.zone_id || ', "ref": "' || OLD.ref || '"}');
 END;
 -- +goose StatementEnd
 

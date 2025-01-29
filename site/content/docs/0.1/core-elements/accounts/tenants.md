@@ -19,10 +19,10 @@ seo:
   noindex: false # false (default) or true
 ---
 
-**Permguard** implements the concept of `multi-tenants`, allowing the creation of multiple **tenants** for each application.
+**Permguard** implements the concept of `multi-tenants`, allowing the creation of multiple **tenants** for each zone.
 
 Tenants play a crucial actor in managing the authorizations and they can be used to `partition` `resources` and `actions` effectively.
-This is quite useful in scenarios where the adopter intends to use Permguard for developing a multi-tenant application, such as Software as a Service (SaaS).
+This is quite useful in scenarios where the adopter intends to use Permguard for developing a multi-tenant zone, such as Software as a Service (SaaS).
 
 {{< callout context="note" icon="info-circle" >}}
 In the context of the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management), there would be multiple tenants, one for each branch of the pharmacy, such as `matera-branch`, `pisa-branch`, and so on.

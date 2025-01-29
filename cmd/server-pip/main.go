@@ -25,7 +25,7 @@ import (
 )
 
 func main() {
-	// Run the command with the aap host kind.
+	// Run the command with the zap host kind.
 	initializer, err := azictyservers.NewCommunityServerInitializer(azservices.HostPIP)
 	if err != nil {
 		panic(fmt.Sprintf("server: error creating server: %s", err.Error()))

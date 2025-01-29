@@ -49,70 +49,70 @@ func ConvertStringWithLedgerIDToRefInfo(ref string) (*RefInfo, error) {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid source type")
 	}
 	remote := refObs[2]
-	applicationID, err := strconv.ParseInt(refObs[3], 10, 64)
+	zoneID, err := strconv.ParseInt(refObs[3], 10, 64)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, "failed to parse application ID", err)
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, "failed to parse zone ID", err)
 	}
 	ledger := refObs[4]
 	return &RefInfo{
-		sourceType:    sourceType,
-		remote:        remote,
-		applicationID: applicationID,
-		ledgerID:      ledger,
+		sourceType: sourceType,
+		remote:     remote,
+		zoneID:     zoneID,
+		ledgerID:   ledger,
 	}, nil
 }
 
 // generateRef generates the ref.
-func generateRef(isHead bool, remote string, applicationID int64, ledger string) string {
+func generateRef(isHead bool, remote string, zoneID int64, ledger string) string {
 	var sourceType string
 	if isHead {
 		sourceType = headPrefix
 	} else {
 		sourceType = remotePrefix
 	}
-	return strings.Join([]string{refsPrefix, sourceType, remote, strconv.FormatInt(applicationID, 10), ledger}, refSeparator)
+	return strings.Join([]string{refsPrefix, sourceType, remote, strconv.FormatInt(zoneID, 10), ledger}, refSeparator)
 }
 
 // GenerateRemoteRef generates the remote ref.
-func GenerateRemoteRef(remote string, applicationID int64, ledger string) string {
-	return generateRef(false, remote, applicationID, ledger)
+func GenerateRemoteRef(remote string, zoneID int64, ledger string) string {
+	return generateRef(false, remote, zoneID, ledger)
 }
 
 // GenerateRemoteRef generates the remote ref.
-func GenerateHeadRef(applicationID int64, ledger string) string {
-	return generateRef(true, HeadKeyword, applicationID, ledger)
+func GenerateHeadRef(zoneID int64, ledger string) string {
+	return generateRef(true, HeadKeyword, zoneID, ledger)
 }
 
 // convertRefInfoToString converts the ref information to string.
 func ConvertRefInfoToString(refInfo *RefInfo) string {
-	return generateRef(refInfo.IsSourceHead(), refInfo.GetRemote(), refInfo.GetApplicationID(), refInfo.GetLedger())
+	return generateRef(refInfo.IsSourceHead(), refInfo.GetRemote(), refInfo.GetZoneID(), refInfo.GetLedger())
 }
 
 // RefInfo represents the ref information.
 type RefInfo struct {
-	sourceType    string
-	remote        string
-	applicationID int64
-	ledgerName    string
-	ledgerID      string
+	sourceType string
+	remote     string
+	zoneID     int64
+	ledgerName string
+	ledgerID   string
 }
 
 // NewRefInfo creates a new ref information.
-func NewRefInfoFromLedgerName(remote string, applicationID int64, ledgerName string) (*RefInfo, error) {
+func NewRefInfoFromLedgerName(remote string, zoneID int64, ledgerName string) (*RefInfo, error) {
 	if len(remote) == 0 {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid remote")
 	}
-	if applicationID <= 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid application ID")
+	if zoneID <= 0 {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid zone ID")
 	}
 	if len(ledgerName) == 0 {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid ledger name")
 	}
 	return &RefInfo{
-		sourceType:    remotePrefix,
-		remote:        remote,
-		applicationID: applicationID,
-		ledgerName:    ledgerName,
+		sourceType: remotePrefix,
+		remote:     remote,
+		zoneID:     zoneID,
+		ledgerName: ledgerName,
 	}, nil
 }
 
@@ -126,11 +126,11 @@ func BuildRefInfoFromLedgerID(refInfo *RefInfo, ledgerID string) (*RefInfo, erro
 		return nil, err
 	}
 	return &RefInfo{
-		sourceType:    refInfo.sourceType,
-		remote:        szRemote,
-		applicationID: refInfo.applicationID,
-		ledgerName:    refInfo.ledgerName,
-		ledgerID:      ledgerID,
+		sourceType: refInfo.sourceType,
+		remote:     szRemote,
+		zoneID:     refInfo.zoneID,
+		ledgerName: refInfo.ledgerName,
+		ledgerID:   ledgerID,
 	}, nil
 }
 
@@ -149,9 +149,9 @@ func (i *RefInfo) GetRemote() string {
 	return i.remote
 }
 
-// GetApplicationID returns the application ID.
-func (i *RefInfo) GetApplicationID() int64 {
-	return i.applicationID
+// GetZoneID returns the zone ID.
+func (i *RefInfo) GetZoneID() int64 {
+	return i.zoneID
 }
 
 // GetLedgerName returns the ledger name.
@@ -174,12 +174,12 @@ func (i *RefInfo) GetLedger() string {
 
 // GetRef returns the ref.
 func (i *RefInfo) GetRef() string {
-	return generateRef(i.IsSourceHead(), i.GetRemote(), i.GetApplicationID(), i.GetLedger())
+	return generateRef(i.IsSourceHead(), i.GetRemote(), i.GetZoneID(), i.GetLedger())
 }
 
 // GetLedgerFilePath returns the ledger file path.
 func (i *RefInfo) GetLedgerFilePath(includeFileName bool) string {
-	path := filepath.Join(refsPrefix, i.sourceType, i.remote, strconv.FormatInt(i.applicationID, 10))
+	path := filepath.Join(refsPrefix, i.sourceType, i.remote, strconv.FormatInt(i.zoneID, 10))
 	if includeFileName {
 		path = filepath.Join(path, i.GetLedger())
 	}
@@ -188,7 +188,7 @@ func (i *RefInfo) GetLedgerFilePath(includeFileName bool) string {
 
 // GetLedgerURI returns the ledger uri.
 func (i *RefInfo) GetLedgerURI() string {
-	ledgerURI, err := GetLedgerURI(i.remote, i.applicationID, i.GetLedger())
+	ledgerURI, err := GetLedgerURI(i.remote, i.zoneID, i.GetLedger())
 	if err != nil {
 		return ""
 	}

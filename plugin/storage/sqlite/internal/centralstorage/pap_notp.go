@@ -86,22 +86,22 @@ func (s SQLiteCentralStoragePAP) readObject(db *sqlx.DB, oid string) (*azlangobj
 
 // extractMetaData extracts the meta data.
 func (s SQLiteCentralStoragePAP) extractMetaData(ctx *notpstatemachines.HandlerContext) (int64, string) {
-	applicationIDStr, _ := getFromHandlerContext[string](ctx, notpagstatemachines.ApplicationIDKey)
-	applicationID, err := strconv.ParseInt(applicationIDStr, 10, 64)
+	zoneIDStr, _ := getFromHandlerContext[string](ctx, notpagstatemachines.ZoneIDKey)
+	zoneID, err := strconv.ParseInt(zoneIDStr, 10, 64)
 	if err != nil {
 		return 0, ""
 	}
 	ledgerID, _ := getFromHandlerContext[string](ctx, notpagstatemachines.LedgerIDKey)
-	return applicationID, ledgerID
+	return zoneID, ledgerID
 }
 
 // readLedgerFromHandlerContext reads the ledger from the handler context.
 func (s SQLiteCentralStoragePAP) readLedgerFromHandlerContext(handlerCtx *notpstatemachines.HandlerContext) (*azmodelspap.Ledger, error) {
-	applicationID, ledgerID := s.extractMetaData(handlerCtx)
+	zoneID, ledgerID := s.extractMetaData(handlerCtx)
 	fields := map[string]any{
 		azmodelspap.FieldLedgerLedgerID: ledgerID,
 	}
-	ledgers, err := s.FetchLedgers(1, 1, applicationID, fields)
+	ledgers, err := s.FetchLedgers(1, 1, zoneID, fields)
 	if err != nil {
 		return nil, err
 	}

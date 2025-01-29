@@ -48,9 +48,9 @@ type PAPService interface {
 	// UpdateLedger updates an ledger.
 	UpdateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error)
 	// DeleteLedger deletes an ledger.
-	DeleteLedger(applicationID int64, ledgerID string) (*azmodelspap.Ledger, error)
+	DeleteLedger(zoneID int64, ledgerID string) (*azmodelspap.Ledger, error)
 	// FetchLedgers gets all ledgers.
-	FetchLedgers(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelspap.Ledger, error)
+	FetchLedgers(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelspap.Ledger, error)
 	// OnPullHandleRequestCurrentState handles the request for the current state.
 	OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPullSendNotifyCurrentStateResponse notifies the current state.
@@ -94,7 +94,7 @@ type V1PAPServer struct {
 
 // CreateLedger creates a new ledger.
 func (s *V1PAPServer) CreateLedger(ctx context.Context, ledgerRequest *LedgerCreateRequest) (*LedgerResponse, error) {
-	ledger, err := s.service.CreateLedger(&azmodelspap.Ledger{ApplicationID: ledgerRequest.ApplicationID, Name: ledgerRequest.Name, Kind: ledgerRequest.Kind})
+	ledger, err := s.service.CreateLedger(&azmodelspap.Ledger{ZoneID: ledgerRequest.ZoneID, Name: ledgerRequest.Name, Kind: ledgerRequest.Kind})
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (s *V1PAPServer) CreateLedger(ctx context.Context, ledgerRequest *LedgerCre
 
 // UpdateLedger updates a ledger.
 func (s *V1PAPServer) UpdateLedger(ctx context.Context, ledgerRequest *LedgerUpdateRequest) (*LedgerResponse, error) {
-	ledger, err := s.service.UpdateLedger((&azmodelspap.Ledger{LedgerID: ledgerRequest.LedgerID, ApplicationID: ledgerRequest.ApplicationID, Name: ledgerRequest.Name}))
+	ledger, err := s.service.UpdateLedger((&azmodelspap.Ledger{LedgerID: ledgerRequest.LedgerID, ZoneID: ledgerRequest.ZoneID, Name: ledgerRequest.Name}))
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func (s *V1PAPServer) UpdateLedger(ctx context.Context, ledgerRequest *LedgerUpd
 
 // DeleteLedger deletes a ledger.
 func (s *V1PAPServer) DeleteLedger(ctx context.Context, ledgerRequest *LedgerDeleteRequest) (*LedgerResponse, error) {
-	ledger, err := s.service.DeleteLedger(ledgerRequest.ApplicationID, ledgerRequest.LedgerID)
+	ledger, err := s.service.DeleteLedger(ledgerRequest.ZoneID, ledgerRequest.LedgerID)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +122,7 @@ func (s *V1PAPServer) DeleteLedger(ctx context.Context, ledgerRequest *LedgerDel
 // FetchLedgers returns all ledgers.
 func (s *V1PAPServer) FetchLedgers(ledgerRequest *LedgerFetchRequest, stream grpc.ServerStreamingServer[LedgerResponse]) error {
 	fields := map[string]any{}
-	fields[azmodelspap.FieldLedgerApplicationID] = ledgerRequest.ApplicationID
+	fields[azmodelspap.FieldLedgerZoneID] = ledgerRequest.ZoneID
 	if ledgerRequest.Kind != nil {
 		fields[azmodelspap.FieldLedgerKind] = *ledgerRequest.Kind
 	}
@@ -140,7 +140,7 @@ func (s *V1PAPServer) FetchLedgers(ledgerRequest *LedgerFetchRequest, stream grp
 	if ledgerRequest.PageSize != nil {
 		pageSize = int32(*ledgerRequest.PageSize)
 	}
-	ledgers, err := s.service.FetchLedgers(page, pageSize, ledgerRequest.ApplicationID, fields)
+	ledgers, err := s.service.FetchLedgers(page, pageSize, ledgerRequest.ZoneID, fields)
 	if err != nil {
 		return err
 	}
@@ -273,9 +273,9 @@ func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, Pa
 		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "notp stream missing metadata")
 
 	}
-	applicationID, ok := md[azagentnotpsm.ApplicationIDKey]
-	if !ok || len(applicationID) == 0 {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "notp stream missing application id")
+	zoneID, ok := md[azagentnotpsm.ZoneIDKey]
+	if !ok || len(zoneID) == 0 {
+		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "notp stream missing zone id")
 	}
 	respositoryID, ok := md[azagentnotpsm.LedgerIDKey]
 	if !ok || len(respositoryID) == 0 {
@@ -287,7 +287,7 @@ func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, Pa
 		return err
 	}
 	bag := map[string]any{}
-	bag[azagentnotpsm.ApplicationIDKey] = applicationID[0]
+	bag[azagentnotpsm.ZoneIDKey] = zoneID[0]
 	bag[azagentnotpsm.LedgerIDKey] = respositoryID[0]
 	_, err = stateMachine.Run(bag, notpstatemachines.UnknownFlowType)
 	if err != nil {

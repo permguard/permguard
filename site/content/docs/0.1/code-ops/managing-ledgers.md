@@ -29,4 +29,4 @@ You can check out a ledger using the `checkout` command:
  permguard checkout origin/273165098782/magicfarmacia
 ```
 
-In this command, the first parameter is the remote, followed by the application ID, and finally the ledger identifier. The format used is `<remote>/<application-id>/<ledger-name>`.
+In this command, the first parameter is the remote, followed by the zone ID, and finally the ledger identifier. The format used is `<remote>/<zone-id>/<ledger-name>`.

@@ -28,29 +28,29 @@ import (
 	azconfigs "github.com/permguard/permguard/pkg/cli/options"
 )
 
-// TestCreateCommandForConfigAAPGet tests the createCommandForConfigAAPGet function.
-func TestCreateCommandForConfigAAPGet(t *testing.T) {
+// TestCreateCommandForConfigZAPGet tests the createCommandForConfigZAPGet function.
+func TestCreateCommandForConfigZAPGet(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command gets the aap grpc target."}
-	aztestutils.BaseCommandTest(t, createCommandForConfigAAPGet, args, false, outputs)
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command gets the zap grpc target."}
+	aztestutils.BaseCommandTest(t, createCommandForConfigZAPGet, args, false, outputs)
 }
 
-// TestCliConfigGetAAPTarget tests the command for getting the aap target.
-func TestCliConfigGetAAPTarget(t *testing.T) {
+// TestCliConfigGetZAPTarget tests the command for getting the zap target.
+func TestCliConfigGetZAPTarget(t *testing.T) {
 	tests := []string{
 		"terminal",
 		"json",
 	}
 	for _, outputType := range tests {
-		args := []string{"aap-get-target", "--output", outputType}
+		args := []string{"zap-get-target", "--output", outputType}
 		outputs := []string{""}
 
 		v := viper.New()
 		v.Set("output", outputType)
-		v.Set(azconfigs.FlagName(aziclicommon.FlagPrefixAAP, aziclicommon.FlagSuffixAAPTarget), "localhost:9092")
+		v.Set(azconfigs.FlagName(aziclicommon.FlagPrefixZAP, aziclicommon.FlagSuffixZAPTarget), "localhost:9092")
 
 		depsMocks := azmocks.NewCliDependenciesMock()
-		cmd := createCommandForConfigAAPGet(depsMocks, v)
+		cmd := createCommandForConfigZAPGet(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
@@ -59,9 +59,9 @@ func TestCliConfigGetAAPTarget(t *testing.T) {
 		outputPrinter := map[string]any{}
 
 		if outputType == "terminal" {
-			outputPrinter["aap_target"] = "localhost:9092"
+			outputPrinter["zap_target"] = "localhost:9092"
 		} else {
-			outputPrinter["aap_target"] = "localhost:9092"
+			outputPrinter["zap_target"] = "localhost:9092"
 		}
 		printerMock.On("PrintMap", outputPrinter).Return()
 		printerMock.On("PrintlnMap", outputPrinter).Return()

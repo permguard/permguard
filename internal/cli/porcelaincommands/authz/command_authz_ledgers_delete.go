@@ -47,9 +47,9 @@ func runECommandForDeleteLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	applicationID := v.GetInt64(azoptions.FlagName(commandNameForLedger, aziclicommon.FlagCommonApplicationID))
+	zoneID := v.GetInt64(azoptions.FlagName(commandNameForLedger, aziclicommon.FlagCommonZoneID))
 	ledgerID := v.GetString(azoptions.FlagName(commandNameForLedgersDelete, flagLedgerID))
-	ledger, err := client.DeleteLedger(applicationID, ledgerID)
+	ledger, err := client.DeleteLedger(zoneID, ledgerID)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
 			printer.Println("Failed to delete the ledger.")
@@ -80,7 +80,7 @@ func createCommandForLedgerDelete(deps azcli.CliDependenciesProvider, v *viper.V
 
 Examples:
   # delete a ledger and output the result in json format
-  permguard authz ledgers delete --appid 268786704340 --ledgerid 668f3771eacf4094ba8a80942ea5fd3f --output json
+  permguard authz ledgers delete --zoneid 268786704340 --ledgerid 668f3771eacf4094ba8a80942ea5fd3f --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteLedger(deps, cmd, v)

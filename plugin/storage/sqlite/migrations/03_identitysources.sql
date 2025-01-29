@@ -21,13 +21,13 @@ CREATE TABLE identity_sources (
     updated_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
     name TEXT NOT NULL,
 	-- REFERENCES
-	application_id INTEGER NOT NULL REFERENCES applications(application_id) ON UPDATE CASCADE ON DELETE CASCADE,
+	zone_id INTEGER NOT NULL REFERENCES zones(zone_id) ON UPDATE CASCADE ON DELETE CASCADE,
 	-- CONSTRAINTS
-	CONSTRAINT identity_sources_applicationid_name_key UNIQUE (application_id, name)
+	CONSTRAINT identity_sources_zoneid_name_key UNIQUE (zone_id, name)
 );
 
 CREATE INDEX identity_sources_name_idx ON identity_sources(name);
-CREATE INDEX identity_sources_applicationid_idx ON identity_sources(application_id);
+CREATE INDEX identity_sources_zoneid_idx ON identity_sources(zone_id);
 
 -- Trigger to track changes in the `identity_sources` table after insert
 -- +goose StatementBegin
@@ -35,10 +35,10 @@ CREATE TRIGGER identity_sources_change_streams_after_insert
 AFTER INSERT ON identity_sources
 FOR EACH ROW
 BEGIN
-    INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
-		VALUES ('IDENTITY-SOURCE', 'INSERT', NEW.identity_source_id, NEW.application_id,
+    INSERT INTO change_streams (change_entity, change_type, change_entity_id, zone_id, payload)
+		VALUES ('IDENTITY-SOURCE', 'INSERT', NEW.identity_source_id, NEW.zone_id,
 				'{"identity_source_id": "' || NEW.identity_source_id || '", "created_at": "' || NEW.created_at ||
-				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name || '", "application_id": ' || NEW.application_id || '}');
+				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name || '", "zone_id": ' || NEW.zone_id || '}');
 END;
 -- +goose StatementEnd
 
@@ -49,10 +49,10 @@ AFTER UPDATE ON identity_sources
 FOR EACH ROW
 BEGIN
     UPDATE identity_sources SET updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW') WHERE identity_source_id = OLD.identity_source_id;
-    INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
-		VALUES ('IDENTITY-SOURCE', 'UPDATE', NEW.identity_source_id, NEW.application_id,
+    INSERT INTO change_streams (change_entity, change_type, change_entity_id, zone_id, payload)
+		VALUES ('IDENTITY-SOURCE', 'UPDATE', NEW.identity_source_id, NEW.zone_id,
 				'{"identity_source_id": "' || NEW.identity_source_id || '", "created_at": "' || NEW.created_at ||
-				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name || '", "application_id": ' || NEW.application_id || '}');
+				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name || '", "zone_id": ' || NEW.zone_id || '}');
 
 END;
 -- +goose StatementEnd
@@ -63,10 +63,10 @@ CREATE TRIGGER identity_sources_change_streams_after_delete
 AFTER DELETE ON identity_sources
 FOR EACH ROW
 BEGIN
-    INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
-		VALUES ('IDENTITY-SOURCE', 'DELETE', OLD.identity_source_id, OLD.application_id,
+    INSERT INTO change_streams (change_entity, change_type, change_entity_id, zone_id, payload)
+		VALUES ('IDENTITY-SOURCE', 'DELETE', OLD.identity_source_id, OLD.zone_id,
 				'{"identity_source_id": "' || OLD.identity_source_id || '", "created_at": "' || OLD.created_at ||
-				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name || '", "application_id": ' || OLD.application_id || '}');
+				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name || '", "zone_id": ' || OLD.zone_id || '}');
 END;
 -- +goose StatementEnd
 

@@ -25,26 +25,26 @@ import (
 // MapGrpcLedgerResponseToAgentLedger maps the gRPC ledger to the agent ledger.
 func MapGrpcLedgerResponseToAgentLedger(ledger *LedgerResponse) (*azmodelspap.Ledger, error) {
 	return &azmodelspap.Ledger{
-		LedgerID:      ledger.LedgerID,
-		CreatedAt:     ledger.CreatedAt.AsTime(),
-		UpdatedAt:     ledger.UpdatedAt.AsTime(),
-		ApplicationID: ledger.ApplicationID,
-		Kind:          ledger.Kind,
-		Name:          ledger.Name,
-		Ref:           ledger.Ref,
+		LedgerID:  ledger.LedgerID,
+		CreatedAt: ledger.CreatedAt.AsTime(),
+		UpdatedAt: ledger.UpdatedAt.AsTime(),
+		ZoneID:    ledger.ZoneID,
+		Kind:      ledger.Kind,
+		Name:      ledger.Name,
+		Ref:       ledger.Ref,
 	}, nil
 }
 
 // MapAgentLedgerToGrpcLedgerResponse maps the agent ledger to the gRPC ledger.
 func MapAgentLedgerToGrpcLedgerResponse(ledger *azmodelspap.Ledger) (*LedgerResponse, error) {
 	return &LedgerResponse{
-		LedgerID:      ledger.LedgerID,
-		CreatedAt:     timestamppb.New(ledger.CreatedAt),
-		UpdatedAt:     timestamppb.New(ledger.UpdatedAt),
-		ApplicationID: ledger.ApplicationID,
-		Kind:          ledger.Kind,
-		Name:          ledger.Name,
-		Ref:           ledger.Ref,
+		LedgerID:  ledger.LedgerID,
+		CreatedAt: timestamppb.New(ledger.CreatedAt),
+		UpdatedAt: timestamppb.New(ledger.UpdatedAt),
+		ZoneID:    ledger.ZoneID,
+		Kind:      ledger.Kind,
+		Name:      ledger.Name,
+		Ref:       ledger.Ref,
 	}, nil
 }
 

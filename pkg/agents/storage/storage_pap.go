@@ -23,16 +23,16 @@ import (
 	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
-// PAPCentralStorage is the interface for the AAP central storage.
+// PAPCentralStorage is the interface for the ZAP central storage.
 type PAPCentralStorage interface {
 	// CreateLedger creates a new ledger.
 	CreateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error)
 	// UpdateLedger updates an ledger.
 	UpdateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error)
 	// DeleteLedger deletes an ledger.
-	DeleteLedger(applicationID int64, ledgerID string) (*azmodelspap.Ledger, error)
+	DeleteLedger(zoneID int64, ledgerID string) (*azmodelspap.Ledger, error)
 	// FetchLedgers gets all ledgers.
-	FetchLedgers(page int32, pageSize int32, applicationID int64, fields map[string]any) ([]azmodelspap.Ledger, error)
+	FetchLedgers(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelspap.Ledger, error)
 	// OnPullHandleRequestCurrentState handles the request for the current state.
 	OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPullSendNotifyCurrentStateResponse notifies the current state.

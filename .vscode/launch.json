@@ -8,7 +8,7 @@
         "mode": "auto",
         "program": "./cmd/cli/main.go",
         // "args": ["clone", "localhost/273165098782/magicfarmacia", "-w", "/Users/nicolagallo/source/tmp/", "-o", "json"],
-        // "args": ["authz", "ledgers", "create", "--name", "branches", "--appid", "851990457443", "-w", "/Users/nicolagallo/source/tmp/", "-o", "json"],
+        // "args": ["authz", "ledgers", "create", "--name", "branches", "--zoneid", "851990457443", "-w", "/Users/nicolagallo/source/tmp/", "-o", "json"],
         // "args": ["authz", "check", "requests/evaluations.json2", "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar", "-v", "-o", "json"],
         "args": ["plan", "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar", "-v", "-o", "json"],
         "env": {
@@ -27,8 +27,8 @@
               "PERMGUARD_DEBUG": "TRUE",
               "PERMGUARD_SERVER_APPDATA": "./samples/volume",
               "PERMGUARD_LOG_LEVEL": "INFO",
-              // "PERMGUARD_SERVER_AAP_ENABLE_DEFAULT_CREATION": "TRUE",
-              "PERMGUARD_SERVER_AAP_DATA_FETCH_MAXSIZE": "1000",
+              // "PERMGUARD_SERVER_ZAP_ENABLE_DEFAULT_CREATION": "TRUE",
+              "PERMGUARD_SERVER_ZAP_DATA_FETCH_MAXSIZE": "1000",
           }
       }
   ]

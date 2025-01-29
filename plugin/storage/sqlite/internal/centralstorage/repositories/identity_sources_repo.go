@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	// errorMessageIdentitySourceInvalidApplicationID is the error message identity source invalid application id.
-	errorMessageIdentitySourceInvalidApplicationID = "invalid client input - application id is not valid (id: %d)"
+	// errorMessageIdentitySourceInvalidZoneID is the error message identity source invalid zone id.
+	errorMessageIdentitySourceInvalidZoneID = "invalid client input - zone id is not valid (id: %d)"
 )
 
 // UpsertIdentitySource creates or updates an identity source.
@@ -38,8 +38,8 @@ func (r *Repository) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySou
 	if identitySource == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity source data is missing or malformed (%s)", LogIdentitySourceEntry(identitySource)))
 	}
-	if err := azvalidators.ValidateCodeID("identitySource", identitySource.ApplicationID); err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentitySourceInvalidApplicationID, identitySource.ApplicationID), err)
+	if err := azvalidators.ValidateCodeID("identitySource", identitySource.ZoneID); err != nil {
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentitySourceInvalidZoneID, identitySource.ZoneID), err)
 	}
 	if !isCreate && azvalidators.ValidateUUID("identitySource", identitySource.IdentitySourceID) != nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity source id is not valid (%s)", LogIdentitySourceEntry(identitySource)))
@@ -49,29 +49,29 @@ func (r *Repository) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySou
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogIdentitySourceEntry(identitySource)), err)
 	}
 
-	applicationID := identitySource.ApplicationID
+	zoneID := identitySource.ZoneID
 	identitySourceID := identitySource.IdentitySourceID
 	identitySourceName := identitySource.Name
 	var result sql.Result
 	var err error
 	if isCreate {
 		identitySourceID = GenerateUUID()
-		result, err = tx.Exec("INSERT INTO identity_sources (application_id, identity_source_id, name) VALUES (?, ?, ?)", applicationID, identitySourceID, identitySourceName)
+		result, err = tx.Exec("INSERT INTO identity_sources (zone_id, identity_source_id, name) VALUES (?, ?, ?)", zoneID, identitySourceID, identitySourceName)
 	} else {
-		result, err = tx.Exec("UPDATE identity_sources SET name = ? WHERE application_id = ? and identity_source_id = ?", identitySourceName, applicationID, identitySourceID)
+		result, err = tx.Exec("UPDATE identity_sources SET name = ? WHERE zone_id = ? and identity_source_id = ?", identitySourceName, zoneID, identitySourceID)
 	}
 	if err != nil || result == nil {
 		action := "update"
 		if isCreate {
 			action = "create"
 		}
-		params := map[string]string{WrapSqlite3ParamForeignKey: "application id"}
+		params := map[string]string{WrapSqlite3ParamForeignKey: "zone id"}
 		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s identity source - operation '%s-identity-source' encountered an issue (%s)", action, action, LogIdentitySourceEntry(identitySource)), err, params)
 	}
 
 	var dbIdentitySource IdentitySource
-	err = tx.QueryRow("SELECT application_id, identity_source_id, created_at, updated_at, name FROM identity_sources WHERE application_id = ? and identity_source_id = ?", applicationID, identitySourceID).Scan(
-		&dbIdentitySource.ApplicationID,
+	err = tx.QueryRow("SELECT zone_id, identity_source_id, created_at, updated_at, name FROM identity_sources WHERE zone_id = ? and identity_source_id = ?", zoneID, identitySourceID).Scan(
+		&dbIdentitySource.ZoneID,
 		&dbIdentitySource.IdentitySourceID,
 		&dbIdentitySource.CreatedAt,
 		&dbIdentitySource.UpdatedAt,
@@ -84,17 +84,17 @@ func (r *Repository) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySou
 }
 
 // DeleteIdentitySource deletes an identity source.
-func (r *Repository) DeleteIdentitySource(tx *sql.Tx, applicationID int64, identitySourceID string) (*IdentitySource, error) {
-	if err := azvalidators.ValidateCodeID("identitySource", applicationID); err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentitySourceInvalidApplicationID, applicationID), err)
+func (r *Repository) DeleteIdentitySource(tx *sql.Tx, zoneID int64, identitySourceID string) (*IdentitySource, error) {
+	if err := azvalidators.ValidateCodeID("identitySource", zoneID); err != nil {
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentitySourceInvalidZoneID, zoneID), err)
 	}
 	if err := azvalidators.ValidateUUID("identitySource", identitySourceID); err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity source id is not valid (id: %s)", identitySourceID), err)
 	}
 
 	var dbIdentitySource IdentitySource
-	err := tx.QueryRow("SELECT application_id, identity_source_id, created_at, updated_at, name FROM identity_sources WHERE application_id = ? and identity_source_id = ?", applicationID, identitySourceID).Scan(
-		&dbIdentitySource.ApplicationID,
+	err := tx.QueryRow("SELECT zone_id, identity_source_id, created_at, updated_at, name FROM identity_sources WHERE zone_id = ? and identity_source_id = ?", zoneID, identitySourceID).Scan(
+		&dbIdentitySource.ZoneID,
 		&dbIdentitySource.IdentitySourceID,
 		&dbIdentitySource.CreatedAt,
 		&dbIdentitySource.UpdatedAt,
@@ -103,7 +103,7 @@ func (r *Repository) DeleteIdentitySource(tx *sql.Tx, applicationID int64, ident
 	if err != nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - identity source id is not valid (id: %s)", identitySourceID), err)
 	}
-	res, err := tx.Exec("DELETE FROM identity_sources WHERE application_id = ? and identity_source_id = ?", applicationID, identitySourceID)
+	res, err := tx.Exec("DELETE FROM identity_sources WHERE zone_id = ? and identity_source_id = ?", zoneID, identitySourceID)
 	if err != nil || res == nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete identity source - operation 'delete-identity-source' encountered an issue (id: %s)", identitySourceID), err)
 	}
@@ -115,12 +115,12 @@ func (r *Repository) DeleteIdentitySource(tx *sql.Tx, applicationID int64, ident
 }
 
 // FetchIdentitySources retrieves identity sources.
-func (r *Repository) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]IdentitySource, error) {
+func (r *Repository) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]IdentitySource, error) {
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
-	if err := azvalidators.ValidateCodeID("identitySource", applicationID); err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf(errorMessageIdentitySourceInvalidApplicationID, applicationID), err)
+	if err := azvalidators.ValidateCodeID("identitySource", zoneID); err != nil {
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf(errorMessageIdentitySourceInvalidZoneID, zoneID), err)
 	}
 
 	var dbIdentitySources []IdentitySource
@@ -129,8 +129,8 @@ func (r *Repository) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int3
 	var conditions []string
 	var args []any
 
-	conditions = append(conditions, "application_id = ?")
-	args = append(args, applicationID)
+	conditions = append(conditions, "zone_id = ?")
+	args = append(args, zoneID)
 
 	if filterID != nil {
 		identitySourceID := *filterID

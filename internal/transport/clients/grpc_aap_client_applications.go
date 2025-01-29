@@ -20,31 +20,31 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	azapiv1aap "github.com/permguard/permguard/internal/agents/services/aap/endpoints/api/v1"
+	azapiv1zap "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
-// GrpcAAPClient is a gRPC client for the AAP service.
-type GrpcAAPClient struct {
+// GrpcZAPClient is a gRPC client for the ZAP service.
+type GrpcZAPClient struct {
 	target string
 }
 
-// NewGrpcAAPClient creates a new gRPC client for the AAP service.
-func NewGrpcAAPClient(target string) (*GrpcAAPClient, error) {
+// NewGrpcZAPClient creates a new gRPC client for the ZAP service.
+func NewGrpcZAPClient(target string) (*GrpcZAPClient, error) {
 	if target == "" {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "target is required")
 	}
-	return &GrpcAAPClient{
+	return &GrpcZAPClient{
 		target: target,
 	}, nil
 }
 
 // createGRPCClient creates a new gRPC client.
-func (c *GrpcAAPClient) createGRPCClient() (azapiv1aap.V1AAPServiceClient, error) {
+func (c *GrpcZAPClient) createGRPCClient() (azapiv1zap.V1ZAPServiceClient, error) {
 	conn, err := grpc.Dial(c.target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
 	}
-	client := azapiv1aap.NewV1AAPServiceClient(conn)
+	client := azapiv1zap.NewV1ZAPServiceClient(conn)
 	return client, nil
 }

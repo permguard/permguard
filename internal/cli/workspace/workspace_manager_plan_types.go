@@ -35,9 +35,9 @@ func (h *currentHeadContext) GetRemote() string {
 	return h.headRefInfo.GetRemote()
 }
 
-// GetApplicationID returns the application id.
-func (h *currentHeadContext) GetApplicationID() int64 {
-	return h.headRefInfo.GetApplicationID()
+// GetZoneID returns the zone id.
+func (h *currentHeadContext) GetZoneID() int64 {
+	return h.headRefInfo.GetZoneID()
 }
 
 // GetLedgerID returns the ledger id.

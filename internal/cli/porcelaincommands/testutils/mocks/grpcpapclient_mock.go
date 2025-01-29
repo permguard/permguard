@@ -29,8 +29,8 @@ type GrpcPAPClientMock struct {
 }
 
 // CreateLedger creates a ledger.
-func (m *GrpcPAPClientMock) CreateLedger(applicationID int64, kind string, name string) (*azmodelspap.Ledger, error) {
-	args := m.Called(applicationID, kind, name)
+func (m *GrpcPAPClientMock) CreateLedger(zoneID int64, kind string, name string) (*azmodelspap.Ledger, error) {
+	args := m.Called(zoneID, kind, name)
 	var r0 *azmodelspap.Ledger
 	if val, ok := args.Get(0).(*azmodelspap.Ledger); ok {
 		r0 = val
@@ -49,8 +49,8 @@ func (m *GrpcPAPClientMock) UpdateLedger(ledger *azmodelspap.Ledger) (*azmodelsp
 }
 
 // DeleteLedger deletes a ledger.
-func (m *GrpcPAPClientMock) DeleteLedger(applicationID int64, ledgerID string) (*azmodelspap.Ledger, error) {
-	args := m.Called(applicationID, ledgerID)
+func (m *GrpcPAPClientMock) DeleteLedger(zoneID int64, ledgerID string) (*azmodelspap.Ledger, error) {
+	args := m.Called(zoneID, ledgerID)
 	var r0 *azmodelspap.Ledger
 	if val, ok := args.Get(0).(*azmodelspap.Ledger); ok {
 		r0 = val
@@ -59,8 +59,8 @@ func (m *GrpcPAPClientMock) DeleteLedger(applicationID int64, ledgerID string) (
 }
 
 // FetchLedgers returns all ledgers.
-func (m *GrpcPAPClientMock) FetchLedgers(page int32, pageSize int32, applicationID int64) ([]azmodelspap.Ledger, error) {
-	args := m.Called(page, pageSize, applicationID)
+func (m *GrpcPAPClientMock) FetchLedgers(page int32, pageSize int32, zoneID int64) ([]azmodelspap.Ledger, error) {
+	args := m.Called(page, pageSize, zoneID)
 	var r0 []azmodelspap.Ledger
 	if val, ok := args.Get(0).([]azmodelspap.Ledger); ok {
 		r0 = val
@@ -69,8 +69,8 @@ func (m *GrpcPAPClientMock) FetchLedgers(page int32, pageSize int32, application
 }
 
 // FetchLedgersByID returns all ledgers filtering by ledger id.
-func (m *GrpcPAPClientMock) FetchLedgersByID(page int32, pageSize int32, applicationID int64, ledgerID string) ([]azmodelspap.Ledger, error) {
-	args := m.Called(page, pageSize, applicationID, ledgerID)
+func (m *GrpcPAPClientMock) FetchLedgersByID(page int32, pageSize int32, zoneID int64, ledgerID string) ([]azmodelspap.Ledger, error) {
+	args := m.Called(page, pageSize, zoneID, ledgerID)
 	var r0 []azmodelspap.Ledger
 	if val, ok := args.Get(0).([]azmodelspap.Ledger); ok {
 		r0 = val
@@ -79,8 +79,8 @@ func (m *GrpcPAPClientMock) FetchLedgersByID(page int32, pageSize int32, applica
 }
 
 // FetchLedgersByName returns all ledgers filtering by name.
-func (m *GrpcPAPClientMock) FetchLedgersByName(page int32, pageSize int32, applicationID int64, name string) ([]azmodelspap.Ledger, error) {
-	args := m.Called(page, pageSize, applicationID, name)
+func (m *GrpcPAPClientMock) FetchLedgersByName(page int32, pageSize int32, zoneID int64, name string) ([]azmodelspap.Ledger, error) {
+	args := m.Called(page, pageSize, zoneID, name)
 	var r0 []azmodelspap.Ledger
 	if val, ok := args.Get(0).([]azmodelspap.Ledger); ok {
 		r0 = val
@@ -89,8 +89,8 @@ func (m *GrpcPAPClientMock) FetchLedgersByName(page int32, pageSize int32, appli
 }
 
 // FetchLedgersBy returns all ledgers filtering by ledger id and name.
-func (m *GrpcPAPClientMock) FetchLedgersBy(page int32, pageSize int32, applicationID int64, ledgerID string, kind string, name string) ([]azmodelspap.Ledger, error) {
-	args := m.Called(page, pageSize, applicationID, ledgerID, kind, name)
+func (m *GrpcPAPClientMock) FetchLedgersBy(page int32, pageSize int32, zoneID int64, ledgerID string, kind string, name string) ([]azmodelspap.Ledger, error) {
+	args := m.Called(page, pageSize, zoneID, ledgerID, kind, name)
 	var r0 []azmodelspap.Ledger
 	if val, ok := args.Get(0).([]azmodelspap.Ledger); ok {
 		r0 = val

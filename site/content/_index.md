@@ -2,7 +2,7 @@
 title: "Permguard"
 slug: "Permguard"
 description: ""
-lead: "Permguard is an Open Source Multi-Application, Multi-Tenant, Zero-Trust Auth* Provider"
+lead: "Permguard is an Open Source Multi-Zone, Multi-Tenant, ZTAuth* Provider"
 date: 2023-08-07T16:33:54+02:00
 lastmod: 2023-08-07T16:33:54+02:00
 draft: false

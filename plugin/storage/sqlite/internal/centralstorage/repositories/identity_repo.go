@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	// errorMessageIdentityInvalidApplicationID is the error message identity invalid application id.
-	errorMessageIdentityInvalidApplicationID = "invalid client input - application id is not valid (id: %d)"
+	// errorMessageIdentityInvalidZoneID is the error message identity invalid zone id.
+	errorMessageIdentityInvalidZoneID = "invalid client input - zone id is not valid (id: %d)"
 )
 
 // identitiesMap is a map of identity kinds to IDs.
@@ -64,8 +64,8 @@ func (r *Repository) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identit
 	if identity == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity data is missing or malformed (%s)", LogIdentityEntry(identity)))
 	}
-	if err := azvalidators.ValidateCodeID("identity", identity.ApplicationID); err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentityInvalidApplicationID, identity.ApplicationID), err)
+	if err := azvalidators.ValidateCodeID("identity", identity.ZoneID); err != nil {
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentityInvalidZoneID, identity.ZoneID), err)
 	}
 	if !isCreate && azvalidators.ValidateUUID("identity", identity.IdentityID) != nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity id is not valid (%s)", LogIdentityEntry(identity)))
@@ -85,7 +85,7 @@ func (r *Repository) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identit
 		}
 	}
 
-	applicationID := identity.ApplicationID
+	zoneID := identity.ZoneID
 	identityID := identity.IdentityID
 	identitySourceID := identity.IdentitySourceID
 	kind := identity.Kind
@@ -94,22 +94,22 @@ func (r *Repository) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identit
 	var err error
 	if isCreate {
 		identityID = GenerateUUID()
-		result, err = tx.Exec("INSERT INTO identities (application_id, identity_id, identity_source_id, kind, name) VALUES (?, ?, ?, ?, ?)", applicationID, identityID, identitySourceID, kind, identityName)
+		result, err = tx.Exec("INSERT INTO identities (zone_id, identity_id, identity_source_id, kind, name) VALUES (?, ?, ?, ?, ?)", zoneID, identityID, identitySourceID, kind, identityName)
 	} else {
-		result, err = tx.Exec("UPDATE identities SET kind = ?, name = ? WHERE application_id = ? and identity_id = ?", kind, identityName, applicationID, identityID)
+		result, err = tx.Exec("UPDATE identities SET kind = ?, name = ? WHERE zone_id = ? and identity_id = ?", kind, identityName, zoneID, identityID)
 	}
 	if err != nil || result == nil {
 		action := "update"
 		if isCreate {
 			action = "create"
 		}
-		params := map[string]string{WrapSqlite3ParamForeignKey: "application id"}
+		params := map[string]string{WrapSqlite3ParamForeignKey: "zone id"}
 		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s identity - operation '%s-identity' encountered an issue (%s)", action, action, LogIdentityEntry(identity)), err, params)
 	}
 
 	var dbIdentity Identity
-	err = tx.QueryRow("SELECT application_id, identity_id, created_at, updated_at, identity_source_id, kind, name FROM identities WHERE application_id = ? and identity_id = ?", applicationID, identityID).Scan(
-		&dbIdentity.ApplicationID,
+	err = tx.QueryRow("SELECT zone_id, identity_id, created_at, updated_at, identity_source_id, kind, name FROM identities WHERE zone_id = ? and identity_id = ?", zoneID, identityID).Scan(
+		&dbIdentity.ZoneID,
 		&dbIdentity.IdentityID,
 		&dbIdentity.CreatedAt,
 		&dbIdentity.UpdatedAt,
@@ -124,16 +124,16 @@ func (r *Repository) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identit
 }
 
 // DeleteIdentity deletes an identity.
-func (r *Repository) DeleteIdentity(tx *sql.Tx, applicationID int64, identityID string) (*Identity, error) {
-	if err := azvalidators.ValidateCodeID("identity", applicationID); err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentityInvalidApplicationID, applicationID), err)
+func (r *Repository) DeleteIdentity(tx *sql.Tx, zoneID int64, identityID string) (*Identity, error) {
+	if err := azvalidators.ValidateCodeID("identity", zoneID); err != nil {
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentityInvalidZoneID, zoneID), err)
 	}
 	if err := azvalidators.ValidateUUID("identity", identityID); err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity id is not valid (id: %s)", identityID), err)
 	}
 	var dbIdentity Identity
-	err := tx.QueryRow("SELECT application_id, identity_id, created_at, updated_at, identity_source_id, kind, name FROM identities WHERE application_id = ? and identity_id = ?", applicationID, identityID).Scan(
-		&dbIdentity.ApplicationID,
+	err := tx.QueryRow("SELECT zone_id, identity_id, created_at, updated_at, identity_source_id, kind, name FROM identities WHERE zone_id = ? and identity_id = ?", zoneID, identityID).Scan(
+		&dbIdentity.ZoneID,
 		&dbIdentity.IdentityID,
 		&dbIdentity.CreatedAt,
 		&dbIdentity.UpdatedAt,
@@ -144,7 +144,7 @@ func (r *Repository) DeleteIdentity(tx *sql.Tx, applicationID int64, identityID 
 	if err != nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - identity id is not valid (id: %s)", identityID), err)
 	}
-	res, err := tx.Exec("DELETE FROM identities WHERE application_id = ? and identity_id = ?", applicationID, identityID)
+	res, err := tx.Exec("DELETE FROM identities WHERE zone_id = ? and identity_id = ?", zoneID, identityID)
 	if err != nil || res == nil {
 		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete identity - operation 'delete-identity' encountered an issue (id: %s)", identityID), err)
 	}
@@ -156,12 +156,12 @@ func (r *Repository) DeleteIdentity(tx *sql.Tx, applicationID int64, identityID 
 }
 
 // FetchIdentities retrieves identities.
-func (r *Repository) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, applicationID int64, filterID *string, filterName *string) ([]Identity, error) {
+func (r *Repository) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]Identity, error) {
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
-	if err := azvalidators.ValidateCodeID("identity", applicationID); err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf(errorMessageIdentityInvalidApplicationID, applicationID), err)
+	if err := azvalidators.ValidateCodeID("identity", zoneID); err != nil {
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf(errorMessageIdentityInvalidZoneID, zoneID), err)
 	}
 
 	var dbIdentities []Identity
@@ -170,8 +170,8 @@ func (r *Repository) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, ap
 	var conditions []string
 	var args []any
 
-	conditions = append(conditions, "application_id = ?")
-	args = append(args, applicationID)
+	conditions = append(conditions, "zone_id = ?")
+	args = append(args, zoneID)
 
 	if filterID != nil {
 		identityID := *filterID

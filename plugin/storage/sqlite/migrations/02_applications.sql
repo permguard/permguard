@@ -15,57 +15,57 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 -- +goose Up
-CREATE TABLE applications (
-    application_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE zones (
+    zone_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     created_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
     updated_at TIMESTAMP DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')) NOT NULL,
     name TEXT NOT NULL UNIQUE
 );
 
-CREATE INDEX applications_name_idx ON applications(name);
+CREATE INDEX zones_name_idx ON zones(name);
 
--- Trigger to track changes in the `applications` table after insert
+-- Trigger to track changes in the `zones` table after insert
 -- +goose StatementBegin
-CREATE TRIGGER applications_change_streams_after_insert
-AFTER INSERT ON applications
+CREATE TRIGGER zones_change_streams_after_insert
+AFTER INSERT ON zones
 FOR EACH ROW
 BEGIN
-    INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
-		VALUES ('APPLICATION', 'INSERT', NEW.application_id, NEW.application_id,
-				'{"application_id": ' || NEW.application_id || ', "created_at": "' || NEW.created_at ||
+    INSERT INTO change_streams (change_entity, change_type, change_entity_id, zone_id, payload)
+		VALUES ('ZONE', 'INSERT', NEW.zone_id, NEW.zone_id,
+				'{"zone_id": ' || NEW.zone_id || ', "created_at": "' || NEW.created_at ||
 				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name || '"}');
 END;
 -- +goose StatementEnd
 
--- Trigger to track changes in the `applications` table after update
+-- Trigger to track changes in the `zones` table after update
 -- +goose StatementBegin
-CREATE TRIGGER applications_change_streams_after_update
-AFTER UPDATE ON applications
+CREATE TRIGGER zones_change_streams_after_update
+AFTER UPDATE ON zones
 FOR EACH ROW
 BEGIN
-    UPDATE applications SET updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW') WHERE application_id = OLD.application_id;
-    INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
-		VALUES ('APPLICATION', 'INSERT', NEW.application_id, NEW.application_id,
-				'{"application_id": ' || NEW.application_id || ', "created_at": "' || NEW.created_at ||
+    UPDATE zones SET updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW') WHERE zone_id = OLD.zone_id;
+    INSERT INTO change_streams (change_entity, change_type, change_entity_id, zone_id, payload)
+		VALUES ('ZONE', 'INSERT', NEW.zone_id, NEW.zone_id,
+				'{"zone_id": ' || NEW.zone_id || ', "created_at": "' || NEW.created_at ||
 				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name || '"}');
 END;
 -- +goose StatementEnd
 
--- Trigger to track changes in the `applications` table after delete
+-- Trigger to track changes in the `zones` table after delete
 -- +goose StatementBegin
-CREATE TRIGGER applications_change_streams_after_delete
-AFTER DELETE ON applications
+CREATE TRIGGER zones_change_streams_after_delete
+AFTER DELETE ON zones
 FOR EACH ROW
 BEGIN
-    INSERT INTO change_streams (change_entity, change_type, change_entity_id, application_id, payload)
-		VALUES ('APPLICATION', 'DELETE', OLD.application_id, OLD.application_id,
-				'{"application_id": ' || OLD.application_id || ', "created_at": "' || OLD.created_at ||
+    INSERT INTO change_streams (change_entity, change_type, change_entity_id, zone_id, payload)
+		VALUES ('ZONE', 'DELETE', OLD.zone_id, OLD.zone_id,
+				'{"zone_id": ' || OLD.zone_id || ', "created_at": "' || OLD.created_at ||
 				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name || '""}');
 END;
 -- +goose StatementEnd
 
 -- +goose Down
-DROP TRIGGER IF EXISTS applications_change_streams_after_insert;
-DROP TRIGGER IF EXISTS applications_change_streams_after_update;
-DROP TRIGGER IF EXISTS applications_change_streams_after_delete;
-DROP TABLE IF EXISTS applications;
+DROP TRIGGER IF EXISTS zones_change_streams_after_insert;
+DROP TRIGGER IF EXISTS zones_change_streams_after_update;
+DROP TRIGGER IF EXISTS zones_change_streams_after_delete;
+DROP TABLE IF EXISTS zones;

@@ -27,15 +27,15 @@ import (
 	azmocks "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
 )
 
-// TestCreateCommandForConfigAAPSet tests the createCommandForConfigAAPSet function.
-func TestCreateCommandForConfigAAPSet(t *testing.T) {
+// TestCreateCommandForConfigZAPSet tests the createCommandForConfigZAPSet function.
+func TestCreateCommandForConfigZAPSet(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command sets the aap grpc target."}
-	aztestutils.BaseCommandTest(t, createCommandForConfigAAPSet, args, false, outputs)
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command sets the zap grpc target."}
+	aztestutils.BaseCommandTest(t, createCommandForConfigZAPSet, args, false, outputs)
 }
 
-// TestCliConfigSetAAPTarget tests the command for setting the aap target.
-func TestCliConfigSetAAPTargetWithError(t *testing.T) {
+// TestCliConfigSetZAPTarget tests the command for setting the zap target.
+func TestCliConfigSetZAPTargetWithError(t *testing.T) {
 	tests := []string{
 		"terminal",
 		"json",
@@ -48,7 +48,7 @@ func TestCliConfigSetAAPTargetWithError(t *testing.T) {
 		v.Set("output", outputType)
 
 		depsMocks := azmocks.NewCliDependenciesMock()
-		cmd := createCommandForConfigAAPSet(depsMocks, v)
+		cmd := createCommandForConfigZAPSet(depsMocks, v)
 		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")

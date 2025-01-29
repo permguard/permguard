@@ -99,7 +99,7 @@ func (m *ConfigManager) GetRemoteInfo(remote string) (*azicliwkscommon.RemoteInf
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordNotFound, fmt.Sprintf("remote %s does not exist", remote))
 	}
 	cfgRemote := cfg.Remotes[remote]
-	return azicliwkscommon.NewRemoteInfo(cfgRemote.Server, cfgRemote.AAPPort, cfgRemote.PAPPort)
+	return azicliwkscommon.NewRemoteInfo(cfgRemote.Server, cfgRemote.ZAPPort, cfgRemote.PAPPort)
 }
 
 // GetLedgerInfo gets the ref info.
@@ -112,7 +112,7 @@ func (m *ConfigManager) GetLedgerInfo(ledgerURI string) (*azicliwkscommon.RefInf
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordNotFound, fmt.Sprintf("remote %s does not exist", ledgerURI))
 	}
 	cfgLedger := cfg.Ledgers[ledgerURI]
-	refInfo, err := azicliwkscommon.NewRefInfoFromLedgerName(cfgLedger.Remote, cfgLedger.ApplicationID, cfgLedger.LedgerName)
+	refInfo, err := azicliwkscommon.NewRefInfoFromLedgerName(cfgLedger.Remote, cfgLedger.ZoneID, cfgLedger.LedgerName)
 	if err != nil {
 		return nil, err
 	}

@@ -35,7 +35,7 @@ import (
 func registerIdentityForUpsertMocking(isCreate bool) (*Identity, string, *sqlmock.Rows) {
 	identity := &Identity{
 		IdentityID:       GenerateUUID(),
-		ApplicationID:    581616507495,
+		ZoneID:           581616507495,
 		IdentitySourceID: GenerateUUID(),
 		Kind:             1,
 		Name:             "nicola.gallo",
@@ -44,12 +44,12 @@ func registerIdentityForUpsertMocking(isCreate bool) (*Identity, string, *sqlmoc
 	}
 	var sql string
 	if isCreate {
-		sql = `INSERT INTO identities \(application_id, identity_id, identity_source_id, kind, name\) VALUES \(\?, \?, \?, \?, \?\)`
+		sql = `INSERT INTO identities \(zone_id, identity_id, identity_source_id, kind, name\) VALUES \(\?, \?, \?, \?, \?\)`
 	} else {
-		sql = `UPDATE identities SET kind = \?, name = \? WHERE application_id = \? and identity_id = \?`
+		sql = `UPDATE identities SET kind = \?, name = \? WHERE zone_id = \? and identity_id = \?`
 	}
-	sqlRows := sqlmock.NewRows([]string{"application_id", "identity_id", "created_at", "updated_at", "identity_source_id", "kind", "name"}).
-		AddRow(identity.ApplicationID, identity.IdentityID, identity.CreatedAt, identity.UpdatedAt, identity.IdentitySourceID, identity.Kind, identity.Name)
+	sqlRows := sqlmock.NewRows([]string{"zone_id", "identity_id", "created_at", "updated_at", "identity_source_id", "kind", "name"}).
+		AddRow(identity.ZoneID, identity.IdentityID, identity.CreatedAt, identity.UpdatedAt, identity.IdentitySourceID, identity.Kind, identity.Name)
 	return identity, sql, sqlRows
 }
 
@@ -57,17 +57,17 @@ func registerIdentityForUpsertMocking(isCreate bool) (*Identity, string, *sqlmoc
 func registerIdentityForDeleteMocking() (string, *Identity, *sqlmock.Rows, string) {
 	identity := &Identity{
 		IdentityID:       GenerateUUID(),
-		ApplicationID:    581616507495,
+		ZoneID:           581616507495,
 		IdentitySourceID: GenerateUUID(),
 		Kind:             1,
 		Name:             "nicola.gallo",
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
 	}
-	var sqlSelect = `SELECT application_id, identity_id, created_at, updated_at, identity_source_id, kind, name FROM identities WHERE application_id = \? and identity_id = \?`
-	var sqlDelete = `DELETE FROM identities WHERE application_id = \? and identity_id = \?`
-	sqlRows := sqlmock.NewRows([]string{"application_id", "identity_id", "created_at", "updated_at", "identity_source_id", "kind", "name"}).
-		AddRow(identity.ApplicationID, identity.IdentityID, identity.CreatedAt, identity.UpdatedAt, identity.IdentitySourceID, identity.Kind, identity.Name)
+	var sqlSelect = `SELECT zone_id, identity_id, created_at, updated_at, identity_source_id, kind, name FROM identities WHERE zone_id = \? and identity_id = \?`
+	var sqlDelete = `DELETE FROM identities WHERE zone_id = \? and identity_id = \?`
+	sqlRows := sqlmock.NewRows([]string{"zone_id", "identity_id", "created_at", "updated_at", "identity_source_id", "kind", "name"}).
+		AddRow(identity.ZoneID, identity.IdentityID, identity.CreatedAt, identity.UpdatedAt, identity.IdentitySourceID, identity.Kind, identity.Name)
 	return sqlSelect, identity, sqlRows, sqlDelete
 }
 
@@ -76,7 +76,7 @@ func registerIdentityForFetchMocking() (string, []Identity, *sqlmock.Rows) {
 	identities := []Identity{
 		{
 			IdentityID:       GenerateUUID(),
-			ApplicationID:    581616507495,
+			ZoneID:           581616507495,
 			IdentitySourceID: GenerateUUID(),
 			Kind:             1,
 			Name:             "nicola.gallo",
@@ -84,9 +84,9 @@ func registerIdentityForFetchMocking() (string, []Identity, *sqlmock.Rows) {
 			UpdatedAt:        time.Now(),
 		},
 	}
-	var sqlSelect = "SELECT * FROM identities WHERE application_id = ? AND identity_id = ? AND name LIKE ? ORDER BY identity_id ASC LIMIT ? OFFSET ?"
-	sqlRows := sqlmock.NewRows([]string{"application_id", "identity_id", "created_at", "updated_at", "identity_source_id", "kind", "name"}).
-		AddRow(identities[0].ApplicationID, identities[0].IdentityID, identities[0].CreatedAt, identities[0].UpdatedAt, identities[0].IdentitySourceID, identities[0].Kind, identities[0].Name)
+	var sqlSelect = "SELECT * FROM identities WHERE zone_id = ? AND identity_id = ? AND name LIKE ? ORDER BY identity_id ASC LIMIT ? OFFSET ?"
+	sqlRows := sqlmock.NewRows([]string{"zone_id", "identity_id", "created_at", "updated_at", "identity_source_id", "kind", "name"}).
+		AddRow(identities[0].ZoneID, identities[0].IdentityID, identities[0].CreatedAt, identities[0].UpdatedAt, identities[0].IdentitySourceID, identities[0].Kind, identities[0].Name)
 	return sqlSelect, identities, sqlRows
 }
 
@@ -106,7 +106,7 @@ func TestRepoUpsertIdentityWithInvalidInput(t *testing.T) {
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
-	{ // Test with invalid application id
+	{ // Test with invalid zone id
 		dbInIdentity := &Identity{
 			IdentityID: GenerateUUID(),
 			Name:       "rent-a-car",
@@ -118,8 +118,8 @@ func TestRepoUpsertIdentityWithInvalidInput(t *testing.T) {
 
 	{ // Test with invalid identity id
 		dbInIdentity := &Identity{
-			ApplicationID: 581616507495,
-			Name:          "rent-a-car",
+			ZoneID: 581616507495,
+			Name:   "rent-a-car",
 		}
 		_, err := ledger.UpsertIdentity(tx, false, dbInIdentity)
 		assert.NotNil(err, "error should be not nil")
@@ -171,28 +171,28 @@ func TestRepoUpsertIdentityWithSuccess(t *testing.T) {
 		var dbInIdentity *Identity
 		if isCreate {
 			dbInIdentity = &Identity{
-				ApplicationID:    identity.ApplicationID,
+				ZoneID:           identity.ZoneID,
 				IdentitySourceID: identity.IdentitySourceID,
 				Kind:             identity.Kind,
 				Name:             identity.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(identity.ApplicationID, sqlmock.AnyArg(), identity.IdentitySourceID, identity.Kind, identity.Name).
+				WithArgs(identity.ZoneID, sqlmock.AnyArg(), identity.IdentitySourceID, identity.Kind, identity.Name).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 		} else {
 			dbInIdentity = &Identity{
 				IdentityID:       identity.IdentityID,
-				ApplicationID:    identity.ApplicationID,
+				ZoneID:           identity.ZoneID,
 				IdentitySourceID: identity.IdentitySourceID,
 				Kind:             identity.Kind,
 				Name:             identity.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(identity.Kind, identity.Name, identity.ApplicationID, identity.IdentityID).
+				WithArgs(identity.Kind, identity.Name, identity.ZoneID, identity.IdentityID).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 		}
 
-		sqlDBMock.ExpectQuery(`SELECT application_id, identity_id, created_at, updated_at, identity_source_id, kind, name FROM identities WHERE application_id = \? and identity_id = \?`).
+		sqlDBMock.ExpectQuery(`SELECT zone_id, identity_id, created_at, updated_at, identity_source_id, kind, name FROM identities WHERE zone_id = \? and identity_id = \?`).
 			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
 			WillReturnRows(sqlIdentityRows)
 
@@ -202,7 +202,7 @@ func TestRepoUpsertIdentityWithSuccess(t *testing.T) {
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.NotNil(dbOutIdentity, "identity should be not nil")
 		assert.Equal(identity.IdentityID, dbOutIdentity.IdentityID, "identity id is not correct")
-		assert.Equal(identity.ApplicationID, dbOutIdentity.ApplicationID, "identity application id is not correct")
+		assert.Equal(identity.ZoneID, dbOutIdentity.ZoneID, "identity zone id is not correct")
 		assert.Equal(identity.IdentitySourceID, dbOutIdentity.IdentitySourceID, "identity source id is not correct")
 		assert.Equal(identity.Kind, dbOutIdentity.Kind, "identity kind is not correct")
 		assert.Equal(identity.Name, dbOutIdentity.Name, "identity name is not correct")
@@ -231,24 +231,24 @@ func TestRepoUpsertIdentityWithErrors(t *testing.T) {
 		var dbInIdentity *Identity
 		if isCreate {
 			dbInIdentity = &Identity{
-				ApplicationID:    identity.ApplicationID,
+				ZoneID:           identity.ZoneID,
 				IdentitySourceID: identity.IdentitySourceID,
 				Kind:             identity.Kind,
 				Name:             identity.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(identity.ApplicationID, sqlmock.AnyArg(), identity.IdentitySourceID, identity.Kind, identity.Name).
+				WithArgs(identity.ZoneID, sqlmock.AnyArg(), identity.IdentitySourceID, identity.Kind, identity.Name).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 		} else {
 			dbInIdentity = &Identity{
 				IdentityID:       identity.IdentityID,
-				ApplicationID:    identity.ApplicationID,
+				ZoneID:           identity.ZoneID,
 				IdentitySourceID: identity.IdentitySourceID,
 				Kind:             identity.Kind,
 				Name:             identity.Name,
 			}
 			sqlDBMock.ExpectExec(sql).
-				WithArgs(identity.Kind, identity.Name, identity.ApplicationID, identity.IdentityID).
+				WithArgs(identity.Kind, identity.Name, identity.ZoneID, identity.IdentityID).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 		}
 
@@ -272,7 +272,7 @@ func TestRepoDeleteIdentityWithInvalidInput(t *testing.T) {
 
 	tx, _ := sqlDB.Begin()
 
-	{ // Test with invalid application id
+	{ // Test with invalid zone id
 		_, err := ledger.DeleteIdentity(tx, 0, GenerateUUID())
 		assert.NotNil(err, "error should be not nil")
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
@@ -298,20 +298,20 @@ func TestRepoDeleteIdentityWithSuccess(t *testing.T) {
 	sqlDBMock.ExpectBegin()
 
 	sqlDBMock.ExpectQuery(sqlSelect).
-		WithArgs(identity.ApplicationID, identity.IdentityID).
+		WithArgs(identity.ZoneID, identity.IdentityID).
 		WillReturnRows(sqlIdentityRows)
 
 	sqlDBMock.ExpectExec(sqlDelete).
-		WithArgs(identity.ApplicationID, identity.IdentityID).
+		WithArgs(identity.ZoneID, identity.IdentityID).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	tx, _ := sqlDB.Begin()
-	dbOutIdentity, err := ledger.DeleteIdentity(tx, identity.ApplicationID, identity.IdentityID)
+	dbOutIdentity, err := ledger.DeleteIdentity(tx, identity.ZoneID, identity.IdentityID)
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutIdentity, "identity should be not nil")
 	assert.Equal(identity.IdentityID, dbOutIdentity.IdentityID, "identity id is not correct")
-	assert.Equal(identity.ApplicationID, dbOutIdentity.ApplicationID, "identity application id is not correct")
+	assert.Equal(identity.ZoneID, dbOutIdentity.ZoneID, "identity zone id is not correct")
 	assert.Equal(identity.IdentitySourceID, dbOutIdentity.IdentitySourceID, "identity source id is not correct")
 	assert.Equal(identity.Kind, dbOutIdentity.Kind, "identity kind is not correct")
 	assert.Equal(identity.Name, dbOutIdentity.Name, "identity name is not correct")
@@ -357,7 +357,7 @@ func TestRepoDeleteIdentityWithErrors(t *testing.T) {
 		}
 
 		tx, _ := sqlDB.Begin()
-		dbOutIdentity, err := ledger.DeleteIdentity(tx, identity.ApplicationID, identity.IdentityID)
+		dbOutIdentity, err := ledger.DeleteIdentity(tx, identity.ZoneID, identity.IdentityID)
 
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutIdentity, "identity should be nil")
@@ -391,7 +391,7 @@ func TestRepoFetchIdentityWithInvalidInput(t *testing.T) {
 		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
-	{ // Test with invalid application id
+	{ // Test with invalid zone id
 		identityID := GenerateUUID()
 		_, err := ledger.FetchIdentities(sqlDB, 1, 1, 0, &identityID, nil)
 		assert.NotNil(err, "error should be not nil")
@@ -427,10 +427,10 @@ func TestRepoFetchIdentityWithSuccess(t *testing.T) {
 	pageSize := int32(100)
 	identityName := "%" + sqlIdentities[0].Name + "%"
 	sqlDBMock.ExpectQuery(regexp.QuoteMeta(sqlSelect)).
-		WithArgs(sqlIdentities[0].ApplicationID, sqlIdentities[0].IdentityID, identityName, pageSize, page-1).
+		WithArgs(sqlIdentities[0].ZoneID, sqlIdentities[0].IdentityID, identityName, pageSize, page-1).
 		WillReturnRows(sqlIdentityRows)
 
-	dbOutIdentities, err := ledger.FetchIdentities(sqlDB, page, pageSize, sqlIdentities[0].ApplicationID, &sqlIdentities[0].IdentityID, &sqlIdentities[0].Name)
+	dbOutIdentities, err := ledger.FetchIdentities(sqlDB, page, pageSize, sqlIdentities[0].ZoneID, &sqlIdentities[0].IdentityID, &sqlIdentities[0].Name)
 
 	orderedSQLIdentities := make([]Identity, len(sqlIdentities))
 	copy(orderedSQLIdentities, sqlIdentities)
@@ -443,7 +443,7 @@ func TestRepoFetchIdentityWithSuccess(t *testing.T) {
 	assert.Len(orderedSQLIdentities, len(dbOutIdentities), "identities len should be correct")
 	for i, identity := range dbOutIdentities {
 		assert.Equal(identity.IdentityID, orderedSQLIdentities[i].IdentityID, "identity id is not correct")
-		assert.Equal(identity.ApplicationID, orderedSQLIdentities[i].ApplicationID, "identity application id is not correct")
+		assert.Equal(identity.ZoneID, orderedSQLIdentities[i].ZoneID, "identity zone id is not correct")
 		assert.Equal(identity.IdentitySourceID, orderedSQLIdentities[i].IdentitySourceID, "identity source id is not correct")
 		assert.Equal(identity.Kind, orderedSQLIdentities[i].Kind, "identity kind is not correct")
 		assert.Equal(identity.Name, orderedSQLIdentities[i].Name, "identity name is not correct")

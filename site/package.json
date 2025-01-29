@@ -1,7 +1,7 @@
 {
   "name": "permguard",
   "version": "0.0.0",
-  "description": "Permguard is an Open Source Zero-Trust Auth* Provider for cloud-native, edge, and multi-tenant apps, decoupled from application code and leveraging Policy-as-Code for centralized, scalable permission management.",
+  "description": "Permguard is an Open Source ZTAuth* Provider for cloud-native, edge, and multi-tenant apps, decoupled from application code and leveraging Policy-as-Code for centralized, scalable permission management.",
   "author": "Nitro Agility S.r.l.",
   "license": "Apache-2.0",
   "scripts": {

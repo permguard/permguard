@@ -26,7 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azmodelsaap "github.com/permguard/permguard/pkg/transport/models/aap"
+	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 const (
@@ -41,15 +41,15 @@ func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	aapTarget := ctx.GetAAPTarget()
-	client, err := deps.CreateGrpcAAPClient(aapTarget)
+	zapTarget := ctx.GetZAPTarget()
+	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid aap target %s", aapTarget))
+		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
 		return aziclicommon.ErrCommandSilent
 	}
-	applicationID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonApplicationID))
+	zoneID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonZoneID))
 	tenantID := v.GetString(azoptions.FlagName(commandNameForTenantsDelete, flagTenantID))
-	tenant, err := client.DeleteTenant(applicationID, tenantID)
+	tenant, err := client.DeleteTenant(zoneID, tenantID)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
 			printer.Println("Failed to delete the tenant.")
@@ -65,7 +65,7 @@ func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		tenantName := tenant.Name
 		output[tenantID] = tenantName
 	} else if ctx.IsJSONOutput() {
-		output["tenant"] = []*azmodelsaap.Tenant{tenant}
+		output["tenant"] = []*azmodelszap.Tenant{tenant}
 	}
 	printer.PrintlnMap(output)
 	return nil
@@ -80,7 +80,7 @@ func createCommandForTenantDelete(deps azcli.CliDependenciesProvider, v *viper.V
 
 Examples:
   # delete a tenant and output the result in json format
-  permguard authn tenants delete --appid 268786704340 --tenantid 2e190ee712494838bb54d67e2a0c496a
+  permguard authn tenants delete --zoneid 268786704340 --tenantid 2e190ee712494838bb54d67e2a0c496a
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteTenant(deps, cmd, v)

@@ -37,7 +37,7 @@ func runECommand(cmd *cobra.Command) error {
 func Run(cliInitializer azcli.CliInitializer) {
 	// Create the command.
 	v, err := azoptions.NewViperFromConfig(func(v *viper.Viper) error {
-		v.SetDefault(azoptions.FlagName(aziclicommon.FlagPrefixAAP, aziclicommon.FlagSuffixAAPTarget), "localhost:9091")
+		v.SetDefault(azoptions.FlagName(aziclicommon.FlagPrefixZAP, aziclicommon.FlagSuffixZAPTarget), "localhost:9091")
 		v.SetDefault(azoptions.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget), "localhost:9092")
 		v.SetDefault(azoptions.FlagName(aziclicommon.FlagPrefixPDP, aziclicommon.FlagSuffixPDPTarget), "localhost:9094")
 		return v.WriteConfig()

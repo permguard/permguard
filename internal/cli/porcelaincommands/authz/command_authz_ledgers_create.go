@@ -44,7 +44,7 @@ func createCommandForLedgerCreate(deps azcli.CliDependenciesProvider, v *viper.V
 
 Examples:
   # create a ledger and output the result in json format
-  permguard authz ledgers create --appid 268786704340 --name magicfarmacia --output json
+  permguard authz ledgers create --zoneid 268786704340 --name magicfarmacia --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCreateLedger(deps, cmd, v)

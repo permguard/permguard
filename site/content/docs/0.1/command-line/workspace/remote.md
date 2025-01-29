@@ -85,8 +85,8 @@ output:
 {
   "remotes": [
     {
-      "aap_port": 9091,
-      "aap_server": "localhost",
+      "zap_port": 9091,
+      "zap_server": "localhost",
       "pap_port": 9092,
       "pap_server": "localhost",
       "remote": "origin"
@@ -127,8 +127,8 @@ output:
 {
   "remotes": [
     {
-      "aap_port": 9091,
-      "aap_server": "localhost",
+      "zap_port": 9091,
+      "zap_server": "localhost",
       "pap_port": 9092,
       "pap_server": "localhost",
       "remote": "origin"

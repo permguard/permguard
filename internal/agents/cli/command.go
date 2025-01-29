@@ -112,7 +112,7 @@ func runECommand(cmdInfo *azservices.HostInfo, serverFactoryCfg *aziservers.Serv
 
 	if server.HasDebug() {
 		logger.Info("****************************************************")
-		logger.Info("*** WARNING Application is running in debug mode ***")
+		logger.Info("*** WARNING Zone is running in debug mode ***")
 		logger.Info("****************************************************")
 	}
 	exited, err := server.Serve(context.Background(), func() {

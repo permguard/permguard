@@ -22,7 +22,7 @@ import (
 
 const (
 	HostAllInOne HostKind = "ALL-IN-ONE"
-	HostAAP      HostKind = "AAP"
+	HostZAP      HostKind = "ZAP"
 	HostPAP      HostKind = "PAP"
 	HostPIP      HostKind = "PIP"
 	HostPDP      HostKind = "PDP"

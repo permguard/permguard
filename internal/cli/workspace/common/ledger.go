@@ -27,9 +27,9 @@ import (
 
 // LedgerInfo contains the ledger information.
 type LedgerInfo struct {
-	remote        string
-	applicationID int64
-	ledger        string
+	remote string
+	zoneID int64
+	ledger string
 }
 
 // GetRemote returns the remote.
@@ -37,9 +37,9 @@ func (r *LedgerInfo) GetRemote() string {
 	return r.remote
 }
 
-// GetApplicationID returns the application id.
-func (r *LedgerInfo) GetApplicationID() int64 {
-	return r.applicationID
+// GetZoneID returns the zone id.
+func (r *LedgerInfo) GetZoneID() int64 {
+	return r.zoneID
 }
 
 // GetLedger returns the ledger.
@@ -48,18 +48,18 @@ func (r *LedgerInfo) GetLedger() string {
 }
 
 // GetLedgerURI gets the ledger URI.
-func GetLedgerURI(remote string, applicationID int64, ledger string) (string, error) {
+func GetLedgerURI(remote string, zoneID int64, ledger string) (string, error) {
 	ledgerInfo := &LedgerInfo{
-		remote:        remote,
-		applicationID: applicationID,
-		ledger:        ledger,
+		remote: remote,
+		zoneID: zoneID,
+		ledger: ledger,
 	}
 	return GetLedgerURIFromLedgerInfo(ledgerInfo)
 }
 
 // GetLedgerURIFromLedgerInfo gets the ledger URI from the ledger info.
 func GetLedgerURIFromLedgerInfo(ledgerInfo *LedgerInfo) (string, error) {
-	return fmt.Sprintf("%s/%d/%s", ledgerInfo.remote, ledgerInfo.applicationID, ledgerInfo.ledger), nil
+	return fmt.Sprintf("%s/%d/%s", ledgerInfo.remote, ledgerInfo.zoneID, ledgerInfo.ledger), nil
 }
 
 // GetLedgerInfoFromURI gets the ledger information from the URI.
@@ -80,16 +80,16 @@ func GetLedgerInfoFromURI(ledgerURI string) (*LedgerInfo, error) {
 	}
 	result.remote = remoteName
 
-	applicationIDStr := items[1]
-	applicationID, err := strconv.ParseInt(applicationIDStr, 10, 64)
+	zoneIDStr := items[1]
+	zoneID, err := strconv.ParseInt(zoneIDStr, 10, 64)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid application id %s", applicationIDStr), err)
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid zone id %s", zoneIDStr), err)
 	}
-	err = azvalidators.ValidateCodeID("ledger", applicationID)
+	err = azvalidators.ValidateCodeID("ledger", zoneID)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid application id %s", applicationIDStr), err)
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid zone id %s", zoneIDStr), err)
 	}
-	result.applicationID = applicationID
+	result.zoneID = zoneID
 
 	ledgerName := items[2]
 	err = azvalidators.ValidateName("ledger", ledgerName)
