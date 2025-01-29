@@ -33,7 +33,7 @@ Available Commands:
   update      Update a ledger
 
 Flags:
-      --zoneid int   zone id
+      --zoneid int    zone id
   -h, --help          help for ledgers
 
 Global Flags:
