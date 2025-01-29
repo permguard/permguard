@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-In **PermGuard**, an **Authorization Server** is a logical server that includes a set of nodes. Specifically, it consists of the following components:
+In **Permguard**, an **Authorization Server** is a logical server that includes a set of nodes. Specifically, it consists of the following components:
 
 - **Zone Administration Point (ZAP)**
 - **Policy Administration Point (PAP)**

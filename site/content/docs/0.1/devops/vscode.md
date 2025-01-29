@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The PermGuard extension for Visual Studio Code integrates its powerful tools directly into the editor, streamlining the management of permissions and policies during development.
+The Permguard extension for Visual Studio Code integrates its powerful tools directly into the editor, streamlining the management of permissions and policies during development.
 Install from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=permguard.permguard) or by [searching within VS Code](https://code.visualstudio.com/docs/0.1/editor/extension-gallery#_search-for-an-extension).
 
 <div style="text-align: center">

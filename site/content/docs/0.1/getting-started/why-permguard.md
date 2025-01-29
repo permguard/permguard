@@ -80,7 +80,7 @@ Using **APIs** or **CLI tools**, organizations can import identity data from the
   <img alt="Permguard" src="/images/diagrams/d12.webp"/>
 </div><br/>
 
-PermGuard imagines a future where authorization is not an afterthought. With a dedicated layer, it helps organizations to:
+Permguard imagines a future where authorization is not an afterthought. With a dedicated layer, it helps organizations to:
 
 - Build systems that are secure and scalable.
 

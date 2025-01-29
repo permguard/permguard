@@ -63,13 +63,13 @@ An `Actor` is a type of virtual identity that can be temporarily assumed by a Pr
 - A `Role`: A predefined set of permissions tailored to specific tasks, such as "Approvals Manager" or "Compliance Reviewer."
 - A `Digital Twin`: A virtual representation of a user or service application, designed to perform tasks independently while reflecting the original identity.
 
-PermGuard allows systems to **optionally** build around the concept of Actors. This approach isolates different profiles of an identity, ensuring every operation is executed under the specific permissions of the Actor rather than the broader permissions of the `Principal`.
+Permguard allows systems to **optionally** build around the concept of Actors. This approach isolates different profiles of an identity, ensuring every operation is executed under the specific permissions of the Actor rather than the broader permissions of the `Principal`.
 
 1. `Zero Trust Security`: By requiring elevation into an Actor, only the permissions needed for a specific task are used, reducing risks and ensuring complete traceability.
 
 2. `Role Isolation`: Each Actor is limited to its assigned role or context, creating clear separation between different responsibilities or operations.
 
-3. `Future Federation`: The Actor model provides a strong foundation for enabling secure collaboration across organizations. With clearly defined roles and permissions, PermGuard supports federated systems where multiple organizations can work together while maintaining security boundaries.
+3. `Future Federation`: The Actor model provides a strong foundation for enabling secure collaboration across organizations. With clearly defined roles and permissions, Permguard supports federated systems where multiple organizations can work together while maintaining security boundaries.
 
 This design enhances `security`, `flexibility`, and `scalability`, making it an ideal choice for distributed systems and multi-organization environments.
 

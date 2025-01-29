@@ -29,7 +29,7 @@ Learn:
 
 **Permguard** is an Open Source ZTAuth* Provider for cloud-native, edge, and multi-tenant apps, decoupled from application code and leveraging `Policy-as-Code` for centralized, scalable permission management.
 
-As a `PermGuard administrator`, you can create multiple zones and manage multiple ledgers within each zone.
+As a `Permguard administrator`, you can create multiple zones and manage multiple ledgers within each zone.
 
 Simply define your schema's `resources` within your repository and create customized access control policies. Resources are organized into schema namespaces.
 
