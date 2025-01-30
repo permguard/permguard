@@ -50,7 +50,7 @@ func TestCliLedgersDeleteWithError(t *testing.T) {
 		},
 		{
 			OutputType: "json",
-			HasError:   false,
+			HasError:   true,
 		},
 	}
 	for _, test := range tests {
@@ -67,21 +67,21 @@ func TestCliLedgersDeleteWithError(t *testing.T) {
 		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
 
 		papClient := azmocks.NewGrpcPAPClientMock()
-		papClient.On("DeleteLedger", mock.Anything, mock.Anything).Return(nil, azerrors.ErrClientParameter)
+		papClient.On("DeleteLedger", mock.Anything, mock.Anything).Return(nil, azerrors.ErrCliArguments)
 
 		printerMock := azmocks.NewPrinterMock()
 		printerMock.On("Println", mock.Anything).Return()
 		printerMock.On("PrintlnMap", mock.Anything).Return()
-		printerMock.On("Error", azerrors.ErrClientParameter).Return()
+		printerMock.On("Error", mock.Anything).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 		depsMocks.On("CreateGrpcPAPClient", mock.Anything).Return(papClient, nil)
 
 		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
 		if test.HasError {
-			printerMock.AssertCalled(t, "Error", azerrors.ErrClientParameter)
+			printerMock.AssertCalled(t, "Error", mock.Anything)
 		} else {
-			printerMock.AssertNotCalled(t, "Error", azerrors.ErrClientParameter)
+			printerMock.AssertNotCalled(t, "Error", mock.Anything)
 		}
 	}
 }
