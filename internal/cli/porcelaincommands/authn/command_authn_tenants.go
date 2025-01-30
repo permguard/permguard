@@ -26,6 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
@@ -38,6 +39,12 @@ const (
 
 // runECommandForCreateTenant runs the command for creating a tenant.
 func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+	opGetErroMessage := func(op bool) string {
+		if op {
+			return "failed to create the tenant"
+		}
+		return "failed to upsert the tenant"
+	}
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -45,12 +52,20 @@ func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
+		printer.Println("Failed to upsert the tenant.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, opGetErroMessage(isCreate), err)
+			printer.Error(sysErr)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
+		printer.Println("Failed to upsert the tenant.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, opGetErroMessage(isCreate), err)
+			printer.Error(sysErr)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	zoneID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonZoneID))
@@ -67,15 +82,10 @@ func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		tenant, err = client.UpdateTenant(tenant)
 	}
 	if err != nil {
-		if ctx.IsTerminalOutput() {
-			if isCreate {
-				printer.Println("Failed to create the tenant.")
-			} else {
-				printer.Println("Failed to update the tenant.")
-			}
-			if ctx.IsVerboseTerminalOutput() {
-				printer.Error(err)
-			}
+		printer.Println("Failed to upsert the tenant.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, opGetErroMessage(isCreate), err)
+			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
 	}

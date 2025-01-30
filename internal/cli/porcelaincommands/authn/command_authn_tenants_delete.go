@@ -26,6 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
@@ -43,12 +44,20 @@ func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
+		printer.Println("Failed to delete the tenant.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the tenant", err)
+			printer.Error(sysErr)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
+		printer.Println("Failed to delete the tenant.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the tenant", err)
+			printer.Error(sysErr)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	zoneID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonZoneID))
@@ -57,9 +66,11 @@ func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	if err != nil {
 		if ctx.IsTerminalOutput() {
 			printer.Println("Failed to delete the tenant.")
-			if ctx.IsVerboseTerminalOutput() {
-				printer.Error(err)
+			if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+				sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the tenant", err)
+				printer.Error(sysErr)
 			}
+			return aziclicommon.ErrCommandSilent
 		}
 		return aziclicommon.ErrCommandSilent
 	}

@@ -26,6 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -52,12 +53,10 @@ func runECommandForApplyWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra
 	}
 	output, err := wksMgr.ExecApply(outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsJSONOutput() {
-			printer.ErrorWithOutput(output, err)
-		} else if ctx.IsTerminalOutput() {
-			if ctx.IsVerboseTerminalOutput() {
-				printer.Error(err)
-			}
+		printer.Println("Failed to apply workspace changes.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to apply workspace changes.", err)
+			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
 	}

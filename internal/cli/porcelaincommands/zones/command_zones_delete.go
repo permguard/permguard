@@ -26,6 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelzap "github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
@@ -43,22 +44,29 @@ func runECommandForDeleteZone(deps azcli.CliDependenciesProvider, cmd *cobra.Com
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
+		printer.Println("Failed to delete the zone.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the zone", err)
+			printer.Error(sysErr)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
+		printer.Println("Failed to delete the zone.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the zone", err)
+			printer.Error(sysErr)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	zoneID := v.GetInt64(azoptions.FlagName(commandNameForZonesDelete, aziclicommon.FlagCommonZoneID))
 	zone, err := client.DeleteZone(zoneID)
 	if err != nil {
-		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to delete the zone.")
-			if ctx.IsVerboseTerminalOutput() {
-				printer.Error(err)
-			}
+		printer.Println("Failed to delete the zone.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to delete the zone", err)
+			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
 	}

@@ -26,6 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -42,12 +43,20 @@ func runECommandForListLedgers(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 	}
 	papTarget, err := ctx.GetPAPTarget()
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
+		printer.Println("Failed to list ledgers.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list ledgers", err)
+			printer.Error(sysErr)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcPAPClient(papTarget)
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
+		printer.Println("Failed to list ledgers.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list ledgers", err)
+			printer.Error(sysErr)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	page := v.GetInt32(azoptions.FlagName(commandNameForLedgersList, aziclicommon.FlagCommonPage))
@@ -58,11 +67,10 @@ func runECommandForListLedgers(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 	name := v.GetString(azoptions.FlagName(commandNameForLedgersList, aziclicommon.FlagCommonName))
 	ledgers, err := client.FetchLedgersBy(page, pageSize, zoneID, ledgerID, kind, name)
 	if err != nil {
-		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to list ledgers.")
-			if ctx.IsVerboseTerminalOutput() {
-				printer.Error(err)
-			}
+		printer.Println("Failed to list ledgers.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list ledgers", err)
+			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
 	}

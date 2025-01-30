@@ -104,12 +104,14 @@ seo:
 | Error Code | Description                                      |
 |------------|--------------------------------------------------|
 | 08000      | cli: generic error                               |
-| 08002      | cli: invalid configuration                       |
+| 08001      | cli: invalid configuration                       |
 | 08002      | cli: invalid arguments                           |
 | 08003      | cli: invalid input                               |
 | 08004      | cli: not a permguard workspace directory         |
 | 08005      | cli: record already exists                       |
 | 08006      | cli: record not found                            |
+| 08007      | cli: record is malformed                         |
+| 08008      | cli: opeartion                                   |
 
 ## 081xx: Command Line Interface File System Errors
 

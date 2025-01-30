@@ -28,14 +28,13 @@ import (
 	azvalidators "github.com/permguard/permguard/pkg/core/validators"
 )
 
-
 const (
 	// errorMessageLedgerInvalidZoneID is the error message ledger invalid zone id.
 	errorMessageLedgerInvalidZoneID = "invalid client input - zone id is not valid (id: %d)"
 )
 
 const (
-	LedgerType = "ledger"
+	LedgerType       = "ledger"
 	LedgerTypePolicy = "policy"
 )
 

@@ -72,7 +72,11 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 		return aziclicommon.ErrCommandSilent
 	}
 	if len(args) < 1 {
-		printer.Error(azerrors.ErrCliArguments)
+		printer.Println("Failed to clone the workspace.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to clone the workspace.", err)
+			printer.Error(sysErr)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	langFct, err := deps.GetLanguageFactory()
@@ -89,13 +93,10 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 	papPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagPAP))
 	output, err := wksMgr.ExecCloneLedger(azplangcedar.LanguageName, ledgerURI, zapPort, papPort, outFunc(ctx, printer))
 	if err != nil {
-		azfiles.DeletePath(ledgerFolder)
-		if ctx.IsJSONOutput() {
-			printer.ErrorWithOutput(output, err)
-		} else if ctx.IsTerminalOutput() {
-			if ctx.IsVerboseTerminalOutput() {
-				printer.Error(err)
-			}
+		printer.Println("Failed to clone the workspace.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to clone the workspace.", err)
+			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
 	}

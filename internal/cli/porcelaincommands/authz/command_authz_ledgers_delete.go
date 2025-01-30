@@ -26,6 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
@@ -43,13 +44,19 @@ func runECommandForDeleteLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	}
 	papTarget, err := ctx.GetPAPTarget()
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
-		return aziclicommon.ErrCommandSilent
+		printer.Println("Failed to delete the ledger.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the ledger", err)
+			printer.Error(sysErr)
+		}
 	}
 	client, err := deps.CreateGrpcPAPClient(papTarget)
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid pap target %s", papTarget))
-		return aziclicommon.ErrCommandSilent
+		printer.Println("Failed to delete the ledger.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the ledger", err)
+			printer.Error(sysErr)
+		}
 	}
 	zoneID := v.GetInt64(azoptions.FlagName(commandNameForLedger, aziclicommon.FlagCommonZoneID))
 	ledgerID := v.GetString(azoptions.FlagName(commandNameForLedgersDelete, flagLedgerID))
@@ -57,8 +64,9 @@ func runECommandForDeleteLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	if err != nil {
 		if ctx.IsTerminalOutput() {
 			printer.Println("Failed to delete the ledger.")
-			if ctx.IsVerboseTerminalOutput() {
-				printer.Error(err)
+			if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+				sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the ledger", err)
+				printer.Error(sysErr)
 			}
 		}
 		return aziclicommon.ErrCommandSilent

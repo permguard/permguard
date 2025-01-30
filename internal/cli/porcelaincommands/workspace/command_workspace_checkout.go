@@ -42,7 +42,11 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 		return aziclicommon.ErrCommandSilent
 	}
 	if len(args) < 1 {
-		printer.Error(azerrors.ErrCliArguments)
+		printer.Println("Failed to checkout the workspace.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to checkout the workspace.", err)
+			printer.Error(sysErr)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	langFct, err := deps.GetLanguageFactory()
@@ -58,12 +62,10 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 	ledger := args[0]
 	output, err := wksMgr.ExecCheckoutLedger(ledger, outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsJSONOutput() {
-			printer.ErrorWithOutput(output, err)
-		} else if ctx.IsTerminalOutput() {
-			if ctx.IsVerboseTerminalOutput() {
-				printer.Error(err)
-			}
+		printer.Println("Failed to checkout the workspace.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to checkout the workspace.", err)
+			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
 	}

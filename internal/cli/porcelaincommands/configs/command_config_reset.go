@@ -26,6 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azclioptions "github.com/permguard/permguard/pkg/cli/options"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // runECommandReset runs the command for resetting the config.
@@ -37,13 +38,10 @@ func runECommandReset(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v 
 	}
 	configFile, err := azclioptions.ResetViperConfig(v)
 	if err != nil {
-		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to reset the cli config file.")
-			if ctx.IsVerboseTerminalOutput() {
-				printer.Error(err)
-			}
-		} else if ctx.IsJSONOutput() {
-			printer.Error(err)
+		printer.Println("Failed to reset the cli config file.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to reset the cli config file.", err)
+			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
 	}
