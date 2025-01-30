@@ -18,6 +18,7 @@ package zones
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -34,9 +35,9 @@ import (
 func runECommandForUpsertZone(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
 	opGetErroMessage := func(op bool) string {
 		if op {
-			return "failed to create the tenant"
+			return "Failed to create the zone"
 		}
-		return "failed to upsert the tenant"
+		return "Failed to upsert the zone"
 	}
 	if deps == nil {
 		color.Red("cli: an issue has been detected with the cli code configuration. please create a github issue with the details")
@@ -49,18 +50,18 @@ func runECommandForUpsertZone(deps azcli.CliDependenciesProvider, cmd *cobra.Com
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
-		printer.Println("Failed to upsert the zone.")
+		printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, opGetErroMessage(isCreate), err)
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Println("Failed to upsert the zone.")
+		printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, opGetErroMessage(isCreate), err)
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
@@ -78,9 +79,9 @@ func runECommandForUpsertZone(deps azcli.CliDependenciesProvider, cmd *cobra.Com
 		zone, err = client.UpdateZone(inputZone)
 	}
 	if err != nil {
-		printer.Println("Failed to upsert the zone.")
+		printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, opGetErroMessage(isCreate), err)
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
