@@ -25,19 +25,28 @@ import (
 // LogHeaderText returns the log header text.
 func LogHeaderText(text string) string {
 	out := color.New(color.FgWhite)
-	return out.Sprintf(text)
+	return out.Sprintf("%s", text)
 }
 
 // LogErrorText returns the log error text.
 func LogErrorText(text string) string {
 	out := color.New(color.FgRed)
-	return out.Sprintf(text)
+	return out.Sprintf("%s", text)
+}
+
+// TimeStampText returns the timestamp text.
+func BoolText(text bool) string {
+	out := color.New(color.FgGreen)
+	if !text {
+		out = color.New(color.FgRed)
+	}
+	return out.Sprintf("%t", text)
 }
 
 // TimeStampText returns the timestamp text.
 func TimeStampText(text string) string {
 	out := color.New(color.FgBlue)
-	return out.Sprintf(text)
+	return out.Sprintf("%s", text)
 }
 
 // DateText returns the date text.
@@ -49,55 +58,55 @@ func DateText(date time.Time) string {
 // NormalText returns the normal text.
 func NormalText(text string) string {
 	out := color.New(color.FgWhite)
-	return out.Sprintf(text)
+	return out.Sprintf("%s", text)
 }
 
 // KeywordText returns the keyword text.
 func KeywordText(text string) string {
 	out := color.New(color.FgHiMagenta)
-	return out.Sprintf(text)
+	return out.Sprintf("%s", text)
 }
 
 // CliCommandText returns the cli command text.
 func CliCommandText(text string) string {
 	out := color.New(color.FgHiGreen)
-	return out.Sprintf(text)
+	return out.Sprintf("%s", text)
 }
 
 // IDText returns the ID text.
 func IDText(text string) string {
 	out := color.New(color.FgHiCyan)
-	return out.Sprintf(text)
+	return out.Sprintf("%s", text)
 }
 
 // NameText returns the name text.
 func NameText(text string) string {
 	out := color.New(color.FgHiYellow)
-	return out.Sprintf(text)
+	return out.Sprintf("%s", text)
 }
 
 // LanguageText returns the language text.
 func LanguageText(text string) string {
 	out := color.New(color.FgHiGreen)
-	return out.Sprintf(text)
+	return out.Sprintf("%s", text)
 }
 
 // LanguageText returns the language text.
 func LanguageKeywordText(text string) string {
 	out := color.New(color.FgHiWhite)
-	return out.Sprintf(text)
+	return out.Sprintf("%s", text)
 }
 
 // RemoteOperationText returns the remote operation text.
 func RemoteOperationText(text string) string {
 	out := color.New(color.FgHiYellow)
-	return out.Sprintf(text)
+	return out.Sprintf("%s", text)
 }
 
 // FileText returns the file text.
 func FileText(text string) string {
 	out := color.New(color.FgHiYellow)
-	return out.Sprintf(text)
+	return out.Sprintf("%s", text)
 }
 
 // NumberText returns number text.
@@ -115,23 +124,23 @@ func BigNumberText(digit int64) string {
 // UnchangedText returns the unchanged text.
 func UnchangedText(text string) string {
 	out := color.New(color.FgHiWhite)
-	return out.Sprintf(text)
+	return out.Sprintf("%s", text)
 }
 
 // CreateText returns the create text.
 func CreateText(text string) string {
 	out := color.New(color.FgHiGreen)
-	return out.Sprintf(text)
+	return out.Sprintf("%s", text)
 }
 
 // ModifyText returns the modify text.
 func ModifyText(text string) string {
 	out := color.New(color.FgHiYellow)
-	return out.Sprintf(text)
+	return out.Sprintf("%s", text)
 }
 
 // DeleteText returns the delete text.
 func DeleteText(text string) string {
 	out := color.New(color.FgHiRed)
-	return out.Sprintf(text)
+	return out.Sprintf("%s", text)
 }
