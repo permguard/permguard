@@ -74,7 +74,7 @@ permguard authn identities create --zoneid 268786704340 --kind user --name nicol
 
 output:
 
-```bash
+```json
 {
   "identities": [
     {
@@ -126,7 +126,7 @@ permguard authn identities list --zoneid 268786704340 --identitysourceid --outpu
 
 output:
 
-```bash
+```json
 {
   "identities": [
     {
