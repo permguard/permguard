@@ -80,9 +80,9 @@ func TestCliZonesCreateWithError(t *testing.T) {
 
 		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
 		if test.HasError {
-			printerMock.AssertCalled(t, "Error", azerrors.ErrClientParameter)
+			printerMock.AssertCalled(t, "Error", azerrors.ErrCliArguments)
 		} else {
-			printerMock.AssertNotCalled(t, "Error", azerrors.ErrClientParameter)
+			printerMock.AssertNotCalled(t, "Error", azerrors.ErrCliArguments)
 		}
 	}
 }
