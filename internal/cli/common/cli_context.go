@@ -104,6 +104,11 @@ func (c *CliCommandContext) IsTerminalOutput() bool {
 	return c.GetOutput() == azcli.OutputTerminal
 }
 
+// IsNotVerboseTerminalOutput return true if the output is terminal and verbosity is not enabled.
+func (c *CliCommandContext) IsNotVerboseTerminalOutput() bool {
+	return c.IsTerminalOutput() && !c.IsVerbose()
+}
+
 // IsVerboseTerminalOutput returns true if the output is terminal and verbosity is enabled.
 func (c *CliCommandContext) IsVerboseTerminalOutput() bool {
 	return c.IsTerminalOutput() && c.IsVerbose()

@@ -43,7 +43,9 @@ func runECommandForListLedgers(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 	}
 	papTarget, err := ctx.GetPAPTarget()
 	if err != nil {
-		printer.Println("Failed to list ledgers.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to list ledgers.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list ledgers", err)
 			printer.Error(sysErr)
@@ -52,7 +54,9 @@ func runECommandForListLedgers(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 	}
 	client, err := deps.CreateGrpcPAPClient(papTarget)
 	if err != nil {
-		printer.Println("Failed to list ledgers.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to list ledgers.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list ledgers", err)
 			printer.Error(sysErr)
@@ -67,7 +71,9 @@ func runECommandForListLedgers(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 	name := v.GetString(azoptions.FlagName(commandNameForLedgersList, aziclicommon.FlagCommonName))
 	ledgers, err := client.FetchLedgersBy(page, pageSize, zoneID, ledgerID, kind, name)
 	if err != nil {
-		printer.Println("Failed to list ledgers.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to list ledgers.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list ledgers", err)
 			printer.Error(sysErr)

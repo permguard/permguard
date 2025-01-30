@@ -43,7 +43,9 @@ func runECommandForListZones(deps azcli.CliDependenciesProvider, cmd *cobra.Comm
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
-		printer.Println("Failed to list zones.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to list zones.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list zones", err)
 			printer.Error(sysErr)
@@ -52,7 +54,9 @@ func runECommandForListZones(deps azcli.CliDependenciesProvider, cmd *cobra.Comm
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Println("Failed to list zones.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to list zones.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list zones", err)
 			printer.Error(sysErr)
@@ -67,7 +71,9 @@ func runECommandForListZones(deps azcli.CliDependenciesProvider, cmd *cobra.Comm
 
 	zones, err := client.FetchZonesBy(page, pageSize, zoneID, name)
 	if err != nil {
-		printer.Println("Failed to list zones.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to list zones.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to list zones", err)
 			printer.Error(sysErr)

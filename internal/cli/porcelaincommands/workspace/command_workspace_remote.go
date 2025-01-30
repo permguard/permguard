@@ -53,7 +53,9 @@ func runECommandForRemoteWorkspace(deps azcli.CliDependenciesProvider, cmd *cobr
 	}
 	output, err := wksMgr.ExecListRemotes(outFunc(ctx, printer))
 	if err != nil {
-		printer.Println("Failed to list remotes.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to list remotes.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to list remotes.", err)
 			printer.Error(sysErr)

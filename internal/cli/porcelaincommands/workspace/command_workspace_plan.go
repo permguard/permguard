@@ -53,7 +53,9 @@ func runECommandForPlanWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 	}
 	output, err := wksMgr.ExecPlan(outFunc(ctx, printer))
 	if err != nil {
-		printer.Println("Failed execute the plan.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed execute the plan.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to execute the plan.", err)
 			printer.Error(sysErr)

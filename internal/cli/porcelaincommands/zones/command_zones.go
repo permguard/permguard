@@ -50,7 +50,9 @@ func runECommandForUpsertZone(deps azcli.CliDependenciesProvider, cmd *cobra.Com
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
-		printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
@@ -59,7 +61,9 @@ func runECommandForUpsertZone(deps azcli.CliDependenciesProvider, cmd *cobra.Com
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
@@ -79,7 +83,9 @@ func runECommandForUpsertZone(deps azcli.CliDependenciesProvider, cmd *cobra.Com
 		zone, err = client.UpdateZone(inputZone)
 	}
 	if err != nil {
-		printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)

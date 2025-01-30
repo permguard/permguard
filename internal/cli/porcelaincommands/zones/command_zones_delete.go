@@ -44,7 +44,9 @@ func runECommandForDeleteZone(deps azcli.CliDependenciesProvider, cmd *cobra.Com
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
-		printer.Println("Failed to delete the zone.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to delete the zone.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the zone", err)
 			printer.Error(sysErr)
@@ -53,7 +55,9 @@ func runECommandForDeleteZone(deps azcli.CliDependenciesProvider, cmd *cobra.Com
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Println("Failed to delete the zone.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to delete the zone.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the zone", err)
 			printer.Error(sysErr)
@@ -63,7 +67,9 @@ func runECommandForDeleteZone(deps azcli.CliDependenciesProvider, cmd *cobra.Com
 	zoneID := v.GetInt64(azoptions.FlagName(commandNameForZonesDelete, aziclicommon.FlagCommonZoneID))
 	zone, err := client.DeleteZone(zoneID)
 	if err != nil {
-		printer.Println("Failed to delete the zone.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to delete the zone.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to delete the zone", err)
 			printer.Error(sysErr)

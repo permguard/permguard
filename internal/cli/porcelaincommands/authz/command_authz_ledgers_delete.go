@@ -44,7 +44,9 @@ func runECommandForDeleteLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	}
 	papTarget, err := ctx.GetPAPTarget()
 	if err != nil {
-		printer.Println("Failed to delete the ledger.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to delete the ledger.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the ledger", err)
 			printer.Error(sysErr)
@@ -52,7 +54,9 @@ func runECommandForDeleteLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	}
 	client, err := deps.CreateGrpcPAPClient(papTarget)
 	if err != nil {
-		printer.Println("Failed to delete the ledger.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to delete the ledger.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the ledger", err)
 			printer.Error(sysErr)
@@ -63,7 +67,9 @@ func runECommandForDeleteLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	ledger, err := client.DeleteLedger(zoneID, ledgerID)
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to delete the ledger.")
+			if ctx.IsNotVerboseTerminalOutput() {
+				printer.Println("Failed to delete the ledger.")
+			}
 			if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 				sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the ledger", err)
 				printer.Error(sysErr)

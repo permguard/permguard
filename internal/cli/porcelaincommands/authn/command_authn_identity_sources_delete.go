@@ -44,7 +44,9 @@ func runECommandForDeleteIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
-		printer.Println("Failed to delete the identity source.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to delete the identity source.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the identity source", err)
 			printer.Error(sysErr)
@@ -53,7 +55,9 @@ func runECommandForDeleteIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Println("Failed to delete the identity source.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to delete the identity source.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the identity source", err)
 			printer.Error(sysErr)
@@ -64,7 +68,9 @@ func runECommandForDeleteIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 	identitySourceID := v.GetString(azoptions.FlagName(commandNameForIdentitySourcesDelete, flagIdentitySourceID))
 	identitySource, err := client.DeleteIdentitySource(zoneID, identitySourceID)
 	if err != nil {
-		printer.Println("Failed to delete the identity source.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to delete the identity source.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the identity source", err)
 			printer.Error(sysErr)

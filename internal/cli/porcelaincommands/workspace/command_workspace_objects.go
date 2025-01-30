@@ -84,7 +84,9 @@ func runECommandForObjectsWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 
 	output, err := wksMgr.ExecObjects(includeStorage, includeCode, filterCommits, filterTrees, filterBlob, outFunc(ctx, printer))
 	if err != nil {
-		printer.Println("Failed to list objects.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to list objects.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to list objects.", err)
 			printer.Error(sysErr)

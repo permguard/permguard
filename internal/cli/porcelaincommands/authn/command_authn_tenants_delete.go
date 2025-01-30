@@ -44,7 +44,9 @@ func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
-		printer.Println("Failed to delete the tenant.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to delete the tenant.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the tenant", err)
 			printer.Error(sysErr)
@@ -53,7 +55,9 @@ func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Println("Failed to delete the tenant.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to delete the tenant.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the tenant", err)
 			printer.Error(sysErr)
@@ -64,13 +68,12 @@ func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	tenantID := v.GetString(azoptions.FlagName(commandNameForTenantsDelete, flagTenantID))
 	tenant, err := client.DeleteTenant(zoneID, tenantID)
 	if err != nil {
-		if ctx.IsTerminalOutput() {
+		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to delete the tenant.")
-			if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-				sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the tenant", err)
-				printer.Error(sysErr)
-			}
-			return aziclicommon.ErrCommandSilent
+		}
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the tenant", err)
+			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
 	}

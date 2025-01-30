@@ -44,7 +44,9 @@ func runECommandForDeleteIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
-		printer.Println("Failed to delete the identity.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to delete the identity.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the identity", err)
 			printer.Error(sysErr)
@@ -54,7 +56,9 @@ func runECommandForDeleteIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Println("Failed to delete the identity.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to delete the identity.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the identity", err)
 			printer.Error(sysErr)
@@ -65,12 +69,12 @@ func runECommandForDeleteIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 	identityID := v.GetString(azoptions.FlagName(commandNameForIdentitiesDelete, flagIdentityID))
 	identity, err := client.DeleteIdentity(zoneID, identityID)
 	if err != nil {
-		if ctx.IsTerminalOutput() {
+		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to delete the identity.")
-			if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-				sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to delete the identity", err)
-				printer.Error(sysErr)
-			}
+		}
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to delete the identity", err)
+			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
 	}

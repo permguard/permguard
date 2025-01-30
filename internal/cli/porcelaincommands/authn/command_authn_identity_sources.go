@@ -53,7 +53,9 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
-		printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
@@ -62,7 +64,9 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
@@ -83,7 +87,9 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 		identitySource, err = client.UpdateIdentitySource(identitySource)
 	}
 	if err != nil {
-		printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)

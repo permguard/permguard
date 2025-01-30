@@ -54,7 +54,9 @@ func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 	}
 	output, err := wksMgr.ExecInitWorkspace(azplangcedar.LanguageName, outFunc(ctx, printer))
 	if err != nil {
-		printer.Println("Failed to initialize the workspace.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to initialize the workspace.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to initialize the workspace.", err)
 			printer.Error(sysErr)

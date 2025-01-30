@@ -43,7 +43,9 @@ func runECommandForListTenants(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
-		printer.Println("Failed to list tenants.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to list tenants.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list tenants", err)
 			printer.Error(sysErr)
@@ -52,7 +54,9 @@ func runECommandForListTenants(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Println("Failed to list tenants.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to list tenants.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list tenants", err)
 			printer.Error(sysErr)
@@ -66,7 +70,9 @@ func runECommandForListTenants(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 	name := v.GetString(azoptions.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonName))
 	tenants, err := client.FetchTenantsBy(page, pageSize, zoneID, tenantID, name)
 	if err != nil {
-		printer.Println("Failed to list tenants.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to list tenants.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list tenants", err)
 			printer.Error(sysErr)

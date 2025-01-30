@@ -70,7 +70,9 @@ func runECommandForObjectsCatWorkspace(deps azcli.CliDependenciesProvider, cmd *
 
 	output, err := wksMgr.ExecObjectsCat(includeStorage, includeCode, showFrontendLanguage, showRaw, showContent, oid, outFunc(ctx, printer))
 	if err != nil {
-		printer.Println("Failed to cat the object.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to cat the object.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to cat the object.", err)
 			printer.Error(sysErr)

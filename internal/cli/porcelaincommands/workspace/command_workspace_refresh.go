@@ -53,7 +53,9 @@ func runECommandForRefreshWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 	}
 	output, err := wksMgr.ExecRefresh(outFunc(ctx, printer))
 	if err != nil {
-		printer.Println("Failed execute the refresh.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed execute the refresh.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to execute the refresh.", err)
 			printer.Error(sysErr)
