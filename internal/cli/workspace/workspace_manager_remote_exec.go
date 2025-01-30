@@ -178,9 +178,6 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 	}
 	headRefInfo := headCtx.headRefInfo
 	remoteRefInfo := headCtx.remoteRefInfo
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "pull", "Preparing to pull changes from the remote ledger.", nil, true)
