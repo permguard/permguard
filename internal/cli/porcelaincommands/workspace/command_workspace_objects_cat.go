@@ -27,6 +27,7 @@ import (
 	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -69,12 +70,10 @@ func runECommandForObjectsCatWorkspace(deps azcli.CliDependenciesProvider, cmd *
 
 	output, err := wksMgr.ExecObjectsCat(includeStorage, includeCode, showFrontendLanguage, showRaw, showContent, oid, outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsJSONOutput() {
-			printer.ErrorWithOutput(output, err)
-		} else if ctx.IsTerminalOutput() {
-			if ctx.IsVerboseTerminalOutput() {
-				printer.Error(err)
-			}
+		printer.Println("Failed to cat the object.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to cat the object.", err)
+			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
 	}

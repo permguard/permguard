@@ -83,6 +83,7 @@ var errorCodes = map[string]string{
 	"08005": "cli: record already exists",
 	"08006": "cli: record not found",
 	"08007": "cli: record is malformed",
+	"08008": "cli: operation",
 
 	// 081xx: Command Line Interface File System Errors
 	"08100": "cli: file system error",
@@ -157,9 +158,10 @@ var (
 	ErrCliArguments           error = NewSystemError("08002")
 	ErrCliInput               error = NewSystemError("08003")
 	ErrCliWorkspaceDir        error = NewSystemError("08004")
-	ErrCliRecordExists        error = NewSystemError("08004")
-	ErrCliRecordNotFound      error = NewSystemError("08005")
-	ErrCliRecordMalformed     error = NewSystemError("08006")
+	ErrCliRecordExists        error = NewSystemError("08005")
+	ErrCliRecordNotFound      error = NewSystemError("08006")
+	ErrCliRecordMalformed     error = NewSystemError("08007")
+	ErrCliOperation           error = NewSystemError("08008")
 	ErrCliFileSystem          error = NewSystemError("08100")
 	ErrCliDirectoryOperation  error = NewSystemError("08101")
 	ErrCliFileOperation       error = NewSystemError("08102")

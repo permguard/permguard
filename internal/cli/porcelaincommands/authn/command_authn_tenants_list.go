@@ -26,6 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -42,12 +43,20 @@ func runECommandForListTenants(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
+		printer.Println("Failed to list tenants.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list tenants", err)
+			printer.Error(sysErr)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
+		printer.Println("Failed to list tenants.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list tenants", err)
+			printer.Error(sysErr)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	page := v.GetInt32(azoptions.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonPage))
@@ -57,11 +66,10 @@ func runECommandForListTenants(deps azcli.CliDependenciesProvider, cmd *cobra.Co
 	name := v.GetString(azoptions.FlagName(commandNameForTenantsList, aziclicommon.FlagCommonName))
 	tenants, err := client.FetchTenantsBy(page, pageSize, zoneID, tenantID, name)
 	if err != nil {
-		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to list tenants.")
-			if ctx.IsVerboseTerminalOutput() {
-				printer.Error(err)
-			}
+		printer.Println("Failed to list tenants.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list tenants", err)
+			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
 	}

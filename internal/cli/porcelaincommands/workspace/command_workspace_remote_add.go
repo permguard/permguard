@@ -46,7 +46,11 @@ func runECommandForRemoteAddWorkspace(args []string, deps azcli.CliDependenciesP
 		return aziclicommon.ErrCommandSilent
 	}
 	if len(args) < 2 {
-		printer.Error(azerrors.ErrCliArguments)
+		printer.Println("Failed to add the remote.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to add the remote.", err)
+			printer.Error(sysErr)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	langAbs, err := deps.GetLanguageFactory()
@@ -65,12 +69,10 @@ func runECommandForRemoteAddWorkspace(args []string, deps azcli.CliDependenciesP
 	papPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesRemoteAdd, flagPAP))
 	output, err := wksMgr.ExecAddRemote(remote, server, zapPort, papPort, outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsJSONOutput() {
-			printer.ErrorWithOutput(output, err)
-		} else if ctx.IsTerminalOutput() {
-			if ctx.IsVerboseTerminalOutput() {
-				printer.Error(err)
-			}
+		printer.Println("Failed to add the remote.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to add the remote.", err)
+			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
 	}

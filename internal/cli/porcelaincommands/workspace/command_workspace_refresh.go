@@ -26,6 +26,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -52,12 +53,10 @@ func runECommandForRefreshWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 	}
 	output, err := wksMgr.ExecRefresh(outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsJSONOutput() {
-			printer.ErrorWithOutput(output, err)
-		} else if ctx.IsTerminalOutput() {
-			if ctx.IsVerboseTerminalOutput() {
-				printer.Error(err)
-			}
+		printer.Println("Failed execute the refresh.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to execute the refresh.", err)
+			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
 	}

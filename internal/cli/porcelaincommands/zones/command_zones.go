@@ -26,11 +26,18 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelzap "github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 // runECommandForUpsertZone runs the command for creating or updating a zone.
 func runECommandForUpsertZone(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+	opGetErroMessage := func(op bool) string {
+		if op {
+			return "failed to create the tenant"
+		}
+		return "failed to upsert the tenant"
+	}
 	if deps == nil {
 		color.Red("cli: an issue has been detected with the cli code configuration. please create a github issue with the details")
 		return aziclicommon.ErrCommandSilent
@@ -42,12 +49,20 @@ func runECommandForUpsertZone(deps azcli.CliDependenciesProvider, cmd *cobra.Com
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
+		printer.Println("Failed to upsert the zone.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, opGetErroMessage(isCreate), err)
+			printer.Error(sysErr)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Error(fmt.Errorf("invalid zap target %s", zapTarget))
+		printer.Println("Failed to upsert the zone.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, opGetErroMessage(isCreate), err)
+			printer.Error(sysErr)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
@@ -63,15 +78,10 @@ func runECommandForUpsertZone(deps azcli.CliDependenciesProvider, cmd *cobra.Com
 		zone, err = client.UpdateZone(inputZone)
 	}
 	if err != nil {
-		if ctx.IsTerminalOutput() {
-			if isCreate {
-				printer.Println("Failed to create the zone.")
-			} else {
-				printer.Println("Failed to update the zone.")
-			}
-			if ctx.IsVerboseTerminalOutput() {
-				printer.Error(err)
-			}
+		printer.Println("Failed to upsert the zone.")
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, opGetErroMessage(isCreate), err)
+			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
 	}
