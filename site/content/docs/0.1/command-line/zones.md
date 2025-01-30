@@ -72,7 +72,7 @@ permguard zones create --name magicfarmacia-dev --output json
 
 output:
 
-```bash
+```json
 {
   "zones": [
     {
@@ -114,7 +114,7 @@ permguard zones list --output json
 
 output:
 
-```bash
+```json
 {
   "zones": [
     {
