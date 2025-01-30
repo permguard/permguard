@@ -37,7 +37,14 @@ func runECommandReset(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v 
 	}
 	configFile, err := azclioptions.ResetViperConfig(v)
 	if err != nil {
-		printer.Error(fmt.Errorf("failed to reset the cli config file %s", configFile))
+		if ctx.IsTerminalOutput() {
+			printer.Println("Failed to reset the cli config file.")
+			if ctx.IsVerboseTerminalOutput() {
+				printer.Error(err)
+			}
+		} else if ctx.IsJSONOutput() {
+			printer.Error(err)
+		}
 		return aziclicommon.ErrCommandSilent
 	}
 	var output map[string]any

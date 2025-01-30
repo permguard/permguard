@@ -11,7 +11,7 @@
         // "args": ["authz", "ledgers", "create", "--name", "branches", "--zoneid", "851990457443", "-w", "/Users/nicolagallo/source/tmp/", "-o", "json"],
         // "args": ["authz", "check", "requests/evaluations.json2", "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar", "-v", "-o", "json"],
         // "args": ["plan", "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar", "-v", "-o", "json"],
-        "args": ["config", "pap-get-target"],
+        "args": ["config", "pap-set-target", "dsafasdf", "-v"],
         "env": {
             "PERMGUARD_DEBUG": "TRUE",
         },

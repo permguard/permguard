@@ -56,10 +56,12 @@ func runECommandForZAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixZAP, aziclicommon.FlagSuffixZAPTarget), args[0])
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to set the zone value.")
+			printer.Println("Failed to set the zap grpc target.")
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}
+		} else if ctx.IsJSONOutput() {
+			printer.Error(err)
 		}
 		return aziclicommon.ErrCommandSilent
 	}
@@ -80,10 +82,12 @@ func runECommandForPAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget), args[0])
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to set the pap value.")
+			printer.Println("Failed to set the pap grpc target.")
 			if ctx.IsVerboseTerminalOutput() {
 				printer.Error(err)
 			}
+		} else if ctx.IsJSONOutput() {
+			printer.Error(err)
 		}
 		return aziclicommon.ErrCommandSilent
 	}
@@ -104,10 +108,12 @@ func runECommandForPDPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixPDP, aziclicommon.FlagSuffixPDPTarget), args[0])
 	if err != nil {
 		if ctx.IsTerminalOutput() {
-			printer.Println("Failed to set the zone value.")
-			if ctx.IsVerboseTerminalOutput() {
+			printer.Println("Failed to set the pdp grpc target.")
+			if ctx.IsVerboseTerminalOutput(){
 				printer.Error(err)
 			}
+		} else if ctx.IsJSONOutput() {
+			printer.Error(err)
 		}
 		return aziclicommon.ErrCommandSilent
 	}
