@@ -28,12 +28,14 @@ import (
 	azvalidators "github.com/permguard/permguard/pkg/core/validators"
 )
 
+
 const (
 	// errorMessageLedgerInvalidZoneID is the error message ledger invalid zone id.
 	errorMessageLedgerInvalidZoneID = "invalid client input - zone id is not valid (id: %d)"
 )
 
 const (
+	LedgerType = "ledger"
 	LedgerTypePolicy = "policy"
 )
 
@@ -67,13 +69,13 @@ func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*L
 	if ledger == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - ledger data is missing or malformed (%s)", LogLedgerEntry(ledger)))
 	}
-	if err := azvalidators.ValidateCodeID("ledger", ledger.ZoneID); err != nil {
+	if err := azvalidators.ValidateCodeID(LedgerType, ledger.ZoneID); err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidZoneID, ledger.ZoneID), err)
 	}
-	if !isCreate && azvalidators.ValidateUUID("ledger", ledger.LedgerID) != nil {
+	if !isCreate && azvalidators.ValidateUUID(LedgerType, ledger.LedgerID) != nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - ledger id is not valid (%s)", LogLedgerEntry(ledger)))
 	}
-	if err := azvalidators.ValidateName("ledger", ledger.Name); err != nil {
+	if err := azvalidators.ValidateName(LedgerType, ledger.Name); err != nil {
 		errorMessage := "invalid client input - ledger name is not valid (%s)"
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogLedgerEntry(ledger)), err)
 	}
@@ -117,16 +119,16 @@ func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*L
 
 // UpdateLedgerRef updates the ref of a ledger.
 func (r *Repository) UpdateLedgerRef(tx *sql.Tx, zoneID int64, ledgerID, currentRef, newRef string) error {
-	if err := azvalidators.ValidateCodeID("ledger", zoneID); err != nil {
+	if err := azvalidators.ValidateCodeID(LedgerType, zoneID); err != nil {
 		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidZoneID, zoneID), err)
 	}
-	if err := azvalidators.ValidateUUID("ledger", ledgerID); err != nil {
+	if err := azvalidators.ValidateUUID(LedgerType, ledgerID); err != nil {
 		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - ledger id is not valid (id: %s)", ledgerID), err)
 	}
-	if err := azvalidators.ValidateSHA256("ledger", currentRef); err != nil {
+	if err := azvalidators.ValidateSHA256(LedgerType, currentRef); err != nil {
 		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - current ref is not valid (ref: %s)", currentRef), err)
 	}
-	if err := azvalidators.ValidateSHA256("ledger", newRef); err != nil {
+	if err := azvalidators.ValidateSHA256(LedgerType, newRef); err != nil {
 		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - new ref is not valid (ref: %s)", newRef), err)
 	}
 
@@ -160,10 +162,10 @@ func (r *Repository) UpdateLedgerRef(tx *sql.Tx, zoneID int64, ledgerID, current
 
 // DeleteLedger deletes a ledger.
 func (r *Repository) DeleteLedger(tx *sql.Tx, zoneID int64, ledgerID string) (*Ledger, error) {
-	if err := azvalidators.ValidateCodeID("ledger", zoneID); err != nil {
+	if err := azvalidators.ValidateCodeID(LedgerType, zoneID); err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidZoneID, zoneID), err)
 	}
-	if err := azvalidators.ValidateUUID("ledger", ledgerID); err != nil {
+	if err := azvalidators.ValidateUUID(LedgerType, ledgerID); err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - ledger id is not valid (id: %s)", ledgerID), err)
 	}
 
@@ -196,7 +198,7 @@ func (r *Repository) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, zoneI
 	if page <= 0 || pageSize <= 0 {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
-	if err := azvalidators.ValidateCodeID("ledger", zoneID); err != nil {
+	if err := azvalidators.ValidateCodeID(LedgerType, zoneID); err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf(errorMessageLedgerInvalidZoneID, zoneID), err)
 	}
 
@@ -211,7 +213,7 @@ func (r *Repository) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, zoneI
 
 	if filterID != nil {
 		ledgerID := *filterID
-		if err := azvalidators.ValidateUUID("ledger", ledgerID); err != nil {
+		if err := azvalidators.ValidateUUID(LedgerType, ledgerID); err != nil {
 			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf("invalid client input - ledger id is not valid (id: %s)", ledgerID), err)
 		}
 		conditions = append(conditions, "ledger_id = ?")
@@ -220,7 +222,7 @@ func (r *Repository) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, zoneI
 
 	if filterName != nil {
 		ledgerName := *filterName
-		if err := azvalidators.ValidateName("ledger", ledgerName); err != nil {
+		if err := azvalidators.ValidateName(LedgerType, ledgerName); err != nil {
 			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientName, fmt.Sprintf("invalid client input - ledger name is not valid (name: %s)", ledgerName), err)
 		}
 		ledgerName = "%" + ledgerName + "%"

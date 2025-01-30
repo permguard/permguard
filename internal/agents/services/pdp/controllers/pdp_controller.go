@@ -25,6 +25,10 @@ import (
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 
+const (
+	LedgerType = "ledger"
+)
+
 type PDPController struct {
 	ctx     *azservices.ServiceContext
 	storage azStorage.PDPCentralStorage
@@ -50,7 +54,7 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, azauthz.AuthzErrBadRequestMessage), nil
 	}
 	policyStore := request.AuthorizationContext.PolicyStore
-	if strings.ToLower(policyStore.Type) != "ledger" {
+	if strings.ToLower(policyStore.Type) != LedgerType {
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, azauthz.AuthzErrBadRequestMessage), nil
 	}
 	expReq, err := authorizationCheckExpandAuthorizationCheckWithDefaults(request)
