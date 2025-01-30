@@ -37,6 +37,7 @@ func CreateCommandForConfig(deps azcli.CliDependenciesProvider, v *viper.Viper) 
 		Long:  aziclicommon.BuildCliLongTemplate(`This command configures the command line settings.`),
 		RunE:  runECommandForConfig,
 	}
+	command.AddCommand(createCommandForConfigReset(deps, v))
 	command.AddCommand(createCommandForConfigZAPGet(deps, v))
 	command.AddCommand(createCommandForConfigZAPSet(deps, v))
 	command.AddCommand(createCommandForConfigPAPGet(deps, v))

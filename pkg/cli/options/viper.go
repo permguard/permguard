@@ -101,6 +101,13 @@ func NewViperFromConfig(onCreation func(*viper.Viper) map[string]any) (*viper.Vi
 	return v, nil
 }
 
+// ResetViperConfig resets the viper config.
+func ResetViperConfig(v *viper.Viper) (string, error) {
+	configFile := v.ConfigFileUsed()
+	_, err := azfiles.DeletePath(configFile)
+	return configFile, err
+}
+
 // OverrideViperFromConfig overrides the viper from the config.
 func OverrideViperFromConfig(v *viper.Viper, valueMap map[string]interface{}) error {
 	newViper, err := NewViperFromConfig(nil)
