@@ -49,7 +49,7 @@ func runECommandReset(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v 
 	}
 	var output map[string]any
 	if ctx.IsTerminalOutput() {
-		printer.Println(fmt.Sprintf("The cli config file %s has been reset", configFile))
+		printer.Println(fmt.Sprintf("The cli config file %s has been reset.", configFile))
 	} else if ctx.IsJSONOutput() {
 		output = map[string]any{
 			"cli": map[string]any{
