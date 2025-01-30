@@ -118,6 +118,41 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 		return aziclicommon.ErrCommandSilent
 	}
 	if ctx.IsTerminalOutput() {
+		decision := authzResp.Decision
+		printer.Println(fmt.Sprintf("Authorization check response: %v", aziclicommon.BoolText(decision)))
+		if !decision {
+			contextID := authzResp.Context.ID
+			if len(contextID) == 0 {
+				contextID = "none"
+			}
+			printer.Println(fmt.Sprintf("%s: %s", aziclicommon.KeywordText("Context ID"), aziclicommon.CreateText(contextID)))
+			if authzResp.Context.ReasonAdmin != nil {
+				printer.Println(fmt.Sprintf("  %s: Error: %s - %s ", aziclicommon.KeywordText("REASON ADMIN"), aziclicommon.IDText(authzResp.Context.ReasonAdmin.Code), authzResp.Context.ReasonAdmin.Message))
+			}
+			if authzResp.Context.ReasonUser != nil {
+				printer.Println(fmt.Sprintf("  %s: Error: %s - %s ", aziclicommon.KeywordText("REASON USER"),  aziclicommon.IDText(authzResp.Context.ReasonUser.Code), authzResp.Context.ReasonUser.Message))
+			}
+			if len(authzResp.Evaluations) > 0 {
+				printer.Println("Evaluations:")
+				for _, eval := range authzResp.Evaluations {
+					contextID := eval.Context.ID
+					if len(contextID) == 0 {
+						contextID = "none"
+					}
+					requestID := eval.RequestID
+					if len(requestID) == 0 {
+						requestID = "none"
+					}
+					printer.Println(fmt.Sprintf("  - %s: %s, %s: %s, %s: %v", aziclicommon.KeywordText("Request ID"), aziclicommon.CreateText(requestID), aziclicommon.KeywordText("Context ID"), aziclicommon.CreateText(contextID), aziclicommon.KeywordText("Decision"), eval.Decision))
+					if eval.Context.ReasonAdmin != nil {
+						printer.Println(fmt.Sprintf("    - %s: Error: %s - %s ", aziclicommon.KeywordText("REASON ADMIN"),  aziclicommon.IDText(eval.Context.ReasonAdmin.Code), eval.Context.ReasonAdmin.Message))
+					}
+					if eval.Context.ReasonUser != nil {
+						printer.Println(fmt.Sprintf("    - %s: Error: %s - %s ", aziclicommon.KeywordText("REASON USER"),  aziclicommon.IDText(eval.Context.ReasonUser.Code), eval.Context.ReasonUser.Message))
+					}
+				}
+			}
+		}
 	} else if ctx.IsJSONOutput() {
 		var output = map[string]any{}
 		output["authorization_check"] = authzResp
