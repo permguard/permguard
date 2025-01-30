@@ -53,7 +53,9 @@ func runECommandForLedgerWorkspace(deps azcli.CliDependenciesProvider, cmd *cobr
 	}
 	output, err := wksMgr.ExecListLedgers(outFunc(ctx, printer))
 	if err != nil {
-		printer.Println("Failed to list ledgers.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to list ledgers.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to list ledgers.", err)
 			printer.Error(sysErr)

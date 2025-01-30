@@ -37,7 +37,9 @@ func runECommandForZAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
-		printer.Println("Failed to get the zap target.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to get the zap target.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to get the zap target.", err)
 			printer.Error(sysErr)
@@ -57,7 +59,9 @@ func runECommandForPAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 	}
 	papTarget, err := ctx.GetPAPTarget()
 	if err != nil {
-		printer.Println("Failed to get the pap target.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to get the pap target.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to get the pap target.", err)
 			printer.Error(sysErr)
@@ -77,7 +81,9 @@ func runECommandForPDPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 	}
 	pdpTarget, err := ctx.GetPDPTarget()
 	if err != nil {
-		printer.Println("Failed to get the pdp target.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to get the pdp target.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to get the pdp target.", err)
 			printer.Error(sysErr)

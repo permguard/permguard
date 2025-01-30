@@ -55,7 +55,9 @@ func runECommandForUpsertLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	}
 	papTarget, err := ctx.GetPAPTarget()
 	if err != nil {
-		printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
@@ -64,7 +66,9 @@ func runECommandForUpsertLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	}
 	client, err := deps.CreateGrpcPAPClient(papTarget)
 	if err != nil {
-		printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
@@ -85,7 +89,9 @@ func runECommandForUpsertLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		ledger, err = client.UpdateLedger(ledger)
 	}
 	if err != nil {
-		printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)

@@ -43,7 +43,9 @@ func runECommandForListIdentitySources(deps azcli.CliDependenciesProvider, cmd *
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
-		printer.Println("Failed to list identity sources.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to list identity sources.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list identity sources", err)
 			printer.Error(sysErr)
@@ -52,7 +54,9 @@ func runECommandForListIdentitySources(deps azcli.CliDependenciesProvider, cmd *
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Println("Failed to list identity sources.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to list identity sources.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list identity sources", err)
 			printer.Error(sysErr)
@@ -66,7 +70,9 @@ func runECommandForListIdentitySources(deps azcli.CliDependenciesProvider, cmd *
 	name := v.GetString(azoptions.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonName))
 	identitySources, err := client.FetchIdentitySourcesBy(page, pageSize, zoneID, identitySourceID, name)
 	if err != nil {
-		printer.Println("Failed to list identity sources.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to list identity sources.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list identity sources", err)
 			printer.Error(sysErr)

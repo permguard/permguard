@@ -42,7 +42,9 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps azcli.CliDependenci
 		return aziclicommon.ErrCommandSilent
 	}
 	if len(args) < 1 {
-		printer.Println("Failed to remove the remote.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to remove the remote.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to remove the remote.", err)
 			printer.Error(sysErr)
@@ -62,7 +64,9 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps azcli.CliDependenci
 	remote := args[0]
 	output, err := wksMgr.ExecRemoveRemote(remote, outFunc(ctx, printer))
 	if err != nil {
-		printer.Println("Failed to remove the remote.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to remove the remote.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to remove the remote.", err)
 			printer.Error(sysErr)

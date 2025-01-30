@@ -48,7 +48,9 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 		return aziclicommon.ErrCommandSilent
 	}
 	handleInputError := func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter, err error, message string) error {
-		printer.Println("Failed to check the authorization request.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to check the authorization request.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, message, err)
 			printer.Error(sysErr)
@@ -84,7 +86,9 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 
 	pdpTarget, err := ctx.GetPDPTarget()
 	if err != nil {
-		printer.Println("Failed to check the authorization request.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to check the authorization request.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to check the authorization request.", err)
 			printer.Error(sysErr)
@@ -93,7 +97,9 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 	}
 	client, err := deps.CreateGrpcPDPClient(pdpTarget)
 	if err != nil {
-		printer.Println("Failed to check the authorization request.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to check the authorization request.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to check the authorization request.", err)
 			printer.Error(sysErr)
@@ -102,7 +108,9 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 	}
 	authzResp, err := client.AuthorizationCheck(&authzReq)
 	if err != nil {
-		printer.Println("Failed to check the authorization request.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to check the authorization request.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to check the authorization request.", err)
 			printer.Error(sysErr)

@@ -43,7 +43,9 @@ func runECommandForListIdentities(deps azcli.CliDependenciesProvider, cmd *cobra
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
-		printer.Println("Failed to list identities.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to list identities.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list identities", err)
 			printer.Error(sysErr)
@@ -52,7 +54,9 @@ func runECommandForListIdentities(deps azcli.CliDependenciesProvider, cmd *cobra
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Println("Failed to list identities.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to list identities.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list identities", err)
 			printer.Error(sysErr)
@@ -68,11 +72,9 @@ func runECommandForListIdentities(deps azcli.CliDependenciesProvider, cmd *cobra
 	name := v.GetString(azoptions.FlagName(commandNameForIdentitiesList, aziclicommon.FlagCommonName))
 	identities, err := client.FetchIdentitiesBy(page, pageSize, zoneID, identitySourceID, identityID, kind, name)
 	if err != nil {
-		if ctx.IsTerminalOutput() {
-			if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-				sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to list identities", err)
-				printer.Error(sysErr)
-			}
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to list identities", err)
+			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
 	}

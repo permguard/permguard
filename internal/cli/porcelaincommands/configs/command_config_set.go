@@ -50,7 +50,9 @@ func runECommandForZAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 		return aziclicommon.ErrCommandSilent
 	}
 	if len(args) == 0 {
-		printer.Println("Failed to set the zap target.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to set the zap target.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to set the zap target.", err)
 			printer.Error(sysErr)
@@ -59,7 +61,9 @@ func runECommandForZAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 	}
 	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixZAP, aziclicommon.FlagSuffixZAPTarget), args[0])
 	if err != nil {
-		printer.Println("Failed to set the zap target.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to set the zap target.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to set the zap target.", err)
 			printer.Error(sysErr)
@@ -77,7 +81,9 @@ func runECommandForPAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 		return aziclicommon.ErrCommandSilent
 	}
 	if len(args) == 0 {
-		printer.Println("Failed to set the pap target.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to set the pap target.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to set the pap target.", err)
 			printer.Error(sysErr)
@@ -86,7 +92,9 @@ func runECommandForPAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 	}
 	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget), args[0])
 	if err != nil {
-		printer.Println("Failed to set the pap target.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to set the pap target.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to set the pap target.", err)
 			printer.Error(sysErr)
@@ -104,7 +112,9 @@ func runECommandForPDPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 		return aziclicommon.ErrCommandSilent
 	}
 	if len(args) == 0 {
-		printer.Println("Failed to set the zap target.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to set the zap target.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to set the pdp target.", err)
 			printer.Error(sysErr)
@@ -113,7 +123,9 @@ func runECommandForPDPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 	}
 	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixPDP, aziclicommon.FlagSuffixPDPTarget), args[0])
 	if err != nil {
-		printer.Println("Failed to set the zap target.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to set the zap target.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to set the pdp target.", err)
 			printer.Error(sysErr)

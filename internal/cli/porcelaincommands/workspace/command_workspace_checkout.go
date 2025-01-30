@@ -42,7 +42,9 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 		return aziclicommon.ErrCommandSilent
 	}
 	if len(args) < 1 {
-		printer.Println("Failed to checkout the workspace.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to checkout the workspace.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to checkout the workspace.", err)
 			printer.Error(sysErr)
@@ -62,7 +64,9 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 	ledger := args[0]
 	output, err := wksMgr.ExecCheckoutLedger(ledger, outFunc(ctx, printer))
 	if err != nil {
-		printer.Println("Failed to checkout the workspace.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to checkout the workspace.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to checkout the workspace.", err)
 			printer.Error(sysErr)

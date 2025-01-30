@@ -72,7 +72,9 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 		return aziclicommon.ErrCommandSilent
 	}
 	if len(args) < 1 {
-		printer.Println("Failed to clone the workspace.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to clone the workspace.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to clone the workspace.", err)
 			printer.Error(sysErr)
@@ -93,7 +95,9 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 	papPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagPAP))
 	output, err := wksMgr.ExecCloneLedger(azplangcedar.LanguageName, ledgerURI, zapPort, papPort, outFunc(ctx, printer))
 	if err != nil {
-		printer.Println("Failed to clone the workspace.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to clone the workspace.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to clone the workspace.", err)
 			printer.Error(sysErr)

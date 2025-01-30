@@ -38,7 +38,9 @@ func runECommandReset(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v 
 	}
 	configFile, err := azclioptions.ResetViperConfig(v)
 	if err != nil {
-		printer.Println("Failed to reset the cli config file.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to reset the cli config file.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to reset the cli config file.", err)
 			printer.Error(sysErr)

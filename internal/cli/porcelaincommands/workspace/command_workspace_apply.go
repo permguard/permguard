@@ -53,7 +53,9 @@ func runECommandForApplyWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra
 	}
 	output, err := wksMgr.ExecApply(outFunc(ctx, printer))
 	if err != nil {
-		printer.Println("Failed to apply workspace changes.")
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to apply workspace changes.")
+		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to apply workspace changes.", err)
 			printer.Error(sysErr)
