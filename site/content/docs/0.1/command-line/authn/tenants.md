@@ -75,7 +75,7 @@ permguard authn tenants create --zoneid 268786704340 --name matera-branch --outp
 
 output:
 
-```bash
+```json
 {
   "tenant": [
     {
@@ -123,7 +123,7 @@ permguard authn tenants list --zoneid 268786704340 --output json
 
 output:
 
-```bash
+```json
 {
   "tenant": [
     {

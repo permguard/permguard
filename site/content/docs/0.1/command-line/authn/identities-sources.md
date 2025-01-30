@@ -74,7 +74,7 @@ permguard authn identitysources create --zoneid 268786704340 --name google --out
 
 output:
 
-```bash
+```json
 {
   "identity_sources": [
     {
@@ -116,7 +116,7 @@ permguard authn identitysources list --zoneid 268786704340 --output json
 
 output:
 
-```bash
+```json
 {
   "identity_sources": [
     {
