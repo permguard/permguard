@@ -66,14 +66,12 @@ func runECommandForDeleteLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 	ledgerID := v.GetString(azoptions.FlagName(commandNameForLedgersDelete, flagLedgerID))
 	ledger, err := client.DeleteLedger(zoneID, ledgerID)
 	if err != nil {
-		if ctx.IsTerminalOutput() {
-			if ctx.IsNotVerboseTerminalOutput() {
-				printer.Println("Failed to delete the ledger.")
-			}
-			if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-				sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the ledger", err)
-				printer.Error(sysErr)
-			}
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to delete the ledger.")
+		}
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the ledger", err)
+			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
 	}

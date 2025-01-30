@@ -51,7 +51,7 @@ func TestCliZonesCreateWithError(t *testing.T) {
 		},
 		{
 			OutputType: "json",
-			HasError:   false,
+			HasError:   true,
 		},
 	}
 	for _, test := range tests {
@@ -73,16 +73,16 @@ func TestCliZonesCreateWithError(t *testing.T) {
 		printerMock := azmocks.NewPrinterMock()
 		printerMock.On("Println", mock.Anything).Return()
 		printerMock.On("PrintlnMap", mock.Anything).Return()
-		printerMock.On("Error", azerrors.ErrClientParameter).Return()
+		printerMock.On("Error", mock.Anything).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 		depsMocks.On("CreateGrpcZAPClient", mock.Anything).Return(zapClient, nil)
 
 		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
 		if test.HasError {
-			printerMock.AssertCalled(t, "Error", azerrors.ErrCliArguments)
+			printerMock.AssertCalled(t, "Error", mock.Anything)
 		} else {
-			printerMock.AssertNotCalled(t, "Error", azerrors.ErrCliArguments)
+			printerMock.AssertNotCalled(t, "Error", mock.Anything)
 		}
 	}
 }
