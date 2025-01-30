@@ -173,6 +173,9 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 
 	// Read current head settings
 	headCtx, err := m.getCurrentHeadContext()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
 	headRefInfo := headCtx.headRefInfo
 	remoteRefInfo := headCtx.remoteRefInfo
 	if err != nil {
