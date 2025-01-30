@@ -18,6 +18,7 @@ package authn
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -43,9 +44,9 @@ const (
 func runECommandForUpsertIdentity(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
 	opGetErroMessage := func(op bool) string {
 		if op {
-			return "failed to create the identity"
+			return "Failed to create the identity"
 		}
-		return "failed to upsert the identity"
+		return "Failed to upsert the identity"
 	}
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
@@ -54,18 +55,18 @@ func runECommandForUpsertIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
-		printer.Println("Failed to upsert the identity.")
+		printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, opGetErroMessage(isCreate), err)
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
-		printer.Println("Failed to upsert the identity.")
+		printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, opGetErroMessage(isCreate), err)
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
@@ -87,9 +88,9 @@ func runECommandForUpsertIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 		identity, err = client.UpdateIdentity(identity)
 	}
 	if err != nil {
-		printer.Println("Failed to upsert the identity.")
+		printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, opGetErroMessage(isCreate), err)
+			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
 		return aziclicommon.ErrCommandSilent
