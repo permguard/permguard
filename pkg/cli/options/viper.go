@@ -35,6 +35,30 @@ func configureViper(v *viper.Viper) {
 	v.SetEnvPrefix("PERMGUARD")
 }
 
+// checkIfKeyExists checks if the key exists.
+func checkIfKeyExists(v *viper.Viper, key string) bool {
+	if !strings.Contains(key, ".") {
+		return v.IsSet(key)
+	}
+	keys := strings.Split(key, ".")
+	settings := v.AllSettings()
+	current := settings
+	for i := 0; i < len(keys); i++ {
+		keyPart := keys[i]
+		if _, ok := current[keyPart]; !ok {
+			return false
+		}
+		if i < len(keys)-1 {
+			nestedMap, ok := current[keyPart].(map[string]interface{})
+			if !ok {
+				return false
+			}
+			current = nestedMap
+		}
+	}
+	return true
+}
+
 // NewViper creates a new viper.
 func NewViper() (*viper.Viper, error) {
 	v := viper.New()
@@ -51,7 +75,7 @@ func NewViperFromConfig(onCreation func(*viper.Viper) map[string]any) (*viper.Vi
 	configPath := filepath.Join(homeDir, ".permguard")
 	configName := "config"
 	config := filepath.Join(configPath, configName+".toml")
-	created, err := azfiles.CreateFileIfNotExists(config)
+	_, err = azfiles.CreateFileIfNotExists(config)
 	if err != nil {
 		return nil, err
 	}
@@ -63,9 +87,12 @@ func NewViperFromConfig(onCreation func(*viper.Viper) map[string]any) (*viper.Vi
 	if err != nil {
 		return nil, err
 	}
-	if created && onCreation != nil {
+	if onCreation != nil {
 		mapValues := onCreation(v)
 		for mapValuesKey, mapValuesValue := range mapValues {
+			if checkIfKeyExists(v, mapValuesKey) {
+				continue
+			}
 			v.Set(mapValuesKey, mapValuesValue)
 		}
 		v.WriteConfig()
