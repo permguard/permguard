@@ -119,7 +119,7 @@ func CreateCommandForWorkspaceClone(deps azcli.CliDependenciesProvider, v *viper
 
 Examples:
   # clone a remote ledger to the local permguard workspace
-  permguard clone localhost/273165098782/magicfarmacia`),
+  permguard clone origin/273165098782/magicfarmacia`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCloneWorkspace(args, deps, cmd, v)
 		},
