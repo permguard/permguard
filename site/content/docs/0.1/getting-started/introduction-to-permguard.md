@@ -64,13 +64,13 @@ Developers can choose their preferred language from the supported options while 
 A `schema` in **PermGuard** defines `Namespaces`, `Resources`, and `Actions`, ensuring consistency.
 Each language is integrated with a lightweight abstraction layer, providing flexibility while reserving only a few keywords.
 
-<div style="text-align: center">
-  <img alt="Permguard" src="/images/diagrams/d19.webp"/>
-</div>
-
 {{< callout context="note" icon="info-circle" >}}
 To enforce access control, the application can use an **SDK** or directly integrate with the native **APIs**.
 {{< /callout >}}
+
+<div style="text-align: center">
+  <img alt="Permguard" src="/images/diagrams/d19.webp"/>
+</div>
 
 This approach allows precise control over who or what can access resources while keeping the system flexible and easy to use.
 
