@@ -39,7 +39,7 @@ To reference a specific **zone** in an **Authorization Server**, use the followi
 ```text
  protocol    host   zone
 ┌───┴────┐┌───┴───┐ ┌────┴─────┐
-permguard@localhost/273165098782
+permguard@origin/273165098782
 ```
 
 ## Identity Source and Identity Pathing
@@ -49,7 +49,7 @@ To reference a specific **identity source** in an **Authorization Server**, use 
 ```text
  protocol    host   zone         identity-source
 ┌───┴────┐┌───┴───┐ ┌────┴─────┐            ┌──┴───┐
-permguard@localhost/273165098782/identities/keycloak
+permguard@origin/273165098782/identities/keycloak
 ```
 
 A user identity can be referenced using the following URI format:
@@ -57,7 +57,7 @@ A user identity can be referenced using the following URI format:
 ```text
  protocol    host   zone         identity-source       user
 ┌───┴────┐┌───┴───┐ ┌────┴─────┐            ┌──┴───┐       ┌───┴────┐
-permguard@localhost/273165098782/identities/keycloak/users/john.smith
+permguard@origin/273165098782/identities/keycloak/users/john.smith
 ```
 
 ## Ledger Pathing
@@ -67,7 +67,7 @@ To reference a specific ledger in an **Authorization Server**, use the following
 ```text
  protocol    host   zone              ledger
 ┌───┴────┐┌───┴───┐ ┌────┴─────┐         ┌─────┴─────┐
-permguard@localhost/273165098782/ledgers/magicfarmacia
+permguard@origin/273165098782/ledgers/magicfarmacia
 ```
 
 A policy can be referenced using the following URI format:
@@ -75,5 +75,5 @@ A policy can be referenced using the following URI format:
 ```text
  protocol    host   zone              ledger                                 version                                            policy
 ┌───┴────┐┌───┴───┐ ┌────┴─────┐         ┌─────┴─────┐ ┌───────────────────────────────┴───────────────────────────────┐         ┌───────┴────────┐
-permguard@localhost/273165098782/ledgers/magicfarmacia/722164f552f2c8e582d4ef79270c7ec94b3633e8172af6ea53ffe1fdf64d66de/policies/assign-role-branch
+permguard@origin/273165098782/ledgers/magicfarmacia/722164f552f2c8e582d4ef79270c7ec94b3633e8172af6ea53ffe1fdf64d66de/policies/assign-role-branch
 ```
