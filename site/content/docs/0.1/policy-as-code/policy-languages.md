@@ -18,20 +18,27 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
+**PermGuard** fully supports `Cedar` as the primary policy language.
 
-**Permguard** fully supports `Cedar` as the primary policy language.
+`PermGuard` enforces a **mandatory single schema** for each `ledger`.
 
-`Permguard` enforces a mandatory `single schema` for each `ledger`.
+## Schema Management in Policy Languages
 
-To enhance the developer experience, each policy language can define its own schema grammar.
-For example, when using `Cedar`, Permguard leverages the `official schema` defined by the Cedar language.
+To improve the developer experience, each policy language can define its own **schema grammar**.
 
-However, for integrated languages that lack an official schema, it is necessary to create a custom schema tailored to that language to ensure compatibility and alignment with Permguard's unified model.
+- When using `Cedar`, **PermGuard** leverages the **official schema** defined by the Cedar language.
+- For integrated languages without an official schema, a **custom schema** must be created to ensure compatibility with **PermGuard's unified model**.
 
 {{< callout context="note" icon="info-circle" >}}
-This approach guarantees a unified layer of resources and actions that remains interoperable across different applications, even when using different languages.
+This approach ensures a **consistent layer of resources and actions**, allowing interoperability across different applications—even when using different policy languages.
 {{< /callout >}}
 
-While each language can extend this schema to accommodate its specific requirements, there is always a shared foundational layer that ensures consistency.
+Each language can **extend** the schema to meet its specific needs, but a **shared foundational layer** maintains consistency.
 
-Moreover, since everything is managed on an immutable policy ledger, this design provides robust version management, supporting multiple versions of the languages and schemas in use.
+## Version Management
+
+Since everything is managed on an **immutable policy ledger**, this design provides:
+
+- **Version control** for policies.
+- Support for **multiple schema versions** across different policy languages.
+- Reliable and structured updates without breaking existing policies.
