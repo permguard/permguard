@@ -1,6 +1,6 @@
 ---
-title: "Zero Trust Principles"
-slug: "Zero Trust Principles"
+title: "Zero Trust Compliant"
+slug: "Zero Trust Compliant"
 description: ""
 summary: ""
 date: 2023-08-15T14:47:57+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "zero-trust-principles-8c89ddc8339f83444fc4b97264bd5c45"
+    identifier: "zero-trust-compliant-8c89ddc8339f83444fc4b97264bd5c45"
 weight: 1003
 toc: true
 seo:
@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-**Permguard** is designed with Zero Trust principles at its core, leveraging the **ZTAuth\*** architecture to ensure secure, scalable, and reliable authorization in modern, distributed environments.
+**Permguard** is designed to be compliant to the Zero Trust principles, leveraging the **ZTAuth\*** architecture to ensure secure, scalable, and reliable authorization in modern, distributed environments.
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/ztauth.webp"/>

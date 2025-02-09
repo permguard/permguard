@@ -18,64 +18,66 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-**Permguard** is a modern, open-source authorization provider designed around the core principles of **Zero Trust Security**.
+**PermGuard** is a modern, open-source authorization provider designed to follow **Zero Trust** principles.
 
-It leverages the **Zero Trust Auth*** ([ZTAuth*](https://github.com/ztauthstar)) architecture to ensure that every access request is continuously verified, regardless of application boundaries or contextual constraints.
+It uses the **Zero Trust Auth*** ([ZTAuth*](https://github.com/ztauthstar)) architecture to ensure that every access request is continuously verified, regardless of application boundaries or context.
 
-By integrating **Zero Trust**, Permguard provides a robust foundation for securing identities, resources, and actions in distributed systems, ensuring that trust is never assumed and always validated.
+The main idea is to ensure that trust is never assumed but always validated at the application boundary. Integrating **PermGuard** to handle incoming requests ensures that every request is verified before access is granted.
 
-It helps you easily manage permissions by defining who can do what in your system.
+This applies not only to APIs but also to any type of incoming request, including async messages, WebSocket connections, and more.
+
+Each incoming request generates an authorization request that is evaluated by the **PermGuard Authorization Server**. The server responds with a decision to either allow or deny the request.
 
 <div style="text-align: center">
   <img alt="Permguard Policies" src="/images/diagrams/d1.webp"/>
 </div>
 </br>
 
-Designed for `cloud-native`, `edge`, and multi-tenant environments, Permguard allows you to update your authorization policies without changing your application code, saving time and effort.
+Designed for `cloud-native`, `edge`, and `multi-tenant` environments, **PermGuard** can be used in any context, including IoT, AI agents, and more. It allows you to update authorization policies without modifying your application code, saving time and effort.
 
-These policies are centrally managed, ensuring compliance with corporate governance.
+These policies are centrally managed, allowing organizations to enforce consistent security rules across multiple applications without changing each service individually. This ensures compliance with corporate governance by providing a single point of control for defining, updating, and auditing authorization policies in real time.
 
 {{< callout context="tip" icon="rocket" >}}
-Permguard may seem complex, but it’s not: its internal architecture is sophisticated, yet integration is simple—perfect for everything from 'Hello World' apps to enterprise solutions. Just run the server, define your policy, and integrate it.
+**PermGuard** is powerful yet easy to use. Its advanced architecture ensures security and flexibility, while integration remains simple—whether for a basic app or a complex enterprise system. Just run the server, define your policy, and integrate it seamlessly.
 {{< /callout >}}
 
-**Permguard** can be deployed anywhere: `public or private clouds`, `managed infrastructure`, `Kubernetes`, `serverless` systems, or even in `partially connected` environments where consistent connectivity is a challenge. It is also ideal for use in `edge nodes` and `IoT` ecosystems, ensuring secure and consistent permission management across diverse setups.
+**PermGuard** can be deployed anywhere: `public or private clouds`, `managed infrastructure`, `Kubernetes`, `serverless` systems, or even in `partially connected` environments where stable connectivity is limited. It is also a great fit for `edge nodes` and `IoT` ecosystems, providing secure and consistent permission management across different environments.
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d13.webp"/>
 </div>
 
-It follows a `Bring Your Own Identity (BYOI)` approach, meaning it works with your existing authentication system instead of replacing it.
-You can configure identity sources to migrate identities from your current `identity provider`, ensuring all permissions are managed consistently and centrally, no matter where you use **Permguard**.
+It follows a `Bring Your Own Identity (BYOI)` approach, meaning it integrates with your existing authentication system instead of replacing it.
+You can configure identity sources to sync identities from your current `identity provider`, ensuring that all permissions are managed consistently and centrally, regardless of where you use **PermGuard**.
 
 {{< callout context="note" icon="info-circle" >}}
-The main goal of Permguard is to provide a robust authorization provider along with its own administrative and authorization components. It allows the association of identity sources through ingestion APIs, but these identity sources must be integrated using bespoke solutions. This approach ensures that Permguard remains flexible and avoids unnecessary customizations and complexity in management.
+The main goal of **PermGuard** is to provide a strong authorization system with built-in administrative tools. It connects to identity sources through ingestion APIs, but these must be integrated with custom solutions. This keeps **PermGuard** flexible and easy to manage without unnecessary complexity.
 {{< /callout >}}
 
 The solution is `language-agnostic`, supporting multiple policy languages, starting with [Cedar Policy Language](https://www.cedarpolicy.com/en).
-Developers can use their preferred language from the ones integrated, while ensuring all federated Permguard servers work seamlessly together, even if they use different languages internally.
+Developers can choose their preferred language from the supported options while ensuring that all federated **PermGuard** servers work smoothly together, even if they use different languages internally.
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d18.webp"/>
 </div>
 
-`Permguard` uses a common `schema` to define `Namepsaces` `Resources`, and `Actions`, ensuring consistency.
-Each language is integrated with a small abstraction layer that doesn’t limit developers, except for a few reserved keywords.
+A `schema` in **PermGuard** defines `Namespaces`, `Resources`, and `Actions`, ensuring consistency.
+Each language is integrated with a lightweight abstraction layer, providing flexibility while reserving only a few keywords.
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d19.webp"/>
 </div>
 
 {{< callout context="note" icon="info-circle" >}}
-To enforce the access control process, the application can integrate one of the available **SDKs** or manually integrate the native **APIs**.
+To enforce access control, the application can use an **SDK** or directly integrate with the native **APIs**.
 {{< /callout >}}
 
-This approach allows detailed permissions to specify who or what can access resources, while keeping the system flexible and easy to use.
-
-<div style="text-align: center">
-  <img alt="Permguard" src="/images/diagrams/d14.webp"/>
-</div>
+This approach allows precise control over who or what can access resources while keeping the system flexible and easy to use.
 
 - `Who`: *Identities (Users and Actors)*
 - `Can Access`: *Permissions granted by attaching policies*
 - `Resources`: *Resources targeted by permissions*
+
+<div style="text-align: center">
+  <img alt="Permguard" src="/images/diagrams/d14.webp"/>
+</div>
