@@ -42,9 +42,7 @@ To enforce access control, the **PEP** queries the **Policy Decision Point (PDP)
     "principal": {
       "type": "user",
       "id": "amy.smith@acmecorp.com",
-      "source": "keycloak",
-      "identity_token": "eyJhbGciOiJI...",
-      "access_token": "eyJhbGciOiJI..."
+      "source": "keycloak"
     },
     "entities": {
       "schema": "cedar",
