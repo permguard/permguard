@@ -19,14 +19,19 @@ seo:
   noindex: false # false (default) or true
 ---
 
-Permguard supports multiple ledgers for each remote, providing flexible management for both coding and provisioning tasks. When making changes, it is crucial to specify the remote where these changes will be pushed.
+**PermGuard** supports multiple **ledgers** for each **remote**, allowing flexible management of both **coding** and **provisioning** tasks.
 
-To ensure that changes are provisioned correctly, you must first check out the appropriate ledger. This ledger will then serve as the target for provisioning and deploying the updates.
+When making changes, it is important to **specify the remote** where these changes will be pushed.
 
-You can check out a ledger using the `checkout` command:
+## Checking Out a Ledger
+
+To ensure that changes are provisioned correctly, you must first **check out** the appropriate **ledger**.
+This ledger will serve as the **target** for provisioning and deploying updates.
+
+To check out a ledger, use the **`checkout`** command:
 
 ```bash
  permguard checkout origin/273165098782/magicfarmacia
 ```
 
-In this command, the first parameter is the remote, followed by the zone ID, and finally the ledger identifier. The format used is `<remote>/<zone-id>/<ledger-name>`.
+In this command, the first parameter is the **remote**, followed by the **zone ID**, and finally the **ledger identifier**. The format used is `<remote>/<zone-id>/<ledger-name>`.
