@@ -18,15 +18,15 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-To illustrate the integration process and demonstrate features throughout the documentation, we will use an example of a pharmacy, referred to as `MagicFarmacia`, which operates multiple branches across different cities.
+To explain the integration process and showcase features in this documentation, we will use an example of a pharmacy called `MagicFarmacia`, which has multiple branches in different cities.
 
 ## Integration Use Case: Pharmacy Branch Management
 
-Below is a specific scenario where an identity representing a pharmacy manager requires access to inventory information across all branches.
+In this scenario, a pharmacy manager needs access to inventory information across all branches.
 
 ## Policy and Permissions Definition
 
-The first step is to define a policy and associate it with an actor by specifying the required permissions.
+The first step is to create a policy and assign it to an actor by defining the necessary permissions.
 
 ```cedar  {title="magicfarmacia.cedar"}
 @id("platform-administrator")
@@ -72,7 +72,7 @@ unless {
 
 ## Performing Permission Evaluation
 
-After creating and associating the policy with the actor, the next step is to perform the permission evaluation within the application.
+Once the policy is created and linked to the actor, the next step is to evaluate permissions within the application.
 
 ```python  {title="app.py"}
 has_permissions = permguard.check(principal, policy_store, entities, subject, resource, action, context)

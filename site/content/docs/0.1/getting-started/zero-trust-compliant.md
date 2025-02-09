@@ -55,7 +55,7 @@ seo:
   <img alt="Permguard" src="/images/diagrams/d15.webp"/>
 </div><br/>
 
-Looking at the diagram, you can see the difference between **ZTAuth*** and **Zero Trust Network Access (ZTNA)**.
+Looking at the diagram, it is possible to notice the difference between **ZTAuth*** and **Zero Trust Network Access (ZTNA)**.
 
 - **ZTNA** secures network boundaries, controlling access at the network level.
 - **ZTAuth*** protects applications, enforcing detailed access control and ensuring consistent security across all actions and resources.
