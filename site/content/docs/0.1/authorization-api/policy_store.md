@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The Policy Store is a repository that stores policy information.
+The `Policy Store` is a repository that stores `policies`.
 
 ```json
 {

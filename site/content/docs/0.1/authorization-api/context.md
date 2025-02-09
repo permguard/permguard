@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The Context object is a set of attributes that represent environmental or contextual data about the request such as time of day. It is a JSON [RFC8259](https://www.rfc-editor.org/rfc/rfc8259) object.
+The `Context` object is a set of attributes that represent environmental or contextual data about the request such as time of day. It is a JSON [RFC8259](https://www.rfc-editor.org/rfc/rfc8259) object.
 
 ```json
 {
