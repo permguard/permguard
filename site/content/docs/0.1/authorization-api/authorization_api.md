@@ -68,9 +68,9 @@ The response payload includes the following elements:
 - **`context`**:
   The context element provides additional information about the decision, including the reason for the decision. The context includes an `id` and `reason_admin` and `reason_user` objects. The `reason_admin` object contains information for the administrator, while the `reason_user` object contains information for the user.
 
-## Sample Message Exchange
+## Sample Payloads
 
-Here an example of a message exchange with evaluations and defaults between the `PEP` and the `PDP`.
+Here is an example of an **authorization request** and its response exchanged between the `PEP` and the `PDP`.
 
 **Request Payload**:
 
