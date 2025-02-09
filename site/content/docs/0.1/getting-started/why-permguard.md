@@ -71,6 +71,7 @@ With **APIs** or **CLI tools**, organizations can import identity data, such as 
 - **Separation of Concerns**: Authorization is managed independently from authentication, ensuring clarity, scalability, and easier maintenance.
 - **Integration-First Design**: Supports multiple policy languages and flexible APIs, making integration into existing systems seamless.
 - **Governance-Ready**: Includes tools to define, enforce, and audit policies, simplifying compliance and governance management.
+- **Trusted Statements**: Implements **Trusted Elevation** and **Trusted Delegation**, allowing organizations to federate securely while enforcing **Zero Trust** principles.
 
 ## A Future of Simplified Authorization
 
