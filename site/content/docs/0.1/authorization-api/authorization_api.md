@@ -85,9 +85,7 @@ Here is an example of an **authorization request** and its response exchanged be
     "principal": {
       "type": "user",
       "id": "amy.smith@acmecorp.com",
-      "source": "keycloak",
-      "identity_token": "eyJhbGciOiJI...",
-      "access_token": "eyJhbGciOiJI..."
+      "source": "keycloak"
     },
     "entities": {
       "schema": "cedar",
