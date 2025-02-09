@@ -19,8 +19,8 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The Principal is the entity performing the action being authenticated, with the authority to act on behalf of the Subject.
-While the Principal and Subject are usually the same, there are scenarios where the Principal represents the Subject.
+The `Principal` is the entity performing the action being authenticated, with the authority to act on behalf of the `Subject`.
+While the `Principal` and `Subject` are usually the same, there are scenarios where the `Principal` is not the same of the `Subject`.
 
 ```json
 {
