@@ -18,22 +18,29 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-
-In **Permguard**, multiple ledgers can be created, and each of them has a single **schema**. This provides a structured method for modelling the authorization model.
+In **PermGuard**, multiple ledgers can be created, and each ledger has a single **schema**.
+This provides a structured way to model the authorization framework.
 
 {{< callout context="note" icon="info-circle" >}}
-In the context of the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management), , the schema primarily represents two namespaces: the `platform` tenant, which serves as the master tenant capable of managing all branches, and the `pharmacy branch` tenant.
+In the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management),
+the schema represents two main namespaces:
+- The **`platform` tenant**, acting as the master tenant that manages all branches.
+- The **`pharmacy branch` tenant**, representing individual branches.
 
-The platform implements features to create a new tenant for each branch, which can be accomplished using the internal Permguard API.
+The platform includes features to create a new tenant for each branch using **PermGuard's internal API**.
 {{< /callout >}}
 
 ## Schema
 
-A schema serves as a logical representation, organizing resources and actions, and also includes metadata annotations.
+A **schema** is a logical structure used to organize **resources** and **actions**.
+It also includes **metadata annotations** to enhance policy management.
 
 ## Namespace
 
-Additionally, a schema can be further subdivided into namespaces, offering enhanced granularity in resource management. A namespace provides another level of logical representation, particularly advantageous for schemas employing a `Domain-Driven Design` (`DDD`) approach. By structuring schemas into namespaces, users can streamline development efforts and ensure architectural coherence.
+A schema can be further divided into **namespaces**, adding more granularity to resource management.
+Namespaces provide another layer of logical organization, especially useful for schemas designed with **Domain-Driven Design (DDD)** principles.
+
+By structuring schemas into namespaces, developers can simplify development and maintain architectural consistency.
 
 ```json
 {
@@ -43,21 +50,26 @@ Additionally, a schema can be further subdivided into namespaces, offering enhan
 }
 ```
 
-In more details, each namespace can define multiple **resources** and corresponding **actions** that can be performed on those resources.
+Each **namespace** can define multiple **resources** and the corresponding **actions** that can be performed on them.
 
 {{< callout context="caution" icon="alert-triangle" >}}
-It's important to note that creating a `Resource` for every entity within the zone is not mandatory, the same concept applies for `Actions`.
-However, it is advisable to create a Resource and an Action for each entity that requires modeling within the context of authorization.
-Typically, fewer Resources and Actions are modeled compared to the entities in the zone to prevent tightly coupled authorization layers.
+It is not mandatory to create a `Resource` for every entity within a zone, and the same applies to `Actions`.
+However, it is recommended to define a **Resource** and an **Action** for any entity that requires explicit authorization modeling.
+
+Typically, fewer Resources and Actions are defined compared to the total number of entities in a zone.
+This prevents authorization layers from becoming too tightly coupled with the application logic.
 {{< /callout >}}
 
 ## Resource
 
-A **Resource** serves as the central entity within **Permguard**. It represents a logical entity within the zone that must be enriched with authorization policies.
+A **Resource** is a key entity in **PermGuard**. It represents a logical element within the zone that requires authorization policies.
 
-When creating authorization Resources, it's essential to consider `performance` and execution time required by the zone to evaluate policies. This ensures optimal performance and efficient policy evaluation within the zone context.
+When defining **Resources**, consider:
 
-In summary, `Resources` in Permguard provide a structured approach to managing authorization policies, promoting flexibility and performance optimization within the zone ecosystem.
+- **Performance**: Ensure policies are structured efficiently to minimize evaluation time.
+- **Scalability**: Optimize policy execution within the zone for better performance.
+
+In summary, `Resources` in **PermGuard** help structure authorization policies, ensuring flexibility and optimized performance within a **zone ecosystem**.
 
 ```json
 {
@@ -69,7 +81,15 @@ In summary, `Resources` in Permguard provide a structured approach to managing a
 
 ## Action
 
-An **action** is a specific operation that can be performed on a resource. Actions are used to define the operations that can be performed on a resource, such as `read`, `write`, `delete`, and `list`.
+An **Action** is a specific operation that can be performed on a **Resource**.
+Actions define what operations are allowed, such as:
+
+- `read`
+- `write`
+- `delete`
+- `list`
+
+These actions help enforce precise authorization rules, ensuring that only permitted operations can be executed on a resource.
 
 ```json
 {
