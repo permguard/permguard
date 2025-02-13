@@ -22,4 +22,6 @@ The **authorization model** defines the data structure and inputs of the AuthZ m
 
 ## Authorization API
 
-The request payload must comply with the `Cedar` language, meaning the input should be in a format that `Cedar` can process.
+By default, request validation applies to the generic [Authorization API](/docs/0.1/authorization-api/authorization-api/) request payload specification. However, custom validation may be needed for Cedar.
+
+In cases where no specific override is defined in this section, the generic validation rules should be followed.
