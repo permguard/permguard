@@ -66,8 +66,8 @@ message Action {
 
 // AuthorizationCheck Request
 
-// AuthorizationContextRequest is the input context for making the authorization decision.
-message AuthorizationContextRequest {
+// AuthorizationmodelRequest is the input context for making the authorization decision.
+message AuthorizationmodelRequest {
 	int64 ZoneID = 1;
 	PolicyStore PolicyStore = 2;
 	optional Principal Principal = 3;
@@ -84,7 +84,7 @@ message EvaluationRequest {
 
 // AuthorizationCheckRequest represents the request to perform an authorization decision.
 message AuthorizationCheckRequest {
-	AuthorizationContextRequest AuthorizationContext = 2;
+	AuthorizationmodelRequest Authorizationmodel = 2;
 	optional Subject Subject = 3;
 	optional Resource Resource = 4;
 	optional Action Action = 5;

@@ -23,7 +23,7 @@ import (
 // authorizationCheckExpandAuthorizationCheckWithDefaults expands the authorization check with defaults.
 func authorizationCheckExpandAuthorizationCheckWithDefaults(request *azmodelspdp.AuthorizationCheckWithDefaultsRequest) (*azmodelspdp.AuthorizationCheckRequest, error) {
 	expReq := &azmodelspdp.AuthorizationCheckRequest{}
-	expReq.AuthorizationContext = request.AuthorizationContext
+	expReq.Authorizationmodel = request.Authorizationmodel
 
 	if len(request.Evaluations) == 0 {
 		expRequest := azmodelspdp.EvaluationRequest{

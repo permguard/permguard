@@ -292,9 +292,9 @@ func MapAgentEvaluationRequestToGrpcEvaluationRequest(evaluationRequest *azmodel
 	return target, nil
 }
 
-// MapGrpcAuthorizationContextRequestToAgentAuthorizationContextRequest maps the gRPC authorization context request to the agent authorization context request.
-func MapGrpcAuthorizationContextRequestToAgentAuthorizationContextRequest(request *AuthorizationContextRequest) (*azmodelspdp.AuthorizationContextRequest, error) {
-	req := &azmodelspdp.AuthorizationContextRequest{}
+// MapGrpcAuthorizationmodelRequestToAgentAuthorizationmodelRequest maps the gRPC authorization context request to the agent authorization context request.
+func MapGrpcAuthorizationmodelRequestToAgentAuthorizationmodelRequest(request *AuthorizationmodelRequest) (*azmodelspdp.AuthorizationModelRequest, error) {
+	req := &azmodelspdp.AuthorizationModelRequest{}
 	req.ZoneID = request.ZoneID
 	if request.PolicyStore != nil {
 		policyStore, err := MapGrpcPolicyStoreToAgentPolicyStore(request.PolicyStore)
@@ -320,9 +320,9 @@ func MapGrpcAuthorizationContextRequestToAgentAuthorizationContextRequest(reques
 	return req, nil
 }
 
-// MapAgentAuthorizationContextRequestToGrpcAuthorizationContextRequest maps the agent authorization context request to the gRPC authorization context request.
-func MapAgentAuthorizationContextRequestToGrpcAuthorizationContextRequest(request *azmodelspdp.AuthorizationContextRequest) (*AuthorizationContextRequest, error) {
-	req := &AuthorizationContextRequest{}
+// MapAgentAuthorizationmodelRequestToGrpcAuthorizationmodelRequest maps the agent authorization context request to the gRPC authorization context request.
+func MapAgentAuthorizationmodelRequestToGrpcAuthorizationmodelRequest(request *azmodelspdp.AuthorizationModelRequest) (*AuthorizationmodelRequest, error) {
+	req := &AuthorizationmodelRequest{}
 	req.ZoneID = request.ZoneID
 	if request.PolicyStore != nil {
 		policyStore, err := MapAgentPolicyStoreToGrpcPolicyStore(request.PolicyStore)
@@ -354,12 +354,12 @@ func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *A
 		return nil, nil
 	}
 	req := &azmodelspdp.AuthorizationCheckWithDefaultsRequest{}
-	if request.AuthorizationContext != nil {
-		authorizationContext, err := MapGrpcAuthorizationContextRequestToAgentAuthorizationContextRequest(request.AuthorizationContext)
+	if request.Authorizationmodel != nil {
+		authorizationmodel, err := MapGrpcAuthorizationmodelRequestToAgentAuthorizationmodelRequest(request.Authorizationmodel)
 		if err != nil {
 			return nil, err
 		}
-		req.AuthorizationContext = authorizationContext
+		req.Authorizationmodel = authorizationmodel
 	}
 	if request.Subject != nil {
 		subject, err := MapGrpcSubjectToAgentSubject(request.Subject)
@@ -405,12 +405,12 @@ func MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest(request *a
 		return nil, nil
 	}
 	req := &AuthorizationCheckRequest{}
-	if request.AuthorizationContext != nil {
-		authorizationContext, err := MapAgentAuthorizationContextRequestToGrpcAuthorizationContextRequest(request.AuthorizationContext)
+	if request.Authorizationmodel != nil {
+		authorizationmodel, err := MapAgentAuthorizationmodelRequestToGrpcAuthorizationmodelRequest(request.Authorizationmodel)
 		if err != nil {
 			return nil, err
 		}
-		req.AuthorizationContext = authorizationContext
+		req.Authorizationmodel = authorizationmodel
 	}
 	if request.Subject != nil {
 		subject, err := MapAgentSubjectToGrpcSubject(request.Subject)

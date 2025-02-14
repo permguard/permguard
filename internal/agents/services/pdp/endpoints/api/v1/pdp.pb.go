@@ -421,8 +421,8 @@ func (x *Action) GetProperties() *structpb.Struct {
 	return nil
 }
 
-// AuthorizationContextRequest is the input context for making the authorization decision.
-type AuthorizationContextRequest struct {
+// AuthorizationmodelRequest is the input context for making the authorization decision.
+type AuthorizationmodelRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
@@ -433,8 +433,8 @@ type AuthorizationContextRequest struct {
 	Entities    *Entities    `protobuf:"bytes,4,opt,name=Entities,proto3,oneof" json:"Entities,omitempty"`
 }
 
-func (x *AuthorizationContextRequest) Reset() {
-	*x = AuthorizationContextRequest{}
+func (x *AuthorizationmodelRequest) Reset() {
+	*x = AuthorizationmodelRequest{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_internal_agents_services_pdp_endpoints_api_v1_pdp_proto_msgTypes[6]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -442,13 +442,13 @@ func (x *AuthorizationContextRequest) Reset() {
 	}
 }
 
-func (x *AuthorizationContextRequest) String() string {
+func (x *AuthorizationmodelRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AuthorizationContextRequest) ProtoMessage() {}
+func (*AuthorizationmodelRequest) ProtoMessage() {}
 
-func (x *AuthorizationContextRequest) ProtoReflect() protoreflect.Message {
+func (x *AuthorizationmodelRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_internal_agents_services_pdp_endpoints_api_v1_pdp_proto_msgTypes[6]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -460,33 +460,33 @@ func (x *AuthorizationContextRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use AuthorizationContextRequest.ProtoReflect.Descriptor instead.
-func (*AuthorizationContextRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use AuthorizationmodelRequest.ProtoReflect.Descriptor instead.
+func (*AuthorizationmodelRequest) Descriptor() ([]byte, []int) {
 	return file_internal_agents_services_pdp_endpoints_api_v1_pdp_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *AuthorizationContextRequest) GetZoneID() int64 {
+func (x *AuthorizationmodelRequest) GetZoneID() int64 {
 	if x != nil {
 		return x.ZoneID
 	}
 	return 0
 }
 
-func (x *AuthorizationContextRequest) GetPolicyStore() *PolicyStore {
+func (x *AuthorizationmodelRequest) GetPolicyStore() *PolicyStore {
 	if x != nil {
 		return x.PolicyStore
 	}
 	return nil
 }
 
-func (x *AuthorizationContextRequest) GetPrincipal() *Principal {
+func (x *AuthorizationmodelRequest) GetPrincipal() *Principal {
 	if x != nil {
 		return x.Principal
 	}
 	return nil
 }
 
-func (x *AuthorizationContextRequest) GetEntities() *Entities {
+func (x *AuthorizationmodelRequest) GetEntities() *Entities {
 	if x != nil {
 		return x.Entities
 	}
@@ -571,7 +571,7 @@ type AuthorizationCheckRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	AuthorizationContext *AuthorizationContextRequest `protobuf:"bytes,2,opt,name=AuthorizationContext,proto3" json:"AuthorizationContext,omitempty"`
+	Authorizationmodel *AuthorizationmodelRequest `protobuf:"bytes,2,opt,name=Authorizationmodel,proto3" json:"Authorizationmodel,omitempty"`
 	Subject              *Subject                     `protobuf:"bytes,3,opt,name=Subject,proto3,oneof" json:"Subject,omitempty"`
 	Resource             *Resource                    `protobuf:"bytes,4,opt,name=Resource,proto3,oneof" json:"Resource,omitempty"`
 	Action               *Action                      `protobuf:"bytes,5,opt,name=Action,proto3,oneof" json:"Action,omitempty"`
@@ -611,9 +611,9 @@ func (*AuthorizationCheckRequest) Descriptor() ([]byte, []int) {
 	return file_internal_agents_services_pdp_endpoints_api_v1_pdp_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *AuthorizationCheckRequest) GetAuthorizationContext() *AuthorizationContextRequest {
+func (x *AuthorizationCheckRequest) GetAuthorizationmodel() *AuthorizationmodelRequest {
 	if x != nil {
-		return x.AuthorizationContext
+		return x.Authorizationmodel
 	}
 	return nil
 }
@@ -1089,7 +1089,7 @@ var file_internal_agents_services_pdp_endpoints_api_v1_pdp_proto_goTypes = []any
 	(*Subject)(nil),                     // 3: policydecisionpoint.Subject
 	(*Resource)(nil),                    // 4: policydecisionpoint.Resource
 	(*Action)(nil),                      // 5: policydecisionpoint.Action
-	(*AuthorizationContextRequest)(nil), // 6: policydecisionpoint.AuthorizationContextRequest
+	(*AuthorizationmodelRequest)(nil), // 6: policydecisionpoint.AuthorizationmodelRequest
 	(*EvaluationRequest)(nil),           // 7: policydecisionpoint.EvaluationRequest
 	(*AuthorizationCheckRequest)(nil),   // 8: policydecisionpoint.AuthorizationCheckRequest
 	(*ReasonResponse)(nil),              // 9: policydecisionpoint.ReasonResponse
@@ -1103,14 +1103,14 @@ var file_internal_agents_services_pdp_endpoints_api_v1_pdp_proto_depIdxs = []int
 	13, // 1: policydecisionpoint.Subject.Properties:type_name -> google.protobuf.Struct
 	13, // 2: policydecisionpoint.Resource.Properties:type_name -> google.protobuf.Struct
 	13, // 3: policydecisionpoint.Action.Properties:type_name -> google.protobuf.Struct
-	0,  // 4: policydecisionpoint.AuthorizationContextRequest.PolicyStore:type_name -> policydecisionpoint.PolicyStore
-	1,  // 5: policydecisionpoint.AuthorizationContextRequest.Principal:type_name -> policydecisionpoint.Principal
-	2,  // 6: policydecisionpoint.AuthorizationContextRequest.Entities:type_name -> policydecisionpoint.Entities
+	0,  // 4: policydecisionpoint.AuthorizationmodelRequest.PolicyStore:type_name -> policydecisionpoint.PolicyStore
+	1,  // 5: policydecisionpoint.AuthorizationmodelRequest.Principal:type_name -> policydecisionpoint.Principal
+	2,  // 6: policydecisionpoint.AuthorizationmodelRequest.Entities:type_name -> policydecisionpoint.Entities
 	3,  // 7: policydecisionpoint.EvaluationRequest.Subject:type_name -> policydecisionpoint.Subject
 	4,  // 8: policydecisionpoint.EvaluationRequest.Resource:type_name -> policydecisionpoint.Resource
 	5,  // 9: policydecisionpoint.EvaluationRequest.Action:type_name -> policydecisionpoint.Action
 	13, // 10: policydecisionpoint.EvaluationRequest.Context:type_name -> google.protobuf.Struct
-	6,  // 11: policydecisionpoint.AuthorizationCheckRequest.AuthorizationContext:type_name -> policydecisionpoint.AuthorizationContextRequest
+	6,  // 11: policydecisionpoint.AuthorizationCheckRequest.Authorizationmodel:type_name -> policydecisionpoint.AuthorizationmodelRequest
 	3,  // 12: policydecisionpoint.AuthorizationCheckRequest.Subject:type_name -> policydecisionpoint.Subject
 	4,  // 13: policydecisionpoint.AuthorizationCheckRequest.Resource:type_name -> policydecisionpoint.Resource
 	5,  // 14: policydecisionpoint.AuthorizationCheckRequest.Action:type_name -> policydecisionpoint.Action
@@ -1209,7 +1209,7 @@ func file_internal_agents_services_pdp_endpoints_api_v1_pdp_proto_init() {
 			}
 		}
 		file_internal_agents_services_pdp_endpoints_api_v1_pdp_proto_msgTypes[6].Exporter = func(v any, i int) any {
-			switch v := v.(*AuthorizationContextRequest); i {
+			switch v := v.(*AuthorizationmodelRequest); i {
 			case 0:
 				return &v.state
 			case 1:
