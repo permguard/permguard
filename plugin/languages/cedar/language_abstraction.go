@@ -329,7 +329,7 @@ func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(langID, lang
 }
 
 // AuthorizationCheck checks the authorization.
-func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.PolicyStore, authzCtx *azauthz.AuthorizationContext) (*azauthz.AuthorizationDecision, error) {
+func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.PolicyStore, authzCtx *azauthz.Authorizationmodel) (*azauthz.AuthorizationDecision, error) {
 	ps := cedar.NewPolicySet()
 	for _, policy := range policyStore.GetPolicies() {
 		objInfo := policy.GetObjectInfo()
