@@ -54,6 +54,11 @@ Plese refer to the [Command Line](/docs/0.1/command-line/how-to-use/) section fo
 
 ```shell
 permguard zones create --name demozone
+```
+
+It is important to note that the `zoneid` is required for the policy store creation and it is returned by the previous command.
+
+```shell
 permguard authz ledgers create --name magicfarmacia --zoneid 386017848379
 ```
 
