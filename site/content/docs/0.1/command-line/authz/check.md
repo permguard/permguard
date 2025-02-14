@@ -28,7 +28,7 @@ Examples:
   permguard authz check --zoneid 273165098782 /path/to/authorization_request.json
 
 
-  Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
+  Find more information at: https://www.permguard.com/docs/0.1/command-line/how-to-use/
 
 Usage:
   permguard authz check [flags]

@@ -22,7 +22,7 @@ In **Permguard**, multiple ledgers can be created, and each ledger has a single 
 This provides a structured way to model the authorization framework.
 
 {{< callout context="note" icon="info-circle" >}}
-In the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management),
+In the [MagicFarmacia sample](/docs/0.1/getting-started/hands-on-examples#integration-use-case-pharmacy-branch-management),
 the schema represents two main namespaces:
 - The **`platform` tenant**, acting as the master tenant that manages all branches.
 - The **`pharmacy branch` tenant**, representing individual branches.

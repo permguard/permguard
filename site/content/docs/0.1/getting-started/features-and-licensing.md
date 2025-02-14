@@ -22,7 +22,7 @@ seo:
 
 Additionally, it includes a structured approach to defining **schemas** and **models** for both **authorization (AuthZ)** and **authentication (AuthN)**, ensuring consistency and best practices.
 
-For more details on legal terms and licenses, visit [Legal & Licenses](/docs/0.1/legal-licenses).
+For more details on legal terms and licenses, visit [Legal & Licenses](/docs/0.1/legal-licenses/third-party-technologies).
 
 {{< callout context="caution" icon="alert-triangle" >}}
 When reviewing licenses, always check that you are referencing the correct version of the documentation, related websites, or other **Permguard** materials.

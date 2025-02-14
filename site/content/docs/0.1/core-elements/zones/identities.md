@@ -22,7 +22,7 @@ seo:
 An `identity` is a unique entity that represents either a **user** or an **actor**.
 
 {{< callout context="note" icon="info-circle" >}}
-In the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management), multiple users and actors represent different branches and roles within the pharmacy, such as the `pharmacist` actor.
+In the [MagicFarmacia sample](/docs/0.1/getting-started/hands-on-examples#integration-use-case-pharmacy-branch-management), multiple users and actors represent different branches and roles within the pharmacy, such as the `pharmacist` actor.
 
 Additionally, the example includes two identity sources: `Google` and `Facebook`.
 {{< /callout >}}
