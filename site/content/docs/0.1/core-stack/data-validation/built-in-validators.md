@@ -22,10 +22,10 @@ seo:
 **Permguard** implements built-in validators that are universally applied across multiple components.
 
 ---
-**simplename**: *a valid simple name must satisfy the regex and cannot begin with the prefix **permguard** (case `lower`, validation `^[a-z][a-z0-9]*[a-z0-9]$`).*
+**simplename**: *a valid simple name must satisfy the regex and cannot begin with the prefix `permguard` (case `lower`, validation `^[a-z][a-z0-9]*[a-z0-9]$`).*
 
 ---
 
-**name**: *a valid name must satisfy the regex and cannot begin with the prefix **permguard**. (case `lower`, validation `^[a-z][a-z0-9\-\._]*[a-z0-9]$`).*
+**name**: *a valid name must satisfy the regex and cannot begin with the prefix `permguard` (case `lower`, validation `^[a-z][a-z0-9\-\._]*[a-z0-9]$`).*
 
 ---
