@@ -35,7 +35,7 @@ Examples:
   # check out the contents of a remote ledger to the local permguard workspace
   permguard checkout origin/273165098782/magicfarmacia
 
-  Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
+  Find more information at: https://www.permguard.com/docs/0.1/command-line/how-to-use/
 
 Usage:
   permguard checkout [flags]
