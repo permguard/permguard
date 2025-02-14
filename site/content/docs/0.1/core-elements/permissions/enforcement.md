@@ -33,7 +33,7 @@ To enforce access control, the **PEP** queries the **Policy Decision Point (PDP)
 
 ```json
 {
-  "authorization_context": {
+  "authorization_model": {
     "zone_id": 268786704340,
     "policy_store": {
       "type": "ledger",

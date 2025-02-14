@@ -40,7 +40,7 @@ func NewAuthorizationError(code string, message string) (*AuthorizationError, er
 	}, nil
 }
 
-// AuthorizationContext represents the authorization context.
+// Authorizationmodel represents the authorization context.
 type AuthorizationDecision struct {
 	id         string
 	decision   bool
