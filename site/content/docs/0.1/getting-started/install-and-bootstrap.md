@@ -36,8 +36,6 @@ docker run --rm -it -p 9091:9091 -p 9092:9092 -p 9094:9094 permguard/demo-all-in
 
 To install the PermGuard CLI, the first step is to build it.
 
-Run the following command:
-
 ```shell
 make build-cli
 ```
