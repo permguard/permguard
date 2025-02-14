@@ -23,7 +23,7 @@
 
     Permguard</a
   >
- 
+
 
     <!-- DocSearch mobile -->
 {{ if site.Params.add_ons.docSearch -}}
@@ -219,7 +219,7 @@
           </button>
           <ul class="dropdown-menu dropdown-menu-lg-end me-lg-2 shadow rounded border-0" aria-labelledby="doks-versions">
             <li>
-              <a class="dropdown-item current" aria-current="true" href="/docs/{{ $currentVersion }}/getting-started/introduction-to-permguard/">
+              <a class="dropdown-item current" aria-current="true" href="/docs/{{ $currentVersion }}/getting-started/permguard-paradigm/">
                 {{ if eq $currentVersion (index site.Params.doks.docsVersions (sub (len site.Params.doks.docsVersions) 1)) }}
                   Latest v{{ $currentVersion }}
                 {{ else }}
@@ -229,7 +229,7 @@
             </li>
             <li><hr class="dropdown-divider"></li>
             {{ range site.Params.doks.docsVersions }}
-              <li><a class="dropdown-item" href="/docs/{{ . }}/getting-started/introduction-to-permguard/">v{{ . }}</a></li>
+              <li><a class="dropdown-item" href="/docs/{{ . }}/getting-started/permguard-paradigm/">v{{ . }}</a></li>
             {{ end }}
           </ul>
         </div>
@@ -262,7 +262,7 @@
         </ul>
         {{ end -}}
 
- 
+
 
                 <!-- DocSearch desktop -->
 {{ if site.Params.add_ons.docSearch -}}
@@ -295,5 +295,5 @@
 </div>
 {{ end -}}
 
- 
+
 
