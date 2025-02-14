@@ -96,7 +96,7 @@ func createCommandForZoneDelete(deps azcli.CliDependenciesProvider, v *viper.Vip
 
 Examples:
   # delete a zone and output the result in json format
-  permguard zones delete --zoneid 268786704340 --output json
+  permguard zones delete --zoneid 273165098782 --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteZone(deps, cmd, v)

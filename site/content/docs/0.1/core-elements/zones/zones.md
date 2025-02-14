@@ -43,7 +43,7 @@ Each zone is uniquely identified by a `name`.
 
 ```json
 {
-  "zone_id": 268786704340,
+  "zone_id": 273165098782,
   "name": "magicfarmacia-dev"
 }
 ```

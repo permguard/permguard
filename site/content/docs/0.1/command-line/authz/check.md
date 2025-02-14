@@ -25,7 +25,7 @@ This command checks an authorization request.
 
 Examples:
   # check an authorization request
-  permguard authz check --zoneid 268786704340 /path/to/authorization_request.json
+  permguard authz check --zoneid 273165098782 /path/to/authorization_request.json
 
 
   Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
@@ -52,17 +52,17 @@ The output from your current version of Permguard may differ from the example pr
 The `permguard authz check` command allows to check an authorization request.
 
 ```bash
-permguard authz check --zoneid 268786704340 /path/to/authorization_request.json
+permguard authz check --zoneid 273165098782 /path/to/authorization_request.json
 ```
 
 Below are other methods to pass the input:
 
 ```bash
-permguard authz check --zoneid 268786704340 < /path/to/authorization_request.json
+permguard authz check --zoneid 273165098782 < /path/to/authorization_request.json
 ```
 
 ```bash
-cat /path/to/authorization_request.json | permguard authz check --zoneid 268786704340
+cat /path/to/authorization_request.json | permguard authz check --zoneid 273165098782
 ```
 
 output:
@@ -77,7 +77,7 @@ Authorization check response: true
   </summary>
 
   ```bash
-  permguard authz check --zoneid 268786704340 /path/to/authorization_request.json -o json
+  permguard authz check --zoneid 273165098782 /path/to/authorization_request.json -o json
   ```
 
   output:
