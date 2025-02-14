@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The Action specifies the entity requesting access to a action.
+The `Action` specifies the entity requesting access to a action.
 
 - `name`: A required string value that specifies the name of the Action.
 - `properties`: An optional JSON object containing any number of key-value pairs, which can be used to express additional properties of a Action.

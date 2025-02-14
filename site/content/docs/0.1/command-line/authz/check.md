@@ -65,90 +65,36 @@ permguard authz check --zoneid 268786704340 < /path/to/authorization_request.jso
 cat /path/to/authorization_request.json | permguard authz check --zoneid 268786704340
 ```
 
-```bash
-permguard authz check --zoneid 268786704340 <<EOF
-{
-  "authorization_context": {
-    "zone_id": 268786704340,
-    "policy_store": {
-      "type": "ledger",
-      "id": "fd1ac44e4afa4fc4beec622494d3175a"
-    },
-    "principal": {
-      "type": "user",
-      "id": "amy.smith@acmecorp.com",
-      "source": "keycloak",
-      "identity_token": "eyJhbGciOiJI...",
-      "access_token": "eyJhbGciOiJI..."
-    },
-    "entities": {
-      "schema": "cedar",
-      "items": [
-        {
-          "uid": {
-            "type": "MagicFarmacia::Platform::Subscription",
-            "id": "e3a786fd07e24bfa95ba4341d3695ae8"
-          },
-          "attrs": {
-            "active": true
-          },
-          "parents": []
-        }
-      ]
-    }
-  },
-  "subject": {
-    "type": "user",
-    "id": "amy.smith@acmecorp.com",
-    "source": "keycloak",
-    "properties": {
-      "isSuperUser": true
-    }
-  },
-  "resource": {
-    "type": "MagicFarmacia::Platform::Subscription",
-    "id": "e3a786fd07e24bfa95ba4341d3695ae8",
-    "properties": {}
-  },
-  "context": {
-    "time": "2025-01-23T16:17:46+00:00"
-  },
-  "evaluations": [
-    {
-      "action": {
-        "name": "MagicFarmacia::Platform::Action::view",
-        "properties": {}
-      }
-    },
-    {
-      "action": {
-        "name": "MagicFarmacia::Platform::Action::delete",
-        "properties": {}
-      }
-    }
-  ]
-}
-EOF
-```
-
 output:
 
 ```bash
-
+Authorization check response: true
 ```
 
 <details>
   <summary>
     JSON Output
   </summary>
+
+  ```bash
+  permguard authz check --zoneid 268786704340 /path/to/authorization_request.json -o json
+  ```
+
+  output:
+
+  ```json
+  {
+    "authorization_check": {
+      "decision": true,
+      "context": {},
+      "evaluations": [
+        {
+          "decision": true,
+          "context": {}
+        }
+      ]
+    }
+  }
+  ```
+
 </details>
-
-```bash
-permguard authz check --zoneid 268786704340 /path/to/authorization_request.json -o json
-```
-
-output:
-
-```json
-
-```
