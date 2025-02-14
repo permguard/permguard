@@ -76,7 +76,7 @@ Here is an example of an **authorization request** and its response exchanged be
 
 ```json
 {
-  "authorization_context": {
+  "authorization_model": {
     "zone_id": 268786704340,
     "policy_store": {
       "type": "ledger",

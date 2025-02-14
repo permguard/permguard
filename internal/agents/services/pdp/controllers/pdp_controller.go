@@ -50,10 +50,10 @@ func NewPDPController(serviceContext *azservices.ServiceContext, storage azStora
 
 // AuthorizationCheck checks if the request is authorized.
 func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckWithDefaultsRequest) (*azmodelspdp.AuthorizationCheckResponse, error) {
-	if request == nil || request.AuthorizationContext == nil || request.AuthorizationContext.PolicyStore == nil {
+	if request == nil || request.Authorizationmodel == nil || request.Authorizationmodel.PolicyStore == nil {
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, azauthz.AuthzErrBadRequestMessage), nil
 	}
-	policyStore := request.AuthorizationContext.PolicyStore
+	policyStore := request.Authorizationmodel.PolicyStore
 	if strings.ToLower(policyStore.Type) != LedgerType {
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, azauthz.AuthzErrBadRequestMessage), nil
 	}
@@ -62,7 +62,7 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, err.Error(), azauthz.AuthzErrBadRequestMessage), nil
 	}
 	for _, evaluation := range expReq.Evaluations {
-		if !authorizationCheckVerifyPrincipal(request.AuthorizationContext.Principal, evaluation.Subject) {
+		if !authorizationCheckVerifyPrincipal(request.Authorizationmodel.Principal, evaluation.Subject) {
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrUnauthorizedCode, azauthz.AuthzErrUnauthorizedMessage, azauthz.AuthzErrUnauthorizedMessage), nil
 		}
 	}

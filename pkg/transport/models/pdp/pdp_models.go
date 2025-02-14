@@ -65,8 +65,8 @@ const (
 	PolicyLedgerType = "policy"
 )
 
-// AuthorizationContextRequest is the input context for making the authorization decision.
-type AuthorizationContextRequest struct {
+// AuthorizationModelRequest is the input context for making the authorization decision.
+type AuthorizationModelRequest struct {
 	ZoneID      int64        `json:"zone_id" validate:"required,gt=0"`
 	PolicyStore *PolicyStore `json:"policy_store,omitempty"`
 	Principal   *Principal   `json:"principal,omitempty"`
@@ -84,8 +84,8 @@ type EvaluationRequest struct {
 
 // AuthorizationCheckRequest represents the request to perform an authorization decision.
 type AuthorizationCheckRequest struct {
-	AuthorizationContext *AuthorizationContextRequest `json:"authorization_context,omitempty" validate:"required"`
-	Evaluations          []EvaluationRequest          `json:"evaluations,omitempty"`
+	Authorizationmodel *AuthorizationModelRequest `json:"authorization_model,omitempty" validate:"required"`
+	Evaluations        []EvaluationRequest        `json:"evaluations,omitempty"`
 }
 
 // AuthorizationCheckWithDefaultsRequest represents the request to perform an authorization decision with defaults.
