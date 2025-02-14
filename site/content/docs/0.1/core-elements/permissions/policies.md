@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-In **PermGuard**, multiple ledgers can be created, and each ledger can have multiple **policies**.
+In **Permguard**, multiple ledgers can be created, and each ledger can have multiple **policies**.
 
 {{< callout context="note" icon="info-circle" >}}
 In the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management),

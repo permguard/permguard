@@ -47,7 +47,7 @@ A `Principal` is a human user or workload with granted permissions that authenti
 
 A `User` is an identity representing a single person or **Function Identifier (FID)** with specific permissions.
 
-The name can be either a valid **PermGuard** name or an email address.
+The name can be either a valid **Permguard** name or an email address.
 
 ```json
 {
@@ -63,13 +63,13 @@ An `Actor` is a virtual identity that a **Principal** can temporarily assume. It
 - A **Role**: A predefined set of permissions for specific tasks, such as `"Approvals Manager"` or `"Compliance Reviewer"`.
 - A **Digital Twin**: A virtual representation of a user or service designed to perform tasks independently while reflecting the original identity.
 
-**PermGuard** allows systems to **optionally** adopt the Actor model, ensuring that every operation is executed under the specific permissions of the **Actor**, rather than the broader permissions of the **Principal**.
+**Permguard** allows systems to **optionally** adopt the Actor model, ensuring that every operation is executed under the specific permissions of the **Actor**, rather than the broader permissions of the **Principal**.
 
 ### Benefits of the Actor Model
 
 1. **Zero Trust Security**: Requires elevation into an Actor, ensuring only the necessary permissions are used for a task, reducing risk and ensuring full traceability.
 2. **Role Isolation**: Limits each Actor to its assigned role or context, preventing unnecessary access and ensuring clear separation of responsibilities.
-3. **Future Federation**: Provides a foundation for secure collaboration across organizations. Defined roles and permissions allow **PermGuard** to support federated systems where multiple organizations can work together while maintaining security boundaries.
+3. **Future Federation**: Provides a foundation for secure collaboration across organizations. Defined roles and permissions allow **Permguard** to support federated systems where multiple organizations can work together while maintaining security boundaries.
 
 This model enhances **security, flexibility, and scalability**, making it ideal for **distributed systems** and **multi-organization environments**.
 

@@ -18,7 +18,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-In **PermGuard**, enforcement is handled by the **Policy Enforcement Point (PEP)**.
+In **Permguard**, enforcement is handled by the **Policy Enforcement Point (PEP)**.
 Its role is to verify whether an `identity` has permission to perform specific `actions` on `resources` within a given `namespace`.
 
 {{< callout context="note" icon="info-circle" >}}

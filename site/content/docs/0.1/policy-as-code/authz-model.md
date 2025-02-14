@@ -39,7 +39,7 @@ This is provided as an input to the Authorization API.
 }
 ```
 
-The `PermGuard` decision engine loads the policy storage based on the input type and ID existing in the input zone.
+The `Permguard` decision engine loads the policy storage based on the input type and ID existing in the input zone.
 
 | PATH                                    | VALUES | DESCRIPTION                                                            |
 |-----------------------------------------|--------|------------------------------------------------------------------------|

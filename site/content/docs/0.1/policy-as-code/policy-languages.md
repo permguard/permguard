@@ -18,16 +18,16 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-**PermGuard** fully supports `Cedar` as the primary policy language.
+**Permguard** fully supports `Cedar` as the primary policy language.
 
-`PermGuard` enforces a **mandatory single schema** for each `ledger`.
+`Permguard` enforces a **mandatory single schema** for each `ledger`.
 
 ## Schema Management in Policy Languages
 
 To improve the developer experience, each policy language can define its own **schema grammar**.
 
-- When using `Cedar`, **PermGuard** leverages the **official schema** defined by the Cedar language.
-- For integrated languages without an official schema, a **custom schema** must be created to ensure compatibility with **PermGuard's unified model**.
+- When using `Cedar`, **Permguard** leverages the **official schema** defined by the Cedar language.
+- For integrated languages without an official schema, a **custom schema** must be created to ensure compatibility with **Permguard's unified model**.
 
 {{< callout context="note" icon="info-circle" >}}
 This approach ensures a **consistent layer of resources and actions**, allowing interoperability across different applications—even when using different policy languages.

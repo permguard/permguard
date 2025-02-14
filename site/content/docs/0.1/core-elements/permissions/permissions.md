@@ -17,7 +17,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-In **PermGuard**, permissions are managed by associating multiple `policies` with an `identity`,
+In **Permguard**, permissions are managed by associating multiple `policies` with an `identity`,
 allowing **fine-grained control** over which `actions` and `resources` the identity can access.
 
 Each policy defines specific actions and resources, making permission management **modular and scalable**.
