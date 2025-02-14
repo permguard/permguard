@@ -65,7 +65,6 @@ func authorizationCheckVerifyPrincipal(principal *azmodelspdp.Principal, subject
 	if principal == nil {
 		return true
 	}
-
 	if principal.ID != subject.ID {
 		return false
 	} else if principal.Type != subject.Type {

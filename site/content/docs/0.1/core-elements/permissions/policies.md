@@ -19,12 +19,14 @@ seo:
   noindex: false # false (default) or true
 ---
 
-In **Permguard**, multiple ledgers can be created, and each of them can have multiple **policies**.
+In **PermGuard**, multiple ledgers can be created, and each ledger can have multiple **policies**.
 
 {{< callout context="note" icon="info-circle" >}}
-In the context of the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management), the policy `view-branch-inventory` would be used to control view access to the inventory of a pharmacy branch.
+In the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management),
+the policy **`view-branch-inventory`** controls access to the inventory of a pharmacy branch.
 {{< /callout >}}
 
 ## Policy
 
-A policy serves as a logical representation of what can be permitted or forbidden in an authorization model.
+A **Policy** defines what is allowed or denied within an authorization model.
+It sets rules for actions on resources, ensuring secure and controlled access.

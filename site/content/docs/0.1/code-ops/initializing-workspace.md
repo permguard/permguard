@@ -18,29 +18,36 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
+**PermGuard** provides a **Command Line Interface (CLI)** for managing authentication metadata (**AuthN**)
+and authorization metadata and configurations (**AuthZ**) for **Zones**.
 
-Permguard provides a Command Line Interface (CLI) for managing authentication metadata (AuthN) and authorization metadata and configurations (AuthZ) for Zones.
+- **AuthN administration** is handled through the CLI.
+- **AuthZ administration** is managed via both the CLI and the **Policy Language**.
 
-AuthZ administration is handled exclusively through the CLI, while AuthZ administration is managed via both the CLI and the Policy Language.
+The authorization process follows a **code-first approach**.
+When working with **Schemas and Policies**, the CLI must be executed from a **PermGuard workspace**
+that contains configuration files written in **Cedar**.
 
-The authorization process follows a code-first approach, and when dealing with Schemas and Policies, the CLI should be executed from a permguard workspace that contains configuration files written in Cedar.
+## Creating a PermGuard Workspace
 
-There are three methods to create a permguard workspace and associate it with a Permguard ledger:
+There are three ways to create a **PermGuard workspace** and associate it with a **PermGuard ledger**:
 
-- Initialize a new ledger in a permguard workspace
-- Clone an existing ledger into a permguard workspace
-- Fork an existing ledger into a working direct.
+1. **Initialize a new ledger** in a PermGuard workspace.
+2. **Clone an existing ledger** into a PermGuard workspace.
+3. **Fork an existing ledger** into a working directory.
 
-## Workspace
+## Workspace Structure
 
-A **Permguard** workspace contains the following files:
+A **PermGuard workspace** contains the following files:
 
-- Policy files in `Cedar` language.
-- A hidden `.permguard` directory which Permguard uses to store metadata and intermediate files that are automatically managed by Permguard and should not be modified manually. This directory should be added to the `.gitignore` file to prevent it from being committed to the source code version control.
+- **Policy files** written in the `Cedar` language.
+- A hidden **`.permguard`** directory, used by PermGuard to store metadata and intermediate files.
+  - This directory is **automatically managed** by PermGuard and **should not be modified manually**.
+  - It should be added to `.gitignore` to prevent it from being committed to version control.
 
-## Initialize a new ledger
+## Initialize a New Ledger
 
-When starting a new project, the first step is to create a zone:
+When starting a new project, the first step is to **create a zone**:
 
 ```bash
 permguard zones create --name magicfarmacia-dev --output json
@@ -83,10 +90,10 @@ Finally, initialize the workspace and associate it with a Permguard `remote` ser
 
 ## Clone an existing ledger
 
-There are advanced cases where a Permguard ledger has already been created and it is required to recovery the configuration files to a local permguard workspace.
+In advanced cases, a **PermGuard ledger** may already exist, and it may be necessary to recover the configuration files to a local **PermGuard workspace**.
 
-In this case, it is just necessary to clone the Permguard ledger:
+To do this, simply **clone** the existing **PermGuard ledger**:
 
 ```bash
-permguard clone localhost/273165098782/magicfarmacia
+permguard clone origin/273165098782/magicfarmacia
 ```

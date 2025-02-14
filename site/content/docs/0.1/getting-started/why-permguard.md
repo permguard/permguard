@@ -18,10 +18,10 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-In today’s digital ecosystem, **identity has become the foundation** of most security architectures. While significant progress has been made in standardizing authentication (e.g., Single Sign-On, OAuth, OpenID Connect), **authorization remains fragmented and underdeveloped**.
+In today's digital world, **identity is the foundation** of most security systems. Authentication has improved with standards like Single Sign-On, OAuth, and OpenID Connect, but **authorization is still fragmented and less developed**.
 
 {{< callout context="tip" icon="rocket" >}}
-Permguard may seem complex, but it’s not: its internal architecture is sophisticated, yet integration is simple—perfect for everything from 'Hello World' apps to enterprise solutions. Just run the server, define your policy, and integrate it.
+**PermGuard** is powerful yet easy to use. Its advanced architecture ensures security and flexibility, while integration remains simple—whether for a basic app or a complex enterprise system. Just run the server, define your policy, and integrate it seamlessly.
 {{< /callout >}}
 
 ## The Problem with Authorization Today
@@ -30,12 +30,12 @@ Permguard may seem complex, but it’s not: its internal architecture is sophist
   <img alt="Permguard" src="/images/diagrams/d22.webp"/>
 </div><br/>
 
-Most systems treat **authorization** as a secondary concern, tightly coupled to applications or identity providers. This creates several challenges:
+Most systems see **authorization** as a secondary concern, often tightly linked to applications or identity providers. This leads to several challenges:
 
-- **No Standardization**: Authorization lacks universal protocols or dedicated frameworks, unlike authentication, which is more mature.
-- **Coupling with Identity**: Authorization is often tied to identity providers. While authentication answers *"Who are you?"*, authorization answers *"What are you allowed to do?"*. These are separate but equally important.
-- **Governance Complexity**: Without a clear and dedicated layer, managing permissions becomes inconsistent and difficult to scale.
-- **Integration Challenges**: Existing solutions are either too specific to an application or too generic, making it hard to meet the diverse needs of modern systems.
+- **No Standardization**: Unlike authentication, authorization lacks universal protocols or dedicated frameworks.
+- **Tied to Identity Providers**: Authentication answers *"Who are you?"*, while authorization answers *"What are you allowed to do?"*. These should be separate but equally important.
+- **Difficult Integration**: Existing solutions are either too specific to an application or too generic, making it hard to fit the needs of modern systems.
+- **Complex Governance**: Without a clear and independent authorization layer, managing permissions becomes inconsistent and hard to scale.
 
 ## The Need for a Dedicated Authorization Layer
 
@@ -43,12 +43,12 @@ Most systems treat **authorization** as a secondary concern, tightly coupled to 
   <img alt="Permguard" src="/images/diagrams/d8.webp"/>
 </div><br/>
 
-Just like authentication has matured with dedicated identity providers and standardized protocols, **authorization also needs its own dedicated layer**. This layer should be:
+Just as authentication has evolved with dedicated identity providers and standardized protocols, **authorization also needs its own dedicated layer**. This layer should be:
 
 - **Standardized**: A consistent way to define, enforce, and manage permissions across systems.
-- **Decoupled from Identity**: Authorization should work independently of identity providers, focusing on "what you can do" rather than "who you are."
-- **Governance-Friendly**: Built with transparency, making it easy to audit and align with compliance requirements.
-- **Flexible and Interoperable**: Capable of integrating with various identity providers while maintaining a consistent authorization model.
+- **Independent from Identity**: Authorization should focus on *"what you can do"*, not just *"who you are"*, working separately from identity providers.
+- **Flexible and Interoperable**: Able to integrate with different identity providers while maintaining a unified authorization model.
+- **Governance-Friendly**: Transparent and easy to audit, ensuring compliance with security and regulatory requirements.
 
 ## Integration with Your Own Identity Provider
 
@@ -56,9 +56,9 @@ Just like authentication has matured with dedicated identity providers and stand
   <img alt="Permguard" src="/images/diagrams/d11.webp"/>
 </div>
 
-Permguard follows the **Bring Your Own Identity (BYOI)** approach, allowing you to integrate with existing identity providers. Examples include open-source solutions like **Keycloak**, as well as commercial identity platforms. This flexibility ensures that organizations can continue using their preferred authentication systems while leveraging Permguard for robust authorization management.
+**PermGuard** follows the **Bring Your Own Identity (BYOI)** approach, allowing integration with existing identity providers. It supports open-source solutions like **Keycloak** as well as commercial platforms. This flexibility lets organizations keep their preferred authentication systems while using **PermGuard** for advanced authorization management.
 
-Using **APIs** or **CLI tools**, organizations can import identity data from their chosen provider into Permguard, such as user actors or groups. Importantly, interactions with identity providers are not built into Permguard itself. This design choice ensures that Permguard remains vendor-agnostic, focusing exclusively on authorization.
+With **APIs** or **CLI tools**, organizations can import identity data, such as users or groups, from their chosen provider into **PermGuard**. Importantly, identity provider interactions are not built into **PermGuard** itself. This keeps **PermGuard** vendor-agnostic, focusing only on authorization.
 
 ## What Permguard Brings to the Table
 
@@ -66,13 +66,12 @@ Using **APIs** or **CLI tools**, organizations can import identity data from the
   <img alt="Permguard" src="/images/diagrams/d9.webp"/>
 </div><br/>
 
-**Permguard** is designed to address the challenges of authorization by providing an open-source, flexible, and dedicated solution. Key features include:
+**PermGuard** is built to solve authorization challenges with an open-source, flexible, and dedicated approach. Key features include:
 
-- **Separation of Concerns**: Authorization is treated as its own domain, separate from authentication. This ensures clarity, scalability, and maintainability.
-
-- **Governance-Ready**: Permguard includes tools to define, enforce, and audit policies, making it easier to meet compliance and governance requirements.
-
-- **Integration-First Design**: Permguard supports multiple policy languages and flexible APIs, making it easy to integrate into existing systems.
+- **Separation of Concerns**: Authorization is managed independently from authentication, ensuring clarity, scalability, and easier maintenance.
+- **Integration-First Design**: Supports multiple policy languages and flexible APIs, making integration into existing systems seamless.
+- **Governance-Ready**: Includes tools to define, enforce, and audit policies, simplifying compliance and governance management.
+- **Trusted Statements**: Implements **Trusted Elevation** and **Trusted Delegation**, allowing organizations to federate securely while enforcing **Zero Trust** principles.
 
 ## A Future of Simplified Authorization
 
@@ -80,12 +79,11 @@ Using **APIs** or **CLI tools**, organizations can import identity data from the
   <img alt="Permguard" src="/images/diagrams/d12.webp"/>
 </div><br/>
 
-Permguard imagines a future where authorization is not an afterthought. With a dedicated layer, it helps organizations to:
+**PermGuard** envisions a future where authorization is a core security component, not an afterthought. With a dedicated layer, it helps organizations:
 
-- Build systems that are secure and scalable.
-
+- Build secure and scalable systems.
+- Maintain consistent access control across applications and environments.
+- Establish **Trusted Statements** such as **Trusted Elevation** and **Trusted Delegation**, enabling organizations to federate securely while following Zero Trust principles.
 - Simplify governance and compliance.
 
-- Ensure consistent access control across different applications and environments.
-
-**Authorization** deserves the same focus and innovation that authentication has received. With Permguard, organizations have a reliable, flexible, and future-ready solution to manage permissions effectively.
+**Authorization** should receive the same attention and innovation as authentication. With **PermGuard**, organizations get a reliable, flexible, and future-ready solution to manage permissions efficiently.

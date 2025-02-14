@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The Resource specifies the entity requesting access to a resource.
+The `Resource` specifies the entity requesting access to a resource.
 
 - `type`: A required string value that specifies the type of the Resource.
 - `id`: A required string value containing the unique identifier of the Resource, scoped to the type.
@@ -37,4 +37,4 @@ The Resource specifies the entity requesting access to a resource.
 
 ## Accepted Values
 
-The `type` and `id` fileds accpect any valid string which is validated by the underlying policy engine based on its validation rules.
+The `type` and `id` fileds accept any valid string which is validated by the underlying policy engine based on its validation rules.

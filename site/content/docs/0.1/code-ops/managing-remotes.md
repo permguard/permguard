@@ -18,14 +18,21 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
+**PermGuard** can be installed in any environment, allowing multiple instances of the **PermGuard server** to be deployed.
 
-Permguard can be installed in any environment, offering the flexibility to deploy multiple instances of the Permguard server.
+A recommended best practice is to set up a **dedicated PermGuard server** for each environment, such as:
+- **Development**
+- **Staging**
+- **Production**
 
-A recommended approach is to deploy a dedicated Permguard server for each environment, such as development, staging, and production. This separation ensures isolated and secure management of permissions tailored to each stage of your deployment pipeline.
+This separation ensures **secure and isolated** permission management for each stage of the deployment pipeline.
 
-When managing one or more servers, and provisioning to any of them, it is essential to properly configure the available remote connections. This configuration enables seamless communication and coordination between the various Permguard instances.
+## Managing Multiple Servers
 
-A remote can be added using the remote command:
+When handling multiple **PermGuard servers** and provisioning configurations, it is crucial to correctly configure **remote connections**.
+This setup enables smooth communication and coordination between different **PermGuard instances**.
+
+To add a new **remote**, use the following **remote command**:
 
 ```bash
  permguard remote add origin localhost

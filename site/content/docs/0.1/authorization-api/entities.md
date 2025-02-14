@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The Entities object is a set of attributes that represent policy's entities.
+The `Entities` object is a `set of attributes` that represent policy's entities.
 
 ```json
 {
