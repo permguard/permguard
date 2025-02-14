@@ -21,14 +21,14 @@ jobs:
 
       - name: Build Docker Image
         run: |
-          docker build -t permguard/all-in-one:latest -f ./cmd/server-all-in-one/Dockerfile .
+          docker build -t permguard/demo-all-in-one:latest -f ./cmd/server-all-in-one/Dockerfile .
 
       - name: Tag Docker Image
         run: |
           IMAGE_TAG=0.0.0.$(git rev-list --count HEAD)
-          docker tag permguard/all-in-one:latest permguard/all-in-one:$IMAGE_TAG
-          docker push permguard/all-in-one:$IMAGE_TAG
+          docker tag permguard/demo-all-in-one:latest permguard/demo-all-in-one:$IMAGE_TAG
+          docker push permguard/demo-all-in-one:$IMAGE_TAG
 
       - name: Push Docker Image
         run: |
-          docker push permguard/all-in-one:latest
+          docker push permguard/demo-all-in-one:latest
