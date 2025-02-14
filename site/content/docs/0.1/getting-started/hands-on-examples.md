@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "hands-on-examples-8c89ddc8339f83444fc4b97264bd5c45"
-weight: 1006
+weight: 1005
 toc: true
 seo:
   title: "" # custom title (optional)
