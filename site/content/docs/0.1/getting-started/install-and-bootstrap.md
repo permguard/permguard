@@ -24,9 +24,10 @@ This guide provides step-by-step instructions to help you get started.
 
 For deployment, refer to the [DevOps](/docs/0.1/devops/authz-server/authorization-server) section.
 
-## Install the AuthZ Server
+## Start up the AuthZ Server
 
-To install the AuthZ server, you just need to run the Docker container.
+To startup the AuthZ server, you just need to run the Docker container.
+
 Follow these steps:
 
 ```shell
