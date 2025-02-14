@@ -1,6 +1,6 @@
 ---
-title: "Learn by Example"
-slug: "Learn by Example"
+title: "Hands-on Examples"
+slug: "Hands-on Examples"
 description: ""
 summary: ""
 date: 2023-08-15T14:47:57+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "adoption-through-example-8c89ddc8339f83444fc4b97264bd5c45"
+    identifier: "hands-on-examples-8c89ddc8339f83444fc4b97264bd5c45"
 weight: 1006
 toc: true
 seo:

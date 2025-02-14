@@ -18,7 +18,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-In **PermGuard**, multiple ledgers can be created, and each ledger has a single **schema**.
+In **Permguard**, multiple ledgers can be created, and each ledger has a single **schema**.
 This provides a structured way to model the authorization framework.
 
 {{< callout context="note" icon="info-circle" >}}
@@ -27,7 +27,7 @@ the schema represents two main namespaces:
 - The **`platform` tenant**, acting as the master tenant that manages all branches.
 - The **`pharmacy branch` tenant**, representing individual branches.
 
-The platform includes features to create a new tenant for each branch using **PermGuard's internal API**.
+The platform includes features to create a new tenant for each branch using **Permguard's internal API**.
 {{< /callout >}}
 
 ## Schema
@@ -62,14 +62,14 @@ This prevents authorization layers from becoming too tightly coupled with the ap
 
 ## Resource
 
-A **Resource** is a key entity in **PermGuard**. It represents a logical element within the zone that requires authorization policies.
+A **Resource** is a key entity in **Permguard**. It represents a logical element within the zone that requires authorization policies.
 
 When defining **Resources**, consider:
 
 - **Performance**: Ensure policies are structured efficiently to minimize evaluation time.
 - **Scalability**: Optimize policy execution within the zone for better performance.
 
-In summary, `Resources` in **PermGuard** help structure authorization policies, ensuring flexibility and optimized performance within a **zone ecosystem**.
+In summary, `Resources` in **Permguard** help structure authorization policies, ensuring flexibility and optimized performance within a **zone ecosystem**.
 
 ```json
 {

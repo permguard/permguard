@@ -1,6 +1,6 @@
 ---
-title: "Installation"
-slug: "Installation"
+title: "Install & Bootstrap"
+slug: "Install & Bootstrap"
 description: ""
 summary: ""
 date: 2023-08-15T14:47:57+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "installation-25c10db057194ae3b83531088638a3fc"
+    identifier: "install-and-bootstrap-25c10db057194ae3b83531088638a3fc"
 weight: 1003
 toc: true
 seo:

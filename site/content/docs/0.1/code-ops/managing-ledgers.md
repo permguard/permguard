@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-**PermGuard** supports multiple **ledgers** for each **remote**, allowing flexible management of both **coding** and **provisioning** tasks.
+**Permguard** supports multiple **ledgers** for each **remote**, allowing flexible management of both **coding** and **provisioning** tasks.
 
 When making changes, it is important to **specify the remote** where these changes will be pushed.
 

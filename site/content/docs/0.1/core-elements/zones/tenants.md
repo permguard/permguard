@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-**PermGuard** supports `multi-tenancy`, allowing multiple **tenants** to be created within each zone.
+**Permguard** supports `multi-tenancy`, allowing multiple **tenants** to be created within each zone.
 
 Tenants play a key role in managing authorizations and help **partition** `resources` and `actions` efficiently.
 This is especially useful for **multi-tenant** zones, such as Software as a Service (**SaaS**) platforms.
