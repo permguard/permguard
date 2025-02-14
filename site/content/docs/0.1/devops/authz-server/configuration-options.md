@@ -32,7 +32,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 **\--debug**: *enables debug mode (default `false`).*
 
 ---
-**\--log.level**: *specifies the log level (default `INFO`, options: `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
+**\--log.level**: *specifies the log level (default `INFO`, options `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
 
 <details>
   <summary>Options</summary>
@@ -148,7 +148,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 **\--debug**: *enables debug mode (default `false`).*
 
 ---
-**\--log.level**: *specifies log level (default `INFO`, options: `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
+**\--log.level**: *specifies log level (default `INFO`, options `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
 
 <details>
   <summary>Options</summary>
