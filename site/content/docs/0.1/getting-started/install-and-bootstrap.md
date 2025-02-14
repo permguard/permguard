@@ -30,7 +30,7 @@ To install the AuthZ server, you just need to run the Docker container.
 Follow these steps:
 
 ```shell
-docker run --rm -it -p 9091:9091  -p 9092:9092 -p 9094:9094 permguard/all-in-one:latest
+docker run --rm -it -p 9091:9091 -p 9092:9092 -p 9094:9094 permguard/all-in-one:latest
 ```
 
 ## Install the Command Line Interface
