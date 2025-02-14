@@ -34,7 +34,7 @@ func LogZoneEntry(zone *Zone) string {
 	if zone == nil {
 		return "zone is nil"
 	}
-	return fmt.Sprintf("accound id: %d, name: %s", zone.ZoneID, zone.Name)
+	return fmt.Sprintf("zone id: %d, name: %s", zone.ZoneID, zone.Name)
 }
 
 // IdentitySource is the model for the identity_source table.

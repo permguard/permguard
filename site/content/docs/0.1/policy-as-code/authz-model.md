@@ -30,7 +30,7 @@ This is provided as an input to the Authorization API.
 ```json
 {
   "authorization_model": {
-    "zone_id": 694778299643,
+    "zone_id": 268786704340,
     "policy_store": {
       "type": "ledger",
       "id": "3b72d00fb7d247848757fb37be8d0814"
