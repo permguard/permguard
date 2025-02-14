@@ -19,7 +19,9 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The **authorization model** defines the AuthZ model data structure, which is derived by combining the Authorization API inputs with Policy-as-Code.
+The `authorization model` defines the structure of the AuthZ model, which is created by combining the inputs from the Authorization API with Policy-as-Code.
+
+It is used by the Policy Decision Point (PDP) to evaluate incoming authorization requests. The `authorization model` is loaded, filtered, and transformed to create an `authorization context` that aligns with the identity's authorization context in relation to the request.
 
 ## Policy Store
 
