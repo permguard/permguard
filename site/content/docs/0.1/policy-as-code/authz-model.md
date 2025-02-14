@@ -41,11 +41,18 @@ This is provided as an input to the Authorization API.
 
 The `Permguard` decision engine loads the policy storage based on the input type and ID existing in the input zone.
 
-| PATH                                    | VALUES | DESCRIPTION                                                            |
-|-----------------------------------------|--------|------------------------------------------------------------------------|
-| authorization_model/zone_id           |        | A unique zone identifier distinguishes each input zone.                |
-| authorization_model/policy_store/type | LEDGER | The Policy Store type defines the storage mechanism used for policies. |
-| authorization_model/policy_store/id   |        | The unique identifier of the Policy Store.                             |
+---
+**authorization_model/zone_id**: *a unique zone identifier distinguishes each input zone (default `LEDGER`, options `LEDGER`).*
+
+---
+
+**authorization_model/policy_store/type**: *the policy store type defines the storage mechanism used for policies.*
+
+---
+
+**authorization_model/policy_store/id**: *the unique identifier of the policy store.*
+
+---
 
 ## Principal
 
