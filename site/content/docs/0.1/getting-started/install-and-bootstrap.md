@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-To install locally and bootstrap **PermGuard**, you need to run the AuthZ server and install the PermGuard CLI.
+To install locally and bootstrap **PermGuard**, you need to run the AuthZ server and install the **PermGuard CLI**.
 This guide provides step-by-step instructions to help you get started.
 
 For deployment, refer to the [DevOps](/docs/0.1/devops/authz-server/authorization-server) section.
