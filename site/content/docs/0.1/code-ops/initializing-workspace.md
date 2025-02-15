@@ -105,5 +105,5 @@ In advanced cases, a **Permguard ledger** may already exist, and it may be neces
 To do this, simply **clone** the existing **Permguard ledger**:
 
 ```bash
-permguard clone origin/273165098782/magicfarmacia
+permguard clone localhost/273165098782/magicfarmacia
 ```
