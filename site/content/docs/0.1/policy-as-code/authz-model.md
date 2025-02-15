@@ -134,7 +134,7 @@ The Subject specifies the entity requesting access to a resource.
 **subject/source**: *the subject identity source.*
 
 ---
-**subject/properties**: *generic properties dictionary.*
+**subject/properties**: *generic properties.*
 
 ---
 
@@ -163,7 +163,7 @@ The `Resource` specifies the entity requesting access to a resource.
 **resource/id**: *the resource identifier.*
 
 ---
-**resource/properties**: *generic properties dictionary.*
+**resource/properties**: *generic properties.*
 
 ---
 
@@ -187,7 +187,7 @@ The `Action` specifies the entity requesting access to a action.
 **action/type**: *the action type.*
 
 ---
-**action/properties**: *generic properties dictionary.*
+**action/properties**: *generic properties.*
 
 ---
 
