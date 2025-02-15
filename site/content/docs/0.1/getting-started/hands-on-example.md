@@ -27,7 +27,7 @@ The first step is to check out the `MagicFarmacia` playground.
 
 This example demonstrates Permguard in action and allows testing of its features.
 
-```bash
+```shell
 git clone git@github.com:permguard/playground-cedar.git
 cd playground-cedar
 ```
@@ -40,7 +40,7 @@ The first operative step is to start the AuthZ server.
 Plese refer to the [Install & Bootstrap](/docs/0.1/getting-started/install-bootstrap/) section for more information about the installation process.
 {{< /callout >}}
 
-```bash
+```shell
 docker run --rm -it -p 9091:9091 -p 9092:9092 -p 9094:9094 permguard/demo-all-in-one:latest
 ```
 
@@ -52,13 +52,13 @@ The next step is to create a zone and the policy store.
 Plese refer to the [Command Line](/docs/0.1/command-line/how-to-use/) section for more information about the available commands.
 {{< /callout >}}
 
-```bash
+```shell
 permguard zones create --name demozone
 ```
 
 It is important to note that the `zoneid` is required for the policy store creation and it is returned by the previous command.
 
-```bash
+```shell
 permguard authz ledgers create --name magicfarmacia --zoneid 386017848379
 ```
 
@@ -70,7 +70,7 @@ In this step, you need set up the workspace and check out the policy store.
 A workspace represents a local working space. Plese refer to the [CodeOps Workspace](/docs/0.1/code-ops/initializing-the-workspace/) section for more information about the workspace.
 {{< /callout >}}
 
-```bash
+```shell
 permguard init
 permguard remote add origin localhost
 permguard checkout origin/386017848379/magicfarmacia
@@ -84,7 +84,7 @@ At this stage, since the playground already includes some sample policies, it is
 A workspace represents a local working space. Plese refer to the [CodeOps Coding](/docs/0.1/code-ops/coding/) section for more information about the workspace.
 {{< /callout >}}
 
-```bash
+```shell
 permguard apply
 ```
 
@@ -118,7 +118,7 @@ The final step is to perform the authorization check.
 Plese refer to the [Command Line](/docs/0.1/command-line/authz/check/) section for more information about the available commands.
 {{< /callout >}}
 
-```bash
+```shell
   permguard authz check ./requests/ok_onlyone1.json
 ```
 
