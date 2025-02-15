@@ -23,6 +23,25 @@ The `authorization model` defines the structure of the AuthZ model, which is cre
 
 It is used by the Policy Decision Point (PDP) to evaluate incoming authorization requests. The `authorization model` is loaded, filtered, and transformed to create an `authorization context` that aligns with the identity's authorization context in relation to the request.
 
+## Zone
+
+The `zone` is required to build the AuthZ model.
+
+This is provided as an input to the Authorization API.
+
+```json
+{
+  "authorization_model": {
+    "zone_id": 268786704340,
+  }
+}
+```
+
+---
+**authorization_model/zone_id**: *a unique zone identifier distinguishes each input zone.*
+
+---
+
 ## Policy Store
 
 The `policy store` is required to load policies, schemas, and other related data necessary to build the AuthZ model.
@@ -41,17 +60,12 @@ This is provided as an input to the Authorization API.
 }
 ```
 
-The `Permguard` decision engine loads the policy storage based on the input type and ID existing in the input zone.
+The `Permguard` decision engine loads the policy storage based on the input Type and ID.
 
 ---
-**authorization_model/zone_id**: *a unique zone identifier distinguishes each input zone (default `LEDGER`, options `LEDGER`).*
+**authorization_model/policy_store/type**: *the policy store type defines the storage mechanism used for policies (default `LEDGER`, options `LEDGER`).*
 
 ---
-
-**authorization_model/policy_store/type**: *the policy store type defines the storage mechanism used for policies.*
-
----
-
 **authorization_model/policy_store/id**: *the unique identifier of the policy store.*
 
 ---
@@ -68,38 +82,27 @@ While the `Principal` and `Subject` are usually the same, there are scenarios wh
       "type": "user",
       "id": "amy.smith@acmecorp.com",
       "source": "keycloak",
-      "identity_token": "eyJhbGciOiJI...",
-      "access_token": "eyJhbGciOiJI..."
     }
   }
 }
 ```
+
+---
+**authorization_model/principal/type**: *the principal type (default `USER`, options `USER`).*
+
+---
+**authorization_model/principal/id**: *the principal identifier.*
+
+---
+**authorization_model/principal/source**: *the principal identity source.*
+
+---
 
 ## Entities
 
-The `Entities` object is a `set of attributes` that represent policy's entities.
+The `Entities` object is a `collection of attributes` that represent the entities of a policy.
 
-```json
-{
-  "authorization_model": {
-    "entities": {
-      "schema": "cedar",
-      "items": [
-        {
-          "uid": {
-            "type": "MagicFarmacia::Platform::Subscription",
-            "id": "e3a786fd07e24bfa95ba4341d3695ae8"
-          },
-          "attrs": {
-            "active": true
-          },
-          "parents": []
-        }
-      ]
-    }
-  }
-}
-```
+Each policy language defines its own entity schema.
 
 ## Subject
 
@@ -121,6 +124,20 @@ The Subject specifies the entity requesting access to a resource.
 }
 ````
 
+---
+**subject/type**: *the subject type (default `USER`, options `USER`).*
+
+---
+**subject/id**: *the subject identifier.*
+
+---
+**subject/source**: *the subject identity source.*
+
+---
+**subject/properties**: *generic properties dictionary.*
+
+---
+
 ## Resources
 
 The `Resource` specifies the entity requesting access to a resource.
@@ -139,6 +156,17 @@ The `Resource` specifies the entity requesting access to a resource.
 }
 ````
 
+---
+**resource/type**: *the resource type.*
+
+---
+**resource/id**: *the resource identifier.*
+
+---
+**resource/properties**: *generic properties dictionary.*
+
+---
+
 ## Action
 
 The `Action` specifies the entity requesting access to a action.
@@ -154,6 +182,14 @@ The `Action` specifies the entity requesting access to a action.
   }
 }
 ````
+
+---
+**action/type**: *the action type.*
+
+---
+**action/properties**: *generic properties dictionary.*
+
+---
 
 ## Context
 
