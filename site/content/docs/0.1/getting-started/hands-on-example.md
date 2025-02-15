@@ -181,7 +181,7 @@ type blob, size 695, oname platform-manager
 It is recommended to explore the [Policy as Code](/docs/0.1/policy-as-code/policy-languages/) section to learn more about the policy store and the policy language.
 
 {{< callout context="note" icon="info-circle" >}}
-Plese refer to the [DevOps](/docs/0.1/devops/authz-server/authorization-server/) section for more information about configuration and deployment.
+Plese refer to the [DevOps](/docs/0.1/devops/authz-server/authz-server/) section for more information about configuration and deployment.
 {{< /callout >}}
 
 Finally, it is worth considering how to deploy the AuthZ server.
