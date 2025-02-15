@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-In **Permguard**, an **Authorization Server** is a logical server composed of multiple nodes. It includes the following components:
+In **Permguard**, an **AuthZ Server** is a logical server composed of multiple nodes. It includes the following components:
 
 - **Zone Administration Point (ZAP)**
 - **Policy Administration Point (PAP)**
@@ -30,11 +30,11 @@ This **Authorization Service** manages various elements such as **users, actors,
 Due to the complexity of these resources, a **structured pathing mechanism** is essential for efficient management and access control.
 
 {{< callout context="note" icon="info-circle" >}}
-An environment can have multiple **Authorization Servers**, so it is important to reference each one explicitly.
+An environment can have multiple **AuthZ Servers**, so it is important to reference each one explicitly.
 There is no guarantee that the same resource will be unique across all servers.
 {{< /callout >}}
 
-To reference a specific **zone** in an **Authorization Server**, use the following **URI format**:
+To reference a specific **zone** in an **AuthZ Server**, use the following **URI format**:
 
 ```text
  protocol    host   zone
@@ -44,7 +44,7 @@ permguard@origin/273165098782
 
 ## Identity Source and Identity Pathing
 
-To reference a specific **identity source** in an **Authorization Server**, use the following **URI format**:
+To reference a specific **identity source** in an **AuthZ Server**, use the following **URI format**:
 
 ```text
  protocol    host   zone         identity-source
@@ -62,7 +62,7 @@ permguard@origin/273165098782/identities/keycloak/users/john.smith
 
 ## Ledger Pathing
 
-To reference a specific ledger in an **Authorization Server**, use the following URI format:
+To reference a specific ledger in an **AuthZ Server**, use the following URI format:
 
 ```text
  protocol    host   zone              ledger

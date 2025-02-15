@@ -85,7 +85,7 @@ These models are incrementally synchronized to zone nodes as **git-like commit-b
 
 To function properly, these models must have the following characteristics:
 
-- **Transferable and Verifiable:** Works seamlessly across systems and environments, with verifiable origins certified by the `Authorization Server`.
+- **Transferable and Verifiable:** Works seamlessly across systems and environments, with verifiable origins certified by the `AuthZ Server`.
 - **Versionable and Immutable:** Ensures integrity, auditability, and backward compatibility for secure and reliable operations.
 - **Resilient to Disconnection:** Supports eventual consistency, allowing continued functionality in partially connected or offline environments.
 
