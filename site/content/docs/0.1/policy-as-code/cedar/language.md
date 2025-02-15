@@ -22,6 +22,10 @@ seo:
 
 Policies are written using the `Cedar Policy Language`.
 
+{{< callout context="danger" icon="alert-octagon" >}}
+Permguard mandates the use of the @id annotation in Cedar policies. This is required to uniquely identify each policy.
+{{< /callout >}}
+
 Below is an example directory structure with a schema file and sample policy files:
 
 ```plaintext
