@@ -145,10 +145,10 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 					}
 					printer.Println(fmt.Sprintf("  - %s: %s, %s: %s, %s: %v", aziclicommon.KeywordText("Request ID"), aziclicommon.CreateText(requestID), aziclicommon.KeywordText("Context ID"), aziclicommon.CreateText(contextID), aziclicommon.KeywordText("Decision"), eval.Decision))
 					if eval.Context.ReasonAdmin != nil {
-						printer.Println(fmt.Sprintf("    - %s: Error: %s - %s ", aziclicommon.KeywordText("REASON ADMIN"), aziclicommon.IDText(eval.Context.ReasonAdmin.Code), eval.Context.ReasonAdmin.Message))
+						printer.Println(fmt.Sprintf("    - %s: Error: %s - %s ", aziclicommon.KeywordText("Reason Admin"), aziclicommon.IDText(eval.Context.ReasonAdmin.Code), eval.Context.ReasonAdmin.Message))
 					}
 					if eval.Context.ReasonUser != nil {
-						printer.Println(fmt.Sprintf("    - %s: Error: %s - %s ", aziclicommon.KeywordText("REASON USER"), aziclicommon.IDText(eval.Context.ReasonUser.Code), eval.Context.ReasonUser.Message))
+						printer.Println(fmt.Sprintf("    - %s: Error: %s - %s ", aziclicommon.KeywordText("Reason User"), aziclicommon.IDText(eval.Context.ReasonUser.Code), eval.Context.ReasonUser.Message))
 					}
 				}
 			}
