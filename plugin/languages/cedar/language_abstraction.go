@@ -342,23 +342,6 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 		ps.Add(cedar.PolicyID(codeID), &policy)
 	}
 
-	authzEntities := authzCtx.GetEntities()
-	jsonEntities, err := json.Marshal(authzEntities.GetItems())
-	if err != nil {
-		return nil, err
-	}
-	var entities cedar.EntityMap
-	if err := json.Unmarshal(jsonEntities, &entities); err != nil {
-		return nil, err
-	}
-
-	for _, entity := range entities {
-		_, err := verifyUIDType(string(entity.UID.Type))
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	subject := authzCtx.GetSubject()
 	subjectID := subject.GetID()
 	subjectKind := subject.GetKind()
@@ -366,17 +349,51 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	if err != nil {
 		return nil, err
 	}
-
-	action := authzCtx.GetAction().GetID()
-	actiondIndex := strings.LastIndex(action, "::")
-	if actiondIndex == -1 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageSyntax, fmt.Sprintf("[cedar] action format is invalid: %s", action))
+	subjectProperties, err := createEntityAttribJson(pmgSubjectKind, subjectID, subject.GetProperties())
+	if err != nil {
+		return nil, err
 	}
-	actionType := action[:actiondIndex]
-	actionID := action[actiondIndex+len("::"):]
 
-	resourceType := authzCtx.GetResource().GetKind()
-	resourceID := authzCtx.GetResource().GetID()
+	action := authzCtx.GetAction()
+	actionID := action.GetID()
+	actiondIndex := strings.LastIndex(actionID, "::")
+	if actiondIndex == -1 {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageSyntax, fmt.Sprintf("[cedar] action format is invalid: %s", actionID))
+	}
+	actionType := actionID[:actiondIndex]
+	actionID = actionID[actiondIndex+len("::"):]
+	actionProperties, err := createEntityAttribJson(actionType, actionID, action.GetProperties())
+	if err != nil {
+		return nil, err
+	}
+
+	resource := authzCtx.GetResource()
+	resourceType := resource.GetKind()
+	resourceID := resource.GetID()
+	resourceProperties, err := createEntityAttribJson(resourceType, resourceID, resource.GetProperties())
+	if err != nil {
+		return nil, err
+	}
+
+	authzEntities := authzCtx.GetEntities()
+	authzEntitiesItems := authzEntities.GetItems()
+	authzEntitiesItems = append(authzEntitiesItems, subjectProperties)
+	authzEntitiesItems = append(authzEntitiesItems, actionProperties)
+	authzEntitiesItems = append(authzEntitiesItems, resourceProperties)
+	jsonEntities, err := json.Marshal(authzEntitiesItems)
+	if err != nil {
+		return nil, err
+	}
+	var entities cedar.EntityMap
+	if err := json.Unmarshal(jsonEntities, &entities); err != nil {
+		return nil, err
+	}
+	// for _, entity := range entities {
+	// 	_, err := verifyUIDType(string(entity.UID.Type))
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// }
 
 	context := cedar.RecordMap{}
 	contextRecord := cedar.NewRecord(context)
