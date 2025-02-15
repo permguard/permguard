@@ -19,13 +19,13 @@ seo:
   noindex: false # false (default) or true
 ---
 
-This example shows how `MagicFarmacia`, a SaaS pharmacy platform with multiple branches in different cities, uses `PermGuard` for authorization and access control in a `multi-tenant` environment.
+This example shows how `MagicFarmacia`, a SaaS pharmacy platform with multiple branches in different cities, uses `Permguard` for authorization and access control in a `multi-tenant` environment.
 
 ## Check Out the Playground
 
 The first step is to check out the `MagicFarmacia` playground.
 
-This example demonstrates PermGuard in action and allows testing of its features.
+This example demonstrates Permguard in action and allows testing of its features.
 
 ```shell
 git clone git@github.com:permguard/playground-cedar.git
@@ -124,8 +124,53 @@ Plese refer to the [Command Line](/docs/0.1/command-line/authz/check/) section f
 
 ## Next Steps
 
+This example demonstrates how to set up the `MagicFarmacia` playground and perform an authorization check.
+
+To better understand Permguard, it is worth exploring the Policy Store, which is implemented as a Ledger. The Ledger uses a Git-like object storage system.
+
+{{< callout context="note" icon="info-circle" >}}
+Plese refer to the [Command Line Objects](/docs/0.1/command-line/workspace/objects/) section for more information about the available commands.
+{{< /callout >}}
+
+Below is an example of how to list all objects in the workspace:
+
+```shell
+❯ permguard objects --all
+Your workspace objects:
+
+  - 0bc0aaefc5c96f1ca318c01fef32863273b83c2820ca7f3baf2ddafd73e6ce32 blob schema
+  - 2c36582597d15df6df4e8b03c4bcae87a92d58a27548291fc92023043e0ee0e2 blob platform-manager
+  - 4415e2859d5267db9509f8b7d64bb1b2e3684ee85170474383340ea77bb16919 commit
+  - 446f73d58cc36b3b9f2aa644945cfb8fdc92596a5ab6f21ab87e7d1c7461c31b blob platform-auditor
+  - 6b9215b4696f02629f2eac4a039840a8ed46a9f31e6bfe89d3b8e6f6b6c4b23e blob platform-creator
+  - ba402e8797e48b8d36a029632c150fbe4d873b3dcd075d7fc52420c4c919339a blob platform-administrator
+  - cdcd1ea6a74a41ce5a61f4d556c1d15bde70660928ad5d57aa84834a3a01f291 tree
+  - d5a767678430a3ec8d1d6c32764e9f7323987b95337840d8c276345d8f7a1aab blob anyone-read
+
+total 8, commit 1, tree 1, blob 6
+```
+
+The following example shows how to display the frontend content of the `platform-manager` object:
+
+```shell
+❯ permguard objects cat 2c36582597d15df6df4e8b03c4bcae87a92d58a27548291fc92023043e0ee0e2 --frontend
+Your workspace object 2c36582597d15df6df4e8b03c4bcae87a92d58a27548291fc92023043e0ee0e2:
+
+@id("platform-manager")
+permit (
+    principal in Permguard::IAM::Actor::"platform-admin",
+    action in [MagicFarmacia::Platform::Action::"view", MagicFarmacia::Platform::Action::"update"],
+    resource == MagicFarmacia::Platform::Subscription::"e3a786fd07e24bfa95ba4341d3695ae8"
+)
+unless { principal has isSuperUser && principal.isSuperUser == false };
+
+type blob, size 695, oname platform-manager
+```
+
+It is reccomended to explore the [Policy as Code](/docs/0.1/policy-as-code/policy-languages/) section to learn more about the policy store and the policy language.
+
 {{< callout context="note" icon="info-circle" >}}
 Plese refer to the [DevOps](/docs/0.1/devops/authz-server/authorization-server/) section for more information about configuration and deployment.
 {{< /callout >}}
 
-The next step is to explore the [Policy as Code](/docs/0.1/policy-as-code/policy-languages/) section to learn more about the policy store and the policy language.
+Finally, it is worth considering how to deploy the AuthZ server.
