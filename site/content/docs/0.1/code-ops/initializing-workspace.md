@@ -47,13 +47,13 @@ A **Permguard workspace** contains the following files:
 
 ## Initialize a New Ledger
 
-When starting a new project, the first step is to **create a zone**:
+When starting a new project, the first step is to **create a zone**.
 
 ```bash
 permguard zones create --name magicfarmacia-dev --output json
 ```
 
-below is the output of the command:
+Below is the output of the command.
 
 ```bash
 {
@@ -68,13 +68,13 @@ below is the output of the command:
 }
 ```
 
-Next, create a ledger:
+Next, create a ledger.
 
 ```bash
 permguard authz ledgers create --zoneid 273165098782  --name magicfarmacia --output json
 ```
 
-below is the output of the command:
+Below is the output of the command.
 
 ```bash
 {
@@ -90,7 +90,7 @@ below is the output of the command:
 }
 ```
 
-Finally, initialize the workspace and associate it with a Permguard `remote` server:
+Finally, initialize the workspace and associate it with a Permguard `remote` server.
 
 ```bash
  permguard init
@@ -102,7 +102,7 @@ Finally, initialize the workspace and associate it with a Permguard `remote` ser
 
 In advanced cases, a **Permguard ledger** may already exist, and it may be necessary to recover the configuration files to a local **Permguard workspace**.
 
-To do this, simply **clone** the existing **Permguard ledger**:
+To do this, simply **clone** the existing **Permguard ledger**.
 
 ```bash
 permguard clone localhost/273165098782/magicfarmacia
