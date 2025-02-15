@@ -22,7 +22,8 @@ seo:
 This section specifies the `Cedar` **Authz Model** override. If no specific override is provided, the generic Authz Model specification applies.
 
 {{< callout context="caution" icon="alert-triangle" >}}
-Properties and the Context must conform to the JSON structure required by the <a href="https://docs.cedarpolicy.com/auth/entities-syntax.html#attrs" target="_blank" rel="noopener noreferrer">entities attributes object</a>.
+Properties must conform to the JSON structure defined for the <a href="https://docs.cedarpolicy.com/auth/entities-syntax.html#attrs" target="_blank" rel="noopener noreferrer">entities attributes object</a>,
+whereas the Context must adhere to the JSON structure specified for the <a href="https://docs.cedarpolicy.com/auth/entities-syntax.html#context" target="_blank" rel="noopener noreferrer">context object</a>.
 {{< /callout >}}
 
 ## Entities

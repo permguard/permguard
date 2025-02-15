@@ -23,6 +23,12 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
+const (
+	PermguardUser = "USER"
+	PermguardRoleActor = "ROLE-ACTOR"
+	PermguardTwinActor = "TWIN-ACTOR"
+)
+
 // verifyUIDType verifies the UID type.
 func verifyUIDType(uidType string) (bool, error) {
 	uidTypeSnz := strings.ToLower(uidType)
@@ -30,4 +36,18 @@ func verifyUIDType(uidType string) (bool, error) {
 		return false, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageSyntax, fmt.Sprintf("[cedar] invalid entity identifier: %s is reserved by permguard and cannot be used", uidType))
 	}
 	return true, nil
+}
+
+// createPermguardSubjectKind creates a Permguard subject kind.
+func createPermguardSubjectKind(kind string) (string, error) {
+	kind = strings.ToUpper(kind)
+	switch kind {
+	case PermguardUser:
+		kind = "Permguard::IAM::User"
+	case PermguardRoleActor:
+		kind = "Permguard::IAM::RoleActor"
+	case PermguardTwinActor:
+		kind = "Permguard::IAM::TwinActor"
+	}
+	return kind, nil
 }
