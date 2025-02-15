@@ -20,4 +20,4 @@ seo:
 ---
 **Permguard** fully supports `Cedar` as the primary policy language.
 
-`Permguard` enforces a **mandatory single schema** for each `ledger`.
+`Permguard` allow the usage of an **optional single schema** for each `ledger`.
