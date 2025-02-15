@@ -62,7 +62,7 @@ It is important to note that the `zoneid` is required for the policy store creat
 permguard authz ledgers create --name magicfarmacia --zoneid 386017848379
 ```
 
-## Check out and Set Up the Workspace
+## Set Up the Workspace
 
 In this step, you need set up the workspace and check out the policy store.
 
