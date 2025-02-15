@@ -21,7 +21,7 @@ seo:
 
 This example shows how `MagicFarmacia`, a SaaS pharmacy platform with multiple branches in different cities, uses `Permguard` for authorization and access control in a `multi-tenant` environment.
 
-## Check Out the Playground
+## Check out the Playground
 
 The first step is to check out the `MagicFarmacia` playground.
 
@@ -32,7 +32,7 @@ git clone git@github.com:permguard/playground-cedar.git
 cd playground-cedar
 ```
 
-## Startup the AuthZ Server
+## Start up the AuthZ Server
 
 The first operative step is to start the AuthZ server.
 
@@ -62,7 +62,7 @@ It is important to note that the `zoneid` is required for the policy store creat
 permguard authz ledgers create --name magicfarmacia --zoneid 386017848379
 ```
 
-## Checkout and Set Up the Workspace
+## Check out and Set Up the Workspace
 
 In this step, you need set up the workspace and check out the policy store.
 
@@ -167,7 +167,7 @@ unless { principal has isSuperUser && principal.isSuperUser == false };
 type blob, size 695, oname platform-manager
 ```
 
-It is reccomended to explore the [Policy as Code](/docs/0.1/policy-as-code/policy-languages/) section to learn more about the policy store and the policy language.
+It is recommended to explore the [Policy as Code](/docs/0.1/policy-as-code/policy-languages/) section to learn more about the policy store and the policy language.
 
 {{< callout context="note" icon="info-circle" >}}
 Plese refer to the [DevOps](/docs/0.1/devops/authz-server/authorization-server/) section for more information about configuration and deployment.
