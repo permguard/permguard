@@ -330,6 +330,7 @@ func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(langID, lang
 
 // AuthorizationCheck checks the authorization.
 func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.PolicyStore, authzCtx *azauthz.Authorizationmodel) (*azauthz.AuthorizationDecision, error) {
+	// Creates a new policy set.
 	ps := cedar.NewPolicySet()
 	for _, policy := range policyStore.GetPolicies() {
 		objInfo := policy.GetObjectInfo()
@@ -342,6 +343,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 		ps.Add(cedar.PolicyID(codeID), &policy)
 	}
 
+	// Extract the subject from the authorization context.
 	subject := authzCtx.GetSubject()
 	subjectID := subject.GetID()
 	subjectKind := subject.GetKind()
@@ -354,6 +356,16 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 		return nil, err
 	}
 
+	// Extract the resource from the authorization context.
+	resource := authzCtx.GetResource()
+	resourceType := resource.GetKind()
+	resourceID := resource.GetID()
+	resourceProperties, err := createEntityAttribJson(resourceType, resourceID, resource.GetProperties())
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract the action from the authorization context.
 	action := authzCtx.GetAction()
 	actionID := action.GetID()
 	actiondIndex := strings.LastIndex(actionID, "::")
@@ -367,14 +379,31 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 		return nil, err
 	}
 
-	resource := authzCtx.GetResource()
-	resourceType := resource.GetKind()
-	resourceID := resource.GetID()
-	resourceProperties, err := createEntityAttribJson(resourceType, resourceID, resource.GetProperties())
+	// Extract the context from the authorization context.
+	context := cedar.RecordMap{}
+	contextRecord := cedar.NewRecord(context)
+	jsonContext, err := json.Marshal(authzCtx.GetContext())
 	if err != nil {
 		return nil, err
 	}
+	if err := contextRecord.UnmarshalJSON(jsonContext); err != nil {
+		return nil, err
+	}
+	hasIllegalKey := false
+	contextRecord.Iterate(func(key cedar.String, val cedar.Value) bool{
+		keyStr := key.String()
+		isValid, _ := verifyKey(keyStr)
+		if !isValid {
+			hasIllegalKey = true
+			return false
+		}
+		return true
+	})
+	if hasIllegalKey {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageSyntax, "[cedar] invalid context key, key is reserved by permguard and cannot be used")
+	}
 
+	// Build the entities.
 	authzEntities := authzCtx.GetEntities()
 	authzEntitiesItems := authzEntities.GetItems()
 	authzEntitiesItems = append(authzEntitiesItems, subjectProperties)
@@ -395,30 +424,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	// 	}
 	// }
 
-	context := cedar.RecordMap{}
-	contextRecord := cedar.NewRecord(context)
-	jsonContext, err := json.Marshal(authzCtx.GetContext())
-	if err != nil {
-		return nil, err
-	}
-	if err := contextRecord.UnmarshalJSON(jsonContext); err != nil {
-		return nil, err
-	}
-
-	hasIllegalKey := false
-	contextRecord.Iterate(func(key cedar.String, val cedar.Value) bool{
-		keyStr := key.String()
-		isValid, _ := verifyKey(keyStr)
-		if !isValid {
-			hasIllegalKey = true
-			return false
-		}
-		return true
-	})
-	if hasIllegalKey {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageSyntax, "[cedar] invalid context key, key is reserved by permguard and cannot be used")
-	}
-
+	// Create the request.
 	req := cedar.Request{
 		Principal: cedar.NewEntityUID(cedar.EntityType(pmgSubjectKind), cedar.String(subjectID)),
 		Action:    cedar.NewEntityUID(cedar.EntityType(actionType), cedar.String(actionID)),
@@ -432,6 +438,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 		adminError, _ = azauthz.NewAuthorizationError(azauthz.AuthzErrForbiddenCode, azauthz.AuthzErrForbiddenMessage)
 		userError, _ = azauthz.NewAuthorizationError(azauthz.AuthzErrForbiddenCode, azauthz.AuthzErrForbiddenMessage)
 	}
+	// Take the decision.
 	authzDecision, err := azauthz.NewAuthorizationDecision("", bool(ok), adminError, userError)
 	if err != nil {
 		return nil, err
