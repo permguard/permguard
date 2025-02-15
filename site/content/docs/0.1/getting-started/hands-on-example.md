@@ -88,7 +88,7 @@ A workspace represents a local working space. Plese refer to the [CodeOps Coding
 permguard apply
 ```
 
-If everything is set up correctly, you should see the following output:
+If everything is set up correctly, you should see the following output.
 
 ```text
 ❯ permguard apply
@@ -150,7 +150,18 @@ Your workspace objects:
 total 8, commit 1, tree 1, blob 6
 ```
 
-The following example shows how to display the frontend content of the `platform-manager` object:
+The following example shows how to display the content of the `platform-manager` object.
+
+```text
+❯ permguard objects cat 2c36582597d15df6df4e8b03c4bcae87a92d58a27548291fc92023043e0ee0e2
+Your workspace object 2c36582597d15df6df4e8b03c4bcae87a92d58a27548291fc92023043e0ee0e2:
+
+{"annotations":{"id":"platform-manager"},"effect":"permit","principal":{"op":"in","entity":{"type":"Permguard::IAM::Actor","id":"platform-admin"}},"action":{"op":"in","entities":[{"type":"MagicFarmacia::Platform::Action","id":"view"},{"type":"MagicFarmacia::Platform::Action","id":"update"}]},"resource":{"op":"==","entity":{"type":"MagicFarmacia::Platform::Subscription","id":"e3a786fd07e24bfa95ba4341d3695ae8"}},"conditions":[{"kind":"unless","body":{"\u0026\u0026":{"left":{"has":{"left":{"Var":"principal"},"attr":"isSuperUser"}},"right":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"isSuperUser"}},"right":{"Value":false}}}}}}]}
+
+type blob, size 695, oname platform-manager
+```
+
+It is also possible to specify the `frontend` option to display the object in a more readable format.
 
 ```text
 ❯ permguard objects cat 2c36582597d15df6df4e8b03c4bcae87a92d58a27548291fc92023043e0ee0e2 --frontend
