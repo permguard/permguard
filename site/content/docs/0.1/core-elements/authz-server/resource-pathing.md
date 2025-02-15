@@ -65,7 +65,7 @@ permguard@localhost/273165098782/identities/keycloak/users/john.smith
 To reference a specific ledger in an **AuthZ Server**, use the following URI format:
 
 ```text
- protocol    host       zone                ledger
+ protocol    host       zone                 ledger
 ┌───┴────┐┌───┴───┐ ┌────┴─────┐         ┌─────┴─────┐
 permguard@localhost/273165098782/ledgers/magicfarmacia
 ```
