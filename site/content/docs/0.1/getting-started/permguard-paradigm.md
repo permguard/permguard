@@ -26,7 +26,7 @@ The main idea is to ensure that trust is never assumed but always validated at t
 
 This applies not only to APIs but also to any type of incoming request, including async messages, WebSocket connections, and more.
 
-Each incoming request generates an authorization request that is evaluated by the **Permguard Authorization Server**. The server responds with a decision to either allow or deny the request.
+Each incoming request generates an authorization request that is evaluated by the **Permguard AuthZ Server**. The server responds with a decision to either allow or deny the request.
 
 <div style="text-align: center">
   <img alt="Permguard Policies" src="/images/diagrams/d1.webp"/>
