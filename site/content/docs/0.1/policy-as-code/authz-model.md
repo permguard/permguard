@@ -115,11 +115,13 @@ The Subject specifies the entity requesting access to a resource.
 
 ```json
 {
-  "type": "user",
-  "id": "alice",
-  "source": "keycloak",
-  "properties": {
-    "department": "sales"
+  "subject": {
+    "type": "user",
+    "id": "alice",
+    "source": "keycloak",
+    "properties": {
+      "department": "sales"
+    }
   }
 }
 ````
@@ -148,10 +150,12 @@ The `Resource` specifies the entity requesting access to a resource.
 
 ```json
 {
-  "type": "subscription",
-  "id": "e3a786fd07e24bfa95ba4341d3695ae8",
-  "properties": {
-    "active": true
+  "resource":{
+    "type": "subscription",
+    "id": "e3a786fd07e24bfa95ba4341d3695ae8",
+    "properties": {
+      "active": true
+    }
   }
 }
 ````
@@ -176,9 +180,11 @@ The `Action` specifies the entity requesting access to a action.
 
 ```json
 {
-  "type": "cancel",
-  "properties": {
-    "reason": "expired subscription"
+  "action":{
+    "type": "cancel",
+    "properties": {
+      "reason": "expired subscription"
+    }
   }
 }
 ````
@@ -197,6 +203,13 @@ The `Context` object is a set of attributes that represent environmental or cont
 
 ```json
 {
-  "expire_at": "2024-12-26T22:53:00+01:00",
+  "context":{
+    "expire_at": "2024-12-26T22:53:00+01:00",
+  }
 }
 ````
+
+---
+**context**: *generic properties.*
+
+---
