@@ -49,6 +49,20 @@ func verifyUIDType(uidType string) (bool, error) {
 	return true, nil
 }
 
+// verifyUIDTypeFromMap verifies the UID type from the map.
+func verifyUIDTypeFromMap(entityMap []map[string]any) (bool, error) {
+	for _, entity := range entityMap {
+		uidType, ok := entity["uid"].(map[string]any)["type"].(string)
+		if !ok {
+			continue
+		}
+		if ok, err := verifyUIDType(uidType); !ok {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
 // createPermguardSubjectKind creates a Permguard subject kind.
 func createPermguardSubjectKind(kind string) (string, error) {
 	kind = strings.ToUpper(kind)

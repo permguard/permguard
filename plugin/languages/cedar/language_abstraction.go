@@ -406,6 +406,9 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	// Build the entities.
 	authzEntities := authzCtx.GetEntities()
 	authzEntitiesItems := authzEntities.GetItems()
+	if _, err := verifyUIDTypeFromMap(authzEntitiesItems); err != nil {
+		return nil, err
+	}
 	authzEntitiesItems = append(authzEntitiesItems, subjectProperties)
 	authzEntitiesItems = append(authzEntitiesItems, actionProperties)
 	authzEntitiesItems = append(authzEntitiesItems, resourceProperties)
@@ -417,12 +420,6 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	if err := json.Unmarshal(jsonEntities, &entities); err != nil {
 		return nil, err
 	}
-	// for _, entity := range entities {
-	// 	_, err := verifyUIDType(string(entity.UID.Type))
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// }
 
 	// Create the request.
 	req := cedar.Request{
