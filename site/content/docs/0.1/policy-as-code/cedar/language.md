@@ -35,7 +35,7 @@ Below is an example directory structure with a schema file and sample policy fil
 ├── staff_policies.cedar
 ```
 
-Here is an example of cedar policy:
+Here is an example of cedar policy.
 
 ```cedar  {title="pharmacy.cedar"}
 @id("assign-role-branch")
