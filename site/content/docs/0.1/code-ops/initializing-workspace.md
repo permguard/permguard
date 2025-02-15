@@ -51,6 +51,11 @@ When starting a new project, the first step is to **create a zone**:
 
 ```bash
 permguard zones create --name magicfarmacia-dev --output json
+```
+
+below is the output of the command:
+
+```bash
 {
   "zones": [
     {
@@ -67,6 +72,11 @@ Next, create a ledger:
 
 ```bash
 permguard authz ledgers create --zoneid 273165098782  --name magicfarmacia --output json
+```
+
+below is the output of the command:
+
+```bash
 {
   "ledgers": [
     {
