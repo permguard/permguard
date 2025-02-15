@@ -21,6 +21,10 @@ seo:
 
 This section specifies the `Cedar` **Authz Model** override. If no specific override is provided, the generic Authz Model specification applies.
 
+{{< callout context="caution" icon="alert-triangle" >}}
+Properties and the Context must conform to the JSON structure required by the <a href="https://docs.cedarpolicy.com/auth/entities-syntax.html#attrs" target="_blank" rel="noopener noreferrer">entities attributes object</a>.
+{{< /callout >}}
+
 ## Entities
 
 The `Entities` object is a `set of attributes` that represent policy's entities.

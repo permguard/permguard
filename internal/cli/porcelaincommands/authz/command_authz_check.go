@@ -127,10 +127,10 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 			}
 			printer.Println(fmt.Sprintf("%s: %s", aziclicommon.KeywordText("Context ID"), aziclicommon.CreateText(contextID)))
 			if authzResp.Context.ReasonAdmin != nil {
-				printer.Println(fmt.Sprintf("  %s: Error: %s - %s ", aziclicommon.KeywordText("REASON ADMIN"), aziclicommon.IDText(authzResp.Context.ReasonAdmin.Code), authzResp.Context.ReasonAdmin.Message))
+				printer.Println(fmt.Sprintf("  %s: Error: %s - %s ", aziclicommon.KeywordText("Reason Admin"), aziclicommon.IDText(authzResp.Context.ReasonAdmin.Code), authzResp.Context.ReasonAdmin.Message))
 			}
 			if authzResp.Context.ReasonUser != nil {
-				printer.Println(fmt.Sprintf("  %s: Error: %s - %s ", aziclicommon.KeywordText("REASON USER"), aziclicommon.IDText(authzResp.Context.ReasonUser.Code), authzResp.Context.ReasonUser.Message))
+				printer.Println(fmt.Sprintf("  %s: Error: %s - %s ", aziclicommon.KeywordText("Reason User"), aziclicommon.IDText(authzResp.Context.ReasonUser.Code), authzResp.Context.ReasonUser.Message))
 			}
 			if len(authzResp.Evaluations) > 0 {
 				printer.Println("Evaluations:")

@@ -352,6 +352,13 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 		return nil, err
 	}
 
+	for _, entity := range entities {
+		_, err := verifyUIDType(string(entity.UID.Type))
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	subject := authzCtx.GetSubject().GetID()
 
 	action := authzCtx.GetAction().GetID()
