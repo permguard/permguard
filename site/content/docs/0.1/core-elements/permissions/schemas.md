@@ -18,12 +18,13 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-In **Permguard**, multiple ledgers can be created, and each ledger has a single **schema**.
+In **Permguard**, multiple ledgers can be created, and each ledger might have a single **schema**.
 This provides a structured way to model the authorization framework.
 
 {{< callout context="note" icon="info-circle" >}}
 In the [MagicFarmacia sample](/docs/0.1/getting-started/hands-on-examples#integration-use-case-pharmacy-branch-management),
 the schema represents two main namespaces:
+
 - The **`platform` tenant**, acting as the master tenant that manages all branches.
 - The **`pharmacy branch` tenant**, representing individual branches.
 

@@ -148,7 +148,7 @@ The `Resource` specifies the entity requesting access to a resource.
 
 ```json
 {
-  "type": "MagicFarmacia::Platform::Account::Subscription",
+  "type": "subscription",
   "id": "e3a786fd07e24bfa95ba4341d3695ae8",
   "properties": {
     "active": true

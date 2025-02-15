@@ -36,7 +36,7 @@ Here is an example of cedar policy:
 ```cedar  {title="pharmacy.cedar"}
 @id("assign-role-branch")
 permit(
-    principal in Permguard::Actor::"administer-branches-staff",
+    principal in Permguard::RoleActor::"administer-branches-staff",
     action in Action::"assignRole",
     resource in MagicFarmacia::Branch::Staff::"role"
 )
