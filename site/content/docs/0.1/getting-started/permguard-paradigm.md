@@ -1,6 +1,6 @@
 ---
-title: "PermGuard Paradigm"
-slug: "PermGuard Paradigm"
+title: "Permguard Paradigm"
+slug: "Permguard Paradigm"
 description: ""
 summary: ""
 date: 2023-08-20T17:14:43+01:00
