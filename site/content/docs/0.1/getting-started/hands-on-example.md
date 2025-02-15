@@ -27,7 +27,7 @@ The first step is to check out the `MagicFarmacia` playground.
 
 This example demonstrates Permguard in action and allows testing of its features.
 
-```shell
+```bash
 git clone git@github.com:permguard/playground-cedar.git
 cd playground-cedar
 ```
@@ -40,7 +40,7 @@ The first operative step is to start the AuthZ server.
 Plese refer to the [Install & Bootstrap](/docs/0.1/getting-started/install-bootstrap/) section for more information about the installation process.
 {{< /callout >}}
 
-```shell
+```bash
 docker run --rm -it -p 9091:9091 -p 9092:9092 -p 9094:9094 permguard/demo-all-in-one:latest
 ```
 
@@ -52,13 +52,13 @@ The next step is to create a zone and the policy store.
 Plese refer to the [Command Line](/docs/0.1/command-line/how-to-use/) section for more information about the available commands.
 {{< /callout >}}
 
-```shell
+```bash
 permguard zones create --name demozone
 ```
 
 It is important to note that the `zoneid` is required for the policy store creation and it is returned by the previous command.
 
-```shell
+```bash
 permguard authz ledgers create --name magicfarmacia --zoneid 386017848379
 ```
 
@@ -70,7 +70,7 @@ In this step, you need set up the workspace and check out the policy store.
 A workspace represents a local working space. Plese refer to the [CodeOps Workspace](/docs/0.1/code-ops/initializing-the-workspace/) section for more information about the workspace.
 {{< /callout >}}
 
-```shell
+```bash
 permguard init
 permguard remote add origin localhost
 permguard checkout origin/386017848379/magicfarmacia
@@ -84,13 +84,13 @@ At this stage, since the playground already includes some sample policies, it is
 A workspace represents a local working space. Plese refer to the [CodeOps Coding](/docs/0.1/code-ops/coding/) section for more information about the workspace.
 {{< /callout >}}
 
-```shell
+```bash
 permguard apply
 ```
 
 If everything is set up correctly, you should see the following output:
 
-```shell
+```text
 ❯ permguard apply
 Initiating the planning process for ledger head/386017848379/71a73ac8168b4089b1f3e48ba4ac19c6.
 Planning process completed successfully.
@@ -118,7 +118,7 @@ The final step is to perform the authorization check.
 Plese refer to the [Command Line](/docs/0.1/command-line/authz/check/) section for more information about the available commands.
 {{< /callout >}}
 
-```shell
+```bash
   permguard authz check ./requests/ok_onlyone1.json
 ```
 
@@ -134,7 +134,7 @@ Plese refer to the [Command Line Objects](/docs/0.1/command-line/workspace/objec
 
 Below is an example of how to list all objects in the workspace:
 
-```shell
+```text
 ❯ permguard objects --all
 Your workspace objects:
 
@@ -152,7 +152,7 @@ total 8, commit 1, tree 1, blob 6
 
 The following example shows how to display the frontend content of the `platform-manager` object:
 
-```shell
+```text
 ❯ permguard objects cat 2c36582597d15df6df4e8b03c4bcae87a92d58a27548291fc92023043e0ee0e2 --frontend
 Your workspace object 2c36582597d15df6df4e8b03c4bcae87a92d58a27548291fc92023043e0ee0e2:
 
