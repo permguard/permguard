@@ -24,10 +24,20 @@ import (
 )
 
 const (
+	Permguard = "PERMGUARD"
 	PermguardUser = "USER"
 	PermguardRoleActor = "ROLE-ACTOR"
 	PermguardTwinActor = "TWIN-ACTOR"
 )
+
+// verifyKey verifies the key.
+func verifyKey(key string) (bool, error) {
+	key = strings.ToUpper(key)
+	if key == Permguard {
+		return false, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageSyntax, fmt.Sprintf("[cedar] invalid entity identifier: %s is reserved by permguard and cannot be used", key))
+	}
+	return true, nil
+}
 
 // verifyUIDType verifies the UID type.
 func verifyUIDType(uidType string) (bool, error) {

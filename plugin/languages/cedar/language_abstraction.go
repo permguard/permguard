@@ -26,7 +26,6 @@ import (
 	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
 	azlangvalidators "github.com/permguard/permguard-abs-language/pkg/languages/validators"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
-	"github.com/permguard/permguard/pkg/authorization"
 	azauthz "github.com/permguard/permguard/pkg/authorization"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/languages"
@@ -387,6 +386,20 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	}
 	if err := contextRecord.UnmarshalJSON(jsonContext); err != nil {
 		return nil, err
+	}
+
+	hasIllegalKey := false
+	contextRecord.Iterate(func(key cedar.String, val cedar.Value) bool{
+		keyStr := key.String()
+		isValid, _ := verifyKey(keyStr)
+		if !isValid {
+			hasIllegalKey = true
+			return false
+		}
+		return true
+	})
+	if hasIllegalKey {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageSyntax, "[cedar] invalid context key, key is reserved by permguard and cannot be used")
 	}
 
 	req := cedar.Request{
