@@ -26,6 +26,7 @@ import (
 	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
 	azlangvalidators "github.com/permguard/permguard-abs-language/pkg/languages/validators"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	"github.com/permguard/permguard/pkg/authorization"
 	azauthz "github.com/permguard/permguard/pkg/authorization"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/languages"
@@ -359,7 +360,13 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 		}
 	}
 
-	subject := authzCtx.GetSubject().GetID()
+	subject := authzCtx.GetSubject()
+	subjectID := subject.GetID()
+	subjectKind := subject.GetKind()
+	pmgSubjectKind, err := createPermguardSubjectKind(subjectKind)
+	if err != nil {
+		return nil, err
+	}
 
 	action := authzCtx.GetAction().GetID()
 	actiondIndex := strings.LastIndex(action, "::")
@@ -372,11 +379,21 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	resourceType := authzCtx.GetResource().GetKind()
 	resourceID := authzCtx.GetResource().GetID()
 
+	context := cedar.RecordMap{}
+	contextRecord := cedar.NewRecord(context)
+	jsonContext, err := json.Marshal(authzCtx.GetContext())
+	if err != nil {
+		return nil, err
+	}
+	if err := contextRecord.UnmarshalJSON(jsonContext); err != nil {
+		return nil, err
+	}
+
 	req := cedar.Request{
-		Principal: cedar.NewEntityUID("Permguard::IAM::User", cedar.String(subject)),
+		Principal: cedar.NewEntityUID(cedar.EntityType(pmgSubjectKind), cedar.String(subjectID)),
 		Action:    cedar.NewEntityUID(cedar.EntityType(actionType), cedar.String(actionID)),
 		Resource:  cedar.NewEntityUID(cedar.EntityType(resourceType), cedar.String(resourceID)),
-		Context:   cedar.NewRecord(cedar.RecordMap{}),
+		Context:   contextRecord,
 	}
 
 	ok, _ := ps.IsAuthorized(entities, req)
