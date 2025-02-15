@@ -25,8 +25,8 @@ import (
 )
 
 const (
-	Permguard = "PERMGUARD"
-	PermguardUser = "USER"
+	Permguard          = "PERMGUARD"
+	PermguardUser      = "USER"
 	PermguardRoleActor = "ROLE-ACTOR"
 	PermguardTwinActor = "TWIN-ACTOR"
 )
@@ -43,14 +43,14 @@ func verifyKey(key string) (bool, error) {
 // verifyUIDType verifies the UID type.
 func verifyUIDType(uidType string) (bool, error) {
 	uidTypeSnz := strings.ToLower(uidType)
-	if  strings.HasPrefix(uidTypeSnz, "permguard::") {
+	if strings.HasPrefix(uidTypeSnz, "permguard::") {
 		return false, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageSyntax, fmt.Sprintf("[cedar] invalid entity identifier: %s is reserved by permguard and cannot be used", uidType))
 	}
 	return true, nil
 }
 
-// verifyUIDTypeFromMap verifies the UID type from the map.
-func verifyUIDTypeFromMap(entityMap []map[string]any) (bool, error) {
+// verifyUIDTypeFromEntityMap verifies the UID type from the entity map.
+func verifyUIDTypeFromEntityMap(entityMap []map[string]any) (bool, error) {
 	for _, entity := range entityMap {
 		uidType, ok := entity["uid"].(map[string]any)["type"].(string)
 		if !ok {

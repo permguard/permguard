@@ -390,7 +390,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 		return nil, err
 	}
 	hasIllegalKey := false
-	contextRecord.Iterate(func(key cedar.String, val cedar.Value) bool{
+	contextRecord.Iterate(func(key cedar.String, val cedar.Value) bool {
 		keyStr := key.String()
 		isValid, _ := verifyKey(keyStr)
 		if !isValid {
@@ -406,7 +406,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	// Build the entities.
 	authzEntities := authzCtx.GetEntities()
 	authzEntitiesItems := authzEntities.GetItems()
-	if _, err := verifyUIDTypeFromMap(authzEntitiesItems); err != nil {
+	if _, err := verifyUIDTypeFromEntityMap(authzEntitiesItems); err != nil {
 		return nil, err
 	}
 	authzEntitiesItems = append(authzEntitiesItems, subjectProperties)
