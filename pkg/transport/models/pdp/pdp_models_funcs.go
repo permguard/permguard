@@ -29,7 +29,7 @@ const (
 
 // IsValidKey checks if the key is valid.
 func IsValidKey(key string) bool {
-	key = strings.ToUpper(strings.Trim(key, " "))
+	key = strings.ToUpper(strings.Replace(key, " ", "", -1))
 	return key != Permguard
 }
 
