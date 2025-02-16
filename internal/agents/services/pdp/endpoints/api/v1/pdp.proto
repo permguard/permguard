@@ -112,14 +112,16 @@ message ContextResponse {
 // EvaluationResponse represents the result of the evaluation process.
 message EvaluationResponse {
 	bool Decision = 1;
-	optional ContextResponse Context = 2;
+	optional string RequestID = 2;
+	optional ContextResponse Context = 3;
 }
 
 // AuthorizationCheckResponse represents the outcome of the authorization decision.
 message AuthorizationCheckResponse {
 	bool Decision = 1;
-	optional ContextResponse Context = 2;
-	repeated EvaluationResponse Evaluations = 3;
+	optional string RequestID = 2;
+	optional ContextResponse Context = 3;
+	repeated EvaluationResponse Evaluations = 4;
 }
 
 // V1PDPService	is the service for the Policy Decision Point.
