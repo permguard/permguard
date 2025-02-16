@@ -23,19 +23,13 @@ import (
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azauthz "github.com/permguard/permguard/pkg/authorization"
-)
-
-const (
-	Permguard          = "PERMGUARD"
-	PermguardUser      = "USER"
-	PermguardRoleActor = "ROLE-ACTOR"
-	PermguardTwinActor = "TWIN-ACTOR"
+	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 
 // verifyKey verifies the key.
 func verifyKey(key string) (bool, error) {
 	key = strings.ToUpper(key)
-	if key == Permguard {
+	if key == azmodelspdp.Permguard {
 		return false, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageSyntax, fmt.Sprintf("[cedar] invalid entity identifier: %s is reserved by permguard and cannot be used", key))
 	}
 	return true, nil
@@ -76,11 +70,11 @@ func createAuthorizationErrors(code string, adminMessage, userMessage string) (*
 func createPermguardSubjectKind(kind string) (string, error) {
 	kind = strings.ToUpper(kind)
 	switch kind {
-	case PermguardUser:
+	case azmodelspdp.PermguardUser:
 		kind = "Permguard::IAM::User"
-	case PermguardRoleActor:
+	case azmodelspdp.PermguardRoleActor:
 		kind = "Permguard::IAM::RoleActor"
-	case PermguardTwinActor:
+	case azmodelspdp.PermguardTwinActor:
 		kind = "Permguard::IAM::TwinActor"
 	}
 	return kind, nil
