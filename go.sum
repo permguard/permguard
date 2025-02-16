@@ -79,16 +79,10 @@ github.com/pelletier/go-toml v1.9.5 h1:4yBQzkHv+7BHq2PQUZF3Mx0IYxG7LsP222s7Agd3v
 github.com/pelletier/go-toml v1.9.5/go.mod h1:u1nR/EPcESfeI/szUZKdtJ0xRNbUoANCkoOuaOx1Y+c=
 github.com/pelletier/go-toml/v2 v2.2.3 h1:YmeHyLY8mFWbdkNWwpr+qIL2bEqT0o95WSdkNHvL12M=
 github.com/pelletier/go-toml/v2 v2.2.3/go.mod h1:MfCQTFTvCcUyyvvwm1+G6H/jORL20Xlb6rzQu9GuUkc=
-github.com/permguard/permguard-abs-language v0.0.1-0.20250119124518-20cf41477e5b h1:jAtk4kZI18uB8b/fpVMWwfP4Kk0EaB0fbsASyPQQynY=
-github.com/permguard/permguard-abs-language v0.0.1-0.20250119124518-20cf41477e5b/go.mod h1:RjThzx8//eSQznkqSuVBHibAKCOAo0Phm5fHlb7FD08=
 github.com/permguard/permguard-abs-language v0.0.1-0.20250130124205-d3c12639e75c h1:w8sIBi3TDpI6TpkW4/7E3LXJLgrC5turyeMHrTVXQCo=
 github.com/permguard/permguard-abs-language v0.0.1-0.20250130124205-d3c12639e75c/go.mod h1:B0vfh2nemOO9/Omn3gMJduqvuGcJ25qrQOQU7L80n8A=
-github.com/permguard/permguard-core v0.0.1-0.20250119124418-a36bab017af8 h1:fH4mEtaZ3qBURH0R55QVTJhCU9OoRPai7YItJKnQzeU=
-github.com/permguard/permguard-core v0.0.1-0.20250119124418-a36bab017af8/go.mod h1:kiR11xiM17+no5cQVvYRT2uRLiIN7LwF5tD0f8Go0OU=
 github.com/permguard/permguard-core v0.0.1-0.20250129184444-f92d68da0fbb h1:g2kRTAQmTLveU2D/TMq1oTrRGdQgrG+1lgkoCRne/Mk=
 github.com/permguard/permguard-core v0.0.1-0.20250129184444-f92d68da0fbb/go.mod h1:kiR11xiM17+no5cQVvYRT2uRLiIN7LwF5tD0f8Go0OU=
-github.com/permguard/permguard-notp-protocol v0.0.1-0.20250119124552-77785a31dcf6 h1:pSHgAZxnAfMxgIIP/gVwLSEswcn1gOIOFnnrGcDHJu0=
-github.com/permguard/permguard-notp-protocol v0.0.1-0.20250119124552-77785a31dcf6/go.mod h1:Ujfl2LvySA2E+TcXLA8iAUX1Cxp+2qQq7gzB+3LOsx8=
 github.com/permguard/permguard-notp-protocol v0.0.1-0.20250130124146-79ea016ab363 h1:Bzx8LgR/ETaPQ394DYAg8DRC2b/K3Xkf27Rw/Jv0XDg=
 github.com/permguard/permguard-notp-protocol v0.0.1-0.20250130124146-79ea016ab363/go.mod h1:Bz6Oot9ngLanCMxNNRzrOiJpBSmasYeqPyK355hkeYc=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
