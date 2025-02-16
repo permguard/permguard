@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azauthz "github.com/permguard/permguard/pkg/authorization"
 )
 
 const (
@@ -61,6 +62,14 @@ func verifyUIDTypeFromEntityMap(entityMap []map[string]any) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+// createAuthorizationErrors creates authorization errors.
+func createAuthorizationErrors(code string, adminMessage, userMessage string) (*azauthz.AuthorizationError, *azauthz.AuthorizationError) {
+	var adminError, userError *azauthz.AuthorizationError
+	adminError, _ = azauthz.NewAuthorizationError(code, adminMessage)
+	userError, _ = azauthz.NewAuthorizationError(code, userMessage)
+	return adminError, userError
 }
 
 // createPermguardSubjectKind creates a Permguard subject kind.

@@ -17,6 +17,7 @@
 package controllers
 
 import (
+	"fmt"
 	"strings"
 
 	azservices "github.com/permguard/permguard/pkg/agents/services"
@@ -50,20 +51,54 @@ func NewPDPController(serviceContext *azservices.ServiceContext, storage azStora
 
 // AuthorizationCheck checks if the request is authorized.
 func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckWithDefaultsRequest) (*azmodelspdp.AuthorizationCheckResponse, error) {
+	const errMsgBadRequest = "bad request for %s"
 	if request == nil || request.Authorizationmodel == nil || request.Authorizationmodel.PolicyStore == nil {
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, azauthz.AuthzErrBadRequestMessage), nil
+		errMsg := fmt.Sprintf(errMsgBadRequest, "required fields")
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+	}
+	if request.Authorizationmodel.ZoneID == 0 {
+		errMsg := fmt.Sprintf(errMsgBadRequest, "zone id")
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 	}
 	policyStore := request.Authorizationmodel.PolicyStore
 	if strings.ToLower(policyStore.Type) != LedgerType {
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, azauthz.AuthzErrBadRequestMessage), nil
+		errMsg := fmt.Sprintf(errMsgBadRequest, "policy store type")
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+	}
+	if len(strings.Trim(policyStore.ID, " ")) == 0 {
+		errMsg := fmt.Sprintf(errMsgBadRequest, "policy store id")
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 	}
 	expReq, err := authorizationCheckExpandAuthorizationCheckWithDefaults(request)
 	if err != nil {
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, err.Error(), azauthz.AuthzErrBadRequestMessage), nil
+		errMsg := fmt.Sprintf(errMsgBadRequest, "the expanded request")
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 	}
 	for _, evaluation := range expReq.Evaluations {
-		if !authorizationCheckVerifyPrincipal(request.Authorizationmodel.Principal, evaluation.Subject) {
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrUnauthorizedCode, azauthz.AuthzErrUnauthorizedMessage, azauthz.AuthzErrUnauthorizedMessage), nil
+		principal := request.Authorizationmodel.Principal
+		if principal == nil {
+			errMsg := fmt.Sprintf(errMsgBadRequest, "principal")
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+		}
+		if len(strings.Trim(principal.ID, " ")) == 0 {
+			errMsg := fmt.Sprintf(errMsgBadRequest, "principal id")
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+		}
+		if len(strings.Trim(evaluation.Subject.ID, " ")) == 0 {
+			errMsg := fmt.Sprintf(errMsgBadRequest, "subject id")
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+		}
+		if len(strings.Trim(evaluation.Resource.ID, " ")) == 0 {
+			errMsg := fmt.Sprintf(errMsgBadRequest, "resource id")
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+		}
+		if len(strings.Trim(evaluation.Resource.Type, " ")) == 0 {
+			errMsg := fmt.Sprintf(errMsgBadRequest, "resource type")
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+		}
+		if len(strings.Trim(evaluation.Action.Name, " ")) == 0 {
+			errMsg := fmt.Sprintf(errMsgBadRequest, "action name")
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 		}
 	}
 	return s.storage.AuthorizationCheck(expReq)
