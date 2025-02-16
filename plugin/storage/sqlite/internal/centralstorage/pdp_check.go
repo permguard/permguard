@@ -193,12 +193,18 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, azauthz.AuthzErrInternalErrorCode, azauthz.AuthzErrInternalErrorMessage), nil
 		}
 		evaluationResponse := azmodelspdp.EvaluationResponse{
+			RequestID: expandedRequest.RequestID,
 			Decision: authzResponse.GetDecision(),
 			Context:  authorizationCheckBuildContextResponse(authzResponse),
 		}
 		authzCheckResponse.Evaluations = append(authzCheckResponse.Evaluations, evaluationResponse)
 	}
 	evaluations := authzCheckResponse.Evaluations
+	if len(authzCheckResponse.Evaluations) == 1 {
+		firstEval := authzCheckResponse.Evaluations[0]
+		authzCheckResponse.Decision = firstEval.Decision
+		authzCheckResponse.Context = firstEval.Context
+	}
 	if len(evaluations) > 0 {
 		allTrue := true
 		for _, evaluation := range authzCheckResponse.Evaluations {
