@@ -261,6 +261,7 @@ func MapAgentEvaluationRequestToGrpcEvaluationRequest(evaluationRequest *azmodel
 		return nil, nil
 	}
 	target := &EvaluationRequest{}
+	target.RequestID = &evaluationRequest.RequestID
 	if evaluationRequest.Subject != nil {
 		subject, err := MapAgentSubjectToGrpcSubject(evaluationRequest.Subject)
 		if err != nil {
@@ -354,6 +355,11 @@ func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *A
 		return nil, nil
 	}
 	req := &azmodelspdp.AuthorizationCheckWithDefaultsRequest{}
+	if request.RequestID != nil {
+		req.RequestID = *request.RequestID
+	} else {
+		req.RequestID = ""
+	}
 	if request.Authorizationmodel != nil {
 		authorizationmodel, err := MapGrpcAuthorizationmodelRequestToAgentAuthorizationmodelRequest(request.Authorizationmodel)
 		if err != nil {
@@ -397,6 +403,9 @@ func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *A
 		evaluations := []azmodelspdp.EvaluationRequest{}
 		for _, evaluationRequest := range request.Evaluations {
 			evaluation, err := MapGrpcEvaluationRequestToAgentEvaluationRequest(evaluationRequest)
+			if len(evaluation.RequestID) == 0 {
+				evaluation.RequestID = req.RequestID
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -421,6 +430,12 @@ func MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest(request *a
 			return nil, err
 		}
 		req.Authorizationmodel = authorizationmodel
+	}
+	if len(request.RequestID) > 0 {
+		req.RequestID = &request.RequestID
+	} else {
+		reqID := ""
+		req.RequestID = &reqID
 	}
 	if request.Subject != nil {
 		subject, err := MapAgentSubjectToGrpcSubject(request.Subject)
@@ -456,6 +471,9 @@ func MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest(request *a
 			evaluation, err := MapAgentEvaluationRequestToGrpcEvaluationRequest(&evaluationRequest)
 			if err != nil {
 				return nil, err
+			}
+			if evaluation.RequestID == nil {
+				evaluation.RequestID = &request.RequestID
 			}
 			evaluations = append(evaluations, evaluation)
 		}
