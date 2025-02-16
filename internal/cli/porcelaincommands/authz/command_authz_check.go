@@ -120,6 +120,9 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 	if ctx.IsTerminalOutput() {
 		decision := authzResp.Decision
 		printer.Println(fmt.Sprintf("Authorization check response: %v", aziclicommon.BoolText(decision)))
+		if authzReq.RequestID != "" {
+			printer.Println(fmt.Sprintf("%s: %s", aziclicommon.KeywordText("Request ID"), aziclicommon.CreateText(authzReq.RequestID)))
+		}
 		if !decision {
 			contextID := authzResp.Context.ID
 			if len(contextID) == 0 {

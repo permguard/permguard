@@ -122,6 +122,7 @@ type EvaluationResponse struct {
 
 // AuthorizationCheckResponse represents the outcome of the authorization decision.
 type AuthorizationCheckResponse struct {
+	RequestID string           		 `json:"request_id,omitempty"`
 	Decision    bool                 `json:"decision" validate:"required"`
 	Context     *ContextResponse     `json:"context,omitempty"`
 	Evaluations []EvaluationResponse `json:"evaluations,omitempty"`
