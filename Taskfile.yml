@@ -19,7 +19,7 @@ version: '3'
 tasks:
   # Code and Docs
   license:
-    - task: addlicense  -c "Nitro Agility S.r.l." -s .
+    cmd: addlicense  -c "Nitro Agility S.r.l." -s .
   fmt:
     cmds:
       - find . -name "*.go" -exec go fmt {} \;

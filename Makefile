@@ -128,4 +128,4 @@ run:  clean mod lint-fix run-release
 # under parallel conditions.
 .NOTPARALLEL:
 
-.PHONY: clean mod lint lint-fix release alll
+.PHONY: clean mod lint lint-fix release all
