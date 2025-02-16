@@ -74,18 +74,26 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 		errMsg := fmt.Sprintf(errMsgBadRequest, "the expanded request")
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 	}
+	principal := request.Authorizationmodel.Principal
+	if principal == nil {
+		errMsg := fmt.Sprintf(errMsgBadRequest, "principal")
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+	}
+	if len(strings.Trim(principal.ID, " ")) == 0 {
+		errMsg := fmt.Sprintf(errMsgBadRequest, "principal id")
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+	}
+	if azmodelspdp.IsValidIdentiyType(principal.Type) == false {
+		errMsg := fmt.Sprintf(errMsgBadRequest, "principal type")
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+	}
 	for _, evaluation := range expReq.Evaluations {
-		principal := request.Authorizationmodel.Principal
-		if principal == nil {
-			errMsg := fmt.Sprintf(errMsgBadRequest, "principal")
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
-		}
-		if len(strings.Trim(principal.ID, " ")) == 0 {
-			errMsg := fmt.Sprintf(errMsgBadRequest, "principal id")
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
-		}
 		if len(strings.Trim(evaluation.Subject.ID, " ")) == 0 {
 			errMsg := fmt.Sprintf(errMsgBadRequest, "subject id")
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+		}
+		if azmodelspdp.IsValidIdentiyType(evaluation.Subject.Type) == false {
+			errMsg := fmt.Sprintf(errMsgBadRequest, "subject type")
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 		}
 		if len(strings.Trim(evaluation.Resource.ID, " ")) == 0 {
