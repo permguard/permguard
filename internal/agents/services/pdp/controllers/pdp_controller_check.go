@@ -59,18 +59,3 @@ func authorizationCheckExpandAuthorizationCheckWithDefaults(request *azmodelspdp
 	}
 	return expReq, nil
 }
-
-// authorizationCheckVerifyPrincipal verify principal for the authorization check.
-func authorizationCheckVerifyPrincipal(principal *azmodelspdp.Principal, subject *azmodelspdp.Subject) bool {
-	if principal == nil {
-		return true
-	}
-	if principal.ID != subject.ID {
-		return false
-	} else if principal.Type != subject.Type {
-		return false
-	} else if principal.Source != subject.Source {
-		return false
-	}
-	return true
-}

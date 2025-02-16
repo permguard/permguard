@@ -367,6 +367,8 @@ func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *A
 			return nil, err
 		}
 		req.Subject = subject
+	} else {
+		req.Subject = &azmodelspdp.Subject{}
 	}
 	if request.Resource != nil {
 		resource, err := MapGrpcResourceToAgentResource(request.Resource)
@@ -374,6 +376,8 @@ func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *A
 			return nil, err
 		}
 		req.Resource = resource
+	} else {
+		req.Resource = &azmodelspdp.Resource{}
 	}
 	if request.Action != nil {
 		action, err := MapGrpcActionToAgentAction(request.Action)
@@ -381,9 +385,13 @@ func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *A
 			return nil, err
 		}
 		req.Action = action
+	} else {
+		req.Action = &azmodelspdp.Action{}
 	}
 	if request.Context != nil {
 		req.Context = request.Context.AsMap()
+	} else {
+		req.Context = map[string]any{}
 	}
 	if request.Evaluations != nil {
 		evaluations := []azmodelspdp.EvaluationRequest{}
@@ -395,6 +403,8 @@ func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *A
 			evaluations = append(evaluations, *evaluation)
 		}
 		req.Evaluations = evaluations
+	} else {
+		req.Evaluations = []azmodelspdp.EvaluationRequest{}
 	}
 	return req, nil
 }
