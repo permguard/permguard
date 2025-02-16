@@ -16,6 +16,25 @@
 
 package pdp
 
+import "strings"
+
+const (
+	Permguard          = "PERMGUARD"
+	PermguardUser      = "USER"
+	PermguardRoleActor = "ROLE-ACTOR"
+	PermguardTwinActor = "TWIN-ACTOR"
+)
+
+// IsValidIdentiyType checks if the identity type is valid.
+func IsValidIdentiyType(identityType string) bool {
+	identityType = strings.ToUpper(identityType)
+	switch identityType {
+	case PermguardUser, PermguardRoleActor, PermguardTwinActor:
+		return true
+	}
+	return false
+}
+
 // NewAuthorizationCheckErrorResponse creates an authorization check error response.
 func NewAuthorizationCheckErrorResponse(authzCheckResponse *AuthorizationCheckResponse, erroCode string, adminReason string, userReason string) *AuthorizationCheckResponse {
 	if authzCheckResponse == nil {
