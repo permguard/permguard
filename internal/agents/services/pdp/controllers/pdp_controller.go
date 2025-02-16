@@ -65,7 +65,7 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 		errMsg := fmt.Sprintf(errMsgBadRequest, "policy store type")
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 	}
-	if len(strings.Trim(policyStore.ID, " ")) == 0 {
+	if len(strings.TrimSpace(policyStore.ID)) == 0 {
 		errMsg := fmt.Sprintf(errMsgBadRequest, "policy store id")
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 	}
@@ -79,7 +79,7 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 		errMsg := fmt.Sprintf(errMsgBadRequest, "principal")
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 	}
-	if len(strings.Trim(principal.ID, " ")) == 0 {
+	if len(strings.TrimSpace(principal.ID)) == 0 {
 		errMsg := fmt.Sprintf(errMsgBadRequest, "principal id")
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 	}
@@ -88,7 +88,7 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 	}
 	for _, evaluation := range expReq.Evaluations {
-		if len(strings.Trim(evaluation.Subject.ID, " ")) == 0 {
+		if len(strings.TrimSpace(evaluation.Subject.ID)) == 0 {
 			errMsg := fmt.Sprintf(errMsgBadRequest, "subject id")
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 		}
@@ -100,11 +100,11 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 			errMsg := fmt.Sprintf(errMsgBadRequest, "subject properties")
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 		}
-		if len(strings.Trim(evaluation.Resource.ID, " ")) == 0 {
+		if len(strings.TrimSpace(evaluation.Resource.ID)) == 0 {
 			errMsg := fmt.Sprintf(errMsgBadRequest, "resource id")
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 		}
-		if len(strings.Trim(evaluation.Resource.Type, " ")) == 0 {
+		if len(strings.TrimSpace(evaluation.Resource.Type)) == 0 {
 			errMsg := fmt.Sprintf(errMsgBadRequest, "resource type")
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 		}
@@ -112,7 +112,7 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 			errMsg := fmt.Sprintf(errMsgBadRequest, "resource properties")
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 		}
-		if len(strings.Trim(evaluation.Action.Name, " ")) == 0 {
+		if len(strings.TrimSpace(evaluation.Action.Name)) == 0 {
 			errMsg := fmt.Sprintf(errMsgBadRequest, "action name")
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 		}

@@ -349,7 +349,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	// Extract the subject from the authorization context.
 	subject := authzCtx.GetSubject()
 	subjectID := subject.GetID()
-	if len(strings.Trim(subjectID, " ")) == 0 {
+	if len(strings.TrimSpace(subjectID)) == 0 {
 		errMsg := fmt.Sprintf(errMsgBadRequest, "subject id")
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, errMsg, errMsg)
 		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
@@ -369,13 +369,13 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	// Extract the resource from the authorization context.
 	resource := authzCtx.GetResource()
 	resourceType := resource.GetKind()
-	if len(strings.Trim(resourceType, " ")) == 0 {
+	if len(strings.TrimSpace(resourceType)) == 0 {
 		errMsg := fmt.Sprintf(errMsgBadRequest, "resource type")
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, errMsg, errMsg)
 		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
 	}
 	resourceID := resource.GetID()
-	if len(strings.Trim(resourceID, " ")) == 0 {
+	if len(strings.TrimSpace(resourceID)) == 0 {
 		errMsg := fmt.Sprintf(errMsgBadRequest, "resource id")
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, errMsg, errMsg)
 		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
@@ -396,13 +396,13 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
 	}
 	actionType := actionID[:actiondIndex]
-	if len(strings.Trim(actionType, " ")) == 0 {
+	if len(strings.TrimSpace(actionType)) == 0 {
 		errMsg := fmt.Sprintf(errMsgBadRequest, "action type")
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, errMsg, errMsg)
 		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
 	}
 	actionID = actionID[actiondIndex+len("::"):]
-	if len(strings.Trim(actionID, " ")) == 0 {
+	if len(strings.TrimSpace(actionID)) == 0 {
 		errMsg := fmt.Sprintf(errMsgBadRequest, "action id")
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, errMsg, errMsg)
 		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
