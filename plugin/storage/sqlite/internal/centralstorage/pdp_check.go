@@ -19,6 +19,7 @@ package centralstorage
 import (
 	"github.com/jmoiron/sqlx"
 
+	azids "github.com/permguard/permguard-core/pkg/extensions/ids"
 	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	azauthz "github.com/permguard/permguard/pkg/authorization"
@@ -183,7 +184,8 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 		if entities != nil {
 			authzCtx.SetEntities(entities.Schema, entities.Items)
 		}
-		authzResponse, err := cedarLanguageAbs.AuthorizationCheck(&authzPolicyStore, &authzCtx)
+		contextID := azids.GenerateID()
+		authzResponse, err := cedarLanguageAbs.AuthorizationCheck(contextID, &authzPolicyStore, &authzCtx)
 		if err != nil {
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
 		}

@@ -329,7 +329,7 @@ func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(langID, lang
 }
 
 // AuthorizationCheck checks the authorization.
-func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.PolicyStore, authzCtx *azauthz.Authorizationmodel) (*azauthz.AuthorizationDecision, error) {
+func (abs *CedarLanguageAbstraction) AuthorizationCheck(contextID string, policyStore *azauthz.PolicyStore, authzCtx *azauthz.Authorizationmodel) (*azauthz.AuthorizationDecision, error) {
 	const errMsgBadRequest = "bad request for %s"
 	errMsgBadEntities := fmt.Sprintf(errMsgBadRequest, "entities")
 
@@ -352,18 +352,18 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	if len(strings.TrimSpace(subjectID)) == 0 {
 		errMsg := fmt.Sprintf(errMsgBadRequest, "subject id")
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, errMsg, errMsg)
-		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
+		return azauthz.NewAuthorizationDecision(contextID, false, adminError, userError)
 	}
 	subjectKind := subject.GetKind()
 	pmgSubjectKind, err := createPermguardSubjectKind(subjectKind)
 	if err != nil {
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, err.Error(), fmt.Sprintf(errMsgBadRequest, "subject kind"))
-		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
+		return azauthz.NewAuthorizationDecision(contextID, false, adminError, userError)
 	}
 	subjectProperties, err := createEntityAttribJson(pmgSubjectKind, subjectID, subject.GetProperties())
 	if err != nil {
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, err.Error(), fmt.Sprintf(errMsgBadRequest, "subject properties"))
-		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
+		return azauthz.NewAuthorizationDecision(contextID, false, adminError, userError)
 	}
 
 	// Extract the resource from the authorization context.
@@ -372,18 +372,18 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	if len(strings.TrimSpace(resourceType)) == 0 {
 		errMsg := fmt.Sprintf(errMsgBadRequest, "resource type")
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, errMsg, errMsg)
-		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
+		return azauthz.NewAuthorizationDecision(contextID, false, adminError, userError)
 	}
 	resourceID := resource.GetID()
 	if len(strings.TrimSpace(resourceID)) == 0 {
 		errMsg := fmt.Sprintf(errMsgBadRequest, "resource id")
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, errMsg, errMsg)
-		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
+		return azauthz.NewAuthorizationDecision(contextID, false, adminError, userError)
 	}
 	resourceProperties, err := createEntityAttribJson(resourceType, resourceID, resource.GetProperties())
 	if err != nil {
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, err.Error(), fmt.Sprintf(errMsgBadRequest, "resource properties"))
-		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
+		return azauthz.NewAuthorizationDecision(contextID, false, adminError, userError)
 	}
 
 	// Extract the action from the authorization context.
@@ -393,24 +393,24 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	if actiondIndex == -1 {
 		err := azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageSyntax, fmt.Sprintf("[cedar] action format is invalid: %s", actionID))
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, err.Error(), fmt.Sprintf(errMsgBadRequest, "action"))
-		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
+		return azauthz.NewAuthorizationDecision(contextID, false, adminError, userError)
 	}
 	actionType := actionID[:actiondIndex]
 	if len(strings.TrimSpace(actionType)) == 0 {
 		errMsg := fmt.Sprintf(errMsgBadRequest, "action type")
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, errMsg, errMsg)
-		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
+		return azauthz.NewAuthorizationDecision(contextID, false, adminError, userError)
 	}
 	actionID = actionID[actiondIndex+len("::"):]
 	if len(strings.TrimSpace(actionID)) == 0 {
 		errMsg := fmt.Sprintf(errMsgBadRequest, "action id")
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, errMsg, errMsg)
-		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
+		return azauthz.NewAuthorizationDecision(contextID, false, adminError, userError)
 	}
 	actionProperties, err := createEntityAttribJson(actionType, actionID, action.GetProperties())
 	if err != nil {
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, err.Error(), fmt.Sprintf(errMsgBadRequest, "action properties"))
-		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
+		return azauthz.NewAuthorizationDecision(contextID, false, adminError, userError)
 	}
 
 	// Extract the context from the authorization context.
@@ -419,11 +419,11 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	jsonContext, err := json.Marshal(authzCtx.GetContext())
 	if err != nil {
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, err.Error(), fmt.Sprintf(errMsgBadRequest, "content"))
-		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
+		return azauthz.NewAuthorizationDecision(contextID, false, adminError, userError)
 	}
 	if err := contextRecord.UnmarshalJSON(jsonContext); err != nil {
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, err.Error(), fmt.Sprintf(errMsgBadRequest, "content"))
-		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
+		return azauthz.NewAuthorizationDecision(contextID, false, adminError, userError)
 	}
 	hasIllegalKey := false
 	contextRecord.Iterate(func(key cedar.String, val cedar.Value) bool {
@@ -438,7 +438,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	if hasIllegalKey {
 		err := azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageSyntax, "[cedar] invalid context key, key is reserved by permguard and cannot be used")
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, err.Error(), fmt.Sprintf(errMsgBadRequest, "context as it contains an illegal key"))
-		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
+		return azauthz.NewAuthorizationDecision(contextID, false, adminError, userError)
 	}
 
 	// Build the entities.
@@ -446,7 +446,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	authzEntitiesItems := authzEntities.GetItems()
 	if _, err := verifyUIDTypeFromEntityMap(authzEntitiesItems); err != nil {
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, err.Error(), errMsgBadEntities)
-		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
+		return azauthz.NewAuthorizationDecision(contextID, false, adminError, userError)
 	}
 	authzEntitiesItems = append(authzEntitiesItems, subjectProperties)
 	authzEntitiesItems = append(authzEntitiesItems, actionProperties)
@@ -454,12 +454,12 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	jsonEntities, err := json.Marshal(authzEntitiesItems)
 	if err != nil {
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, err.Error(), errMsgBadEntities)
-		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
+		return azauthz.NewAuthorizationDecision(contextID, false, adminError, userError)
 	}
 	var entities cedar.EntityMap
 	if err := json.Unmarshal(jsonEntities, &entities); err != nil {
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, err.Error(), errMsgBadEntities)
-		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
+		return azauthz.NewAuthorizationDecision(contextID, false, adminError, userError)
 	}
 
 	// Create the request.
@@ -476,7 +476,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 		adminError, userError = createAuthorizationErrors(azauthz.AuthzErrForbiddenCode, azauthz.AuthzErrForbiddenMessage, azauthz.AuthzErrForbiddenMessage)
 	}
 	// Take the decision.
-	authzDecision, err := azauthz.NewAuthorizationDecision("", bool(ok), adminError, userError)
+	authzDecision, err := azauthz.NewAuthorizationDecision(contextID, bool(ok), adminError, userError)
 	if err != nil {
 		return nil, err
 	}

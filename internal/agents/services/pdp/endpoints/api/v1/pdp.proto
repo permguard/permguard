@@ -76,15 +76,17 @@ message AuthorizationmodelRequest {
 
 // EvaluationRequest represents the request to evaluate the authorization decision.
 message EvaluationRequest {
-	optional Subject Subject = 1;
-	optional Resource Resource = 2;
-	optional Action Action = 3;
-	optional google.protobuf.Struct Context = 4;
+	optional string RequestID = 1;
+	optional Subject Subject = 2;
+	optional Resource Resource = 3;
+	optional Action Action = 4;
+	optional google.protobuf.Struct Context = 5;
 }
 
 // AuthorizationCheckRequest represents the request to perform an authorization decision.
 message AuthorizationCheckRequest {
-	AuthorizationmodelRequest Authorizationmodel = 2;
+	AuthorizationmodelRequest Authorizationmodel = 1;
+	optional string RequestID = 2;
 	optional Subject Subject = 3;
 	optional Resource Resource = 4;
 	optional Action Action = 5;
