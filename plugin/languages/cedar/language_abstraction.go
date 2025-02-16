@@ -350,7 +350,8 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	subject := authzCtx.GetSubject()
 	subjectID := subject.GetID()
 	if len(strings.Trim(subjectID, " ")) == 0 {
-		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, fmt.Sprintf(errMsgBadRequest, "subject id"))
+		errMsg := fmt.Sprintf(errMsgBadRequest, "subject id")
+		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, errMsg, errMsg)
 		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
 	}
 	subjectKind := subject.GetKind()
@@ -369,12 +370,14 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	resource := authzCtx.GetResource()
 	resourceType := resource.GetKind()
 	if len(strings.Trim(resourceType, " ")) == 0 {
-		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, fmt.Sprintf(errMsgBadRequest, "resource type"))
+		errMsg := fmt.Sprintf(errMsgBadRequest, "resource type")
+		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, errMsg, errMsg)
 		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
 	}
 	resourceID := resource.GetID()
 	if len(strings.Trim(resourceID, " ")) == 0 {
-		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, fmt.Sprintf(errMsgBadRequest, "resource id"))
+		errMsg := fmt.Sprintf(errMsgBadRequest, "resource id")
+		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, errMsg, errMsg)
 		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
 	}
 	resourceProperties, err := createEntityAttribJson(resourceType, resourceID, resource.GetProperties())
@@ -394,12 +397,14 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(policyStore *azauthz.Pol
 	}
 	actionType := actionID[:actiondIndex]
 	if len(strings.Trim(actionType, " ")) == 0 {
-		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, fmt.Sprintf(errMsgBadRequest, "action type"))
+		errMsg := fmt.Sprintf(errMsgBadRequest, "action type")
+		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, errMsg, errMsg)
 		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
 	}
 	actionID = actionID[actiondIndex+len("::"):]
 	if len(strings.Trim(actionID, " ")) == 0 {
-		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, fmt.Sprintf(errMsgBadRequest, "action id"))
+		errMsg := fmt.Sprintf(errMsgBadRequest, "action id")
+		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, errMsg, errMsg)
 		return azauthz.NewAuthorizationDecision("", false, adminError, userError)
 	}
 	actionProperties, err := createEntityAttribJson(actionType, actionID, action.GetProperties())
