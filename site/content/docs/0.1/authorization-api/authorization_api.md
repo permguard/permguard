@@ -92,8 +92,8 @@ Here is an example of an **authorization request** and its response exchanged be
       "items": [
         {
           "uid": {
-            "type": "MagicFarmacia::Platform::Subscription",
-            "id": "e3a786fd07e24bfa95ba4341d3695ae8"
+            "type": "MagicFarmacia::Platform::BranchInfo",
+            "id": "subscription"
           },
           "attrs": {
             "active": true
@@ -103,6 +103,7 @@ Here is an example of an **authorization request** and its response exchanged be
       ]
     }
   },
+  "request_id": "abc1",
   "subject": {
     "type": "user",
     "id": "amy.smith@acmecorp.com",
@@ -114,25 +115,20 @@ Here is an example of an **authorization request** and its response exchanged be
   "resource": {
     "type": "MagicFarmacia::Platform::Subscription",
     "id": "e3a786fd07e24bfa95ba4341d3695ae8",
-    "properties": {}
+    "properties": {
+      "isEnabled": true
+    }
+  },
+  "action": {
+    "name": "MagicFarmacia::Platform::Action::create",
+    "properties": {
+      "isEnabled": true
+    }
   },
   "context": {
-    "time": "2025-01-23T16:17:46+00:00"
-  },
-  "evaluations": [
-    {
-      "action": {
-        "name": "MagicFarmacia::Platform::Action::view",
-        "properties": {}
-      }
-    },
-    {
-      "action": {
-        "name": "MagicFarmacia::Platform::Action::delete",
-        "properties": {}
-      }
-    }
-  ]
+    "time": "2025-01-23T16:17:46+00:00",
+    "isSubscriptionActive": true
+  }
 }
 ```
 
@@ -140,45 +136,17 @@ Here is an example of an **authorization request** and its response exchanged be
 
 ```json
 {
-  "decision": false,
+  "request_id": "abc1",
+  "decision": true,
   "context": {
-    "id": "e91df3711cb046f18c7576303dbeccda",
-    "reason_admin": {
-      "code": "403",
-      "message": "Request failed because of evaluations."
-    },
-    "reason_user": {
-      "code": "403",
-      "message": "Access denied due to insufficient privileges. Please contact your administrator."
-    }
+    "id": "08bd6cc837ae4e7eb9ba37f31d5b355c"
   },
   "evaluations": [
     {
-      "decision": false,
+      "request_id": "abc1",
+      "decision": true,
       "context": {
-        "id": "e91df3711cb046f18c7576303dbeccda",
-        "reason_admin": {
-          "code": "403",
-          "message": "Request failed policy 3df18a05380d4ddab164e6b8e82bd37b"
-        },
-        "reason_user": {
-          "code": "403",
-          "message": "Access denied due to insufficient privileges. Please contact your administrator."
-        }
-      }
-    },
-    {
-      "decision": false,
-      "context": {
-        "id": "83628fb761fc4622aaf2f70c5338093c",
-        "reason_admin": {
-          "code": "403",
-          "message": "Request failed policy 78df7ffa88a44795bac156339ae1d0da"
-        },
-        "reason_user": {
-          "code": "403",
-          "message": "Access denied due to insufficient privileges. Please contact your administrator."
-        }
+        "id": "08bd6cc837ae4e7eb9ba37f31d5b355c"
       }
     }
   ]
