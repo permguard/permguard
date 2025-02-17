@@ -45,7 +45,7 @@ The request payload contains the following elements:
   A list of access requests that a `principal` can use to evaluate multiple access decisions in a single message exchange. This allows checking permissions for multiple subjects at once, a process also known as "boxcarring" requests.
 
 {{< callout context="note" icon="info-circle" >}}
-**PermGuard** enables Zero Trust principles, and the Authorization API follows the same approach. The `principal` can send an authentication token along with the authorization request. This allows enforcing Zero Trust security by validating the token and ensuring that the `principal` is allowed to act on behalf of the `subject`, for example, in the context of trusted elevation and trusted delegation.
+**Permguard** enables Zero Trust principles, and the Authorization API follows the same approach. The `principal` can send an authentication token along with the authorization request. This allows enforcing Zero Trust security by validating the token and ensuring that the `principal` is allowed to act on behalf of the `subject`, for example, in the context of trusted elevation and trusted delegation.
 
 If the `principal` does not have permission to act on a `subject`, the request will return an error to block unauthorized actions.
 
@@ -77,7 +77,7 @@ Here is an example of an **authorization request** and its response exchanged be
 ```json
 {
   "authorization_model": {
-    "zone_id": 268786704340,
+    "zone_id": 273165098782,
     "policy_store": {
       "type": "ledger",
       "id": "fd1ac44e4afa4fc4beec622494d3175a"

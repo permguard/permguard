@@ -21,7 +21,7 @@ seo:
 In today's digital world, **identity is the foundation** of most security systems. Authentication has improved with standards like Single Sign-On, OAuth, and OpenID Connect, but **authorization is still fragmented and less developed**.
 
 {{< callout context="tip" icon="rocket" >}}
-**PermGuard** is powerful yet easy to use. Its advanced architecture ensures security and flexibility, while integration remains simple—whether for a basic app or a complex enterprise system. Just run the server, define your policy, and integrate it seamlessly.
+**Permguard** is powerful yet easy to use. Its advanced architecture ensures security and flexibility, while integration remains simple—whether for a basic app or a complex enterprise system. Just run the server, define your policy, and integrate it seamlessly.
 {{< /callout >}}
 
 ## The Problem with Authorization Today
@@ -56,9 +56,9 @@ Just as authentication has evolved with dedicated identity providers and standar
   <img alt="Permguard" src="/images/diagrams/d11.webp"/>
 </div>
 
-**PermGuard** follows the **Bring Your Own Identity (BYOI)** approach, allowing integration with existing identity providers. It supports open-source solutions like **Keycloak** as well as commercial platforms. This flexibility lets organizations keep their preferred authentication systems while using **PermGuard** for advanced authorization management.
+**Permguard** follows the **Bring Your Own Identity (BYOI)** approach, allowing integration with existing identity providers. It supports open-source solutions like **Keycloak** as well as commercial platforms. This flexibility lets organizations keep their preferred authentication systems while using **Permguard** for advanced authorization management.
 
-With **APIs** or **CLI tools**, organizations can import identity data, such as users or groups, from their chosen provider into **PermGuard**. Importantly, identity provider interactions are not built into **PermGuard** itself. This keeps **PermGuard** vendor-agnostic, focusing only on authorization.
+With **APIs** or **CLI tools**, organizations can import identity data, such as users or groups, from their chosen provider into **Permguard**. Importantly, identity provider interactions are not built into **Permguard** itself. This keeps **Permguard** vendor-agnostic, focusing only on authorization.
 
 ## What Permguard Brings to the Table
 
@@ -66,7 +66,7 @@ With **APIs** or **CLI tools**, organizations can import identity data, such as 
   <img alt="Permguard" src="/images/diagrams/d9.webp"/>
 </div><br/>
 
-**PermGuard** is built to solve authorization challenges with an open-source, flexible, and dedicated approach. Key features include:
+**Permguard** is built to solve authorization challenges with an open-source, flexible, and dedicated approach. Key features include:
 
 - **Separation of Concerns**: Authorization is managed independently from authentication, ensuring clarity, scalability, and easier maintenance.
 - **Integration-First Design**: Supports multiple policy languages and flexible APIs, making integration into existing systems seamless.
@@ -79,11 +79,11 @@ With **APIs** or **CLI tools**, organizations can import identity data, such as 
   <img alt="Permguard" src="/images/diagrams/d12.webp"/>
 </div><br/>
 
-**PermGuard** envisions a future where authorization is a core security component, not an afterthought. With a dedicated layer, it helps organizations:
+**Permguard** envisions a future where authorization is a core security component, not an afterthought. With a dedicated layer, it helps organizations:
 
 - Build secure and scalable systems.
 - Maintain consistent access control across applications and environments.
 - Establish **Trusted Statements** such as **Trusted Elevation** and **Trusted Delegation**, enabling organizations to federate securely while following Zero Trust principles.
 - Simplify governance and compliance.
 
-**Authorization** should receive the same attention and innovation as authentication. With **PermGuard**, organizations get a reliable, flexible, and future-ready solution to manage permissions efficiently.
+**Authorization** should receive the same attention and innovation as authentication. With **Permguard**, organizations get a reliable, flexible, and future-ready solution to manage permissions efficiently.

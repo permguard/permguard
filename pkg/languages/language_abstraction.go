@@ -68,5 +68,5 @@ type LanguageAbastraction interface {
 	// ConvertBytesToFrontendLanguage converts bytes to the frontend language.
 	ConvertBytesToFrontendLanguage(langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error)
 	// AuthorizationCheck checks the authorization.
-	AuthorizationCheck(policyStore *azauthz.PolicyStore, authzCtx *azauthz.Authorizationmodel) (*azauthz.AuthorizationDecision, error)
+	AuthorizationCheck(contextID string, policyStore *azauthz.PolicyStore, authzCtx *azauthz.Authorizationmodel) (*azauthz.AuthorizationDecision, error)
 }

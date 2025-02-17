@@ -35,7 +35,7 @@ Examples:
   # validate the local state for consistency and correctness",
   permguard validate
 
-  Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
+  Find more information at: https://www.permguard.com/docs/0.1/command-line/how-to-use/
 
 Usage:
   permguard validate [flags]

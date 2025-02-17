@@ -19,13 +19,13 @@ seo:
   noindex: false # false (default) or true
 ---
 
-**PermGuard** supports `multi-tenancy`, allowing multiple **tenants** to be created within each zone.
+**Permguard** supports `multi-tenancy`, allowing multiple **tenants** to be created within each zone.
 
 Tenants play a key role in managing authorizations and help **partition** `resources` and `actions` efficiently.
 This is especially useful for **multi-tenant** zones, such as Software as a Service (**SaaS**) platforms.
 
 {{< callout context="note" icon="info-circle" >}}
-In the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management), each pharmacy branch is a separate tenant, such as `matera-branch` or `pisa-branch`.
+In the [MagicFarmacia sample](/docs/0.1/getting-started/hands-on-examples#integration-use-case-pharmacy-branch-management), each pharmacy branch is a separate tenant, such as `matera-branch` or `pisa-branch`.
 
 This setup allows each branch to manage its own resources and actions independently.
 

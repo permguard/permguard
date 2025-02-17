@@ -22,6 +22,10 @@ seo:
 
 Policies are written using the `Cedar Policy Language`.
 
+{{< callout context="danger" icon="alert-octagon" >}}
+Permguard mandates the use of the @id annotation in Cedar policies. This is required to uniquely identify each policy.
+{{< /callout >}}
+
 Below is an example directory structure with a schema file and sample policy files:
 
 ```plaintext
@@ -31,12 +35,12 @@ Below is an example directory structure with a schema file and sample policy fil
 ├── staff_policies.cedar
 ```
 
-Here is an example of cedar policy:
+Here is an example of cedar policy.
 
 ```cedar  {title="pharmacy.cedar"}
 @id("assign-role-branch")
 permit(
-    principal in Permguard::Actor::"administer-branches-staff",
+    principal in Permguard::RoleActor::"administer-branches-staff",
     action in Action::"assignRole",
     resource in MagicFarmacia::Branch::Staff::"role"
 )

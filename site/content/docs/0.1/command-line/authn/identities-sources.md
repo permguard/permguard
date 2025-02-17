@@ -54,7 +54,7 @@ The output from your current version of Permguard may differ from the example pr
 The `permguard authn identitysources create` command allows to create an identity source for the mandatory input zone and name.
 
 ```bash
-permguard authn identitysources create --zoneid 268786704340 --name google
+permguard authn identitysources create --zoneid 273165098782 --name google
 ```
 
 output:
@@ -69,7 +69,7 @@ output:
   </summary>
 
 ```bash
-permguard authn identitysources create --zoneid 268786704340 --name google --output json
+permguard authn identitysources create --zoneid 273165098782 --name google --output json
 ```
 
 output:
@@ -81,7 +81,7 @@ output:
       "identity_source_id": "1da1d9094501425085859c60429163c2",
       "created_at": "2024-08-25T14:36:08.677Z",
       "updated_at": "2024-08-25T14:36:08.677Z",
-      "zone_id": 268786704340,
+      "zone_id": 273165098782,
       "name": "google"
     }
   ]
@@ -95,7 +95,7 @@ output:
 The `permguard authn identitysources list` command allows for the retrieval of all identity sources.
 
 ```bash
-permguard authn identitysources list --zoneid 268786704340
+permguard authn identitysources list --zoneid 273165098782
 ```
 
 output:
@@ -111,7 +111,7 @@ output:
   </summary>
 
 ```bash
-permguard authn identitysources list --zoneid 268786704340 --output json
+permguard authn identitysources list --zoneid 273165098782 --output json
 ```
 
 output:
@@ -123,14 +123,14 @@ output:
       "identity_source_id": "1da1d9094501425085859c60429163c2",
       "created_at": "2024-08-25T14:36:08.677Z",
       "updated_at": "2024-08-25T14:36:08.677Z",
-      "zone_id": 268786704340,
+      "zone_id": 273165098782,
       "name": "google"
     },
     {
       "identity_source_id": "82b293c0c4eb4f65a8d6f29adfeb8ca5",
       "created_at": "2024-08-25T14:36:23.169Z",
       "updated_at": "2024-08-25T14:36:23.169Z",
-      "zone_id": 268786704340,
+      "zone_id": 273165098782,
       "name": "facebook"
     }
   ]

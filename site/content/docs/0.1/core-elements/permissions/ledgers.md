@@ -19,11 +19,11 @@ seo:
   noindex: false # false (default) or true
 ---
 
-In **PermGuard**, multiple zones can be created, and each zone can have multiple **policy ledgers**.
+In **Permguard**, multiple zones can be created, and each zone can have multiple **policy ledgers**.
 This provides a structured way to manage `authz` components such as **schemas, policies, and permissions**.
 
 {{< callout context="note" icon="info-circle" >}}
-In the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management),
+In the [MagicFarmacia sample](/docs/0.1/getting-started/hands-on-examples#integration-use-case-pharmacy-branch-management),
 the system runs within a **microservice architecture**.
 {{< /callout >}}
 

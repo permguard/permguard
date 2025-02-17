@@ -91,6 +91,7 @@ type AuthorizationCheckRequest struct {
 // AuthorizationCheckWithDefaultsRequest represents the request to perform an authorization decision with defaults.
 type AuthorizationCheckWithDefaultsRequest struct {
 	AuthorizationCheckRequest
+	RequestID string 		`json:"request_id,omitempty"`
 	Subject  *Subject       `json:"subject,omitempty"`
 	Resource *Resource      `json:"resource,omitempty"`
 	Action   *Action        `json:"action,omitempty"`
@@ -121,6 +122,7 @@ type EvaluationResponse struct {
 
 // AuthorizationCheckResponse represents the outcome of the authorization decision.
 type AuthorizationCheckResponse struct {
+	RequestID string           		 `json:"request_id,omitempty"`
 	Decision    bool                 `json:"decision" validate:"required"`
 	Context     *ContextResponse     `json:"context,omitempty"`
 	Evaluations []EvaluationResponse `json:"evaluations,omitempty"`

@@ -44,7 +44,7 @@ func createCommandForTenantCreate(deps azcli.CliDependenciesProvider, v *viper.V
 
 Examples:
   # create a tenant and output the result in json format
-  permguard authn tenants create --zoneid 268786704340 --name matera-branch --output json
+  permguard authn tenants create --zoneid 273165098782 --name matera-branch --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCreateTenant(deps, cmd, v)

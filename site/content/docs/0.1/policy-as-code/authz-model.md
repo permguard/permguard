@@ -19,7 +19,28 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The **authorization model** defines the AuthZ model data structure, which is derived by combining the Authorization API inputs with Policy-as-Code.
+The `authorization model` defines the structure of the AuthZ model, which is created by combining the inputs from the Authorization API with Policy-as-Code.
+
+It is used by the Policy Decision Point (PDP) to evaluate incoming authorization requests. The `authorization model` is loaded, filtered, and transformed to create an `authorization context` that aligns with the identity's authorization context in relation to the request.
+
+## Zone
+
+The `zone` is required to build the AuthZ model.
+
+This is provided as an input to the Authorization API.
+
+```json
+{
+  "authorization_model": {
+    "zone_id": 268786704340,
+  }
+}
+```
+
+---
+**authorization_model/zone_id**: *a unique zone identifier distinguishes each input zone.*
+
+---
 
 ## Policy Store
 
@@ -30,7 +51,7 @@ This is provided as an input to the Authorization API.
 ```json
 {
   "authorization_model": {
-    "zone_id": 694778299643,
+    "zone_id": 268786704340,
     "policy_store": {
       "type": "ledger",
       "id": "3b72d00fb7d247848757fb37be8d0814"
@@ -39,13 +60,15 @@ This is provided as an input to the Authorization API.
 }
 ```
 
-The `PermGuard` decision engine loads the policy storage based on the input type and ID existing in the input zone.
+The `Permguard` decision engine loads the policy storage based on the input Type and ID.
 
-| PATH                                    | VALUES | DESCRIPTION                                                            |
-|-----------------------------------------|--------|------------------------------------------------------------------------|
-| authorization_model/zone_id           |        | A unique zone identifier distinguishes each input zone.                |
-| authorization_model/policy_store/type | LEDGER | The Policy Store type defines the storage mechanism used for policies. |
-| authorization_model/policy_store/id   |        | The unique identifier of the Policy Store.                             |
+---
+**authorization_model/policy_store/type**: *the policy store type defines the storage mechanism used for policies (default `LEDGER`, options `LEDGER`).*
+
+---
+**authorization_model/policy_store/id**: *the unique identifier of the policy store.*
+
+---
 
 ## Principal
 
@@ -59,38 +82,27 @@ While the `Principal` and `Subject` are usually the same, there are scenarios wh
       "type": "user",
       "id": "amy.smith@acmecorp.com",
       "source": "keycloak",
-      "identity_token": "eyJhbGciOiJI...",
-      "access_token": "eyJhbGciOiJI..."
     }
   }
 }
 ```
+
+---
+**authorization_model/principal/type**: *the principal type (default `USER`, options `USER`).*
+
+---
+**authorization_model/principal/id**: *the principal identifier.*
+
+---
+**authorization_model/principal/source**: *the principal identity source.*
+
+---
 
 ## Entities
 
-The `Entities` object is a `set of attributes` that represent policy's entities.
+The `Entities` object is a `collection of attributes` that represent the entities of a policy.
 
-```json
-{
-  "authorization_model": {
-    "entities": {
-      "schema": "cedar",
-      "items": [
-        {
-          "uid": {
-            "type": "MagicFarmacia::Platform::Subscription",
-            "id": "e3a786fd07e24bfa95ba4341d3695ae8"
-          },
-          "attrs": {
-            "active": true
-          },
-          "parents": []
-        }
-      ]
-    }
-  }
-}
-```
+Each policy language defines its own entity schema.
 
 ## Subject
 
@@ -103,14 +115,30 @@ The Subject specifies the entity requesting access to a resource.
 
 ```json
 {
-  "type": "user",
-  "id": "alice",
-  "source": "keycloak",
-  "properties": {
-    "department": "sales"
+  "subject": {
+    "type": "user",
+    "id": "alice",
+    "source": "keycloak",
+    "properties": {
+      "department": "sales"
+    }
   }
 }
 ````
+
+---
+**subject/type**: *the subject type (default `USER`, options `USER`).*
+
+---
+**subject/id**: *the subject identifier.*
+
+---
+**subject/source**: *the subject identity source.*
+
+---
+**subject/properties**: *generic properties.*
+
+---
 
 ## Resources
 
@@ -122,13 +150,26 @@ The `Resource` specifies the entity requesting access to a resource.
 
 ```json
 {
-  "type": "MagicFarmacia::Platform::Account::Subscription",
-  "id": "e3a786fd07e24bfa95ba4341d3695ae8",
-  "properties": {
-    "active": true
+  "resource":{
+    "type": "subscription",
+    "id": "e3a786fd07e24bfa95ba4341d3695ae8",
+    "properties": {
+      "active": true
+    }
   }
 }
 ````
+
+---
+**resource/type**: *the resource type.*
+
+---
+**resource/id**: *the resource identifier.*
+
+---
+**resource/properties**: *generic properties.*
+
+---
 
 ## Action
 
@@ -139,12 +180,22 @@ The `Action` specifies the entity requesting access to a action.
 
 ```json
 {
-  "type": "cancel",
-  "properties": {
-    "reason": "expired subscription"
+  "action":{
+    "type": "cancel",
+    "properties": {
+      "reason": "expired subscription"
+    }
   }
 }
 ````
+
+---
+**action/type**: *the action type.*
+
+---
+**action/properties**: *generic properties.*
+
+---
 
 ## Context
 
@@ -152,6 +203,13 @@ The `Context` object is a set of attributes that represent environmental or cont
 
 ```json
 {
-  "expire_at": "2024-12-26T22:53:00+01:00",
+  "context":{
+    "expire_at": "2024-12-26T22:53:00+01:00",
+  }
 }
 ````
+
+---
+**context**: *generic properties.*
+
+---

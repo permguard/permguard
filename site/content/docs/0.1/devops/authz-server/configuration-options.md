@@ -18,7 +18,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-**Permguard** consists of multiple services that make up the **Authorization Server**. These services can be deployed as a single `all-in-one` instance or separately.
+**Permguard** consists of multiple services that make up the **AuthZ Server**. These services can be deployed as a single `all-in-one` instance or separately.
 
 For production environments, using the `all-in-one` distribution is not recommended. A distributed deployment is preferred as it allows each service to scale independently, improving both flexibility and performance.
 
@@ -32,7 +32,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 **\--debug**: *enables debug mode (default `false`).*
 
 ---
-**\--log.level**: *specifies the log level (default `INFO`, options: `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
+**\--log.level**: *specifies the log level (default `INFO`, options `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
 
 <details>
   <summary>Options</summary>
@@ -148,7 +148,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 **\--debug**: *enables debug mode (default `false`).*
 
 ---
-**\--log.level**: *specifies log level (default `INFO`, options: `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
+**\--log.level**: *specifies log level (default `INFO`, options `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
 
 <details>
   <summary>Options</summary>
