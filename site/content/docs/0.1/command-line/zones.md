@@ -58,7 +58,7 @@ permguard zones create --name magicfarmacia-dev
 output:
 
 ```bash
- 268786704340: magicfarmacia-dev
+ 273165098782: magicfarmacia-dev
 ```
 
 <details>
@@ -76,7 +76,7 @@ output:
 {
   "zones": [
     {
-      "zone_id": 268786704340,
+      "zone_id": 273165098782,
       "created_at": "2024-08-25T14:07:59.634Z",
       "updated_at": "2024-08-25T14:07:59.634Z",
       "name": "magicfarmacia-dev"
@@ -98,7 +98,7 @@ permguard zones list
 output:
 
 ```bash
-268786704340: magicfarmacia-dev
+273165098782: magicfarmacia-dev
 534434453770: magicfarmacia-uat
 627303999986: magicfarmacia-prod
 ```
@@ -118,7 +118,7 @@ output:
 {
   "zones": [
     {
-      "zone_id": 268786704340,
+      "zone_id": 273165098782,
       "created_at": "2024-08-25T14:07:07.04Z",
       "updated_at": "2024-08-25T14:07:07.04Z",
       "name": "magicfarmacia-dev"

@@ -76,15 +76,17 @@ message AuthorizationmodelRequest {
 
 // EvaluationRequest represents the request to evaluate the authorization decision.
 message EvaluationRequest {
-	optional Subject Subject = 1;
-	optional Resource Resource = 2;
-	optional Action Action = 3;
-	optional google.protobuf.Struct Context = 4;
+	optional string RequestID = 1;
+	optional Subject Subject = 2;
+	optional Resource Resource = 3;
+	optional Action Action = 4;
+	optional google.protobuf.Struct Context = 5;
 }
 
 // AuthorizationCheckRequest represents the request to perform an authorization decision.
 message AuthorizationCheckRequest {
-	AuthorizationmodelRequest Authorizationmodel = 2;
+	AuthorizationmodelRequest Authorizationmodel = 1;
+	optional string RequestID = 2;
 	optional Subject Subject = 3;
 	optional Resource Resource = 4;
 	optional Action Action = 5;
@@ -110,14 +112,16 @@ message ContextResponse {
 // EvaluationResponse represents the result of the evaluation process.
 message EvaluationResponse {
 	bool Decision = 1;
-	optional ContextResponse Context = 2;
+	optional string RequestID = 2;
+	optional ContextResponse Context = 3;
 }
 
 // AuthorizationCheckResponse represents the outcome of the authorization decision.
 message AuthorizationCheckResponse {
 	bool Decision = 1;
-	optional ContextResponse Context = 2;
-	repeated EvaluationResponse Evaluations = 3;
+	optional string RequestID = 2;
+	optional ContextResponse Context = 3;
+	repeated EvaluationResponse Evaluations = 4;
 }
 
 // V1PDPService	is the service for the Policy Decision Point.

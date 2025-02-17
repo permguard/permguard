@@ -18,7 +18,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-**PermGuard** supports `multi-zone` architecture, allowing the creation of multiple **zones**.
+**Permguard** supports `multi-zone` architecture, allowing the creation of multiple **zones**.
 Each zone is fully isolated, with its own tenants, identities, ledgers, schemas, policies, and permissions.
 
 {{< callout context="caution" icon="alert-triangle" >}}
@@ -26,11 +26,11 @@ It is recommended to use a separate zone for each environment, such as developme
 This best practice helps reduce security risks.
 {{< /callout >}}
 
-It is important to note that **PermGuard** does not include an authentication layer.
+It is important to note that **Permguard** does not include an authentication layer.
 The adopter is responsible for implementing or integrating authentication at the zone level.
 
 {{< callout context="note" icon="info-circle" >}}
-In the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management),
+In the [MagicFarmacia sample](/docs/0.1/getting-started/hands-on-examples#integration-use-case-pharmacy-branch-management),
 
 - The `magicfarmacia-dev` zone represents the development environment.
 - The `magicfarmacia-prod` zone represents the production environment.
@@ -43,7 +43,7 @@ Each zone is uniquely identified by a `name`.
 
 ```json
 {
-  "zone_id": 268786704340,
+  "zone_id": 273165098782,
   "name": "magicfarmacia-dev"
 }
 ```

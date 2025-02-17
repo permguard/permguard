@@ -95,7 +95,7 @@ func CreateCommandForWorkspaceRemoteAdd(deps azcli.CliDependenciesProvider, v *v
 
 Examples:
   # add a new remote ledger to track and interact with
-  permguard remote add origin 268786704340/magicfarmacia `),
+  permguard remote add origin 273165098782/magicfarmacia `),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForRemoteAddWorkspace(args, deps, cmd, v)
 		},

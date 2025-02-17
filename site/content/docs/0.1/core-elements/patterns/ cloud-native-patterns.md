@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "cloud-native-patterns-ff808103155aea16d2022dd1284416bf"
-weight: 1004
+weight: 2501
 toc: true
 seo:
   title: "" # custom title (optional)

@@ -1,5 +1,5 @@
 ---
-title: "Checkout"
+title: "Check out"
 description: ""
 summary: ""
 date: 2023-08-17T11:47:15+01:00
@@ -35,7 +35,7 @@ Examples:
   # check out the contents of a remote ledger to the local permguard workspace
   permguard checkout origin/273165098782/magicfarmacia
 
-  Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
+  Find more information at: https://www.permguard.com/docs/0.1/command-line/how-to-use/
 
 Usage:
   permguard checkout [flags]
@@ -53,7 +53,7 @@ Global Flags:
 The output from your current version of Permguard may differ from the example provided on this page.
 {{< /callout >}}
 
-## Checkout a ledger
+## Check out a ledger
 
 The `permguard checkout` command allows you to check out a remote ledger locally.
 

@@ -33,7 +33,7 @@ The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility 
 
 This command configures the command line settings.
 
-  Find more information at: https://www.permguard.com/docs/0.1/using-the-cli/how-to-use/
+  Find more information at: https://www.permguard.com/docs/0.1/command-line/how-to-use/
 
 Usage:
   permguard config [flags]

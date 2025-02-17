@@ -1,6 +1,6 @@
 ---
-title: "Zero Trust Compliant"
-slug: "Zero Trust Compliant"
+title: "Zero Trust Ready"
+slug: "Zero Trust Ready"
 description: ""
 summary: ""
 date: 2023-08-15T14:47:57+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "zero-trust-compliant-8c89ddc8339f83444fc4b97264bd5c45"
+    identifier: "zero-trust-ready-8c89ddc8339f83444fc4b97264bd5c45"
 weight: 1003
 toc: true
 seo:
@@ -19,14 +19,14 @@ seo:
   noindex: false # false (default) or true
 ---
 
-**PermGuard** is designed to comply with **Zero Trust** principles, leveraging the **ZTAuth*** architecture to provide secure, scalable, and reliable authorization for modern, distributed environments.
+**Permguard** is designed to comply with **Zero Trust** principles, leveraging the **ZTAuth*** architecture to provide secure, scalable, and reliable authorization for modern, distributed environments.
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/ztauth.webp"/>
 </div>
 
 {{< callout context="tip" icon="rocket" >}}
-**PermGuard** is powerful yet easy to use. Its advanced architecture ensures security and flexibility, while integration remains simple—whether for a basic app or a complex enterprise system. Just run the server, define your policy, and integrate it seamlessly.
+**Permguard** is powerful yet easy to use. Its advanced architecture ensures security and flexibility, while integration remains simple—whether for a basic app or a complex enterprise system. Just run the server, define your policy, and integrate it seamlessly.
 {{< /callout >}}
 
 ---
@@ -46,7 +46,7 @@ seo:
 
 ## How Permguard Implements ZTAuth\*
 
-**PermGuard** adopts the **ZTAuth*** architecture to bring **Zero Trust** principles into authorization. To understand how this works, let's compare it to network security:
+**Permguard** adopts the **ZTAuth*** architecture to bring **Zero Trust** principles into authorization. To understand how this works, let's compare it to network security:
 
 - **ZTNA (Zero Trust Network Access)**: Secures identity-based access to networks by enforcing least privilege at the network boundary.
 - **ZTAuth\*** (Zero Trust Auth*): Secures identity-based execution of actions on resources by enforcing least privilege at the application boundary. Designed for eventual consistency, its security model is incrementally synchronized across application nodes in an immutable, versioned manner.
@@ -85,7 +85,7 @@ These models are incrementally synchronized to zone nodes as **git-like commit-b
 
 To function properly, these models must have the following characteristics:
 
-- **Transferable and Verifiable:** Works seamlessly across systems and environments, with verifiable origins certified by the `Authorization Server`.
+- **Transferable and Verifiable:** Works seamlessly across systems and environments, with verifiable origins certified by the `AuthZ Server`.
 - **Versionable and Immutable:** Ensures integrity, auditability, and backward compatibility for secure and reliable operations.
 - **Resilient to Disconnection:** Supports eventual consistency, allowing continued functionality in partially connected or offline environments.
 
@@ -137,4 +137,4 @@ To explore these concepts further, check out the following articles:
 
 ---
 
-With **PermGuard** and **ZTAuth***, authorization is no longer just an extra step—it becomes a core part of modern security.
+With **Permguard** and **ZTAuth***, authorization is no longer just an extra step—it becomes a core part of modern security.

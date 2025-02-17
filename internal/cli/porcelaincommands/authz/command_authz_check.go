@@ -120,6 +120,9 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 	if ctx.IsTerminalOutput() {
 		decision := authzResp.Decision
 		printer.Println(fmt.Sprintf("Authorization check response: %v", aziclicommon.BoolText(decision)))
+		if authzReq.RequestID != "" {
+			printer.Println(fmt.Sprintf("%s: %s", aziclicommon.KeywordText("Request ID"), aziclicommon.CreateText(authzReq.RequestID)))
+		}
 		if !decision {
 			contextID := authzResp.Context.ID
 			if len(contextID) == 0 {
@@ -127,10 +130,10 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 			}
 			printer.Println(fmt.Sprintf("%s: %s", aziclicommon.KeywordText("Context ID"), aziclicommon.CreateText(contextID)))
 			if authzResp.Context.ReasonAdmin != nil {
-				printer.Println(fmt.Sprintf("  %s: Error: %s - %s ", aziclicommon.KeywordText("REASON ADMIN"), aziclicommon.IDText(authzResp.Context.ReasonAdmin.Code), authzResp.Context.ReasonAdmin.Message))
+				printer.Println(fmt.Sprintf("  %s: Error: %s - %s ", aziclicommon.KeywordText("Reason Admin"), aziclicommon.IDText(authzResp.Context.ReasonAdmin.Code), authzResp.Context.ReasonAdmin.Message))
 			}
 			if authzResp.Context.ReasonUser != nil {
-				printer.Println(fmt.Sprintf("  %s: Error: %s - %s ", aziclicommon.KeywordText("REASON USER"),  aziclicommon.IDText(authzResp.Context.ReasonUser.Code), authzResp.Context.ReasonUser.Message))
+				printer.Println(fmt.Sprintf("  %s: Error: %s - %s ", aziclicommon.KeywordText("Reason User"), aziclicommon.IDText(authzResp.Context.ReasonUser.Code), authzResp.Context.ReasonUser.Message))
 			}
 			if len(authzResp.Evaluations) > 0 {
 				printer.Println("Evaluations:")
@@ -145,10 +148,10 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 					}
 					printer.Println(fmt.Sprintf("  - %s: %s, %s: %s, %s: %v", aziclicommon.KeywordText("Request ID"), aziclicommon.CreateText(requestID), aziclicommon.KeywordText("Context ID"), aziclicommon.CreateText(contextID), aziclicommon.KeywordText("Decision"), eval.Decision))
 					if eval.Context.ReasonAdmin != nil {
-						printer.Println(fmt.Sprintf("    - %s: Error: %s - %s ", aziclicommon.KeywordText("REASON ADMIN"),  aziclicommon.IDText(eval.Context.ReasonAdmin.Code), eval.Context.ReasonAdmin.Message))
+						printer.Println(fmt.Sprintf("    - %s: Error: %s - %s ", aziclicommon.KeywordText("Reason Admin"), aziclicommon.IDText(eval.Context.ReasonAdmin.Code), eval.Context.ReasonAdmin.Message))
 					}
 					if eval.Context.ReasonUser != nil {
-						printer.Println(fmt.Sprintf("    - %s: Error: %s - %s ", aziclicommon.KeywordText("REASON USER"),  aziclicommon.IDText(eval.Context.ReasonUser.Code), eval.Context.ReasonUser.Message))
+						printer.Println(fmt.Sprintf("    - %s: Error: %s - %s ", aziclicommon.KeywordText("Reason User"), aziclicommon.IDText(eval.Context.ReasonUser.Code), eval.Context.ReasonUser.Message))
 					}
 				}
 			}
@@ -170,7 +173,7 @@ func createCommandForCheck(deps azcli.CliDependenciesProvider, v *viper.Viper) *
 
 Examples:
   # check an authorization request
-  permguard authz check --zoneid 268786704340 /path/to/authorization_request.json
+  permguard authz check --zoneid 273165098782 /path/to/authorization_request.json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCheck(deps, cmd, v, args)

@@ -22,7 +22,7 @@ To create a new version (e.g., `0.2`), follow these steps:
    Modify the `url` in the `config_default/menus/menus.en.toml` file to point to the new version, for example:
 
    ```toml
-   url = "/docs/0.2/getting-started/introduction-to-permguard/"
+   url = "/docs/0.2/getting-started/permguard-paradigm/"
    ```
 
 The application will automatically select the latest version from the docsVersions array as the default version of the documentation.

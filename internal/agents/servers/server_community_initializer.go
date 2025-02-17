@@ -44,7 +44,7 @@ Copyright © 2022 Nitro Agility S.r.l.
 
 %s
 
-  Find more information at: https://www.permguard.com/docs/0.1/devops/cli-flags/`
+  Find more information at: https://www.permguard.comdocs/0.1/devops/authz-server/configuration-options/`
 	hostInfos := map[azservices.HostKind]*azservices.HostInfo{
 		azservices.HostAllInOne: {Name: "AllInOne", Use: "all-in-one", Short: "The official Permguard Server - Start all services", Long: fmt.Sprintf(template, "Using this option all services are started.")},
 		azservices.HostZAP:      {Name: "ZAP (Zone Administration Point)", Use: "pdp", Short: "The official Permguard Server - Start the ZAP service", Long: fmt.Sprintf(template, "Using this option the Zone Administration Point (ZAP) service is started.")},

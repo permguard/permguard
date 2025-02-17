@@ -18,11 +18,11 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-In **PermGuard**, enforcement is handled by the **Policy Enforcement Point (PEP)**.
+In **Permguard**, enforcement is handled by the **Policy Enforcement Point (PEP)**.
 Its role is to verify whether an `identity` has permission to perform specific `actions` on `resources` within a given `namespace`.
 
 {{< callout context="note" icon="info-circle" >}}
-In the [MagicFarmacia sample](/docs/0.1/getting-started/adoption-through-example#integration-use-case-pharmacy-branch-management),
+In the [MagicFarmacia sample](/docs/0.1/getting-started/hands-on-examples#integration-use-case-pharmacy-branch-management),
 the application enforces a permission check on the `pharmacist` actor to determine if it has `view access`
 to the inventory for the `matera-branch` and `pisa-branch` tenants.
 {{< /callout >}}
@@ -34,7 +34,7 @@ To enforce access control, the **PEP** queries the **Policy Decision Point (PDP)
 ```json
 {
   "authorization_model": {
-    "zone_id": 268786704340,
+    "zone_id": 273165098782,
     "policy_store": {
       "type": "ledger",
       "id": "fd1ac44e4afa4fc4beec622494d3175a"
