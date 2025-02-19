@@ -19,13 +19,13 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The application, acting as a Policy Enforcement Point (PEP), enforces policies defined by the Policy Decision Point (PDP). It can use the PermGuard Go SDK to communicate with the PermGuard PDP.
+The application, acting as a Policy Enforcement Point (PEP), enforces policies defined by the Policy Decision Point (PDP). The Permguard Go SDK facilitates communication with the Permguard PDP.
 
-This communication happens through the AuthZ Client, a library that provides a straightforward interface to interact with the PermGuard AuthZ Server.
+This communication occurs through the `AuthZ Client`, a component that provides a straightforward interface for interacting with the Permguard `AuthZ Server`.
 
 ## Perform an Atomic Authorization Request
 
-To perform an atomic authorization request using the AZ Client, you need to create a new client and call the `Check` method.
+An `atomic authorization` request can be performed using the `AuthZ Client` by creating a new client instance and invoking the `Check` method.
 
 ```go
 // Create a new Permguard client
@@ -65,7 +65,11 @@ if decsion {
 
 ## Perform a Composed Authorization Request
 
-To perform a composed authorization request using the AZ Client, you need to create a new client and call the `Check` method.
+To perform a composed authorization request using the `AuthZ Client`, you need to create a new client and call the `Check` method.
+
+{{< callout context="note" icon="info-circle" >}}
+This type of request is designed for scenarios requiring greater control over the authorization request creation, as well as cases where multiple evaluations must be executed within a single request.
+{{< /callout >}}
 
 ```go
 // Create a new Permguard client
