@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "install-go-sdk-015640d9d85849c587b657391dd8e00e"
-weight: 9001
+weight: 9101
 toc: true
 seo:
   title: "" # custom title (optional)
