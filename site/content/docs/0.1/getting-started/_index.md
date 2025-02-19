@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "getting-started-4e0d0e0f89f7decc11eaad4ae9193018"
-weight: 1000
+weight: 1100
 toc: true
 seo:
   title: "" # custom title (optional)

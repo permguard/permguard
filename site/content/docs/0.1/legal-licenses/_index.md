@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "licenses-and-licenses-f426f9bb8eda49378637c326590cc4bf"
-weight: 10000
+weight: 11000
 toc: true
 seo:
   title: "" # custom title (optional)
