@@ -23,29 +23,39 @@ import Clipboard from "clipboard";
 
 const PYTHON_CODE = {
   before: `
-def check_permissions(token: str, system: str, resource: str, action: str):
-    payload = decode_jwt(token)
-    actors: List[str] = payload.get("actors", [])
-    for actor in actors:
-        actor_permissions = get_permissions_for_actor(actor)
-        if system in actor_permissions:
-            if resource in actor_permissions[system]:
-                if action in actor_permissions[system][resource]:
-                    # If all conditions match, permission is granted
-                    return True
-    # If no actor grants permission, return False
+def get_permissions_for_role(role: str) -> dict[str, dict[str, list[str]]]:
+    return {}
+
+def check_permissions(token: str, system: str, resource: str, action: str) -> bool:
+    payload = jwt.decode(token, options={"verify_signature": False})
+    roles = payload.get("role", [])
+
+    if not isinstance(roles, list):
+        return False
+
+    for role in roles:
+        role_permissions = get_permissions_for_role(role)
+        if resource in role_permissions and system in role_permissions[resource]:
+            if action.lower() in map(str.lower, role_permissions[resource][system]):
+                return True
     return False
 
-has_permissions = check_permissions(token, system, "inventory", "view")`,
-  after: `has_permissions =
-    principal,
-    policy_store,
-    entities,
-    subject,
-    resource,
-    action,
-    context
-)`,
+has_permissions = check_permissions(token, system, "subscription", "view")
+
+print("✅ Authorization Permitted" if has_permissions else "❌ Authorization Denied")`,
+  after: `from permguard import AZClient, AZAtomicRequestBuilder, WithPDPEndpoint
+
+az_client = AZClient(WithPDPEndpoint("localhost", 9094))
+
+req = (AZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494d3175a",
+        "amy.smith@acmecorp.com", "MagicFarmacia::Platform::Subscription",
+        "MagicFarmacia::Platform::Action::view")
+       .build())
+
+ok, _, _ = az_client.check(req)
+
+print("✅ Authorization Permitted" if ok else "❌ Authorization Denied")
+`,
 };
 
 const GO_CODE = {
