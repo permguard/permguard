@@ -1,6 +1,6 @@
 ---
-title: "SDKs"
-slug: "SDKs"
+title: "Go SDKs"
+slug: "Go SDKs"
 description: ""
 summary: ""
 date: 2024-02-18T17:14:43+01:00
@@ -9,8 +9,8 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "overview-9cd21b71d3d74cf5baf8d29b38c38963"
-weight: 9001
+    identifier: "golang-306e8eebb9074e27bbdc8920dc70566e"
+weight: 9000
 toc: true
 seo:
   title: "" # custom title (optional)
@@ -18,5 +18,3 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-
-PermGuard provides SDKs for various programming languages and platforms. These SDKs allow you to integrate PermGuard into your applications.
