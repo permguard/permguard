@@ -50,6 +50,11 @@ has_permissions = check_permissions(token, system, "inventory", "view")`,
 
 const GO_CODE = {
   before: `// BEFORE
+
+func getPermissionsForRole(role string) map[string]map[string][]string {
+  // Here boilerplate code to fetch permissions for a role
+}
+
 func checkPermissions(token, system, resource, action string) bool {
   payload := decodeJWT(token)
   roles, ok := payload["role"].([]string)
