@@ -19,4 +19,4 @@ seo:
   noindex: false # false (default) or true
 ---
 
-Permguard offers SDKs for various programming languages, enabling applications to seamlessly integrate with Permguard and function as a Policy Enforcement Point (PEP)
+**Permguard** offers `SDKs` for various `programming languages`, enabling applications to seamlessly integrate with `Permguard` and function as a `Policy Enforcement Point (PEP)`.
