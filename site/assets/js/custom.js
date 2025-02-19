@@ -49,39 +49,51 @@ has_permissions = check_permissions(token, system, "inventory", "view")`,
 };
 
 const GO_CODE = {
-  before: `
+  before: `// BEFORE
 func checkPermissions(token, system, resource, action string) bool {
-    payload := decodeJWT(token)
-    actors, ok := payload["actors"].([]string)
-    if !ok {
-        return false
-    }
+  payload := decodeJWT(token)
+  roles, ok := payload["role"].([]string)
+  if !ok {
+      return false
+  }
 
-    for _, actor := rangaactorles {
-        actorPermissions := getPermissionsForActor(actor)
-        if resources, systemFound := actorPermissions[resource]; systemFound {
-            if actions, resourceFound := resources[system]; resourceFound {
-                for _, allowedAction := range actions {
-                    if strings.EqualFold(allowedAction, action) {
-                        return true // Permission granted
-                    }
-                }
-            }
-        }
-    }
-    return false // No permission granted
+  for _, role := range roles {
+      rolePermissions := getPermissionsForRole(role)
+      if resources, systemFound := rolePermissions[resource]; systemFound {
+          if actions, resourceFound := resources[system]; resourceFound {
+              for _, allowedAction := range actions {
+                  if strings.EqualFold(allowedAction, action) {
+                      return true
+                  }
+              }
+          }
+      }
+  }
+  return false
 }
 
-hasPermissions := checkPermissions(token, system, "inventory", "view")`,
-  after: `hasPermissions := permguard.Check(
-    principal,
-    policyStore,
-    entities,
-    subject,
-    resource,
-    action,
-    context
-)`,
+hasPermissions := checkPermissions(token, system, "subscription", "view")
+if hasPermissions {
+  fmt.Println("✅ Authorization Permitted")
+} else {
+fmt.Println("❌ Authorization Denied")
+}`,
+  after: `// AFTER
+
+azClient := permguard.NewAZClient(
+	permguard.WithPDPEndpoint("localhost", 9094),
+)
+
+req := permguard.NewAZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494d3175a",
+	"amy.smith@acmecorp.com", "MagicFarmacia::Platform::Subscription", "MagicFarmacia::Platform::Action::view").
+	Build()
+
+ok, _, _ := azClient.Check(req)
+if decsion {
+	fmt.Println("✅ Authorization Permitted")
+} else {
+	fmt.Println("❌ Authorization Denied")
+}`,
 };
 
 const handleScroll = () => {
