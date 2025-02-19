@@ -53,6 +53,7 @@ const GO_CODE = {
 
 func getPermissionsForRole(role string) map[string]map[string][]string {
   // Here boilerplate code to fetch permissions for a role
+  return permissions
 }
 
 func checkPermissions(token, system, resource, action string) bool {
