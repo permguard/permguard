@@ -308,6 +308,10 @@
     </div>
     <pre slot="first" class="theme-devibeans"><code class="language-go">
 // BEFORE
+func getPermissionsForRole(role string) map[string]map[string][]string {
+  // Here boilerplate code to fetch permissions for a role
+}
+
 func checkPermissions(token, system, resource, action string) bool {
   payload := decodeJWT(token)
   roles, ok := payload["role"].([]string)
@@ -348,6 +352,10 @@ fmt.Println("❌ Authorization Denied")
     <img-comparison-slider>
       <pre slot="first" class="theme-devibeans"><code class="language-go">
 // BEFORE
+func getPermissionsForRole(role string) map[string]map[string][]string {
+  // Here boilerplate code to fetch permissions for a role
+}
+
 func checkPermissions(token, system, resource, action string) bool {
   payload := decodeJWT(token)
   roles, ok := payload["role"].([]string)
