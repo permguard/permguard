@@ -22,7 +22,7 @@ import Clipboard from "clipboard";
 // Put your custom JS code here
 
 const PYTHON_CODE = {
-  before: `
+  before: `# BEFORE
 def get_permissions_for_role(role: str) -> dict[str, dict[str, list[str]]]:
     return {}
 
@@ -43,7 +43,8 @@ def check_permissions(token: str, system: str, resource: str, action: str) -> bo
 has_permissions = check_permissions(token, system, "subscription", "view")
 
 print("✅ Authorization Permitted" if has_permissions else "❌ Authorization Denied")`,
-  after: `from permguard import AZClient, AZAtomicRequestBuilder, WithPDPEndpoint
+  after: `# AFTER
+from permguard import AZClient, AZAtomicRequestBuilder, WithPDPEndpoint
 
 az_client = AZClient(WithPDPEndpoint("localhost", 9094))
 
