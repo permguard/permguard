@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "architecture-dfa953a6911cef77d6c6272192c5ecbe"
-weight: 9100
+weight: 10100
 toc: true
 seo:
   title: "" # custom title (optional)

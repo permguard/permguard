@@ -1,16 +1,16 @@
 ---
-title: "Core Stack"
-slug: "Core Stack"
+title: "Go SDK"
+slug: "Go SDK"
 description: ""
 summary: ""
-date: 2023-08-28T19:38:58+01:00
-lastmod: 2023-08-28T19:38:58+01:00
+date: 2024-02-18T17:14:43+01:00
+lastmod: 2024-02-18T17:14:43+01:00
 draft: false
 menu:
   docs:
     parent: ""
-    identifier: "core-tech-6a7b0edaf27d9bc80a753502fd0eec8e"
-weight: 10000
+    identifier: "golang-306e8eebb9074e27bbdc8920dc70566e"
+weight: 9100
 toc: true
 seo:
   title: "" # custom title (optional)
