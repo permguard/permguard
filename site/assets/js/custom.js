@@ -22,66 +22,95 @@ import Clipboard from "clipboard";
 // Put your custom JS code here
 
 const PYTHON_CODE = {
-  before: `
-def check_permissions(token: str, system: str, resource: str, action: str):
-    payload = decode_jwt(token)
-    actors: List[str] = payload.get("actors", [])
-    for actor in actors:
-        actor_permissions = get_permissions_for_actor(actor)
-        if system in actor_permissions:
-            if resource in actor_permissions[system]:
-                if action in actor_permissions[system][resource]:
-                    # If all conditions match, permission is granted
-                    return True
-    # If no actor grants permission, return False
+  before: `# BEFORE
+def get_permissions_for_role(role: str) -> dict[str, dict[str, list[str]]]:
+    return {}
+
+def check_permissions(token: str, system: str, resource: str, action: str) -> bool:
+    payload = jwt.decode(token, options={"verify_signature": False})
+    roles = payload.get("role", [])
+
+    if not isinstance(roles, list):
+        return False
+
+    for role in roles:
+        role_permissions = get_permissions_for_role(role)
+        if resource in role_permissions and system in role_permissions[resource]:
+            if action.lower() in map(str.lower, role_permissions[resource][system]):
+                return True
     return False
 
-has_permissions = check_permissions(token, system, "inventory", "view")`,
-  after: `has_permissions =
-    principal,
-    policy_store,
-    entities,
-    subject,
-    resource,
-    action,
-    context
-)`,
+has_permissions = check_permissions(token, system, "subscription", "view")
+
+print("✅ Authorization Permitted" if has_permissions else "❌ Authorization Denied")`,
+  after: `# AFTER
+from permguard import AZClient, AZAtomicRequestBuilder, WithEndpoint
+
+az_client = AZClient(WithEndpoint("localhost", 9094))
+
+req = (AZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494d3175a",
+        "amy.smith@acmecorp.com", "MagicFarmacia::Platform::Subscription",
+        "MagicFarmacia::Platform::Action::view")
+       .build())
+
+ok, _, _ = az_client.check(req)
+
+print("✅ Authorization Permitted" if ok else "❌ Authorization Denied")
+`,
 };
 
 const GO_CODE = {
-  before: `
-func checkPermissions(token, system, resource, action string) bool {
-    payload := decodeJWT(token)
-    actors, ok := payload["actors"].([]string)
-    if !ok {
-        return false
-    }
+  before: `// BEFORE
 
-    for _, actor := rangaactorles {
-        actorPermissions := getPermissionsForActor(actor)
-        if resources, systemFound := actorPermissions[resource]; systemFound {
-            if actions, resourceFound := resources[system]; resourceFound {
-                for _, allowedAction := range actions {
-                    if strings.EqualFold(allowedAction, action) {
-                        return true // Permission granted
-                    }
-                }
-            }
-        }
-    }
-    return false // No permission granted
+func getPermissionsForRole(role string) map[string]map[string][]string {
+  // Here boilerplate code to fetch permissions for a role
+  return permissions
 }
 
-hasPermissions := checkPermissions(token, system, "inventory", "view")`,
-  after: `hasPermissions := permguard.Check(
-    principal,
-    policyStore,
-    entities,
-    subject,
-    resource,
-    action,
-    context
-)`,
+func checkPermissions(token, system, resource, action string) bool {
+  payload := decodeJWT(token)
+  roles, ok := payload["role"].([]string)
+  if !ok {
+      return false
+  }
+
+  for _, role := range roles {
+      rolePermissions := getPermissionsForRole(role)
+      if resources, systemFound := rolePermissions[resource]; systemFound {
+          if actions, resourceFound := resources[system]; resourceFound {
+              for _, allowedAction := range actions {
+                  if strings.EqualFold(allowedAction, action) {
+                      return true
+                  }
+              }
+          }
+      }
+  }
+  return false
+}
+
+hasPermissions := checkPermissions(token, system, "subscription", "view")
+if hasPermissions {
+  fmt.Println("✅ Authorization Permitted")
+} else {
+fmt.Println("❌ Authorization Denied")
+}`,
+  after: `// AFTER
+
+azClient := permguard.NewAZClient(
+	permguard.WithEndpoint("localhost", 9094),
+)
+
+req := azreq.NewAZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494d3175a",
+	"amy.smith@acmecorp.com", "MagicFarmacia::Platform::Subscription", "MagicFarmacia::Platform::Action::view").
+	Build()
+
+ok, _, _ := azClient.Check(req)
+if decsion {
+	fmt.Println("✅ Authorization Permitted")
+} else {
+	fmt.Println("❌ Authorization Denied")
+}`,
 };
 
 const handleScroll = () => {
