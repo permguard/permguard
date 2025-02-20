@@ -44,7 +44,7 @@ type codeLocalConfig struct {
 
 // CodeFile represents the code file.
 type CodeFile struct {
-	Type            string `json:"type"`
+	Kind            string `json:"kind"`
 	Path            string `json:"path"`
 	OID             string `json:"oid"`
 	OType           string `json:"otype"`

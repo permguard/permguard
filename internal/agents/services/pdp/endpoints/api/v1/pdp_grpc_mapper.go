@@ -29,7 +29,7 @@ func MapGrpcPolicyStoreToAgentPolicyStore(policyStore *PolicyStore) (*azmodelspd
 	}
 	target := &azmodelspdp.PolicyStore{}
 	target.ID = policyStore.ID
-	target.Type = policyStore.Type
+	target.Kind = policyStore.Kind
 	return target, nil
 }
 
@@ -40,7 +40,7 @@ func MapAgentPolicyStoreToGrpcPolicyStore(policyStore *azmodelspdp.PolicyStore) 
 	}
 	target := &PolicyStore{}
 	target.ID = policyStore.ID
-	target.Type = policyStore.Type
+	target.Kind = policyStore.Kind
 	return target, nil
 }
 
@@ -51,7 +51,7 @@ func MapGrpcPrincipalToAgentPrincipal(principal *Principal) (*azmodelspdp.Princi
 	}
 	target := &azmodelspdp.Principal{}
 	target.ID = principal.ID
-	target.Type = principal.Type
+	target.Kind = principal.Kind
 	if principal.Source != nil {
 		target.Source = *principal.Source
 	}
@@ -71,7 +71,7 @@ func MapAgentPrincipalToGrpcPrincipal(principal *azmodelspdp.Principal) (*Princi
 	}
 	target := &Principal{}
 	target.ID = principal.ID
-	target.Type = principal.Type
+	target.Kind = principal.Kind
 	if principal.Source != "" {
 		target.Source = &principal.Source
 	}
@@ -129,7 +129,7 @@ func MapGrpcSubjectToAgentSubject(subject *Subject) (*azmodelspdp.Subject, error
 	}
 	target := &azmodelspdp.Subject{}
 	target.ID = subject.ID
-	target.Type = subject.Type
+	target.Kind = subject.Kind
 	if subject.Source != nil {
 		target.Source = *subject.Source
 	}
@@ -146,7 +146,7 @@ func MapAgentSubjectToGrpcSubject(subject *azmodelspdp.Subject) (*Subject, error
 	}
 	target := &Subject{}
 	target.ID = subject.ID
-	target.Type = subject.Type
+	target.Kind = subject.Kind
 	if subject.Source != "" {
 		target.Source = &subject.Source
 	}
@@ -167,7 +167,7 @@ func MapGrpcResourceToAgentResource(resource *Resource) (*azmodelspdp.Resource, 
 	}
 	target := &azmodelspdp.Resource{}
 	target.ID = resource.ID
-	target.Type = resource.Type
+	target.Kind = resource.Kind
 	if resource.Properties != nil {
 		target.Properties = resource.Properties.AsMap()
 	}
@@ -181,7 +181,7 @@ func MapAgentResourceToGrpcResource(resource *azmodelspdp.Resource) (*Resource, 
 	}
 	target := &Resource{}
 	target.ID = resource.ID
-	target.Type = resource.Type
+	target.Kind = resource.Kind
 	if resource.Properties != nil {
 		data, err := structpb.NewStruct(resource.Properties)
 		if err != nil {
