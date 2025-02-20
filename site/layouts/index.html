@@ -390,7 +390,7 @@ fmt.Println("❌ Authorization Denied")
       <pre slot="second">
 <code class="language-go">// AFTER
 azClient := permguard.NewAZClient(
-  permguard.WithPDPEndpoint("localhost", 9094),
+  permguard.WithEndpoint("localhost", 9094),
 )
 
 req := azreq.NewAZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494d3175a",

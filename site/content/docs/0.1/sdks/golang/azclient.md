@@ -30,7 +30,7 @@ An `atomic authorization` request can be performed using the `AuthZ Client` by c
 ```go
 // Create a new Permguard client
 azClient := permguard.NewAZClient(
-  permguard.WithPDPEndpoint("localhost", 9094),
+  permguard.WithEndpoint("localhost", 9094),
 )
 
 // Create the Principal
@@ -91,7 +91,7 @@ This type of request is designed for scenarios requiring greater control over th
 ```go
 // Create a new Permguard client
 azClient := permguard.NewAZClient(
-  permguard.WithPDPEndpoint("localhost", 9094),
+  permguard.WithEndpoint("localhost", 9094),
 )
 
 // Create a new subject
