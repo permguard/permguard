@@ -44,9 +44,9 @@ has_permissions = check_permissions(token, system, "subscription", "view")
 
 print("✅ Authorization Permitted" if has_permissions else "❌ Authorization Denied")`,
   after: `# AFTER
-from permguard import AZClient, AZAtomicRequestBuilder, WithPDPEndpoint
+from permguard import AZClient, AZAtomicRequestBuilder, WithEndpoint
 
-az_client = AZClient(WithPDPEndpoint("localhost", 9094))
+az_client = AZClient(WithEndpoint("localhost", 9094))
 
 req = (AZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494d3175a",
         "amy.smith@acmecorp.com", "MagicFarmacia::Platform::Subscription",
@@ -98,7 +98,7 @@ fmt.Println("❌ Authorization Denied")
   after: `// AFTER
 
 azClient := permguard.NewAZClient(
-	permguard.WithPDPEndpoint("localhost", 9094),
+	permguard.WithEndpoint("localhost", 9094),
 )
 
 req := azreq.NewAZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494d3175a",
