@@ -29,12 +29,14 @@ An `atomic authorization` request can be performed using the `AuthZ Client` by c
 
 ```go
 // Create a new Permguard client
-azClient := permguard.New(
+azClient := permguard.NewAZClient(
   permguard.WithPDPEndpoint("localhost", 9094),
 )
 
+// Create the Principal
 principal := azreq.NewPrincipalBuilder("amy.smith@acmecorp.com").Build()
 
+// Create the entities
 entities := []map[string]any{
   {
     "uid": map[string]any{
@@ -55,7 +57,7 @@ req := azreq.NewAZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494
   // Principal
   WithPrincipal(principal).
   // Entities
-  WithEntitiesItems("cedar", entities).
+  WithEntitiesItems(azreq.cedarentitykind, entities).
   // Subject
   WithSubjectKind("user").
   WithSubjectSource("keycloack").
@@ -91,8 +93,6 @@ This type of request is designed for scenarios requiring greater control over th
 azClient := permguard.NewAZClient(
   permguard.WithPDPEndpoint("localhost", 9094),
 )
-
-principal := azreq.NewPrincipalBuilder("amy.smith@acmecorp.com").Build()
 
 // Create a new subject
 subject := azreq.NewSubjectBuilder("amy.smith@acmecorp.com").
@@ -135,6 +135,10 @@ evaluationCreate := azreq.NewAZEvaluationBuilder(subject, resource, actionCreate
   WithContext(context).
   Build()
 
+// Create the Principal
+principal := azreq.NewPrincipalBuilder("amy.smith@acmecorp.com").Build()
+
+// Create the entities
 entities := []map[string]any{
   {
     "uid": map[string]any{
@@ -150,7 +154,7 @@ entities := []map[string]any{
 
 // Create a new request
 req := azreq.NewAZRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494d3175a").
-  WithEntitiesItems("cedar", entities).
+  WithEntitiesItems(azreq.cedarentitykind, entities).
   WithEvaluation(evaluationView).
   WithEvaluation(evaluationCreate).
   Build()
