@@ -19,9 +19,9 @@ package centralstorage
 import (
 	"github.com/jmoiron/sqlx"
 
-	azids "github.com/permguard/permguard-core/pkg/extensions/ids"
 	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azids "github.com/permguard/permguard-core/pkg/extensions/ids"
 	azauthz "github.com/permguard/permguard/pkg/authorization"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
@@ -176,8 +176,8 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 
 	for _, expandedRequest := range request.Evaluations {
 		authzCtx := azauthz.Authorizationmodel{}
-		authzCtx.SetSubject(expandedRequest.Subject.Type, expandedRequest.Subject.ID, expandedRequest.Subject.Source, expandedRequest.Subject.Properties)
-		authzCtx.SetResource(expandedRequest.Resource.Type, expandedRequest.Resource.ID, expandedRequest.Resource.Properties)
+		authzCtx.SetSubject(expandedRequest.Subject.Kind, expandedRequest.Subject.ID, expandedRequest.Subject.Source, expandedRequest.Subject.Properties)
+		authzCtx.SetResource(expandedRequest.Resource.Kind, expandedRequest.Resource.ID, expandedRequest.Resource.Properties)
 		authzCtx.SetAction(expandedRequest.Action.Name, expandedRequest.Action.Properties)
 		authzCtx.SetContext(expandedRequest.Context)
 		entities := request.Authorizationmodel.Entities
@@ -194,8 +194,8 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 		}
 		evaluationResponse := azmodelspdp.EvaluationResponse{
 			RequestID: expandedRequest.RequestID,
-			Decision: authzResponse.GetDecision(),
-			Context:  authorizationCheckBuildContextResponse(authzResponse),
+			Decision:  authzResponse.GetDecision(),
+			Context:   authorizationCheckBuildContextResponse(authzResponse),
 		}
 		authzCheckResponse.Evaluations = append(authzCheckResponse.Evaluations, evaluationResponse)
 	}

@@ -18,13 +18,13 @@ package pdp
 
 // PolicyStore is the location where policies are maintained.
 type PolicyStore struct {
-	Type string `json:"type,omitempty"`
+	Kind string `json:"kind,omitempty"`
 	ID   string `json:"id,omitempty" validate:"required"`
 }
 
 // Principal represents the entity making the request.
 type Principal struct {
-	Type          string `json:"type,omitempty"`
+	Kind          string `json:"kind,omitempty"`
 	ID            string `json:"id,omitempty" validate:"required"`
 	Source        string `json:"source,omitempty"`
 	IdentityToken string `json:"identity_token,omitempty"`
@@ -39,7 +39,7 @@ type Entities struct {
 
 // Subject is the entity on which the authorization decision is made.
 type Subject struct {
-	Type       string         `json:"type,omitempty"`
+	Kind       string         `json:"kind,omitempty"`
 	ID         string         `json:"id,omitempty" validate:"required"`
 	Source     string         `json:"source,omitempty"`
 	Properties map[string]any `json:"properties,omitempty"`
@@ -47,7 +47,7 @@ type Subject struct {
 
 // Resource is the entity on which the authorization decision is made.
 type Resource struct {
-	Type       string         `json:"type,omitempty"`
+	Kind       string         `json:"kind,omitempty"`
 	ID         string         `json:"id,omitempty" validate:"required"`
 	Properties map[string]any `json:"properties,omitempty"`
 }
@@ -61,8 +61,8 @@ type Action struct {
 // AuthorizationCheck Request
 
 const (
-	// PolicyLedgerType represents the type of the policy store.
-	PolicyLedgerType = "policy"
+	// PolicyLedgerKind represents the type of the policy store.
+	PolicyLedgerKind = "policy"
 )
 
 // AuthorizationModelRequest is the input context for making the authorization decision.
@@ -91,11 +91,11 @@ type AuthorizationCheckRequest struct {
 // AuthorizationCheckWithDefaultsRequest represents the request to perform an authorization decision with defaults.
 type AuthorizationCheckWithDefaultsRequest struct {
 	AuthorizationCheckRequest
-	RequestID string 		`json:"request_id,omitempty"`
-	Subject  *Subject       `json:"subject,omitempty"`
-	Resource *Resource      `json:"resource,omitempty"`
-	Action   *Action        `json:"action,omitempty"`
-	Context  map[string]any `json:"context,omitempty"`
+	RequestID string         `json:"request_id,omitempty"`
+	Subject   *Subject       `json:"subject,omitempty"`
+	Resource  *Resource      `json:"resource,omitempty"`
+	Action    *Action        `json:"action,omitempty"`
+	Context   map[string]any `json:"context,omitempty"`
 }
 
 // AuthorizationCheck Response
@@ -122,7 +122,7 @@ type EvaluationResponse struct {
 
 // AuthorizationCheckResponse represents the outcome of the authorization decision.
 type AuthorizationCheckResponse struct {
-	RequestID string           		 `json:"request_id,omitempty"`
+	RequestID   string               `json:"request_id,omitempty"`
 	Decision    bool                 `json:"decision" validate:"required"`
 	Context     *ContextResponse     `json:"context,omitempty"`
 	Evaluations []EvaluationResponse `json:"evaluations,omitempty"`
