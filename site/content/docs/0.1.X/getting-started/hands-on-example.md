@@ -98,7 +98,7 @@ The following changes have been identified and are ready to be applied:
 
   + 2c36582597d15df6df4e8b03c4bcae87a92d58a27548291fc92023043e0ee0e2 platform-manager
   + 446f73d58cc36b3b9f2aa644945cfb8fdc92596a5ab6f21ab87e7d1c7461c31b platform-auditor
-  + d5a767678430a3ec8d1d6c32764e9f7323987b95337840d8c276345d8f7a1aab anyone-read
+  + d5a767678430a3ec8d1d6c32764e9f7323987b95337840d8c276345d8f7a1aab platform-view
   + 6b9215b4696f02629f2eac4a039840a8ed46a9f31e6bfe89d3b8e6f6b6c4b23e platform-creator
   + ba402e8797e48b8d36a029632c150fbe4d873b3dcd075d7fc52420c4c919339a platform-administrator
   + 0bc0aaefc5c96f1ca318c01fef32863273b83c2820ca7f3baf2ddafd73e6ce32 schema
@@ -145,7 +145,7 @@ Your workspace objects:
   - 6b9215b4696f02629f2eac4a039840a8ed46a9f31e6bfe89d3b8e6f6b6c4b23e blob platform-creator
   - ba402e8797e48b8d36a029632c150fbe4d873b3dcd075d7fc52420c4c919339a blob platform-administrator
   - cdcd1ea6a74a41ce5a61f4d556c1d15bde70660928ad5d57aa84834a3a01f291 tree
-  - d5a767678430a3ec8d1d6c32764e9f7323987b95337840d8c276345d8f7a1aab blob anyone-read
+  - d5a767678430a3ec8d1d6c32764e9f7323987b95337840d8c276345d8f7a1aab blob platform-view
 
 total 8, commit 1, tree 1, blob 6
 ```
