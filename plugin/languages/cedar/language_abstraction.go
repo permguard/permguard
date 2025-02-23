@@ -329,7 +329,7 @@ func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(langID, lang
 }
 
 // AuthorizationCheck checks the authorization.
-func (abs *CedarLanguageAbstraction) AuthorizationCheck(contextID string, policyStore *azauthz.PolicyStore, authzCtx *azauthz.Authorizationmodel) (*azauthz.AuthorizationDecision, error) {
+func (abs *CedarLanguageAbstraction) AuthorizationCheck(contextID string, policyStore *azauthz.PolicyStore, authzCtx *azauthz.AuthorizationModel) (*azauthz.AuthorizationDecision, error) {
 	const errMsgBadRequest = "bad request for %s"
 	errMsgBadEntities := fmt.Sprintf(errMsgBadRequest, "entities")
 

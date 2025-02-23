@@ -23,15 +23,15 @@ import (
 // authorizationCheckExpandAuthorizationCheckWithDefaults expands the authorization check with defaults.
 func authorizationCheckExpandAuthorizationCheckWithDefaults(request *azmodelspdp.AuthorizationCheckWithDefaultsRequest) (*azmodelspdp.AuthorizationCheckRequest, error) {
 	expReq := &azmodelspdp.AuthorizationCheckRequest{}
-	expReq.Authorizationmodel = request.Authorizationmodel
+	expReq.AuthorizationModel = request.AuthorizationModel
 
 	if len(request.Evaluations) == 0 {
 		expRequest := azmodelspdp.EvaluationRequest{
 			RequestID: request.RequestID,
-			Subject:  request.Subject,
-			Resource: request.Resource,
-			Action:   request.Action,
-			Context:  request.Context,
+			Subject:   request.Subject,
+			Resource:  request.Resource,
+			Action:    request.Action,
+			Context:   request.Context,
 		}
 		expReq.Evaluations = []azmodelspdp.EvaluationRequest{expRequest}
 	} else {
@@ -39,10 +39,10 @@ func authorizationCheckExpandAuthorizationCheckWithDefaults(request *azmodelspdp
 		for _, evaluation := range request.Evaluations {
 			expRequest := azmodelspdp.EvaluationRequest{
 				RequestID: request.RequestID,
-				Subject:  request.Subject,
-				Resource: request.Resource,
-				Action:   request.Action,
-				Context:  request.Context,
+				Subject:   request.Subject,
+				Resource:  request.Resource,
+				Action:    request.Action,
+				Context:   request.Context,
 			}
 			if len(evaluation.RequestID) > 0 {
 				expRequest.RequestID = evaluation.RequestID

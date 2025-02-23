@@ -117,7 +117,7 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 	authzCheckResponse.Context = &azmodelspdp.ContextResponse{}
 	authzCheckResponse.Evaluations = []azmodelspdp.EvaluationResponse{}
 
-	authzCtx := request.Authorizationmodel
+	authzCtx := request.AuthorizationModel
 
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -175,12 +175,12 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 	}
 
 	for _, expandedRequest := range request.Evaluations {
-		authzCtx := azauthz.Authorizationmodel{}
+		authzCtx := azauthz.AuthorizationModel{}
 		authzCtx.SetSubject(expandedRequest.Subject.Kind, expandedRequest.Subject.ID, expandedRequest.Subject.Source, expandedRequest.Subject.Properties)
 		authzCtx.SetResource(expandedRequest.Resource.Kind, expandedRequest.Resource.ID, expandedRequest.Resource.Properties)
 		authzCtx.SetAction(expandedRequest.Action.Name, expandedRequest.Action.Properties)
 		authzCtx.SetContext(expandedRequest.Context)
-		entities := request.Authorizationmodel.Entities
+		entities := request.AuthorizationModel.Entities
 		if entities != nil {
 			authzCtx.SetEntities(entities.Schema, entities.Items)
 		}
