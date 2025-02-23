@@ -273,7 +273,6 @@ function addCopyToClipboardCedar() {
 
   var clipboard = new Clipboard(".btn-copy", {
     target: function (trigger) {
-      console.log(trigger.parentNode.parentNode);
       return trigger.parentNode.parentNode;
     },
   });
