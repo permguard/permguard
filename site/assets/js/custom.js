@@ -273,7 +273,7 @@ function addCopyToClipboardCedar() {
 
   var clipboard = new Clipboard(".btn-copy", {
     target: function (trigger) {
-      return trigger.parentNode.nextElementSibling;
+      return trigger.parentNode.parentNode;
     },
   });
 
@@ -294,28 +294,5 @@ function addCopyToClipboardCedar() {
 }
 
 window.onload = function () {
-  if (window.location.pathname === "/") {
-    hljs.highlightAll();
-  } else {
-    var languages = [
-      "python",
-      "go",
-      "cedar",
-      "java",
-      "json",
-      "yaml",
-      "rego",
-      "bash",
-    ];
-
-    languages.forEach((language) => {
-      document
-        .querySelectorAll(`pre code.language-${language}`)
-        .forEach((block) => {
-          hljs.highlightElement(block);
-        });
-    });
-
-    addCopyToClipboardCedar();
-  }
+  addCopyToClipboardCedar();
 };
