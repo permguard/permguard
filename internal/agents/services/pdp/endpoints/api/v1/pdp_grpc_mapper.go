@@ -293,8 +293,8 @@ func MapAgentEvaluationRequestToGrpcEvaluationRequest(evaluationRequest *azmodel
 	return target, nil
 }
 
-// MapGrpcAuthorizationmodelRequestToAgentAuthorizationmodelRequest maps the gRPC authorization context request to the agent authorization context request.
-func MapGrpcAuthorizationmodelRequestToAgentAuthorizationmodelRequest(request *AuthorizationmodelRequest) (*azmodelspdp.AuthorizationModelRequest, error) {
+// MapGrpcAuthorizationModelRequestToAgentAuthorizationModelRequest maps the gRPC authorization context request to the agent authorization context request.
+func MapGrpcAuthorizationModelRequestToAgentAuthorizationModelRequest(request *AuthorizationModelRequest) (*azmodelspdp.AuthorizationModelRequest, error) {
 	req := &azmodelspdp.AuthorizationModelRequest{}
 	req.ZoneID = request.ZoneID
 	if request.PolicyStore != nil {
@@ -321,9 +321,9 @@ func MapGrpcAuthorizationmodelRequestToAgentAuthorizationmodelRequest(request *A
 	return req, nil
 }
 
-// MapAgentAuthorizationmodelRequestToGrpcAuthorizationmodelRequest maps the agent authorization context request to the gRPC authorization context request.
-func MapAgentAuthorizationmodelRequestToGrpcAuthorizationmodelRequest(request *azmodelspdp.AuthorizationModelRequest) (*AuthorizationmodelRequest, error) {
-	req := &AuthorizationmodelRequest{}
+// MapAgentAuthorizationModelRequestToGrpcAuthorizationModelRequest maps the agent authorization context request to the gRPC authorization context request.
+func MapAgentAuthorizationModelRequestToGrpcAuthorizationModelRequest(request *azmodelspdp.AuthorizationModelRequest) (*AuthorizationModelRequest, error) {
+	req := &AuthorizationModelRequest{}
 	req.ZoneID = request.ZoneID
 	if request.PolicyStore != nil {
 		policyStore, err := MapAgentPolicyStoreToGrpcPolicyStore(request.PolicyStore)
@@ -360,12 +360,12 @@ func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *A
 	} else {
 		req.RequestID = ""
 	}
-	if request.Authorizationmodel != nil {
-		authorizationmodel, err := MapGrpcAuthorizationmodelRequestToAgentAuthorizationmodelRequest(request.Authorizationmodel)
+	if request.AuthorizationModel != nil {
+		AuthorizationModel, err := MapGrpcAuthorizationModelRequestToAgentAuthorizationModelRequest(request.AuthorizationModel)
 		if err != nil {
 			return nil, err
 		}
-		req.Authorizationmodel = authorizationmodel
+		req.AuthorizationModel = AuthorizationModel
 	}
 	if request.Subject != nil {
 		subject, err := MapGrpcSubjectToAgentSubject(request.Subject)
@@ -424,12 +424,12 @@ func MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest(request *a
 		return nil, nil
 	}
 	req := &AuthorizationCheckRequest{}
-	if request.Authorizationmodel != nil {
-		authorizationmodel, err := MapAgentAuthorizationmodelRequestToGrpcAuthorizationmodelRequest(request.Authorizationmodel)
+	if request.AuthorizationModel != nil {
+		AuthorizationModel, err := MapAgentAuthorizationModelRequestToGrpcAuthorizationModelRequest(request.AuthorizationModel)
 		if err != nil {
 			return nil, err
 		}
-		req.Authorizationmodel = authorizationmodel
+		req.AuthorizationModel = AuthorizationModel
 	}
 	if len(request.RequestID) > 0 {
 		req.RequestID = &request.RequestID

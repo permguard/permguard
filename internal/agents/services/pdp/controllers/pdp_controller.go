@@ -52,15 +52,15 @@ func NewPDPController(serviceContext *azservices.ServiceContext, storage azStora
 // AuthorizationCheck checks if the request is authorized.
 func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckWithDefaultsRequest) (*azmodelspdp.AuthorizationCheckResponse, error) {
 	const errMsgBadRequest = "bad request for %s"
-	if request == nil || request.Authorizationmodel == nil || request.Authorizationmodel.PolicyStore == nil {
+	if request == nil || request.AuthorizationModel == nil || request.AuthorizationModel.PolicyStore == nil {
 		errMsg := fmt.Sprintf(errMsgBadRequest, "required fields")
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 	}
-	if request.Authorizationmodel.ZoneID == 0 {
+	if request.AuthorizationModel.ZoneID == 0 {
 		errMsg := fmt.Sprintf(errMsgBadRequest, "zone id")
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 	}
-	policyStore := request.Authorizationmodel.PolicyStore
+	policyStore := request.AuthorizationModel.PolicyStore
 	if strings.ToLower(policyStore.Kind) != LedgerType {
 		errMsg := fmt.Sprintf(errMsgBadRequest, "policy store kind")
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
@@ -74,7 +74,7 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 		errMsg := fmt.Sprintf(errMsgBadRequest, "the expanded request")
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 	}
-	principal := request.Authorizationmodel.Principal
+	principal := request.AuthorizationModel.Principal
 	if principal == nil {
 		errMsg := fmt.Sprintf(errMsgBadRequest, "principal")
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
