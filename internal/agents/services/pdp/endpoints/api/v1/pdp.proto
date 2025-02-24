@@ -1,4 +1,4 @@
-// Copyright 2024 Nitro Agility S.r.l.
+// Copyright 2025 Nitro Agility S.r.l.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ message PolicyStore {
 
 // Principal represents the entity making the request.
 message Principal {
-	string Kind = 1;
+	string Type = 1;
 	string ID = 2;
 	optional string Source = 3;
 	optional string IdentityToken = 4;
@@ -45,7 +45,7 @@ message Entities {
 
 // Subject is the entity on which the authorization decision is made.
 message Subject {
-	string Kind = 1;
+	string Type = 1;
 	string ID = 2;
 	optional string Source = 3;
 	optional google.protobuf.Struct Properties = 4;
@@ -53,7 +53,7 @@ message Subject {
 
 // Resource is the entity on which the authorization decision is made.
 message Resource {
-	string Kind = 1;
+	string Type = 1;
 	string ID = 2;
 	optional google.protobuf.Struct Properties = 3;
 }
