@@ -24,13 +24,13 @@ option go_package = "github.com/permguard/permguard/internal/hosts/api/pdp/v1";
 
 // PolicyStore is the location where policies are maintained.
 message PolicyStore {
-	string Type = 1;
+	string Kind = 1;
 	string ID = 2;
 }
 
 // Principal represents the entity making the request.
 message Principal {
-	string Type = 1;
+	string Kind = 1;
 	string ID = 2;
 	optional string Source = 3;
 	optional string IdentityToken = 4;
@@ -45,7 +45,7 @@ message Entities {
 
 // Subject is the entity on which the authorization decision is made.
 message Subject {
-	string Type = 1;
+	string Kind = 1;
 	string ID = 2;
 	optional string Source = 3;
 	optional google.protobuf.Struct Properties = 4;
@@ -53,7 +53,7 @@ message Subject {
 
 // Resource is the entity on which the authorization decision is made.
 message Resource {
-	string Type = 1;
+	string Kind = 1;
 	string ID = 2;
 	optional google.protobuf.Struct Properties = 3;
 }
@@ -66,8 +66,8 @@ message Action {
 
 // AuthorizationCheck Request
 
-// AuthorizationmodelRequest is the input context for making the authorization decision.
-message AuthorizationmodelRequest {
+// AuthorizationModelRequest is the input context for making the authorization decision.
+message AuthorizationModelRequest {
 	int64 ZoneID = 1;
 	PolicyStore PolicyStore = 2;
 	optional Principal Principal = 3;
@@ -85,7 +85,7 @@ message EvaluationRequest {
 
 // AuthorizationCheckRequest represents the request to perform an authorization decision.
 message AuthorizationCheckRequest {
-	AuthorizationmodelRequest Authorizationmodel = 1;
+	AuthorizationModelRequest AuthorizationModel = 1;
 	optional string RequestID = 2;
 	optional Subject Subject = 3;
 	optional Resource Resource = 4;

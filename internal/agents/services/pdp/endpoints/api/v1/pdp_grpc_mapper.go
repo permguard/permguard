@@ -29,7 +29,7 @@ func MapGrpcPolicyStoreToAgentPolicyStore(policyStore *PolicyStore) (*azmodelspd
 	}
 	target := &azmodelspdp.PolicyStore{}
 	target.ID = policyStore.ID
-	target.Type = policyStore.Type
+	target.Kind = policyStore.Kind
 	return target, nil
 }
 
@@ -40,7 +40,7 @@ func MapAgentPolicyStoreToGrpcPolicyStore(policyStore *azmodelspdp.PolicyStore) 
 	}
 	target := &PolicyStore{}
 	target.ID = policyStore.ID
-	target.Type = policyStore.Type
+	target.Kind = policyStore.Kind
 	return target, nil
 }
 
@@ -51,7 +51,7 @@ func MapGrpcPrincipalToAgentPrincipal(principal *Principal) (*azmodelspdp.Princi
 	}
 	target := &azmodelspdp.Principal{}
 	target.ID = principal.ID
-	target.Type = principal.Type
+	target.Kind = principal.Kind
 	if principal.Source != nil {
 		target.Source = *principal.Source
 	}
@@ -71,7 +71,7 @@ func MapAgentPrincipalToGrpcPrincipal(principal *azmodelspdp.Principal) (*Princi
 	}
 	target := &Principal{}
 	target.ID = principal.ID
-	target.Type = principal.Type
+	target.Kind = principal.Kind
 	if principal.Source != "" {
 		target.Source = &principal.Source
 	}
@@ -129,7 +129,7 @@ func MapGrpcSubjectToAgentSubject(subject *Subject) (*azmodelspdp.Subject, error
 	}
 	target := &azmodelspdp.Subject{}
 	target.ID = subject.ID
-	target.Type = subject.Type
+	target.Kind = subject.Kind
 	if subject.Source != nil {
 		target.Source = *subject.Source
 	}
@@ -146,7 +146,7 @@ func MapAgentSubjectToGrpcSubject(subject *azmodelspdp.Subject) (*Subject, error
 	}
 	target := &Subject{}
 	target.ID = subject.ID
-	target.Type = subject.Type
+	target.Kind = subject.Kind
 	if subject.Source != "" {
 		target.Source = &subject.Source
 	}
@@ -167,7 +167,7 @@ func MapGrpcResourceToAgentResource(resource *Resource) (*azmodelspdp.Resource, 
 	}
 	target := &azmodelspdp.Resource{}
 	target.ID = resource.ID
-	target.Type = resource.Type
+	target.Kind = resource.Kind
 	if resource.Properties != nil {
 		target.Properties = resource.Properties.AsMap()
 	}
@@ -181,7 +181,7 @@ func MapAgentResourceToGrpcResource(resource *azmodelspdp.Resource) (*Resource, 
 	}
 	target := &Resource{}
 	target.ID = resource.ID
-	target.Type = resource.Type
+	target.Kind = resource.Kind
 	if resource.Properties != nil {
 		data, err := structpb.NewStruct(resource.Properties)
 		if err != nil {
@@ -293,8 +293,8 @@ func MapAgentEvaluationRequestToGrpcEvaluationRequest(evaluationRequest *azmodel
 	return target, nil
 }
 
-// MapGrpcAuthorizationmodelRequestToAgentAuthorizationmodelRequest maps the gRPC authorization context request to the agent authorization context request.
-func MapGrpcAuthorizationmodelRequestToAgentAuthorizationmodelRequest(request *AuthorizationmodelRequest) (*azmodelspdp.AuthorizationModelRequest, error) {
+// MapGrpcAuthorizationModelRequestToAgentAuthorizationModelRequest maps the gRPC authorization context request to the agent authorization context request.
+func MapGrpcAuthorizationModelRequestToAgentAuthorizationModelRequest(request *AuthorizationModelRequest) (*azmodelspdp.AuthorizationModelRequest, error) {
 	req := &azmodelspdp.AuthorizationModelRequest{}
 	req.ZoneID = request.ZoneID
 	if request.PolicyStore != nil {
@@ -321,9 +321,9 @@ func MapGrpcAuthorizationmodelRequestToAgentAuthorizationmodelRequest(request *A
 	return req, nil
 }
 
-// MapAgentAuthorizationmodelRequestToGrpcAuthorizationmodelRequest maps the agent authorization context request to the gRPC authorization context request.
-func MapAgentAuthorizationmodelRequestToGrpcAuthorizationmodelRequest(request *azmodelspdp.AuthorizationModelRequest) (*AuthorizationmodelRequest, error) {
-	req := &AuthorizationmodelRequest{}
+// MapAgentAuthorizationModelRequestToGrpcAuthorizationModelRequest maps the agent authorization context request to the gRPC authorization context request.
+func MapAgentAuthorizationModelRequestToGrpcAuthorizationModelRequest(request *azmodelspdp.AuthorizationModelRequest) (*AuthorizationModelRequest, error) {
+	req := &AuthorizationModelRequest{}
 	req.ZoneID = request.ZoneID
 	if request.PolicyStore != nil {
 		policyStore, err := MapAgentPolicyStoreToGrpcPolicyStore(request.PolicyStore)
@@ -360,12 +360,12 @@ func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *A
 	} else {
 		req.RequestID = ""
 	}
-	if request.Authorizationmodel != nil {
-		authorizationmodel, err := MapGrpcAuthorizationmodelRequestToAgentAuthorizationmodelRequest(request.Authorizationmodel)
+	if request.AuthorizationModel != nil {
+		AuthorizationModel, err := MapGrpcAuthorizationModelRequestToAgentAuthorizationModelRequest(request.AuthorizationModel)
 		if err != nil {
 			return nil, err
 		}
-		req.Authorizationmodel = authorizationmodel
+		req.AuthorizationModel = AuthorizationModel
 	}
 	if request.Subject != nil {
 		subject, err := MapGrpcSubjectToAgentSubject(request.Subject)
@@ -424,12 +424,12 @@ func MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest(request *a
 		return nil, nil
 	}
 	req := &AuthorizationCheckRequest{}
-	if request.Authorizationmodel != nil {
-		authorizationmodel, err := MapAgentAuthorizationmodelRequestToGrpcAuthorizationmodelRequest(request.Authorizationmodel)
+	if request.AuthorizationModel != nil {
+		AuthorizationModel, err := MapAgentAuthorizationModelRequestToGrpcAuthorizationModelRequest(request.AuthorizationModel)
 		if err != nil {
 			return nil, err
 		}
-		req.Authorizationmodel = authorizationmodel
+		req.AuthorizationModel = AuthorizationModel
 	}
 	if len(request.RequestID) > 0 {
 		req.RequestID = &request.RequestID

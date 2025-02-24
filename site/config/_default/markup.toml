@@ -22,9 +22,9 @@ defaultMarkdownHandler = "goldmark"
   lineNoStart = 1
   lineNos = false
   lineNumbersInTable = false
-  noClasses = false
+  noClasses = true
   noHl = false
-  style = 'monokai'
+  style = 'doom-one2'
   tabWidth = 2
 
 [tableOfContents]

@@ -12,7 +12,7 @@ To create a new version (e.g., `0.2`), follow these steps:
    Add the new version to the `docsVersions` array as shown below:
 
    ```toml
-   docsVersions = ["0.1", "0.2"]
+   docsVersions = ["0.1.x", "0.2.x"]
    ```
 
 2. **Create a new folder for the new version**
