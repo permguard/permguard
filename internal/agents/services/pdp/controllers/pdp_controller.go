@@ -83,7 +83,7 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 		errMsg := fmt.Sprintf(errMsgBadRequest, "principal id")
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 	}
-	if azmodelspdp.IsValidIdentiyType(principal.Kind) == false {
+	if azmodelspdp.IsValidIdentiyType(principal.Type) == false {
 		errMsg := fmt.Sprintf(errMsgBadRequest, "principal kind")
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 	}
@@ -92,7 +92,7 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 			errMsg := fmt.Sprintf(errMsgBadRequest, "subject id")
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 		}
-		if azmodelspdp.IsValidIdentiyType(evaluation.Subject.Kind) == false {
+		if azmodelspdp.IsValidIdentiyType(evaluation.Subject.Type) == false {
 			errMsg := fmt.Sprintf(errMsgBadRequest, "subject kind")
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 		}
@@ -104,7 +104,7 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 			errMsg := fmt.Sprintf(errMsgBadRequest, "resource id")
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 		}
-		if len(strings.TrimSpace(evaluation.Resource.Kind)) == 0 {
+		if len(strings.TrimSpace(evaluation.Resource.Type)) == 0 {
 			errMsg := fmt.Sprintf(errMsgBadRequest, "resource kind")
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 		}
