@@ -58,14 +58,14 @@ func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastracti
 	}
 	codeFiles := make([]azicliwkscosp.CodeFile, len(files))
 	for i, file := range files {
-		codeFiles[i] = azicliwkscosp.CodeFile{Type: azicliwkscosp.CodeFileTypeOfCodeType, Path: file}
+		codeFiles[i] = azicliwkscosp.CodeFile{Kind: azicliwkscosp.CodeFileTypeOfCodeType, Path: file}
 	}
 	existingSchemaFiles := []string{}
 	for _, schemaFile := range suppSchemaFNames {
 		if exists, _ := m.persMgr.CheckPathIfExists(azicliwkspers.WorkspaceDir, schemaFile); exists {
 			schemaFileName := m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaFile)
 			existingSchemaFiles = append(existingSchemaFiles, schemaFileName)
-			codeFiles = append(codeFiles, azicliwkscosp.CodeFile{Type: azicliwkscosp.CodeFileOfSchemaType, Path: schemaFileName})
+			codeFiles = append(codeFiles, azicliwkscosp.CodeFile{Kind: azicliwkscosp.CodeFileOfSchemaType, Path: schemaFileName})
 		}
 	}
 	schemaFileSet := make(map[string]struct{})
@@ -82,13 +82,13 @@ func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastracti
 	normalizedCodeFiles := []azicliwkscosp.CodeFile{}
 	for _, codeFile := range codeFiles {
 		relativePath, _ := filepath.Rel(pwd, codeFile.Path)
-		newCodeFile := azicliwkscosp.CodeFile{Type: codeFile.Type, Path: relativePath}
+		newCodeFile := azicliwkscosp.CodeFile{Kind: codeFile.Kind, Path: relativePath}
 		normalizedCodeFiles = append(normalizedCodeFiles, newCodeFile)
 	}
 	normalizedIgnoredCodeFiles := []azicliwkscosp.CodeFile{}
 	for _, codeFile := range ignoredCodeFiles {
 		relativePath, _ := filepath.Rel(pwd, codeFile.Path)
-		newCodeFile := azicliwkscosp.CodeFile{Type: codeFile.Type, Path: relativePath}
+		newCodeFile := azicliwkscosp.CodeFile{Kind: codeFile.Kind, Path: relativePath}
 		normalizedIgnoredCodeFiles = append(normalizedIgnoredCodeFiles, newCodeFile)
 	}
 	return normalizedCodeFiles, normalizedIgnoredCodeFiles, nil
@@ -109,7 +109,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 		multiSecObj, err := absLang.CreateSchemaBlobObjects(path, data)
 		if err != nil {
 			codeFile := &azicliwkscosp.CodeFile{
-				Type:         file.Type,
+				Kind:         file.Kind,
 				Path:         strings.TrimPrefix(path, wkdir),
 				Section:      0,
 				Mode:         mode,
@@ -121,7 +121,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 		}
 		secObj := multiSecObj.GetSectionObjects()[0]
 		codeFile := &azicliwkscosp.CodeFile{
-			Type:            file.Type,
+			Kind:            file.Kind,
 			Path:            strings.TrimPrefix(path, wkdir),
 			Section:         secObj.GetNumberOfSection(),
 			Mode:            mode,
@@ -151,7 +151,7 @@ func (m *WorkspaceManager) blobifylanguageFile(absLang azlang.LanguageAbastracti
 	multiSecObj, err := absLang.CreatePolicyBlobObjects(path, data)
 	if err != nil {
 		codeFile := &azicliwkscosp.CodeFile{
-			Type:         file.Type,
+			Kind:         file.Kind,
 			Path:         strings.TrimPrefix(path, wkdir),
 			Section:      -1,
 			Mode:         mode,
@@ -164,7 +164,7 @@ func (m *WorkspaceManager) blobifylanguageFile(absLang azlang.LanguageAbastracti
 	secObjs := multiSecObj.GetSectionObjects()
 	for _, secObj := range secObjs {
 		codeFile := &azicliwkscosp.CodeFile{
-			Type:            file.Type,
+			Kind:            file.Kind,
 			Path:            strings.TrimPrefix(path, wkdir),
 			Section:         secObj.GetNumberOfSection(),
 			Mode:            mode,
@@ -212,9 +212,9 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 		if err != nil {
 			return "", nil, err
 		}
-		if file.Type == azicliwkscosp.CodeFileTypeOfCodeType {
+		if file.Kind == azicliwkscosp.CodeFileTypeOfCodeType {
 			blbCodeFiles = m.blobifylanguageFile(absLang, path, data, file, wkdir, mode, blbCodeFiles)
-		} else if file.Type == azicliwkscosp.CodeFileOfSchemaType {
+		} else if file.Kind == azicliwkscosp.CodeFileOfSchemaType {
 			schemaFileCount++
 			blbCodeFiles = m.blobifyPermSchemaFile(schemaFileCount, path, wkdir, mode, blbCodeFiles, absLang, data, file)
 		} else {

@@ -16,8 +16,8 @@
 
 package authorization
 
-// Authorizationmodel represents the authorization context.
-type Authorizationmodel struct {
+// AuthorizationModel represents the authorization context.
+type AuthorizationModel struct {
 	subject  *Subject
 	resource *Resource
 	action   *Action
@@ -26,7 +26,7 @@ type Authorizationmodel struct {
 }
 
 // SetSubject sets the subject of the authorization context.
-func (a *Authorizationmodel) SetSubject(kind string, id string, source string, properties map[string]any) error {
+func (a *AuthorizationModel) SetSubject(kind string, id string, source string, properties map[string]any) error {
 	a.subject = &Subject{
 		kind:       kind,
 		id:         id,
@@ -37,12 +37,12 @@ func (a *Authorizationmodel) SetSubject(kind string, id string, source string, p
 }
 
 // GetSubject returns the subject of the authorization context.
-func (a *Authorizationmodel) GetSubject() *Subject {
+func (a *AuthorizationModel) GetSubject() *Subject {
 	return a.subject
 }
 
 // SetResource sets the resource of the authorization context.
-func (a *Authorizationmodel) SetResource(kind string, id string, properties map[string]any) error {
+func (a *AuthorizationModel) SetResource(kind string, id string, properties map[string]any) error {
 	a.resource = &Resource{
 		kind:       kind,
 		id:         id,
@@ -52,12 +52,12 @@ func (a *Authorizationmodel) SetResource(kind string, id string, properties map[
 }
 
 // GetResource returns the resource of the authorization context.
-func (a *Authorizationmodel) GetResource() *Resource {
+func (a *AuthorizationModel) GetResource() *Resource {
 	return a.resource
 }
 
 // SetAction sets the action of the authorization context.
-func (a *Authorizationmodel) SetAction(id string, properties map[string]any) error {
+func (a *AuthorizationModel) SetAction(id string, properties map[string]any) error {
 	a.action = &Action{
 		id:         id,
 		properties: properties,
@@ -66,12 +66,12 @@ func (a *Authorizationmodel) SetAction(id string, properties map[string]any) err
 }
 
 // GetAction returns the action of the authorization context.
-func (a *Authorizationmodel) GetAction() *Action {
+func (a *AuthorizationModel) GetAction() *Action {
 	return a.action
 }
 
 // SetEntities sets the entities of the authorization context.
-func (a *Authorizationmodel) SetEntities(schema string, items []map[string]any) error {
+func (a *AuthorizationModel) SetEntities(schema string, items []map[string]any) error {
 	a.entities = &Entities{
 		schema: schema,
 		items:  items,
@@ -80,17 +80,17 @@ func (a *Authorizationmodel) SetEntities(schema string, items []map[string]any) 
 }
 
 // GetEntities returns the entities of the authorization context.
-func (a *Authorizationmodel) GetEntities() *Entities {
+func (a *AuthorizationModel) GetEntities() *Entities {
 	return a.entities
 }
 
 // SetContext sets the context of the authorization context.
-func (a *Authorizationmodel) SetContext(context map[string]any) error {
+func (a *AuthorizationModel) SetContext(context map[string]any) error {
 	a.context = context
 	return nil
 }
 
 // GetContext returns the context of the authorization context.
-func (a *Authorizationmodel) GetContext() map[string]any {
+func (a *AuthorizationModel) GetContext() map[string]any {
 	return a.context
 }
