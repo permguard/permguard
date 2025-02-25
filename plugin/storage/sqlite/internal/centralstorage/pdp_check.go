@@ -176,8 +176,8 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 
 	for _, expandedRequest := range request.Evaluations {
 		authzCtx := azauthz.AuthorizationModel{}
-		authzCtx.SetSubject(expandedRequest.Subject.Kind, expandedRequest.Subject.ID, expandedRequest.Subject.Source, expandedRequest.Subject.Properties)
-		authzCtx.SetResource(expandedRequest.Resource.Kind, expandedRequest.Resource.ID, expandedRequest.Resource.Properties)
+		authzCtx.SetSubject(expandedRequest.Subject.Type, expandedRequest.Subject.ID, expandedRequest.Subject.Source, expandedRequest.Subject.Properties)
+		authzCtx.SetResource(expandedRequest.Resource.Type, expandedRequest.Resource.ID, expandedRequest.Resource.Properties)
 		authzCtx.SetAction(expandedRequest.Action.Name, expandedRequest.Action.Properties)
 		authzCtx.SetContext(expandedRequest.Context)
 		entities := request.AuthorizationModel.Entities

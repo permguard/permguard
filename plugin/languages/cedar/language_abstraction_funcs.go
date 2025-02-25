@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"strings"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azauthz "github.com/permguard/permguard/pkg/authorization"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 
