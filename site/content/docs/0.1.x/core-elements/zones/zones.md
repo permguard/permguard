@@ -30,7 +30,7 @@ It is important to note that **Permguard** does not include an authentication la
 The adopter is responsible for implementing or integrating authentication at the zone level.
 
 {{< callout context="note" icon="info-circle" >}}
-In the [MagicFarmacia sample](/docs/0.1.x/getting-started/hands-on-examples#integration-use-case-pharmacy-branch-management),
+In the [MagicFarmacia sample](/docs/0.1.x/getting-started/hands-on-example/),
 
 - The `magicfarmacia-dev` zone represents the development environment.
 - The `magicfarmacia-prod` zone represents the production environment.
