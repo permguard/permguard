@@ -51,7 +51,7 @@ func MapGrpcPrincipalToAgentPrincipal(principal *Principal) (*azmodelspdp.Princi
 	}
 	target := &azmodelspdp.Principal{}
 	target.ID = principal.ID
-	target.Kind = principal.Kind
+	target.Type = principal.Type
 	if principal.Source != nil {
 		target.Source = *principal.Source
 	}
@@ -71,7 +71,7 @@ func MapAgentPrincipalToGrpcPrincipal(principal *azmodelspdp.Principal) (*Princi
 	}
 	target := &Principal{}
 	target.ID = principal.ID
-	target.Kind = principal.Kind
+	target.Type = principal.Type
 	if principal.Source != "" {
 		target.Source = &principal.Source
 	}
@@ -129,7 +129,7 @@ func MapGrpcSubjectToAgentSubject(subject *Subject) (*azmodelspdp.Subject, error
 	}
 	target := &azmodelspdp.Subject{}
 	target.ID = subject.ID
-	target.Kind = subject.Kind
+	target.Type = subject.Type
 	if subject.Source != nil {
 		target.Source = *subject.Source
 	}
@@ -146,7 +146,7 @@ func MapAgentSubjectToGrpcSubject(subject *azmodelspdp.Subject) (*Subject, error
 	}
 	target := &Subject{}
 	target.ID = subject.ID
-	target.Kind = subject.Kind
+	target.Type = subject.Type
 	if subject.Source != "" {
 		target.Source = &subject.Source
 	}
@@ -167,7 +167,7 @@ func MapGrpcResourceToAgentResource(resource *Resource) (*azmodelspdp.Resource, 
 	}
 	target := &azmodelspdp.Resource{}
 	target.ID = resource.ID
-	target.Kind = resource.Kind
+	target.Type = resource.Type
 	if resource.Properties != nil {
 		target.Properties = resource.Properties.AsMap()
 	}
@@ -181,7 +181,7 @@ func MapAgentResourceToGrpcResource(resource *azmodelspdp.Resource) (*Resource, 
 	}
 	target := &Resource{}
 	target.ID = resource.ID
-	target.Kind = resource.Kind
+	target.Type = resource.Type
 	if resource.Properties != nil {
 		data, err := structpb.NewStruct(resource.Properties)
 		if err != nil {
