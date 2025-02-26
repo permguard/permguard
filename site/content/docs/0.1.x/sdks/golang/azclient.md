@@ -39,10 +39,10 @@ principal := azreq.NewPrincipalBuilder("amy.smith@acmecorp.com").Build()
 // Create the entities
 entities := []map[string]any{
   {
-    "uid": map[string]any{
+      "uid": map[string]any{
       "type": "MagicFarmacia::Platform::BranchInfo",
       "id":   "subscription",
-    },
+      },
       "attrs": map[string]any{
       "active": true,
     },
@@ -57,7 +57,7 @@ req := azreq.NewAZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494
   // Principal
   WithPrincipal(principal).
   // Entities
-  WithEntitiesItems(azreq.cedarentitykind, entities).
+  WithEntitiesItems(azreq.CedarEntityKind, entities).
   // Subject
   WithSubjectKind("user").
   WithSubjectSource("keycloack").
@@ -72,11 +72,23 @@ req := azreq.NewAZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494
   Build()
 
 // Check the authorization
-decsion := azClient.Check(req)
+decsion, response, _ := azClient.Check(req)
 if decsion {
   fmt.Println("✅ Authorization Permitted")
 } else {
   fmt.Println("❌ Authorization Denied")
+  if response.Context.ReasonAdmin != nil {
+    fmt.Printf("-> Reason Admin: %s\n", response.Context.ReasonAdmin.Message)
+  }
+  if response.Context.ReasonUser != nil {
+    fmt.Printf("-> Reason User: %s\n", response.Context.ReasonUser.Message)
+  }
+  for _, eval := range response.Evaluations {
+    if eval.Context.ReasonUser != nil {
+      fmt.Printf("-> Reason Admin: %s\n", eval.Context.ReasonAdmin.Message)
+      fmt.Printf("-> Reason User: %s\n", eval.Context.ReasonUser.Message)
+    }
+  }
 }
 ```
 
@@ -123,15 +135,13 @@ context := azreq.NewContextBuilder().
   Build()
 
 // Create evaluations
-evaluationView := azreq.NewAZEvaluationBuilder(subject, resource, actionView).
+evaluationView := azreq.NewEvaluationBuilder(subject, resource, actionView).
   WithRequestID("1234").
-  WithPrincipal(principal).
   WithContext(context).
   Build()
 
-evaluationCreate := azreq.NewAZEvaluationBuilder(subject, resource, actionCreate).
+evaluationCreate := azreq.NewEvaluationBuilder(subject, resource, actionCreate).
   WithRequestID("7890").
-  WithPrincipal(principal).
   WithContext(context).
   Build()
 
@@ -146,7 +156,7 @@ entities := []map[string]any{
       "id":   "subscription",
     },
     "attrs": map[string]any{
-      "active": true,
+    "active": true,
     },
     "parents": []any{},
   },
@@ -154,16 +164,29 @@ entities := []map[string]any{
 
 // Create a new request
 req := azreq.NewAZRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494d3175a").
-  WithEntitiesItems(azreq.cedarentitykind, entities).
+  WithPrincipal(principal).
+  WithEntitiesItems(azreq.CedarEntityKind, entities).
   WithEvaluation(evaluationView).
   WithEvaluation(evaluationCreate).
   Build()
 
 // Check the authorization
-decsion := azClient.Check(req)
+decsion, response, _ := azClient.Check(req)
 if decsion {
   fmt.Println("✅ Authorization Permitted")
 } else {
   fmt.Println("❌ Authorization Denied")
+  if response.Context.ReasonAdmin != nil {
+    fmt.Printf("-> Reason Admin: %s\n", response.Context.ReasonAdmin.Message)
+  }
+  if response.Context.ReasonUser != nil {
+    fmt.Printf("-> Reason User: %s\n", response.Context.ReasonUser.Message)
+  }
+  for _, eval := range response.Evaluations {
+    if eval.Context.ReasonUser != nil {
+      fmt.Printf("-> Reason Admin: %s\n", eval.Context.ReasonAdmin.Message)
+      fmt.Printf("-> Reason User: %s\n", eval.Context.ReasonUser.Message)
+    }
+  }
 }
 ```
