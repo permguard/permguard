@@ -61,6 +61,9 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
 	}
 	policyStore := request.AuthorizationModel.PolicyStore
+	if len(policyStore.Kind) == 0 {
+		policyStore.Kind = LedgerType
+	}
 	if strings.ToLower(policyStore.Kind) != LedgerType {
 		errMsg := fmt.Sprintf(errMsgBadRequest, "policy store kind")
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
