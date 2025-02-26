@@ -23,9 +23,9 @@ The application, acting as a Policy Enforcement Point (PEP), enforces policies d
 
 This communication occurs through the `AuthZ Client`, a component that provides a straightforward interface for interacting with the Permguard `AuthZ Server`.
 
-## The basic structure of an Authorization Request
+## The Basic Structure of an Authorization Request
 
-A basic authorization request consists of the following components:
+A standard authorization request is composed of the following key elements:
 
 ```go
 // Create a new Permguard client
