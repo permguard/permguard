@@ -27,9 +27,11 @@ import (
 )
 
 const (
-	LedgerType = "ledger"
+	// LedgerKind is the kind of the policy store.
+	LedgerKind = "ledger"
 )
 
+// PDPController is the controller for the PDP service.
 type PDPController struct {
 	ctx     *azservices.ServiceContext
 	storage azStorage.PDPCentralStorage
@@ -51,77 +53,76 @@ func NewPDPController(serviceContext *azservices.ServiceContext, storage azStora
 
 // AuthorizationCheck checks if the request is authorized.
 func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckWithDefaultsRequest) (*azmodelspdp.AuthorizationCheckResponse, error) {
-	const errMsgBadRequest = "bad request for %s"
 	if request == nil || request.AuthorizationModel == nil || request.AuthorizationModel.PolicyStore == nil {
-		errMsg := fmt.Sprintf(errMsgBadRequest, "required fields")
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+		errMsg := fmt.Sprintf("%s the required fields", azauthz.AuthzErrBadRequestMessage)
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 	}
 	if request.AuthorizationModel.ZoneID == 0 {
-		errMsg := fmt.Sprintf(errMsgBadRequest, "zone id")
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+		errMsg := fmt.Sprintf("%s for the zone id", azauthz.AuthzErrBadRequestMessage)
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 	}
 	policyStore := request.AuthorizationModel.PolicyStore
 	if len(policyStore.Kind) == 0 {
-		policyStore.Kind = LedgerType
+		policyStore.Kind = LedgerKind
 	}
-	if strings.ToLower(policyStore.Kind) != LedgerType {
-		errMsg := fmt.Sprintf(errMsgBadRequest, "policy store kind")
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+	if strings.ToLower(policyStore.Kind) != LedgerKind {
+		errMsg := fmt.Sprintf("%s for the policy store kind", azauthz.AuthzErrBadRequestMessage)
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 	}
 	if len(strings.TrimSpace(policyStore.ID)) == 0 {
-		errMsg := fmt.Sprintf(errMsgBadRequest, "policy store id")
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+		errMsg := fmt.Sprintf("%s for the policy store id", azauthz.AuthzErrBadRequestMessage)
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 	}
 	expReq, err := authorizationCheckExpandAuthorizationCheckWithDefaults(request)
 	if err != nil {
-		errMsg := fmt.Sprintf(errMsgBadRequest, "the expanded request")
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+		errMsg := fmt.Sprintf("%s for the expanded request", azauthz.AuthzErrBadRequestMessage)
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 	}
 	principal := request.AuthorizationModel.Principal
 	if principal == nil {
-		errMsg := fmt.Sprintf(errMsgBadRequest, "principal")
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+		errMsg := fmt.Sprintf("%s for the principal", azauthz.AuthzErrBadRequestMessage)
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 	}
 	if len(strings.TrimSpace(principal.ID)) == 0 {
-		errMsg := fmt.Sprintf(errMsgBadRequest, "principal id")
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+		errMsg := fmt.Sprintf("%s for the principal id", azauthz.AuthzErrBadRequestMessage)
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 	}
 	if azmodelspdp.IsValidIdentiyType(principal.Type) == false {
-		errMsg := fmt.Sprintf(errMsgBadRequest, "principal kind")
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+		errMsg := fmt.Sprintf("%s for the principal type", azauthz.AuthzErrBadRequestMessage)
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 	}
 	for _, evaluation := range expReq.Evaluations {
 		if len(strings.TrimSpace(evaluation.Subject.ID)) == 0 {
-			errMsg := fmt.Sprintf(errMsgBadRequest, "subject id")
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+			errMsg := fmt.Sprintf("%s for the the subject id", azauthz.AuthzErrBadRequestMessage)
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 		}
 		if azmodelspdp.IsValidIdentiyType(evaluation.Subject.Type) == false {
-			errMsg := fmt.Sprintf(errMsgBadRequest, "subject kind")
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+			errMsg := fmt.Sprintf("%s for the the subject type", azauthz.AuthzErrBadRequestMessage)
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 		}
 		if azmodelspdp.IsValidProperties(evaluation.Subject.Properties) == false {
-			errMsg := fmt.Sprintf(errMsgBadRequest, "subject properties")
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+			errMsg := fmt.Sprintf("%s for the the subject properties", azauthz.AuthzErrBadRequestMessage)
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 		}
 		if len(strings.TrimSpace(evaluation.Resource.ID)) == 0 {
-			errMsg := fmt.Sprintf(errMsgBadRequest, "resource id")
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+			errMsg := fmt.Sprintf("%s for the the resource id", azauthz.AuthzErrBadRequestMessage)
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 		}
 		if len(strings.TrimSpace(evaluation.Resource.Type)) == 0 {
-			errMsg := fmt.Sprintf(errMsgBadRequest, "resource kind")
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+			errMsg := fmt.Sprintf("%s for the the resource type", azauthz.AuthzErrBadRequestMessage)
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 		}
 		if azmodelspdp.IsValidProperties(evaluation.Resource.Properties) == false {
-			errMsg := fmt.Sprintf(errMsgBadRequest, "resource properties")
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+			errMsg := fmt.Sprintf("%s for the the resource properties", azauthz.AuthzErrBadRequestMessage)
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 		}
 		if len(strings.TrimSpace(evaluation.Action.Name)) == 0 {
-			errMsg := fmt.Sprintf(errMsgBadRequest, "action name")
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+			errMsg := fmt.Sprintf("%s for the the action name", azauthz.AuthzErrBadRequestMessage)
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 		}
 		if azmodelspdp.IsValidProperties(evaluation.Action.Properties) == false {
-			errMsg := fmt.Sprintf(errMsgBadRequest, "action properties")
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, errMsg), nil
+			errMsg := fmt.Sprintf("%s for the the action properties", azauthz.AuthzErrBadRequestMessage)
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 		}
 	}
 	return s.storage.AuthorizationCheck(expReq)
