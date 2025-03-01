@@ -17,6 +17,7 @@
 package controllers
 
 import (
+	azids "github.com/permguard/permguard-core/pkg/extensions/ids"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 
@@ -32,6 +33,7 @@ func authorizationCheckExpandAuthorizationCheckWithDefaults(request *azmodelspdp
 			Resource:  request.Resource,
 			Action:    request.Action,
 			Context:   request.Context,
+			ContextID: azids.GenerateID(),
 		}
 		expReq.Evaluations = []azmodelspdp.EvaluationRequest{expRequest}
 	} else {
@@ -43,6 +45,7 @@ func authorizationCheckExpandAuthorizationCheckWithDefaults(request *azmodelspdp
 				Resource:  request.Resource,
 				Action:    request.Action,
 				Context:   request.Context,
+				ContextID: azids.GenerateID(),
 			}
 			if len(evaluation.RequestID) > 0 {
 				expRequest.RequestID = evaluation.RequestID
