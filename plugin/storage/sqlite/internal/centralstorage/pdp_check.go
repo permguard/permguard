@@ -23,7 +23,6 @@ import (
 
 	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
-	azids "github.com/permguard/permguard-core/pkg/extensions/ids"
 	azauthz "github.com/permguard/permguard/pkg/authorization"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
@@ -196,7 +195,7 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 		if entities != nil {
 			authzCtx.SetEntities(entities.Schema, entities.Items)
 		}
-		contextID := azids.GenerateID()
+		contextID := expandedRequest.ContextID
 		authzResponse, err := cedarLanguageAbs.AuthorizationCheck(contextID, &authzPolicyStore, &authzCtx)
 		if err != nil {
 			errMsg := fmt.Sprintf("%s because of an internal mapping", azauthz.AuthzErrInternalErrorMessage)

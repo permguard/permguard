@@ -439,7 +439,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(contextID string, policy
 		return true
 	})
 	if hasIllegalKey {
-		errMsg := fmt.Sprintf("%s for an invalid context key, key is reserved by permguard and cannot be used", azauthz.AuthzErrBadRequestMessage, actionID)
+		errMsg := fmt.Sprintf("%s for an invalid context key, key %s is reserved by permguard and cannot be used", azauthz.AuthzErrBadRequestMessage, actionID)
 		adminError, userError := createAuthorizationErrors(azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestCode)
 		return azauthz.NewAuthorizationDecision(contextID, false, adminError, userError)
 	}
