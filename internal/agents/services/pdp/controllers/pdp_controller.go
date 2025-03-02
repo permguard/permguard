@@ -57,41 +57,41 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 		errMsg := fmt.Sprintf("%s the required fields", azauthz.AuthzErrBadRequestMessage)
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 	}
-	if request.AuthorizationModel.ZoneID == 0 {
-		errMsg := fmt.Sprintf("%s for the zone id", azauthz.AuthzErrBadRequestMessage)
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
-	}
-	policyStore := request.AuthorizationModel.PolicyStore
-	if len(policyStore.Kind) == 0 {
-		policyStore.Kind = LedgerKind
-	}
-	if strings.ToLower(policyStore.Kind) != LedgerKind {
-		errMsg := fmt.Sprintf("%s for the policy store kind", azauthz.AuthzErrBadRequestMessage)
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
-	}
-	if len(strings.TrimSpace(policyStore.ID)) == 0 {
-		errMsg := fmt.Sprintf("%s for the policy store id", azauthz.AuthzErrBadRequestMessage)
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
-	}
 	expReq, err := authorizationCheckExpandAuthorizationCheckWithDefaults(request)
 	if err != nil {
 		errMsg := fmt.Sprintf("%s for the expanded request", azauthz.AuthzErrBadRequestMessage)
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 	}
-	principal := request.AuthorizationModel.Principal
-	if principal == nil {
-		errMsg := fmt.Sprintf("%s for the principal", azauthz.AuthzErrBadRequestMessage)
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
-	}
-	if len(strings.TrimSpace(principal.ID)) == 0 {
-		errMsg := fmt.Sprintf("%s for the principal id", azauthz.AuthzErrBadRequestMessage)
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
-	}
-	if azmodelspdp.IsValidIdentiyType(principal.Type) == false {
-		errMsg := fmt.Sprintf("%s for the principal type", azauthz.AuthzErrBadRequestMessage)
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
-	}
 	for _, evaluation := range expReq.Evaluations {
+		if request.AuthorizationModel.ZoneID == 0 {
+			errMsg := fmt.Sprintf("%s for the zone id", azauthz.AuthzErrBadRequestMessage)
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
+		}
+		policyStore := request.AuthorizationModel.PolicyStore
+		if len(policyStore.Kind) == 0 {
+			policyStore.Kind = LedgerKind
+		}
+		if strings.ToLower(policyStore.Kind) != LedgerKind {
+			errMsg := fmt.Sprintf("%s for the policy store kind", azauthz.AuthzErrBadRequestMessage)
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
+		}
+		if len(strings.TrimSpace(policyStore.ID)) == 0 {
+			errMsg := fmt.Sprintf("%s for the policy store id", azauthz.AuthzErrBadRequestMessage)
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
+		}
+		principal := request.AuthorizationModel.Principal
+		if principal == nil {
+			errMsg := fmt.Sprintf("%s for the principal", azauthz.AuthzErrBadRequestMessage)
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
+		}
+		if len(strings.TrimSpace(principal.ID)) == 0 {
+			errMsg := fmt.Sprintf("%s for the principal id", azauthz.AuthzErrBadRequestMessage)
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
+		}
+		if azmodelspdp.IsValidIdentiyType(principal.Type) == false {
+			errMsg := fmt.Sprintf("%s for the principal type", azauthz.AuthzErrBadRequestMessage)
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
+		}
 		if len(strings.TrimSpace(evaluation.Subject.ID)) == 0 {
 			errMsg := fmt.Sprintf("%s for the the subject id", azauthz.AuthzErrBadRequestMessage)
 			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
