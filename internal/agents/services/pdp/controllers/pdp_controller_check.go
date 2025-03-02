@@ -37,6 +37,7 @@ func authorizationCheckExpandAuthorizationCheckWithDefaults(request *azmodelspdp
 		}
 		expReq.Evaluations = []azmodelspdp.EvaluationRequest{expRequest}
 	} else {
+		requestID := request.RequestID
 		expReq.Evaluations = []azmodelspdp.EvaluationRequest{}
 		for _, evaluation := range request.Evaluations {
 			expRequest := azmodelspdp.EvaluationRequest{
@@ -49,6 +50,8 @@ func authorizationCheckExpandAuthorizationCheckWithDefaults(request *azmodelspdp
 			}
 			if len(evaluation.RequestID) > 0 {
 				expRequest.RequestID = evaluation.RequestID
+			} else {
+				expRequest.RequestID = requestID
 			}
 			if evaluation.Subject != nil {
 				expRequest.Subject = evaluation.Subject
