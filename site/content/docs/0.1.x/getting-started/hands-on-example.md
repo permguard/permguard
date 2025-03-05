@@ -183,7 +183,7 @@ Below a sample json for the authorization check.
     }
   },
   "action": {
-    "name": "MagicFarmacia::Platform::Action::create",
+    "name": "MagicFarmacia::Platform::Action::view",
     "properties": {
       "isEnabled": true
     }
