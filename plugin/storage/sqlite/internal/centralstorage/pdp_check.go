@@ -21,7 +21,6 @@ import (
 
 	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
-	azids "github.com/permguard/permguard-core/pkg/extensions/ids"
 	azauthz "github.com/permguard/permguard/pkg/authorization"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
@@ -111,30 +110,26 @@ func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng 
 }
 
 // AuthorizationCheck performs the authorization check.
-func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckRequest) (*azmodelspdp.AuthorizationCheckResponse, error) {
-	authzCheckResponse := &azmodelspdp.AuthorizationCheckResponse{}
-	authzCheckResponse.Decision = false
-	authzCheckResponse.Context = &azmodelspdp.ContextResponse{}
-	authzCheckResponse.Evaluations = []azmodelspdp.EvaluationResponse{}
-
-	authzCtx := request.AuthorizationModel
+func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckRequest) ([]azmodelspdp.EvaluationResponse, error) {
+	const badErrorReference = "server couldn't validate the object reference"
 
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrBadRequestCode, err.Error(), azauthz.AuthzErrBadRequestMessage), nil
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't connect to the database")
 	}
 
+	authzCtx := request.AuthorizationModel
 	dbLedgers, err := s.sqlRepo.FetchLedgers(db, 1, 2, authzCtx.ZoneID, &authzCtx.PolicyStore.ID, nil)
 	if err != nil {
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrBadRequestCode, err.Error(), azauthz.AuthzErrBadRequestMessage), nil
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguangeSemantic, "bad request for the either zone id or policy store id")
 	}
 	if len(dbLedgers) != 1 {
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrBadRequestCode, azauthz.AuthzErrBadRequestMessage, azauthz.AuthzErrBadRequestMessage), nil
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguangeSemantic, "bad request for the either zone id or policy store id")
 	}
 	ledger := dbLedgers[0]
 	ledgerRef := ledger.Ref
 	if ledgerRef == azlangobjs.ZeroOID {
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, azauthz.AuthzErrInternalErrorMessage, azauthz.AuthzErrInternalErrorMessage), nil
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't validate the ledger reference")
 	}
 
 	authzPolicyStore := azauthz.PolicyStore{}
@@ -142,20 +137,20 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 
 	objMng, err := azlangobjs.NewObjectManager()
 	if err != nil {
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, badErrorReference)
 	}
 	treeObj, err := authorizationCheckReadTree(&s, db, objMng, ledgerRef)
 	if err != nil {
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, badErrorReference)
 	}
 	for _, entry := range treeObj.GetEntries() {
 		value, err := authorizationCheckReadKeyValue(&s, db, objMng, entry.GetOID())
 		if err != nil {
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
+			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, badErrorReference)
 		}
 		obj, err := objMng.DeserializeObjectFromBytes(value)
 		if err != nil {
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
+			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, badErrorReference)
 		}
 		objInfo, err := objMng.GetObjectInfo(obj)
 		objInfoHeader := objInfo.GetHeader()
@@ -165,15 +160,16 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 		} else if objInfoHeader.GetCodeTypeID() == azlangtypes.ClassTypePolicyID {
 			authzPolicyStore.AddPolicy(oid, objInfo)
 		} else {
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, azauthz.AuthzErrInternalErrorCode, azauthz.AuthzErrInternalErrorMessage), nil
+			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, badErrorReference)
 		}
 	}
 
 	cedarLanguageAbs, err := azplangcedar.NewCedarLanguageAbstraction()
 	if err != nil {
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrBadRequestCode, err.Error(), azauthz.AuthzErrBadRequestMessage), nil
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't validate the language abstraction layer")
 	}
 
+	evaluations := []azmodelspdp.EvaluationResponse{}
 	for _, expandedRequest := range request.Evaluations {
 		authzCtx := azauthz.AuthorizationModel{}
 		authzCtx.SetSubject(expandedRequest.Subject.Type, expandedRequest.Subject.ID, expandedRequest.Subject.Source, expandedRequest.Subject.Properties)
@@ -184,37 +180,24 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 		if entities != nil {
 			authzCtx.SetEntities(entities.Schema, entities.Items)
 		}
-		contextID := azids.GenerateID()
+		contextID := expandedRequest.ContextID
 		authzResponse, err := cedarLanguageAbs.AuthorizationCheck(contextID, &authzPolicyStore, &authzCtx)
 		if err != nil {
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage), nil
+			evaluation := azmodelspdp.NewEvaluationErrorResponse(expandedRequest.RequestID, azauthz.AuthzErrInternalErrorCode, err.Error(), azauthz.AuthzErrInternalErrorMessage)
+			evaluations = append(evaluations, *evaluation)
+			continue
 		}
 		if authzResponse == nil {
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(authzCheckResponse, azauthz.AuthzErrInternalErrorCode, azauthz.AuthzErrInternalErrorCode, azauthz.AuthzErrInternalErrorMessage), nil
+			evaluation := azmodelspdp.NewEvaluationErrorResponse(expandedRequest.RequestID, azauthz.AuthzErrInternalErrorCode, "because of a nil authz response", azauthz.AuthzErrInternalErrorMessage)
+			evaluations = append(evaluations, *evaluation)
+			continue
 		}
-		evaluationResponse := azmodelspdp.EvaluationResponse{
+		evaluation := &azmodelspdp.EvaluationResponse{
 			RequestID: expandedRequest.RequestID,
 			Decision:  authzResponse.GetDecision(),
 			Context:   authorizationCheckBuildContextResponse(authzResponse),
 		}
-		authzCheckResponse.Evaluations = append(authzCheckResponse.Evaluations, evaluationResponse)
+		evaluations = append(evaluations, *evaluation)
 	}
-	evaluations := authzCheckResponse.Evaluations
-	if len(authzCheckResponse.Evaluations) == 1 {
-		firstEval := authzCheckResponse.Evaluations[0]
-		authzCheckResponse.RequestID = firstEval.RequestID
-		authzCheckResponse.Decision = firstEval.Decision
-		authzCheckResponse.Context = firstEval.Context
-	}
-	if len(evaluations) > 0 {
-		allTrue := true
-		for _, evaluation := range authzCheckResponse.Evaluations {
-			if !evaluation.Decision {
-				allTrue = false
-				break
-			}
-		}
-		authzCheckResponse.Decision = allTrue
-	}
-	return authzCheckResponse, nil
+	return evaluations, nil
 }

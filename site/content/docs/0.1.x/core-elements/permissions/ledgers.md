@@ -23,7 +23,7 @@ In **Permguard**, multiple zones can be created, and each zone can have multiple
 This provides a structured way to manage `authz` components such as **schemas, policies, and permissions**.
 
 {{< callout context="note" icon="info-circle" >}}
-In the [MagicFarmacia sample](/docs/0.1.x/getting-started/hands-on-examples#integration-use-case-pharmacy-branch-management),
+In the [MagicFarmacia sample](/docs/0.1.x/getting-started/hands-on-example/),
 the system runs within a **microservice architecture**.
 {{< /callout >}}
 

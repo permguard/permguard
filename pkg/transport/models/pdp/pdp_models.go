@@ -80,6 +80,7 @@ type EvaluationRequest struct {
 	Resource  *Resource      `json:"resource,omitempty"`
 	Action    *Action        `json:"action,omitempty"`
 	Context   map[string]any `json:"context,omitempty"`
+	ContextID string         `json:"context_id,omitempty"`
 }
 
 // AuthorizationCheckRequest represents the request to perform an authorization decision.

@@ -61,7 +61,6 @@ print("✅ Authorization Permitted" if ok else "❌ Authorization Denied")
 
 const GO_CODE = {
   before: `// BEFORE
-
 func getPermissionsForRole(role string) map[string]map[string][]string {
   // Here boilerplate code to fetch permissions for a role
   return permissions
@@ -96,7 +95,6 @@ if hasPermissions {
 fmt.Println("❌ Authorization Denied")
 }`,
   after: `// AFTER
-
 azClient := permguard.NewAZClient(
 	permguard.WithEndpoint("localhost", 9094),
 )
