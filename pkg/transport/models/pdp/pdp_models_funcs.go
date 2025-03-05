@@ -53,6 +53,24 @@ func IsValidIdentiyType(identityType string) bool {
 	return false
 }
 
+// NewEvaluationErrorResponse creates an evaluation error response.
+func NewEvaluationErrorResponse(requestID string, erroCode string, adminReason string, userReason string) *EvaluationResponse {
+	return &EvaluationResponse{
+		RequestID: requestID,
+		Decision: false,
+		Context: &ContextResponse{
+			ReasonAdmin: &ReasonResponse{
+				Code:    erroCode,
+				Message: adminReason,
+			},
+			ReasonUser: &ReasonResponse{
+				Code:    erroCode,
+				Message: userReason,
+			},
+		},
+	}
+}
+
 // NewAuthorizationCheckErrorResponse creates an authorization check error response.
 func NewAuthorizationCheckErrorResponse(authzCheckResponse *AuthorizationCheckResponse, erroCode string, adminReason string, userReason string) *AuthorizationCheckResponse {
 	if authzCheckResponse == nil {
