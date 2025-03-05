@@ -19,7 +19,9 @@ package v1
 import (
 	"context"
 
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
+	azauthz "github.com/permguard/permguard/pkg/authorization"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 
@@ -47,9 +49,27 @@ type V1PDPServer struct {
 // AuthorizationCheck checks the authorization.
 func (s *V1PDPServer) AuthorizationCheck(ctx context.Context, request *AuthorizationCheckRequest) (*AuthorizationCheckResponse, error) {
 	req, err := MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request)
+	if req == nil {
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter,  "request cannot be nil", err)
+	}
 	authzResponse, err := s.service.AuthorizationCheck(req)
 	if err != nil {
-		return nil, err
+		authzResponse = &azmodelspdp.AuthorizationCheckResponse{
+			RequestID: req.RequestID,
+			Decision:  false,
+		}
+		for _, evaluation := range req.Evaluations {
+			requestID := evaluation.RequestID
+			if len(requestID) == 0 {
+				requestID = req.RequestID
+			}
+			evalResponse := azmodelspdp.NewEvaluationErrorResponse(requestID, azauthz.AuthzErrBadRequestCode, err.Error(), azauthz.AuthzErrBadRequestMessage)
+			authzResponse.Evaluations = append(authzResponse.Evaluations, *evalResponse)
+		}
+		if len(authzResponse.Evaluations) == 1 {
+			firstEval := authzResponse.Evaluations[0]
+			authzResponse.Context = firstEval.Context
+		}
 	}
 	return MapAgentAuthorizationCheckResponseToGrpcAuthorizationCheckResponse(authzResponse)
 }

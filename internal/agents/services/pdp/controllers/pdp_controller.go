@@ -53,13 +53,21 @@ func NewPDPController(serviceContext *azservices.ServiceContext, storage azStora
 
 // AuthorizationCheck checks if the request is authorized.
 func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckWithDefaultsRequest) (*azmodelspdp.AuthorizationCheckResponse, error) {
-	if request == nil || request.AuthorizationModel == nil || request.AuthorizationModel.PolicyStore == nil {
-		errMsg := fmt.Sprintf("%s the required fields", azauthz.AuthzErrBadRequestMessage)
+	if request == nil {
+		errMsg := fmt.Sprintf("%s: received nil request", azauthz.AuthzErrBadRequestMessage)
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
+	}
+	if request.AuthorizationModel == nil {
+		errMsg := fmt.Sprintf("%s: missing authorization model in request", azauthz.AuthzErrBadRequestMessage)
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
+	}
+	if request.AuthorizationModel.PolicyStore == nil {
+		errMsg := fmt.Sprintf("%s: missing policy store in authorization model", azauthz.AuthzErrBadRequestMessage)
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 	}
 	expReq, err := authorizationCheckExpandAuthorizationCheckWithDefaults(request)
 	if err != nil {
-		errMsg := fmt.Sprintf("%s for the expanded request", azauthz.AuthzErrBadRequestMessage)
+		errMsg := fmt.Sprintf("%s: failed to expand authorization request with defaults", azauthz.AuthzErrBadRequestMessage)
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 	}
 	type evalItem struct{
@@ -71,7 +79,7 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 	reqEvaluationsCounter := 0
 	for _, evaluation := range expReq.Evaluations {
 		if request.AuthorizationModel.ZoneID == 0 {
-			errMsg := fmt.Sprintf("%s for the zone id", azauthz.AuthzErrBadRequestMessage)
+			errMsg := fmt.Sprintf("%s: invalid zone id", azauthz.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
 		}
@@ -80,68 +88,68 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 			policyStore.Kind = LedgerKind
 		}
 		if strings.ToLower(policyStore.Kind) != LedgerKind {
-			errMsg := fmt.Sprintf("%s for the zone id", azauthz.AuthzErrBadRequestMessage)
+			errMsg := fmt.Sprintf("%s: invalid zone type", azauthz.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
 		}
 		if len(strings.TrimSpace(policyStore.ID)) == 0 {
-			errMsg := fmt.Sprintf("%s for the policy store id", azauthz.AuthzErrBadRequestMessage)
+			errMsg := fmt.Sprintf("%s: invalid policy store id", azauthz.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
 		}
 		principal := request.AuthorizationModel.Principal
 		if principal == nil {
-			errMsg := fmt.Sprintf("%s for the principal", azauthz.AuthzErrBadRequestMessage)
+			errMsg := fmt.Sprintf("%s: invalid principal", azauthz.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
 		}
 		if len(strings.TrimSpace(principal.ID)) == 0 {
-			errMsg := fmt.Sprintf("%s for the principal id", azauthz.AuthzErrBadRequestMessage)
+			errMsg := fmt.Sprintf("%s: invalid the principal id", azauthz.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
 		}
-		if azmodelspdp.IsValidIdentiyType(principal.Type) == false {
-			errMsg := fmt.Sprintf("%s for the principal type", azauthz.AuthzErrBadRequestMessage)
+		if !azmodelspdp.IsValidIdentiyType(principal.Type){
+			errMsg := fmt.Sprintf("%s: invalid the principal type", azauthz.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
 		}
 		if len(strings.TrimSpace(evaluation.Subject.ID)) == 0 {
-			errMsg := fmt.Sprintf("%s for the subject id", azauthz.AuthzErrBadRequestMessage)
+			errMsg := fmt.Sprintf("%s: invalid subject id", azauthz.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
 		}
-		if azmodelspdp.IsValidIdentiyType(evaluation.Subject.Type) == false {
-			errMsg := fmt.Sprintf("%s for the subject type", azauthz.AuthzErrBadRequestMessage)
+		if !azmodelspdp.IsValidIdentiyType(evaluation.Subject.Type) {
+			errMsg := fmt.Sprintf("%s: invalid subject type", azauthz.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
 		}
-		if azmodelspdp.IsValidProperties(evaluation.Subject.Properties) == false {
-			errMsg := fmt.Sprintf("%s for the subject properties", azauthz.AuthzErrBadRequestMessage)
+		if azmodelspdp.IsValidProperties(evaluation.Subject.Properties) {
+			errMsg := fmt.Sprintf("%s: invalid  subject properties", azauthz.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
 		}
 		if len(strings.TrimSpace(evaluation.Resource.ID)) == 0 {
-			errMsg := fmt.Sprintf("%s for the resource id", azauthz.AuthzErrBadRequestMessage)
+			errMsg := fmt.Sprintf("%s: invalid resource id", azauthz.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
 		}
 		if len(strings.TrimSpace(evaluation.Resource.Type)) == 0 {
-			errMsg := fmt.Sprintf("%s for the resource type", azauthz.AuthzErrBadRequestMessage)
+			errMsg := fmt.Sprintf("%s: invalid resource type", azauthz.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
 		}
-		if azmodelspdp.IsValidProperties(evaluation.Resource.Properties) == false {
-			errMsg := fmt.Sprintf("%s for the resource properties", azauthz.AuthzErrBadRequestMessage)
+		if !azmodelspdp.IsValidProperties(evaluation.Resource.Properties) {
+			errMsg := fmt.Sprintf("%s: invalid resource properties", azauthz.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
 		}
 		if len(strings.TrimSpace(evaluation.Action.Name)) == 0 {
-			errMsg := fmt.Sprintf("%s for the action name", azauthz.AuthzErrBadRequestMessage)
+			errMsg := fmt.Sprintf("%s: invalid action name", azauthz.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
 		}
-		if azmodelspdp.IsValidProperties(evaluation.Action.Properties) == false {
-			errMsg := fmt.Sprintf("%s for the action properties", azauthz.AuthzErrBadRequestMessage)
+		if !azmodelspdp.IsValidProperties(evaluation.Action.Properties) {
+			errMsg := fmt.Sprintf("%s: invalid action properties", azauthz.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
 		}
@@ -151,19 +159,22 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 	}
 	reqEvaluationsSize := len(reqEvaluations)
 	expReq.Evaluations = reqEvaluations
-	authzCheckEvaluations, err := s.storage.AuthorizationCheck(expReq)
-	if err != nil {
-		return nil, err
-	}
-	if len(authzCheckEvaluations) != reqEvaluationsSize {
-		errMsg := fmt.Sprintf("%s for the authorization check response evaluation size", azauthz.AuthzErrInternalErrorMessage)
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
+	authzCheckEvaluations := []azmodelspdp.EvaluationResponse{}
+	if reqEvaluationsSize > 0 {
+		authzCheckEvaluations, err = s.storage.AuthorizationCheck(expReq)
+		if err != nil {
+			return nil, err
+		}
+		if len(authzCheckEvaluations) != reqEvaluationsSize {
+			errMsg := fmt.Sprintf("%s: invalid authorization check response size for evaluations", azauthz.AuthzErrInternalErrorMessage)
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
+		}
 	}
 	evaluations := []azmodelspdp.EvaluationResponse{}
-	for i, evaluation := range authzCheckEvaluations {
+	for i := range reqEvaluationsSize {
 		evalItem := evalItems[i]
 		if  evalItem.listID == - 1 {
-			evaluations = append(evaluations, evaluation)
+			evaluations = append(evaluations, authzCheckEvaluations[i])
 		} else {
 			evaluations = append(evaluations, authzCheckEvaluations[evalItem.listID])
 		}
