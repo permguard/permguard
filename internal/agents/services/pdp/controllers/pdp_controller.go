@@ -123,7 +123,7 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
 		}
-		if azmodelspdp.IsValidProperties(evaluation.Subject.Properties) {
+		if !azmodelspdp.IsValidProperties(evaluation.Subject.Properties) {
 			errMsg := fmt.Sprintf("%s: invalid  subject properties", azauthz.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
