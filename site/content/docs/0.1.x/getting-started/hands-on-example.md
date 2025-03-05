@@ -36,7 +36,7 @@ cd playground-cedar
 
 The next step is to configure the users and actors.
 
-```bash
+```text
 permguard authn identitysources create --name keycloak --zoneid 108842867481
 permguard authn identities create --name amy.smith@acmecorp.com --kind user --identitysourceid 377e73eb2b3c48f3be9e03a7caa4046f --zoneid 108842867481
 permguard authn identities create --name platform-admin --kind actor --identitysourceid 377e73eb2b3c48f3be9e03a7caa4046f --zoneid 108842867481
