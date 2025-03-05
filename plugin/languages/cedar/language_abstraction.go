@@ -171,7 +171,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, da
 	policiesMap := policySet.Map()
 	multiSecObj, err := azlangobjs.NewMultiSectionsObject(filePath, len(policiesMap), nil)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] failed to create a multisections object", err)
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] failed to create the multi section object", err)
 	}
 
 	const (
@@ -274,7 +274,7 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data [
 
 	multiSecObj, err := azlangobjs.NewMultiSectionsObject(path, 1, nil)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] failed to create a multi section object", err)
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] failed to create the multi section object", err)
 	}
 	header, err := azlangobjs.NewObjectHeader(true, langID, langVersionID, langSchemaTypeID, codeID, codeTypeID)
 	if err != nil {
