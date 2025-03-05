@@ -17,6 +17,8 @@
 package centralstorage
 
 import (
+	"fmt"
+
 	"github.com/jmoiron/sqlx"
 
 	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
@@ -111,20 +113,18 @@ func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng 
 
 // AuthorizationCheck performs the authorization check.
 func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckRequest) ([]azmodelspdp.EvaluationResponse, error) {
-	const badErrorReference = "server couldn't validate the object reference"
-
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't connect to the database")
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageGeneric, "server couldn't connect to the database", err)
 	}
 
 	authzCtx := request.AuthorizationModel
 	dbLedgers, err := s.sqlRepo.FetchLedgers(db, 1, 2, authzCtx.ZoneID, &authzCtx.PolicyStore.ID, nil)
 	if err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguangeSemantic, "bad request for the either zone id or policy store id")
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguangeSemantic, "bad request for either zone id or policy store id", err)
 	}
 	if len(dbLedgers) != 1 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguangeSemantic, "bad request for the either zone id or policy store id")
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguangeSemantic, "bad request for either zone id or policy store id")
 	}
 	ledger := dbLedgers[0]
 	ledgerRef := ledger.Ref
@@ -137,22 +137,26 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 
 	objMng, err := azlangobjs.NewObjectManager()
 	if err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, badErrorReference)
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't create the object manager", err)
 	}
 	treeObj, err := authorizationCheckReadTree(&s, db, objMng, ledgerRef)
 	if err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, badErrorReference)
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't read the tree", err)
 	}
 	for _, entry := range treeObj.GetEntries() {
-		value, err := authorizationCheckReadKeyValue(&s, db, objMng, entry.GetOID())
+		entryID := entry.GetOID()
+		value, err := authorizationCheckReadKeyValue(&s, db, objMng, entryID)
 		if err != nil {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, badErrorReference)
+			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("server couldn't read the key %s", entryID), err)
 		}
 		obj, err := objMng.DeserializeObjectFromBytes(value)
 		if err != nil {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, badErrorReference)
+			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't deserialize the object from bytes", err)
 		}
 		objInfo, err := objMng.GetObjectInfo(obj)
+		if err != nil {
+			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't read object info", err)
+		}
 		objInfoHeader := objInfo.GetHeader()
 		oid := objInfo.GetOID()
 		if objInfoHeader.GetCodeTypeID() == azlangtypes.ClassTypeSchemaID {
@@ -160,13 +164,13 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 		} else if objInfoHeader.GetCodeTypeID() == azlangtypes.ClassTypePolicyID {
 			authzPolicyStore.AddPolicy(oid, objInfo)
 		} else {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, badErrorReference)
+			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't process the code type id")
 		}
 	}
 
 	cedarLanguageAbs, err := azplangcedar.NewCedarLanguageAbstraction()
 	if err != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't validate the language abstraction layer")
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric,  "server couldn't validate the language abstraction layer", err)
 	}
 
 	evaluations := []azmodelspdp.EvaluationResponse{}
