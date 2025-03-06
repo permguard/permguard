@@ -41,6 +41,7 @@ Plese refer to the [Install & Bootstrap](/docs/0.1.x/getting-started/install-boo
 {{< /callout >}}
 
 ```text
+docker pull permguard/demo-all-in-one:latest
 docker run --rm -it -p 9091:9091 -p 9092:9092 -p 9094:9094 permguard/demo-all-in-one:latest
 ```
 
