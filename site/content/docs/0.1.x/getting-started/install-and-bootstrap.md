@@ -44,5 +44,5 @@ make build-cli
 Then it is required to copy the binary to the desired location which has to be in the system path.
 
 ```shell
-cp bin/permguard-cli /usr/local/bin/permguard-cli
+cp dist/permguard-cli /usr/local/bin/permguard-cli
 ```

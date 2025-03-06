@@ -75,7 +75,7 @@ The `CEDAR TYPE` must be used in the `Cedar` policy.
 ```cedar
 @id("platform-auditor")
 permit(
-  principal in Permguard::IAM::RoleActor::"platform-auditor"
+  principal == Permguard::IAM::RoleActor::"platform-auditor"
 );
 ```
 
@@ -86,7 +86,7 @@ The `Resource` has to satisfy the `Cedar` resource structure.
 ```cedar
 @id("platform-auditor")
 permit(
-  resource == MagicFarmacia::Platform::Subscription::"e3a786fd07e24bfa95ba4341d3695ae8"
+  resource is MagicFarmacia::Platform::Subscription
 );
 ```
 
