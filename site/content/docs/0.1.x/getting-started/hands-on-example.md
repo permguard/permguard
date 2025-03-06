@@ -57,7 +57,7 @@ Plese refer to the [Command Line](/docs/0.1.x/command-line/how-to-use/) section 
 permguard zones create --name demozone
 ```
 
-Below the output.
+Here’s what you’ll see.
 
 ```text
 ❯ permguard zones create --name demozone
@@ -70,7 +70,7 @@ It is important to note that the `zoneid` is required for the ledger creation an
 permguard authz ledgers create --name magicfarmacia --zoneid 895741663247
 ```
 
-Below the output.
+Displayed result.
 
 ```text
 ❯ permguard authz ledgers create --name magicfarmacia --zoneid 895741663247
@@ -85,7 +85,7 @@ The next step is to configure the users and actors. First of all, it is necessar
 permguard authn identitysources create --name keycloak --zoneid 895741663247
 ```
 
-Below the output.
+This is the expected output.
 
 ```text
 ❯ permguard authn identitysources create --name keycloak --zoneid 895741663247
@@ -101,7 +101,7 @@ permguard authn tenants create --name matera-branch --zoneid 895741663247
 permguard authn tenants create --name pisa-branch --zoneid 895741663247
 ```
 
-Below the output.
+Resulting output.
 
 ```text
 ❯ permguard authn identities create --name amy.smith@acmecorp.com --kind user --identitysourceid 28e618209040479b8d1a6c581608ec84 --zoneid 895741663247
@@ -128,7 +128,7 @@ permguard remote add origin localhost
 permguard checkout origin/895741663247/magicfarmacia
 ```
 
-Below the output.
+Captured output.
 
 ```text
 ❯ permguard init
@@ -246,7 +246,7 @@ Below a sample json for the authorization check.
 }
 ```
 
-Below the output.
+Here’s what gets returned.
 
 ```text
 ❯ permguard authz check ./requests/ok_onlyone1.json -o json | jq
@@ -286,7 +286,7 @@ Below is an example of how to list all objects in the workspace.
 permguard objects --all
 ```
 
-Below the output.
+Output shown below.
 
 ```text
 ❯ permguard objects --all
@@ -310,7 +310,7 @@ The following example shows how to display the content of the `platform-creator`
  permguard objects cat 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1
 ```
 
-Below the output.
+Displayed output.
 
 ```text
 ❯ permguard objects cat 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1
@@ -327,7 +327,7 @@ It is also possible to specify the `frontend` option to display the object in a 
 permguard objects cat 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1 --frontend
 ```
 
-Below the output.
+Here’s the result.
 
 ```text
 ❯ permguard objects cat 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1 --frontend
