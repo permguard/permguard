@@ -18,14 +18,14 @@ package authorization
 
 // Resource represents the resource.
 type Resource struct {
-	kind       string
+	resType    string
 	id         string
 	properties map[string]any
 }
 
-// GetKind returns the kind of the resource.
-func (r *Resource) GetKind() string {
-	return r.kind
+// GetType returns the type of the resource.
+func (r *Resource) GetType() string {
+	return r.resType
 }
 
 // GetID returns the ID of the resource.
