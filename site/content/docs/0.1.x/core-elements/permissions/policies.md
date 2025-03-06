@@ -22,8 +22,7 @@ seo:
 In **Permguard**, multiple ledgers can be created, and each ledger can have multiple **policies**.
 
 {{< callout context="note" icon="info-circle" >}}
-In the [MagicFarmacia sample](/docs/0.1.x/getting-started/hands-on-example/),
-the policy **`view-branch-inventory`** controls access to the inventory of a pharmacy branch.
+In the [MagicFarmacia sample](/docs/0.1.x/getting-started/hands-on-example/) policies such as **`platform-manager`** are created.
 {{< /callout >}}
 
 ## Policy

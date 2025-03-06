@@ -30,13 +30,7 @@ It is important to note that **Permguard** does not include an authentication la
 The adopter is responsible for implementing or integrating authentication at the zone level.
 
 {{< callout context="note" icon="info-circle" >}}
-In the [MagicFarmacia sample](/docs/0.1.x/getting-started/hands-on-example/),
-
-- The `magicfarmacia-dev` zone represents the development environment.
-- The `magicfarmacia-prod` zone represents the production environment.
-
-This setup follows best practices to ensure resource and permission isolation between environments.
-Beyond per-environment zones, a company may also choose to create separate zones per department or use a shared zone across multiple areas.
+In the [MagicFarmacia sample](/docs/0.1.x/getting-started/hands-on-example/) the `demo-zone` zone is created.
 {{< /callout >}}
 
 Each zone is uniquely identified by a `name`.

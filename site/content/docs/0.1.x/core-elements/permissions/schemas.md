@@ -21,16 +21,6 @@ seo:
 In **Permguard**, multiple ledgers can be created, and each ledger might have a single **schema**.
 This provides a structured way to model the authorization framework.
 
-{{< callout context="note" icon="info-circle" >}}
-In the [MagicFarmacia sample](/docs/0.1.x/getting-started/hands-on-example/),
-the schema represents two main namespaces:
-
-- The **`platform` tenant**, acting as the master tenant that manages all branches.
-- The **`pharmacy branch` tenant**, representing individual branches.
-
-The platform includes features to create a new tenant for each branch using **Permguard's internal API**.
-{{< /callout >}}
-
 ## Schema
 
 A **schema** is a logical structure used to organize **resources** and **actions**.
