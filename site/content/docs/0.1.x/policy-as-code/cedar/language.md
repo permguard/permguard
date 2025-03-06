@@ -38,17 +38,17 @@ Below is an example directory structure with a schema file and sample policy fil
 Here is an example of cedar policy.
 
 ```cedar  {title="pharmacy.cedar"}
-@id("assign-role-branch")
+@id("platform-creator")
 permit(
-    principal in Permguard::RoleActor::"administer-branches-staff",
-    action in Action::"assignRole",
-    resource in MagicFarmacia::Branch::Staff::"role"
+  principal == Permguard::IAM::RoleActor::"platform-creator",
+  action == MagicFarmacia::Platform::Action::"create",
+  resource is MagicFarmacia::Platform::Subscription
 )
 when {
-  principal.active == true &&
-  context.id > 0
+  context.isSubscriptionActive == true
+    && action.isEnabled == true && resource.isEnabled == true
 }
 unless {
-  principal has isTerminated && principal.isTerminated
+  principal.isSuperUser == false
 };
 ```

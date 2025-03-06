@@ -243,7 +243,7 @@ Your workspace object 2c36582597d15df6df4e8b03c4bcae87a92d58a27548291fc92023043e
 
 @id("platform-manager")
 permit (
-    principal in Permguard::IAM::Actor::"platform-admin",
+    principal == Permguard::IAM::Actor::"platform-admin",
     action in [MagicFarmacia::Platform::Action::"view", MagicFarmacia::Platform::Action::"update"],
     resource == MagicFarmacia::Platform::Subscription::"e3a786fd07e24bfa95ba4341d3695ae8"
 )
