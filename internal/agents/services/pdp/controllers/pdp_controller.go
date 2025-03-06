@@ -171,10 +171,10 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 		}
 	}
 	evaluations := []azmodelspdp.EvaluationResponse{}
-	for i := range reqEvaluationsSize {
+	for i := range len(evalItems){
 		evalItem := evalItems[i]
 		if  evalItem.listID == - 1 {
-			evaluations = append(evaluations, authzCheckEvaluations[i])
+			evaluations = append(evaluations, *evalItems[i].value)
 		} else {
 			evaluations = append(evaluations, authzCheckEvaluations[evalItem.listID])
 		}
