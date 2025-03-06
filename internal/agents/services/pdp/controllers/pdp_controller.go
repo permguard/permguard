@@ -163,7 +163,8 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 	if reqEvaluationsSize > 0 {
 		authzCheckEvaluations, err = s.storage.AuthorizationCheck(expReq)
 		if err != nil {
-			return nil, err
+			errMsg := fmt.Sprintf("%s: authorization check has failed %s", azauthz.AuthzErrInternalErrorMessage, err.Error())
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 		}
 		if len(authzCheckEvaluations) != reqEvaluationsSize {
 			errMsg := fmt.Sprintf("%s: invalid authorization check response size for evaluations", azauthz.AuthzErrInternalErrorMessage)
