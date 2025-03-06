@@ -55,20 +55,21 @@ func NewPDPController(serviceContext *azservices.ServiceContext, storage azStora
 func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckWithDefaultsRequest) (*azmodelspdp.AuthorizationCheckResponse, error) {
 	if request == nil {
 		errMsg := fmt.Sprintf("%s: received nil request", azauthz.AuthzErrBadRequestMessage)
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, "", azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 	}
+	requestID := request.RequestID
 	if request.AuthorizationModel == nil {
 		errMsg := fmt.Sprintf("%s: missing authorization model in request", azauthz.AuthzErrBadRequestMessage)
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, requestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 	}
 	if request.AuthorizationModel.PolicyStore == nil {
 		errMsg := fmt.Sprintf("%s: missing policy store in authorization model", azauthz.AuthzErrBadRequestMessage)
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, requestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 	}
 	expReq, err := authorizationCheckExpandAuthorizationCheckWithDefaults(request)
 	if err != nil {
 		errMsg := fmt.Sprintf("%s: failed to expand authorization request with defaults", azauthz.AuthzErrBadRequestMessage)
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
+		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, requestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 	}
 	type evalItem struct{
 		listID int
@@ -164,11 +165,11 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 		authzCheckEvaluations, err = s.storage.AuthorizationCheck(expReq)
 		if err != nil {
 			errMsg := fmt.Sprintf("%s: authorization check has failed %s", azauthz.AuthzErrInternalErrorMessage, err.Error())
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, requestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 		}
 		if len(authzCheckEvaluations) != reqEvaluationsSize {
 			errMsg := fmt.Sprintf("%s: invalid authorization check response size for evaluations", azauthz.AuthzErrInternalErrorMessage)
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
+			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, requestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 		}
 	}
 	evaluations := []azmodelspdp.EvaluationResponse{}
