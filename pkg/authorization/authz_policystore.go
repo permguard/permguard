@@ -25,7 +25,7 @@ type StoreItem struct {
 	objectInfo *azlangobjs.ObjectInfo
 }
 
-// GetObject returns the object info.
+// GetObjectInfo returns the object info of the store item.
 func (s *StoreItem) GetObjectInfo() *azlangobjs.ObjectInfo {
 	return s.objectInfo
 }
@@ -37,7 +37,7 @@ type PolicyStore struct {
 	policies []StoreItem
 }
 
-// AddPolicy adds a policy to the policy store.
+// AddSchema adds a schema to the policy store.
 func (ps *PolicyStore) AddSchema(schemaID string, objectInfo *azlangobjs.ObjectInfo) {
 	schema := StoreItem{objectInfo: objectInfo}
 	ps.schemas = append(ps.schemas, schema)

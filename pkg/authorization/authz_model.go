@@ -26,9 +26,9 @@ type AuthorizationModel struct {
 }
 
 // SetSubject sets the subject of the authorization context.
-func (a *AuthorizationModel) SetSubject(kind string, id string, source string, properties map[string]any) error {
+func (a *AuthorizationModel) SetSubject(subType string, id string, source string, properties map[string]any) error {
 	a.subject = &Subject{
-		kind:       kind,
+		subType:    subType,
 		id:         id,
 		source:     source,
 		properties: properties,
@@ -42,9 +42,9 @@ func (a *AuthorizationModel) GetSubject() *Subject {
 }
 
 // SetResource sets the resource of the authorization context.
-func (a *AuthorizationModel) SetResource(kind string, id string, properties map[string]any) error {
+func (a *AuthorizationModel) SetResource(resType string, id string, properties map[string]any) error {
 	a.resource = &Resource{
-		kind:       kind,
+		resType:    resType,
 		id:         id,
 		properties: properties,
 	}

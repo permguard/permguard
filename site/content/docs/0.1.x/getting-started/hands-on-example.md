@@ -32,19 +32,6 @@ git clone git@github.com:permguard/playground-cedar.git
 cd playground-cedar
 ```
 
-## Configure Users, Actors and Tenants
-
-The next step is to configure the users and actors.
-
-```text
-permguard authn identitysources create --name keycloak --zoneid 108842867481
-permguard authn identities create --name amy.smith@acmecorp.com --kind user --identitysourceid 377e73eb2b3c48f3be9e03a7caa4046f --zoneid 108842867481
-permguard authn identities create --name platform-admin --kind actor --identitysourceid 377e73eb2b3c48f3be9e03a7caa4046f --zoneid 108842867481
-permguard authn tenants create --name matera-branch --zoneid 108842867481
-permguard authn tenants create --name pisa-branch --zoneid 108842867481
-
-```
-
 ## Start up the AuthZ Server
 
 The first operative step is to start the AuthZ server.
@@ -54,6 +41,7 @@ Plese refer to the [Install & Bootstrap](/docs/0.1.x/getting-started/install-boo
 {{< /callout >}}
 
 ```text
+docker pull permguard/demo-all-in-one:latest
 docker run --rm -it -p 9091:9091 -p 9092:9092 -p 9094:9094 permguard/demo-all-in-one:latest
 ```
 
@@ -73,6 +61,19 @@ It is important to note that the `zoneid` is required for the policy store creat
 
 ```text
 permguard authz ledgers create --name magicfarmacia --zoneid 386017848379
+```
+
+## Configure Users, Actors and Tenants
+
+The next step is to configure the users and actors.
+
+```text
+permguard authn identitysources create --name keycloak --zoneid 108842867481
+permguard authn identities create --name amy.smith@acmecorp.com --kind user --identitysourceid 377e73eb2b3c48f3be9e03a7caa4046f --zoneid 108842867481
+permguard authn identities create --name platform-admin --kind actor --identitysourceid 377e73eb2b3c48f3be9e03a7caa4046f --zoneid 108842867481
+permguard authn tenants create --name matera-branch --zoneid 108842867481
+permguard authn tenants create --name pisa-branch --zoneid 108842867481
+
 ```
 
 ## Set Up the Workspace
