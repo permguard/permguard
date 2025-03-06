@@ -352,7 +352,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(contextID string, policy
 	if len(strings.TrimSpace(subjectID)) == 0 {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguangeSemantic, "[cedar] bad request for the subject id")
 	}
-	subjectKind := subject.GetKind()
+	subjectKind := subject.GetType()
 	pmgSubjectKind, err := createPermguardSubjectKind(subjectKind)
 	if err != nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguangeSemantic, "[cedar] bad request for the subject type")
@@ -364,7 +364,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(contextID string, policy
 
 	// Extract the resource from the authorization context.
 	resource := authzCtx.GetResource()
-	resourceType := resource.GetKind()
+	resourceType := resource.GetType()
 	if len(strings.TrimSpace(resourceType)) == 0 {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguangeSemantic, "[cedar] bad request for the resource type")
 	}

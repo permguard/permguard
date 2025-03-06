@@ -18,15 +18,15 @@ package authorization
 
 // Subject represents the subject.
 type Subject struct {
-	kind       string
+	subType    string
 	id         string
 	source     string
 	properties map[string]any
 }
 
-// GetKind returns the kind of the subject.
-func (s *Subject) GetKind() string {
-	return s.kind
+// GetType returns the type of the subject.
+func (s *Subject) GetType() string {
+	return s.subType
 }
 
 // GetID returns the ID of the subject.
