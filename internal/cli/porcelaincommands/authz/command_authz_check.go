@@ -124,16 +124,18 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 			printer.Println(fmt.Sprintf("%s: %s", aziclicommon.KeywordText("Request ID"), aziclicommon.CreateText(authzReq.RequestID)))
 		}
 		if !decision {
-			contextID := authzResp.Context.ID
-			if len(contextID) == 0 {
-				contextID = "none"
+			contextID := "none"
+			if authzResp.Context != nil && len(authzResp.Context.ID) > 0 {
+				contextID = authzResp.Context.ID
 			}
 			printer.Println(fmt.Sprintf("%s: %s", aziclicommon.KeywordText("Context ID"), aziclicommon.CreateText(contextID)))
-			if authzResp.Context.ReasonAdmin != nil {
-				printer.Println(fmt.Sprintf("  %s: Error: %s - %s ", aziclicommon.KeywordText("Reason Admin"), aziclicommon.IDText(authzResp.Context.ReasonAdmin.Code), authzResp.Context.ReasonAdmin.Message))
-			}
-			if authzResp.Context.ReasonUser != nil {
-				printer.Println(fmt.Sprintf("  %s: Error: %s - %s ", aziclicommon.KeywordText("Reason User"), aziclicommon.IDText(authzResp.Context.ReasonUser.Code), authzResp.Context.ReasonUser.Message))
+			if authzResp.Context != nil {
+				if authzResp.Context.ReasonAdmin != nil {
+					printer.Println(fmt.Sprintf("  %s: Error: %s - %s ", aziclicommon.KeywordText("Reason Admin"), aziclicommon.IDText(authzResp.Context.ReasonAdmin.Code), authzResp.Context.ReasonAdmin.Message))
+				}
+				if authzResp.Context.ReasonUser != nil {
+					printer.Println(fmt.Sprintf("  %s: Error: %s - %s ", aziclicommon.KeywordText("Reason User"), aziclicommon.IDText(authzResp.Context.ReasonUser.Code), authzResp.Context.ReasonUser.Message))
+				}
 			}
 			if len(authzResp.Evaluations) > 0 {
 				printer.Println("Evaluations:")
