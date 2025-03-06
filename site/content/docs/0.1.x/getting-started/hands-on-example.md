@@ -60,7 +60,6 @@ permguard zones create --name demozone
 Here’s what you’ll see.
 
 ```text
-❯ permguard zones create --name demozone
 895741663247: demozone
 ```
 
@@ -73,7 +72,6 @@ permguard authz ledgers create --name magicfarmacia --zoneid 895741663247
 Displayed result.
 
 ```text
-❯ permguard authz ledgers create --name magicfarmacia --zoneid 895741663247
 809257ed202e40cab7e958218eecad20: magicfarmaci
 ```
 
@@ -88,7 +86,6 @@ permguard authn identitysources create --name keycloak --zoneid 895741663247
 This is the expected output.
 
 ```text
-❯ permguard authn identitysources create --name keycloak --zoneid 895741663247
 28e618209040479b8d1a6c581608ec84: keycloak
 ```
 
@@ -104,10 +101,6 @@ permguard authn tenants create --name pisa-branch --zoneid 895741663247
 Resulting output.
 
 ```text
-❯ permguard authn identities create --name amy.smith@acmecorp.com --kind user --identitysourceid 28e618209040479b8d1a6c581608ec84 --zoneid 895741663247
-permguard authn identities create --name platform-admin --kind actor --identitysourceid 28e618209040479b8d1a6c581608ec84 --zoneid 895741663247
-permguard authn tenants create --name matera-branch --zoneid 895741663247
-permguard authn tenants create --name pisa-branch --zoneid 895741663247
 d2ab01ac2ffa46b4b1c427f99be5a30b: amy.smith@acmecorp.com
 6d3aca93330641bfa080abd652bdc184: platform-admin
 75b0225d216848fc8f109ddec037f763: matera-branch
@@ -131,7 +124,6 @@ permguard checkout origin/895741663247/magicfarmacia
 Captured output.
 
 ```text
-❯ permguard init
 permguard remote add origin localhost
 permguard checkout origin/895741663247/magicfarmacia
 Initialized empty permguard ledger in '.'.
@@ -155,7 +147,6 @@ permguard apply
 If everything is set up correctly, you should see the following output.
 
 ```text
-❯ permguard apply
 Initiating the planning process for ledger head/895741663247/809257ed202e40cab7e958218eecad20.
 Planning process completed successfully.
 The following changes have been identified and are ready to be applied:
@@ -248,8 +239,7 @@ Below a sample json for the authorization check.
 
 Here’s what gets returned.
 
-```text
-❯ permguard authz check ./requests/ok_onlyone1.json -o json | jq
+```json
 {
   "authorization_check": {
     "request_id": "abc1",
@@ -289,7 +279,6 @@ permguard objects --all
 Output shown below.
 
 ```text
-❯ permguard objects --all
 Your workspace objects:
 
   - 0bc0aaefc5c96f1ca318c01fef32863273b83c2820ca7f3baf2ddafd73e6ce32 blob schema
@@ -307,13 +296,12 @@ total 8, commit 1, tree 1, blob 6
 The following example shows how to display the content of the `platform-creator` object.
 
 ```text
- permguard objects cat 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1
+permguard objects cat 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1
 ```
 
 Displayed output.
 
 ```text
-❯ permguard objects cat 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1
 Your workspace object 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1:
 
 {"annotations":{"id":"platform-creator"},"effect":"permit","principal":{"op":"==","entity":{"type":"Permguard::IAM::RoleActor","id":"platform-creator"}},"action":{"op":"==","entity":{"type":"MagicFarmacia::Platform::Action","id":"create"}},"resource":{"op":"is","entity_type":"MagicFarmacia::Platform::Subscription"},"conditions":[{"kind":"when","body":{"\u0026\u0026":{"left":{"\u0026\u0026":{"left":{"==":{"left":{".":{"left":{"Var":"context"},"attr":"isSubscriptionActive"}},"right":{"Value":true}}},"right":{"==":{"left":{".":{"left":{"Var":"action"},"attr":"isEnabled"}},"right":{"Value":true}}}}},"right":{"==":{"left":{".":{"left":{"Var":"resource"},"attr":"isEnabled"}},"right":{"Value":true}}}}}},{"kind":"unless","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"isSuperUser"}},"right":{"Value":false}}}}]}
@@ -330,7 +318,6 @@ permguard objects cat 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c5
 Here’s the result.
 
 ```text
-❯ permguard objects cat 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1 --frontend
 Your workspace object 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1:
 
 @id("platform-creator")
