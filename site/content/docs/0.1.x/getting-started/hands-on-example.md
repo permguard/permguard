@@ -72,7 +72,7 @@ permguard authz ledgers create --name magicfarmacia --zoneid 895741663247
 Displayed result.
 
 ```text
-809257ed202e40cab7e958218eecad20: magicfarmaci
+809257ed202e40cab7e958218eecad20: magicfarmacia
 ```
 
 ## Configure Users, Actors and Tenants
