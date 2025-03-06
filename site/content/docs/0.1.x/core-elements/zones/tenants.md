@@ -25,7 +25,7 @@ Tenants play a key role in managing authorizations and help **partition** `resou
 This is especially useful for **multi-tenant** zones, such as Software as a Service (**SaaS**) platforms.
 
 {{< callout context="note" icon="info-circle" >}}
-In the [MagicFarmacia sample](/docs/0.1.x/getting-started/hands-on-example/), each pharmacy branch is a separate tenant, such as `matera-branch` or `pisa-branch`.
+In the [MagicFarmacia sample](/docs/0.1.x/getting-started/hands-on-example/) each pharmacy branch is a separate tenant, such as `matera-branch` or `pisa-branch`.
 
 This setup allows each branch to manage its own resources and actions independently.
 

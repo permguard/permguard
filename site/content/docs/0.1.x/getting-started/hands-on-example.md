@@ -32,6 +32,19 @@ git clone git@github.com:permguard/playground-cedar.git
 cd playground-cedar
 ```
 
+## Configure Users, Actors and Tenants
+
+The next step is to configure the users and actors.
+
+```text
+permguard authn identitysources create --name keycloak --zoneid 108842867481
+permguard authn identities create --name amy.smith@acmecorp.com --kind user --identitysourceid 377e73eb2b3c48f3be9e03a7caa4046f --zoneid 108842867481
+permguard authn identities create --name platform-admin --kind actor --identitysourceid 377e73eb2b3c48f3be9e03a7caa4046f --zoneid 108842867481
+permguard authn tenants create --name matera-branch --zoneid 108842867481
+permguard authn tenants create --name pisa-branch --zoneid 108842867481
+
+```
+
 ## Start up the AuthZ Server
 
 The first operative step is to start the AuthZ server.
@@ -120,6 +133,66 @@ Plese refer to the [Command Line](/docs/0.1.x/command-line/authz/check/) section
 
 ```text
   permguard authz check ./requests/ok_onlyone1.json
+```
+
+Below a sample json for the authorization check.
+
+```json
+{
+  "authorization_model": {
+    "zone_id": 979783680014,
+    "policy_store": {
+      "type": "ledger",
+      "id": "ce5b5ec4eed64d0c906f08b69a22ee7b"
+    },
+    "principal": {
+      "type": "user",
+      "id": "amy.smith@acmecorp.com",
+      "source": "keycloak"
+    },
+    "entities": {
+      "schema": "cedar",
+      "items": [
+        {
+          "uid": {
+            "type": "MagicFarmacia::Platform::BranchInfo",
+            "id": "subscription"
+          },
+          "attrs": {
+            "active": true
+          },
+          "parents": []
+        }
+      ]
+    }
+  },
+  "request_id": "abc1",
+  "subject": {
+    "type": "actor",
+    "id": "platform-admin",
+    "source": "keycloak",
+    "properties": {
+      "isSuperUser": true
+    }
+  },
+  "resource": {
+    "type": "MagicFarmacia::Platform::Subscription",
+    "id": "e3a786fd07e24bfa95ba4341d3695ae8",
+    "properties": {
+      "isEnabled": true
+    }
+  },
+  "action": {
+    "name": "MagicFarmacia::Platform::Action::view",
+    "properties": {
+      "isEnabled": true
+    }
+  },
+  "context": {
+    "time": "2025-01-23T16:17:46+00:00",
+    "isSubscriptionActive": false
+  }
+}
 ```
 
 ## Next Steps
