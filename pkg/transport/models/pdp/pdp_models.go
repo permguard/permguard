@@ -39,7 +39,7 @@ type Entities struct {
 
 // Subject is the entity on which the authorization decision is made.
 type Subject struct {
-	Type       string         `json:"kind,omitempty"`
+	Type       string         `json:"type,omitempty"`
 	ID         string         `json:"id,omitempty" validate:"required"`
 	Source     string         `json:"source,omitempty"`
 	Properties map[string]any `json:"properties,omitempty"`
@@ -47,7 +47,7 @@ type Subject struct {
 
 // Resource is the entity on which the authorization decision is made.
 type Resource struct {
-	Type       string         `json:"kind,omitempty"`
+	Type       string         `json:"type,omitempty"`
 	ID         string         `json:"id,omitempty" validate:"required"`
 	Properties map[string]any `json:"properties,omitempty"`
 }
