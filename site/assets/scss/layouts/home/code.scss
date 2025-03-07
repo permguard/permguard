@@ -312,7 +312,12 @@ pre code.hljs {
       height: 72px;
     }
 
+    &__languages {
+      max-width: 100%;
+    }
+
     &__language {
+      min-width: 72px;
       &__image {
         height: 24px;
 
