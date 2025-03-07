@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  permguard:
+    image: permguard-all-in-one:latest
+    build:
+      context: .
+      dockerfile: ./cmd/server-all-in-one/Dockerfile
+    ports:
+      - "9091:9091"
+      - "9092:9092"
+      - "9094:9094"
+    environment:
+      - PERMGUARD_DEBUG=FALSE
+      - PERMGUARD_LOG_LEVEL=INFO
+      - PERMGUARD_SERVER_APPDATA=/opt/permguard/volume
+    volumes:
+      - c:/users/user/desktop/permguard/samples/volume:/opt/permguard/volume
+    restart: always
