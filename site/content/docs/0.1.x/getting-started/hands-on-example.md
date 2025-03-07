@@ -47,7 +47,7 @@ docker run --rm -it -p 9091:9091 -p 9092:9092 -p 9094:9094 permguard/demo-all-in
 
 ## Create the Zone and Policy Store
 
-The next step is to create a zone and the policy store.
+The next step is to initialize the workspace then create a zone and the policy store.
 
 {{< callout context="note" icon="info-circle" >}}
 Plese refer to the [Command Line](/docs/0.1.x/command-line/how-to-use/) section for more information about the available commands.
@@ -57,23 +57,54 @@ Plese refer to the [Command Line](/docs/0.1.x/command-line/how-to-use/) section 
 permguard zones create --name demozone
 ```
 
-It is important to note that the `zoneid` is required for the policy store creation and it is returned by the previous command.
+Here’s what you’ll see.
 
 ```text
-permguard authz ledgers create --name magicfarmacia --zoneid 386017848379
+895741663247: demozone
+```
+
+It is important to note that the `zoneid` is required for the ledger creation and it is returned by the previous command.
+
+```text
+permguard authz ledgers create --name magicfarmacia --zoneid 895741663247
+```
+
+Displayed result.
+
+```text
+809257ed202e40cab7e958218eecad20: magicfarmacia
 ```
 
 ## Configure Users, Actors and Tenants
 
-The next step is to configure the users and actors.
+The next step is to configure the users and actors. First of all, it is necessary to create the identity source.
 
 ```text
-permguard authn identitysources create --name keycloak --zoneid 108842867481
-permguard authn identities create --name amy.smith@acmecorp.com --kind user --identitysourceid 377e73eb2b3c48f3be9e03a7caa4046f --zoneid 108842867481
-permguard authn identities create --name platform-admin --kind actor --identitysourceid 377e73eb2b3c48f3be9e03a7caa4046f --zoneid 108842867481
-permguard authn tenants create --name matera-branch --zoneid 108842867481
-permguard authn tenants create --name pisa-branch --zoneid 108842867481
+permguard authn identitysources create --name keycloak --zoneid 895741663247
+```
 
+This is the expected output.
+
+```text
+28e618209040479b8d1a6c581608ec84: keycloak
+```
+
+Then, it is necessary to create the identities. It is important to note that the `identitysourceid` is required for the identities creation and it is returned by the previous command.
+
+```text
+permguard authn identities create --name amy.smith@acmecorp.com --kind user --identitysourceid 28e618209040479b8d1a6c581608ec84 --zoneid 895741663247
+permguard authn identities create --name platform-admin --kind actor --identitysourceid 28e618209040479b8d1a6c581608ec84 --zoneid 895741663247
+permguard authn tenants create --name matera-branch --zoneid 895741663247
+permguard authn tenants create --name pisa-branch --zoneid 895741663247
+```
+
+Resulting output.
+
+```text
+d2ab01ac2ffa46b4b1c427f99be5a30b: amy.smith@acmecorp.com
+6d3aca93330641bfa080abd652bdc184: platform-admin
+75b0225d216848fc8f109ddec037f763: matera-branch
+2119ed02dbc2474aaacfd848319ec566: pisa-branch
 ```
 
 ## Set Up the Workspace
@@ -87,7 +118,18 @@ A workspace represents a local working space. Plese refer to the [CodeOps Worksp
 ```text
 permguard init
 permguard remote add origin localhost
-permguard checkout origin/386017848379/magicfarmacia
+permguard checkout origin/895741663247/magicfarmacia
+```
+
+Captured output.
+
+```text
+permguard remote add origin localhost
+permguard checkout origin/895741663247/magicfarmacia
+Initialized empty permguard ledger in '.'.
+Remote origin has been added.
+Ledger magicfarmacia has been added.
+The local workspace is already fully up to date with the remote ledger.
 ```
 
 ## Apply the Policies
@@ -105,23 +147,22 @@ permguard apply
 If everything is set up correctly, you should see the following output.
 
 ```text
-❯ permguard apply
-Initiating the planning process for ledger head/386017848379/71a73ac8168b4089b1f3e48ba4ac19c6.
+Initiating the planning process for ledger head/895741663247/809257ed202e40cab7e958218eecad20.
 Planning process completed successfully.
 The following changes have been identified and are ready to be applied:
 
-  + 2c36582597d15df6df4e8b03c4bcae87a92d58a27548291fc92023043e0ee0e2 platform-manager
-  + 446f73d58cc36b3b9f2aa644945cfb8fdc92596a5ab6f21ab87e7d1c7461c31b platform-auditor
-  + d5a767678430a3ec8d1d6c32764e9f7323987b95337840d8c276345d8f7a1aab platform-view
-  + 6b9215b4696f02629f2eac4a039840a8ed46a9f31e6bfe89d3b8e6f6b6c4b23e platform-creator
-  + ba402e8797e48b8d36a029632c150fbe4d873b3dcd075d7fc52420c4c919339a platform-administrator
+  + 2e3d2306e5cae1146396a9c9bf5b1c03c80ede9057d7796f3189a569de4ca113 platform-administrator
+  + 3da1ed56372b54f7c6e33b14f21ae3d53db06fe8701b65599c541cbbdf119fde platform-manager
+  + b8c072aee9679efdbe86175b51c7305e88e7011e9e8f6f52186ab182b8d0cfa9 platform-auditor
+  + f5918d66683fa021e104c8d66d6a9cef4a7a33a3a1d90b5c21043e3d5ece9aec platform-viewer
+  + 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1 platform-creator
   + 0bc0aaefc5c96f1ca318c01fef32863273b83c2820ca7f3baf2ddafd73e6ce32 schema
 
 unchanged 0, created 6, modified 0, deleted 0
 
-Initiating the apply process for ledger head/386017848379/71a73ac8168b4089b1f3e48ba4ac19c6.
+Initiating the apply process for ledger head/895741663247/809257ed202e40cab7e958218eecad20.
 Apply process completed successfully.
-Your workspace is synchronized with the remote ledger: head/386017848379/71a73ac8168b4089b1f3e48ba4ac19c6.
+Your workspace is synchronized with the remote ledger: head/895741663247/809257ed202e40cab7e958218eecad20.
 ```
 
 ## Perform the Authorization Check
@@ -133,7 +174,7 @@ Plese refer to the [Command Line](/docs/0.1.x/command-line/authz/check/) section
 {{< /callout >}}
 
 ```text
-  permguard authz check ./requests/ok_onlyone1.json
+permguard authz check ./requests/ok_onlyone1.json -o json
 ```
 
 Below a sample json for the authorization check.
@@ -141,10 +182,10 @@ Below a sample json for the authorization check.
 ```json
 {
   "authorization_model": {
-    "zone_id": 979783680014,
+    "zone_id": 895741663247,
     "policy_store": {
       "type": "ledger",
-      "id": "ce5b5ec4eed64d0c906f08b69a22ee7b"
+      "id": "809257ed202e40cab7e958218eecad20"
     },
     "principal": {
       "type": "user",
@@ -169,8 +210,8 @@ Below a sample json for the authorization check.
   },
   "request_id": "abc1",
   "subject": {
-    "type": "actor",
-    "id": "platform-admin",
+    "type": "role-actor",
+    "id": "platform-creator",
     "source": "keycloak",
     "properties": {
       "isSuperUser": true
@@ -184,14 +225,37 @@ Below a sample json for the authorization check.
     }
   },
   "action": {
-    "name": "MagicFarmacia::Platform::Action::view",
+    "name": "MagicFarmacia::Platform::Action::create",
     "properties": {
       "isEnabled": true
     }
   },
   "context": {
     "time": "2025-01-23T16:17:46+00:00",
-    "isSubscriptionActive": false
+    "isSubscriptionActive": true
+  }
+}
+```
+
+Here’s what gets returned.
+
+```json
+{
+  "authorization_check": {
+    "request_id": "abc1",
+    "decision": true,
+    "context": {
+      "id": "94acbe8e1f224c6aa7a2e6353ed76869"
+    },
+    "evaluations": [
+      {
+        "request_id": "abc1",
+        "decision": true,
+        "context": {
+          "id": "94acbe8e1f224c6aa7a2e6353ed76869"
+        }
+      }
+    ]
   }
 }
 ```
@@ -206,50 +270,66 @@ To better understand Permguard, it is worth exploring the Policy Store, which is
 Plese refer to the [Command Line Objects](/docs/0.1.x/command-line/workspace/objects/) section for more information about the available commands.
 {{< /callout >}}
 
-Below is an example of how to list all objects in the workspace:
+Below is an example of how to list all objects in the workspace.
 
 ```text
-❯ permguard objects --all
+permguard objects --all
+```
+
+Output shown below.
+
+```text
 Your workspace objects:
 
   - 0bc0aaefc5c96f1ca318c01fef32863273b83c2820ca7f3baf2ddafd73e6ce32 blob schema
-  - 2c36582597d15df6df4e8b03c4bcae87a92d58a27548291fc92023043e0ee0e2 blob platform-manager
-  - 4415e2859d5267db9509f8b7d64bb1b2e3684ee85170474383340ea77bb16919 commit
-  - 446f73d58cc36b3b9f2aa644945cfb8fdc92596a5ab6f21ab87e7d1c7461c31b blob platform-auditor
-  - 6b9215b4696f02629f2eac4a039840a8ed46a9f31e6bfe89d3b8e6f6b6c4b23e blob platform-creator
-  - ba402e8797e48b8d36a029632c150fbe4d873b3dcd075d7fc52420c4c919339a blob platform-administrator
-  - cdcd1ea6a74a41ce5a61f4d556c1d15bde70660928ad5d57aa84834a3a01f291 tree
-  - d5a767678430a3ec8d1d6c32764e9f7323987b95337840d8c276345d8f7a1aab blob platform-view
+  - 2e3d2306e5cae1146396a9c9bf5b1c03c80ede9057d7796f3189a569de4ca113 blob platform-administrator
+  - 3da1ed56372b54f7c6e33b14f21ae3d53db06fe8701b65599c541cbbdf119fde blob platform-manager
+  - 6a30289b571b09ba52d32b63ff92b745abc8bc8e816f0d585f5a133ee314f652 commit
+  - 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1 blob platform-creator
+  - b8c072aee9679efdbe86175b51c7305e88e7011e9e8f6f52186ab182b8d0cfa9 blob platform-auditor
+  - f5918d66683fa021e104c8d66d6a9cef4a7a33a3a1d90b5c21043e3d5ece9aec blob platform-viewer
+  - fb16aa66413ae45275e2063bcbdf6267be4689200b74c04ff8f2ad0f4b03127c tree
 
 total 8, commit 1, tree 1, blob 6
 ```
 
-The following example shows how to display the content of the `platform-manager` object.
+The following example shows how to display the content of the `platform-creator` object.
 
 ```text
-❯ permguard objects cat 2c36582597d15df6df4e8b03c4bcae87a92d58a27548291fc92023043e0ee0e2
-Your workspace object 2c36582597d15df6df4e8b03c4bcae87a92d58a27548291fc92023043e0ee0e2:
+permguard objects cat 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1
+```
 
-{"annotations":{"id":"platform-manager"},"effect":"permit","principal":{"op":"in","entity":{"type":"Permguard::IAM::Actor","id":"platform-admin"}},"action":{"op":"in","entities":[{"type":"MagicFarmacia::Platform::Action","id":"view"},{"type":"MagicFarmacia::Platform::Action","id":"update"}]},"resource":{"op":"==","entity":{"type":"MagicFarmacia::Platform::Subscription","id":"e3a786fd07e24bfa95ba4341d3695ae8"}},"conditions":[{"kind":"unless","body":{"\u0026\u0026":{"left":{"has":{"left":{"Var":"principal"},"attr":"isSuperUser"}},"right":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"isSuperUser"}},"right":{"Value":false}}}}}}]}
+Displayed output.
 
-type blob, size 695, oname platform-manager
+```text
+Your workspace object 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1:
+
+{"annotations":{"id":"platform-creator"},"effect":"permit","principal":{"op":"==","entity":{"type":"Permguard::IAM::RoleActor","id":"platform-creator"}},"action":{"op":"==","entity":{"type":"MagicFarmacia::Platform::Action","id":"create"}},"resource":{"op":"is","entity_type":"MagicFarmacia::Platform::Subscription"},"conditions":[{"kind":"when","body":{"\u0026\u0026":{"left":{"\u0026\u0026":{"left":{"==":{"left":{".":{"left":{"Var":"context"},"attr":"isSubscriptionActive"}},"right":{"Value":true}}},"right":{"==":{"left":{".":{"left":{"Var":"action"},"attr":"isEnabled"}},"right":{"Value":true}}}}},"right":{"==":{"left":{".":{"left":{"Var":"resource"},"attr":"isEnabled"}},"right":{"Value":true}}}}}},{"kind":"unless","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"isSuperUser"}},"right":{"Value":false}}}}]}
+
+type blob, size 881, oname platform-creator
 ```
 
 It is also possible to specify the `frontend` option to display the object in a more readable format.
 
 ```text
-❯ permguard objects cat 2c36582597d15df6df4e8b03c4bcae87a92d58a27548291fc92023043e0ee0e2 --frontend
-Your workspace object 2c36582597d15df6df4e8b03c4bcae87a92d58a27548291fc92023043e0ee0e2:
+permguard objects cat 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1 --frontend
+```
 
-@id("platform-manager")
+Here’s the result.
+
+```text
+Your workspace object 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1:
+
+@id("platform-creator")
 permit (
-    principal in Permguard::IAM::Actor::"platform-admin",
-    action in [MagicFarmacia::Platform::Action::"view", MagicFarmacia::Platform::Action::"update"],
-    resource == MagicFarmacia::Platform::Subscription::"e3a786fd07e24bfa95ba4341d3695ae8"
+    principal == Permguard::IAM::RoleActor::"platform-creator",
+    action == MagicFarmacia::Platform::Action::"create",
+    resource is MagicFarmacia::Platform::Subscription
 )
-unless { principal has isSuperUser && principal.isSuperUser == false };
+when { context.isSubscriptionActive == true && action.isEnabled == true && resource.isEnabled == true }
+unless { principal.isSuperUser == false };
 
-type blob, size 695, oname platform-manager
+type blob, size 881, oname platform-creator
 ```
 
 It is recommended to explore the [Policy as Code](/docs/0.1.x/policy-as-code/policy-languages/) section to learn more about the policy store and the policy language.

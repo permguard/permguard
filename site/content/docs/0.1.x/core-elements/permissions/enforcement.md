@@ -77,7 +77,7 @@ To enforce access control, the **PEP** queries the **Policy Decision Point (PDP)
   "evaluations": [
     {
       "action": {
-        "name": "MagicFarmacia::Platform::Action::view",
+        "name": "MagicFarmacia::Platform::Action::create",
         "properties": {}
       }
     },

@@ -72,9 +72,12 @@ func NewEvaluationErrorResponse(requestID string, erroCode string, adminReason s
 }
 
 // NewAuthorizationCheckErrorResponse creates an authorization check error response.
-func NewAuthorizationCheckErrorResponse(authzCheckResponse *AuthorizationCheckResponse, erroCode string, adminReason string, userReason string) *AuthorizationCheckResponse {
+func NewAuthorizationCheckErrorResponse(authzCheckResponse *AuthorizationCheckResponse, requestID string, erroCode string, adminReason string, userReason string) *AuthorizationCheckResponse {
 	if authzCheckResponse == nil {
 		authzCheckResponse = &AuthorizationCheckResponse{}
+	}
+	if len(requestID) > 0 {
+		authzCheckResponse.RequestID = requestID
 	}
 	if authzCheckResponse.Context == nil {
 		authzCheckResponse.Context = &ContextResponse{}

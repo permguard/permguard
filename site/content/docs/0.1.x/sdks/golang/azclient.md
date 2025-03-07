@@ -35,7 +35,7 @@ azClient := permguard.NewAZClient(
 
 // Create a new authorization request
 req := azreq.NewAZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494d3175a",
-  "amy.smith@acmecorp.com", "MagicFarmacia::Platform::Subscription", "MagicFarmacia::Platform::Action::view")
+  "amy.smith@acmecorp.com", "MagicFarmacia::Platform::Subscription", "MagicFarmacia::Platform::Action::create")
 
 // Check the authorization
 decsion, _, _ := azClient.Check(req)
@@ -75,7 +75,7 @@ entities := []map[string]any{
 
 // Create a new authorization request
 req := azreq.NewAZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494d3175a",
-  "amy.smith@acmecorp.com", "MagicFarmacia::Platform::Subscription", "MagicFarmacia::Platform::Action::view").
+  "amy.smith@acmecorp.com", "MagicFarmacia::Platform::Subscription", "MagicFarmacia::Platform::Action::create").
   // RequestID
   WithRequestID("1234").
   // Principal
@@ -83,7 +83,7 @@ req := azreq.NewAZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494
   // Entities
   WithEntitiesItems(azreq.CedarEntityKind, entities).
   // Subject
-  WithSubjectKind("user").
+  WithSubjectKind(azreq.UserType).
   WithSubjectSource("keycloack").
   WithSubjectProperty("isSuperUser", true).
   // Resource
@@ -132,7 +132,7 @@ azClient := permguard.NewAZClient(
 
 // Create a new subject
 subject := azreq.NewSubjectBuilder("amy.smith@acmecorp.com").
-  WithKind("user").
+  WithKind(azreq.UserType).
   WithSource("keycloack").
   WithProperty("isSuperUser", true).
   Build()
@@ -144,7 +144,7 @@ resource := azreq.NewResourceBuilder("MagicFarmacia::Platform::Subscription").
   Build()
 
 // Create ations
-actionView := azreq.NewActionBuilder("MagicFarmacia::Platform::Action::view").
+actionView := azreq.NewActionBuilder("MagicFarmacia::Platform::Action::create").
   WithProperty("isEnabled", true).
   Build()
 
