@@ -322,6 +322,16 @@ pre code.hljs {
       }
     }
   }
+
+  .code__img pre {
+    justify-content: left !important;
+    align-items: start !important;
+
+    & code {
+      padding: 15px 25px;
+      margin: auto 0;
+    }
+  }
 }
 
 @media (max-width: 575px) {
