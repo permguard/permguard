@@ -40,7 +40,7 @@ func NewAuthorizationError(code string, message string) (*AuthorizationError, er
 	}, nil
 }
 
-// AuthorizationModel represents the authorization context.
+// AuthorizationDecision represents the authorization decision.
 type AuthorizationDecision struct {
 	id         string
 	decision   bool
@@ -68,7 +68,7 @@ func (a *AuthorizationDecision) GetDecision() bool {
 	return a.decision
 }
 
-// GetUserError returns the user error.
+// GetAdminError returns the admin error.
 func (a *AuthorizationDecision) GetAdminError() *AuthorizationError {
 	return a.adminError
 }
