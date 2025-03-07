@@ -1,6 +1,3 @@
-/* eslint-disable no-undef */
-import Clipboard from "clipboard";
-
 /**
  * Copyright 2024 Nitro Agility S.r.l.
  *
@@ -20,96 +17,8 @@ import Clipboard from "clipboard";
  */
 
 // Put your custom JS code here
-
-const PYTHON_CODE = {
-  before: `# BEFORE
-def get_permissions_for_role(role: str) -> dict[str, dict[str, list[str]]]:
-    return {}
-
-def check_permissions(token: str, system: str, resource: str, action: str) -> bool:
-    payload = jwt.decode(token, options={"verify_signature": False})
-    roles = payload.get("role", [])
-
-    if not isinstance(roles, list):
-        return False
-
-    for role in roles:
-        role_permissions = get_permissions_for_role(role)
-        if resource in role_permissions and system in role_permissions[resource]:
-            if action.lower() in map(str.lower, role_permissions[resource][system]):
-                return True
-    return False
-
-has_permissions = check_permissions(token, system, "subscription", "view")
-
-print("✅ Authorization Permitted" if has_permissions else "❌ Authorization Denied")`,
-  after: `# AFTER
-from permguard import AZClient, AZAtomicRequestBuilder, WithEndpoint
-
-az_client = AZClient(WithEndpoint("localhost", 9094))
-
-req = (AZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494d3175a",
-        "amy.smith@acmecorp.com", "MagicFarmacia::Platform::Subscription",
-        "MagicFarmacia::Platform::Action::create")
-       .build())
-
-ok, _, _ = az_client.check(req)
-
-print("✅ Authorization Permitted" if ok else "❌ Authorization Denied")
-`,
-};
-
-const GO_CODE = {
-  before: `// BEFORE
-func getPermissionsForRole(role string) map[string]map[string][]string {
-  // Here boilerplate code to fetch permissions for a role
-  return permissions
-}
-
-func checkPermissions(token, system, resource, action string) bool {
-  payload := decodeJWT(token)
-  roles, ok := payload["role"].([]string)
-  if !ok {
-      return false
-  }
-
-  for _, role := range roles {
-      rolePermissions := getPermissionsForRole(role)
-      if resources, systemFound := rolePermissions[resource]; systemFound {
-          if actions, resourceFound := resources[system]; resourceFound {
-              for _, allowedAction := range actions {
-                  if strings.EqualFold(allowedAction, action) {
-                      return true
-                  }
-              }
-          }
-      }
-  }
-  return false
-}
-
-hasPermissions := checkPermissions(token, system, "subscription", "view")
-if hasPermissions {
-  fmt.Println("✅ Authorization Permitted")
-} else {
-fmt.Println("❌ Authorization Denied")
-}`,
-  after: `// AFTER
-azClient := permguard.NewAZClient(
-	permguard.WithEndpoint("localhost", 9094),
-)
-
-req := azreq.NewAZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494d3175a",
-	"amy.smith@acmecorp.com", "MagicFarmacia::Platform::Subscription", "MagicFarmacia::Platform::Action::create").
-	Build()
-
-ok, _, _ := azClient.Check(req)
-if decsion {
-	fmt.Println("✅ Authorization Permitted")
-} else {
-	fmt.Println("❌ Authorization Denied")
-}`,
-};
+import Clipboard from "clipboard";
+import { LANGUAGES_CODE } from "./code";
 
 const handleScroll = () => {
   const header = document.querySelector("header");
@@ -138,34 +47,22 @@ const handleSelectedLanguageChange = (element) => {
   });
 
   element.classList.add("code__language--active");
-  selectedLanguage = element.getAttribute("data-language");
 
-  const oldLanguage = selectedLanguage === "go" ? "python" : "go";
+  const oldLanguage = selectedLanguage;
+  selectedLanguage = element.getAttribute("data-language");
 
   let codeBoxes = [];
 
   if (hasSeparator) {
     codeBoxes = document.querySelectorAll("img-comparison-slider pre code");
 
-    if (selectedLanguage === "go") {
-      codeBoxes[0].innerHTML = GO_CODE.before;
-      codeBoxes[1].innerHTML = GO_CODE.after;
-    }
-
-    if (selectedLanguage === "python") {
-      codeBoxes[0].innerHTML = PYTHON_CODE.before;
-      codeBoxes[1].innerHTML = PYTHON_CODE.after;
-    }
+    codeBoxes[0].innerHTML = LANGUAGES_CODE[selectedLanguage].before;
+    codeBoxes[1].innerHTML = LANGUAGES_CODE[selectedLanguage].after;
   } else {
     codeBoxes = document.querySelectorAll(".code__img--small pre code");
 
-    if (selectedLanguage === "go") {
-      codeBoxes[0].innerHTML = GO_CODE[isPermguard ? "after" : "before"];
-    }
-
-    if (selectedLanguage === "python") {
-      codeBoxes[0].innerHTML = PYTHON_CODE[isPermguard ? "after" : "before"];
-    }
+    codeBoxes[0].innerHTML =
+      LANGUAGES_CODE[selectedLanguage][isPermguard ? "after" : "before"];
   }
 
   codeBoxes.forEach((codeBox) => {
@@ -186,13 +83,8 @@ const toggleIsPermguard = () => {
 
   const codeBoxes = document.querySelectorAll(".code__img--small pre code");
 
-  if (selectedLanguage === "go") {
-    codeBoxes[0].innerHTML = GO_CODE[isPermguard ? "after" : "before"];
-  }
-
-  if (selectedLanguage === "python") {
-    codeBoxes[0].innerHTML = PYTHON_CODE[isPermguard ? "after" : "before"];
-  }
+  codeBoxes[0].innerHTML =
+    LANGUAGES_CODE[selectedLanguage][isPermguard ? "after" : "before"];
 
   codeBoxes.forEach((codeBox) => {
     codeBox.removeAttribute("data-highlighted");
