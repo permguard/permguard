@@ -1,17 +1,5 @@
 .DEFAULT_GOAL := build
 
-# Windows executables always have .exe extension
-WIN_EXE := .exe
-
-# Binary names for Windows
-DIST_DIR := dist
-WIN_CLI := permguard$(WIN_EXE)
-WIN_SERVER_ALL := server-all-in-one$(WIN_EXE)
-WIN_SERVER_AAP := server-aap$(WIN_EXE)
-WIN_SERVER_PAP := server-pap$(WIN_EXE)
-WIN_SERVER_IDP := server-idp$(WIN_EXE)
-WIN_SERVER_PDP := server-pdp$(WIN_EXE)
-
 brew:
 	brew install golangci-lint
 	brew install staticcheck
@@ -24,7 +12,7 @@ install:
 	go install github.com/google/addlicense@latest
 
 clean:
-	rm -rf $(DIST_DIR)
+	rm -rf dist/
 	rm -rf tmp/
 	rm -f coverage.out
 	rm -f result.json
@@ -32,6 +20,7 @@ clean:
 init-dependency:
 	go get -u golang.org/x/crypto
 	go get -u golang.org/x/net
+
 	go get -u github.com/davecgh/go-spew
 	go get -u github.com/xeipuuv/gojsonschema
 	go get -u go.uber.org/zap
@@ -41,7 +30,7 @@ init-dependency:
 	go get -u github.com/spf13/viper
 	go get -u github.com/stretchr/testify
 	go get -u github.com/fatih/color
-	go get -u gopkg.in/yaml.v2
+	go get -u get gopkg.in/yaml.v2
 	go get -u github.com/DATA-DOG/go-sqlmock
 	go get -u github.com/pressly/goose/v3
 	go get -u gorm.io/gorm
@@ -64,7 +53,7 @@ protoc:
 	protoc internal/agents/services/pdp/endpoints/api/v1/*.proto --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative --proto_path=.
 
 check:
-	staticcheck ./...
+	staticcheck  ./...
 
 lint:
 	go vet ./...
@@ -82,7 +71,7 @@ test:
 	go test ./...
 
 teste2e:
-	E2E=TRUE GOFLAGS="-count=1" go test ./e2e/...
+	export E2E="TRUE" && GOFLAGS="-count=1" go test ./e2e/...
 
 coverage:
 	go test -coverprofile=coverage.out ./...
@@ -96,16 +85,15 @@ coverage-plugin:
 	go tool cover -html=coverage.out
 	rm coverage.out
 
-coverage-%:
+converage-%:
 	go test -coverprofile=coverage.out ./...
 
-coverage-json:
+converage-json:
 	go test -json -coverprofile=coverage.out ./... > result.json
 
-# Build Windows executables
-build-windows:
-	mkdir -p $(DIST_DIR)
-	GOOS=windows GOARCH=amd64 go build -o $(DIST_DIR)/$(WIN_CLI) ./cmd/cli
+build-cli:
+	mkdir -p dist
+	go build -o dist/permguard ./cmd/cli
 
 build-all-in-one:
 	mkdir -p dist
@@ -127,33 +115,17 @@ build-release:
 	chmod +x dist/server-pdp
 	go build -o dist/permguard ./cmd/cli
 	chmod +x dist/permguard
-# Build for current platform
-build-native:
-	mkdir -p $(DIST_DIR)
-	go build -o $(DIST_DIR)/server-all-in-one ./cmd/server-all-in-one
-	chmod +x $(DIST_DIR)/server-all-in-one
-	go build -o $(DIST_DIR)/server-aap ./cmd/server-aap
-	chmod +x $(DIST_DIR)/server-aap
-	go build -o $(DIST_DIR)/server-pap ./cmd/server-pap
-	chmod +x $(DIST_DIR)/server-pap
-	go build -o $(DIST_DIR)/server-idp ./cmd/server-idp
-	chmod +x $(DIST_DIR)/server-idp
-	go build -o $(DIST_DIR)/server-pdp ./cmd/server-pdp
-	chmod +x $(DIST_DIR)/server-pdp
-	go build -o $(DIST_DIR)/permguard ./cmd/cli
-	chmod +x $(DIST_DIR)/permguard
 
 run-release:
 	go run ./cmd/server-all-in-one
 
-# Build Windows executables
-build-all: build-windows
+build:  clean mod build-release
 
-build: clean mod build-windows
+run:  clean mod lint-fix run-release
 
-run: clean mod lint-fix run-release
-
-# disallow any parallelism (-j) for Make
+# disallow any parallelism (-j) for Make. This is necessary since some
+# commands during the build process create temporary files that collide
+# under parallel conditions.
 .NOTPARALLEL:
 
-.PHONY: clean mod lint lint-fix build build-windows build-all run
+.PHONY: clean mod lint lint-fix release all
