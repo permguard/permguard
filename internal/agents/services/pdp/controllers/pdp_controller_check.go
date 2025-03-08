@@ -62,7 +62,7 @@ func authorizationCheckExpandAuthorizationCheckWithDefaults(request *azmodelspdp
 			if evaluation.Action != nil {
 				expRequest.Action = evaluation.Action
 			}
-			if evaluation.Context != nil {
+			if evaluation.Context != nil && len(evaluation.Context) > 0 {
 				expRequest.Context = evaluation.Context
 			}
 			expReq.Evaluations = append(expReq.Evaluations, expRequest)
