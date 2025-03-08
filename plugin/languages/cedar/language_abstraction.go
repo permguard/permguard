@@ -448,12 +448,6 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(contextID string, policy
 		Context:   contextRecord,
 	}
 
-	jsonData, err := json.MarshalIndent(req, "", "  ")
-	fmt.Println(string(jsonData))
-
-	jsonData, err = json.MarshalIndent(entities, "", "  ")
-	fmt.Println(string(jsonData))
-
 	ok, _ := ps.IsAuthorized(entities, req)
 	var adminError, userError *azauthz.AuthorizationError
 	if !ok {
