@@ -35,6 +35,9 @@ func authorizationCheckExpandAuthorizationCheckWithDefaults(request *azmodelspdp
 			Context:   request.Context,
 			ContextID: azids.GenerateID(),
 		}
+		if expRequest.Context == nil {
+			expRequest.Context = make(map[string]interface{})
+		}
 		expReq.Evaluations = []azmodelspdp.EvaluationRequest{expRequest}
 	} else {
 		requestID := request.RequestID
@@ -64,6 +67,9 @@ func authorizationCheckExpandAuthorizationCheckWithDefaults(request *azmodelspdp
 			}
 			if evaluation.Context != nil && len(evaluation.Context) > 0 {
 				expRequest.Context = evaluation.Context
+			}
+			if expRequest.Context == nil {
+				expRequest.Context = make(map[string]interface{})
 			}
 			expReq.Evaluations = append(expReq.Evaluations, expRequest)
 		}
