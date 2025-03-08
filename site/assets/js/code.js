@@ -62,6 +62,7 @@ if decsion {
     before: `# BEFORE
 
 def get_permissions_for_role(role: str) -> dict[str, dict[str, list[str]]]:
+    # Here boilerplate code to fetch permissions for a role
     return {}
 
 def check_permissions(token: str, system: str, resource: str, action: str) -> bool:
