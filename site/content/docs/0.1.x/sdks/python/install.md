@@ -22,5 +22,5 @@ seo:
 In your application install the Python SDK by running the following command:
 
 ```shell
-pip install permguard-sdk
+pip install permguard
 ```
