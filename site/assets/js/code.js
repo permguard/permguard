@@ -84,9 +84,9 @@ has_permissions = check_permissions(token, system, "subscription", "view")
 print("✅ Authorization Permitted" if has_permissions else "❌ Authorization Denied")`,
     after: `# AFTER
 
-from permguard_sdk.az.azreq.model import AZRequest
-from permguard_sdk.az_client import AZClient
-from permguard_sdk.az_config import with_endpoint
+from permguard.az.azreq.model import AZRequest
+from permguard.az_client import AZClient
+from permguard.az_config import with_endpoint
 
 az_client = AZClient(with_endpoint("localhost", 9094))
 
