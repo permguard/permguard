@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "install-go-sdk-015640d9d85849c587b657391dd8e00e"
+    identifier: "install-go-sdk-6a2336ea96984e2b85619e00dc2efb2a"
 weight: 9101
 toc: true
 seo:

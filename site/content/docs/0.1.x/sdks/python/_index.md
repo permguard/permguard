@@ -1,6 +1,6 @@
 ---
-title: "Node SDK"
-slug: "Node SDK"
+title: "Python SDK"
+slug: "Python SDK"
 description: ""
 summary: ""
 date: 2024-02-18T17:14:43+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "node-3a89039ebc35483c9d88fdc6380ec6b3"
+    identifier: "python-ee0606136d5a48289ce034d49a50c656"
 weight: 9200
 toc: true
 seo:

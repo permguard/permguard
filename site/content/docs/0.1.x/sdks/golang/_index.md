@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "golang-306e8eebb9074e27bbdc8920dc70566e"
+    identifier: "golang-524f9842bd6e4a298916a20b768566da"
 weight: 9100
 toc: true
 seo:
