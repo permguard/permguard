@@ -37,6 +37,11 @@ fmt.Println("❌ Authorization Denied")
 }`,
     after: `// AFTER
 
+import (
+	"github.com/permguard/permguard-go"
+	"github.com/permguard/permguard-go/az/azreq"
+)
+
 azClient := permguard.NewAZClient(
     permguard.WithEndpoint("localhost", 9094),
 )
@@ -78,16 +83,21 @@ has_permissions = check_permissions(token, system, "subscription", "view")
 print("✅ Authorization Permitted" if has_permissions else "❌ Authorization Denied")`,
     after: `# AFTER
 
-from permguard import AZClient, AZAtomicRequestBuilder, WithEndpoint
+from permguard_sdk.az.azreq.model import AZRequest
+from permguard_sdk.az_client import AZClient
+from permguard_sdk.az_config import with_endpoint
 
-az_client = AZClient(WithEndpoint("localhost", 9094))
+az_client = AZClient(with_endpoint("localhost", 9094))
 
-req = (AZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494d3175a",
-        "amy.smith@acmecorp.com", "MagicFarmacia::Platform::Subscription",
-        "MagicFarmacia::Platform::Action::create")
-       .build())
+req = (
+    AZAtomicRequestBuilder(895741663247,"809257ed202e40cab7e958218eecad20",
+        "platform-creator", "MagicFarmacia::Platform::Subscription",
+        "MagicFarmacia::Platform::Action::create",
+    )
+    .build()
+)
 
-ok, _, _ = az_client.check(req)
+decision, _ = az_client.check(req)
 
 print("✅ Authorization Permitted" if ok else "❌ Authorization Denied")
 `,
@@ -132,8 +142,7 @@ if (hasPermissions) {
 }`,
     after: `// AFTER
 
-import { 
-  PrincipalBuilder,
+import {
   AZAtomicRequestBuilder,
   withEndpoint,
   AZClient,
@@ -141,19 +150,11 @@ import {
 
 const azClient = new AZClient(withEndpoint("localhost", 9094));
 
-const principal = new PrincipalBuilder("amy.smith@acmecorp.com").build();
-
 const req = new AZAtomicRequestBuilder(
-  583438038653,
-  "46706cb00ea248d6841cfe2c9f02205b",
-  "platform-creator",
-  "MagicFarmacia::Platform::Subscription",
+  583438038653, "46706cb00ea248d6841cfe2c9f02205b",
+  "platform-creator", "MagicFarmacia::Platform::Subscription",
   "MagicFarmacia::Platform::Action::create"
-)
-  .withRequestID("1234")
-  .withPrincipal(principal)
-  .withSubjectSource("keycloack")
-  .build();
+).build();
 
 const { decision } = await azClient.check(req);
 
