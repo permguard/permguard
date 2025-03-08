@@ -388,6 +388,12 @@ fmt.Println("❌ Authorization Denied")
 </code></pre>
       <pre slot="second">
 <code class="language-go">// AFTER
+
+import (
+  "github.com/permguard/permguard-go"
+  "github.com/permguard/permguard-go/az/azreq"
+)
+
 azClient := permguard.NewAZClient(
   permguard.WithEndpoint("localhost", 9094),
 )
