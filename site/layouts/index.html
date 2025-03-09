@@ -534,7 +534,8 @@ if decsion {
         ><code class="language-python">@app.get("/inventory")
 async def view_inventory(token: str = Depends(oauth2_scheme)):
     uur = get_uur_from_token(token)
-    has_permissions = check_permissions(uur, "inventory", "view")
+    has_permissions = check_permissions(uur, "platform-creator",
+        "MagicFarmacia::Platform::Subscription", "MagicFarmacia::Platform::Action::create")
 
     if has_permissions:
         return get_inventory()

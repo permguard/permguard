@@ -83,7 +83,6 @@ has_permissions = check_permissions(token, system, "subscription", "view")
 
 print("✅ Authorization Permitted" if has_permissions else "❌ Authorization Denied")`,
     after: `# AFTER
-
 from permguard.az.azreq.model import AZRequest
 from permguard.az_client import AZClient
 from permguard.az_config import with_endpoint
@@ -100,8 +99,7 @@ req = (
 
 decision, _ = az_client.check(req)
 
-print("✅ Authorization Permitted" if ok else "❌ Authorization Denied")
-`,
+print("✅ Authorization Permitted" if ok else "❌ Authorization Denied")`,
   },
   typescript: {
     before: `// BEFORE
