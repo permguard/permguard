@@ -79,7 +79,7 @@ Here is an example of an **authorization request** and its response exchanged be
   "authorization_model": {
     "zone_id": 273165098782,
     "policy_store": {
-      "type": "ledger",
+      "kind": "ledger",
       "id": "fd1ac44e4afa4fc4beec622494d3175a"
     },
     "principal": {
