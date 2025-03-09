@@ -27,10 +27,11 @@ import (
 
 // CreateTenant creates a new tenant.
 func (c *GrpcZAPClient) CreateTenant(zoneID int64, name string) (*azmodelzap.Tenant, error) {
-	client, err := c.createGRPCClient()
+	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 	tenant, err := client.CreateTenant(context.Background(), &azapiv1zap.TenantCreateRequest{ZoneID: zoneID, Name: name})
 	if err != nil {
 		return nil, err
@@ -43,10 +44,11 @@ func (c *GrpcZAPClient) UpdateTenant(tenant *azmodelzap.Tenant) (*azmodelzap.Ten
 	if tenant == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "invalid tenant instance")
 	}
-	client, err := c.createGRPCClient()
+	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 	updatedTenant, err := client.UpdateTenant(context.Background(), &azapiv1zap.TenantUpdateRequest{
 		TenantID: tenant.TenantID,
 		ZoneID:   tenant.ZoneID,
@@ -60,10 +62,11 @@ func (c *GrpcZAPClient) UpdateTenant(tenant *azmodelzap.Tenant) (*azmodelzap.Ten
 
 // DeleteTenant deletes a tenant.
 func (c *GrpcZAPClient) DeleteTenant(zoneID int64, tenantID string) (*azmodelzap.Tenant, error) {
-	client, err := c.createGRPCClient()
+	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 	tenant, err := client.DeleteTenant(context.Background(), &azapiv1zap.TenantDeleteRequest{ZoneID: zoneID, TenantID: tenantID})
 	if err != nil {
 		return nil, err
@@ -88,10 +91,11 @@ func (c *GrpcZAPClient) FetchTenantsByName(page int32, pageSize int32, zoneID in
 
 // FetchTenantsBy returns all tenants filtering by tenant id and name.
 func (c *GrpcZAPClient) FetchTenantsBy(page int32, pageSize int32, zoneID int64, tenantID string, name string) ([]azmodelzap.Tenant, error) {
-	client, err := c.createGRPCClient()
+	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 	tenantFetchRequest := &azapiv1zap.TenantFetchRequest{}
 	tenantFetchRequest.Page = &page
 	tenantFetchRequest.PageSize = &pageSize

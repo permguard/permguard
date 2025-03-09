@@ -27,10 +27,11 @@ import (
 
 // CreateIdentitySource creates a new identity source.
 func (c *GrpcZAPClient) CreateIdentitySource(zoneID int64, name string) (*azmodelzap.IdentitySource, error) {
-	client, err := c.createGRPCClient()
+	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 	identitySource, err := client.CreateIdentitySource(context.Background(), &azapiv1zap.IdentitySourceCreateRequest{ZoneID: zoneID, Name: name})
 	if err != nil {
 		return nil, err
@@ -43,10 +44,11 @@ func (c *GrpcZAPClient) UpdateIdentitySource(identitySource *azmodelzap.Identity
 	if identitySource == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "invalid identity source instance")
 	}
-	client, err := c.createGRPCClient()
+	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 	updatedIdentitySource, err := client.UpdateIdentitySource(context.Background(), &azapiv1zap.IdentitySourceUpdateRequest{
 		IdentitySourceID: identitySource.IdentitySourceID,
 		ZoneID:           identitySource.ZoneID,
@@ -60,10 +62,11 @@ func (c *GrpcZAPClient) UpdateIdentitySource(identitySource *azmodelzap.Identity
 
 // DeleteIdentitySource deletes an identity source.
 func (c *GrpcZAPClient) DeleteIdentitySource(zoneID int64, identitySourceID string) (*azmodelzap.IdentitySource, error) {
-	client, err := c.createGRPCClient()
+	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 	identitySource, err := client.DeleteIdentitySource(context.Background(), &azapiv1zap.IdentitySourceDeleteRequest{ZoneID: zoneID, IdentitySourceID: identitySourceID})
 	if err != nil {
 		return nil, err
@@ -88,10 +91,11 @@ func (c *GrpcZAPClient) FetchIdentitySourcesByName(page int32, pageSize int32, z
 
 // FetchIdentitySourcesBy returns all identity sources filtering by identity source id and name.
 func (c *GrpcZAPClient) FetchIdentitySourcesBy(page int32, pageSize int32, zoneID int64, identitySourceID string, name string) ([]azmodelzap.IdentitySource, error) {
-	client, err := c.createGRPCClient()
+	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 	identitySourceFetchRequest := &azapiv1zap.IdentitySourceFetchRequest{}
 	identitySourceFetchRequest.Page = &page
 	identitySourceFetchRequest.PageSize = &pageSize

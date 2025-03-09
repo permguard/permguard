@@ -27,7 +27,8 @@ import (
 
 // CreateLedger creates a new ledger.
 func (c *GrpcPAPClient) CreateLedger(zoneID int64, kind string, name string) (*azmodelpap.Ledger, error) {
-	client, err := c.createGRPCClient()
+	client, conn, err := c.createGRPCClient()
+	defer conn.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +44,8 @@ func (c *GrpcPAPClient) UpdateLedger(ledger *azmodelpap.Ledger) (*azmodelpap.Led
 	if ledger == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "invalid ledger instance")
 	}
-	client, err := c.createGRPCClient()
+	client, conn, err := c.createGRPCClient()
+	defer conn.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +63,8 @@ func (c *GrpcPAPClient) UpdateLedger(ledger *azmodelpap.Ledger) (*azmodelpap.Led
 
 // DeleteLedger deletes an ledger.
 func (c *GrpcPAPClient) DeleteLedger(zoneID int64, ledgerID string) (*azmodelpap.Ledger, error) {
-	client, err := c.createGRPCClient()
+	client, conn, err := c.createGRPCClient()
+	defer conn.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +92,8 @@ func (c *GrpcPAPClient) FetchLedgersByName(page int32, pageSize int32, zoneID in
 
 // FetchLedgersBy returns all ledgers filtering by ledger id and name.
 func (c *GrpcPAPClient) FetchLedgersBy(page int32, pageSize int32, zoneID int64, ledgerID string, kind string, name string) ([]azmodelpap.Ledger, error) {
-	client, err := c.createGRPCClient()
+	client, conn, err := c.createGRPCClient()
+	defer conn.Close()
 	if err != nil {
 		return nil, err
 	}
