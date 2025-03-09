@@ -162,19 +162,51 @@ const { decision } = await azClient.check(req);
 console.log(decision ? "✅ Authorization Permitted" : "❌ Authorization Denied");`,
   },
   csharp: {
-    before: `
-        // BEFORE NETCORE
+    before: `// BEFORE
+public static Dictionary<string, Dictionary<string, List<string>>> GetPermissionsForRole(string role)
+{
+    // Placeholder: Replace with actual logic to fetch permissions for the role
+    return new Dictionary<string, Dictionary<string, List<string>>>();
+}
 
-        using System;
-
-        class Program
+public static bool CheckPermissions(string token, string system, string resource, string action)
+{
+    // Here boilerplate code to fetch permissions for a role
+    // ...
+    foreach (var role in roles)
+    {
+        var rolePermissions = GetPermissionsForRole(role);
+        if (rolePermissions.TryGetValue(resource, out var resources) &&
+            resources.TryGetValue(system, out var actions) &&
+            actions.Any(a => string.Equals(a, action, StringComparison.OrdinalIgnoreCase)))
         {
-            static void Main()
-            {
-                Console.WriteLine("Hello, .NET Core!");
-            }
+            return true;
         }
-    `,
+    }
+    return false;
+}
+
+public static Dictionary<string, object> DecodeJWT(string token)
+{
+    // Placeholder: Implement JWT decoding logic here
+    return new Dictionary<string, object>();
+}
+
+public static void Main()
+{
+    string token = "exampleToken";
+    string system = "exampleSystem";
+
+    bool hasPermissions = CheckPermissions(token, system, "subscription", "view");
+    if (hasPermissions)
+    {
+        Console.WriteLine("✅ Authorization Permitted");
+    }
+    else
+    {
+        Console.WriteLine("❌ Authorization Denied");
+    }
+}`,
     after: `
         // AFTER NETCORE
 
@@ -190,23 +222,74 @@ console.log(decision ? "✅ Authorization Permitted" : "❌ Authorization Denied
     `,
   },
   java: {
-    before: `
-        // BEFORE JAVA
+    before: `// BEFORE
 
-        public class Main {
-            public static void main(String[] args) {
-                System.out.println("Hello, Java!");
+public static Map<String, Map<String, List<String>>> getPermissionsForRole(String role) {
+    // Here boilerplate code to fetch permissions for a role
+    return new HashMap<>(); // Replace with actual permission retrieval logic
+}
+
+public static boolean checkPermissions(String token, String system, String resource, String action) {
+    // Here boilerplate code to fetch permissions for a role
+    // ...
+    for (String role : roles) {
+        Map<String, Map<String, List<String>>> rolePermissions = getPermissionsForRole(role);
+        if (rolePermissions.containsKey(resource)) {
+            Map<String, List<String>> resources = rolePermissions.get(resource);
+            if (resources.containsKey(system)) {
+                List<String> actions = resources.get(system);
+                for (String allowedAction : actions) {
+                    if (allowedAction.equalsIgnoreCase(action)) {
+                        return true;
+                    }
+                }
             }
         }
-    `,
-    after: `
-        // AFTER JAVA
+    }
+    return false;
+}
 
-        public class Main {
-            public static void main(String[] args) {
-                System.out.println("Updated Java Code!");
-            }
-        }
-    `,
+public static Map<String, Object> decodeJWT(String token) {
+    // Placeholder: Implement JWT decoding logic
+    return new HashMap<>();
+}
+
+public static void main(String[] args) {
+    String token = "exampleToken";
+    String system = "exampleSystem";
+
+    boolean hasPermissions = checkPermissions(token, system, "subscription", "view");
+    if (hasPermissions) {
+        System.out.println("✅ Authorization Permitted");
+    } else {
+        System.out.println("❌ Authorization Denied");
+    }
+}`,
+    after: `// AFTER
+import com.permguard.pep.builder.*;
+import com.permguard.pep.client.AZClient;
+import com.permguard.pep.config.AZConfig;
+import com.permguard.pep.model.request.*;
+import com.permguard.pep.model.response.AZResponse;
+
+AZConfig config = new AZConfig("localhost", 9094, true);
+AZClient client = new AZClient(config);
+
+AZRequest request = new AZAtomicRequestBuilder(611159836099L, policyStoreId,
+        "amy.smith@acmecorp.com", "MagicFarmacia::Platform::Subscription",
+        "MagicFarmacia::Platform::Action::create"
+).build();
+
+AZResponse response = client.check(request);
+if (response == null) {
+    System.out.println("❌ Authorization request failed.");
+    return;
+}
+
+if (response.isDecision()) {
+    System.out.println("✅ Authorization Permitted");
+} else {
+    System.out.println("❌ Authorization request failed.");
+}`,
   },
 };
