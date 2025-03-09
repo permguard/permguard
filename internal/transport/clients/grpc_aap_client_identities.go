@@ -27,10 +27,11 @@ import (
 
 // CreateIdentity creates a new identity.
 func (c *GrpcZAPClient) CreateIdentity(zoneID int64, identitySourceID string, kind string, name string) (*azmodelzap.Identity, error) {
-	client, err := c.createGRPCClient()
+	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 	identity, err := client.CreateIdentity(context.Background(), &azapiv1zap.IdentityCreateRequest{ZoneID: zoneID, Kind: kind, Name: name, IdentitySourceID: identitySourceID})
 	if err != nil {
 		return nil, err
@@ -43,10 +44,11 @@ func (c *GrpcZAPClient) UpdateIdentity(identity *azmodelzap.Identity) (*azmodelz
 	if identity == nil {
 		azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "invalid identity instance")
 	}
-	client, err := c.createGRPCClient()
+	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 	updatedIdentity, err := client.UpdateIdentity(context.Background(), &azapiv1zap.IdentityUpdateRequest{
 		IdentityID: identity.IdentityID,
 		ZoneID:     identity.ZoneID,
@@ -61,10 +63,11 @@ func (c *GrpcZAPClient) UpdateIdentity(identity *azmodelzap.Identity) (*azmodelz
 
 // DeleteIdentity deletes an identity.
 func (c *GrpcZAPClient) DeleteIdentity(zoneID int64, identityID string) (*azmodelzap.Identity, error) {
-	client, err := c.createGRPCClient()
+	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 	identity, err := client.DeleteIdentity(context.Background(), &azapiv1zap.IdentityDeleteRequest{ZoneID: zoneID, IdentityID: identityID})
 	if err != nil {
 		return nil, err
@@ -89,10 +92,11 @@ func (c *GrpcZAPClient) FetchIdentitiesByEmail(page int32, pageSize int32, zoneI
 
 // FetchIdentitiesBy returns all identities filtering by all criteria.
 func (c *GrpcZAPClient) FetchIdentitiesBy(page int32, pageSize int32, zoneID int64, identitySourceID string, identityID string, kind string, name string) ([]azmodelzap.Identity, error) {
-	client, err := c.createGRPCClient()
+	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 	identityFetchRequest := &azapiv1zap.IdentityFetchRequest{}
 	identityFetchRequest.Page = &page
 	identityFetchRequest.PageSize = &pageSize
