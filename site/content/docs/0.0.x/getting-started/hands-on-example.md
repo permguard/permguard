@@ -184,7 +184,7 @@ Below a sample json for the authorization check.
   "authorization_model": {
     "zone_id": 895741663247,
     "policy_store": {
-      "type": "ledger",
+      "kind": "ledger",
       "id": "809257ed202e40cab7e958218eecad20"
     },
     "principal": {
