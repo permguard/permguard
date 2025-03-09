@@ -1,12 +1,20 @@
-name: Docker Build and Publish
+name: Publish to DockerHub
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+env:
+  DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
 
 jobs:
-  build-and-push:
+  deploy:
+
     runs-on: ubuntu-latest
 
     steps:
@@ -21,14 +29,17 @@ jobs:
 
       - name: Build Docker Image
         run: |
-          docker build -t permguard/demo-all-in-one:latest -f ./cmd/server-all-in-one/Dockerfile .
+          docker build -t permguard/all-in-one:latest -f ./cmd/server-all-in-one/Dockerfile .
+
+      - name: Extract Version from Tag
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
 
       - name: Tag Docker Image
         run: |
-          IMAGE_TAG=0.0.0.${{ github.run_number }}
-          docker tag permguard/demo-all-in-one:latest permguard/demo-all-in-one:$IMAGE_TAG
-          docker push permguard/demo-all-in-one:$IMAGE_TAG
+          IMAGE_TAG="${VERSION}"
+          docker tag permguard/all-in-one:latest permguard/all-in-one:$IMAGE_TAG
+          docker push permguard/all-in-one:$IMAGE_TAG
 
       - name: Push Docker Image
         run: |
-          docker push permguard/demo-all-in-one:latest
+          docker push permguard/all-in-one:latest
