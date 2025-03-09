@@ -45,4 +45,12 @@ To enforce the access control process, the application implements the Policy Enf
   <img src="https://github.com/permguard/permguard/blob/main/assets/permguard.png?raw=true" class="center"/>
 </p>
 
+## Release Book
+
+| Version | Release Date | Status            | Notes                                                                      |
+|---------|--------------|-------------------|----------------------------------------------------------------------------|
+| 0.0.x   | 2025-01-15   | Open Beta         | First public operat beta release. Suitable for testing; feedback welcome.  |
+| 0.1.x   |              | Release Candidate | Near-final version; extensive testing encouraged.                          |
+| 1.0.x   |              | Stable            | Initial stable release. Ready for production use.                          |
+
 Created by [Nitro Agility](https://www.nitroagility.com/).
