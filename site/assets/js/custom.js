@@ -50,6 +50,7 @@ const handleSelectedLanguageChange = (element) => {
 
   const oldLanguage = selectedLanguage;
   selectedLanguage = element.getAttribute("data-language");
+  console.log(selectedLanguage);
 
   let codeBoxes = [];
 
