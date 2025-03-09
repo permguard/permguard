@@ -29,8 +29,8 @@ For deployment, refer to the [DevOps](/docs/0.0.x/devops/authz-server/authz-serv
 To startup the AuthZ server, you just need to run the Docker container.
 
 ```shell
-docker pull permguard/demo-all-in-one:latest
-docker run --rm -it -p 9091:9091 -p 9092:9092 -p 9094:9094 permguard/demo-all-in-one:latest
+docker pull permguard/all-in-one:latest
+docker run --rm -it -p 9091:9091 -p 9092:9092 -p 9094:9094 permguard/all-in-one:latest
 ```
 
 ## Install the Command Line Interface
