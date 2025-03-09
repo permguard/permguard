@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "azclient-node-sdk-2a72f8f042c44629922bba97b259776f"
-weight: 9202
+weight: 9302
 toc: true
 seo:
   title: "" # custom title (optional)
@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The application, acting as a Policy Enforcement Point (PEP), enforces policies defined by the Policy Decision Point (PDP). The Permguard Go SDK facilitates communication with the Permguard PDP.
+The application, acting as a Policy Enforcement Point (PEP), enforces policies defined by the Policy Decision Point (PDP). The Permguard Node SDK facilitates communication with the Permguard PDP.
 
 This communication occurs through the `AuthZ Client`, a component that provides a straightforward interface for interacting with the Permguard `AuthZ Server`.
 
