@@ -161,4 +161,52 @@ const { decision } = await azClient.check(req);
 
 console.log(decision ? "✅ Authorization Permitted" : "❌ Authorization Denied");`,
   },
+  csharp: {
+    before: `
+        // BEFORE NETCORE
+
+        using System;
+
+        class Program
+        {
+            static void Main()
+            {
+                Console.WriteLine("Hello, .NET Core!");
+            }
+        }
+    `,
+    after: `
+        // AFTER NETCORE
+
+        using System;
+
+        class Program
+        {
+            static void Main()
+            {
+                Console.WriteLine("Updated .NET Core Code!");
+            }
+        }
+    `,
+  },
+  java: {
+    before: `
+        // BEFORE JAVA
+
+        public class Main {
+            public static void main(String[] args) {
+                System.out.println("Hello, Java!");
+            }
+        }
+    `,
+    after: `
+        // AFTER JAVA
+
+        public class Main {
+            public static void main(String[] args) {
+                System.out.println("Updated Java Code!");
+            }
+        }
+    `,
+  },
 };
