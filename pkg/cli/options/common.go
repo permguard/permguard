@@ -53,14 +53,14 @@ var configValueLogLevels = []string{flagValLogLevelDebug, flagValLogLevelInfo, f
 // AddFlagsForCommon adds the common flags to the flag set.
 func AddFlagsForCommon(flagSet *flag.FlagSet) error {
 	flagSet.Bool(flagDebug, false, "enable debug mode")
-	flagSet.String(flagLogLevel, flagValLogLevelInfo, "specifies log level")
+	flagSet.String(FlagName(flagLogLevel), flagValLogLevelInfo, "specifies log level")
 	return nil
 }
 
 // InitFromViperForCommon initializes the common configuration from the viper.
 func InitFromViperForCommon(v *viper.Viper) (bool, string, error) {
 	debug := v.GetBool(flagDebug)
-	logLevel := strings.ToUpper(v.GetString(flagLogLevel))
+	logLevel := strings.ToUpper(v.GetString(FlagName(flagLogLevel)))
 	if !slices.Contains(configValueLogLevels, strings.ToUpper(logLevel)) {
 		return false, "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "invalid log level")
 	}
