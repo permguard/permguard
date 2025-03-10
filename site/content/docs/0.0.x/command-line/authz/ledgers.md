@@ -33,7 +33,7 @@ Available Commands:
   update      Update a ledger
 
 Flags:
-      --zoneid int    zone id
+      --zone-id int    zone id
   -h, --help          help for ledgers
 
 Global Flags:
@@ -54,7 +54,7 @@ The output from your current version of Permguard may differ from the example pr
 The `permguard authz ledgers create` command allows to create a ledger for the mandatory input zone and name.
 
 ```bash
-permguard authz ledgers create --zoneid 273165098782 --name magicfarmacia
+permguard authz ledgers create --zone-id 273165098782 --name magicfarmacia
 ```
 
 output:
@@ -69,7 +69,7 @@ output:
   </summary>
 
 ```bash
-permguard authz ledgers create --zoneid 273165098782 --name magicfarmacia --output json
+permguard authz ledgers create --zone-id 273165098782 --name magicfarmacia --output json
 ```
 
 output:
@@ -95,7 +95,7 @@ output:
 The `permguard authz ledgers list` command allows for the retrieval of all ledgers.
 
 ```bash
-permguard authz ledgers list --zoneid 273165098782
+permguard authz ledgers list --zone-id 273165098782
 ```
 
 output:
@@ -110,7 +110,7 @@ d02af7e50a7b462cb496aa6ddeb4275e: magicfarmacia
   </summary>
 
 ```bash
-permguard authz ledgers list --zoneid 273165098782 --output json
+permguard authz ledgers list --zone-id 273165098782 --output json
 ```
 
 output:

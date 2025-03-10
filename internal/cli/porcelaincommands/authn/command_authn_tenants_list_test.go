@@ -54,7 +54,7 @@ func TestCliTenantsListWithError(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		args := []string{"tenants", "list", "--tenantid", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", test.OutputType}
+		args := []string{"tenants", "list", "--tenant-id", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", test.OutputType}
 		outputs := []string{""}
 
 		v := viper.New()
@@ -93,7 +93,7 @@ func TestCliTenantsListWithSuccess(t *testing.T) {
 		"json",
 	}
 	for _, outputType := range tests {
-		args := []string{"tenants", "list", "--tenantid", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", outputType}
+		args := []string{"tenants", "list", "--tenant-id", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", outputType}
 		outputs := []string{""}
 
 		v := viper.New()

@@ -130,7 +130,7 @@ func NewRuntimeContextMock(hostCfgReader any, svcCfgReader any) *RuntimeContextM
 	ctx.On("GetHostConfigReader").Return(hostCfgReader, nil)
 	if svcCfgReader == nil {
 		serviceMap := map[string]any{
-			"data.enable.default.creation": true,
+			"data-enable-default-creation": true,
 			"data-fetch-maxpagesize":       10000,
 		}
 		svcCfgReader = &mockServiceConfig{values: serviceMap}

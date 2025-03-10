@@ -96,7 +96,7 @@ func createCommandForLedgerDelete(deps azcli.CliDependenciesProvider, v *viper.V
 
 Examples:
   # delete a ledger and output the result in json format
-  permguard authz ledgers delete --zoneid 273165098782 --ledgerid 668f3771eacf4094ba8a80942ea5fd3f --output json
+  permguard authz ledgers delete --zone-id 273165098782 --ledger-id 668f3771eacf4094ba8a80942ea5fd3f --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteLedger(deps, cmd, v)

@@ -99,7 +99,7 @@ func createCommandForIdentityDelete(deps azcli.CliDependenciesProvider, v *viper
 
 Examples:
   # delete an identity and output the result in json format
-  permguard authn identities delete --zoneid 273165098782 --identityid 1da1d9094501425085859c60429163c2 --output json
+  permguard authn identities delete --zone-id 273165098782 --identity-id 1da1d9094501425085859c60429163c2 --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForDeleteIdentity(deps, cmd, v)

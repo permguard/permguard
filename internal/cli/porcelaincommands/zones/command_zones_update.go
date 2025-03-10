@@ -44,7 +44,7 @@ func createCommandForZoneUpdate(deps azcli.CliDependenciesProvider, v *viper.Vip
 
 Examples:
   # update a zone and output the result in json format
-  permguard zones update --zoneid 273165098782 --name magicfarmacia-dev --output json
+  permguard zones update --zone-id 273165098782 --name magicfarmacia-dev --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForUpdateZone(deps, cmd, v)

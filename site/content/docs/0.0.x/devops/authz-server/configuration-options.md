@@ -84,7 +84,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
 
-**\--server-zap-data-enable-default.creation bool**: *enables the creation of default entities (e.g., tenants, identity sources) during data creation. (default `false`).*
+**\--server-zap-data-enable-default-creation bool**: *enables the creation of default entities (e.g., tenants, identity sources) during data creation. (default `false`).*
 
 ---
 

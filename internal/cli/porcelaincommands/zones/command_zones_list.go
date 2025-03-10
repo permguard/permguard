@@ -106,9 +106,9 @@ Examples:
   # list all zones for page 1 and page size 100
   permguard zones list --page 1 --size 100
   # list zones and filter by zone
-  permguard zones list --zoneid 268786704340
+  permguard zones list --zone-id 268786704340
   # list zones and filter by zone and name
-  permguard zones list --zoneid 268786704340--name dev
+  permguard zones list --zone-id 268786704340--name dev
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListZones(deps, cmd, v)
