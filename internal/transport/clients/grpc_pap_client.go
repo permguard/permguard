@@ -40,11 +40,11 @@ func NewGrpcPAPClient(target string) (*GrpcPAPClient, error) {
 }
 
 // createGRPCClient creates a new gRPC client.
-func (c *GrpcPAPClient) createGRPCClient() (azapiv1pap.V1PAPServiceClient, error) {
+func (c *GrpcPAPClient) createGRPCClient() (azapiv1pap.V1PAPServiceClient, *grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(c.target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	client := azapiv1pap.NewV1PAPServiceClient(conn)
-	return client, nil
+	return client, conn, nil
 }

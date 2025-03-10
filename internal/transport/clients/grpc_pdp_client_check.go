@@ -25,7 +25,8 @@ import (
 
 // AuthorizationCheck checks the authorization request.
 func (c *GrpcPDPClient) AuthorizationCheck(request *azmodelpdp.AuthorizationCheckWithDefaultsRequest) (*azmodelpdp.AuthorizationCheckResponse, error) {
-	client, err := c.createGRPCClient()
+	client, conn, err := c.createGRPCClient()
+	defer conn.Close()
 	if err != nil {
 		return nil, err
 	}

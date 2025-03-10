@@ -251,22 +251,30 @@
       <p class="d-none d-md-inline">Python</p>
     </button>
     <button
-      disabled
-      class="code__language code__language--disabled"
-      aria-label="TypeScript"
+      data-language="typescript"
+      class="code__language"
+      aria-label="Node.js"
     >
       <img
         class="code__language__image"
-        src="/images/home/languages/Typescript-disabled.webp"
-        alt="TypeScript"
+        src="/images/home/languages/Node_js.webp"
+        alt="Node.js"
       />
-      <p class="d-none d-md-inline">TypeScript</p>
-      <span class="code__language__soon">Soon</span>
+      <p class="d-none d-md-inline">Node.js</p>
     </button>
-    <button
+
+    <button class="code__language" aria-label="Java" data-language="java">
+      <img
+        class="code__language__image"
+        src="/images/home/languages/Java.webp"
+        alt="Java"
+      />
+      <p class="d-none d-md-inline">Java</p></button
+    ><button
+      class="code__language code__language--disabled"
       disabled
-      class="code__language d-none d-sm-flex code__language--disabled"
       aria-label=".Net Core"
+      data-language="csharp"
     >
       <img
         class="code__language__image"
@@ -274,19 +282,6 @@
         alt=".NET Core"
       />
       <p class="d-none d-md-inline">.NET Core</p>
-      <span class="code__language__soon">Soon</span>
-    </button>
-    <button
-      disabled
-      class="code__language code__language--disabled"
-      aria-label="Java"
-    >
-      <img
-        class="code__language__image"
-        src="/images/home/languages/Java-disabled.webp"
-        alt="Java"
-      />
-      <p class="d-none d-md-inline">Java</p>
       <span class="code__language__soon">Soon</span>
     </button>
   </div>
@@ -389,6 +384,12 @@ fmt.Println("❌ Authorization Denied")
 </code></pre>
       <pre slot="second">
 <code class="language-go">// AFTER
+
+import (
+  "github.com/permguard/permguard-go"
+  "github.com/permguard/permguard-go/az/azreq"
+)
+
 azClient := permguard.NewAZClient(
   permguard.WithEndpoint("localhost", 9094),
 )
@@ -474,14 +475,22 @@ if decsion {
       />
       <p>Python</p>
     </div>
-    <div class="pep__language pep__language--disabled">
+    <div class="pep__language">
       <img
         class="pep__language__image"
-        src="/images/home/languages/Typescript-disabled.webp"
-        alt="TypeScript"
+        src="/images/home/languages/Node_js.webp"
+        alt="Node.js"
       />
-      <p>TypeScript</p>
-      <span class="pep__language__soon">Soon</span>
+      <p>Node.js</p>
+    </div>
+
+    <div class="pep__language">
+      <img
+        class="pep__language__image"
+        src="/images/home/languages/Java.webp"
+        alt="Java"
+      />
+      <p>Java</p>
     </div>
     <div class="pep__language pep__language--disabled">
       <img
@@ -490,15 +499,6 @@ if decsion {
         alt=".NET Core"
       />
       <p>.NET Core</p>
-      <span class="pep__language__soon">Soon</span>
-    </div>
-    <div class="pep__language pep__language--disabled">
-      <img
-        class="pep__language__image"
-        src="/images/home/languages/Java-disabled.webp"
-        alt="Java"
-      />
-      <p>Java</p>
       <span class="pep__language__soon">Soon</span>
     </div>
   </div>
@@ -534,7 +534,8 @@ if decsion {
         ><code class="language-python">@app.get("/inventory")
 async def view_inventory(token: str = Depends(oauth2_scheme)):
     uur = get_uur_from_token(token)
-    has_permissions = check_permissions(uur, "inventory", "view")
+    has_permissions = check_permissions(uur, "platform-creator",
+        "MagicFarmacia::Platform::Subscription", "MagicFarmacia::Platform::Action::create")
 
     if has_permissions:
         return get_inventory()
