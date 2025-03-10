@@ -32,7 +32,7 @@ import (
 
 const (
 	// commandNameForIdentitySourcesDelete is the command name for identity sources delete.
-	commandNameForIdentitySourcesDelete = "identitysources.delete"
+	commandNameForIdentitySourcesDelete = "identitysources-delete"
 )
 
 // runECommandForDeleteIdentitySource runs the command for creating an identity source.

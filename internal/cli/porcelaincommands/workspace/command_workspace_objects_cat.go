@@ -32,7 +32,7 @@ import (
 
 const (
 	// commandNameForWorkspacesObjects base command name for workspace objects
-	commandNameForWorkspacesCat = "workspaces.objects.cat"
+	commandNameForWorkspacesCat = "workspaces-objects.cat"
 	// commandNameForWorkspacesCatRaw shows the raw content of the object
 	commandNameForWorkspacesCatRaw = "raw"
 	// commandNameForWorkspacesCatContent shows the content of the object

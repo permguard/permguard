@@ -31,7 +31,7 @@ import (
 
 const (
 	// commandNameForLedgersList is the command name for ledgers list.
-	commandNameForLedgersList = "ledgers.list"
+	commandNameForLedgersList = "ledgers-list"
 )
 
 // runECommandForListLedgers runs the command for creating a ledger.

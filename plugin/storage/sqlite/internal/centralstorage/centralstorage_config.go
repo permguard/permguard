@@ -29,7 +29,7 @@ const (
 	// enabledDefaultCreationDefault is the default value for the flag to enable the creation of default entities.
 	enabledDefaultCreationDefault = false
 	// maxPageSizeKey is the key for the maximum number of items to fetch per request.
-	maxPageSizeKey = "data.fetch.maxpagesize"
+	maxPageSizeKey = "data-fetch-maxpagesize"
 	// maxPageSizeDefault is the default value for the maximum number of items to fetch per request.
 	maxPageSizeDefault = 10000
 )

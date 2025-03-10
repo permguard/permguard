@@ -31,7 +31,7 @@ import (
 
 const (
 	// commandNameForIdentitiesList is the command name for identities list.
-	commandNameForIdentitiesList = "identities.list"
+	commandNameForIdentitiesList = "identities-list"
 )
 
 // runECommandForListIdentities runs the command for creating an identity.

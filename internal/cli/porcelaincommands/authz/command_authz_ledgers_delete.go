@@ -32,7 +32,7 @@ import (
 
 const (
 	// commandNameForLedger is the command name for ledger.
-	commandNameForLedgersDelete = "ledgers.delete"
+	commandNameForLedgersDelete = "ledgers-delete"
 )
 
 // runECommandForDeleteLedger runs the command for creating a ledger.

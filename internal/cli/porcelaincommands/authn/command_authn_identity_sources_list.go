@@ -31,7 +31,7 @@ import (
 
 const (
 	// commandNameForIdentitySourcesList is the command name for identity sources list.
-	commandNameForIdentitySourcesList = "identitysources.list"
+	commandNameForIdentitySourcesList = "identitysources-list"
 )
 
 // runECommandForListIdentitySources runs the command for creating an identity source.

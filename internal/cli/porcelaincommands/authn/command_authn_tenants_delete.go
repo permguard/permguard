@@ -32,7 +32,7 @@ import (
 
 const (
 	// commandNameForTenant is the command name for tenant.
-	commandNameForTenantsDelete = "tenants.delete"
+	commandNameForTenantsDelete = "tenants-delete"
 )
 
 // runECommandForDeleteTenant runs the command for creating a tenant.

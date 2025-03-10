@@ -31,7 +31,7 @@ import (
 
 const (
 	// commandNameForWorkspacesPull is the command name for workspaces pull.
-	commandNameForWorkspacesPull = "workspaces.pull"
+	commandNameForWorkspacesPull = "workspaces-pull"
 )
 
 // runECommandForPullWorkspace runs the command for creating an workspace.

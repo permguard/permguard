@@ -27,7 +27,7 @@ import (
 
 const (
 	// commandNameForIdentitySourcesCreate is the command name for identity sources create.
-	commandNameForIdentitySourcesCreate = "identitysources.create"
+	commandNameForIdentitySourcesCreate = "identitysources-create"
 )
 
 // runECommandForCreateIdentitySource runs the command for creating an identity source.

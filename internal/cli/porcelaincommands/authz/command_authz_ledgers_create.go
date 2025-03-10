@@ -27,7 +27,7 @@ import (
 
 const (
 	// commandNameForLedgersCreate is the command name for ledgers create.
-	commandNameForLedgersCreate = "ledgers.create"
+	commandNameForLedgersCreate = "ledgers-create"
 )
 
 // runECommandForCreateLedger runs the command for creating a ledger.
