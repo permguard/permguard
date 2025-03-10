@@ -32,7 +32,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 **\--debug**: *enables debug mode (default `false`).*
 
 ---
-**\--log.level**: *specifies the log level (default `INFO`, options `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
+**\--log-level**: *specifies the log level (default `INFO`, options `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
 
 <details>
   <summary>Options</summary>
@@ -51,7 +51,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
 
-**\--storage.engine.central**: *data storage engine to be used for central data (default `sqlite`).*
+**\--storage-engine-central**: *data storage engine to be used for central data (default `sqlite`).*
 
 ---
 
@@ -60,7 +60,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 <details>
   <summary>SQLITE</summary>
 
-**\--storage.engine.sqlite.dbname**: *sqlite database name (default **permguard**).*
+**\--storage-engine-sqlite-dbname**: *sqlite database name (default **permguard**).*
 
 ---
 
@@ -68,7 +68,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
 
-**\--server.appdata**: *directory to be used as application data (default `./`).*
+**\--server-appdata**: *directory to be used as application data (default `./`).*
 
 ---
 
@@ -76,19 +76,19 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 {{< callout >}} Zone Administration Point. {{< /callout >}}
 
-**\--storage.zap.engine.central**: *data storage engine to be used for the ZAP central data. This overrides the `--storage.engine.central` option. Default: `sqlite`.*
+**\--storage-zap-engine-central**: *data storage engine to be used for the ZAP central data. This overrides the `--storage-engine-central` option. Default: `sqlite`.*
 
 ---
 
-**\--server.zap.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
+**\--server-zap-data-fetch-maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
 
 ---
 
-**\--server.zap.data.enable.default.creation bool**: *enables the creation of default entities (e.g., tenants, identity sources) during data creation. (default `false`).*
+**\--server-zap-data-enable-default.creation bool**: *enables the creation of default entities (e.g., tenants, identity sources) during data creation. (default `false`).*
 
 ---
 
-**\--server.zap.grpc.port int**: *port to be used for exposing the zap grpc services. (default `9091`).*
+**\--server-zap-grpc-port int**: *port to be used for exposing the zap grpc services. (default `9091`).*
 
 ---
 
@@ -96,15 +96,15 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 {{< callout >}} Policy Administration Point. {{< /callout >}}
 
-**\--storage.pap.engine.central**: *data storage engine to be used for the PAP central data. This overrides the `--storage.engine.central` option. Default: `sqlite`.*
+**\--storage-pap-engine-central**: *data storage engine to be used for the PAP central data. This overrides the `--storage-engine-central` option. Default: `sqlite`.*
 
 ---
 
-**\--server.pap.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
+**\--server-pap-data-fetch-maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
 
 ---
 
-**\--server.pap.grpc.port int**: *port to be used for exposing the pap grpc services. (default `9092`).*
+**\--server-pap-grpc-port int**: *port to be used for exposing the pap grpc services. (default `9092`).*
 
 ---
 
@@ -112,15 +112,15 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 {{< callout >}} Policy Information Point. {{< /callout >}}
 
-**\--storage.pip.engine.central**: *data storage engine to be used for the PIP central data. This overrides the `--storage.engine.central` option. Default: `sqlite`.*
+**\--storage-pip-engine-central**: *data storage engine to be used for the PIP central data. This overrides the `--storage-engine-central` option. Default: `sqlite`.*
 
 ---
 
-**\--server.pip.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
+**\--server-pip-data-fetch-maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
 
 ---
 
-**\--server.pip.grpc.port int**: *port to be used for exposing the pip grpc services. (default `9093`).*
+**\--server-pip-grpc-port int**: *port to be used for exposing the pip grpc services. (default `9093`).*
 
 ---
 
@@ -128,15 +128,15 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 {{< callout >}} Policy Decision Point. {{< /callout >}}
 
-**\--storage.pdp.engine.central**: *data storage engine to be used for the PDP central data. This overrides the `--storage.engine.central` option. Default: `sqlite`.*
+**\--storage-pdp-engine-central**: *data storage engine to be used for the PDP central data. This overrides the `--storage-engine-central` option. Default: `sqlite`.*
 
 ---
 
-**\--server.pdp.data.fetch.maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
+**\--server-pdp-data-fetch-maxpagesize int**: *maximum number of items to fetch per request. (default `10000`).*
 
 ---
 
-**\--server.pdp.grpc.port int**: *port to be used for exposing the pdp grpc services. (default `9094`).*
+**\--server-pdp-grpc-port int**: *port to be used for exposing the pdp grpc services. (default `9094`).*
 
 ---
 
@@ -148,7 +148,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 **\--debug**: *enables debug mode (default `false`).*
 
 ---
-**\--log.level**: *specifies log level (default `INFO`, options `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
+**\--log-level**: *specifies log level (default `INFO`, options `DEBUG`, `INFO`, `WARN`, `ERROR`, `DPANIC`, `PANIC`, `FATAL`).*
 
 <details>
   <summary>Options</summary>
@@ -170,7 +170,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 <details>
   <summary>SQLITE</summary>
 
-**\--storage.engine.sqlite.filepath**: *sqlite database file path (default `.`).*
+**\--storage-engine-sqlite-filepath**: *sqlite database file path (default `.`).*
 
 ---
 
