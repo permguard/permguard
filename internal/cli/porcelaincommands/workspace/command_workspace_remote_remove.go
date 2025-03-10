@@ -31,7 +31,7 @@ import (
 
 const (
 	// commandNameForWorkspacesRemoteRemove is the command name for workspaces remoteremove.
-	commandNameForWorkspacesRemoteRemove = "workspaces.remote.remove"
+	commandNameForWorkspacesRemoteRemove = "workspaces-remote.remove"
 )
 
 // runECommandForRemoteRemoveWorkspace runs the command for creating an workspace.

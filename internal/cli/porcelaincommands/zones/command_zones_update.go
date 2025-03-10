@@ -27,7 +27,7 @@ import (
 
 const (
 	// commandNameForZonesUpdate is the command name for zones update.
-	commandNameForZonesUpdate = "zones.update"
+	commandNameForZonesUpdate = "zones-update"
 )
 
 // runECommandForUpdateZone runs the command for creating a zone.

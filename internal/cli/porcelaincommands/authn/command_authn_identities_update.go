@@ -27,7 +27,7 @@ import (
 
 const (
 	// commandNameForIdentitiesUpdate is the command name for identities update.
-	commandNameForIdentitiesUpdate = "identities.update"
+	commandNameForIdentitiesUpdate = "identities-update"
 )
 
 // runECommandForUpdateIdentity runs the command for creating an identity.

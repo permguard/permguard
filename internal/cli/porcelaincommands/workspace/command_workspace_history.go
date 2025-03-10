@@ -31,7 +31,7 @@ import (
 
 const (
 	// commandNameForWorkspacesHistory is the command name for workspaces history.
-	commandNameForWorkspacesHistory = "workspaces.history"
+	commandNameForWorkspacesHistory = "workspaces-history"
 )
 
 // runECommandForHistoryWorkspace run the command for listing history in the workspace.

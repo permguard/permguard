@@ -31,7 +31,7 @@ import (
 
 const (
 	// commandNameForWorkspacesRefresh is the command name for workspaces refresh.
-	commandNameForWorkspacesRefresh = "workspaces.refresh"
+	commandNameForWorkspacesRefresh = "workspaces-refresh"
 )
 
 // runECommandForRefreshWorkspace runs the command for creating an workspace.

@@ -31,7 +31,7 @@ import (
 
 const (
 	// commandNameForZonesList is the command name for zones list.
-	commandNameForZonesList = "zones.list"
+	commandNameForZonesList = "zones-list"
 )
 
 // runECommandForListZones runs the command for creating a zone.

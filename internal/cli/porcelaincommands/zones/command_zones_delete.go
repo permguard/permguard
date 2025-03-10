@@ -32,7 +32,7 @@ import (
 
 const (
 	// commandNameForZonesCreate is the command name for zones create.
-	commandNameForZonesDelete = "zones.delete"
+	commandNameForZonesDelete = "zones-delete"
 )
 
 // runECommandForDeleteZone runs the command for creating a zone.

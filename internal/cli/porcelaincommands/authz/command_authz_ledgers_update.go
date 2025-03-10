@@ -27,7 +27,7 @@ import (
 
 const (
 	// commandNameForLedgersUpdate is the command name for ledgers update.
-	commandNameForLedgersUpdate = "ledgers.update"
+	commandNameForLedgersUpdate = "ledgers-update"
 )
 
 // runECommandForUpdateLedger runs the command for creating a ledger.

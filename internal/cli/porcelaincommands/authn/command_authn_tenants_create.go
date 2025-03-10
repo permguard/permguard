@@ -27,7 +27,7 @@ import (
 
 const (
 	// commandNameForTenantsCreate is the command name for tenants create.
-	commandNameForTenantsCreate = "tenants.create"
+	commandNameForTenantsCreate = "tenants-create"
 )
 
 // runECommandForCreateTenant runs the command for creating a tenant.

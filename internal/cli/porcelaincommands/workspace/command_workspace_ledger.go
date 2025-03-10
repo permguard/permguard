@@ -31,7 +31,7 @@ import (
 
 const (
 	// commandNameForWorkspacesLedger is the command name for a workspace ledger.
-	commandNameForWorkspacesLedger = "workspaces.ledger"
+	commandNameForWorkspacesLedger = "workspaces-ledger"
 )
 
 // runECommandForLedgerWorkspace runs the command for the local ledger.

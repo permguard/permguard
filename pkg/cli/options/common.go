@@ -29,7 +29,7 @@ import (
 
 const (
 	flagDebug    = "debug"
-	flagLogLevel = "log.level"
+	flagLogLevel = "log-level"
 
 	// DebugLevel logs are typically voluminous, and are usually disabled in production.
 	flagValLogLevelDebug = "DEBUG"

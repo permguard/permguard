@@ -30,11 +30,11 @@ import (
 )
 
 const (
-	flagStoragePDPPrefix     = "storage.pdp"
-	flagServerPDPPrefix      = "server.pdp"
-	flagSuffixGrpcPort       = "grpc.port"
-	flagCentralEngine        = "engine.central"
-	flagDataFetchMaxPageSize = "data.fetch.maxpagesize"
+	flagStoragePDPPrefix     = "storage-pdp"
+	flagServerPDPPrefix      = "server-pdp"
+	flagSuffixGrpcPort       = "grpc-port"
+	flagCentralEngine        = "engine-central"
+	flagDataFetchMaxPageSize = "data-fetch-maxpagesize"
 )
 
 // PDPServiceConfig holds the configuration for the server.

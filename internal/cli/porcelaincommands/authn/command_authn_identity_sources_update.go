@@ -27,7 +27,7 @@ import (
 
 const (
 	// commandNameForIdentitySourcesUpdate is the command name for identity sources update.
-	commandNameForIdentitySourcesUpdate = "identitysources.update"
+	commandNameForIdentitySourcesUpdate = "identitysources-update"
 )
 
 // runECommandForUpdateIdentitySource runs the command for creating an identity source.

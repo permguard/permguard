@@ -27,7 +27,7 @@ import (
 
 const (
 	// commandNameForTenantsUpdate is the command name for tenants update.
-	commandNameForTenantsUpdate = "tenants.update"
+	commandNameForTenantsUpdate = "tenants-update"
 )
 
 // runECommandForUpdateTenant runs the command for creating a tenant.

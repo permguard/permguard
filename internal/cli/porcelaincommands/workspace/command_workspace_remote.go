@@ -31,7 +31,7 @@ import (
 
 const (
 	// commandNameForWorkspacesRemote is the command name for workspaces remote.
-	commandNameForWorkspacesRemote = "workspaces.remote"
+	commandNameForWorkspacesRemote = "workspaces-remote"
 )
 
 // runECommandForRemoteWorkspace runs the command for creating an workspace.

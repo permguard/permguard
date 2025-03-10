@@ -36,7 +36,7 @@ import (
 
 const (
 	// commandNameForWorkspacesClone is the command name for workspaces clone.
-	commandNameForWorkspacesClone = "workspaces.clone"
+	commandNameForWorkspacesClone = "workspaces-clone"
 )
 
 // runECommandForCloneWorkspace runs the command for creating an workspace.

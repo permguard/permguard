@@ -32,7 +32,7 @@ import (
 
 const (
 	// commandNameForIdentity is the command name for identity.
-	commandNameForIdentitiesDelete = "identities.delete"
+	commandNameForIdentitiesDelete = "identities-delete"
 )
 
 // runECommandForDeleteIdentity runs the command for creating an identity.

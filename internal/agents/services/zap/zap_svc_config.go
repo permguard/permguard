@@ -30,11 +30,11 @@ import (
 )
 
 const (
-	flagStorageZAPPrefix      = "storage.zap"
-	flagServerZAPPrefix       = "server.zap"
-	flagSuffixGrpcPort        = "grpc.port"
-	flagCentralEngine         = "engine.central"
-	flagDataFetchMaxPageSize  = "data.fetch.maxpagesize"
+	flagStorageZAPPrefix      = "storage-zap"
+	flagServerZAPPrefix       = "server-zap"
+	flagSuffixGrpcPort        = "grpc-port"
+	flagCentralEngine         = "engine-central"
+	flagDataFetchMaxPageSize  = "data-fetch-maxpagesize"
 	flagEnableDefaultCreation = "data.enable.default.creation"
 )
 
