@@ -48,6 +48,7 @@ azClient := permguard.NewAZClient(
 
 req := azreq.NewAZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494d3175a",
     "amy.smith@acmecorp.com", "MagicFarmacia::Platform::Subscription", "MagicFarmacia::Platform::Action::create").
+    WithResourceID("e3a786fd07e24bfa95ba4341d3695ae8").
     Build()
 
 ok, _, _ := azClient.Check(req)
@@ -94,6 +95,7 @@ req = (
         "platform-creator", "MagicFarmacia::Platform::Subscription",
         "MagicFarmacia::Platform::Action::create",
     )
+    .with_resource_id("e3a786fd07e24bfa95ba4341d3695ae8")
     .build()
 )
 
@@ -153,7 +155,7 @@ const req = new AZAtomicRequestBuilder(
   583438038653, "46706cb00ea248d6841cfe2c9f02205b",
   "platform-creator", "MagicFarmacia::Platform::Subscription",
   "MagicFarmacia::Platform::Action::create"
-).build();
+).withResourceID("e3a786fd07e24bfa95ba4341d3695ae8").build();
 
 const { decision } = await azClient.check(req);
 
@@ -276,7 +278,7 @@ AZClient client = new AZClient(config);
 AZRequest request = new AZAtomicRequestBuilder(611159836099L, policyStoreId,
         "amy.smith@acmecorp.com", "MagicFarmacia::Platform::Subscription",
         "MagicFarmacia::Platform::Action::create"
-).build();
+).withResourceId("e3a786fd07e24bfa95ba4341d3695ae8").build();
 
 AZResponse response = client.check(request);
 if (response == null) {
