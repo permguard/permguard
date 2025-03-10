@@ -35,7 +35,7 @@ const (
 	// commandNameForTenant is the command name for tenant.
 	commandNameForTenant = "tenant"
 	// flagTenantID is the tenant id flag.
-	flagTenantID = "tenantid"
+	flagTenantID = "tenant-id"
 )
 
 // runECommandForCreateTenant runs the command for creating a tenant.

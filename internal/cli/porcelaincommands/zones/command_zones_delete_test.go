@@ -55,7 +55,7 @@ func TestCliZonesDeleteWithError(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		args := []string{"zones", "delete", "--zoneid", "581616507495", "--output", test.OutputType}
+		args := []string{"zones", "delete", "--zone-id", "581616507495", "--output", test.OutputType}
 		outputs := []string{""}
 
 		v := viper.New()
@@ -94,7 +94,7 @@ func TestCliZonesDeleteWithSuccess(t *testing.T) {
 		"json",
 	}
 	for _, outputType := range tests {
-		args := []string{"zones", "delete", "--zoneid", "581616507495", "--output", outputType}
+		args := []string{"zones", "delete", "--zone-id", "581616507495", "--output", outputType}
 		outputs := []string{""}
 
 		v := viper.New()

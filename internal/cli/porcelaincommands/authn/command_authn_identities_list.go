@@ -101,11 +101,11 @@ func createCommandForIdentityList(deps azcli.CliDependenciesProvider, v *viper.V
 
 Examples:
   # list all identities and output the result in json format
-  permguard authn identities list --zoneid 273165098782 --output json
+  permguard authn identities list --zone-id 273165098782 --output json
   # list all identities and apply filter by name
-  permguard authn identities list --zoneid 273165098782 --name branch
+  permguard authn identities list --zone-id 273165098782 --name branch
   # list all identities and apply filter by identity source id
-  permguard authn identities list --zoneid 273165098782 --identityid 1da1d9094501425085859c60429163c2
+  permguard authn identities list --zone-id 273165098782 --identity-id 1da1d9094501425085859c60429163c2
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListIdentities(deps, cmd, v)

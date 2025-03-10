@@ -44,7 +44,7 @@ func createCommandForTenantUpdate(deps azcli.CliDependenciesProvider, v *viper.V
 
 Examples:
   # update a tenant and output the result in json format
-  permguard authn tenants update --zoneid 273165098782 --tenantid 2e190ee712494838bb54d67e2a0c496a --name atera-branch
+  permguard authn tenants update --zone-id 273165098782 --tenant-id 2e190ee712494838bb54d67e2a0c496a --name atera-branch
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForUpdateTenant(deps, cmd, v)

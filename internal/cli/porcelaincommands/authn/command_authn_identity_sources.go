@@ -35,7 +35,7 @@ const (
 	// commandNameForIdentitySource is the command name for identity source.
 	commandNameForIdentitySource = "identitysource"
 	// flagIdentitySourceID is the flag for identity source id.
-	flagIdentitySourceID = "identitysourceid"
+	flagIdentitySourceID = "identitysource-id"
 )
 
 // runECommandForCreateIdentitySource runs the command for creating an identity source.

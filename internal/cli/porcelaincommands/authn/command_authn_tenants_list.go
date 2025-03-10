@@ -102,11 +102,11 @@ func createCommandForTenantList(deps azcli.CliDependenciesProvider, v *viper.Vip
 
 Examples:
   # list all tenants amd output in json format
-  permguard authn tenants list --zoneid 273165098782
+  permguard authn tenants list --zone-id 273165098782
   # lista all tenants and filter by name
-  permguard authn tenants list --zoneid 273165098782 --name matera
+  permguard authn tenants list --zone-id 273165098782 --name matera
   # list all tenants and filter by tenant id
-  permguard authn tenants list --zoneid 273165098782 --tenantid 2e190ee712494838bb54d67e2a0c496a
+  permguard authn tenants list --zone-id 273165098782 --tenant-id 2e190ee712494838bb54d67e2a0c496a
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListTenants(deps, cmd, v)

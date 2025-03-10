@@ -33,7 +33,7 @@ Available Commands:
   update      Update an identity
 
 Flags:
-      --zoneid int    zone id
+      --zone-id int    zone id
   -h, --help          help for identities
 
 Global Flags:
@@ -54,7 +54,7 @@ The output from your current version of Permguard may differ from the example pr
 The `permguard authn identities create` command allows to create an identity for the mandatory input zone and name.
 
 ```bash
-permguard authn identities create --zoneid 273165098782 --kind user --name nicolagallo --identitysourceid 1da1d9094501425085859c60429163c2
+permguard authn identities create --zone-id 273165098782 --kind user --name nicolagallo --identitysource-id 1da1d9094501425085859c60429163c2
 ```
 
 output:
@@ -69,7 +69,7 @@ e151cba136214be98b2d1a02e797db60: nicolagallo
   </summary>
 
 ```bash
-permguard authn identities create --zoneid 273165098782 --kind user --name nicolagallo --identitysourceid 1da1d9094501425085859c60429163c2 --output json
+permguard authn identities create --zone-id 273165098782 --kind user --name nicolagallo --identitysource-id 1da1d9094501425085859c60429163c2 --output json
 ```
 
 output:
@@ -97,7 +97,7 @@ output:
 The `permguard authn identities list` command allows for the retrieval of all identity.
 
 ```bash
-permguard authn identities list --zoneid 273165098782 --identitysourceid 1da1d9094501425085859c60429163c2
+permguard authn identities list --zone-id 273165098782 --identitysource-id 1da1d9094501425085859c60429163c2
 ```
 
 output:
@@ -121,7 +121,7 @@ fdbc2ddfa4c5401eac19bd655efefe5c: marcobianchi
   </summary>
 
 ```bash
-permguard authn identities list --zoneid 273165098782 --identitysourceid --output json
+permguard authn identities list --zone-id 273165098782 --identitysource-id --output json
 ```
 
 output:

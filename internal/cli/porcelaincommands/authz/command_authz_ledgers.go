@@ -35,7 +35,7 @@ const (
 	// commandNameForLedger is the command name for ledger.
 	commandNameForLedger = "ledger"
 	// flagLedgerID is the flag for ledger id.
-	flagLedgerID = "ledgerid"
+	flagLedgerID = "ledger-id"
 	// flagLedgerKind is the flag for ledger kind.
 	flagLedgerKind = "kind"
 )

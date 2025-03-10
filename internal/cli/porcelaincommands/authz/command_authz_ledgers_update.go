@@ -44,7 +44,7 @@ func createCommandForLedgerUpdate(deps azcli.CliDependenciesProvider, v *viper.V
 
 Examples:
   # update a ledger and output the result in json format
-  permguard authz ledgers update --zoneid 273165098782 --ledgerid 668f3771eacf4094ba8a80942ea5fd3f --name v1.1 --output json
+  permguard authz ledgers update --zone-id 273165098782 --ledger-id 668f3771eacf4094ba8a80942ea5fd3f --name v1.1 --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForUpdateLedger(deps, cmd, v)

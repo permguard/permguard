@@ -33,7 +33,7 @@ Available Commands:
   update      Update an identity source
 
 Flags:
-      --zoneid int    zone id
+      --zone-id int    zone id
   -h, --help          help for identitysources
 
 Global Flags:
@@ -54,7 +54,7 @@ The output from your current version of Permguard may differ from the example pr
 The `permguard authn identitysources create` command allows to create an identity source for the mandatory input zone and name.
 
 ```bash
-permguard authn identitysources create --zoneid 273165098782 --name google
+permguard authn identitysources create --zone-id 273165098782 --name google
 ```
 
 output:
@@ -69,7 +69,7 @@ output:
   </summary>
 
 ```bash
-permguard authn identitysources create --zoneid 273165098782 --name google --output json
+permguard authn identitysources create --zone-id 273165098782 --name google --output json
 ```
 
 output:
@@ -95,7 +95,7 @@ output:
 The `permguard authn identitysources list` command allows for the retrieval of all identity sources.
 
 ```bash
-permguard authn identitysources list --zoneid 273165098782
+permguard authn identitysources list --zone-id 273165098782
 ```
 
 output:
@@ -111,7 +111,7 @@ output:
   </summary>
 
 ```bash
-permguard authn identitysources list --zoneid 273165098782 --output json
+permguard authn identitysources list --zone-id 273165098782 --output json
 ```
 
 output:

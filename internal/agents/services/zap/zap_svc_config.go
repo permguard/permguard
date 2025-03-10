@@ -35,7 +35,7 @@ const (
 	flagSuffixGrpcPort        = "grpc-port"
 	flagCentralEngine         = "engine-central"
 	flagDataFetchMaxPageSize  = "data-fetch-maxpagesize"
-	flagEnableDefaultCreation = "data.enable.default.creation"
+	flagEnableDefaultCreation = "data-enable-default-creation"
 )
 
 // ZAPServiceConfig holds the configuration for the server.
