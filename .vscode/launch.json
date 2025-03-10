@@ -27,7 +27,7 @@
           "env": {
               "PERMGUARD_DEBUG": "TRUE",
               "PERMGUARD_SERVER_APPDATA": "./samples/volume",
-              "PERMGUARD_LOG_LEVEL": "INFO",
+              "PERMGUARD_LOG_LEVEL": "DEBUG",
               // "PERMGUARD_SERVER_ZAP_ENABLE_DEFAULT_CREATION": "TRUE",
               "PERMGUARD_SERVER_ZAP_DATA_FETCH_MAXSIZE": "1000",
           }
