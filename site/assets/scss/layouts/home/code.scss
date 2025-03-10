@@ -312,7 +312,12 @@ pre code.hljs {
       height: 72px;
     }
 
+    &__languages {
+      max-width: 100%;
+    }
+
     &__language {
+      min-width: 72px;
       &__image {
         height: 24px;
 
@@ -320,6 +325,16 @@ pre code.hljs {
           height: 18px;
         }
       }
+    }
+  }
+
+  .code__img pre {
+    justify-content: left !important;
+    align-items: start !important;
+
+    & code {
+      padding: 15px 25px;
+      margin: auto 0;
     }
   }
 }
