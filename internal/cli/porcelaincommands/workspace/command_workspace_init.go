@@ -32,7 +32,7 @@ import (
 
 const (
 	// commandNameForWorkspacesInit is the command name for workspaces init.
-	commandNameForWorkspacesInit = "workspaces.init"
+	commandNameForWorkspacesInit = "workspaces-init"
 )
 
 // runECommandForInitWorkspace runs the command for creating an workspace.

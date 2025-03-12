@@ -31,7 +31,7 @@ import (
 
 const (
 	// commandNameForWorkspacesPlan is the command name for workspaces plan.
-	commandNameForWorkspacesPlan = "workspaces.plan"
+	commandNameForWorkspacesPlan = "workspaces-plan"
 )
 
 // runECommandForPlanWorkspace runs the command for creating an workspace.

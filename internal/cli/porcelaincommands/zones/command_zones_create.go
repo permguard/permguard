@@ -27,7 +27,7 @@ import (
 
 const (
 	// commandNameForZonesCreate is the command name for zones create.
-	commandNameForZonesCreate = "zones.create"
+	commandNameForZonesCreate = "zones-create"
 )
 
 // runECommandForCreateZone runs the command for creating a zone.

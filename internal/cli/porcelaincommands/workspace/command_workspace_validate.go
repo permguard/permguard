@@ -31,7 +31,7 @@ import (
 
 const (
 	// commandNameForWorkspacesValidate is the command name for workspaces validate.
-	commandNameForWorkspacesValidate = "workspaces.validate"
+	commandNameForWorkspacesValidate = "workspaces-validate"
 )
 
 // runECommandForValidateWorkspace runs the command for creating an workspace.

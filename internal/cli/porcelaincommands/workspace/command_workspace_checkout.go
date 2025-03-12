@@ -31,7 +31,7 @@ import (
 
 const (
 	// commandNameForWorkspacesCheckout is the command name for workspaces checkout.
-	commandNameForWorkspacesCheckout = "workspaces.checkout"
+	commandNameForWorkspacesCheckout = "workspaces-checkout"
 )
 
 // runECommandForCheckoutWorkspace runs the command for creating an workspace.

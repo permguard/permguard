@@ -31,7 +31,7 @@ import (
 
 const (
 	// commandNameForIdentitySourcesList is the command name for identity sources list.
-	commandNameForIdentitySourcesList = "identitysources.list"
+	commandNameForIdentitySourcesList = "identitysources-list"
 )
 
 // runECommandForListIdentitySources runs the command for creating an identity source.
@@ -102,11 +102,11 @@ func createCommandForIdentitySourceList(deps azcli.CliDependenciesProvider, v *v
 
 Examples:
   # list all identity sources and output in json format
-  permguard authn identitysources list --zoneid 273165098782 --output json
+  permguard authn identitysources list --zone-id 273165098782 --output json
   # list all identity sources and filter by name
-  permguard authn identitysources list --zoneid 273165098782 --name google
+  permguard authn identitysources list --zone-id 273165098782 --name google
   # list all identity sources and filter by identity source id
-  permguard authn identitysources list --zoneid 273165098782 --identitysourceid 1da1d9094501425085859c60429163c2
+  permguard authn identitysources list --zone-id 273165098782 --identitysource-id 1da1d9094501425085859c60429163c2
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForListIdentitySources(deps, cmd, v)

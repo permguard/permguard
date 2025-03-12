@@ -30,12 +30,12 @@ import (
 )
 
 const (
-	flagStorageZAPPrefix      = "storage.zap"
-	flagServerZAPPrefix       = "server.zap"
-	flagSuffixGrpcPort        = "grpc.port"
-	flagCentralEngine         = "engine.central"
-	flagDataFetchMaxPageSize  = "data.fetch.maxpagesize"
-	flagEnableDefaultCreation = "data.enable.default.creation"
+	flagStorageZAPPrefix      = "storage-zap"
+	flagServerZAPPrefix       = "server-zap"
+	flagSuffixGrpcPort        = "grpc-port"
+	flagCentralEngine         = "engine-central"
+	flagDataFetchMaxPageSize  = "data-fetch-maxpagesize"
+	flagEnableDefaultCreation = "data-enable-default-creation"
 )
 
 // ZAPServiceConfig holds the configuration for the server.
@@ -55,7 +55,7 @@ func NewZAPServiceConfig() (*ZAPServiceConfig, error) {
 // AddFlags adds flags.
 func (c *ZAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(azoptions.FlagName(flagServerZAPPrefix, flagSuffixGrpcPort), 9091, "port to be used for exposing the zap grpc services")
-	flagSet.String(azoptions.FlagName(flagStorageZAPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage.engine.central option")
+	flagSet.String(azoptions.FlagName(flagStorageZAPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage-engine-central option")
 	flagSet.Int(azoptions.FlagName(flagServerZAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
 	flagSet.Bool(azoptions.FlagName(flagServerZAPPrefix, flagEnableDefaultCreation), false, "the creation of default entities (e.g., tenants, identity sources) during data creation")
 	return nil

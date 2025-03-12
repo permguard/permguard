@@ -32,7 +32,7 @@ import (
 
 const (
 	// commandNameForWorkspacesRemoteAdd is the command name for workspaces remoteadd.
-	commandNameForWorkspacesRemoteAdd = "workspaces.remote.add"
+	commandNameForWorkspacesRemoteAdd = "workspaces-remote.add"
 
 	flagZAP = "zap"
 	flagPAP = "pap"

@@ -34,7 +34,7 @@ import (
 )
 
 const (
-	flagPrefixEndingSQLite = "storage.engine.sqlite"
+	flagPrefixEndingSQLite = "storage-engine.sqlite"
 	flagSuffixDBName       = "dbname"
 )
 

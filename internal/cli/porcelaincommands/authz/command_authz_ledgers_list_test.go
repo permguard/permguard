@@ -54,7 +54,7 @@ func TestCliLedgersListWithError(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		args := []string{"ledgers", "list", "--ledgerid", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", test.OutputType}
+		args := []string{"ledgers", "list", "--ledger-id", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", test.OutputType}
 		outputs := []string{""}
 
 		v := viper.New()
@@ -93,7 +93,7 @@ func TestCliLedgersListWithSuccess(t *testing.T) {
 		"json",
 	}
 	for _, outputType := range tests {
-		args := []string{"ledgers", "list", "--ledgerid", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", outputType}
+		args := []string{"ledgers", "list", "--ledger-id", "c3160a533ab24fbcb1eab7a09fd85f36", "--output", outputType}
 		outputs := []string{""}
 
 		v := viper.New()

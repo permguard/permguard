@@ -35,7 +35,7 @@ const (
 	// commandNameForIdentity is the command name for identity.
 	commandNameForIdentity = "identity"
 	// flagIdentitySourceID is the flag for identity source id.
-	flagIdentityID = "identityid"
+	flagIdentityID = "identity-id"
 	// flagIdentitySourceID is the flag for identity source id.
 	flagIdentityKind = "kind"
 )
