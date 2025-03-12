@@ -32,7 +32,7 @@ import (
 
 const (
 	// commandNameForWorkspacesObjects base command name for workspace objects
-	commandNameForWorkspacesObjects = "workspaces.objects.list"
+	commandNameForWorkspacesObjects = "workspaces-objects.list"
 	// commandNameForWorkspacesObjectsListObjects lists objects from the object store
 	commandNameForWorkspacesObjectsListObjects = "objects"
 	// commandNameForWorkspacesObjectsListCode lists objects from the code store

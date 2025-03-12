@@ -33,7 +33,7 @@ Available Commands:
   update      Update a tenant
 
 Flags:
-      --zoneid int    zone id
+      --zone-id int    zone id
   -h, --help          help for tenants
 
 Global Flags:
@@ -54,7 +54,7 @@ The output from your current version of Permguard may differ from the example pr
 The `permguard authn tenants create` command allows to create a tenant for the mandatory input zone and name.
 
 ```bash
-permguard authn tenants create --zoneid 273165098782 --name matera-branch
+permguard authn tenants create --zone-id 273165098782 --name matera-branch
 
 ```
 
@@ -70,7 +70,7 @@ output:
   </summary>
 
 ```bash
-permguard authn tenants create --zoneid 273165098782 --name matera-branch --output json
+permguard authn tenants create --zone-id 273165098782 --name matera-branch --output json
 ```
 
 output:
@@ -96,7 +96,7 @@ output:
 The `permguard authn tenants list` command allows for the retrieval of all tenants.
 
 ```bash
-permguard authn tenants list --zoneid 273165098782
+permguard authn tenants list --zone-id 273165098782
 
 ```
 
@@ -118,7 +118,7 @@ ec40fe0ce651404a8cc0e4ab1e386053: birmingham-branch
   </summary>
 
 ```bash
-permguard authn tenants list --zoneid 273165098782 --output json
+permguard authn tenants list --zone-id 273165098782 --output json
 ```
 
 output:

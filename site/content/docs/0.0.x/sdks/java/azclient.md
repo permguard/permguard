@@ -30,19 +30,19 @@ A standard authorization request is composed of the following key elements:
 ```java
 ObjectMapper objectMapper = new ObjectMapper();
 try {
+    // Create a new Permguard client
+    AZConfig config = new AZConfig("localhost", 9094, true);
+    AZClient client = new AZClient(config);
+
     // Load JSON as InputStream from resources folder
     InputStream inputStream = Check.class.getClassLoader().getResourceAsStream(JSON_FILE_PATH);
     AZRequest request = objectMapper.readValue(inputStream, AZRequest.class);
-    long requestStartTime = System.currentTimeMillis();
     AZResponse response = client.check(request);
-    long requestEndTime = System.currentTimeMillis();
 
-    System.out.println("Request execution time: " + (requestEndTime - requestStartTime) + " ms");
     if (response == null) {
         System.out.println("❌ Authorization request failed.");
         return;
     }
-
     if (response.isDecision()) {
         System.out.println("✅ Authorization Permitted");
     } else {
@@ -75,6 +75,10 @@ An `atomic authorization` request can be performed using the `AuthZ Client` by c
 
 ```java
 try {
+    // Create a new Permguard client
+    AZConfig config = new AZConfig("localhost", 9094, true);
+    AZClient client = new AZClient(config);
+
     long zoneId = ZONE_ID;
     String policyStoreId = POLICY_STORE_ID;
     String requestId = "abc1";
@@ -113,10 +117,7 @@ try {
             .build();
 
     // Perform atomic authorization check
-    long requestStartTime = System.currentTimeMillis();
     AZResponse response = client.check(request);
-    long requestEndTime = System.currentTimeMillis();
-    System.out.println("Request execution time: " + (requestEndTime - requestStartTime) + " ms");
     if (response == null) {
         System.out.println("❌ Authorization request failed.");
         return;
@@ -159,6 +160,10 @@ This type of request is designed for scenarios requiring greater control over th
 
 ```java
 try {
+    // Create a new Permguard client
+    AZConfig config = new AZConfig("localhost", 9094, true);
+    AZClient client = new AZClient(config);
+
     // Extract values from JSON (matching your provided data)
     long zoneId = ZONE_ID;
     String policyStoreId = POLICY_STORE_ID;
@@ -232,10 +237,7 @@ try {
             .build();
 
     // Perform authorization check with multiple evaluations
-    long requestStartTime = System.currentTimeMillis();
     AZResponse response = client.check(request);
-    long requestEndTime = System.currentTimeMillis();
-    System.out.println("Request execution time: " + (requestEndTime - requestStartTime) + " ms");
     if (response == null) {
         System.out.println("❌ Authorization request failed.");
         return;

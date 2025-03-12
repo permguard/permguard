@@ -31,7 +31,7 @@ import (
 
 const (
 	// commandNameForWorkspacesApply is the command name for workspaces apply.
-	commandNameForWorkspacesApply = "workspaces.apply"
+	commandNameForWorkspacesApply = "workspaces-apply"
 )
 
 // runECommandForApplyWorkspace runs the command for creating an workspace.

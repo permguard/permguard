@@ -37,7 +37,7 @@ import (
 
 const (
 	flagPrefixDataStorage        = "storage"
-	flagSuffixDataStorageCentral = "engine.central"
+	flagSuffixDataStorageCentral = "engine-central"
 	flagValDefDataStorageCentral = "sqlite"
 )
 

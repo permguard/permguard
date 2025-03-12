@@ -30,9 +30,9 @@ import (
 func FlagName(flags ...string) string {
 	sanitizedFlags := make([]string, len(flags))
 	for i, flag := range flags {
-		sanitizedFlags[i] = strings.Replace(flag, "-", ".", -1)
+		sanitizedFlags[i] = strings.Replace(flag, ".", "-", -1)
 	}
-	return strings.Join(sanitizedFlags, ".")
+	return strings.Join(sanitizedFlags, "-")
 }
 
 // AddFlag adds a flag to the viper.

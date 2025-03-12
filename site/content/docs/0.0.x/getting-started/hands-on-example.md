@@ -66,7 +66,7 @@ Here’s what you’ll see.
 It is important to note that the `zoneid` is required for the ledger creation and it is returned by the previous command.
 
 ```text
-permguard authz ledgers create --name magicfarmacia --zoneid 895741663247
+permguard authz ledgers create --name magicfarmacia --zone-id 895741663247
 ```
 
 Displayed result.
@@ -80,7 +80,7 @@ Displayed result.
 The next step is to configure the users and actors. First of all, it is necessary to create the identity source.
 
 ```text
-permguard authn identitysources create --name keycloak --zoneid 895741663247
+permguard authn identitysources create --name keycloak --zone-id 895741663247
 ```
 
 This is the expected output.
@@ -92,10 +92,10 @@ This is the expected output.
 Then, it is necessary to create the identities. It is important to note that the `identitysourceid` is required for the identities creation and it is returned by the previous command.
 
 ```text
-permguard authn identities create --name amy.smith@acmecorp.com --kind user --identitysourceid 28e618209040479b8d1a6c581608ec84 --zoneid 895741663247
-permguard authn identities create --name platform-admin --kind actor --identitysourceid 28e618209040479b8d1a6c581608ec84 --zoneid 895741663247
-permguard authn tenants create --name matera-branch --zoneid 895741663247
-permguard authn tenants create --name pisa-branch --zoneid 895741663247
+permguard authn identities create --name amy.smith@acmecorp.com --kind user --identitysource-id 28e618209040479b8d1a6c581608ec84 --zone-id 895741663247
+permguard authn identities create --name platform-admin --kind actor --identitysource-id 28e618209040479b8d1a6c581608ec84 --zone-id 895741663247
+permguard authn tenants create --name matera-branch --zone-id 895741663247
+permguard authn tenants create --name pisa-branch --zone-id 895741663247
 ```
 
 Resulting output.

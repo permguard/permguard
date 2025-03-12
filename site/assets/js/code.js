@@ -165,13 +165,13 @@ console.log(decision ? "✅ Authorization Permitted" : "❌ Authorization Denied
     before: `// BEFORE
 public static Dictionary<string, Dictionary<string, List<string>>> GetPermissionsForRole(string role)
 {
-    // Placeholder: Replace with actual logic to fetch permissions for the role
+    // Here boilerplate code to fetch permissions for a role
     return new Dictionary<string, Dictionary<string, List<string>>>();
 }
 
 public static bool CheckPermissions(string token, string system, string resource, string action)
 {
-    // Here boilerplate code to fetch permissions for a role
+    // Here boilerplate code to check permissions
     // ...
     foreach (var role in roles)
     {
@@ -230,7 +230,7 @@ public static Map<String, Map<String, List<String>>> getPermissionsForRole(Strin
 }
 
 public static boolean checkPermissions(String token, String system, String resource, String action) {
-    // Here boilerplate code to fetch permissions for a role
+    // Here boilerplate code to check permissions
     // ...
     for (String role : roles) {
         Map<String, Map<String, List<String>>> rolePermissions = getPermissionsForRole(role);

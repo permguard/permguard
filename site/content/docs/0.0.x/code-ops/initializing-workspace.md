@@ -71,7 +71,7 @@ Below is the output of the command.
 Next, create a ledger.
 
 ```bash
-permguard authz ledgers create --zoneid 273165098782  --name magicfarmacia --output json
+permguard authz ledgers create --zone-id 273165098782  --name magicfarmacia --output json
 ```
 
 Below is the output of the command.

@@ -27,7 +27,7 @@ import (
 
 const (
 	// commandNameForZonesUpdate is the command name for zones update.
-	commandNameForZonesUpdate = "zones.update"
+	commandNameForZonesUpdate = "zones-update"
 )
 
 // runECommandForUpdateZone runs the command for creating a zone.
@@ -44,7 +44,7 @@ func createCommandForZoneUpdate(deps azcli.CliDependenciesProvider, v *viper.Vip
 
 Examples:
   # update a zone and output the result in json format
-  permguard zones update --zoneid 273165098782 --name magicfarmacia-dev --output json
+  permguard zones update --zone-id 273165098782 --name magicfarmacia-dev --output json
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForUpdateZone(deps, cmd, v)

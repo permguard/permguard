@@ -30,11 +30,11 @@ import (
 )
 
 const (
-	flagStoragePAPPrefix     = "storage.pap"
-	flagServerPAPPrefix      = "server.pap"
-	flagSuffixGrpcPort       = "grpc.port"
-	flagCentralEngine        = "engine.central"
-	flagDataFetchMaxPageSize = "data.fetch.maxpagesize"
+	flagStoragePAPPrefix     = "storage-pap"
+	flagServerPAPPrefix      = "server-pap"
+	flagSuffixGrpcPort       = "grpc-port"
+	flagCentralEngine        = "engine-central"
+	flagDataFetchMaxPageSize = "data-fetch-maxpagesize"
 )
 
 // PAPServiceConfig holds the configuration for the server.
@@ -54,7 +54,7 @@ func NewPAPServiceConfig() (*PAPServiceConfig, error) {
 // AddFlags adds flags.
 func (c *PAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(azoptions.FlagName(flagServerPAPPrefix, flagSuffixGrpcPort), 9092, "port to be used for exposing the pap grpc services")
-	flagSet.String(azoptions.FlagName(flagStoragePAPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage.engine.central option")
+	flagSet.String(azoptions.FlagName(flagStoragePAPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage-engine-central option")
 	flagSet.Int(azoptions.FlagName(flagServerPAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
 	return nil
 }
