@@ -22,5 +22,5 @@ seo:
 In your application install the .NET Core SDK by running the following command:
 
 ```bash
-dotnet add package Permguard --version 0.0.2
+dotnet add package Permguard
 ```
