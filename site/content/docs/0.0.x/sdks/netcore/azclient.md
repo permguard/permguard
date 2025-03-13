@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "azclient-netcore-sdk-c387de5476bf41889fb7dbc70c7bc6a7"
-weight: 9402
+weight: 9502
 toc: true
 seo:
   title: "" # custom title (optional)
