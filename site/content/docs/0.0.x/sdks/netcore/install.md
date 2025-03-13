@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "install-netcore-sdk-36f4543a6f9942ec9e15af43526b1f4b"
-weight: 9401
+weight: 9501
 toc: true
 seo:
   title: "" # custom title (optional)
