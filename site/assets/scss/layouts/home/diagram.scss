@@ -26,12 +26,16 @@
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 768px) {
   .diagram {
     padding-top: 1.5rem;
 
     img {
       max-width: 400px;
+    }
+
+    &__box {
+      border: none;
     }
   }
 
