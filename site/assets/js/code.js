@@ -220,12 +220,11 @@ var request = new AzAtomicRequestBuilder(285374414806,
     .WithResourceId("e3a786fd07e24bfa95ba4341d3695ae8")
     .Build();
 
-// Check the authorization
 var response = client.CheckAuth(request);
 if (response == null)
 {
     Console.WriteLine("❌ Failed to check auth.");
-    throw new Exception("Failed to check auth response");
+    return;
 }
 Console.WriteLine(response.Decision ? "✅ Authorization Permitted" : "❌ Authorization Denied");`,
   },
