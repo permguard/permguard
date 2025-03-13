@@ -207,19 +207,27 @@ public static void Main()
         Console.WriteLine("❌ Authorization Denied");
     }
 }`,
-    after: `
-        // AFTER NETCORE
+    after: `// AFTER
+using Permguard;
+using Permguard.AzReq;
 
-        using System;
+var client = new AzClient(new AzConfig().WithEndpoint(new AzEndpoint("http", 9094, "localhost")));
+var request = new AzAtomicRequestBuilder(285374414806,
+        "f81aec177f8a44a48b7ceee45e05507f",
+        "platform-creator",
+        "MagicFarmacia::Platform::Subscription",
+        "MagicFarmacia::Platform::Action::creat4")
+    .WithResourceId("e3a786fd07e24bfa95ba4341d3695ae8")
+    .Build();
 
-        class Program
-        {
-            static void Main()
-            {
-                Console.WriteLine("Updated .NET Core Code!");
-            }
-        }
-    `,
+// Check the authorization
+var response = client.CheckAuth(request);
+if (response == null)
+{
+    Console.WriteLine("❌ Failed to check auth.");
+    throw new Exception("Failed to check auth response");
+}
+Console.WriteLine(response.Decision ? "✅ Authorization Permitted" : "❌ Authorization Denied");`,
   },
   java: {
     before: `// BEFORE
