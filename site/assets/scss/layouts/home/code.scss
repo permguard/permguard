@@ -68,6 +68,16 @@ pre code.hljs {
       background-color: #1e1f23 !important;
     }
 
+    &--big {
+      pre[slot="first"] {
+        code.language-csharp,
+        code.language-java {
+          padding-top: 150px;
+          padding-bottom: 25px;
+        }
+      }
+    }
+
     &__header {
       padding-left: 25px;
       height: 60px;
