@@ -211,14 +211,13 @@ public static void Main()
 using Permguard;
 using Permguard.AzReq;
 
-var client = new AzClient(new AzConfig().WithEndpoint(new AzEndpoint("http", 9094, "localhost")));
-var request = new AzAtomicRequestBuilder(285374414806,
-        "f81aec177f8a44a48b7ceee45e05507f",
-        "platform-creator",
-        "MagicFarmacia::Platform::Subscription",
+var config = new AzConfig().WithEndpoint(new AzEndpoint("http", 9094, "localhost"));
+var client = new AzClient(config);
+
+var request = new AzAtomicRequestBuilder(285374414806, "f81aec177f8a44a48b7ceee45e05507f",
+        "platform-creator", "MagicFarmacia::Platform::Subscription",
         "MagicFarmacia::Platform::Action::creat4")
-    .WithResourceId("e3a786fd07e24bfa95ba4341d3695ae8")
-    .Build();
+    .WithResourceId("e3a786fd07e24bfa95ba4341d3695ae8").Build();
 
 var response = client.CheckAuth(request);
 if (response == null)
@@ -226,8 +225,7 @@ if (response == null)
     Console.WriteLine("❌ Failed to check auth.");
     return;
 }
-Console.WriteLine(response.Decision ? "✅ Authorization Permitted" : "❌ Authorization Denied");`,
-  },
+Console.WriteLine(response.Decision ? "✅ Authorization Permitted" : "❌ Authorization Denied");`,},
   java: {
     before: `// BEFORE
 
@@ -282,7 +280,7 @@ import com.permguard.pep.model.response.AZResponse;
 AZConfig config = new AZConfig("localhost", 9094, true);
 AZClient client = new AZClient(config);
 
-AZRequest request = new AZAtomicRequestBuilder(611159836099L, policyStoreId,
+AZRequest request = new AZAtomicRequestBuilder(611159836099L, "f81aec177f8a44a48b7ceee45e05507f",,
         "amy.smith@acmecorp.com", "MagicFarmacia::Platform::Subscription",
         "MagicFarmacia::Platform::Action::create"
 ).withResourceId("e3a786fd07e24bfa95ba4341d3695ae8").build();
