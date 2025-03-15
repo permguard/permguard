@@ -35,7 +35,7 @@ const (
 
 // identitiesMap is a map of identity kinds to IDs.
 var identitiesMap = map[string]int16{
-	"user":  1,
+	"user":       1,
 	"role-actor": 2,
 	"twin-actor": 3,
 }

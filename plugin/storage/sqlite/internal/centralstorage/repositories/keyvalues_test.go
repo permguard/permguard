@@ -20,8 +20,8 @@ import (
 func registerKeyValueForUpsertMocking() (*KeyValue, string, *sqlmock.Rows) {
 	keyValue := &KeyValue{
 		ZoneID: 45645646,
-		Key:   "test-key",
-		Value: []byte("test-value"),
+		Key:    "test-key",
+		Value:  []byte("test-value"),
 	}
 	var sql string
 	sql = `INSERT INTO key_values \(zone_id, kv_key, kv_value\) VALUES \(\?, \?, \?\) ON CONFLICT\(zone_id, kv_key\) DO UPDATE SET kv_value = excluded.kv_value`
@@ -119,8 +119,8 @@ func TestRepoGetKeyValueWithSuccess(t *testing.T) {
 
 	keyValue := &KeyValue{
 		ZoneID: 45645646,
-		Key:   "test-key",
-		Value: []byte("test-value"),
+		Key:    "test-key",
+		Value:  []byte("test-value"),
 	}
 	sql := `SELECT zone_id, kv_key, kv_value FROM key_values WHERE zone_id = ? and  kv_key = ?`
 	sqlRows := sqlmock.NewRows([]string{"zone_id", "kv_key", "kv_value"}).
