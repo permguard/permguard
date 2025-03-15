@@ -36,7 +36,8 @@ const (
 // identitiesMap is a map of identity kinds to IDs.
 var identitiesMap = map[string]int16{
 	"user":  1,
-	"actor": 2,
+	"role-actor": 2,
+	"twin-actor": 3,
 }
 
 // ConvertIdentityKindToID converts an identity kind to an ID.
@@ -185,7 +186,9 @@ func (r *Repository) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, zo
 	if filterName != nil {
 		identityName := *filterName
 		if err := azvalidators.ValidateIdentityUserName("identity", identityName); err != nil {
-			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientName, fmt.Sprintf("invalid client input - identity name is not valid (name: %s)", identityName), err)
+			if err := azvalidators.ValidateName("identity", identityName); err != nil {
+				return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientName, fmt.Sprintf("invalid client input - identity name is not valid (name: %s)", identityName), err)
+			}
 		}
 		identityName = "%" + identityName + "%"
 		conditions = append(conditions, "name LIKE ?")
