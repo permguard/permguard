@@ -228,7 +228,7 @@ func MapGrpcEvaluationRequestToAgentEvaluationRequest(evaluationRequest *Evaluat
 		return nil, nil
 	}
 	target := &azmodelspdp.EvaluationRequest{}
-	if (evaluationRequest.RequestID != nil && len(*evaluationRequest.RequestID) > 0) {
+	if evaluationRequest.RequestID != nil && len(*evaluationRequest.RequestID) > 0 {
 		target.RequestID = *evaluationRequest.RequestID
 	}
 	if evaluationRequest.Subject != nil {

@@ -71,9 +71,9 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 		errMsg := fmt.Sprintf("%s: failed to expand authorization request with defaults", azauthz.AuthzErrBadRequestMessage)
 		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, requestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage), nil
 	}
-	type evalItem struct{
+	type evalItem struct {
 		listID int
-		value *azmodelspdp.EvaluationResponse
+		value  *azmodelspdp.EvaluationResponse
 	}
 	evalItems := []evalItem{}
 	reqEvaluations := []azmodelspdp.EvaluationRequest{}
@@ -109,7 +109,7 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
 		}
-		if !azmodelspdp.IsValidIdentiyType(principal.Type){
+		if !azmodelspdp.IsValidIdentiyType(principal.Type) {
 			errMsg := fmt.Sprintf("%s: invalid the principal type", azauthz.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
@@ -154,7 +154,7 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthz.AuthzErrBadRequestCode, errMsg, azauthz.AuthzErrBadRequestMessage)})
 			continue
 		}
-		evalItems = append(evalItems, evalItem{listID:reqEvaluationsCounter, value: nil})
+		evalItems = append(evalItems, evalItem{listID: reqEvaluationsCounter, value: nil})
 		reqEvaluationsCounter++
 		reqEvaluations = append(reqEvaluations, evaluation)
 	}
@@ -173,16 +173,16 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 		}
 	}
 	evaluations := []azmodelspdp.EvaluationResponse{}
-	for i := range len(evalItems){
+	for i := range len(evalItems) {
 		evalItem := evalItems[i]
-		if  evalItem.listID == - 1 {
+		if evalItem.listID == -1 {
 			evaluations = append(evaluations, *evalItems[i].value)
 		} else {
 			evaluations = append(evaluations, authzCheckEvaluations[evalItem.listID])
 		}
 	}
 	authzCheckResp := &azmodelspdp.AuthorizationCheckResponse{
-		RequestID: request.RequestID,
+		RequestID:   request.RequestID,
 		Evaluations: evaluations,
 	}
 	if len(authzCheckResp.Evaluations) == 1 {

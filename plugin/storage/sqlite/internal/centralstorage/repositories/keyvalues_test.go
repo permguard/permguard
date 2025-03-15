@@ -19,13 +19,14 @@ import (
 // registerKeyValueForUpsertMocking registers a key-value pair for upsert mocking.
 func registerKeyValueForUpsertMocking() (*KeyValue, string, *sqlmock.Rows) {
 	keyValue := &KeyValue{
+		ZoneID: 45645646,
 		Key:   "test-key",
 		Value: []byte("test-value"),
 	}
 	var sql string
-	sql = `INSERT INTO key_values \(kv_key, kv_value\) VALUES \(\?, \?\) ON CONFLICT\(kv_key\) DO UPDATE SET kv_value = excluded.kv_value`
-	sqlRows := sqlmock.NewRows([]string{"kv_key", "kv_value"}).
-		AddRow(keyValue.Key, keyValue.Value)
+	sql = `INSERT INTO key_values \(zone_id, kv_key, kv_value\) VALUES \(\?, \?, \?\) ON CONFLICT\(zone_id, kv_key\) DO UPDATE SET kv_value = excluded.kv_value`
+	sqlRows := sqlmock.NewRows([]string{"zone_id", "kv_key", "kv_value"}).
+		AddRow(keyValue.ZoneID, keyValue.Key, keyValue.Value)
 	return keyValue, sql, sqlRows
 }
 
@@ -67,11 +68,11 @@ func TestRepoUpsertKeyValueWithSuccess(t *testing.T) {
 
 	sqlDBMock.ExpectBegin()
 	sqlDBMock.ExpectExec(sql).
-		WithArgs(keyValue.Key, keyValue.Value).
+		WithArgs(keyValue.ZoneID, keyValue.Key, keyValue.Value).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	sqlDBMock.ExpectQuery(`SELECT kv_key, kv_value FROM key_values WHERE kv_key = \?`).
-		WithArgs(sqlmock.AnyArg()).
+	sqlDBMock.ExpectQuery(`SELECT zone_id, kv_key, kv_value FROM key_values WHERE zone_id = \? and kv_key = \?`).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnRows(sqlKeyValueRows)
 
 	tx, _ := sqlDB.Begin()
@@ -96,7 +97,7 @@ func TestRepoUpsertKeyValueWithErrors(t *testing.T) {
 
 	sqlDBMock.ExpectBegin()
 	sqlDBMock.ExpectExec(sql).
-		WithArgs(keyValue.Key, keyValue.Value).
+		WithArgs(keyValue.ZoneID, keyValue.Key, keyValue.Value).
 		WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 
 	tx, _ := sqlDB.Begin()
@@ -117,18 +118,19 @@ func TestRepoGetKeyValueWithSuccess(t *testing.T) {
 	defer sqlDB.Close()
 
 	keyValue := &KeyValue{
+		ZoneID: 45645646,
 		Key:   "test-key",
 		Value: []byte("test-value"),
 	}
-	sql := `SELECT kv_key, kv_value FROM key_values WHERE kv_key = ?`
-	sqlRows := sqlmock.NewRows([]string{"kv_key", "kv_value"}).
-		AddRow(keyValue.Key, keyValue.Value)
+	sql := `SELECT zone_id, kv_key, kv_value FROM key_values WHERE zone_id = ? and  kv_key = ?`
+	sqlRows := sqlmock.NewRows([]string{"zone_id", "kv_key", "kv_value"}).
+		AddRow(keyValue.ZoneID, keyValue.Key, keyValue.Value)
 
 	sqlDBMock.ExpectQuery(regexp.QuoteMeta(sql)).
-		WithArgs(keyValue.Key).
+		WithArgs(keyValue.ZoneID, keyValue.Key).
 		WillReturnRows(sqlRows)
 
-	dbOutKeyValue, err := ledger.GetKeyValue(sqlDB, keyValue.Key)
+	dbOutKeyValue, err := ledger.GetKeyValue(sqlDB, keyValue.ZoneID, keyValue.Key)
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutKeyValue, "key-value should be not nil")
@@ -145,12 +147,13 @@ func TestRepoGetKeyValueWithErrors(t *testing.T) {
 	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
-	sqlQuery := `SELECT kv_key, kv_value FROM key_values WHERE kv_key = ?`
+	sqlQuery := `SELECT zone_id, kv_key, kv_value FROM key_values WHERE zone_id = ? and  kv_key = ?`
+	zoneID := int64(23423423)
 	sqlDBMock.ExpectQuery(regexp.QuoteMeta(sqlQuery)).
-		WithArgs("non-existent-key").
+		WithArgs(zoneID, "non-existent-key").
 		WillReturnError(sql.ErrNoRows)
 
-	dbOutKeyValue, err := ledger.GetKeyValue(sqlDB, "non-existent-key")
+	dbOutKeyValue, err := ledger.GetKeyValue(sqlDB, zoneID, "non-existent-key")
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.Nil(dbOutKeyValue, "key-value should be nil")
