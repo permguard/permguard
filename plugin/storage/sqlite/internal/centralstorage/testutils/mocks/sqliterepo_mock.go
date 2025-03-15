@@ -203,8 +203,8 @@ func (m *MockSqliteRepo) UpsertKeyValue(tx *sql.Tx, keyValue *azirepos.KeyValue)
 }
 
 // GetKeyValue retrieves a key-value pair by key.
-func (m *MockSqliteRepo) GetKeyValue(db *sqlx.DB, key string) (*azirepos.KeyValue, error) {
-	args := m.Called(db, key)
+func (m *MockSqliteRepo) GetKeyValue(db *sqlx.DB, zoneID int64, key string) (*azirepos.KeyValue, error) {
+	args := m.Called(db, zoneID, key)
 	var r0 *azirepos.KeyValue
 	if val, ok := args.Get(0).(*azirepos.KeyValue); ok {
 		r0 = val

@@ -49,12 +49,29 @@ func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key str
 		var zero T
 		return zero, false
 	}
-	typedValue, ok := value.(T)
-	if !ok {
+
+	switch v := value.(type) {
+	case T:
+		return v, true
+	case string:
 		var zero T
-		return zero, false
+		switch any(zero).(type) {
+		case int:
+			if num, err := strconv.Atoi(v); err == nil {
+				return any(num).(T), true
+			}
+		case int64:
+			if num, err := strconv.ParseInt(v, 10, 64); err == nil {
+				return any(num).(T), true
+			}
+		default:
+			if any(zero) == "" {
+				return any(v).(T), true
+			}
+		}
 	}
-	return typedValue, true
+	var zero T
+	return zero, false
 }
 
 // GetObjectForType gets the object for the type.
@@ -72,8 +89,8 @@ func GetObjectForType[T any](objMng *azlangobjs.ObjectManager, obj *azlangobjs.O
 }
 
 // readObject reads the object.
-func (s SQLiteCentralStoragePAP) readObject(db *sqlx.DB, oid string) (*azlangobjs.Object, error) {
-	keyValue, errkey := s.sqlRepo.GetKeyValue(db, oid)
+func (s SQLiteCentralStoragePAP) readObject(db *sqlx.DB, zoneID int64, oid string) (*azlangobjs.Object, error) {
+	keyValue, errkey := s.sqlRepo.GetKeyValue(db, zoneID, oid)
 	if errkey != nil || keyValue == nil || keyValue.Value == nil {
 		return nil, nil
 	}

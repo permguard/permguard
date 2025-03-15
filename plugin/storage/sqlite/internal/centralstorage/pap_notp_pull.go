@@ -24,11 +24,16 @@ import (
 	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
 	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
+	azagentnotpsm "github.com/permguard/permguard/internal/transport/notp/statemachines"
 	notpagpackets "github.com/permguard/permguard/internal/transport/notp/statemachines/packets"
 )
 
 // OnPullHandleRequestCurrentState handles the request for the current state.
 func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+	zoneID, ok := getFromHandlerContext[int64](handlerCtx, azagentnotpsm.ZoneIDKey)
+	if !ok || zoneID <= 0 {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid input zone id.")
+	}
 	if len(packets) == 0 {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid input packets for notify current state.")
 	}
@@ -57,7 +62,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 			return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 		}
 		hasMatch, history, err := objMng.BuildCommitHistory(remoteRefSPacket.RefPrevCommit, headCommitID, false, func(oid string) (*azlangobjs.Object, error) {
-			keyValue, err := s.sqlRepo.GetKeyValue(db, oid)
+			keyValue, err := s.sqlRepo.GetKeyValue(db, zoneID, oid)
 			if err != nil || keyValue == nil || keyValue.Value == nil {
 				return nil, nil
 			}
@@ -74,7 +79,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	_, commits, err := objMng.BuildCommitHistory(headCommitID, remoteRefSPacket.RefCommit, true, func(oid string) (*azlangobjs.Object, error) {
-		return s.readObject(db, oid)
+		return s.readObject(db, zoneID, oid)
 	})
 	packet := &notpagpackets.LocalRefStatePacket{
 		RefCommit:       headCommitID,
@@ -103,6 +108,10 @@ func (s SQLiteCentralStoragePAP) OnPullSendNotifyCurrentStateResponse(handlerCtx
 
 // OnPullSendNegotiationRequest sends the negotiation request.
 func (s SQLiteCentralStoragePAP) OnPullSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+	zoneID, ok := getFromHandlerContext[int64](handlerCtx, azagentnotpsm.ZoneIDKey)
+	if !ok || zoneID <= 0 {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid input zone id.")
+	}
 	localCommitID, _ := getFromHandlerContext[string](handlerCtx, LocalCommitIDKey)
 	remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDKey)
 	commitIDs := []string{}
@@ -116,7 +125,7 @@ func (s SQLiteCentralStoragePAP) OnPullSendNegotiationRequest(handlerCtx *notpst
 			return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 		}
 		_, history, err := objMng.BuildCommitHistory(localCommitID, remoteCommitID, true, func(oid string) (*azlangobjs.Object, error) {
-			return s.readObject(db, oid)
+			return s.readObject(db, zoneID, oid)
 		})
 		if err != nil {
 			return nil, err
@@ -148,7 +157,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleNegotiationResponse(handlerCtx *not
 }
 
 // buildPushPacketablesForCommit builds the push packetables for the tree.
-func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(commitID string) ([]notppackets.Packetable, error) {
+func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(zoneID int64, commitID string) ([]notppackets.Packetable, error) {
 	objMng, err := azlangobjs.NewObjectManager()
 	if err != nil {
 		return nil, err
@@ -159,7 +168,7 @@ func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(commitID string) 
 	}
 	packetable := []notppackets.Packetable{}
 
-	commitObj, err := s.readObject(db, commitID)
+	commitObj, err := s.readObject(db, zoneID, commitID)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +183,7 @@ func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(commitID string) 
 	}
 	packetable = append(packetable, packetCommit)
 
-	treeObj, err := s.readObject(db, commit.GetTree())
+	treeObj, err := s.readObject(db, zoneID, commit.GetTree())
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +202,7 @@ func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(commitID string) 
 	for _, entry := range tree.GetEntries() {
 		oid := entry.GetOID()
 		oType := entry.GetType()
-		obj, err := s.readObject(db, oid)
+		obj, err := s.readObject(db, zoneID, oid)
 		if err != nil {
 			return nil, err
 		}
@@ -209,6 +218,10 @@ func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(commitID string) 
 
 // OnPullHandleExchangeDataStream exchanges the data stream.
 func (s SQLiteCentralStoragePAP) OnPullHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+	zoneID, ok := getFromHandlerContext[int64](handlerCtx, azagentnotpsm.ZoneIDKey)
+	if !ok || zoneID <= 0 {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid input zone id.")
+	}
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}
@@ -218,7 +231,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleExchangeDataStream(handlerCtx *notp
 	handlerCtx.Set(DiffCommitIDCursorKey, commitIDCursor)
 	if commitIDCursor < len(commitIDs) {
 		commitID := commitIDs[commitIDCursor]
-		packetables, err := s.buildPushPacketablesForCommit(commitID)
+		packetables, err := s.buildPushPacketablesForCommit(zoneID, commitID)
 		if err != nil {
 			return nil, err
 		}

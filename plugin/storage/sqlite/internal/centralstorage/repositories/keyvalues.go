@@ -31,21 +31,25 @@ func (r *Repository) UpsertKeyValue(tx *sql.Tx, keyValue *KeyValue) (*KeyValue, 
 	if keyValue == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid client input - key-value data is missing or malformed")
 	}
+	if keyValue.ZoneID <= 0 {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid client input - zone id is missing or empty")
+	}
 	if keyValue.Key == "" {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid client input - key is missing or empty")
 	}
 
+	zoneID := keyValue.ZoneID
 	key := keyValue.Key
 	value := keyValue.Value
 	var result sql.Result
 	var err error
 
 	result, err = tx.Exec(`
-		INSERT INTO key_values (kv_key, kv_value)
-		VALUES (?, ?)
-		ON CONFLICT(kv_key)
+		INSERT INTO key_values (zone_id, kv_key, kv_value)
+		VALUES (?, ?, ?)
+		ON CONFLICT(zone_id, kv_key)
 		DO UPDATE SET kv_value = excluded.kv_value`,
-		key, value,
+		zoneID, key, value,
 	)
 
 	if err != nil || result == nil {
@@ -54,7 +58,8 @@ func (r *Repository) UpsertKeyValue(tx *sql.Tx, keyValue *KeyValue) (*KeyValue, 
 	}
 
 	var dbKeyValue KeyValue
-	err = tx.QueryRow("SELECT kv_key, kv_value FROM key_values WHERE kv_key = ?", key).Scan(
+	err = tx.QueryRow("SELECT zone_id, kv_key, kv_value FROM key_values WHERE zone_id = ? and kv_key = ?", zoneID, key).Scan(
+		&dbKeyValue.ZoneID,
 		&dbKeyValue.Key,
 		&dbKeyValue.Value,
 	)
@@ -65,13 +70,14 @@ func (r *Repository) UpsertKeyValue(tx *sql.Tx, keyValue *KeyValue) (*KeyValue, 
 }
 
 // GetKeyValue retrieves the value for a given key from the key-value store.
-func (r *Repository) GetKeyValue(db *sqlx.DB, key string) (*KeyValue, error) {
+func (r *Repository) GetKeyValue(db *sqlx.DB, zoneID int64, key string) (*KeyValue, error) {
 	if key == "" {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid client input - key is missing or empty")
 	}
 
 	var dbKeyValue KeyValue
-	err := db.QueryRow("SELECT kv_key, kv_value FROM key_values WHERE kv_key = ?", key).Scan(
+	err := db.QueryRow("SELECT zone_id, kv_key, kv_value FROM key_values WHERE zone_id = ? and kv_key = ?", zoneID, key).Scan(
+		&dbKeyValue.ZoneID,
 		&dbKeyValue.Key,
 		&dbKeyValue.Value,
 	)

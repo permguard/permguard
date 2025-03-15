@@ -15,10 +15,6 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 -- +goose Up
-CREATE TABLE key_values (
-    kv_key TEXT NOT NULL PRIMARY KEY,
-    kv_value BLOB NOT NULL
-);
 
 -- Creating the `change_streams` table
 CREATE TABLE change_streams (
@@ -39,4 +35,3 @@ CREATE INDEX change_streams_change_at_idx ON change_streams(change_at);
 
 -- +goose Down
 DROP TABLE IF EXISTS change_streams;
-DROP TABLE IF EXISTS key_values;

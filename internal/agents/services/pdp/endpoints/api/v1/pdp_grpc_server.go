@@ -19,9 +19,9 @@ package v1
 import (
 	"context"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azauthz "github.com/permguard/permguard/pkg/authorization"
+	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 
@@ -50,7 +50,7 @@ type V1PDPServer struct {
 func (s *V1PDPServer) AuthorizationCheck(ctx context.Context, request *AuthorizationCheckRequest) (*AuthorizationCheckResponse, error) {
 	req, err := MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request)
 	if req == nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter,  "request cannot be nil", err)
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, "request cannot be nil", err)
 	}
 	authzResponse, err := s.service.AuthorizationCheck(req)
 	if err != nil {

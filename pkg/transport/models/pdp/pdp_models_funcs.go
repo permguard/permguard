@@ -57,7 +57,7 @@ func IsValidIdentiyType(identityType string) bool {
 func NewEvaluationErrorResponse(requestID string, erroCode string, adminReason string, userReason string) *EvaluationResponse {
 	return &EvaluationResponse{
 		RequestID: requestID,
-		Decision: false,
+		Decision:  false,
 		Context: &ContextResponse{
 			ReasonAdmin: &ReasonResponse{
 				Code:    erroCode,

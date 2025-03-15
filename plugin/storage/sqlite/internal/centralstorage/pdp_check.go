@@ -63,14 +63,14 @@ func authorizationCheckBuildContextResponse(authzDecision *azauthz.Authorization
 }
 
 // authorizationCheckReadBytes reads the key value for the authorization check.
-func authorizationCheckReadKeyValue(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azlangobjs.ObjectManager, key string) ([]byte, error) {
+func authorizationCheckReadKeyValue(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azlangobjs.ObjectManager, zoneID int64, key string) ([]byte, error) {
 	if db == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageGeneric, "invalid database")
 	}
 	if objMng == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageGeneric, "invalid object manager")
 	}
-	keyValue, err := s.sqlRepo.GetKeyValue(db, key)
+	keyValue, err := s.sqlRepo.GetKeyValue(db, zoneID, key)
 	if err != nil {
 		return nil, err
 	}
@@ -81,8 +81,8 @@ func authorizationCheckReadKeyValue(s *SQLiteCentralStoragePDP, db *sqlx.DB, obj
 }
 
 // authorizationCheckReadBytes reads the key value for the authorization check.
-func authorizationCheckReadBytes(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azlangobjs.ObjectManager, key string) (string, []byte, error) {
-	value, err := authorizationCheckReadKeyValue(s, db, objMng, key)
+func authorizationCheckReadBytes(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azlangobjs.ObjectManager, zoneID int64, key string) (string, []byte, error) {
+	value, err := authorizationCheckReadKeyValue(s, db, objMng, zoneID, key)
 	if err != nil {
 		return "", nil, err
 	}
@@ -95,8 +95,8 @@ func authorizationCheckReadBytes(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng
 }
 
 // authorizationCheckReadTree reads the tree object for the authorization check.
-func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azlangobjs.ObjectManager, commitID string) (*azlangobjs.Tree, error) {
-	_, ocontent, err := authorizationCheckReadBytes(s, db, objMng, commitID)
+func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azlangobjs.ObjectManager, zoneID int64, commitID string) (*azlangobjs.Tree, error) {
+	_, ocontent, err := authorizationCheckReadBytes(s, db, objMng, zoneID, commitID)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng 
 	if err != nil {
 		return nil, err
 	}
-	_, ocontent, err = authorizationCheckReadBytes(s, db, objMng, commitObj.GetTree())
+	_, ocontent, err = authorizationCheckReadBytes(s, db, objMng, zoneID, commitObj.GetTree())
 	if err != nil {
 		return nil, err
 	}
@@ -139,13 +139,13 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 	if err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't create the object manager", err)
 	}
-	treeObj, err := authorizationCheckReadTree(&s, db, objMng, ledgerRef)
+	treeObj, err := authorizationCheckReadTree(&s, db, objMng, authzCtx.ZoneID, ledgerRef)
 	if err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't read the tree", err)
 	}
 	for _, entry := range treeObj.GetEntries() {
 		entryID := entry.GetOID()
-		value, err := authorizationCheckReadKeyValue(&s, db, objMng, entryID)
+		value, err := authorizationCheckReadKeyValue(&s, db, objMng, authzCtx.ZoneID, entryID)
 		if err != nil {
 			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("server couldn't read the key %s", entryID), err)
 		}
@@ -170,7 +170,7 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 
 	cedarLanguageAbs, err := azplangcedar.NewCedarLanguageAbstraction()
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric,  "server couldn't validate the language abstraction layer", err)
+		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't validate the language abstraction layer", err)
 	}
 
 	evaluations := []azmodelspdp.EvaluationResponse{}

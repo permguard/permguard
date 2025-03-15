@@ -111,8 +111,9 @@ func LogLedgerEntry(ledger *Ledger) string {
 
 // KeyValue is the model for the key_value table.
 type KeyValue struct {
-	Key   string `db:"kv_key"`
-	Value []byte `db:"kv_value"`
+	ZoneID int64  `db:"zone_id"`
+	Key    string `db:"kv_key"`
+	Value  []byte `db:"kv_value"`
 }
 
 // LogKeyValueEntry returns a string representation of the key value.
