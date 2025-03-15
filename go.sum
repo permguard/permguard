@@ -81,10 +81,15 @@ github.com/pelletier/go-toml/v2 v2.2.3 h1:YmeHyLY8mFWbdkNWwpr+qIL2bEqT0o95WSdkNH
 github.com/pelletier/go-toml/v2 v2.2.3/go.mod h1:MfCQTFTvCcUyyvvwm1+G6H/jORL20Xlb6rzQu9GuUkc=
 github.com/permguard/permguard-abs-language v0.0.1-0.20250130124205-d3c12639e75c h1:w8sIBi3TDpI6TpkW4/7E3LXJLgrC5turyeMHrTVXQCo=
 github.com/permguard/permguard-abs-language v0.0.1-0.20250130124205-d3c12639e75c/go.mod h1:B0vfh2nemOO9/Omn3gMJduqvuGcJ25qrQOQU7L80n8A=
+github.com/permguard/permguard-abs-language v0.0.1-0.20250315232230-ce8148712a94 h1:3fT+zTkptepiOdkDO9fOnLmZxBWMsHp6KYSrQbZ//Ag=
+github.com/permguard/permguard-abs-language v0.0.1-0.20250315232230-ce8148712a94/go.mod h1:UctQ+twOYGvb4wgmbSAGDNf4rhjWPhnU+FTqVonhQHA=
 github.com/permguard/permguard-core v0.0.1-0.20250129184444-f92d68da0fbb h1:g2kRTAQmTLveU2D/TMq1oTrRGdQgrG+1lgkoCRne/Mk=
 github.com/permguard/permguard-core v0.0.1-0.20250129184444-f92d68da0fbb/go.mod h1:kiR11xiM17+no5cQVvYRT2uRLiIN7LwF5tD0f8Go0OU=
+github.com/permguard/permguard-core v0.0.1-0.20250307153608-f106161e6def/go.mod h1:kiR11xiM17+no5cQVvYRT2uRLiIN7LwF5tD0f8Go0OU=
 github.com/permguard/permguard-notp-protocol v0.0.1-0.20250130124146-79ea016ab363 h1:Bzx8LgR/ETaPQ394DYAg8DRC2b/K3Xkf27Rw/Jv0XDg=
 github.com/permguard/permguard-notp-protocol v0.0.1-0.20250130124146-79ea016ab363/go.mod h1:Bz6Oot9ngLanCMxNNRzrOiJpBSmasYeqPyK355hkeYc=
+github.com/permguard/permguard-notp-protocol v0.0.1-0.20250315232038-72a1e517f882 h1:sLftYZNw43HqRM77GbUGdrM7pyugQByr+FURuraewLM=
+github.com/permguard/permguard-notp-protocol v0.0.1-0.20250315232038-72a1e517f882/go.mod h1:ZG4SfSrELPyjFQYO5bm90iTyRpShMhdxmOJm7mdu8uA=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pressly/goose/v3 v3.24.1 h1:bZmxRco2uy5uu5Ng1MMVEfYsFlrMJI+e/VMXHQ3C4LY=

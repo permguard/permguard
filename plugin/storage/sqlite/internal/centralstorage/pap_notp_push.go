@@ -142,8 +142,8 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 		}
 		keyValue := &azirepos.KeyValue{
 			ZoneID: zoneID,
-			Key:   objStatePacket.OID,
-			Value: objStatePacket.Content,
+			Key:    objStatePacket.OID,
+			Value:  objStatePacket.Content,
 		}
 		_, err = s.sqlRepo.UpsertKeyValue(tx, keyValue)
 		if err != nil {
