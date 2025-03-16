@@ -73,7 +73,7 @@ permguard@localhost/273165098782/ledgers/magicfarmacia
 A policy can be referenced using the following URI format:
 
 ```text
- protocol    host       zone                 ledger                                 version                                            policy
-┌───┴────┐┌───┴───┐ ┌────┴─────┐         ┌─────┴─────┐ ┌───────────────────────────────┴───────────────────────────────┐         ┌───────┴────────┐
-permguard@localhost/273165098782/ledgers/magicfarmacia/722164f552f2c8e582d4ef79270c7ec94b3633e8172af6ea53ffe1fdf64d66de/policies/assign-role-branch
+ protocol    host       zone                 ledger                                 version                           partition    policy
+┌───┴────┐┌───┴───┐ ┌────┴─────┐         ┌─────┴─────┐ ┌───────────────────────────────┴──────────────────────────────┐ ┌─┴─┐┌───────┴────────┐
+permguard@localhost/273165098782/ledgers/magicfarmacia/722164f552f2c8e582d4ef79270c7ec94b3633e8172af6ea53ffe1fdf64d66de/root/assign-role-branch
 ```
