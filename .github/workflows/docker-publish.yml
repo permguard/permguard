@@ -34,7 +34,7 @@ jobs:
 
       - name: Build Docker Image
         run: |
-          docker build -t permguard/all-in-one:latest -f ./cmd/server-all-in-one/Dockerfile --build-arg VERSION="$VERSION" --build-arg BUILD_TIME="$BUILD_TIME" --build-arg GIT_COMMIT="$GIT_COMMIT" .
+          docker build -t permguard/all-in-one:latest -f ./cmd/server-all-in-one/Dockerfile --build-arg VERSION="${VERSION}" --build-arg BUILD_TIME="${BUILD_TIME}" --build-arg GIT_COMMIT="${GIT_COMMIT}" .
 
       - name: Tag Docker Image
         run: |
