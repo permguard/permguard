@@ -25,7 +25,7 @@ An `Authorization Api payload` is composed of the `authorization model` and othe
 
 ## Zone
 
-The `zone` is required to build the AuthZ model.
+The `zone` is required to build the authorization model.
 
 This is provided as an input to the Authorization Api.
 
@@ -44,7 +44,7 @@ This is provided as an input to the Authorization Api.
 
 ## Policy Store
 
-The `policy store` is required to load policies, schemas, and other related data necessary to build the AuthZ model.
+The `policy store` is required to load policies, schemas, and other related data necessary to build the authorization model.
 
 This is provided as an input to the Authorization Api.
 

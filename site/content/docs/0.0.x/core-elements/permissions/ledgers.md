@@ -28,7 +28,7 @@ In the [MagicFarmacia sample](/docs/0.0.x/getting-started/hands-on-example/) a l
 
 ## Policy Ledger
 
-A **Policy Ledger** is a logical structure used to organize `authz models`.
+A **Policy Ledger** is a logical structure used to organize `authorization models`.
 
 ```json
 {
