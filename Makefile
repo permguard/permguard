@@ -97,7 +97,7 @@ build-cli:
 
 build-all-in-one:
 	mkdir -p dist
-	go build -o dist/server-all-in-one ./cmd/server-all-in-one
+	go build -o dist/server-all-in-one -trimpath -ldflags "-s -w -X 'github.com/permguard/permguard/internal/agents/cli.Version=$(VERSION)' -X 'github.com/permguard/permguard/internal/agents/cli.BuildTime=$(BUILD_TIME)' -X 'github.com/permguard/permguard/internal/agents/cli.GitCommit=$(GIT_COMMIT)'" ./cmd/server-all-in-one
 	chmod +x dist/server-all-in-one
 	go run ./cmd/provisioner-db-sqlite/main.go --up --dbdir ./dist --debug
 
