@@ -1,6 +1,6 @@
 ---
-title: "Authorization API"
-slug: "Authorization API"
+title: "Authorization Api"
+slug: "Authorization Api"
 description: ""
 summary: ""
 date: 2023-08-21T22:49:19+01:00

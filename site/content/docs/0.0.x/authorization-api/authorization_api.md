@@ -1,6 +1,6 @@
 ---
-title: "Authorization API"
-slug: "Authorization API"
+title: "Authorization Api"
+slug: "Authorization Api"
 description: ""
 summary: ""
 date: 2024-12-26T22:53:00+01:00
@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The **Authorization API** allows the `Policy Enforcement Point` (`PEP`) and the `Policy Decision Point` (`PDP`) to communicate. The `PEP` sends authorization requests, and the `PDP` responds with decisions. They do not need to know how the other works internally.
+The **Authorization Api** allows the `Policy Enforcement Point` (`PEP`) and the `Policy Decision Point` (`PDP`) to communicate. The `PEP` sends authorization requests, and the `PDP` responds with decisions. They do not need to know how the other works internally.
 
 ## Payload
 
@@ -45,7 +45,7 @@ The request payload contains the following elements:
   A list of access requests that a `principal` can use to evaluate multiple access decisions in a single message exchange. This allows checking permissions for multiple subjects at once, a process also known as "boxcarring" requests.
 
 {{< callout context="note" icon="info-circle" >}}
-**Permguard** enables Zero Trust principles, and the Authorization API follows the same approach. The `principal` can send an authentication token along with the authorization request. This allows enforcing Zero Trust security by validating the token and ensuring that the `principal` is allowed to act on behalf of the `subject`, for example, in the context of trusted elevation and trusted delegation.
+**Permguard** enables Zero Trust principles, and the Authorization Api follows the same approach. The `principal` can send an authentication token along with the authorization request. This allows enforcing Zero Trust security by validating the token and ensuring that the `principal` is allowed to act on behalf of the `subject`, for example, in the context of trusted elevation and trusted delegation.
 
 If the `principal` does not have permission to act on a `subject`, the request will return an error to block unauthorized actions.
 

@@ -19,15 +19,15 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The **Authorization API Model** defines the payload and how it relates to the `Policy-as-Code`.
+The **Authorization Api Model** defines the `payload` of the `Authorization Api` and how it relates to the `Policy-as-Code`.
 
-A payload is composed of the authorization model and other inputs, such as subject, resource, and action.
+An `Authorization Api payload` is composed of the `authorization model` and other inputs, such as `subject`, `resource`, and `action`.
 
 ## Zone
 
 The `zone` is required to build the AuthZ model.
 
-This is provided as an input to the Authorization API.
+This is provided as an input to the Authorization Api.
 
 ```json
 {
@@ -46,7 +46,7 @@ This is provided as an input to the Authorization API.
 
 The `policy store` is required to load policies, schemas, and other related data necessary to build the AuthZ model.
 
-This is provided as an input to the Authorization API.
+This is provided as an input to the Authorization Api.
 
 ```json
 {
