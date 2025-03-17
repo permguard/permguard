@@ -19,4 +19,6 @@ seo:
   noindex: false # false (default) or true
 ---
 
-This section specifies the `Cedar` **AuthZ Manifest** override. If no specific override is provided, the generic AuthZ Model specification applies.
+This section specifies the **Cedar** `AuthZ Manifest` override.
+
+> If no specific override is provided, the generic `AuthZ Manifest` specification applies.
