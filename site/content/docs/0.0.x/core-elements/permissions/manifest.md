@@ -28,6 +28,6 @@ Those manifest files are created automatically when a new workspace is initializ
 
 This **manifest**  is a mandatory component that represents the authorization (**AuthZ**) model. It allows you to define the following elements:
 
-- **metadata**: Information about the AuthZ model
-- **runtime**: A runtime represents a specific environment that can be used to build and evaluate the AuthZ model.
-- **partition**: A partition defines a specific section of the AuthZ model, enabling a modular approach to its design.
+- **metadata**: Information about the authorization model
+- **runtime**: A runtime represents a specific environment that can be used to build and evaluate the authorization model.
+- **partition**: A partition defines a specific section of the authorization model, enabling a modular approach to its design.

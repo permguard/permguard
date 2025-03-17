@@ -59,16 +59,16 @@ Below is an example of an `AuthZ Manifest`:
 
 ## **Metadata**
 
-This section defines the metadata of the **authz model**.
+This section defines the metadata of the **authorization model**.
 
 ## **Runtime**
 
-This section defines the available runtimes required by the **authz model**.
+This section defines the available runtimes required by the **authorization model**.
 Each of these runtimes is associated with a specific language and engine.
 
 Both of them have a version, and the **+** means from that version to any other version. Without it, the version is fixed.
 
 ## **Partitions**
 
-This section defines the partitions of the **authz model** and mandates the presence of a ```root``` partition. Each partition is associated with a specific runtime and allows specifying if a schema is required.
+This section defines the partitions of the **authorization model** and mandates the presence of a ```root``` partition. Each partition is associated with a specific runtime and allows specifying if a schema is required.
 Along with this, it is required to specify the location, which has a path and a mode (```file``` or ```directory```).
