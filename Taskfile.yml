@@ -95,7 +95,7 @@ tasks:
     desc: get abstraction languange dependency
     cmd: 'go get -u github.com/permguard/permguard-abs-language@{{.CLI_ARGS}}'
   # Local
-  install: make build-cli && cp ./dist/permguard ~/.apps/bin/permguard
+  install: export VERSION=$(git describe --tags --match 'v*' --abbrev=0 | cut -c2-) && export BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S') && export GIT_COMMIT=$(git rev-parse --short HEAD) && make build-cli && cp ./dist/permguard ~/.apps/bin/permguard
   docker:
     - docker build -t permguard-all-in-one:latest -f ./cmd/server-all-in-one/Dockerfile .
     - docker run --rm -it -v ./samples/volume:/opt/permguard/volume -p 9092:9092 -p 9091:9091 -p 9094:9094 -e PERMGUARD_DEBUG="TRUE" permguard-all-in-one:latest
