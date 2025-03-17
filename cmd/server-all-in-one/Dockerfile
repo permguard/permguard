@@ -16,11 +16,11 @@
 # Build Stage
 FROM golang:1.23.5-alpine AS builder
 
-RUN apk add --no-cache make gcc musl-dev
 ARG VERSION
 ARG BUILD_TIME
 ARG GIT_COMMIT
 
+RUN apk add --no-cache make gcc musl-dev
 WORKDIR /opt/build
 COPY go.mod go.sum ./
 RUN go mod download
