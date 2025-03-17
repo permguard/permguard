@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The **Authorization Api Model** defines the `payload` of the `Authorization Api` and how it relates to the `Policy-as-Code`.
+The **AuthZ Api Model** defines the `payload` of the `Authorization Api` and how it relates to the `Policy-as-Code`.
 
 An `Authorization Api payload` is composed of the `authorization model` and other inputs, such as `subject`, `resource`, and `action`.
 
