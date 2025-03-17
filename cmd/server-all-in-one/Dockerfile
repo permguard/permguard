@@ -20,6 +20,10 @@ ARG VERSION
 ARG BUILD_TIME
 ARG GIT_COMMIT
 
+ENV VERSION=$VERSION
+ENV BUILD_TIME=$BUILD_TIME
+ENV GIT_COMMIT=$GIT_COMMIT
+
 RUN apk add --no-cache make gcc musl-dev
 WORKDIR /opt/build
 COPY go.mod go.sum ./
@@ -27,7 +31,7 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64
-RUN make build-all-in-one
+RUN make build-all-in-one VERSION="$VERSION" BUILD_TIME="$BUILD_TIME" GIT_COMMIT="$GIT_COMMIT"
 
 # Final Stage
 FROM alpine:latest
