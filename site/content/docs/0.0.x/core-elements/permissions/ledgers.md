@@ -19,16 +19,16 @@ seo:
   noindex: false # false (default) or true
 ---
 
-In **Permguard**, multiple zones can be created, and each zone can have multiple **policy ledgers**.
-This provides a structured way to manage `authz` components such as **schemas, policies, and permissions**.
+In **Permguard**, multiple zones can be created, and each zone can have multiple **ledgers**.
+This provides a structured way to manage `authz` models which include **manifests, schemas, policies, and permissions**.
 
 {{< callout context="note" icon="info-circle" >}}
-In the [MagicFarmacia sample](/docs/0.0.x/getting-started/hands-on-example/) a ledger is created to contain the policies.
+In the [MagicFarmacia sample](/docs/0.0.x/getting-started/hands-on-example/) a ledger is created.
 {{< /callout >}}
 
 ## Policy Ledger
 
-A **Policy Ledger** is a logical structure used to organize `policies`, making it easier to manage authorization rules efficiently.
+A **Policy Ledger** is a logical structure used to organize `authz models`.
 
 ```json
 {

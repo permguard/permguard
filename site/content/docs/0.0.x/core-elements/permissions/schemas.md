@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "schemas-ab6eb415c219e46768473a83f413266e"
-weight: 2302
+weight: 2303
 toc: true
 seo:
   title: "" # custom title (optional)
@@ -18,7 +18,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-In **Permguard**, multiple ledgers can be created, and each ledger might have a single **schema**.
+In **Permguard**, multiple ledgers can be created, and each ledger might have a single **schema** per `partition`.
 This provides a structured way to model the authorization framework.
 
 ## Schema
