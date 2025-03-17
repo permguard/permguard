@@ -27,9 +27,10 @@ import (
 
 // ExecInitialize initializes the config resources.
 func (m *ConfigManager) ExecInitialize(lang string) error {
+	version, _ := m.ctx.GetClientVersion()
 	config := config{
 		Core: coreConfig{
-			ClientVersion: m.ctx.GetClientVersion(),
+			ClientVersion: version,
 			Language:      strings.ToLower(lang),
 		},
 		Remotes: map[string]remoteConfig{},

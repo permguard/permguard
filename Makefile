@@ -103,17 +103,17 @@ build-all-in-one:
 
 build-release:
 	mkdir -p dist
-	go build -o dist/server-all-in-one ./cmd/server-all-in-one
+	go build -o dist/server-all-in-one -trimpath -ldflags "-s -w -X 'github.com/permguard/permguard/internal/agents/cli.Version=$(VERSION)' -X 'github.com/permguard/permguard/internal/agents/cli.BuildTime=$(BUILD_TIME)' -X 'github.com/permguard/permguard/internal/agents/cli.GitCommit=$(GIT_COMMIT)'" ./cmd/server-all-in-one
 	chmod +x dist/server-all-in-one
-	go build -o dist/server-zap ./cmd/server-zap
+	go build -o dist/permguard -trimpath -ldflags "-s -w -X 'github.com/permguard/permguard/internal/agents/cli.Version=$(VERSION)' -X 'github.com/permguard/permguard/internal/agents/cli.BuildTime=$(BUILD_TIME)' -X 'github.com/permguard/permguard/internal/agents/cli.GitCommit=$(GIT_COMMIT)'" ./cmd/server-zap
 	chmod +x dist/server-zap
-	go build -o dist/server-pap ./cmd/server-pap
+	go build -o dist/permguard -trimpath -ldflags "-s -w -X 'github.com/permguard/permguard/internal/agents/cli.Version=$(VERSION)' -X 'github.com/permguard/permguard/internal/agents/cli.BuildTime=$(BUILD_TIME)' -X 'github.com/permguard/permguard/internal/agents/cli.GitCommit=$(GIT_COMMIT)'" ./cmd/server-pap
 	chmod +x dist/server-pap
-	go build -o dist/server-pip ./cmd/server-pip
+	go build -o dist/permguard -trimpath -ldflags "-s -w -X 'github.com/permguard/permguard/internal/agents/cli.Version=$(VERSION)' -X 'github.com/permguard/permguard/internal/agents/cli.BuildTime=$(BUILD_TIME)' -X 'github.com/permguard/permguard/internal/agents/cli.GitCommit=$(GIT_COMMIT)'" ./cmd/server-pip
 	chmod +x dist/server-pip
-	go build -o dist/server-pdp ./cmd/server-pdp
+	go build -o dist/permguard -trimpath -ldflags "-s -w -X 'github.com/permguard/permguard/internal/agents/cli.Version=$(VERSION)' -X 'github.com/permguard/permguard/internal/agents/cli.BuildTime=$(BUILD_TIME)' -X 'github.com/permguard/permguard/internal/agents/cli.GitCommit=$(GIT_COMMIT)'" ./cmd/server-pdp
 	chmod +x dist/server-pdp
-	go build -o dist/permguard ./cmd/cli
+	go build -o dist/permguard -trimpath -ldflags "-s -w -X 'github.com/permguard/permguard/internal/cli/common.Version=$(VERSION)' -X 'github.com/permguard/permguard/internal/cli/common.BuildTime=$(BUILD_TIME)' -X 'github.com/permguard/permguard/internal/cli/common.GitCommit=$(GIT_COMMIT)'" ./cmd/cli
 	chmod +x dist/permguard
 
 run-release:

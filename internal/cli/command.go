@@ -24,8 +24,15 @@ import (
 	"github.com/spf13/viper"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azclicommons "github.com/permguard/permguard/internal/cli/commoncommands"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
+)
+
+var (
+	Version   = "dev"
+	Commit    = "none"
+	BuildDate = "unknown"
 )
 
 // runECommand runs the command.
@@ -59,7 +66,6 @@ func Run(cliInitializer azcli.CliInitializer) {
 	if err != nil {
 		os.Exit(1)
 	}
-
 	cmdInfo := cliInitializer.GetCliInfo()
 	command := &cobra.Command{
 		SilenceErrors: true,
@@ -75,6 +81,8 @@ func Run(cliInitializer azcli.CliInitializer) {
 	command.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "workdir")
 	command.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, "terminal", "output format")
 	command.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
+
+	command.AddCommand(azclicommons.CreateCommandForVersion(depsProvider, v))
 
 	// Add sub commands.
 	for _, subCommand := range commands {
