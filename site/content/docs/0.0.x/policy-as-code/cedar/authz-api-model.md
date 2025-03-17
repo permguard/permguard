@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-This section specifies the `Cedar` **AuthZ API Model** override. If no specific override is provided, the generic AuthZ Model specification applies.
+This section specifies the `Cedar` **AuthZ API Model** override. If no specific override is provided, the generic `AuthZ API Model` specification applies.
 
 {{< callout context="caution" icon="alert-triangle" >}}
 Properties must conform to the JSON structure defined for the <a href="https://docs.cedarpolicy.com/auth/entities-syntax.html#attrs" target="_blank" rel="noopener noreferrer">entities attributes object</a>,
