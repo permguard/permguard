@@ -26,7 +26,7 @@ In **Permguard**, an **AuthZ Server** is a logical server composed of multiple n
 - **Policy Information Point (PIP)**
 - **Policy Decision Point (PDP)**
 
-This **Authorization Service** manages various elements such as **users, actors, tenants, and ledgers**.
+This **AuthZ Server** manages various elements such as **users, actors, tenants, and ledgers**.
 Due to the complexity of these resources, a **structured pathing mechanism** is essential for efficient management and access control.
 
 {{< callout context="note" icon="info-circle" >}}
