@@ -25,7 +25,11 @@ jobs:
 
       - name: Build Docker Image
         run: |
-          docker build -t permguard/all-in-one:latest -f ./cmd/server-all-in-one/Dockerfile .
+          docker build -t permguard/all-in-one:latest -f ./cmd/server-all-in-one/Dockerfile \
+            --build-arg A=valore1 \
+            --build-arg B=valore2 \
+            --build-arg C=valore3 \
+            .
 
       - name: Extract Version from Tag
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
