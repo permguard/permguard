@@ -93,7 +93,7 @@ converage-json:
 
 build-cli:
 	mkdir -p dist
-	go build -o dist/permguard ./cmd/cli
+	go build -o dist/permguard -trimpath -ldflags "-s -w -X 'github.com/permguard/permguard/internal/cli/common.Version=$(VERSION)' -X 'github.com/permguard/permguard/internal/cli/common.BuildTime=$(BUILD_TIME)' -X 'github.com/permguard/permguard/internal/cli/common.GitCommit=$(GIT_COMMIT)'" ./cmd/cli
 
 build-all-in-one:
 	mkdir -p dist
