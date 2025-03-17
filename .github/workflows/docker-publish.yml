@@ -30,6 +30,12 @@ jobs:
       - name: Extract Version from Tag
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
 
+      - name: Define Build Time
+        run: echo "BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
+
+      - name: Define Git commit Time
+        run: echo "GIT_COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
       - name: Tag Docker Image
         run: |
           IMAGE_TAG="${VERSION}"
