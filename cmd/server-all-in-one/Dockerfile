@@ -31,7 +31,7 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64
-RUN make build-all-in-one VERSION="$VERSION" BUILD_TIME="$BUILD_TIME" GIT_COMMIT="$GIT_COMMIT"
+RUN make build-all-in-one
 
 # Final Stage
 FROM alpine:latest
