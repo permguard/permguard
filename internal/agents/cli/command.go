@@ -44,6 +44,12 @@ const (
 //go:embed "art.txt"
 var asciiArt string
 
+var (
+    Version   string
+    BuildTime string
+    GitCommit string
+)
+
 // addFlagsForCentralStorage adds the flags for the central storage.
 func addFlagsForCentralStorage(flagSet *flag.FlagSet) error {
 	flagSet.String(azoptions.FlagName(flagPrefixDataStorage, flagSuffixDataStorageCentral), flagValDefDataStorageCentral, "data storage type to be used for central data")
@@ -85,8 +91,18 @@ func addFlagsForServerInitalizer(serverInitializer azservers.ServerInitializer, 
 
 // runECommand runs the command.
 func runECommand(cmdInfo *azservices.HostInfo, serverFactoryCfg *aziservers.ServerFactoryConfig, v *viper.Viper, startup func(*zap.Logger), shutdown func(*zap.Logger)) error {
+	if Version == "" {
+		Version = "none"
+	}
+	if BuildTime == "" {
+		BuildTime = "unknown"
+	}
+	if GitCommit == "" {
+		GitCommit = "unknown"
+	}
+
 	fmt.Println(asciiArt)
-	fmt.Printf("Permguard %s - Copyright © 2022 Nitro Agility S.r.l.\n", cmdInfo.Name)
+	fmt.Printf("Permguard %s v.%s - Copyright © 2022 Nitro Agility S.r.l. \n", cmdInfo.Name, Version)
 	fmt.Println("")
 
 	err := serverFactoryCfg.InitFromViper(v)
@@ -110,11 +126,14 @@ func runECommand(cmdInfo *azservices.HostInfo, serverFactoryCfg *aziservers.Serv
 		startup(logger)
 	}
 
+	logger.Info(fmt.Sprintf("version %s", Version), zap.String("version", Version), zap.String("buildTime", BuildTime), zap.String("gitCommit", GitCommit))
+
 	if server.HasDebug() {
 		logger.Info("****************************************************")
 		logger.Info("*** WARNING Zone is running in debug mode ***")
 		logger.Info("****************************************************")
 	}
+
 	exited, err := server.Serve(context.Background(), func() {
 		if shutdown != nil {
 			shutdown(logger)
@@ -155,6 +174,7 @@ func Run(serverInitializer azservers.ServerInitializer, startup func(*zap.Logger
 	}
 
 	cmdInfo := serverInitializer.GetHostInfo()
+
 	command := &cobra.Command{
 		Use:   cmdInfo.Use,
 		Short: cmdInfo.Short,

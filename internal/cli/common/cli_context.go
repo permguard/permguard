@@ -29,6 +29,12 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
+var (
+    Version   string
+    BuildTime string
+    GitCommit string
+)
+
 // CreateContextAndPrinter creates a new cli context and printer.
 func CreateContextAndPrinter(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, azcli.CliPrinter, error) {
 	ctx, err := newCliContext(cmd, v)
@@ -80,8 +86,22 @@ func newCliContext(cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, erro
 }
 
 // GetClientVersion returns the client version.
-func (c *CliCommandContext) GetClientVersion() string {
-	return "0.1.0"
+func (c *CliCommandContext) GetClientVersion() (string, map[string]any) {
+	if Version == "" {
+		Version = "none"
+	}
+	if BuildTime == "" {
+		BuildTime = "unknown"
+	}
+	if GitCommit == "" {
+		GitCommit = "unknown"
+	}
+	versionMap := map[string]any{
+		"version":     Version,
+		"build_time":  BuildTime,
+		"git_commit":  GitCommit,
+	}
+	return Version, versionMap
 }
 
 // GetViper returns the viper.

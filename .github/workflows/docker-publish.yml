@@ -23,12 +23,18 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
-      - name: Build Docker Image
-        run: |
-          docker build -t permguard/all-in-one:latest -f ./cmd/server-all-in-one/Dockerfile .
-
       - name: Extract Version from Tag
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
+      - name: Define Build Time
+        run: echo "BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
+
+      - name: Define Git commit Time
+        run: echo "GIT_COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Build Docker Image
+        run: |
+          docker build -t permguard/all-in-one:latest -f ./cmd/server-all-in-one/Dockerfile --build-arg VERSION="${VERSION}" --build-arg BUILD_TIME="${BUILD_TIME}" --build-arg GIT_COMMIT="${GIT_COMMIT}" .
 
       - name: Tag Docker Image
         run: |
