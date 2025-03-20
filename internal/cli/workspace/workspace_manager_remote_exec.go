@@ -159,11 +159,13 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 
 	m.execInternalRefresh(true, out)
 
+	// TODO: Read the language from the authz-model manifest
 	// Creates the abstraction for the language
-	lang, err := m.cfgMgr.GetLanguage()
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
+	// lang, err := m.cfgMgr.GetLanguage()
+	// if err != nil {
+	// 	return failedOpErr(nil, err)
+	// }
+	lang := "cedar"
 	absLang, err := m.langFct.GetLanguageAbastraction(lang)
 	if err != nil {
 		return failedOpErr(nil, err)
@@ -381,7 +383,7 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 }
 
 // ExecCloneLedger clones a ledger.
-func (m *WorkspaceManager) ExecCloneLedger(language, ledgerURI string, zapPort, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecCloneLedger(ledgerURI string, zapPort, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", fmt.Sprintf("Failed to clone the ledger %s.", aziclicommon.KeywordText(ledgerURI)), nil, true)
 		return output, err
@@ -403,7 +405,7 @@ func (m *WorkspaceManager) ExecCloneLedger(language, ledgerURI string, zapPort, 
 	uriZoneID := elements[1]
 	uriLedger := elements[2]
 
-	output, err := m.ExecInitWorkspace(language, out)
+	output, err := m.ExecInitWorkspace(out)
 	aborted := false
 	if err == nil {
 		fileLock, err := m.tryLock()

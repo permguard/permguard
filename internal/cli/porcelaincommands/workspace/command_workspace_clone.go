@@ -31,7 +31,6 @@ import (
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azplangcedar "github.com/permguard/permguard/plugin/languages/cedar"
 )
 
 const (
@@ -93,7 +92,7 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 	}
 	zapPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagZAP))
 	papPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagPAP))
-	output, err := wksMgr.ExecCloneLedger(azplangcedar.LanguageName, ledgerURI, zapPort, papPort, outFunc(ctx, printer))
+	output, err := wksMgr.ExecCloneLedger(ledgerURI, zapPort, papPort, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to clone the workspace.")

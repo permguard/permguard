@@ -226,11 +226,13 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 	}
 	defer fileLock.Unlock()
 
+	// TODO: Read the language from the authz-model manifest
 	// Creates the abstraction for the language
-	lang, err := m.cfgMgr.GetLanguage()
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
+	// lang, err := m.cfgMgr.GetLanguage()
+	// if err != nil {
+	// 	return failedOpErr(nil, err)
+	// }
+	lang := "cedar"
 	absLang, err := m.langFct.GetLanguageAbastraction(lang)
 	if err != nil {
 		return failedOpErr(nil, err)

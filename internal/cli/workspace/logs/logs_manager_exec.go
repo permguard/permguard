@@ -21,7 +21,7 @@ import (
 )
 
 // ExecInitalize the logs resources.
-func (c *LogsManager) ExecInitalize(lang string) error {
+func (c *LogsManager) ExecInitalize() error {
 	_, err := c.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, c.getLogsDir())
 	return err
 }

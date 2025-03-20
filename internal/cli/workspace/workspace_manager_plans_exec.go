@@ -54,11 +54,13 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 		return output, err
 	}
 
+	// TODO: Read the language from the authz-model manifest
 	// Creates the abstraction for the language
-	lang, err := m.cfgMgr.GetLanguage()
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
+	// lang, err := m.cfgMgr.GetLanguage()
+	// if err != nil {
+	// 	return failedOpErr(nil, err)
+	// }
+	lang := "cedar"
 	absLang, err := m.langFct.GetLanguageAbastraction(lang)
 	if err != nil {
 		return failedOpErr(nil, err)
@@ -247,11 +249,13 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		return failedOpErr(nil, err)
 	}
 
+	// TODO: Read the language from the authz-model manifest
 	// Creates the abstraction for the language
-	lang, err := m.cfgMgr.GetLanguage()
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
+	// lang, err := m.cfgMgr.GetLanguage()
+	// if err != nil {
+	// 	return failedOpErr(nil, err)
+	// }
+	lang := "cedar"
 	absLang, err := m.langFct.GetLanguageAbastraction(lang)
 	if err != nil {
 		return failedOpErr(nil, err)
