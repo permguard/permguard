@@ -35,6 +35,21 @@
 
 body {
   background-image: url("/images/bg.svg") !important;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.footer {
+  @media (max-height: 100vh) {
+    margin-top: auto;
+  }
+
+  padding-top: 143px;
+
+  &--docs {
+    padding-top: 103px;
+  }
 }
 
 .forced-dark {
