@@ -25,7 +25,6 @@ import (
 
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
@@ -158,15 +157,4 @@ func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out aziclicommon.PrinterO
 	out(nil, "", "The current working directory is not a valid Permguard workspace.", nil, true)
 	out(nil, "", "Please initialize the workspace by running the 'init' command.", nil, true)
 	return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("%s is not a permguard workspace directory", m.getHomeHiddenDir()))
-}
-
-// getCurrentHeadInfo returns the current head info.
-func (m *WorkspaceManager) getCurrentHeadInfo(out aziclicommon.PrinterOutFunc) (*azicliwkscommon.HeadInfo, error) {
-	headInfo, err := m.rfsMgr.GetCurrentHead()
-	if err != nil || headInfo.GetRef() == "" {
-		out(nil, "", "No ledger is configured in the current workspace.", nil, true)
-		out(nil, "", "Please checkout a ledger and try again.", nil, true)
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceInvaliHead, "invalid head configuration", err)
-	}
-	return headInfo, nil
 }

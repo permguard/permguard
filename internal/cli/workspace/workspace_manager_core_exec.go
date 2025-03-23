@@ -48,7 +48,7 @@ func (m *WorkspaceManager) ExecPrintContext(output map[string]any, out aziclicom
 }
 
 // ExecInitWorkspace initializes the workspace.
-func (m *WorkspaceManager) ExecInitWorkspace(language string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecInitWorkspace(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to initialize the workspace", nil, true)
 		return output, err
@@ -73,14 +73,14 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out aziclicommon.P
 	if !res {
 		firstInit = false
 	}
-	initializers := []func(string) error{
+	initializers := []func() error{
 		m.logsMgr.ExecInitalize,
 		m.cfgMgr.ExecInitialize,
 		m.rfsMgr.ExecInitalize,
 		m.cospMgr.ExecInitalize,
 	}
 	for _, initializer := range initializers {
-		err := initializer(language)
+		err := initializer()
 		if err != nil {
 			if m.ctx.IsVerboseTerminalOutput() {
 				out(nil, "init", "Initialization failed.", nil, true)
@@ -106,9 +106,6 @@ func (m *WorkspaceManager) ExecInitWorkspace(language string, out aziclicommon.P
 	if m.ctx.IsJSONOutput() {
 		remoteObj := map[string]any{
 			"root": absPath,
-			"policy_engine": map[string]any{
-				"language": language,
-			},
 		}
 		output = out(nil, "workspace", remoteObj, nil, true)
 	}

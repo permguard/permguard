@@ -115,10 +115,13 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 		}
 	}
 
-	lang, err := m.cfgMgr.GetLanguage()
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
+	// TODO: Read the language from the authz-model manifest
+	// Creates the abstraction for the language
+	// lang, err := m.cfgMgr.GetLanguage()
+	// if err != nil {
+	// 	return failedOpErr(nil, err)
+	// }
+	lang := "cedar"
 	absLang, err := m.langFct.GetLanguageAbastraction(lang)
 	if err != nil {
 		return failedOpErr(nil, err)

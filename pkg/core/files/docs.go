@@ -14,14 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package logs
-
-import (
-	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
-)
-
-// ExecInitalize the logs resources.
-func (c *LogsManager) ExecInitalize() error {
-	_, err := c.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, c.getLogsDir())
-	return err
-}
+// Package crypto implements files functions.
+package files

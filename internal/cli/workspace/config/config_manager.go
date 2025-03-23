@@ -76,15 +76,6 @@ func (m *ConfigManager) saveConfig(override bool, cfg *config) error {
 	return nil
 }
 
-// GetLanguage gets the language.
-func (m *ConfigManager) GetLanguage() (string, error) {
-	cfg, err := m.readConfig()
-	if err != nil {
-		return "", err
-	}
-	return cfg.Core.Language, nil
-}
-
 // GetRemoteInfo gets the remote info.
 func (m *ConfigManager) GetRemoteInfo(remote string) (*azicliwkscommon.RemoteInfo, error) {
 	remote, err := azicliwkscommon.SanitizeRemote(remote)

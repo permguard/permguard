@@ -27,12 +27,6 @@ import (
 	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azplangcedar "github.com/permguard/permguard/plugin/languages/cedar"
-)
-
-const (
-	// commandNameForWorkspacesInit is the command name for workspaces init.
-	commandNameForWorkspacesInit = "workspaces-init"
 )
 
 // runECommandForInitWorkspace runs the command for creating an workspace.
@@ -52,7 +46,8 @@ func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	output, err := wksMgr.ExecInitWorkspace(azplangcedar.LanguageName, outFunc(ctx, printer))
+
+	output, err := wksMgr.ExecInitWorkspace(outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to initialize the workspace.")
@@ -83,5 +78,6 @@ Examples:
 			return runECommandForInitWorkspace(deps, cmd, v)
 		},
 	}
+
 	return command
 }

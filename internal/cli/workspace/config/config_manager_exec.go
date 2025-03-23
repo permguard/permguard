@@ -26,12 +26,11 @@ import (
 )
 
 // ExecInitialize initializes the config resources.
-func (m *ConfigManager) ExecInitialize(lang string) error {
+func (m *ConfigManager) ExecInitialize() error {
 	version, _ := m.ctx.GetClientVersion()
 	config := config{
 		Core: coreConfig{
 			ClientVersion: version,
-			Language:      strings.ToLower(lang),
 		},
 		Remotes: map[string]remoteConfig{},
 		Ledgers: map[string]ledgerConfig{},

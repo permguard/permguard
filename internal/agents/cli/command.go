@@ -45,9 +45,9 @@ const (
 var asciiArt string
 
 var (
-    Version   string
-    BuildTime string
-    GitCommit string
+	Version   string
+	BuildTime string
+	GitCommit string
 )
 
 // addFlagsForCentralStorage adds the flags for the central storage.
