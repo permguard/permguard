@@ -25,6 +25,6 @@ In your application install the Java SDK by running the following command:
 <dependency>
     <groupId>com.permguard.pep</groupId>
     <artifactId>permguard</artifactId>
-    <version>0.0.1</version>
+    <version>0.0.2</version>
 </dependency>
 ```
