@@ -23,12 +23,12 @@ import (
 
 	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
 	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
-	azfiles "github.com/permguard/permguard-core/pkg/extensions/files"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azfiles "github.com/permguard/permguard/pkg/core/files"
 )
 
 const (
