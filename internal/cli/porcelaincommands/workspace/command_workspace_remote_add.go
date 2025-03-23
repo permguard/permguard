@@ -34,7 +34,9 @@ const (
 	// commandNameForWorkspacesRemoteAdd is the command name for workspaces remoteadd.
 	commandNameForWorkspacesRemoteAdd = "workspaces-remote.add"
 
+	// flagZAP is the flag name for the ZAP port.
 	flagZAP = "zap"
+	// flagPAP is the flag name for the PAP port.
 	flagPAP = "pap"
 )
 

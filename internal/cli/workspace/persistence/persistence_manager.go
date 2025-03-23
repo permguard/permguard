@@ -20,8 +20,8 @@ import (
 	"os"
 	"path/filepath"
 
-	azfiles "github.com/permguard/permguard-core/pkg/extensions/files"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	azfiles "github.com/permguard/permguard/pkg/core/files"
 )
 
 type RelativeDir uint8

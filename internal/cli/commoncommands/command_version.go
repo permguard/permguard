@@ -46,7 +46,7 @@ func runECommandForCreateIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 			versionMap["version"] = version
 			printer.PrintlnMap(versionMap)
 		} else {
-			printer.PrintlnMap(map[string]any { "version": version})
+			printer.PrintlnMap(map[string]any{"version": version})
 		}
 		return nil
 	} else if ctx.IsTerminalOutput() {
@@ -67,7 +67,7 @@ func CreateCommandForVersion(deps azcli.CliDependenciesProvider, v *viper.Viper)
 	command := &cobra.Command{
 		Use:   "version",
 		Short: "Show the version details",
-		Long: aziclicommon.BuildCliLongTemplate(`This command shows the version details.`),
+		Long:  aziclicommon.BuildCliLongTemplate(`This command shows the version details.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCreateIdentity(deps, cmd, v)
 		},

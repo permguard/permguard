@@ -158,13 +158,6 @@ func (m *COSPManager) SaveCodeSourceConfig(treeID, language string) error {
 	return m.saveConfig(file, true, config)
 }
 
-// readCodeSourceConfig reads the code source config file.
-func (m *COSPManager) readCodeSourceConfig() (*codeLocalConfig, error) {
-	var config codeLocalConfig
-	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermguardDir, m.getCodeSourceConfigFile(), &config)
-	return &config, err
-}
-
 // SaveCodeSourceCodeMap saves the code map in the code source.
 func (m *COSPManager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, m.getCodeSourceDir())

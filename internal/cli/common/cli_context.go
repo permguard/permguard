@@ -30,9 +30,9 @@ import (
 )
 
 var (
-    Version   string
-    BuildTime string
-    GitCommit string
+	Version   string
+	BuildTime string
+	GitCommit string
 )
 
 // CreateContextAndPrinter creates a new cli context and printer.
@@ -97,9 +97,9 @@ func (c *CliCommandContext) GetClientVersion() (string, map[string]any) {
 		GitCommit = "unknown"
 	}
 	versionMap := map[string]any{
-		"version":     Version,
-		"build_time":  BuildTime,
-		"git_commit":  GitCommit,
+		"version":    Version,
+		"build_time": BuildTime,
+		"git_commit": GitCommit,
 	}
 	return Version, versionMap
 }

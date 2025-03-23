@@ -26,7 +26,6 @@ type config struct {
 // coreConfig represents the configuration for the core.
 type coreConfig struct {
 	ClientVersion string `toml:"client-version"`
-	Language      string `toml:"language"`
 }
 
 // remoteConfig represents the configuration for the remote.
