@@ -19,8 +19,8 @@ package v1
 import (
 	"context"
 
+	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azauthz "github.com/permguard/permguard/pkg/authorization"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 )
@@ -63,7 +63,7 @@ func (s *V1PDPServer) AuthorizationCheck(ctx context.Context, request *Authoriza
 			if len(requestID) == 0 {
 				requestID = req.RequestID
 			}
-			evalResponse := azmodelspdp.NewEvaluationErrorResponse(requestID, azauthz.AuthzErrBadRequestCode, err.Error(), azauthz.AuthzErrBadRequestMessage)
+			evalResponse := azmodelspdp.NewEvaluationErrorResponse(requestID, azauthzen.AuthzErrBadRequestCode, err.Error(), azauthzen.AuthzErrBadRequestMessage)
 			authzResponse.Evaluations = append(authzResponse.Evaluations, *evalResponse)
 		}
 		if len(authzResponse.Evaluations) == 1 {
