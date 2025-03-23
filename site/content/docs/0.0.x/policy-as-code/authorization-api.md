@@ -1,6 +1,6 @@
 ---
-title: "AuthZ Api Model"
-slug: "AuthZ Api Model"
+title: "Authorization Api"
+slug: "Authorization Api"
 description: ""
 summary: ""
 date: 2025-02-14T00:34:10+01:00
@@ -9,8 +9,8 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "authz-api-model-c1467e6747d34918b1ca28457537bbc9"
-weight: 4002
+    identifier: "authorization-api-c1467e6747d34918b1ca28457537bbc9"
+weight: 4001
 toc: true
 seo:
   title: "" # custom title (optional)

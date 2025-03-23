@@ -1,6 +1,6 @@
 ---
-title: "AuthZ Api Model"
-slug: "AuthZ Api Model"
+title: "Authorization Api"
+slug: "Authorization Api"
 description: ""
 summary: ""
 date: 2025-02-14T00:34:10+01:00
@@ -9,8 +9,8 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "authz-api-model-f4b0330df22d49649f63eb411f00e47b"
-weight: 4103
+    identifier: "authorization-api-f4b0330df22d49649f63eb411f00e47b"
+weight: 4101
 toc: true
 seo:
   title: "" # custom title (optional)
@@ -19,9 +19,9 @@ seo:
   noindex: false # false (default) or true
 ---
 
-This section specifies the **Cedar** `AuthZ API Model` override.
+This section specifies the **Cedar** `Authorization API Model` override.
 
-> If no specific override is provided, the generic `AuthZ API Model` specification applies.
+> If no specific override is provided, the generic `Authorization API Model` specification applies.
 
 {{< callout context="caution" icon="alert-triangle" >}}
 Properties must conform to the JSON structure defined for the <a href="https://docs.cedarpolicy.com/auth/entities-syntax.html#attrs" target="_blank" rel="noopener noreferrer">entities attributes object</a>,
