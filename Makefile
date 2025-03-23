@@ -40,7 +40,7 @@ init-dependency:
 	go get -u github.com/pelletier/go-toml
 	go get -u github.com/gofrs/flock
 	go get -u github.com/permguard/permguard-core
-	go get -u github.com/permguard/permguard-abs-language
+	go get -u github.com/permguard/permguard-ztauthstar
 	go get -u github.com/cedar-policy/cedar-go
 
 mod:

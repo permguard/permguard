@@ -21,8 +21,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
-	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
+	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
+	azlangtypes "github.com/permguard/permguard-ztauthstar/pkg/languages/types"
 	azauthz "github.com/permguard/permguard/pkg/authorization"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
@@ -63,7 +63,7 @@ func authorizationCheckBuildContextResponse(authzDecision *azauthz.Authorization
 }
 
 // authorizationCheckReadBytes reads the key value for the authorization check.
-func authorizationCheckReadKeyValue(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azobjstorage.ObjectManager, zoneID int64, key string) ([]byte, error) {
+func authorizationCheckReadKeyValue(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azledger.ObjectManager, zoneID int64, key string) ([]byte, error) {
 	if db == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageGeneric, "invalid database")
 	}
@@ -81,7 +81,7 @@ func authorizationCheckReadKeyValue(s *SQLiteCentralStoragePDP, db *sqlx.DB, obj
 }
 
 // authorizationCheckReadBytes reads the key value for the authorization check.
-func authorizationCheckReadBytes(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azobjstorage.ObjectManager, zoneID int64, key string) (string, []byte, error) {
+func authorizationCheckReadBytes(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azledger.ObjectManager, zoneID int64, key string) (string, []byte, error) {
 	value, err := authorizationCheckReadKeyValue(s, db, objMng, zoneID, key)
 	if err != nil {
 		return "", nil, err
@@ -95,7 +95,7 @@ func authorizationCheckReadBytes(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng
 }
 
 // authorizationCheckReadTree reads the tree object for the authorization check.
-func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azobjstorage.ObjectManager, zoneID int64, commitID string) (*azobjstorage.Tree, error) {
+func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azledger.ObjectManager, zoneID int64, commitID string) (*azledger.Tree, error) {
 	_, ocontent, err := authorizationCheckReadBytes(s, db, objMng, zoneID, commitID)
 	if err != nil {
 		return nil, err
@@ -128,14 +128,14 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 	}
 	ledger := dbLedgers[0]
 	ledgerRef := ledger.Ref
-	if ledgerRef == azobjstorage.ZeroOID {
+	if ledgerRef == azledger.ZeroOID {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't validate the ledger reference")
 	}
 
 	authzPolicyStore := azauthz.PolicyStore{}
 	authzPolicyStore.SetVersion(ledgerRef)
 
-	objMng, err := azobjstorage.NewObjectManager()
+	objMng, err := azledger.NewObjectManager()
 	if err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't create the object manager", err)
 	}

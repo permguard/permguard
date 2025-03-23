@@ -23,9 +23,9 @@ import (
 
 	"github.com/cedar-policy/cedar-go"
 
-	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
-	azlangvalidators "github.com/permguard/permguard-abs-language/pkg/languages/validators"
-	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
+	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
+	azlangtypes "github.com/permguard/permguard-ztauthstar/pkg/languages/types"
+	azlangvalidators "github.com/permguard/permguard-ztauthstar/pkg/languages/validators"
 	azauthz "github.com/permguard/permguard/pkg/authorization"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/languages"
@@ -66,12 +66,12 @@ const (
 
 // CedarLanguageAbstraction is the abstraction for the cedar language.
 type CedarLanguageAbstraction struct {
-	objMng *azobjstorage.ObjectManager
+	objMng *azledger.ObjectManager
 }
 
 // NewCedarLanguageAbstraction creates a new CedarLanguageAbstraction.
 func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
-	objMng, err := azobjstorage.NewObjectManager()
+	objMng, err := azledger.NewObjectManager()
 	if err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] failed to create the object manager", err)
 	}
@@ -97,7 +97,7 @@ func (abs *CedarLanguageAbstraction) GetLanguageSpecification() azlang.LanguageS
 }
 
 // ReadObjectContentBytes reads the object content bytes.
-func (abs *CedarLanguageAbstraction) ReadObjectContentBytes(obj *azobjstorage.Object) (uint32, []byte, error) {
+func (abs *CedarLanguageAbstraction) ReadObjectContentBytes(obj *azledger.Object) (uint32, []byte, error) {
 	objInfo, err := abs.objMng.GetObjectInfo(obj)
 	if err != nil {
 		return 0, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] failed to get the object info", err)
@@ -114,18 +114,18 @@ func (abs *CedarLanguageAbstraction) ReadObjectContentBytes(obj *azobjstorage.Ob
 }
 
 // CreateCommitObject creates a commit object.
-func (abs *CedarLanguageAbstraction) CreateCommitObject(commit *azobjstorage.Commit) (*azobjstorage.Object, error) {
+func (abs *CedarLanguageAbstraction) CreateCommitObject(commit *azledger.Commit) (*azledger.Object, error) {
 	return abs.objMng.CreateCommitObject(commit)
 }
 
 // ConvertObjectToCommit converts an object to a commit.
-func (abs *CedarLanguageAbstraction) ConvertObjectToCommit(obj *azobjstorage.Object) (*azobjstorage.Commit, error) {
+func (abs *CedarLanguageAbstraction) ConvertObjectToCommit(obj *azledger.Object) (*azledger.Commit, error) {
 	objInfo, err := abs.objMng.GetObjectInfo(obj)
 	if err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] failed to get the object info", err)
 	}
 
-	value, ok := objInfo.GetInstance().(*azobjstorage.Commit)
+	value, ok := objInfo.GetInstance().(*azledger.Commit)
 	if !ok {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrObjects, "[cedar] object is not a valid commit")
 	}
@@ -133,18 +133,18 @@ func (abs *CedarLanguageAbstraction) ConvertObjectToCommit(obj *azobjstorage.Obj
 }
 
 // CreateTreeObject creates a tree object.
-func (abs *CedarLanguageAbstraction) CreateTreeObject(tree *azobjstorage.Tree) (*azobjstorage.Object, error) {
+func (abs *CedarLanguageAbstraction) CreateTreeObject(tree *azledger.Tree) (*azledger.Object, error) {
 	return abs.objMng.CreateTreeObject(tree)
 }
 
 // ConvertObjectToTree converts an object to a tree.
-func (abs *CedarLanguageAbstraction) ConvertObjectToTree(obj *azobjstorage.Object) (*azobjstorage.Tree, error) {
+func (abs *CedarLanguageAbstraction) ConvertObjectToTree(obj *azledger.Object) (*azledger.Tree, error) {
 	objInfo, err := abs.objMng.GetObjectInfo(obj)
 	if err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] failed to get the object info", err)
 	}
 
-	value, ok := objInfo.GetInstance().(*azobjstorage.Tree)
+	value, ok := objInfo.GetInstance().(*azledger.Tree)
 	if !ok {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrObjects, "[cedar] object is not a valid tree")
 	}
@@ -152,7 +152,7 @@ func (abs *CedarLanguageAbstraction) ConvertObjectToTree(obj *azobjstorage.Objec
 }
 
 // CreatePolicyBlobObjects creates multi sections policy blob objects.
-func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, data []byte) (*azobjstorage.MultiSectionsObject, error) {
+func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, data []byte) (*azledger.MultiSectionsObject, error) {
 	langSpec := abs.GetLanguageSpecification()
 	if langSpec.GetFrontendLanguage() != LanguageCedar {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] unsupported frontend language")
@@ -160,7 +160,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, da
 
 	policySet, err := cedar.NewPolicySetFromBytes(filePath, data)
 	if err != nil {
-		multiSecObj, err2 := azobjstorage.NewMultiSectionsObject(filePath, 0, nil)
+		multiSecObj, err2 := azledger.NewMultiSectionsObject(filePath, 0, nil)
 		if err2 != nil {
 			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] failed to create the multi section object", err2)
 		}
@@ -169,7 +169,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, da
 	}
 
 	policiesMap := policySet.Map()
-	multiSecObj, err := azobjstorage.NewMultiSectionsObject(filePath, len(policiesMap), nil)
+	multiSecObj, err := azledger.NewMultiSectionsObject(filePath, len(policiesMap), nil)
 	if err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] failed to create the multi section object", err)
 	}
@@ -206,7 +206,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, da
 			continue
 		}
 
-		header, err := azobjstorage.NewObjectHeader(true, langID, langVersionID, langPolicyTypeID, codeID, codeTypeID)
+		header, err := azledger.NewObjectHeader(true, langID, langVersionID, langPolicyTypeID, codeID, codeTypeID)
 		if err != nil {
 			multiSecObj.AddSectionObjectWithError(i, err)
 			continue
@@ -248,7 +248,7 @@ func (abs *CedarLanguageAbstraction) CreateMultiPolicyContentBytes(blocks [][]by
 }
 
 // CreateSchemaBlobObjects creates multi sections schema blob objects.
-func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data []byte) (*azobjstorage.MultiSectionsObject, error) {
+func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data []byte) (*azledger.MultiSectionsObject, error) {
 	langSpec := abs.GetLanguageSpecification()
 	if langSpec.GetFrontendLanguage() != LanguageCedar {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] unsupported frontend language")
@@ -272,11 +272,11 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data [
 
 	//TODO: Implement schema validation
 
-	multiSecObj, err := azobjstorage.NewMultiSectionsObject(path, 1, nil)
+	multiSecObj, err := azledger.NewMultiSectionsObject(path, 1, nil)
 	if err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] failed to create the multi section object", err)
 	}
-	header, err := azobjstorage.NewObjectHeader(true, langID, langVersionID, langSchemaTypeID, codeID, codeTypeID)
+	header, err := azledger.NewObjectHeader(true, langID, langVersionID, langSchemaTypeID, codeID, codeTypeID)
 	if err != nil {
 		multiSecObj.AddSectionObjectWithError(0, err)
 		return multiSecObj, nil

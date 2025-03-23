@@ -17,16 +17,16 @@
 package authorization
 
 import (
-	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
+	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
 )
 
 // StoreItem represents the store item.
 type StoreItem struct {
-	objectInfo *azobjstorage.ObjectInfo
+	objectInfo *azledger.ObjectInfo
 }
 
 // GetObjectInfo returns the object info of the store item.
-func (s *StoreItem) GetObjectInfo() *azobjstorage.ObjectInfo {
+func (s *StoreItem) GetObjectInfo() *azledger.ObjectInfo {
 	return s.objectInfo
 }
 
@@ -38,7 +38,7 @@ type PolicyStore struct {
 }
 
 // AddSchema adds a schema to the policy store.
-func (ps *PolicyStore) AddSchema(schemaID string, objectInfo *azobjstorage.ObjectInfo) {
+func (ps *PolicyStore) AddSchema(schemaID string, objectInfo *azledger.ObjectInfo) {
 	schema := StoreItem{objectInfo: objectInfo}
 	ps.schemas = append(ps.schemas, schema)
 }
@@ -59,7 +59,7 @@ func (ps *PolicyStore) GetVersion() string {
 }
 
 // AddPolicy adds a policy to the policy store.
-func (ps *PolicyStore) AddPolicy(policyID string, objectInfo *azobjstorage.ObjectInfo) {
+func (ps *PolicyStore) AddPolicy(policyID string, objectInfo *azledger.ObjectInfo) {
 	policy := StoreItem{objectInfo: objectInfo}
 	ps.policies = append(ps.policies, policy)
 }
