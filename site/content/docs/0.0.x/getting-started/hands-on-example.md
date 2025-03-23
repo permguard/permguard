@@ -93,7 +93,7 @@ Then, it is necessary to create the identities. It is important to note that the
 
 ```text
 permguard authn identities create --name amy.smith@acmecorp.com --kind user --identitysource-id 28e618209040479b8d1a6c581608ec84 --zone-id 895741663247
-permguard authn identities create --name platform-admin --kind actor --identitysource-id 28e618209040479b8d1a6c581608ec84 --zone-id 895741663247
+permguard authn identities create --name platform-admin --kind role-actor --identitysource-id 28e618209040479b8d1a6c581608ec84 --zone-id 895741663247
 permguard authn tenants create --name matera-branch --zone-id 895741663247
 permguard authn tenants create --name pisa-branch --zone-id 895741663247
 ```
