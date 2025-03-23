@@ -85,8 +85,13 @@ github.com/permguard/permguard-notp-protocol v0.0.1-0.20250323105002-bf3a1cedee2
 github.com/permguard/permguard-notp-protocol v0.0.1-0.20250323105002-bf3a1cedee20/go.mod h1:QpLwV9w9NThvKPdbjHRITxTyN5EwvXvEv51aV+HI4K0=
 github.com/permguard/permguard-ztauthstar v0.0.1-0.20250323193853-3214269bdfbc h1:YmwWAd9psMgrDq3aeBFI95FOKsOHBBtIaiBMPTCDV7k=
 github.com/permguard/permguard-ztauthstar v0.0.1-0.20250323193853-3214269bdfbc/go.mod h1:Nv++VTaALdCaXIJpMJ9QIO1q+5ZcObTtscwQszmgYUU=
+github.com/permguard/permguard-ztauthstar v0.0.1-0.20250323204403-32661d2ed56d h1:i8wkNz5FvNXd6aHGAiBZSAWDCyzuf+xxxI1lzKHnCvQ=
+github.com/permguard/permguard-ztauthstar v0.0.1-0.20250323204403-32661d2ed56d/go.mod h1:nmzGttQ8WDFp6AS6oJVuv2icePk6XON8lwH1YUsGNYI=
 github.com/permguard/permguard-ztauthstar-ledger v0.0.0-20250323193454-9657574d4c6c h1:8TdniHuVhriDgnhYncxNulfiFs8zbyEwtw5ZXF3C+TU=
 github.com/permguard/permguard-ztauthstar-ledger v0.0.0-20250323193454-9657574d4c6c/go.mod h1:eCkQjuaN5mqbRlMAZPxAymaMZY9wrHgukWqg4+cNoq8=
+github.com/permguard/permguard-ztauthstar-ledger v0.0.0-20250323194137-aa6f6f6df48d/go.mod h1:eCkQjuaN5mqbRlMAZPxAymaMZY9wrHgukWqg4+cNoq8=
+github.com/permguard/permguard-ztauthstar-ledger v0.0.0-20250323202709-0f7427611976 h1:zWfJ+Kj63YlOA0Fab7a0boZy6AalnX/KIyJ8CEryO7g=
+github.com/permguard/permguard-ztauthstar-ledger v0.0.0-20250323202709-0f7427611976/go.mod h1:eCkQjuaN5mqbRlMAZPxAymaMZY9wrHgukWqg4+cNoq8=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pressly/goose/v3 v3.24.1 h1:bZmxRco2uy5uu5Ng1MMVEfYsFlrMJI+e/VMXHQ3C4LY=

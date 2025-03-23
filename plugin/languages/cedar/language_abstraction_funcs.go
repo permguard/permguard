@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"strings"
 
-	azauthz "github.com/permguard/permguard/pkg/authorization"
+	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 )
@@ -59,10 +59,10 @@ func verifyUIDTypeFromEntityMap(entityMap []map[string]any) (bool, error) {
 }
 
 // createAuthorizationErrors creates authorization errors.
-func createAuthorizationErrors(code string, adminMessage, userMessage string) (*azauthz.AuthorizationError, *azauthz.AuthorizationError) {
-	var adminError, userError *azauthz.AuthorizationError
-	adminError, _ = azauthz.NewAuthorizationError(code, adminMessage)
-	userError, _ = azauthz.NewAuthorizationError(code, userMessage)
+func createAuthorizationErrors(code string, adminMessage, userMessage string) (*azauthzen.AuthorizationError, *azauthzen.AuthorizationError) {
+	var adminError, userError *azauthzen.AuthorizationError
+	adminError, _ = azauthzen.NewAuthorizationError(code, adminMessage)
+	userError, _ = azauthzen.NewAuthorizationError(code, userMessage)
 	return adminError, userError
 }
 

@@ -18,7 +18,7 @@ package languages
 
 import (
 	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
-	azauthz "github.com/permguard/permguard/pkg/authorization"
+	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
 )
 
 // LanguageSpecification is the interface for the language specification.
@@ -68,5 +68,5 @@ type LanguageAbastraction interface {
 	// ConvertBytesToFrontendLanguage converts bytes to the frontend language.
 	ConvertBytesToFrontendLanguage(langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error)
 	// AuthorizationCheck checks the authorization.
-	AuthorizationCheck(contextID string, policyStore *azauthz.PolicyStore, authzCtx *azauthz.AuthorizationModel) (*azauthz.AuthorizationDecision, error)
+	AuthorizationCheck(contextID string, policyStore *azauthzen.PolicyStore, authzCtx *azauthzen.AuthorizationModel) (*azauthzen.AuthorizationDecision, error)
 }

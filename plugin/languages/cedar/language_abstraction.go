@@ -24,9 +24,9 @@ import (
 	"github.com/cedar-policy/cedar-go"
 
 	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
+	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
 	azlangtypes "github.com/permguard/permguard-ztauthstar/pkg/languages/types"
 	azlangvalidators "github.com/permguard/permguard-ztauthstar/pkg/languages/validators"
-	azauthz "github.com/permguard/permguard/pkg/authorization"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/languages"
 )
@@ -332,7 +332,7 @@ func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(langID, lang
 }
 
 // AuthorizationCheck checks the authorization.
-func (abs *CedarLanguageAbstraction) AuthorizationCheck(contextID string, policyStore *azauthz.PolicyStore, authzCtx *azauthz.AuthorizationModel) (*azauthz.AuthorizationDecision, error) {
+func (abs *CedarLanguageAbstraction) AuthorizationCheck(contextID string, policyStore *azauthzen.PolicyStore, authzCtx *azauthzen.AuthorizationModel) (*azauthzen.AuthorizationDecision, error) {
 	// Creates a new policy set.
 	ps := cedar.NewPolicySet()
 	for _, policy := range policyStore.GetPolicies() {
@@ -449,12 +449,12 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(contextID string, policy
 	}
 
 	ok, _ := ps.IsAuthorized(entities, req)
-	var adminError, userError *azauthz.AuthorizationError
+	var adminError, userError *azauthzen.AuthorizationError
 	if !ok {
-		adminError, userError = createAuthorizationErrors(azauthz.AuthzErrForbiddenCode, azauthz.AuthzErrForbiddenMessage, azauthz.AuthzErrForbiddenMessage)
+		adminError, userError = createAuthorizationErrors(azauthzen.AuthzErrForbiddenCode, azauthzen.AuthzErrForbiddenMessage, azauthzen.AuthzErrForbiddenMessage)
 	}
 	// Take the decision.
-	authzDecision, err := azauthz.NewAuthorizationDecision(contextID, bool(ok), adminError, userError)
+	authzDecision, err := azauthzen.NewAuthorizationDecision(contextID, bool(ok), adminError, userError)
 	if err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] failed to create the authorization decision", err)
 	}
