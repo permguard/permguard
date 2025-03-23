@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"strings"
 
-	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
@@ -68,17 +68,17 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 					out(nil, "", fmt.Sprintf("	- %s %s", aziclicommon.IDText(objID), aziclicommon.KeywordText(objType)), nil, true)
 				}
 				switch objInfo.GetType() {
-				case azlangobjs.ObjectTypeCommit:
+				case azobjstorage.ObjectTypeCommit:
 					commits = commits + 1
 					if filterCommits {
 						total += 1
 					}
-				case azlangobjs.ObjectTypeTree:
+				case azobjstorage.ObjectTypeTree:
 					trees = trees + 1
 					if filterTrees {
 						total += 1
 					}
-				case azlangobjs.ObjectTypeBlob:
+				case azobjstorage.ObjectTypeBlob:
 					blobs = blobs + 1
 					if filterBlob {
 						total += 1
@@ -123,15 +123,15 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 }
 
 // execPrintObjectContent prints the object content.
-func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azlangobjs.ObjectInfo, absLang azlang.LanguageAbastraction, showFrontendLanguage bool, out aziclicommon.PrinterOutFunc) error {
+func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azobjstorage.ObjectInfo, absLang azlang.LanguageAbastraction, showFrontendLanguage bool, out aziclicommon.PrinterOutFunc) error {
 	switch instance := objInfo.GetInstance().(type) {
-	case *azlangobjs.Commit:
+	case *azobjstorage.Commit:
 		content, err := m.getCommitString(oid, instance)
 		if err != nil {
 			return err
 		}
 		out(nil, "", content, nil, true)
-	case *azlangobjs.Tree:
+	case *azobjstorage.Tree:
 		content, err := m.getTreeString(oid, instance)
 		if err != nil {
 			return err
@@ -165,16 +165,16 @@ func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azlangobjs
 }
 
 // execMapObjectContent returns the object content as a map.
-func (m *WorkspaceManager) execMapObjectContent(oid string, objInfo azlangobjs.ObjectInfo, absLang azlang.LanguageAbastraction, showFrontendLanguage bool, outMap map[string]any) error {
+func (m *WorkspaceManager) execMapObjectContent(oid string, objInfo azobjstorage.ObjectInfo, absLang azlang.LanguageAbastraction, showFrontendLanguage bool, outMap map[string]any) error {
 	var contentMap map[string]any
 	var err error
 	switch instance := objInfo.GetInstance().(type) {
-	case *azlangobjs.Commit:
+	case *azobjstorage.Commit:
 		contentMap, err = m.getCommitMap(oid, instance)
 		if err != nil {
 			return err
 		}
-	case *azlangobjs.Tree:
+	case *azobjstorage.Tree:
 		contentMap, err = m.getTreeMap(oid, instance)
 		if err != nil {
 			return err
@@ -242,7 +242,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	var objectInfo *azlangobjs.ObjectInfo
+	var objectInfo *azobjstorage.ObjectInfo
 	for _, objInfo := range filteredObjectsInfos {
 		if objInfo.GetOID() == oid {
 			objectInfo = &objInfo
@@ -341,7 +341,7 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 	// Get history of the current workspace
 	commitInfos := []azicliwkscommon.CommitInfo{}
 	headCommit := headCtx.GetRemoteCommitID()
-	if headCommit != azlangobjs.ZeroOID {
+	if headCommit != azobjstorage.ZeroOID {
 		commitInfos, err = m.getHistory(headCommit)
 		if err != nil {
 			return failedOpErr(nil, err)

@@ -17,7 +17,7 @@
 package workspace
 
 import (
-	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azlang "github.com/permguard/permguard/pkg/languages"
 )
@@ -77,12 +77,12 @@ func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) 
 }
 
 // GetCurrentHeadCommit gets the current head commit.
-func (m *WorkspaceManager) GetCurrentHeadCommit(absLang azlang.LanguageAbastraction, ref string) (*azlangobjs.Commit, error) {
+func (m *WorkspaceManager) GetCurrentHeadCommit(absLang azlang.LanguageAbastraction, ref string) (*azobjstorage.Commit, error) {
 	remoteCommitID, err := m.rfsMgr.GetRefCommit(ref)
 	if err != nil {
 		return nil, err
 	}
-	if remoteCommitID == azlangobjs.ZeroOID {
+	if remoteCommitID == azobjstorage.ZeroOID {
 		return nil, nil
 	}
 	remoteCommitObj, err := m.cospMgr.ReadObject(remoteCommitID)
@@ -97,7 +97,7 @@ func (m *WorkspaceManager) GetCurrentHeadCommit(absLang azlang.LanguageAbastract
 }
 
 // GetCurrentHeadTree gets the current head tree.
-func (m *WorkspaceManager) GetCurrentHeadTree(absLang azlang.LanguageAbastraction, ref string) (*azlangobjs.Tree, error) {
+func (m *WorkspaceManager) GetCurrentHeadTree(absLang azlang.LanguageAbastraction, ref string) (*azobjstorage.Tree, error) {
 	commit, err := m.GetCurrentHeadCommit(absLang, ref)
 	if err != nil {
 		return nil, err

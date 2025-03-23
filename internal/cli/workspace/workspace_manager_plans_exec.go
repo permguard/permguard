@@ -19,7 +19,7 @@ package workspace
 import (
 	"fmt"
 
-	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
@@ -95,7 +95,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 
 	errPlanningProcessFailed := "Planning process failed."
 
-	if headCtx.GetRemoteCommitID() == azlangobjs.ZeroOID {
+	if headCtx.GetRemoteCommitID() == azobjstorage.ZeroOID {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "plan", fmt.Sprintf("The ref %s has no commits associated with it.", aziclicommon.KeywordText(headCtx.GetRef())), nil, true)
 		}

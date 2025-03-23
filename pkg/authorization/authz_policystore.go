@@ -17,16 +17,16 @@
 package authorization
 
 import (
-	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
 )
 
 // StoreItem represents the store item.
 type StoreItem struct {
-	objectInfo *azlangobjs.ObjectInfo
+	objectInfo *azobjstorage.ObjectInfo
 }
 
 // GetObjectInfo returns the object info of the store item.
-func (s *StoreItem) GetObjectInfo() *azlangobjs.ObjectInfo {
+func (s *StoreItem) GetObjectInfo() *azobjstorage.ObjectInfo {
 	return s.objectInfo
 }
 
@@ -38,7 +38,7 @@ type PolicyStore struct {
 }
 
 // AddSchema adds a schema to the policy store.
-func (ps *PolicyStore) AddSchema(schemaID string, objectInfo *azlangobjs.ObjectInfo) {
+func (ps *PolicyStore) AddSchema(schemaID string, objectInfo *azobjstorage.ObjectInfo) {
 	schema := StoreItem{objectInfo: objectInfo}
 	ps.schemas = append(ps.schemas, schema)
 }
@@ -59,7 +59,7 @@ func (ps *PolicyStore) GetVersion() string {
 }
 
 // AddPolicy adds a policy to the policy store.
-func (ps *PolicyStore) AddPolicy(policyID string, objectInfo *azlangobjs.ObjectInfo) {
+func (ps *PolicyStore) AddPolicy(policyID string, objectInfo *azobjstorage.ObjectInfo) {
 	policy := StoreItem{objectInfo: objectInfo}
 	ps.policies = append(ps.policies, policy)
 }

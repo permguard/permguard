@@ -88,6 +88,9 @@ tasks:
   dep-core:
     desc: get core dependency
     cmd: 'go get -u github.com/permguard/permguard-core@{{.CLI_ARGS}}'
+  dep-objs:
+    desc: get objstorage dependency
+    cmd: 'go get -u github.com/permguard/permguard-objstorage@{{.CLI_ARGS}}'
   dep-notp:
     desc: get notp dependency
     cmd: 'go get -u github.com/permguard/permguard-notp-protocol@{{.CLI_ARGS}}'

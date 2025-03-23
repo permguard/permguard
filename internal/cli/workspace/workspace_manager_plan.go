@@ -19,7 +19,7 @@ package workspace
 import (
 	"time"
 
-	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/languages"
@@ -31,8 +31,8 @@ func (m *WorkspaceManager) plan(currentCodeObsStates []azicliwkscosp.CodeObjectS
 }
 
 // buildPlanTree builds the plan tree.
-func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, absLang azlang.LanguageAbastraction) (*azlangobjs.Tree, *azlangobjs.Object, error) {
-	tree, err := azlangobjs.NewTree()
+func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, absLang azlang.LanguageAbastraction) (*azobjstorage.Tree, *azobjstorage.Object, error) {
+	tree, err := azobjstorage.NewTree()
 	if err != nil {
 		return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree cannot be created", err)
 	}
@@ -40,7 +40,7 @@ func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, a
 		if planItem.State == azicliwkscosp.CodeObjectStateDelete {
 			continue
 		}
-		treeItem, err := azlangobjs.NewTreeEntry(planItem.OType, planItem.OID, planItem.OName, planItem.CodeID, planItem.CodeType, planItem.Language, planItem.LanguageVersion, planItem.LanguageType)
+		treeItem, err := azobjstorage.NewTreeEntry(planItem.OType, planItem.OID, planItem.OName, planItem.CodeID, planItem.CodeType, planItem.Language, planItem.LanguageVersion, planItem.LanguageType)
 		if err != nil {
 			return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be created", err)
 		}
@@ -56,8 +56,8 @@ func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, a
 }
 
 // buildPlanCommit builds the plan commit.
-func (m *WorkspaceManager) buildPlanCommit(tree string, parentCommitID string, absLang azlang.LanguageAbastraction) (*azlangobjs.Commit, *azlangobjs.Object, error) {
-	commit, err := azlangobjs.NewCommit(tree, parentCommitID, "", time.Now(), "", time.Now(), "cli commit")
+func (m *WorkspaceManager) buildPlanCommit(tree string, parentCommitID string, absLang azlang.LanguageAbastraction) (*azobjstorage.Commit, *azobjstorage.Object, error) {
+	commit, err := azobjstorage.NewCommit(tree, parentCommitID, "", time.Now(), "", time.Now(), "cli commit")
 	if err != nil {
 		return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "commit cannot be created", err)
 	}
