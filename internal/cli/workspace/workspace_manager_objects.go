@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strings"
 
-	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
+	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
 
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
@@ -30,8 +30,8 @@ import (
 )
 
 // GetObjects gets the objects.
-func (m *WorkspaceManager) getObjectsInfos(includeStorage, includeCode, filterCommits, filterTrees, filterBlob bool) ([]azobjstorage.ObjectInfo, error) {
-	filteredObjects := []azobjstorage.ObjectInfo{}
+func (m *WorkspaceManager) getObjectsInfos(includeStorage, includeCode, filterCommits, filterTrees, filterBlob bool) ([]azledger.ObjectInfo, error) {
+	filteredObjects := []azledger.ObjectInfo{}
 	objects, err := m.cospMgr.GetObjects(includeStorage, includeCode)
 	if err != nil {
 		return nil, err
@@ -40,7 +40,7 @@ func (m *WorkspaceManager) getObjectsInfos(includeStorage, includeCode, filterCo
 		return filteredObjects, nil
 	}
 
-	objMgr, err := azobjstorage.NewObjectManager()
+	objMgr, err := azledger.NewObjectManager()
 	if err != nil {
 		return nil, err
 	}
@@ -50,11 +50,11 @@ func (m *WorkspaceManager) getObjectsInfos(includeStorage, includeCode, filterCo
 		if err != nil {
 			return nil, err
 		}
-		if objInfo.GetType() == azobjstorage.ObjectTypeCommit && !filterCommits {
+		if objInfo.GetType() == azledger.ObjectTypeCommit && !filterCommits {
 			continue
-		} else if objInfo.GetType() == azobjstorage.ObjectTypeTree && !filterTrees {
+		} else if objInfo.GetType() == azledger.ObjectTypeTree && !filterTrees {
 			continue
-		} else if objInfo.GetType() == azobjstorage.ObjectTypeBlob && !filterBlob {
+		} else if objInfo.GetType() == azledger.ObjectTypeBlob && !filterBlob {
 			continue
 		}
 		filteredObjects = append(filteredObjects, *objInfo)
@@ -72,7 +72,7 @@ func (m *WorkspaceManager) getHistory(commit string) ([]azicliwkscommon.CommitIn
 }
 
 // getCommitString gets the commit string.
-func (m *WorkspaceManager) getCommitString(oid string, commit *azobjstorage.Commit) (string, error) {
+func (m *WorkspaceManager) getCommitString(oid string, commit *azledger.Commit) (string, error) {
 	if commit == nil {
 		return "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "commit is nil")
 	}
@@ -98,7 +98,7 @@ func (m *WorkspaceManager) getCommitString(oid string, commit *azobjstorage.Comm
 }
 
 // getCommitMap gets the commit map.
-func (m *WorkspaceManager) getCommitMap(oid string, commit *azobjstorage.Commit) (map[string]any, error) {
+func (m *WorkspaceManager) getCommitMap(oid string, commit *azledger.Commit) (map[string]any, error) {
 	if commit == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "commit is nil")
 	}
@@ -118,7 +118,7 @@ func (m *WorkspaceManager) getCommitMap(oid string, commit *azobjstorage.Commit)
 }
 
 // getTreeString gets the tree string.
-func (m *WorkspaceManager) getTreeString(oid string, tree *azobjstorage.Tree) (string, error) {
+func (m *WorkspaceManager) getTreeString(oid string, tree *azledger.Tree) (string, error) {
 	if tree == nil {
 		return "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "tree is nil")
 	}
@@ -142,7 +142,7 @@ func (m *WorkspaceManager) getTreeString(oid string, tree *azobjstorage.Tree) (s
 }
 
 // getTreeMap gets the tree map.
-func (m *WorkspaceManager) getTreeMap(oid string, tree *azobjstorage.Tree) (map[string]any, error) {
+func (m *WorkspaceManager) getTreeMap(oid string, tree *azledger.Tree) (map[string]any, error) {
 	if tree == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "tree is nil")
 	}

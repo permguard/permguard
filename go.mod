@@ -11,10 +11,8 @@ require (
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/pelletier/go-toml v1.9.5
-	github.com/permguard/permguard-abs-language v0.0.1-0.20250323143024-61876eaba845
 	github.com/permguard/permguard-core v0.0.1-0.20250323104919-2b944ac52cd0
 	github.com/permguard/permguard-notp-protocol v0.0.1-0.20250323105002-bf3a1cedee20
-	github.com/permguard/permguard-objstorage v0.0.0-20250323142936-c86bad5a8655
 	github.com/pressly/goose/v3 v3.24.1
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
@@ -42,6 +40,8 @@ require (
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
+	github.com/permguard/permguard-ztauthstar v0.0.1-0.20250323193853-3214269bdfbc // indirect
+	github.com/permguard/permguard-ztauthstar-ledger v0.0.0-20250323193454-9657574d4c6c // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/sagikazarmark/locafero v0.7.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect

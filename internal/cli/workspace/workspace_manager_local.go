@@ -21,8 +21,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
-	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
+	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
+	azlangtypes "github.com/permguard/permguard-ztauthstar/pkg/languages/types"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
@@ -248,12 +248,12 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	if err := m.cospMgr.SaveCodeSourceCodeState(codeObsState); err != nil {
 		return "", blbCodeFiles, err
 	}
-	tree, err := azobjstorage.NewTree()
+	tree, err := azledger.NewTree()
 	if err != nil {
 		return "", blbCodeFiles, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree object cannot be created", err)
 	}
 	for _, codeObjState := range codeObsState {
-		treeItem, err := azobjstorage.NewTreeEntry(codeObjState.OType, codeObjState.OID, codeObjState.OName, codeObjState.CodeID, codeObjState.CodeType, codeObjState.Language, codeObjState.LanguageVersion, codeObjState.LanguageType)
+		treeItem, err := azledger.NewTreeEntry(codeObjState.OType, codeObjState.OID, codeObjState.OName, codeObjState.CodeID, codeObjState.CodeType, codeObjState.Language, codeObjState.LanguageVersion, codeObjState.LanguageType)
 		if err != nil {
 			return "", nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be created", err)
 		}

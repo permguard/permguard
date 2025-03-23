@@ -22,7 +22,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
+	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
 )
 
 // TestLanguageSpecification tests the language specification.
@@ -49,7 +49,7 @@ func TestCommitCreation(t *testing.T) {
 
 	tree := "4ad3bb52786751f4b6f9839953fe3dcc2278c66648f0d0193f98088b7e4d0c1d"
 	parent := "a294ba66f45afd23f8bda3892728601bb509989a80dbb54d7b513dacb8099d76"
-	commit, err := azobjstorage.NewCommit(tree, parent, "Nicola Gallo", time.Unix(1628704800, 0), "Nicola Gallo", time.Unix(1628704800, 0), "Initial commit")
+	commit, err := azledger.NewCommit(tree, parent, "Nicola Gallo", time.Unix(1628704800, 0), "Nicola Gallo", time.Unix(1628704800, 0), "Initial commit")
 	assert.Nil(err, "NewCommit should not return an error")
 	assert.NotNil(commit, "Commit should not be nil")
 
@@ -79,15 +79,15 @@ func TestTreeCreation(t *testing.T) {
 	assert.Nil(err, "NewCedarLanguageAbstraction should not return an error")
 	assert.NotNil(langAbs, "Language abstraction should not be nil")
 
-	tree, err := azobjstorage.NewTree()
+	tree, err := azledger.NewTree()
 
-	treeItem1, err := azobjstorage.NewTreeEntry("blob", "515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634d3def5fe", "name1", "code1", "codeType1", "cedar", "*", "policy")
+	treeItem1, err := azledger.NewTreeEntry("blob", "515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634d3def5fe", "name1", "code1", "codeType1", "cedar", "*", "policy")
 	tree.AddEntry(treeItem1)
 
-	treeItem2, err := azobjstorage.NewTreeEntry("blob", "2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca12d9d6170", "name2", "code2", "codeType2", "cedar", "*", "policy")
+	treeItem2, err := azledger.NewTreeEntry("blob", "2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca12d9d6170", "name2", "code2", "codeType2", "cedar", "*", "policy")
 	tree.AddEntry(treeItem2)
 
-	treeItem3, err := azobjstorage.NewTreeEntry("tree", "fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851", "name3", "code3", "codeType3", "cedar", "*", "policy")
+	treeItem3, err := azledger.NewTreeEntry("tree", "fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851", "name3", "code3", "codeType3", "cedar", "*", "policy")
 	tree.AddEntry(treeItem3)
 
 	assert.Nil(err, "NewTree should not return an error")

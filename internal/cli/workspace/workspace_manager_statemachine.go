@@ -17,7 +17,7 @@
 package workspace
 
 import (
-	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
+	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
 
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
 )
@@ -84,14 +84,14 @@ func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key str
 // workspaceHandlerContext represents the workspace handler context.
 type workspaceHandlerContext struct {
 	outFunc func(key string, output string, newLine bool)
-	tree    *azobjstorage.Object
+	tree    *azledger.Object
 	ctx     *currentHeadContext
 }
 
 // createWorkspaceHandlerContext creates the workspace handler context.
 func createWorkspaceHandlerContext(ctx *notpstatemachines.HandlerContext) *workspaceHandlerContext {
 	outfunc, _ := getFromHandlerContext[func(key string, output string, newLine bool)](ctx, OutFuncKey)
-	tree, _ := getFromHandlerContext[*azobjstorage.Object](ctx, LocalCodeTreeObjectKey)
+	tree, _ := getFromHandlerContext[*azledger.Object](ctx, LocalCodeTreeObjectKey)
 	headContext, _ := getFromHandlerContext[*currentHeadContext](ctx, HeadContextKey)
 	wksCtx := &workspaceHandlerContext{
 		outFunc: outfunc,

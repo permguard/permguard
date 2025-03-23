@@ -17,7 +17,7 @@
 package workspace
 
 import (
-	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
+	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/languages"
 
@@ -34,7 +34,7 @@ func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemac
 		wksCtx.outFunc("notp-push", "Advertising - Initiating ledger state notification.", true)
 	}
 	handlerCtx.Set(CommittedKey, false)
-	localCommitObj, _ := getFromHandlerContext[*azobjstorage.Object](handlerCtx, LocalCodeCommitObjectKey)
+	localCommitObj, _ := getFromHandlerContext[*azledger.Object](handlerCtx, LocalCodeCommitObjectKey)
 	packet := &notpagpackets.RemoteRefStatePacket{
 		RefPrevCommit: wksCtx.ctx.remoteCommitID,
 		RefCommit:     localCommitObj.GetOID(),
@@ -78,16 +78,16 @@ func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatem
 		wksCtx.outFunc("notp-commit", "Negotiation - Handling negotiation request between local and remote commit", true)
 	}
 	absLang, _ := getFromHandlerContext[azlang.LanguageAbastraction](handlerCtx, LanguageAbstractionKey)
-	localCommitObj, _ := getFromHandlerContext[*azobjstorage.Object](handlerCtx, LocalCodeCommitObjectKey)
+	localCommitObj, _ := getFromHandlerContext[*azledger.Object](handlerCtx, LocalCodeCommitObjectKey)
 	remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDKey)
 	commitIDs := []string{}
 	localCommitID := localCommitObj.GetOID()
 	if localCommitID != remoteCommitID {
-		objMng, err := azobjstorage.NewObjectManager()
+		objMng, err := azledger.NewObjectManager()
 		if err != nil {
 			return nil, err
 		}
-		_, history, err := objMng.BuildCommitHistory(localCommitID, remoteCommitID, true, func(oid string) (*azobjstorage.Object, error) {
+		_, history, err := objMng.BuildCommitHistory(localCommitID, remoteCommitID, true, func(oid string) (*azledger.Object, error) {
 			obj, _ := m.cospMgr.ReadCodeSourceObject(oid)
 			if obj == nil {
 				obj, _ = m.cospMgr.ReadObject(oid)
@@ -128,7 +128,7 @@ func (m *WorkspaceManager) OnPushSendNegotiationResponse(handlerCtx *notpstatema
 }
 
 // buildPushPacketablesForCommit builds the push packetables for the tree.
-func (m *WorkspaceManager) buildPushPacketablesForCommit(handlerCtx *notpstatemachines.HandlerContext, isCode bool, commitObj *azobjstorage.Object) ([]notppackets.Packetable, error) {
+func (m *WorkspaceManager) buildPushPacketablesForCommit(handlerCtx *notpstatemachines.HandlerContext, isCode bool, commitObj *azledger.Object) ([]notppackets.Packetable, error) {
 	absLang, _ := getFromHandlerContext[azlang.LanguageAbastraction](handlerCtx, LanguageAbstractionKey)
 	packetable := []notppackets.Packetable{}
 
@@ -138,12 +138,12 @@ func (m *WorkspaceManager) buildPushPacketablesForCommit(handlerCtx *notpstatema
 	}
 	packetCommit := &notpagpackets.ObjectStatePacket{
 		OID:     commitObj.GetOID(),
-		OType:   azobjstorage.ObjectTypeCommit,
+		OType:   azledger.ObjectTypeCommit,
 		Content: commitObj.GetContent(),
 	}
 	packetable = append(packetable, packetCommit)
 
-	var treeObj *azobjstorage.Object
+	var treeObj *azledger.Object
 	if isCode {
 		treeObj, err = m.cospMgr.ReadCodeSourceObject(commit.GetTree())
 	} else {
@@ -158,7 +158,7 @@ func (m *WorkspaceManager) buildPushPacketablesForCommit(handlerCtx *notpstatema
 	}
 	packetTree := &notpagpackets.ObjectStatePacket{
 		OID:     treeObj.GetOID(),
-		OType:   azobjstorage.ObjectTypeTree,
+		OType:   azledger.ObjectTypeTree,
 		Content: treeObj.GetContent(),
 	}
 	packetable = append(packetable, packetTree)
@@ -166,7 +166,7 @@ func (m *WorkspaceManager) buildPushPacketablesForCommit(handlerCtx *notpstatema
 	for _, entry := range tree.GetEntries() {
 		oid := entry.GetOID()
 		oType := entry.GetType()
-		var obj *azobjstorage.Object
+		var obj *azledger.Object
 		var err error
 		if isCode {
 			obj, err = m.cospMgr.ReadCodeSourceObject(oid)
@@ -212,7 +212,7 @@ func (m *WorkspaceManager) OnPushExchangeDataStream(handlerCtx *notpstatemachine
 		handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.ActiveDataStreamValue)
 		handlerReturn.HasMore = true
 	} else {
-		commitObj, _ := getFromHandlerContext[*azobjstorage.Object](handlerCtx, LocalCodeCommitObjectKey)
+		commitObj, _ := getFromHandlerContext[*azledger.Object](handlerCtx, LocalCodeCommitObjectKey)
 		packetables, err := m.buildPushPacketablesForCommit(handlerCtx, true, commitObj)
 		if err != nil {
 			return nil, err

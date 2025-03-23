@@ -24,7 +24,7 @@ import (
 
 	"github.com/pelletier/go-toml"
 
-	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
+	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
@@ -52,12 +52,12 @@ const (
 type COSPManager struct {
 	ctx     *aziclicommon.CliCommandContext
 	persMgr *azicliwkspers.PersistenceManager
-	objMgr  *azobjstorage.ObjectManager
+	objMgr  *azledger.ObjectManager
 }
 
 // NewPlansManager creates a new plansuration manager.
 func NewPlansManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.PersistenceManager) (*COSPManager, error) {
-	objMgr, err := azobjstorage.NewObjectManager()
+	objMgr, err := azledger.NewObjectManager()
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +119,7 @@ func (m *COSPManager) SaveCodeSourceObject(oid string, content []byte) (bool, er
 }
 
 // ReadCodeSourceObject reads the object from the code source.
-func (m *COSPManager) ReadCodeSourceObject(oid string) (*azobjstorage.Object, error) {
+func (m *COSPManager) ReadCodeSourceObject(oid string) (*azledger.Object, error) {
 	folder, name := m.getCodeSourceObjectDir(oid, m.getCodeSourceDir())
 	path := filepath.Join(folder, name)
 	data, _, err := m.persMgr.ReadFile(azicliwkspers.PermguardDir, path, true)
@@ -250,7 +250,7 @@ func (m *COSPManager) ReadCodeSourceCodeState() ([]CodeObjectState, error) {
 }
 
 // BuildCodeSourceCodeStateForTree builds the code object state for the input tree.
-func (m *COSPManager) BuildCodeSourceCodeStateForTree(tree *azobjstorage.Tree) ([]CodeObjectState, error) {
+func (m *COSPManager) BuildCodeSourceCodeStateForTree(tree *azledger.Tree) ([]CodeObjectState, error) {
 	if tree == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "tree is nil")
 	}
@@ -448,7 +448,7 @@ func (m *COSPManager) SaveObject(oid string, content []byte) (bool, error) {
 }
 
 // ReadObject reads the object from the objects store.
-func (m *COSPManager) ReadObject(oid string) (*azobjstorage.Object, error) {
+func (m *COSPManager) ReadObject(oid string) (*azledger.Object, error) {
 	folder, name := m.getCodeSourceObjectDir(oid, "")
 	path := filepath.Join(folder, name)
 	data, _, err := m.persMgr.ReadFile(azicliwkspers.PermguardDir, path, true)
@@ -459,8 +459,8 @@ func (m *COSPManager) ReadObject(oid string) (*azobjstorage.Object, error) {
 }
 
 // GetObjects returns the objects.
-func (m *COSPManager) getObjects(path string, isStore bool) ([]azobjstorage.Object, error) {
-	objects := []azobjstorage.Object{}
+func (m *COSPManager) getObjects(path string, isStore bool) ([]azledger.Object, error) {
+	objects := []azledger.Object{}
 	dirs, err := m.persMgr.ListDirectories(azicliwkspers.PermguardDir, path)
 	if err != nil {
 		return nil, err
@@ -472,7 +472,7 @@ func (m *COSPManager) getObjects(path string, isStore bool) ([]azobjstorage.Obje
 		}
 		for _, file := range files {
 			oid := fmt.Sprintf("%s%s", dir, file)
-			var obj *azobjstorage.Object
+			var obj *azledger.Object
 			if isStore {
 				obj, err = m.ReadObject(oid)
 				if err != nil {
@@ -491,8 +491,8 @@ func (m *COSPManager) getObjects(path string, isStore bool) ([]azobjstorage.Obje
 }
 
 // GetObjects returns the objects.
-func (m *COSPManager) GetObjects(includeStorage, includeCode bool) ([]azobjstorage.Object, error) {
-	objects := []azobjstorage.Object{}
+func (m *COSPManager) GetObjects(includeStorage, includeCode bool) ([]azledger.Object, error) {
+	objects := []azledger.Object{}
 	if includeCode {
 		if ok, _ := m.persMgr.CheckPathIfExists(azicliwkspers.PermguardDir, m.getCodeSourceObjectsDir()); ok {
 			codeObjs, err := m.getObjects(m.getCodeSourceObjectsDir(), false)
@@ -515,7 +515,7 @@ func (m *COSPManager) GetObjects(includeStorage, includeCode bool) ([]azobjstora
 }
 
 // GetCommit gets the commit.
-func (m *COSPManager) GetCommit(commitID string) (*azobjstorage.Commit, error) {
+func (m *COSPManager) GetCommit(commitID string) (*azledger.Commit, error) {
 	obj, err := m.ReadObject(commitID)
 	if err != nil {
 		return nil, err
@@ -524,10 +524,10 @@ func (m *COSPManager) GetCommit(commitID string) (*azobjstorage.Commit, error) {
 	if err != nil {
 		return nil, err
 	}
-	if objInfo.GetType() != azobjstorage.ObjectTypeCommit {
+	if objInfo.GetType() != azledger.ObjectTypeCommit {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("oid %s is not a valid commit", commitID))
 	}
-	commit := objInfo.GetInstance().(*azobjstorage.Commit)
+	commit := objInfo.GetInstance().(*azledger.Commit)
 	return commit, nil
 }
 
@@ -546,7 +546,7 @@ func (m *COSPManager) GetHistory(commitID string) ([]azicliwkscommon.CommitInfo,
 		}
 		commits = append(commits, *commitInfo)
 		parentID := commit.GetParent()
-		if parentID == azobjstorage.ZeroOID {
+		if parentID == azledger.ZeroOID {
 			break
 		}
 		commit, err = m.GetCommit(parentID)
