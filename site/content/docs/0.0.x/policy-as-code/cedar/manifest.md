@@ -1,6 +1,6 @@
 ---
-title: "AuthZ Manifest"
-slug: "AuthZ Manifest"
+title: "Manifest"
+slug: "Manifest"
 description: ""
 summary: ""
 date: 2025-02-14T00:34:10+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "authz-manifest-58476a6a55504215bded7cd487135bf4"
+    identifier: "manifest-58476a6a55504215bded7cd487135bf4"
 weight: 4103
 toc: true
 seo:
@@ -19,6 +19,6 @@ seo:
   noindex: false # false (default) or true
 ---
 
-This section specifies the **Cedar** `AuthZ Manifest` override.
+This section specifies the **Cedar** `Manifest` override.
 
-> If no specific override is provided, the generic `AuthZ Manifest` specification applies.
+> If no specific override is provided, the generic `Manifest` specification applies.
