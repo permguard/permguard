@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	azlangtypes "github.com/permguard/permguard-abs-language/pkg/languages/types"
-	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
@@ -85,7 +85,7 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 			return failedOpErr(output, err)
 		}
 		// Checkout the head
-		remoteCommitID := azlangobjs.ZeroOID
+		remoteCommitID := azobjstorage.ZeroOID
 		var remoteRef, headRef string
 		remoteRef, headRef, output, err = m.rfsMgr.ExecCheckoutRefFilesForRemote(ledgerInfo.GetRemote(), ledgerInfo.GetZoneID(), ledgerInfo.GetLedger(), srvLedger.LedgerID, remoteCommitID, output, out)
 		if err != nil {
@@ -255,7 +255,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			return failedOpErr(nil, err)
 		}
 	}
-	if remoteCommitID != azlangobjs.ZeroOID {
+	if remoteCommitID != azobjstorage.ZeroOID {
 		commitObj, err := m.cospMgr.ReadObject(remoteCommitID)
 		if err != nil {
 			return failedOpErr(nil, err)

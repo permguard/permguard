@@ -17,7 +17,7 @@
 package centralstorage
 
 import (
-	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 
@@ -52,8 +52,8 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 	headCommitID := ledger.Ref
 	hasConflicts := false
 	isUpToDate := false
-	objMng, err := azlangobjs.NewObjectManager()
-	if headCommitID != azlangobjs.ZeroOID && headCommitID != remoteRefSPacket.RefPrevCommit {
+	objMng, err := azobjstorage.NewObjectManager()
+	if headCommitID != azobjstorage.ZeroOID && headCommitID != remoteRefSPacket.RefPrevCommit {
 		if err != nil {
 			return nil, err
 		}
@@ -61,15 +61,15 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 		if err != nil {
 			return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 		}
-		hasMatch, history, err := objMng.BuildCommitHistory(remoteRefSPacket.RefPrevCommit, headCommitID, false, func(oid string) (*azlangobjs.Object, error) {
+		hasMatch, history, err := objMng.BuildCommitHistory(remoteRefSPacket.RefPrevCommit, headCommitID, false, func(oid string) (*azobjstorage.Object, error) {
 			keyValue, err := s.sqlRepo.GetKeyValue(db, zoneID, oid)
 			if err != nil || keyValue == nil || keyValue.Value == nil {
 				return nil, nil
 			}
-			return azlangobjs.NewObject(keyValue.Value)
+			return azobjstorage.NewObject(keyValue.Value)
 		})
 		hasConflicts = hasMatch && len(history) > 1
-		if headCommitID == azlangobjs.ZeroOID && remoteRefSPacket.RefPrevCommit != azlangobjs.ZeroOID {
+		if headCommitID == azobjstorage.ZeroOID && remoteRefSPacket.RefPrevCommit != azobjstorage.ZeroOID {
 			hasConflicts = true
 		}
 		isUpToDate = headCommitID == remoteRefSPacket.RefCommit
@@ -78,7 +78,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 	if err != nil {
 		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
-	_, commits, err := objMng.BuildCommitHistory(headCommitID, remoteRefSPacket.RefCommit, true, func(oid string) (*azlangobjs.Object, error) {
+	_, commits, err := objMng.BuildCommitHistory(headCommitID, remoteRefSPacket.RefCommit, true, func(oid string) (*azobjstorage.Object, error) {
 		return s.readObject(db, zoneID, oid)
 	})
 	packet := &notpagpackets.LocalRefStatePacket{
@@ -116,7 +116,7 @@ func (s SQLiteCentralStoragePAP) OnPullSendNegotiationRequest(handlerCtx *notpst
 	remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDKey)
 	commitIDs := []string{}
 	if localCommitID != remoteCommitID {
-		objMng, err := azlangobjs.NewObjectManager()
+		objMng, err := azobjstorage.NewObjectManager()
 		if err != nil {
 			return nil, err
 		}
@@ -124,7 +124,7 @@ func (s SQLiteCentralStoragePAP) OnPullSendNegotiationRequest(handlerCtx *notpst
 		if err != nil {
 			return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 		}
-		_, history, err := objMng.BuildCommitHistory(localCommitID, remoteCommitID, true, func(oid string) (*azlangobjs.Object, error) {
+		_, history, err := objMng.BuildCommitHistory(localCommitID, remoteCommitID, true, func(oid string) (*azobjstorage.Object, error) {
 			return s.readObject(db, zoneID, oid)
 		})
 		if err != nil {
@@ -158,7 +158,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleNegotiationResponse(handlerCtx *not
 
 // buildPushPacketablesForCommit builds the push packetables for the tree.
 func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(zoneID int64, commitID string) ([]notppackets.Packetable, error) {
-	objMng, err := azlangobjs.NewObjectManager()
+	objMng, err := azobjstorage.NewObjectManager()
 	if err != nil {
 		return nil, err
 	}
@@ -172,13 +172,13 @@ func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(zoneID int64, com
 	if err != nil {
 		return nil, err
 	}
-	commit, err := GetObjectForType[azlangobjs.Commit](objMng, commitObj)
+	commit, err := GetObjectForType[azobjstorage.Commit](objMng, commitObj)
 	if err != nil {
 		return nil, err
 	}
 	packetCommit := &notpagpackets.ObjectStatePacket{
 		OID:     commitObj.GetOID(),
-		OType:   azlangobjs.ObjectTypeCommit,
+		OType:   azobjstorage.ObjectTypeCommit,
 		Content: commitObj.GetContent(),
 	}
 	packetable = append(packetable, packetCommit)
@@ -187,14 +187,14 @@ func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(zoneID int64, com
 	if err != nil {
 		return nil, err
 	}
-	tree, err := GetObjectForType[azlangobjs.Tree](objMng, treeObj)
+	tree, err := GetObjectForType[azobjstorage.Tree](objMng, treeObj)
 	if err != nil {
 		return nil, err
 	}
 
 	packetTree := &notpagpackets.ObjectStatePacket{
 		OID:     treeObj.GetOID(),
-		OType:   azlangobjs.ObjectTypeTree,
+		OType:   azobjstorage.ObjectTypeTree,
 		Content: treeObj.GetContent(),
 	}
 	packetable = append(packetable, packetTree)

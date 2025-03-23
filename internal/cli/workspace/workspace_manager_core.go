@@ -23,7 +23,7 @@ import (
 
 	"github.com/gofrs/flock"
 
-	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
@@ -52,7 +52,7 @@ const (
 type WorkspaceManager struct {
 	ctx       *aziclicommon.CliCommandContext
 	homeDir   string
-	objMar    *azlangobjs.ObjectManager
+	objMar    *azobjstorage.ObjectManager
 	langFct   azlang.LanguageFactory
 	persMgr   *azicliwkspers.PersistenceManager
 	rmSrvtMgr *azicliwksremotesrv.RemoteServerManager
@@ -65,7 +65,7 @@ type WorkspaceManager struct {
 // NewInternalManager creates a new internal manager.
 func NewInternalManager(ctx *aziclicommon.CliCommandContext, langFct azlang.LanguageFactory) (*WorkspaceManager, error) {
 	homeDir := ctx.GetWorkDir()
-	objMar, err := azlangobjs.NewObjectManager()
+	objMar, err := azobjstorage.NewObjectManager()
 	if err != nil {
 		return nil, err
 	}

@@ -17,18 +17,18 @@
 package common
 
 import (
-	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // CommitInfo
 type CommitInfo struct {
 	oid    string
-	commit *azlangobjs.Commit
+	commit *azobjstorage.Commit
 }
 
 // NewCommitInfo creates a new CommitInfo.
-func NewCommitInfo(oid string, commit *azlangobjs.Commit) (*CommitInfo, error) {
+func NewCommitInfo(oid string, commit *azobjstorage.Commit) (*CommitInfo, error) {
 	if oid == "" {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid commit oid")
 	}
@@ -47,6 +47,6 @@ func (c *CommitInfo) GetCommitOID() string {
 }
 
 // GetCommit returns the commit.
-func (c *CommitInfo) GetCommit() *azlangobjs.Commit {
+func (c *CommitInfo) GetCommit() *azobjstorage.Commit {
 	return c.commit
 }

@@ -17,7 +17,7 @@
 package languages
 
 import (
-	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
 	azauthz "github.com/permguard/permguard/pkg/authorization"
 )
 
@@ -48,21 +48,21 @@ type LanguageAbastraction interface {
 	// GetLanguageSpecification returns the specification for the language.
 	GetLanguageSpecification() LanguageSpecification
 	// ReadObjectContentBytes reads the object content bytes.
-	ReadObjectContentBytes(obj *azlangobjs.Object) (uint32, []byte, error)
+	ReadObjectContentBytes(obj *azobjstorage.Object) (uint32, []byte, error)
 	// CreateCommitObject creates a commit object.
-	CreateCommitObject(commit *azlangobjs.Commit) (*azlangobjs.Object, error)
+	CreateCommitObject(commit *azobjstorage.Commit) (*azobjstorage.Object, error)
 	// ConvertObjectToCommit converts an object to a commit.
-	ConvertObjectToCommit(obj *azlangobjs.Object) (*azlangobjs.Commit, error)
+	ConvertObjectToCommit(obj *azobjstorage.Object) (*azobjstorage.Commit, error)
 	// CreateTreeObject creates a tree object.
-	CreateTreeObject(tree *azlangobjs.Tree) (*azlangobjs.Object, error)
+	CreateTreeObject(tree *azobjstorage.Tree) (*azobjstorage.Object, error)
 	// ConvertObjectToTree converts an object to a tree.
-	ConvertObjectToTree(obj *azlangobjs.Object) (*azlangobjs.Tree, error)
+	ConvertObjectToTree(obj *azobjstorage.Object) (*azobjstorage.Tree, error)
 	// CreatePolicyBlobObjects creates multi sections policy blob objects.
-	CreatePolicyBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error)
+	CreatePolicyBlobObjects(path string, data []byte) (*azobjstorage.MultiSectionsObject, error)
 	// CreateMultiPolicyContentBytesBody creates a multi policy content bytes.
 	CreateMultiPolicyContentBytes(blocks [][]byte) ([]byte, string, error)
 	// CreateSchemaBlobObjects creates multi sections schema blob objects.
-	CreateSchemaBlobObjects(path string, data []byte) (*azlangobjs.MultiSectionsObject, error)
+	CreateSchemaBlobObjects(path string, data []byte) (*azobjstorage.MultiSectionsObject, error)
 	// CreateSchemaContentBytes creates a schema content bytes.
 	CreateSchemaContentBytes(blocks []byte) ([]byte, string, error)
 	// ConvertBytesToFrontendLanguage converts bytes to the frontend language.

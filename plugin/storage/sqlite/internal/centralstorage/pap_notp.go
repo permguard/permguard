@@ -21,7 +21,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	azlangobjs "github.com/permguard/permguard-abs-language/pkg/objects"
+	azobjstorage "github.com/permguard/permguard-objstorage/pkg/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 
@@ -75,7 +75,7 @@ func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key str
 }
 
 // GetObjectForType gets the object for the type.
-func GetObjectForType[T any](objMng *azlangobjs.ObjectManager, obj *azlangobjs.Object) (*T, error) {
+func GetObjectForType[T any](objMng *azobjstorage.ObjectManager, obj *azobjstorage.Object) (*T, error) {
 	objInfo, err := objMng.GetObjectInfo(obj)
 	if err != nil {
 		return nil, err
@@ -89,12 +89,12 @@ func GetObjectForType[T any](objMng *azlangobjs.ObjectManager, obj *azlangobjs.O
 }
 
 // readObject reads the object.
-func (s SQLiteCentralStoragePAP) readObject(db *sqlx.DB, zoneID int64, oid string) (*azlangobjs.Object, error) {
+func (s SQLiteCentralStoragePAP) readObject(db *sqlx.DB, zoneID int64, oid string) (*azobjstorage.Object, error) {
 	keyValue, errkey := s.sqlRepo.GetKeyValue(db, zoneID, oid)
 	if errkey != nil || keyValue == nil || keyValue.Value == nil {
 		return nil, nil
 	}
-	obj, err := azlangobjs.NewObject(keyValue.Value)
+	obj, err := azobjstorage.NewObject(keyValue.Value)
 	if err != nil {
 		return nil, err
 	}
