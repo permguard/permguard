@@ -1,6 +1,6 @@
 ---
-title: "AuthZ Manifest"
-slug: "AuthZ Manifest"
+title: "Manifest"
+slug: "Manifest"
 description: ""
 summary: ""
 date: 2025-02-14T00:34:10+01:00
@@ -9,8 +9,8 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "authz-manifest-2acc79fe1e014fe2ade6d301de843c14"
-weight: 4002
+    identifier: "manifest-2acc79fe1e014fe2ade6d301de843c14"
+weight: 4001
 toc: true
 seo:
   title: "" # custom title (optional)
@@ -19,9 +19,9 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The **AuthZ Manifest** is used to define the authorization model.
+The **Manifest** is used to define the ZTAuth* models.
 
-Below is an example of an `AuthZ Manifest`:
+Below is an example of an `Manifest`:
 
 ```json
 {
@@ -31,27 +31,29 @@ Below is an example of an `AuthZ Manifest`:
         "author": "Nitro Agility S.r.l.",
         "license": "Apache-2.0"
     },
-    "runtimes": {
-        "cedar0.0+": {
-            "language": {
-                "name": "cedar",
-                "version": "0.0+"
-            },
-            "engine": {
-                "name": "permguard",
-                "version": "0.0+",
-                "distribution": "community"
+    "authz": {
+        "runtimes": {
+            "cedar0.0+": {
+                "language": {
+                    "name": "cedar",
+                    "version": "0.0+"
+                },
+                "engine": {
+                    "name": "permguard",
+                    "version": "0.0+",
+                    "distribution": "community"
+                }
             }
-        }
-    },
-    "partitions": {
-        "root": {
-            "location": {
-                "path": "./",
-                "mode": "file"
-            },
-            "runtime": "cedar0.0+",
-            "schema": false
+        },
+        "partitions": {
+            "root": {
+                "location": {
+                    "path": "./",
+                    "mode": "file"
+                },
+                "runtime": "cedar0.0+",
+                "schema": false
+            }
         }
     }
 }
