@@ -23,7 +23,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azvalidators "github.com/permguard/permguard-core/pkg/extensions/validators"
+	azvalidators "github.com/permguard/permguard-common/pkg/extensions/validators"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azcli "github.com/permguard/permguard/pkg/cli"
 	azclioptions "github.com/permguard/permguard/pkg/cli/options"

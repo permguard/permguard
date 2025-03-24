@@ -39,7 +39,7 @@ init-dependency:
 	go get -u moul.io/zapgorm2
 	go get -u github.com/pelletier/go-toml
 	go get -u github.com/gofrs/flock
-	go get -u github.com/permguard/permguard-core
+	go get -u github.com/permguard/permguard-common
 	go get -u github.com/permguard/permguard-ztauthstar
 	go get -u github.com/cedar-policy/cedar-go
 

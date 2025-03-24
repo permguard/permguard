@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	azvalidators "github.com/permguard/permguard-core/pkg/extensions/validators"
+	azvalidators "github.com/permguard/permguard-common/pkg/extensions/validators"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"

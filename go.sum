@@ -79,8 +79,8 @@ github.com/pelletier/go-toml v1.9.5 h1:4yBQzkHv+7BHq2PQUZF3Mx0IYxG7LsP222s7Agd3v
 github.com/pelletier/go-toml v1.9.5/go.mod h1:u1nR/EPcESfeI/szUZKdtJ0xRNbUoANCkoOuaOx1Y+c=
 github.com/pelletier/go-toml/v2 v2.2.3 h1:YmeHyLY8mFWbdkNWwpr+qIL2bEqT0o95WSdkNHvL12M=
 github.com/pelletier/go-toml/v2 v2.2.3/go.mod h1:MfCQTFTvCcUyyvvwm1+G6H/jORL20Xlb6rzQu9GuUkc=
-github.com/permguard/permguard-core v0.0.1-0.20250323104919-2b944ac52cd0 h1:yM0b6L6slBJkFpfKEek46Io3s1bvQ9NcEQmOYahe43g=
-github.com/permguard/permguard-core v0.0.1-0.20250323104919-2b944ac52cd0/go.mod h1:fX94HFxkyGfequKsYNK48R+8aNWwklQtSG9AGQ3m3Jk=
+github.com/permguard/permguard-common v0.0.1-0.20250323104919-2b944ac52cd0 h1:yM0b6L6slBJkFpfKEek46Io3s1bvQ9NcEQmOYahe43g=
+github.com/permguard/permguard-common v0.0.1-0.20250323104919-2b944ac52cd0/go.mod h1:fX94HFxkyGfequKsYNK48R+8aNWwklQtSG9AGQ3m3Jk=
 github.com/permguard/permguard-notp-protocol v0.0.1-0.20250323105002-bf3a1cedee20 h1:f6HKPVSriFmOxrHFIXvj9oCOmcQWqK9R5H8jcEuE15M=
 github.com/permguard/permguard-notp-protocol v0.0.1-0.20250323105002-bf3a1cedee20/go.mod h1:QpLwV9w9NThvKPdbjHRITxTyN5EwvXvEv51aV+HI4K0=
 github.com/permguard/permguard-ztauthstar v0.0.1-0.20250323193853-3214269bdfbc h1:YmwWAd9psMgrDq3aeBFI95FOKsOHBBtIaiBMPTCDV7k=

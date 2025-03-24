@@ -21,7 +21,7 @@ import (
 
 	"go.uber.org/zap"
 
-	azcopier "github.com/permguard/permguard-core/pkg/extensions/copier"
+	azcopier "github.com/permguard/permguard-common/pkg/extensions/copier"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 )
