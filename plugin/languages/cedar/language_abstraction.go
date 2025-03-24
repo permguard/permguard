@@ -23,8 +23,8 @@ import (
 
 	"github.com/cedar-policy/cedar-go"
 
+	azauthzen "github.com/permguard/permguard-ztauthstar-engine/pkg/authzen"
 	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
-	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
 	azlangtypes "github.com/permguard/permguard-ztauthstar/pkg/languages/types"
 	azlangvalidators "github.com/permguard/permguard-ztauthstar/pkg/languages/validators"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"

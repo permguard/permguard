@@ -86,17 +86,20 @@ tasks:
     silent: true
   # Dependencies
   dep-common:
-    desc: get core dependency
+    desc: get common dependency
     cmd: 'go get -u github.com/permguard/permguard-common@{{.CLI_ARGS}}'
-  dep-ledger:
-    desc: get objstorage dependency
-    cmd: 'go get -u github.com/permguard/permguard-ztauthstar-ledger@{{.CLI_ARGS}}'
   dep-notp:
     desc: get notp dependency
     cmd: 'go get -u github.com/permguard/permguard-notp-protocol@{{.CLI_ARGS}}'
   dep-ztas:
-    desc: get abstraction languange dependency
+    desc: get ztas dependency
     cmd: 'go get -u github.com/permguard/permguard-ztauthstar@{{.CLI_ARGS}}'
+  dep-ztas-ledger:
+    desc: get ztas ledger dependency
+    cmd: 'go get -u github.com/permguard/permguard-ztauthstar-ledger@{{.CLI_ARGS}}'
+  dep-ztas-engine:
+    desc: get ztas engine dependency
+    cmd: 'go get -u github.com/permguard/permguard-ztauthstar-engine@{{.CLI_ARGS}}'
   # Local
   install: export VERSION=$(git describe --tags --match 'v*' --abbrev=0 | cut -c2-) && export BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S') && export GIT_COMMIT=$(git rev-parse --short HEAD) && make build-cli && cp ./dist/permguard ~/.apps/bin/permguard
   docker:
