@@ -19,7 +19,7 @@ package servers
 import (
 	"fmt"
 
-	azcopier "github.com/permguard/permguard-core/pkg/extensions/copier"
+	azcopier "github.com/permguard/permguard-common/pkg/extensions/copier"
 	azipap "github.com/permguard/permguard/internal/agents/services/pap"
 	azipdp "github.com/permguard/permguard/internal/agents/services/pdp"
 	azizap "github.com/permguard/permguard/internal/agents/services/zap"

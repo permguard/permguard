@@ -17,7 +17,7 @@
 package controllers
 
 import (
-	azids "github.com/permguard/permguard-core/pkg/extensions/ids"
+	azids "github.com/permguard/permguard-common/pkg/extensions/ids"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 

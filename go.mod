@@ -11,7 +11,7 @@ require (
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/pelletier/go-toml v1.9.5
-	github.com/permguard/permguard-core v0.0.1-0.20250323104919-2b944ac52cd0
+	github.com/permguard/permguard-common v0.0.1-0.20250323104919-2b944ac52cd0
 	github.com/permguard/permguard-notp-protocol v0.0.1-0.20250323105002-bf3a1cedee20
 	github.com/permguard/permguard-ztauthstar v0.0.1-0.20250323204403-32661d2ed56d
 	github.com/permguard/permguard-ztauthstar-ledger v0.0.0-20250323202709-0f7427611976
