@@ -21,8 +21,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	azauthzen "github.com/permguard/permguard-ztauthstar-engine/pkg/authzen"
 	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
-	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
 	azlangtypes "github.com/permguard/permguard-ztauthstar/pkg/languages/types"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"

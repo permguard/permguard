@@ -17,8 +17,8 @@
 package languages
 
 import (
+	azauthzen "github.com/permguard/permguard-ztauthstar-engine/pkg/authzen"
 	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
-	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
 )
 
 // LanguageSpecification is the interface for the language specification.
