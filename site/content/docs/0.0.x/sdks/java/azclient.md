@@ -100,7 +100,7 @@ try {
     AZRequest request = new AZAtomicRequestBuilder(
             zoneId,
             policyStoreId,
-            EMAIL,  // Subject type from JSON
+           "platform-creator",  // Subject id from JSON  
             "MagicFarmacia::Platform::Subscription",  // Resource type from JSON
             "MagicFarmacia::Platform::Action::create"  // Action name from JSON
     )
