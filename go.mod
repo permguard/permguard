@@ -1,6 +1,6 @@
 module github.com/permguard/permguard
 
-go 1.23.5
+go 1.24.1
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
@@ -11,11 +11,11 @@ require (
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/pelletier/go-toml v1.9.5
-	github.com/permguard/permguard-common v0.0.1-0.20250324093240-cdbc35bbee28
-	github.com/permguard/permguard-notp-protocol v0.0.1-0.20250324162356-23e10a53d3a2
+	github.com/permguard/permguard-common v0.0.1-0.20250324235958-a7cfb846171e
+	github.com/permguard/permguard-notp-protocol v0.0.1-0.20250325000214-6c0849aa9d2d
 	github.com/permguard/permguard-ztauthstar v0.0.1-0.20250324163647-821b4ea556de
-	github.com/permguard/permguard-ztauthstar-engine v0.0.0-20250324164223-ffd7bf371c06
-	github.com/permguard/permguard-ztauthstar-ledger v0.0.0-20250324163543-2dbc30aa29e0
+	github.com/permguard/permguard-ztauthstar-engine v0.0.0-20250325000536-aa3cb2eddb2b
+	github.com/permguard/permguard-ztauthstar-ledger v0.0.0-20250325000432-de6377177c24
 	github.com/pressly/goose/v3 v3.24.1
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
