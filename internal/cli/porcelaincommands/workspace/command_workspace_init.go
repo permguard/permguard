@@ -37,6 +37,8 @@ const (
 	commandNameForWorkspacesInitName = "name"
 	// commandNameForWorkspacesInitLanguage is the language of the workspace to initialize.
 	commandNameForWorkspacesInitLanguage = "language"
+	// commandNameForWorkspacesInitTemplate is the template of the workspace to initialize.
+	commandNameForWorkspacesInitTemplate = "template"
 )
 
 
@@ -60,7 +62,13 @@ func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 
 	name := v.GetString(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName))
 	language := v.GetString(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitLanguage))
-	output, err := wksMgr.ExecInitWorkspace(name, language, outFunc(ctx, printer))
+	template := v.GetString(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitTemplate))
+	initParams := &azicliwksmanager.InitParms{
+		Name:     name,
+		Language: language,
+		Template: template,
+	}
+	output, err := wksMgr.ExecInitWorkspace(initParams, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to initialize the workspace.")
@@ -97,6 +105,9 @@ Examples:
 
 	command.Flags().String(commandNameForWorkspacesInitLanguage, "", "specify the language of the workspace to initialize")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitLanguage), command.Flags().Lookup(commandNameForWorkspacesInitLanguage))
+
+	command.Flags().String(commandNameForWorkspacesInitTemplate, "", "specify the template of the workspace to initialize")
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitTemplate), command.Flags().Lookup(commandNameForWorkspacesInitTemplate))
 
 	return command
 }

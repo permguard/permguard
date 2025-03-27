@@ -48,8 +48,14 @@ func (m *WorkspaceManager) ExecPrintContext(output map[string]any, out aziclicom
 	return output
 }
 
+type InitParms struct {
+	Name     string
+	Language string
+	Template string
+}
+
 // ExecInitWorkspace initializes the workspace.
-func (m *WorkspaceManager) ExecInitWorkspace(name, language string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to initialize the workspace", nil, true)
 		return output, err
@@ -57,24 +63,28 @@ func (m *WorkspaceManager) ExecInitWorkspace(name, language string, out aziclico
 	m.ExecPrintContext(nil, out)
 
 	homeHiddenDir := m.getHomeHiddenDir()
-	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.WorkDir, homeHiddenDir)
+	res, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.WorkDir, homeHiddenDir)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-
-	manifest, err := azztas.NewManifest(name)
-	if err != nil {
-		return failedOpErr(nil, err)
+	firstInit := true
+	if !res {
+		firstInit = false
 	}
 
-	res, manifestData, err := azztas.ValidateManifest(manifest, true)
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-
-	_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.WorkspaceDir, azztas.ManifestFileName, manifestData, 0644, false)
-	if err != nil {
-		return failedOpErr(nil, err)
+	if initParams != nil {
+		manifest, err := azztas.NewManifest(initParams.Name)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		_, manifestData, err := azztas.ValidateManifest(manifest, true)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.WorkspaceDir, azztas.ManifestFileName, manifestData, 0644, false)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
 	}
 
 	fileLock, err := m.tryLock()
@@ -86,10 +96,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(name, language string, out aziclico
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "init", fmt.Sprintf("Initializing Permguard workspace in '%s'.", aziclicommon.FileText(homeHiddenDir)), nil, true)
 	}
-	firstInit := true
-	if !res {
-		firstInit = false
-	}
+
 	initializers := []func() error{
 		m.logsMgr.ExecInitalize,
 		m.cfgMgr.ExecInitialize,
@@ -202,7 +209,7 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out aziclicommon.Prin
 		}
 		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliWorkspace, fmt.Sprintf("cannot remove the remote used by the currently checked out zone %s", remote)))
 	}
-	output, err = m.cfgMgr.ExecRemoveRemote(remote, nil, out)
+	output, err = m.cfgMgr.ExecRemoveRemote(remote, output, out)
 	return output, err
 }
 
