@@ -184,11 +184,7 @@ function addCopyToClipboardCedar() {
   });
 }
 
-window.onload = function () {
-  addCopyToClipboardCedar();
-};
-
-document.addEventListener("DOMContentLoaded", function () {
+function addRotationToClipboard() {
   const dropdownButton = document.getElementById("doks-versions");
   const dropdownArrow = dropdownButton.querySelector(".dropdown-arrow");
 
@@ -199,4 +195,7 @@ document.addEventListener("DOMContentLoaded", function () {
   dropdownButton.addEventListener("hide.bs.dropdown", function () {
     dropdownArrow.classList.remove("rotate");
   });
-});
+}
+
+addRotationToClipboard();
+addCopyToClipboardCedar();
