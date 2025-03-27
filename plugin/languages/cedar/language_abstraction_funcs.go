@@ -80,22 +80,32 @@ func createPermguardSubjectKind(kind string) (string, error) {
 	return kind, nil
 }
 
-// createEntityAttribJson creates an entity attribute JSON.
-func createEntityAttribJson(uidType, uid string, attrs map[string]any) (map[string]any, error) {
-	jsonTxt := `
-{
-	"uid": {
-	"type": "%s",
-	"id": "%s"
-	},
-	"attrs": %s,
-	"parents": []
-}`
-	jsonAttrbs, err := json.Marshal(attrs)
+// createEntityAttribJSON creates an entity attribute JSON.
+func createEntityAttribJSON(uidType, uid string, attrs map[string]any) (map[string]any, error) {
+	uidTypeJSON, err := json.Marshal(uidType)
 	if err != nil {
 		return nil, err
 	}
-	jsonTxt = fmt.Sprintf(jsonTxt, uidType, uid, string(jsonAttrbs))
+	uidJSON, err := json.Marshal(uid)
+	if err != nil {
+		return nil, err
+	}
+	attrsJSON, err := json.Marshal(attrs)
+	if err != nil {
+		return nil, err
+	}
+
+	jsonTxt := `
+{
+    "uid": {
+        "type": %s,
+        "id": %s
+    },
+    "attrs": %s,
+    "parents": []
+}`
+	jsonTxt = fmt.Sprintf(jsonTxt, string(uidTypeJSON), string(uidJSON), string(attrsJSON))
+
 	var jsonMap map[string]any
 	if err = json.Unmarshal([]byte(jsonTxt), &jsonMap); err != nil {
 		return nil, err
