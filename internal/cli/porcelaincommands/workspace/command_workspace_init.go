@@ -26,8 +26,19 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
 	azcli "github.com/permguard/permguard/pkg/cli"
+	azoptions "github.com/permguard/permguard/pkg/cli/options"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
+
+const (
+	// commandNameForWorkspaceInit is the command name for workspace init.
+	commandNameForWorkspaceInit = "workspace-init"
+	// commandNameForWorkspacesInitName is name of the workspace to initialize.
+	commandNameForWorkspacesInitName = "name"
+	// commandNameForWorkspacesInitLanguage is the language of the workspace to initialize.
+	commandNameForWorkspacesInitLanguage = "language"
+)
+
 
 // runECommandForInitWorkspace runs the command for creating an workspace.
 func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
@@ -47,7 +58,9 @@ func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 		return aziclicommon.ErrCommandSilent
 	}
 
-	output, err := wksMgr.ExecInitWorkspace(outFunc(ctx, printer))
+	name := v.GetString(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName))
+	language := v.GetString(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitLanguage))
+	output, err := wksMgr.ExecInitWorkspace(name, language, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to initialize the workspace.")
@@ -78,6 +91,12 @@ Examples:
 			return runECommandForInitWorkspace(deps, cmd, v)
 		},
 	}
+
+	command.Flags().String(commandNameForWorkspacesInitName, "", "specify the name of the workspace to initialize")
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName), command.Flags().Lookup(commandNameForWorkspacesInitName))
+
+	command.Flags().String(commandNameForWorkspacesInitLanguage, "", "specify the language of the workspace to initialize")
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitLanguage), command.Flags().Lookup(commandNameForWorkspacesInitLanguage))
 
 	return command
 }
