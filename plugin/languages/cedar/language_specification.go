@@ -34,13 +34,13 @@ func (ls *CedarLanguageSpecification) GetLanguage() string {
 	return ls.language
 }
 
-// GetLanguage returns the language version.
-func (abs *CedarLanguageSpecification) GetLanguageVersion() string {
+// GetLanguageVersion returns the language version.
+func (ls *CedarLanguageSpecification) GetLanguageVersion() string {
 	return LanguageSyntaxVersion
 }
 
 // GetLanguageVersionID returns the language version ID.
-func (abs *CedarLanguageSpecification) GetLanguageVersionID() uint32 {
+func (ls *CedarLanguageSpecification) GetLanguageVersionID() uint32 {
 	return LanguageSyntaxVersionID
 }
 
