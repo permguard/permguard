@@ -18,11 +18,13 @@ package v1
 
 import (
 	"context"
+	"encoding/json"
 
 	azauthzen "github.com/permguard/permguard-ztauthstar-engine/pkg/authzen"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
+	"go.uber.org/zap"
 )
 
 // PDPService is the service for the PDP.
@@ -48,6 +50,13 @@ type V1PDPServer struct {
 
 // AuthorizationCheck checks the authorization.
 func (s *V1PDPServer) AuthorizationCheck(ctx context.Context, request *AuthorizationCheckRequest) (*AuthorizationCheckResponse, error) {
+	logger := s.ctx.GetLogger()
+	if request != nil {
+		jsonData, err := json.MarshalIndent(request, "", "  ")
+		if err == nil {
+			logger.Debug("AuthorizationCheck request", zap.String("request", string(jsonData)))
+		}
+	}
 	req, err := MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request)
 	if req == nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, "request cannot be nil", err)
