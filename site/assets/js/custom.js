@@ -187,3 +187,16 @@ function addCopyToClipboardCedar() {
 window.onload = function () {
   addCopyToClipboardCedar();
 };
+
+document.addEventListener("DOMContentLoaded", function () {
+  const dropdownButton = document.getElementById("doks-versions");
+  const dropdownArrow = dropdownButton.querySelector(".dropdown-arrow");
+
+  dropdownButton.addEventListener("show.bs.dropdown", function () {
+    dropdownArrow.classList.add("rotate");
+  });
+
+  dropdownButton.addEventListener("hide.bs.dropdown", function () {
+    dropdownArrow.classList.remove("rotate");
+  });
+});
