@@ -72,19 +72,21 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 		firstInit = false
 	}
 
+	wksName := ""
 	if initParams != nil {
-		manifest, err := azztas.NewManifest(initParams.Name)
-		if err != nil {
-			return failedOpErr(nil, err)
-		}
-		_, manifestData, err := azztas.ValidateManifest(manifest, true)
-		if err != nil {
-			return failedOpErr(nil, err)
-		}
-		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.WorkspaceDir, azztas.ManifestFileName, manifestData, 0644, false)
-		if err != nil {
-			return failedOpErr(nil, err)
-		}
+		wksName = initParams.Name
+	}
+	manifest, err := azztas.NewManifest(wksName)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	_, manifestData, err := azztas.ValidateManifest(manifest, true)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.WorkspaceDir, azztas.ManifestFileName, manifestData, 0644, false)
+	if err != nil {
+		return failedOpErr(nil, err)
 	}
 
 	fileLock, err := m.tryLock()
