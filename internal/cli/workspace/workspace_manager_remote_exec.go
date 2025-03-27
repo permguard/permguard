@@ -405,7 +405,7 @@ func (m *WorkspaceManager) ExecCloneLedger(ledgerURI string, zapPort, papPort in
 	uriZoneID := elements[1]
 	uriLedger := elements[2]
 
-	output, err := m.ExecInitWorkspace(out)
+	output, err := m.ExecInitWorkspace("", "", out)
 	aborted := false
 	if err == nil {
 		fileLock, err := m.tryLock()

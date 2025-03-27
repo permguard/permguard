@@ -24,6 +24,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azztas "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar"
 )
 
 // codeFileInfo represents info about the code file.
@@ -48,14 +49,30 @@ func (m *WorkspaceManager) ExecPrintContext(output map[string]any, out aziclicom
 }
 
 // ExecInitWorkspace initializes the workspace.
-func (m *WorkspaceManager) ExecInitWorkspace(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecInitWorkspace(name, language string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to initialize the workspace", nil, true)
 		return output, err
 	}
-	output := m.ExecPrintContext(nil, out)
-	homeDir := m.getHomeHiddenDir()
-	res, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.WorkDir, homeDir)
+	m.ExecPrintContext(nil, out)
+
+	homeHiddenDir := m.getHomeHiddenDir()
+	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.WorkDir, homeHiddenDir)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+
+	manifest, err := azztas.NewManifest(name)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+
+	res, manifestData, err := azztas.ValidateManifest(manifest, true)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+
+	_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.WorkspaceDir, azztas.ManifestFileName, manifestData, 0644, false)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
@@ -67,7 +84,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(out aziclicommon.PrinterOutFunc) (m
 	defer fileLock.Unlock()
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "init", fmt.Sprintf("Initializing Permguard workspace in '%s'.", aziclicommon.FileText(homeDir)), nil, true)
+		out(nil, "init", fmt.Sprintf("Initializing Permguard workspace in '%s'.", aziclicommon.FileText(homeHiddenDir)), nil, true)
 	}
 	firstInit := true
 	if !res {
@@ -98,7 +115,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(out aziclicommon.PrinterOutFunc) (m
 		msg = fmt.Sprintf("Reinitialized existing permguard ledger in '%s'.", aziclicommon.FileText(m.getHomeDir()))
 	}
 	out(nil, "", msg, nil, true)
-	output = map[string]any{}
+	output := map[string]any{}
 	absPath := m.getHomeDir()
 	if !filepath.IsAbs(absPath) {
 		absPath, _ = filepath.Abs(absPath)
