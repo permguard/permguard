@@ -357,7 +357,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(contextID string, policy
 	if err != nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguangeSemantic, "[cedar] bad request for the subject type")
 	}
-	subjectProperties, err := createEntityAttribJson(pmgSubjectKind, subjectID, subject.GetProperties())
+	subjectProperties, err := createEntityAttribJSON(pmgSubjectKind, subjectID, subject.GetProperties())
 	if err != nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguangeSemantic, "[cedar] bad request for the subject properties")
 	}
@@ -372,7 +372,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(contextID string, policy
 	if len(strings.TrimSpace(resourceID)) == 0 {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguangeSemantic, "[cedar] bad request for the resource id")
 	}
-	resourceProperties, err := createEntityAttribJson(resourceType, resourceID, resource.GetProperties())
+	resourceProperties, err := createEntityAttribJSON(resourceType, resourceID, resource.GetProperties())
 	if err != nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguangeSemantic, "[cedar] bad request for the resource properties")
 	}
@@ -392,7 +392,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(contextID string, policy
 	if len(strings.TrimSpace(actionID)) == 0 {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguangeSemantic, "[cedar] bad request for the action id")
 	}
-	actionProperties, err := createEntityAttribJson(actionType, actionID, action.GetProperties())
+	actionProperties, err := createEntityAttribJSON(actionType, actionID, action.GetProperties())
 	if err != nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguangeSemantic, "[cedar] bad request for the action properties")
 	}
