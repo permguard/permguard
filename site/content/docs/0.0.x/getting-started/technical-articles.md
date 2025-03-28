@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-This page provides a collection of technical video and articles that cover various aspects of **Permguard**. These articles are designed to help you understand the architecture, features, and functionalities of **Permguard** in detail.
+This page provides a collection of `technical video` and `articles` that cover various aspects of **Permguard**. These articles are designed to help you understand the architecture, features, and functionalities of **Permguard** in detail.
 
 ## Videos
 
