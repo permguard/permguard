@@ -20,20 +20,6 @@
 import Clipboard from "clipboard";
 import { LANGUAGES_CODE } from "./code";
 
-const handleScroll = () => {
-  const header = document.querySelector("header");
-
-  if (window.scrollY === 0) {
-    header.classList.remove("header--blur");
-  } else {
-    header.classList.add("header--blur");
-  }
-};
-
-handleScroll();
-
-window.addEventListener("scroll", handleScroll);
-
 // Language switch
 let selectedLanguage = "go";
 let isPermguard = false;
