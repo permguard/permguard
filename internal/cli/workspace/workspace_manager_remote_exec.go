@@ -261,12 +261,18 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			return failedOpErr(nil, err)
 		}
 		commit, err := absLang.ConvertObjectToCommit(commitObj)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
 
 		treeObj, err := m.cospMgr.ReadObject(commit.GetTree())
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
 		tree, err := absLang.ConvertObjectToTree(treeObj)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
 
 		codeMap, err := m.cospMgr.ReadCodeSourceCodeMap()
 		if err != nil {
@@ -316,6 +322,9 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 					langVersionID := header.GetLanguageVersionID()
 					langTypeID := header.GetLanguageTypeID()
 					langCodeBlock, err := absLang.ConvertBytesToFrontendLanguage(langID, langVersionID, langTypeID, codeBlock)
+					if err != nil {
+						return failedOpErr(nil, err)
+					}
 					codeBlocks = append(codeBlocks, langCodeBlock)
 				default:
 					return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "invalid class type"))

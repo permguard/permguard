@@ -90,6 +90,14 @@ func (abs *CedarLanguageAbstraction) BuildManifest(manifest *azztas.Manifest, la
 	return manifest, nil
 }
 
+// ValidateManifest validates the manifest.
+func (cedar *CedarLanguageAbstraction) ValidateManifest(manifest *azztas.Manifest) (bool, error) {
+	if manifest == nil {
+		return false, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] manifest is nil")
+	}
+	return true, nil
+}
+
 // GetLanguageSpecification returns the specification for the language.
 func (abs *CedarLanguageAbstraction) GetLanguageSpecification() azlang.LanguageSpecification {
 	return &CedarLanguageSpecification{
