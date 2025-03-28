@@ -2,6 +2,9 @@ header {
   // overflow-x: hidden;
   position: relative;
 
+  padding-top: 17px !important;
+  padding-bottom: 17px !important;
+
   &::before {
     content: "";
     position: absolute;
@@ -10,7 +13,20 @@ header {
     bottom: 0;
     right: 0;
     left: 0;
-    transition: all 0.1s;
+    backdrop-filter: blur(4px);
+    background-color: rgba(255, 255, 255, 0.02) !important;
+  }
+
+  .nav-link {
+    padding: 0 0 0 0 !important;
+    font-size: 16px;
+    margin-left: 8px;
+  }
+}
+
+.header {
+  &__img {
+    height: 36px;
   }
 }
 
@@ -18,15 +34,6 @@ header {
   &--blur {
     &::before {
       background-color: rgba($color: #d2d2d2, $alpha: 0.95) !important;
-    }
-  }
-}
-
-.header {
-  &--blur {
-    &::before {
-      backdrop-filter: blur(6px);
-      background-color: rgba($color: #17181c, $alpha: 0.95) !important;
     }
   }
 }
@@ -84,4 +91,26 @@ header {
 
 .dropdown-option-text {
   font-size: 14px;
+}
+
+.icon-size {
+  height: 24px; /* h-5 equivalent */
+  width: 24px; /* w-5 equivalent */
+}
+
+.icon-small-size {
+  width: 20px;
+  height: 20px;
+}
+
+.flex-static {
+  flex: none; /* Matches Tailwind's flex-none */
+}
+
+.icon-color {
+  fill: #94a3b8; /* slate-400 equivalent */
+}
+
+.icon-color:hover {
+  fill: #cbd5e1; /* slate-500 equivalent */
 }
