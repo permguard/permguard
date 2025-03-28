@@ -23,6 +23,8 @@ This page provides a collection of `technical video` and `articles` that cover v
 
 ## Videos
 
+1) ZTAuth*
+
 - [ZTAuth*: Zero Trust AuthN/AuthZ and Trusted Models](https://www.youtube.com/watch?v=rRE-LBrk6Dw)
 
 ## Articles
