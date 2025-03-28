@@ -55,6 +55,8 @@ func (s *V1PDPServer) AuthorizationCheck(ctx context.Context, request *Authoriza
 		jsonData, err := json.MarshalIndent(request, "", "  ")
 		if err == nil {
 			logger.Debug("AuthorizationCheck request", zap.String("request", string(jsonData)))
+		} else {
+			logger.Error("AuthorizationCheck request", zap.String("request", err.Error()))
 		}
 	}
 	req, err := MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request)

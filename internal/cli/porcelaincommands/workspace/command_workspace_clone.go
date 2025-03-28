@@ -57,6 +57,10 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 	}
 	folder := elements[2]
 	workDir, err := cmd.Flags().GetString(aziclicommon.FlagWorkingDirectory)
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return aziclicommon.ErrCommandSilent
+	}
 	ledgerFolder := filepath.Join(workDir, folder)
 	cmd.Flags().Set(aziclicommon.FlagWorkingDirectory, ledgerFolder)
 	if ok, _ := azfiles.CheckPathIfExists(ledgerFolder); ok {
