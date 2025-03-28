@@ -33,6 +33,7 @@ import (
 	azicliwksremotesrv "github.com/permguard/permguard/internal/cli/workspace/remoteserver"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/languages"
+	azztas "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar"
 )
 
 const (
@@ -157,4 +158,37 @@ func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out aziclicommon.PrinterO
 	out(nil, "", "The current working directory is not a valid Permguard workspace.", nil, true)
 	out(nil, "", "Please initialize the workspace by running the 'init' command.", nil, true)
 	return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("%s is not a permguard workspace directory", m.getHomeHiddenDir()))
+}
+
+// hasValidManifestWorkspaceDir checks if the directory is a valid workspace directory.
+func (m *WorkspaceManager) hasValidManifestWorkspaceDir() error {
+	manifestData, _, err := m.persMgr.ReadFile(azicliwkspers.WorkspaceDir, azztas.ManifestFileName, false)
+	if err != nil {
+		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "could not read the manifest file in the workspace directory", err)
+	}
+	manifest, err := azztas.ConvertBytesToManifest(manifestData)
+	if err != nil {
+		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
+	}
+	ok, err := azztas.ValidateManifest(manifest)
+	if err != nil {
+		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
+	}
+	if !ok {
+		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
+	}
+	for _, runtime := range manifest.Authz.Runtimes {
+		absLang, err := m.langFct.GetLanguageAbastraction(runtime.Language.Name)
+		if err != nil {
+			return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
+		}
+		ok, err = absLang.ValidateManifest(manifest)
+		if err != nil {
+			return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
+		}
+		if !ok {
+			return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
+		}
+	}
+	return nil
 }

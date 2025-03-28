@@ -48,6 +48,8 @@ type LanguageSpecification interface {
 type LanguageAbastraction interface {
 	// BuildManifest builds the manifest.
 	BuildManifest(manifest *azztas.Manifest, language, template string) (*azztas.Manifest, error)
+	// ValidateManifest validates the manifest.
+	ValidateManifest(manifest *azztas.Manifest) (bool, error)
 	// GetLanguageSpecification returns the specification for the language.
 	GetLanguageSpecification() LanguageSpecification
 	// ReadObjectContentBytes reads the object content bytes.

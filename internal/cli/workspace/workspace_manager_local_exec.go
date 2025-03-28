@@ -115,6 +115,11 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 		}
 	}
 
+	err = m.hasValidManifestWorkspaceDir()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+
 	// TODO: Read the language from the authz-model manifest
 	// Creates the abstraction for the language
 	// lang, err := m.cfgMgr.GetLanguage()
