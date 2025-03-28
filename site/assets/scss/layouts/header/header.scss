@@ -45,3 +45,43 @@ header {
 .docs-sidebar {
   border-right: none !important;
 }
+
+.no-underline,
+.no-underline:hover,
+.no-underline:focus,
+.no-underline:active {
+  text-decoration: none !important;
+}
+
+.latest-label {
+  background: #701a75;
+  border-radius: 999px;
+}
+
+.dropdown-arrow {
+  transition: transform 0.2s ease-out;
+}
+
+.dropdown-arrow.rotate {
+  transform: rotate(180deg);
+}
+
+.bg-dark {
+  background-color: #212529 !important;
+}
+
+.bg-purple-600 {
+  background-color: #c026d3 !important;
+}
+
+.text-white {
+  color: #ffffff !important;
+}
+
+.bg-dark-hover:hover {
+  background-color: #343a40 !important;
+}
+
+.dropdown-option-text {
+  font-size: 14px;
+}
