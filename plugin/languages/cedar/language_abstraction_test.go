@@ -80,11 +80,14 @@ func TestTreeCreation(t *testing.T) {
 	assert.NotNil(langAbs, "Language abstraction should not be nil")
 
 	tree, err := azledger.NewTree()
+	assert.Nil(err, "new tree should not return an error")
 
 	treeItem1, err := azledger.NewTreeEntry("blob", "515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634d3def5fe", "name1", "code1", "codeType1", "cedar", "*", "policy")
+	assert.Nil(err, "new tree entry should not return an error")
 	tree.AddEntry(treeItem1)
 
 	treeItem2, err := azledger.NewTreeEntry("blob", "2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca12d9d6170", "name2", "code2", "codeType2", "cedar", "*", "policy")
+	assert.Nil(err, "new tree entry should not return an error")
 	tree.AddEntry(treeItem2)
 
 	treeItem3, err := azledger.NewTreeEntry("tree", "fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851", "name3", "code3", "codeType3", "cedar", "*", "policy")

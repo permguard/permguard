@@ -110,5 +110,6 @@ func createEntityAttribJSON(uidType, uid string, attrs map[string]any) (map[stri
 	if err = json.Unmarshal([]byte(jsonTxt), &jsonMap); err != nil {
 		return nil, err
 	}
+
 	return jsonMap, nil
 }

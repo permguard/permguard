@@ -16,12 +16,12 @@
 
     <!-- Site title -->
     <a
-    class="navbar-brand fw-medium me-auto me-lg-3 fs-6 text-white font-montserrat"
+    class="navbar-brand me-auto me-lg-3 fs-6"
     href="/"
   >
-    <img src="/images/logos/top_logo.svg" alt="Permguard logo" class="me-1" />
+    <img src="/images/logos/top_logo.svg" alt="Permguard Community" class="me-1" />
 
-    Permguard</a
+     </a
   >
 
 
@@ -108,8 +108,8 @@
       </div>
       -->
       <div class="offcanvas-body d-flex flex-column flex-lg-row justify-content-between">
-        <nav actor="navigation" class="flex-grow-1">
-        <ul class="navbar-nav">
+        <nav actor="navigation" class="flex-lg-grow-1">
+          <ul class="navbar-nav">
           {{- $current := . -}}
           {{- $section := $current.Section -}}
           {{ range .Site.Menus.main -}}
@@ -198,9 +198,15 @@
         <!-- Versioning dropdown  -->
         {{ if (in site.Params.doks.sectionNav .Section) -}}
         {{ if eq site.Params.doks.docsVersioning true -}}
-        <div class="dropdown mt-1 order-lg-0">
-          <button class="btn btn-dropdown dropdown-toggle me-0" id="doks-versions" data-bs-toggle="dropdown" aria-expanded="false" data-bs-display="static" aria-label="Toggle version menu">
-            <span class="d-none">Doks</span>
+        <div class="dropdown mt-1 order-lg-0 mb-auto mb-lg-0">
+          <!-- Selector Trigger -->
+          <button 
+            class="btn btn-link text-dark d-flex align-items-center py-2 px-lg-3 text-sm fw-medium transition-colors no-underline"
+            id="doks-versions" 
+            data-bs-toggle="dropdown" 
+            aria-expanded="false" 
+            aria-label="Toggle version menu"
+          >
             {{ $currentPage := . -}}
             {{ $versions := site.Params.doks.docsVersions }}
             {{ $currentVersion := index $versions (sub (len $versions) 1) }}
@@ -209,33 +215,55 @@
                 {{ $currentVersion = $version }}
               {{ end }}
             {{ end }}
-            {{ $currentVersion }}
-            <span class="dropdown-caret">
-              <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevron-down" width="24" height="24" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                <path d="M6 9l6 6l6 -6"></path>
-              </svg>
-            </span>
+            <span class="fw-normal pb-1">{{ $currentVersion }}</span>
+            {{ if eq $currentVersion (index site.Params.doks.docsVersions (sub (len site.Params.doks.docsVersions) 1)) }}
+              <span class="badge latest-label text-primary ms-2 me-2 py-1 px-2 fw-medium text-white">
+                Latest
+              </span>
+            {{ end }}
+            <svg 
+              class="dropdown-arrow ms-2" 
+              width="16" 
+              height="16" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
           </button>
-          <ul class="dropdown-menu dropdown-menu-lg-end me-lg-2 shadow rounded border-0" aria-labelledby="doks-versions">
-            <li>
-              <a class="dropdown-item current" aria-current="true" href="/docs/{{ $currentVersion }}/getting-started/permguard-paradigm/">
-                {{ if eq $currentVersion (index site.Params.doks.docsVersions (sub (len site.Params.doks.docsVersions) 1)) }}
-                  Latest {{ $currentVersion }}
-                {{ else }}
-                  {{ $currentVersion }}
-                {{ end }}
-              </a>
-            </li>
-            <li><hr class="dropdown-divider"></li>
-            {{ range site.Params.doks.docsVersions }}
-              <li><a class="dropdown-item" href="/docs/{{ . }}/getting-started/permguard-paradigm/">{{ . }}</a></li>
+          <ul class="dropdown-menu dropdown-menu-lg-end me-lg-2 shadow rounded border-0 bg-dark" aria-labelledby="doks-versions">
+            {{ range $version := site.Params.doks.docsVersions }}
+              <li>
+                <a 
+                  href="/docs/{{ $version }}/getting-started/permguard-paradigm/"
+                  class="dropdown-item d-flex justify-content-between align-items-center px-3 py-2 text-sm
+                         {{ if eq $version $currentVersion }}
+                           bg-purple-600 text-white fw-medium
+                         {{ else }}
+                           text-white
+                         {{ end }}"
+                >
+                  <span class="fw-normal dropdown-option-text">{{ $version }}</span>
+                  {{ if eq $version $currentVersion }}
+                    <svg 
+                      class="text-white" 
+                      width="20" 
+                      height="20" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                  {{ end }}
+                </a>
+              </li>
             {{ end }}
           </ul>
         </div>
 {{ end -}}
 {{ end -}}
-
 
         <!-- Color mode toggler -->
         {{ if and (eq site.Params.doks.colorMode "auto") site.Params.doks.colorModeToggler -}}
