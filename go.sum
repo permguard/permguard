@@ -89,6 +89,8 @@ github.com/permguard/permguard-ztauthstar v0.0.1-0.20250327153023-7b1f4b796b89 h
 github.com/permguard/permguard-ztauthstar v0.0.1-0.20250327153023-7b1f4b796b89/go.mod h1:BgzuOLArGcehT1BfToiYysYaWtfupfNsG//nFjJhxaI=
 github.com/permguard/permguard-ztauthstar v0.0.1-0.20250327154124-75bad4b88bb6 h1:kR0M0lJmBaijgYngjH50OXJzpE4OhrbljRiOI5bPylo=
 github.com/permguard/permguard-ztauthstar v0.0.1-0.20250327154124-75bad4b88bb6/go.mod h1:BgzuOLArGcehT1BfToiYysYaWtfupfNsG//nFjJhxaI=
+github.com/permguard/permguard-ztauthstar v0.0.1-0.20250328215603-8b2b0ac3659e h1:+0QrDJUxZAYCd+scMS9A80qq4bGwFHTzSgWfDyxyjec=
+github.com/permguard/permguard-ztauthstar v0.0.1-0.20250328215603-8b2b0ac3659e/go.mod h1:BgzuOLArGcehT1BfToiYysYaWtfupfNsG//nFjJhxaI=
 github.com/permguard/permguard-ztauthstar-engine v0.0.0-20250327152133-00655a79bbe6 h1:bdkJ8PH2B7AMNu/qiZ2Y1YdqnSyM9EQCyZSCBNd+0Xc=
 github.com/permguard/permguard-ztauthstar-engine v0.0.0-20250327152133-00655a79bbe6/go.mod h1:Y85q4bYqFoC7v4pme4RV8wLlY0rqudMSiHNVhIc1rQU=
 github.com/permguard/permguard-ztauthstar-ledger v0.0.0-20250325000432-de6377177c24 h1:x2qUdyjmeN2VxzWs5B+TojgUXf+5sOUGz53dPuqUe1M=

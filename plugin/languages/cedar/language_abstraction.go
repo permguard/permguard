@@ -29,6 +29,7 @@ import (
 	azlangvalidators "github.com/permguard/permguard-ztauthstar/pkg/languages/validators"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/languages"
+	azztas "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar"
 )
 
 const (
@@ -79,6 +80,14 @@ func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
 	return &CedarLanguageAbstraction{
 		objMng: objMng,
 	}, nil
+}
+
+// BuildManifest builds the manifest.
+func (abs *CedarLanguageAbstraction) BuildManifest(manifest *azztas.Manifest, language, template string) (*azztas.Manifest, error) {
+	if manifest == nil {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] manifest is nil")
+	}
+	return manifest, nil
 }
 
 // GetLanguageSpecification returns the specification for the language.

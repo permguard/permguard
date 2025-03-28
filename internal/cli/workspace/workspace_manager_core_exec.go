@@ -74,14 +74,28 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 
 	if initParams != nil {
 		wksName := initParams.Name
-		manifest, err := azztas.NewManifest(wksName)
+		lang := initParams.Language
+		template := initParams.Template
+
+		absLang, err := m.langFct.GetLanguageAbastraction(lang)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		_, manifestData, err := azztas.ValidateManifest(manifest, true)
+
+		manifest, err := azztas.NewManifest(wksName, "")
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
+		manifest, err = absLang.BuildManifest(manifest, lang, template)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+
+		manifestData, err := azztas.ConvertManifestToBytes(manifest, true)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+
 		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.WorkspaceDir, azztas.ManifestFileName, manifestData, 0644, false)
 		if err != nil {
 			return failedOpErr(nil, err)
