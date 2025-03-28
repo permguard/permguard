@@ -94,8 +94,8 @@ header {
 }
 
 .icon-size {
-  height: 24px; /* h-5 equivalent */
-  width: 24px; /* w-5 equivalent */
+  height: 24px;
+  width: 24px;
 }
 
 .icon-small-size {
@@ -104,13 +104,51 @@ header {
 }
 
 .flex-static {
-  flex: none; /* Matches Tailwind's flex-none */
+  flex: none;
 }
 
 .icon-color {
-  fill: #94a3b8; /* slate-400 equivalent */
+  fill: #94a3b8;
+  color: #94a3b8;
 }
 
 .icon-color:hover {
-  fill: #cbd5e1; /* slate-500 equivalent */
+  fill: #cbd5e1;
+  color: #cbd5e1;
+}
+
+.btn-search-wide {
+  margin: 0 auto;
+  width: 384px;
+  height: 45px;
+  padding: 10px 16px !important;
+  padding-right: 14px !important;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background-color: rgba(39, 39, 42, 0.75);
+  transition: none;
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+
+  p {
+    margin-top: 0;
+    color: #94a3b8;
+    margin-bottom: 0;
+  }
+
+  & .search-hotkey {
+    color: #64748b;
+  }
+
+  &:hover {
+    text-decoration: none !important;
+    background-color: rgba(63, 63, 70, 0.4);
+    border: 1px solid #64748b;
+
+    svg {
+      fill: #94a3b8;
+    }
+  }
 }
