@@ -210,7 +210,7 @@
 
 <!-- Social menu -->
 {{ if .Site.Menus.social -}}
-<ul id="socialMenu" class="nav mx-auto flex-row gap-3 order-lg-4 mt-auto mt-lg-0">
+<ul id="socialMenu" class="nav mx-auto flex-row gap-3 order-lg-4 mt-auto mt-lg-0 order-3 order-lg-0">
   {{ range (sort .Site.Menus.social "Name" "desc") -}}
     <li class="nav-item">
       <a target="_blank" class="nav-link social-link" href="{{ .URL | relURL }}">{{ .Pre | safeHTML }}<small class="ms-2 visually-hidden">{{ .Name | safeHTML }}</small></a>
