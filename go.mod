@@ -13,7 +13,7 @@ require (
 	github.com/pelletier/go-toml v1.9.5
 	github.com/permguard/permguard-common v0.0.1-0.20250324235958-a7cfb846171e
 	github.com/permguard/permguard-notp-protocol v0.0.1-0.20250325000214-6c0849aa9d2d
-	github.com/permguard/permguard-ztauthstar v0.0.1-0.20250327154124-75bad4b88bb6
+	github.com/permguard/permguard-ztauthstar v0.0.1-0.20250328215603-8b2b0ac3659e
 	github.com/permguard/permguard-ztauthstar-engine v0.0.0-20250327152133-00655a79bbe6
 	github.com/permguard/permguard-ztauthstar-ledger v0.0.0-20250325000432-de6377177c24
 	github.com/pressly/goose/v3 v3.24.1
