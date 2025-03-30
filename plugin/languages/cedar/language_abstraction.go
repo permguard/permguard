@@ -47,7 +47,7 @@ const (
 	LanguageCedarJSONID = uint32(2)
 
 	// LanguageSyntaxVersion defines the latest syntax version used by the Cedar language.
-	LanguageSyntaxVersion = "*"
+	LanguageSyntaxVersion = "0.0"
 	// LanguageSyntaxVersionID defines the latest syntax version ID used by the Cedar language.
 	LanguageSyntaxVersionID = uint32(0)
 	// LanguageSchemaType specifies the schema type for Cedar language.
@@ -91,7 +91,7 @@ func (abs *CedarLanguageAbstraction) BuildManifest(manifest *azztas.Manifest, la
 }
 
 // ValidateManifest validates the manifest.
-func (cedar *CedarLanguageAbstraction) ValidateManifest(manifest *azztas.Manifest) (bool, error) {
+func (abs *CedarLanguageAbstraction) ValidateManifest(manifest *azztas.Manifest) (bool, error) {
 	if manifest == nil {
 		return false, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] manifest is nil")
 	}
