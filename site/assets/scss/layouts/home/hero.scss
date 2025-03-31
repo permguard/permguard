@@ -37,7 +37,7 @@
 
   &__description {
     font-size: 24px;
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255, 255, 255, 0.5) !important;
     line-height: 1.4;
     margin-bottom: 32px;
     letter-spacing: 0.39px;
@@ -90,8 +90,29 @@
 
 @media (max-width: 1199px) {
   .hero {
-    &__logo {
-      height: 100px;
+    padding-top: 90px;
+    padding-bottom: 90px;
+
+    &__title {
+      font-size: 46px !important;
+    }
+
+    &__description {
+      max-width: 420px;
+    }
+
+    &__image {
+      height: 600px;
+    }
+
+    &__image-shield {
+      height: 202px;
+      left: 323px;
+    }
+
+    &__img-wrapper {
+      top: -24px;
+      right: -124px;
     }
   }
 }
