@@ -20,7 +20,8 @@
 }
 
 .hero {
-  padding-top: 80px;
+  padding-top: 190px;
+  padding-bottom: 100px;
 
   &__title {
     font-size: 56px !important;
@@ -49,10 +50,18 @@
     padding-left: 50px;
   }
 
-  &__image {
-    margin-top: 25px;
-    margin-left: -15px;
+  &__img-wrapper {
+    position: absolute;
+    top: -41px;
+    right: -134px;
   }
+
+  &__image-shield {
+    position: absolute;
+    bottom: 0;
+    left: 415px;
+  }
+
   &__btn {
     background-color: #cc34df;
     font-size: 18px;
