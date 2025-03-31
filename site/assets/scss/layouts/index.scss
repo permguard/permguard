@@ -52,7 +52,11 @@
 
 body {
   max-width: 1440px;
-  overflow-x: hidden;
   margin: 0 auto;
   position: relative;
+}
+
+html,
+body {
+  overflow-x: hidden;
 }

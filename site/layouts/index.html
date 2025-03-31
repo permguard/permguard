@@ -12,7 +12,9 @@
       </p>
       {{ $currentPage := . -}} {{ $versions := site.Params.doks.docsVersions }}
       {{ $currentVersion := index $versions (sub (len $versions) 1) }}
-      <div class="d-flex gap-4">
+      <div
+        class="d-flex flex-column flex-sm-row gap-3 gap-sm-4 w-100 w-sm-auto"
+      >
         <a
           href="/docs/{{ $currentVersion }}/getting-started/permguard-paradigm/"
           class="rounded-pill hero__btn"
@@ -27,7 +29,7 @@
       </div>
     </div>
     <div class="col-16 col-lg-6 col-xl-9 col-xxl-8 hero__img-wrapper-box">
-      <div class="d-none d-md-flex hero__img-wrapper">
+      <div class="d-none d-sm-flex hero__img-wrapper">
         <img class="hero__image" src="/images/home/hero.svg" alt="Permguard" />
         <img
           class="hero__image-shield"
@@ -36,7 +38,7 @@
         />
       </div>
 
-      <div class="d-block d-md-none hero__img-wrapper">
+      <div class="d-block d-sm-none hero__img-wrapper">
         <img
           class="hero__image"
           src="/images/home/hero_mobile.svg"
