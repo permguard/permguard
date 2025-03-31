@@ -15,19 +15,33 @@
       <div class="d-flex gap-4">
         <a
           href="/docs/{{ $currentVersion }}/getting-started/permguard-paradigm/"
-          class="rounded-pill text-white hero__btn"
+          class="rounded-pill hero__btn"
           >Get Started</a
         >
         <a
-          href="/docs/{{ $currentVersion }}/getting-started/permguard-paradigm/"
-          class="rounded-pill text-white hero__btn hero__btn--secondary"
+          href="https://github.com/permguard/permguard"
+          target="_blank"
+          class="rounded-pill hero__btn hero__btn--secondary"
           >View on Github</a
         >
       </div>
     </div>
-    <div class="col-16 col-lg-6 col-xl-9 col-xxl-8">
-      <div class="hero__img-wrapper">
+    <div class="col-16 col-lg-6 col-xl-9 col-xxl-8 hero__img-wrapper-box">
+      <div class="d-none d-md-flex hero__img-wrapper">
         <img class="hero__image" src="/images/home/hero.svg" alt="Permguard" />
+        <img
+          class="hero__image-shield"
+          src="/images/home/hero_shield.png"
+          alt="Identity Access Management"
+        />
+      </div>
+
+      <div class="d-block d-md-none hero__img-wrapper">
+        <img
+          class="hero__image"
+          src="/images/home/hero_mobile.svg"
+          alt="Permguard"
+        />
         <img
           class="hero__image-shield"
           src="/images/home/hero_shield.png"
