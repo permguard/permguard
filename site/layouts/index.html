@@ -2,32 +2,35 @@
 <!-- Section 1 | Hero section -->
 <section class="section mt-n3 hero px-xl-4 px-xxl-0">
   <div class="row align-items-center">
-    <div
-      class="col-16 col-lg-7 hero__col d-flex flex-column gap-4 align-items-center"
-    >
-      <img src="/images/logos/symbol.svg" alt="Permguard" class="hero__logo" />
-      <h1 class="text-white font-montserrat fw-medium hero__title mb-0">
-        Permguard
-      </h1>
-      <p class="text-white hero__description text-center mb-1">
-        Permguard is an Open Source Multi-Zone, Multi-Tenant, ZTAuth* Provider.
+    <div class="col-16 col-lg-8 hero__col d-flex flex-column align-items-start">
+      <h1 class="hero__title">Rethinking Identity Access Management</h1>
+      <p class="text-white hero__description">
+        Code your policies and identify risks with machine learning, setting a
+        tech-forward standard for identify access management.
       </p>
       {{ $currentPage := . -}} {{ $versions := site.Params.doks.docsVersions }}
       {{ $currentVersion := index $versions (sub (len $versions) 1) }}
-      <a
-        href="/docs/{{ $currentVersion }}/getting-started/permguard-paradigm/"
-        class="rounded-pill text-white hero__btn"
-        >Getting Started</a
-      >
+      <div class="d-flex gap-4">
+        <a
+          href="/docs/{{ $currentVersion }}/getting-started/permguard-paradigm/"
+          class="rounded-pill text-white hero__btn"
+          >Get Started</a
+        >
+        <a
+          href="/docs/{{ $currentVersion }}/getting-started/permguard-paradigm/"
+          class="rounded-pill text-white hero__btn hero__btn--secondary"
+          >View on Github</a
+        >
+      </div>
     </div>
-    <div class="col-16 col-lg-9 d-none d-sm-flex d-lg-block">
+    <div class="col-16 col-lg-8 d-none d-sm-flex d-lg-block">
       <img
         class="hero__image"
         src="/images/home/hero.webp"
         alt="Permguard schema"
       />
     </div>
-    <div class="col-16 col-lg-9 p-0 d-block d-sm-none">
+    <div class="col-16 col-lg-8 p-0 d-block d-sm-none">
       <img
         class="hero__image w-100"
         src="/images/home/hero-mobile.webp"

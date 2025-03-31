@@ -23,11 +23,22 @@
   padding-top: 80px;
 
   &__title {
-    font-size: 41px !important;
+    font-size: 56px !important;
+    color: transparent !important;
+    background: linear-gradient(180deg, #fff 0%, #999 100%);
+    background-clip: text;
+    line-height: 1.2;
+    font-weight: 500;
+    margin-bottom: 32px;
+    letter-spacing: 2.3px;
   }
 
   &__description {
     font-size: 24px;
+    color: rgba(255, 255, 255, 0.5);
+    line-height: 1.4;
+    margin-bottom: 32px;
+    letter-spacing: 0.39px;
   }
 
   &__logo {
@@ -36,10 +47,6 @@
 
   &__col {
     padding-left: 50px;
-  }
-
-  &__title {
-    margin-bottom: 0px;
   }
 
   &__image {
@@ -58,6 +65,14 @@
     &:hover {
       background-color: darken(#cc34df, 25%);
       color: darken(#fff, 25%);
+    }
+
+    &--secondary {
+      background-color: #323337;
+
+      &:hover {
+        background-color: darken(#323337, 5%);
+      }
     }
   }
 }
