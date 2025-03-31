@@ -119,19 +119,6 @@
 
 @media (max-width: 991px) {
   .hero {
-    &__logo {
-      height: auto;
-    }
-
-    &__image {
-      margin: 0 auto;
-      width: 630px;
-      max-width: 100%;
-    }
-
-    &__col {
-      padding-left: calc(var(--bs-gutter-x) * 0.5);
-    }
   }
 }
 
