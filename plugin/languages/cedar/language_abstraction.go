@@ -29,6 +29,7 @@ import (
 	azlangvalidators "github.com/permguard/permguard-ztauthstar/pkg/languages/validators"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/languages"
+	azztas "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar"
 )
 
 const (
@@ -46,7 +47,7 @@ const (
 	LanguageCedarJSONID = uint32(2)
 
 	// LanguageSyntaxVersion defines the latest syntax version used by the Cedar language.
-	LanguageSyntaxVersion = "*"
+	LanguageSyntaxVersion = "0.0"
 	// LanguageSyntaxVersionID defines the latest syntax version ID used by the Cedar language.
 	LanguageSyntaxVersionID = uint32(0)
 	// LanguageSchemaType specifies the schema type for Cedar language.
@@ -79,6 +80,22 @@ func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
 	return &CedarLanguageAbstraction{
 		objMng: objMng,
 	}, nil
+}
+
+// BuildManifest builds the manifest.
+func (abs *CedarLanguageAbstraction) BuildManifest(manifest *azztas.Manifest, language, template string) (*azztas.Manifest, error) {
+	if manifest == nil {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] manifest is nil")
+	}
+	return manifest, nil
+}
+
+// ValidateManifest validates the manifest.
+func (abs *CedarLanguageAbstraction) ValidateManifest(manifest *azztas.Manifest) (bool, error) {
+	if manifest == nil {
+		return false, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] manifest is nil")
+	}
+	return true, nil
 }
 
 // GetLanguageSpecification returns the specification for the language.

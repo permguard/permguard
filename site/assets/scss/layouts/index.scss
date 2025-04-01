@@ -49,3 +49,16 @@
     padding: 0 15px !important;
   }
 }
+
+body {
+  max-width: 1440px;
+  margin: 0 auto;
+  position: relative;
+  overflow-x: hidden;
+}
+
+@media (max-width: 1440px) {
+  html {
+    overflow-x: hidden;
+  }
+}

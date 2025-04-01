@@ -43,14 +43,17 @@ func (m *WorkspaceManager) ExecPrintContext(output map[string]any, out aziclicom
 	context := m.persMgr.GetContext()
 	for key, value := range context {
 		out(nil, "context", fmt.Sprintf("%s '%s'.", key, aziclicommon.FileText(value)), nil, true)
-
 	}
 	return output
 }
 
+// InitParms represents the parameters for initializing the workspace.
 type InitParms struct {
+	// Name of the workspace to be used in the manifest.
 	Name     string
+	// Language to be used in the manifest.
 	Language string
+	// Template to be used in the manifest.
 	Template string
 }
 
@@ -74,14 +77,28 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 
 	if initParams != nil {
 		wksName := initParams.Name
-		manifest, err := azztas.NewManifest(wksName)
+		lang := initParams.Language
+		template := initParams.Template
+
+		absLang, err := m.langFct.GetLanguageAbastraction(lang)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		_, manifestData, err := azztas.ValidateManifest(manifest, true)
+
+		manifest, err := azztas.NewManifest(wksName, "")
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
+		manifest, err = absLang.BuildManifest(manifest, lang, template)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+
+		manifestData, err := azztas.ConvertManifestToBytes(manifest, true)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+
 		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.WorkspaceDir, azztas.ManifestFileName, manifestData, 0644, false)
 		if err != nil {
 			return failedOpErr(nil, err)
@@ -220,7 +237,7 @@ func (m *WorkspaceManager) ExecListRemotes(out aziclicommon.PrinterOutFunc) (map
 		out(nil, "", "Failed to list remotes.", nil, true)
 		return output, err
 	}
-	output := m.ExecPrintContext(nil, out)
+	m.ExecPrintContext(nil, out)
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
@@ -231,7 +248,7 @@ func (m *WorkspaceManager) ExecListRemotes(out aziclicommon.PrinterOutFunc) (map
 	}
 	defer fileLock.Unlock()
 
-	output, err = m.cfgMgr.ExecListRemotes(nil, out)
+	output, err := m.cfgMgr.ExecListRemotes(nil, out)
 	return output, err
 }
 
@@ -241,7 +258,7 @@ func (m *WorkspaceManager) ExecListLedgers(out aziclicommon.PrinterOutFunc) (map
 		out(nil, "", "Failed to list ledgers.", nil, true)
 		return output, err
 	}
-	output := m.ExecPrintContext(nil, out)
+	m.ExecPrintContext(nil, out)
 	if !m.isWorkspaceDir() {
 		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
 	}
@@ -252,6 +269,6 @@ func (m *WorkspaceManager) ExecListLedgers(out aziclicommon.PrinterOutFunc) (map
 	}
 	defer fileLock.Unlock()
 
-	output, err = m.cfgMgr.ExecListLedgers(nil, out)
+	output, err := m.cfgMgr.ExecListLedgers(nil, out)
 	return output, err
 }
