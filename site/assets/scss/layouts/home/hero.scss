@@ -20,70 +20,187 @@
 }
 
 .hero {
-  padding-top: 80px;
+  padding-top: 190px;
+  padding-bottom: 120px;
 
   &__title {
-    font-size: 41px !important;
+    font-size: 56px !important;
+    color: transparent !important;
+    background: linear-gradient(180deg, #fff 0%, #999 100%);
+    background-clip: text;
+    line-height: 1.2;
+    font-weight: 500;
+    margin-bottom: 32px;
+    letter-spacing: 2.3px;
+    max-width: 598px;
   }
 
   &__description {
     font-size: 24px;
+    color: rgba(255, 255, 255, 0.5) !important;
+    line-height: 1.4;
+    margin-bottom: 32px;
+    letter-spacing: 0.39px;
+    max-width: 598px;
   }
 
   &__logo {
     width: 100px;
   }
 
-  &__col {
-    padding-left: 50px;
+  &__img-wrapper {
+    position: absolute;
+    top: -41px;
+    right: -134px;
   }
 
-  &__title {
-    margin-bottom: 0px;
+  &__image-shield {
+    position: absolute;
+    bottom: 0;
+    left: 415px;
   }
 
-  &__image {
-    margin-top: 25px;
-    margin-left: -15px;
-  }
   &__btn {
     background-color: #cc34df;
     font-size: 18px;
     border: none;
     padding: 11px 25px;
     font-weight: 500;
+    color: #fff !important;
     text-decoration: none !important;
     text-align: center !important;
 
     &:hover {
       background-color: darken(#cc34df, 25%);
-      color: darken(#fff, 25%);
+      color: darken(#fff, 25%) !important;
+    }
+
+    &--secondary {
+      background-color: #323337;
+
+      &:hover {
+        background-color: darken(#323337, 5%);
+      }
     }
   }
 }
 
 @media (max-width: 1199px) {
   .hero {
-    &__logo {
-      height: 100px;
+    padding-top: 90px;
+    padding-bottom: 70px;
+
+    &__title {
+      font-size: 46px !important;
+    }
+
+    &__description {
+      max-width: 420px;
+    }
+
+    &__image {
+      height: 600px;
+    }
+
+    &__image-shield {
+      height: 202px;
+      left: 323px;
+    }
+
+    &__img-wrapper {
+      top: -24px;
+      right: -124px;
     }
   }
 }
 
 @media (max-width: 991px) {
   .hero {
-    &__logo {
-      height: auto;
-    }
+    padding-bottom: 0;
 
-    &__image {
-      margin: 0 auto;
-      width: 630px;
+    &__title {
       max-width: 100%;
     }
 
-    &__col {
-      padding-left: calc(var(--bs-gutter-x) * 0.5);
+    &__description {
+      max-width: 100%;
+    }
+
+    &__img-wrapper {
+      position: relative;
+      right: 0;
+      margin: 0 auto;
+      margin-top: -45px;
+      margin-right: -133px;
+    }
+
+    &__img-wrapper-box {
+      display: flex;
+      margin-top: -50px;
+      margin-bottom: -30px;
+      z-index: -1;
+    }
+  }
+}
+
+@media (max-width: 767px) {
+  .hero {
+    &__image {
+      height: auto;
+    }
+
+    &__img-wrapper {
+      margin-top: 26px;
+    }
+
+    &__image-shield {
+      left: 50%;
+      height: 30%;
+    }
+  }
+}
+
+@media (max-width: 575px) {
+  .hero {
+    padding-top: 42px;
+    padding-bottom: 20px;
+
+    &__title {
+      font-size: 32px !important;
+      letter-spacing: 1px;
+    }
+
+    &__description {
+      font-size: 16px !important;
+      letter-spacing: 0;
+    }
+
+    &__btn {
+      flex: 1;
+      width: 100%;
+    }
+
+    &__img-wrapper-box {
+      position: relative;
+      height: Min(calc(100vw - 35px), 382px);
+    }
+
+    &__img-wrapper {
+      position: absolute;
+      margin-right: 0;
+      margin-top: 6px;
+      right: -75px;
+    }
+
+    &__image-shield {
+      bottom: 10px;
+      width: 141px;
+      height: 141px;
+      left: 48%;
+    }
+
+    &__image {
+      max-width: calc(100vw + 25px) !important;
     }
   }
 }
@@ -91,35 +208,5 @@
 @media (max-width: 767px) {
   .cookieconsent-banner {
     padding-top: 3rem;
-  }
-}
-
-@media (max-width: 575px) {
-  .hero {
-    padding-bottom: 3rem;
-
-    &__title {
-      font-size: 38px !important;
-      margin-top: -9px !important;
-    }
-
-    &__description {
-      font-size: 18px;
-      margin-top: 5px;
-    }
-
-    &__image {
-      width: 100%;
-    }
-
-    &__logo {
-      width: 85px;
-      margin-top: 15px;
-    }
-
-    &__btn {
-      width: 100%;
-      margin-bottom: 41px;
-    }
   }
 }

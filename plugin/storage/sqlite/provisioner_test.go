@@ -31,6 +31,4 @@ func TestSQLiteStorageProvisioner(t *testing.T) {
 	assert.NotNil(storageProvisioner, "storage provisioner should not be nil")
 	assert.Nil(err, "error should be nil")
 	assert.Nil(storageProvisioner.AddFlags(&flag.FlagSet{}), "error should be nil")
-	// //TODO: Complete this part of the test
-	// assert.Nil(storageProvisioner.InitFromViper(viper.New()), "error should be nil")
 }

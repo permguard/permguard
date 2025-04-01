@@ -25,6 +25,9 @@ import (
 // getCurrentHeadContext gets the current head context.
 func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) {
 	headRef, err := m.rfsMgr.GetCurrentHeadRef()
+	if err != nil {
+		return nil, err
+	}
 	headRefInfo, err := m.rfsMgr.GetCurrentHeadRefInfo()
 	if err != nil {
 		return nil, err

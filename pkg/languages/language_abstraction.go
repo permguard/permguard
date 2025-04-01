@@ -19,6 +19,7 @@ package languages
 import (
 	azauthzen "github.com/permguard/permguard-ztauthstar-engine/pkg/authzen"
 	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
+	azztas "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar"
 )
 
 // LanguageSpecification is the interface for the language specification.
@@ -45,6 +46,10 @@ type LanguageSpecification interface {
 
 // LanguageAbastraction is the interface for the language abstraction.
 type LanguageAbastraction interface {
+	// BuildManifest builds the manifest.
+	BuildManifest(manifest *azztas.Manifest, language, template string) (*azztas.Manifest, error)
+	// ValidateManifest validates the manifest.
+	ValidateManifest(manifest *azztas.Manifest) (bool, error)
 	// GetLanguageSpecification returns the specification for the language.
 	GetLanguageSpecification() LanguageSpecification
 	// ReadObjectContentBytes reads the object content bytes.
