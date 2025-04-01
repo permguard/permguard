@@ -1,38 +1,55 @@
 {{ define "main" }}
 <!-- Section 1 | Hero section -->
-<section class="section mt-n3 hero px-xl-4 px-xxl-0">
+<section class="section hero px-xl-4 px-xxl-0">
   <div class="row align-items-center">
     <div
-      class="col-16 col-lg-7 hero__col d-flex flex-column gap-4 align-items-center"
+      class="col-16 col-lg-10 col-xl-7 col-xxl-8 hero__col d-flex flex-column align-items-start"
     >
-      <img src="/images/logos/symbol.svg" alt="Permguard" class="hero__logo" />
-      <h1 class="text-white font-montserrat fw-medium hero__title mb-0">
-        Permguard
-      </h1>
-      <p class="text-white hero__description text-center mb-1">
-        Permguard is an Open Source Multi-Zone, Multi-Tenant, ZTAuth* Provider.
+      <h1 class="hero__title">Rethinking Identity Access Management</h1>
+      <p class="hero__description">
+        Code your policies and identify risks with machine learning, setting a
+        tech-forward standard for identify access management.
       </p>
       {{ $currentPage := . -}} {{ $versions := site.Params.doks.docsVersions }}
       {{ $currentVersion := index $versions (sub (len $versions) 1) }}
-      <a
-        href="/docs/{{ $currentVersion }}/getting-started/permguard-paradigm/"
-        class="rounded-pill text-white hero__btn"
-        >Getting Started</a
+      <div
+        class="d-flex flex-column flex-sm-row gap-3 gap-sm-4 w-100 w-sm-auto"
       >
+        <a
+          href="/docs/{{ $currentVersion }}/getting-started/permguard-paradigm/"
+          class="rounded-pill hero__btn"
+          >Get Started</a
+        >
+        <a
+          href="https://github.com/permguard/permguard"
+          target="_blank"
+          class="rounded-pill hero__btn hero__btn--secondary"
+          >View on Github</a
+        >
+      </div>
     </div>
-    <div class="col-16 col-lg-9 d-none d-sm-flex d-lg-block">
-      <img
-        class="hero__image"
-        src="/images/home/hero.webp"
-        alt="Permguard schema"
-      />
-    </div>
-    <div class="col-16 col-lg-9 p-0 d-block d-sm-none">
-      <img
-        class="hero__image w-100"
-        src="/images/home/hero-mobile.webp"
-        alt="Permguard schema"
-      />
+    <div class="col-16 col-lg-6 col-xl-9 col-xxl-8 hero__img-wrapper-box">
+      <div class="d-none d-sm-flex hero__img-wrapper">
+        <img class="hero__image" src="/images/home/hero.svg" alt="Permguard" />
+        <img
+          class="hero__image-shield"
+          src="/images/home/hero_shield.png"
+          alt="Identity Access Management"
+        />
+      </div>
+
+      <div class="d-block d-sm-none hero__img-wrapper">
+        <img
+          class="hero__image"
+          src="/images/home/hero_mobile.svg"
+          alt="Permguard"
+        />
+        <img
+          class="hero__image-shield"
+          src="/images/home/hero_shield.png"
+          alt="Identity Access Management"
+        />
+      </div>
     </div>
   </div>
 </section>
