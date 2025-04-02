@@ -5,11 +5,13 @@
     <div
       class="col-16 col-lg-10 col-xl-7 col-xxl-8 hero__col d-flex flex-column align-items-start"
     >
-      <h1 class="hero__title">Rethinking Security with Fine-Grained Authorization</h1>
+      <h1 class="hero__title">
+        Rethinking Security with Fine-Grained Authorization
+      </h1>
       <p class="hero__description">
-        Bring Your Own Identity Provider, Define Code Policies, Enforce Zero Trust Security.
-        Enable Trusted Delegation and Elevation for Human and Non-Human Identities.
-        Boost SIEM & SOC with Decision Insights.
+        Bring Your Own Identity Provider, Define Code Policies, Enforce Zero
+        Trust Security. Enable Trusted Delegation and Elevation for Human and
+        Non-Human Identities. Boost SIEM & SOC with Decision Insights.
       </p>
       {{ $currentPage := . -}} {{ $versions := site.Params.doks.docsVersions }}
       {{ $currentVersion := index $versions (sub (len $versions) 1) }}
@@ -51,6 +53,32 @@
           alt="Identity Access Management"
         />
       </div>
+    </div>
+  </div>
+</section>
+
+<section class="section mt-n3 subhero px-xl-4 px-xxl-0">
+  <div class="row align-items-center">
+    <div class="col-16 col-lg-9 d-none d-md-flex d-lg-block order-1 order-lg-0">
+      <img
+        class="subhero__image"
+        src="/images/home/hero.webp"
+        alt="Permguard schema"
+      />
+    </div>
+    <div class="col-16 col-lg-9 p-0 d-block order-1 d-md-none">
+      <img
+        class="subhero__image w-100"
+        src="/images/home/hero-mobile.webp"
+        alt="Permguard schema"
+      />
+    </div>
+    <div
+      class="col-16 col-lg-7 subhero__col d-flex flex-column gap-4 align-items-center"
+    >
+      <p class="text-white subhero__description text-center mb-1">
+        Permguard is an Open Source Multi-Zone, Multi-Tenant, ZTAuth* Provider.
+      </p>
     </div>
   </div>
 </section>
