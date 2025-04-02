@@ -1,0 +1,47 @@
+.subhero {
+  padding-top: 2rem;
+  padding-bottom: 0;
+
+  &__description {
+    font-size: 24px;
+  }
+
+  &__col {
+    padding-left: 50px;
+  }
+
+  &__image {
+    margin-top: 25px;
+    margin-left: -15px;
+  }
+}
+
+@media (max-width: 991px) {
+  .subhero {
+    padding-top: 4rem;
+
+    &__image {
+      margin: 0 auto;
+      width: 100%;
+      max-width: 100%;
+      margin-top: 32px;
+    }
+
+    &__col {
+      padding-left: calc(var(--bs-gutter-x) * 0.5);
+    }
+  }
+}
+
+@media (max-width: 575px) {
+  .subhero {
+    &__description {
+      font-size: 18px;
+      margin-top: 5px;
+    }
+
+    &__image {
+      width: 100%;
+    }
+  }
+}
