@@ -116,7 +116,7 @@ A workspace represents a local working space. Plese refer to the [CodeOps Worksp
 {{< /callout >}}
 
 ```text
-permguard init
+permguard init --language cedar
 permguard remote add origin localhost
 permguard checkout origin/895741663247/magicfarmacia
 ```
