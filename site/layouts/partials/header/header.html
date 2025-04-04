@@ -106,7 +106,7 @@
       </div>
       -->
       <div class="offcanvas-body d-flex flex-column flex-lg-row justify-content-between">
-        <nav actor="navigation" class="d-flex align-items-center">
+        <nav actor="navigation" class="d-flex d-lg-none align-items-center">
           <ul class="navbar-nav">
           {{- $current := . -}}
           {{- $section := $current.Section -}}
@@ -211,10 +211,15 @@
 <!-- Social menu -->
 {{ if .Site.Menus.social -}}
 <ul id="socialMenu" class="nav mx-auto flex-row gap-3 order-lg-4 mt-auto mt-lg-0 order-3 order-lg-0">
-  {{ range (sort .Site.Menus.social "Name" "desc") -}}
-    <li class="nav-item">
-      <a target="_blank" class="nav-link social-link" href="{{ .URL | relURL }}">{{ .Pre | safeHTML }}<small class="ms-2 visually-hidden">{{ .Name | safeHTML }}</small></a>
-    </li>
+  {{ range (sort .Site.Menus.social "Weight" "asc") -}}
+    
+      {{ if eq .Name "Docs" -}}
+        {{ if not (in site.Params.doks.sectionNav $.Section) -}}
+        <li class="nav-item"><a class="nav-link social-link" href="{{ .URL | relURL }}">{{ .Pre | safeHTML }}<small class="ms-2 visually-hidden">{{ .Name | safeHTML }}</small></a></li>
+        {{ end -}}
+      {{ else -}}
+      <li class="nav-item"><a target="_blank" class="nav-link social-link" href="{{ .URL | relURL }}">{{ .Pre | safeHTML }}<small class="ms-2 visually-hidden">{{ .Name | safeHTML }}</small></a></li>
+      {{ end -}}
   {{ end -}}
 </ul>
 {{ end -}}
