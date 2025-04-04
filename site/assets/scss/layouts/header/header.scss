@@ -1,4 +1,4 @@
-header {
+.header {
   // overflow-x: hidden;
   position: relative;
 
@@ -12,9 +12,15 @@ header {
     z-index: -1;
     bottom: 0;
     right: 0;
-    left: 0;
+    left: 50%;
+    transform: translateX(-50%);
     backdrop-filter: blur(4px);
     background-color: rgba(255, 255, 255, 0.02) !important;
+    width: 100vw;
+
+    @media (min-width: 1439px) {
+      width: calc(100vw - 15px);
+    }
   }
 
   .nav-link {
