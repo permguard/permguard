@@ -83,8 +83,6 @@ github.com/permguard/permguard-common v0.0.1-0.20250324235958-a7cfb846171e h1:tw
 github.com/permguard/permguard-common v0.0.1-0.20250324235958-a7cfb846171e/go.mod h1:lB0itvH4Zfo6VZGSqKvX5hY/QXOzgvyKgtGllcdIrkk=
 github.com/permguard/permguard-notp-protocol v0.0.1-0.20250325000214-6c0849aa9d2d h1:2c2Wq4ExzxGPujLg70C7Oc1zW4pXYcn84coP4b/tEdQ=
 github.com/permguard/permguard-notp-protocol v0.0.1-0.20250325000214-6c0849aa9d2d/go.mod h1:7Z9qtEkI2tKLpRss+Ae4W2UA6P94mTGJnTWjDllXzTQ=
-github.com/permguard/permguard-ztauthstar v0.0.1-0.20250405170111-1ce8245f196c h1:BGKWnH35mCL1u4EnzPEOX+dMsOUfhU3Dibs5L3/KSK0=
-github.com/permguard/permguard-ztauthstar v0.0.1-0.20250405170111-1ce8245f196c/go.mod h1:lrRj24j8pr7BGYKlP9moY9a8ymOnQoBCKHVIlsyGQBU=
 github.com/permguard/permguard-ztauthstar v0.0.1-0.20250405171213-33a9bb86d483 h1:ZHRBA6AoDfzbclDeiVUzUkqVucdJxu4zFdO5UStX+9U=
 github.com/permguard/permguard-ztauthstar v0.0.1-0.20250405171213-33a9bb86d483/go.mod h1:lrRj24j8pr7BGYKlP9moY9a8ymOnQoBCKHVIlsyGQBU=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
