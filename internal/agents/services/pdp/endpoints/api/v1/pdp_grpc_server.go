@@ -20,7 +20,7 @@ import (
 	"context"
 	"encoding/json"
 
-	azauthzen "github.com/permguard/permguard-ztauthstar-engine/pkg/authzen"
+	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"

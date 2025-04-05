@@ -17,7 +17,7 @@
 package workspace
 
 import (
-	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
+	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/objects"
 
 	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
 )

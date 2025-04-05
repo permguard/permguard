@@ -41,7 +41,6 @@ const (
 	commandNameForWorkspacesInitTemplate = "template"
 )
 
-
 // runECommandForInitWorkspace runs the command for creating an workspace.
 func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)

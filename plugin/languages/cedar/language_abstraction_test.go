@@ -22,7 +22,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
+	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/objects"
 )
 
 // TestLanguageSpecification tests the language specification.
