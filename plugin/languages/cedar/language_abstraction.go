@@ -26,7 +26,7 @@ import (
 	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
 	azlangtypes "github.com/permguard/permguard-ztauthstar/pkg/languages/types"
 	azlangvalidators "github.com/permguard/permguard-ztauthstar/pkg/languages/validators"
-	azztasmnft "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/manifests"
+	azztasmodels "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels"
 	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/languages"
@@ -83,7 +83,7 @@ func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
 }
 
 // BuildManifest builds the manifest.
-func (abs *CedarLanguageAbstraction) BuildManifest(manifest *azztasmnft.Manifest, language, template string) (*azztasmnft.Manifest, error) {
+func (abs *CedarLanguageAbstraction) BuildManifest(manifest *azztasmodels.Manifest, language, template string) (*azztasmodels.Manifest, error) {
 	if manifest == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] manifest is nil")
 	}
@@ -91,7 +91,7 @@ func (abs *CedarLanguageAbstraction) BuildManifest(manifest *azztasmnft.Manifest
 }
 
 // ValidateManifest validates the manifest.
-func (abs *CedarLanguageAbstraction) ValidateManifest(manifest *azztasmnft.Manifest) (bool, error) {
+func (abs *CedarLanguageAbstraction) ValidateManifest(manifest *azztasmodels.Manifest) (bool, error) {
 	if manifest == nil {
 		return false, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] manifest is nil")
 	}
