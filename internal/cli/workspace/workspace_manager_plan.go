@@ -19,7 +19,7 @@ package workspace
 import (
 	"time"
 
-	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
+	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/objects"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/languages"

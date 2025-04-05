@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"strings"
 
-	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
 	azlangtypes "github.com/permguard/permguard-ztauthstar/pkg/languages/types"
+	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"

@@ -17,7 +17,7 @@
 package workspace
 
 import (
-	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
+	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/languages"
 

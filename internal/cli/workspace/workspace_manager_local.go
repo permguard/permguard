@@ -21,8 +21,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	azledger "github.com/permguard/permguard-ztauthstar-ledger/pkg/objects"
 	azlangtypes "github.com/permguard/permguard-ztauthstar/pkg/languages/types"
+	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/objects"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"

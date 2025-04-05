@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	azauthzen "github.com/permguard/permguard-ztauthstar-engine/pkg/authzen"
+	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azStorage "github.com/permguard/permguard/pkg/agents/storage"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"

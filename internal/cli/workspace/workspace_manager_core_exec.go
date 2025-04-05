@@ -21,10 +21,10 @@ import (
 	"path/filepath"
 
 	azvalidators "github.com/permguard/permguard-common/pkg/extensions/validators"
+	azztasmnft "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/manifests"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azztas "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar"
 )
 
 // codeFileInfo represents info about the code file.
@@ -50,7 +50,7 @@ func (m *WorkspaceManager) ExecPrintContext(output map[string]any, out aziclicom
 // InitParms represents the parameters for initializing the workspace.
 type InitParms struct {
 	// Name of the workspace to be used in the manifest.
-	Name     string
+	Name string
 	// Language to be used in the manifest.
 	Language string
 	// Template to be used in the manifest.
@@ -85,7 +85,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 			return failedOpErr(nil, err)
 		}
 
-		manifest, err := azztas.NewManifest(wksName, "")
+		manifest, err := azztasmnft.NewManifest(wksName, "")
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -94,12 +94,12 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 			return failedOpErr(nil, err)
 		}
 
-		manifestData, err := azztas.ConvertManifestToBytes(manifest, true)
+		manifestData, err := azztasmnft.ConvertManifestToBytes(manifest, true)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
 
-		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.WorkspaceDir, azztas.ManifestFileName, manifestData, 0644, false)
+		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.WorkspaceDir, azztasmnft.ManifestFileName, manifestData, 0644, false)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
