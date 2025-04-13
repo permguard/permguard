@@ -1,6 +1,6 @@
 ---
-title: "Manifest"
-slug: "Manifest"
+title: "AuthZ Manifest"
+slug: "AuthZ Manifest"
 description: ""
 summary: ""
 date: 2025-02-14T00:34:10+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "manifest-58476a6a55504215bded7cd487135bf4"
+    identifier: "manifest-authz-58476a6a55504215bded7cd487135bf4"
 weight: 4102
 toc: true
 seo:
