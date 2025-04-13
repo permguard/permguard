@@ -26,6 +26,7 @@ Below is an example of an `AuthZ Manifest`:
 ```json
 {
     "metadata": {
+        "kind": "authz",
         "name": "playground-cedar",
         "description": "A Permguard playground using the Cedar language.",
         "author": "Nitro Agility S.r.l.",
