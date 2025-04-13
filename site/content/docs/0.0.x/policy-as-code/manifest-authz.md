@@ -1,6 +1,6 @@
 ---
-title: "Manifest"
-slug: "Manifest"
+title: "AuthZ Manifest"
+slug: "AuthZ Manifest"
 description: ""
 summary: ""
 date: 2025-02-14T00:34:10+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "manifest-2acc79fe1e014fe2ade6d301de843c14"
+    identifier: "manifest-authz-2acc79fe1e014fe2ade6d301de843c14"
 weight: 4002
 toc: true
 seo:
@@ -21,7 +21,7 @@ seo:
 
 The **Manifest** is used to define the ZTAuth* models.
 
-Below is an example of an `Manifest`:
+Below is an example of an `AuthZ Manifest`:
 
 ```json
 {
@@ -31,29 +31,23 @@ Below is an example of an `Manifest`:
         "author": "Nitro Agility S.r.l.",
         "license": "Apache-2.0"
     },
-    "authz": {
-        "runtimes": {
-            "cedar0.0+": {
-                "language": {
-                    "name": "cedar",
-                    "version": "0.0+"
-                },
-                "engine": {
-                    "name": "permguard",
-                    "version": "0.0+",
-                    "distribution": "community"
-                }
+    "runtimes": {
+        "cedar0.0+": {
+            "language": {
+                "name": "cedar",
+                "version": "0.0+"
+            },
+            "engine": {
+                "name": "permguard",
+                "version": "0.0+",
+                "distribution": "community"
             }
-        },
-        "partitions": {
-            "root": {
-                "location": {
-                    "path": "./",
-                    "mode": "file"
-                },
-                "runtime": "cedar0.0+",
-                "schema": false
-            }
+        }
+    },
+    "partitions": {
+        "root": {
+            "runtime": "cedar0.0+",
+            "schema": false
         }
     }
 }
