@@ -21,8 +21,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	azlangtypes "github.com/permguard/permguard-ztauthstar/pkg/languages/types"
-	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/objects"
+	azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
+	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
@@ -227,8 +227,8 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 			Section:      0,
 			Mode:         0,
 			HasErrors:    true,
-			CodeID:       azlangtypes.ClassTypeSchema,
-			CodeType:     azlangtypes.ClassTypeSchema,
+			CodeID:       azauthzlangtypes.ClassTypeSchema,
+			CodeType:     azauthzlangtypes.ClassTypeSchema,
 			ErrorMessage: fmt.Sprintf("language: the schema file '%s' is missing. please ensure there are no duplicate schema files and that the required schema file is present.", schemaFileName),
 		}
 		blbCodeFiles = append(blbCodeFiles, codeFile)

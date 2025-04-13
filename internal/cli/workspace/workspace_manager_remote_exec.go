@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"strings"
 
-	azlangtypes "github.com/permguard/permguard-ztauthstar/pkg/languages/types"
-	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/objects"
+	azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
+	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
@@ -307,9 +307,9 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 					return failedOpErr(nil, err)
 				}
 				switch classType {
-				case azlangtypes.ClassTypeSchemaID:
+				case azauthzlangtypes.ClassTypeSchemaID:
 					schemaBlock = codeBlock
-				case azlangtypes.ClassTypePolicyID:
+				case azauthzlangtypes.ClassTypePolicyID:
 					objInfo, err := m.objMar.GetObjectInfo(entryObj)
 					if err != nil {
 						return nil, err

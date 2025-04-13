@@ -24,10 +24,10 @@ import (
 	"github.com/cedar-policy/cedar-go"
 
 	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
-	azlangtypes "github.com/permguard/permguard-ztauthstar/pkg/languages/types"
-	azlangvalidators "github.com/permguard/permguard-ztauthstar/pkg/languages/validators"
-	azztasmodels "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels"
-	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/objects"
+	azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
+	azauthzlangvalidators "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/validators"
+	azztasmanifests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azlang "github.com/permguard/permguard/pkg/languages"
 )
@@ -83,7 +83,7 @@ func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
 }
 
 // BuildManifest builds the manifest.
-func (abs *CedarLanguageAbstraction) BuildManifest(manifest *azztasmodels.Manifest, language, template string) (*azztasmodels.Manifest, error) {
+func (abs *CedarLanguageAbstraction) BuildManifest(manifest *azztasmanifests.Manifest, language, template string) (*azztasmanifests.Manifest, error) {
 	if manifest == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] manifest is nil")
 	}
@@ -91,7 +91,7 @@ func (abs *CedarLanguageAbstraction) BuildManifest(manifest *azztasmodels.Manife
 }
 
 // ValidateManifest validates the manifest.
-func (abs *CedarLanguageAbstraction) ValidateManifest(manifest *azztasmodels.Manifest) (bool, error) {
+func (abs *CedarLanguageAbstraction) ValidateManifest(manifest *azztasmanifests.Manifest) (bool, error) {
 	if manifest == nil {
 		return false, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] manifest is nil")
 	}
@@ -192,8 +192,8 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, da
 	}
 
 	const (
-		codeType   = azlangtypes.ClassTypePolicy
-		codeTypeID = azlangtypes.ClassTypePolicyID
+		codeType   = azauthzlangtypes.ClassTypePolicy
+		codeTypeID = azauthzlangtypes.ClassTypePolicyID
 
 		langPolicyType   = LanguagePolicyType
 		langPolicyTypeID = LanguagePolicyTypeID
@@ -218,7 +218,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, da
 		objName := policyID
 		codeID := objName
 
-		if isValid, err := azlangvalidators.ValidatePolicyName(policyID); !isValid {
+		if isValid, err := azauthzlangvalidators.ValidatePolicyName(policyID); !isValid {
 			multiSecObj.AddSectionObjectWithError(i, err)
 			continue
 		}
@@ -272,11 +272,11 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data [
 	}
 
 	const (
-		objName = azlangtypes.ClassTypeSchema
+		objName = azauthzlangtypes.ClassTypeSchema
 
-		codeID     = azlangtypes.ClassTypeSchema
-		codeType   = azlangtypes.ClassTypeSchema
-		codeTypeID = azlangtypes.ClassTypeSchemaID
+		codeID     = azauthzlangtypes.ClassTypeSchema
+		codeType   = azauthzlangtypes.ClassTypeSchema
+		codeTypeID = azauthzlangtypes.ClassTypeSchemaID
 
 		langSchemaType   = LanguageSchemaType
 		langSchemaTypeID = LanguageSchemaTypeID
