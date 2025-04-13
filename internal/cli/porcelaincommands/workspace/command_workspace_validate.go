@@ -53,9 +53,6 @@ func runECommandForValidateWorkspace(deps azcli.CliDependenciesProvider, cmd *co
 	}
 	output, err := wksMgr.ExecValidate(outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to validate the workspace.")
-		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to validate the workspace.", err)
 			printer.Error(sysErr)
