@@ -22,8 +22,8 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
-	azlangtypes "github.com/permguard/permguard-ztauthstar/pkg/languages/types"
-	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/objects"
+	azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
+	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 	azplangcedar "github.com/permguard/permguard/plugin/languages/cedar"
@@ -159,9 +159,9 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 		}
 		objInfoHeader := objInfo.GetHeader()
 		oid := objInfo.GetOID()
-		if objInfoHeader.GetCodeTypeID() == azlangtypes.ClassTypeSchemaID {
+		if objInfoHeader.GetCodeTypeID() == azauthzlangtypes.ClassTypeSchemaID {
 			authzPolicyStore.AddSchema(oid, objInfo)
-		} else if objInfoHeader.GetCodeTypeID() == azlangtypes.ClassTypePolicyID {
+		} else if objInfoHeader.GetCodeTypeID() == azauthzlangtypes.ClassTypePolicyID {
 			authzPolicyStore.AddPolicy(oid, objInfo)
 		} else {
 			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't process the code type id")

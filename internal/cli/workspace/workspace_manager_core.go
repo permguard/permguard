@@ -23,8 +23,8 @@ import (
 
 	"github.com/gofrs/flock"
 
-	azztasmodels "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels"
-	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/objects"
+	azztasmanifests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
@@ -162,15 +162,15 @@ func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out aziclicommon.PrinterO
 
 // hasValidManifestWorkspaceDir checks if the directory is a valid workspace directory.
 func (m *WorkspaceManager) hasValidManifestWorkspaceDir() error {
-	manifestData, _, err := m.persMgr.ReadFile(azicliwkspers.WorkspaceDir, azztasmodels.ManifestFileName, false)
+	manifestData, _, err := m.persMgr.ReadFile(azicliwkspers.WorkspaceDir, azztasmanifests.ManifestFileName, false)
 	if err != nil {
 		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "could not read the manifest file in the workspace directory", err)
 	}
-	manifest, err := azztasmodels.ConvertBytesToManifest(manifestData)
+	manifest, err := azztasmanifests.ConvertBytesToManifest(manifestData)
 	if err != nil {
 		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
 	}
-	ok, err := azztasmodels.ValidateManifest(manifest)
+	ok, err := azztasmanifests.ValidateManifest(manifest)
 	if err != nil {
 		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
 	}

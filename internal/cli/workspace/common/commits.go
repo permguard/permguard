@@ -17,11 +17,11 @@
 package common
 
 import (
-	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/objects"
+	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
-// CommitInfo
+// CommitInfo define a commit info.
 type CommitInfo struct {
 	oid    string
 	commit *azledger.Commit
