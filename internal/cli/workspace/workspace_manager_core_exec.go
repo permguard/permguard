@@ -85,7 +85,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 			return failedOpErr(nil, err)
 		}
 
-		manifest, err := azztasmanifests.NewManifest(wksName, "")
+		manifest, err := azztasmanifests.NewManifest("authz", wksName, "")
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
