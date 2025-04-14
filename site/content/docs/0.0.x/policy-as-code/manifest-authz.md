@@ -46,7 +46,7 @@ Below is an example of an `AuthZ Manifest`:
         }
     },
     "partitions": {
-        "root": {
+        "/": {
             "runtime": "cedar0.0+",
             "schema": false
         }
@@ -67,5 +67,5 @@ Both of them have a version, and the **+** means from that version to any other 
 
 ## **Partitions**
 
-This section defines the partitions of the **authorization model** and mandates the presence of a ```root``` partition. Each partition is associated with a specific runtime and allows specifying if a schema is required.
-Along with this, it is required to specify the location, which has a path and a mode (```file``` or ```directory```).
+This section defines the partitions of the **authorization model** and mandates the presence of a `root` partition. Each partition is associated with a specific runtime and allows specifying if a schema is required.
+Along with this, it is required to specify the location, which has a path and a mode (`file` or `directory`).
