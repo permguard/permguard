@@ -24,7 +24,7 @@ import (
 	"github.com/gofrs/flock"
 
 	azztasmanifests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
-	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
@@ -32,8 +32,8 @@ import (
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
 	azicliwksremotesrv "github.com/permguard/permguard/internal/cli/workspace/remoteserver"
+	azlang "github.com/permguard/permguard/pkg/authz/languages"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azlang "github.com/permguard/permguard/pkg/languages"
 )
 
 const (
@@ -53,7 +53,7 @@ const (
 type WorkspaceManager struct {
 	ctx       *aziclicommon.CliCommandContext
 	homeDir   string
-	objMar    *azledger.ObjectManager
+	objMar    *azobjs.ObjectManager
 	langFct   azlang.LanguageFactory
 	persMgr   *azicliwkspers.PersistenceManager
 	rmSrvtMgr *azicliwksremotesrv.RemoteServerManager
@@ -66,7 +66,7 @@ type WorkspaceManager struct {
 // NewInternalManager creates a new internal manager.
 func NewInternalManager(ctx *aziclicommon.CliCommandContext, langFct azlang.LanguageFactory) (*WorkspaceManager, error) {
 	homeDir := ctx.GetWorkDir()
-	objMar, err := azledger.NewObjectManager()
+	objMar, err := azobjs.NewObjectManager()
 	if err != nil {
 		return nil, err
 	}

@@ -17,7 +17,7 @@
 package centralstorage
 
 import (
-	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 
@@ -52,8 +52,8 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 	headCommitID := ledger.Ref
 	hasConflicts := false
 	isUpToDate := false
-	if headCommitID != azledger.ZeroOID && headCommitID != remoteRefPacket.RefPrevCommit {
-		objMng, err := azledger.NewObjectManager()
+	if headCommitID != azobjs.ZeroOID && headCommitID != remoteRefPacket.RefPrevCommit {
+		objMng, err := azobjs.NewObjectManager()
 		if err != nil {
 			return nil, err
 		}
@@ -61,18 +61,18 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 		if err != nil {
 			return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
 		}
-		hasMatch, history, err := objMng.BuildCommitHistory(headCommitID, remoteRefPacket.RefPrevCommit, false, func(oid string) (*azledger.Object, error) {
+		hasMatch, history, err := objMng.BuildCommitHistory(headCommitID, remoteRefPacket.RefPrevCommit, false, func(oid string) (*azobjs.Object, error) {
 			keyValue, errkey := s.sqlRepo.GetKeyValue(db, zoneID, oid)
 			if errkey != nil || keyValue == nil || keyValue.Value == nil {
 				return nil, nil
 			}
-			return azledger.NewObject(keyValue.Value)
+			return azobjs.NewObject(keyValue.Value)
 		})
 		if err != nil {
 			return nil, err
 		}
 		hasConflicts = hasMatch && len(history) > 1
-		if headCommitID != azledger.ZeroOID && remoteRefPacket.RefPrevCommit == azledger.ZeroOID {
+		if headCommitID != azobjs.ZeroOID && remoteRefPacket.RefPrevCommit == azobjs.ZeroOID {
 			hasConflicts = true
 		}
 		isUpToDate = headCommitID == remoteRefPacket.RefCommit

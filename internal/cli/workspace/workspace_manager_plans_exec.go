@@ -19,7 +19,7 @@ package workspace
 import (
 	"fmt"
 
-	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
@@ -54,18 +54,6 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 		return output, err
 	}
 
-	// TODO: Read the language from the authz-model manifest
-	// Creates the abstraction for the language
-	// lang, err := m.cfgMgr.GetLanguage()
-	// if err != nil {
-	// 	return failedOpErr(nil, err)
-	// }
-	lang := "cedar"
-	absLang, err := m.langFct.GetLanguageAbastraction(lang)
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-
 	// Read current head settings
 	headCtx, err := m.getCurrentHeadContext()
 	if err != nil {
@@ -95,12 +83,12 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 
 	errPlanningProcessFailed := "Planning process failed."
 
-	if headCtx.GetRemoteCommitID() == azledger.ZeroOID {
+	if headCtx.GetRemoteCommitID() == azobjs.ZeroOID {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "plan", fmt.Sprintf("The ref %s has no commits associated with it.", aziclicommon.KeywordText(headCtx.GetRef())), nil, true)
 		}
 	}
-	remoteTree, err := m.GetCurrentHeadTree(absLang, headCtx.GetRef())
+	remoteTree, err := m.GetCurrentHeadTree(headCtx.GetRef())
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "plan", fmt.Sprintf("The ref %s could not read the remote tree.", aziclicommon.KeywordText(headCtx.GetRef())), nil, true)
@@ -297,7 +285,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", "Preparing to build the tree.", nil, true)
 	}
-	_, treeObj, err := m.buildPlanTree(plan, absLang)
+	_, treeObj, err := m.buildPlanTree(plan)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "apply", "Failed to build the tree.", nil, true)
@@ -308,7 +296,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", fmt.Sprintf("The tree has been created with id: %s.", aziclicommon.IDText(treeObj.GetOID())), nil, true)
 	}
-	commit, commitObj, err := m.buildPlanCommit(treeObj.GetOID(), headCtx.remoteCommitID, absLang)
+	commit, commitObj, err := m.buildPlanCommit(treeObj.GetOID(), headCtx.remoteCommitID)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "apply", "Failed to build the commit.", nil, true)

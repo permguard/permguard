@@ -17,9 +17,8 @@
 package workspace
 
 import (
-	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
-	azlang "github.com/permguard/permguard/pkg/languages"
 )
 
 // getCurrentHeadContext gets the current head context.
@@ -80,19 +79,19 @@ func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) 
 }
 
 // GetCurrentHeadCommit gets the current head commit.
-func (m *WorkspaceManager) GetCurrentHeadCommit(absLang azlang.LanguageAbastraction, ref string) (*azledger.Commit, error) {
+func (m *WorkspaceManager) GetCurrentHeadCommit(ref string) (*azobjs.Commit, error) {
 	remoteCommitID, err := m.rfsMgr.GetRefCommit(ref)
 	if err != nil {
 		return nil, err
 	}
-	if remoteCommitID == azledger.ZeroOID {
+	if remoteCommitID == azobjs.ZeroOID {
 		return nil, nil
 	}
 	remoteCommitObj, err := m.cospMgr.ReadObject(remoteCommitID)
 	if err != nil {
 		return nil, err
 	}
-	remoteCommit, err := absLang.ConvertObjectToCommit(remoteCommitObj)
+	remoteCommit, err := azobjs.ConvertObjectToCommit(remoteCommitObj)
 	if err != nil {
 		return nil, err
 	}
@@ -100,8 +99,8 @@ func (m *WorkspaceManager) GetCurrentHeadCommit(absLang azlang.LanguageAbastract
 }
 
 // GetCurrentHeadTree gets the current head tree.
-func (m *WorkspaceManager) GetCurrentHeadTree(absLang azlang.LanguageAbastraction, ref string) (*azledger.Tree, error) {
-	commit, err := m.GetCurrentHeadCommit(absLang, ref)
+func (m *WorkspaceManager) GetCurrentHeadTree(ref string) (*azobjs.Tree, error) {
+	commit, err := m.GetCurrentHeadCommit(ref)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +111,7 @@ func (m *WorkspaceManager) GetCurrentHeadTree(absLang azlang.LanguageAbastractio
 	if err != nil {
 		return nil, err
 	}
-	tree, err := absLang.ConvertObjectToTree(treeObj)
+	tree, err := azobjs.ConvertObjectToTree(treeObj)
 	if err != nil {
 		return nil, err
 	}

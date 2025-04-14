@@ -19,7 +19,7 @@ package languages
 import (
 	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
 	azztasmanifests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
-	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 // LanguageSpecification is the interface for the language specification.
@@ -52,22 +52,12 @@ type LanguageAbastraction interface {
 	ValidateManifest(manifest *azztasmanifests.Manifest) (bool, error)
 	// GetLanguageSpecification returns the specification for the language.
 	GetLanguageSpecification() LanguageSpecification
-	// ReadObjectContentBytes reads the object content bytes.
-	ReadObjectContentBytes(obj *azledger.Object) (uint32, []byte, error)
-	// CreateCommitObject creates a commit object.
-	CreateCommitObject(commit *azledger.Commit) (*azledger.Object, error)
-	// ConvertObjectToCommit converts an object to a commit.
-	ConvertObjectToCommit(obj *azledger.Object) (*azledger.Commit, error)
-	// CreateTreeObject creates a tree object.
-	CreateTreeObject(tree *azledger.Tree) (*azledger.Object, error)
-	// ConvertObjectToTree converts an object to a tree.
-	ConvertObjectToTree(obj *azledger.Object) (*azledger.Tree, error)
 	// CreatePolicyBlobObjects creates multi sections policy blob objects.
-	CreatePolicyBlobObjects(path string, data []byte) (*azledger.MultiSectionsObject, error)
-	// CreateMultiPolicyContentBytesBody creates a multi policy content bytes.
-	CreateMultiPolicyContentBytes(blocks [][]byte) ([]byte, string, error)
+	CreatePolicyBlobObjects(path string, data []byte) (*azobjs.MultiSectionsObject, error)
+	// CreatePolicyContentBytesBody creates a multi policy content bytes.
+	CreatePolicyContentBytes(blocks [][]byte) ([]byte, string, error)
 	// CreateSchemaBlobObjects creates multi sections schema blob objects.
-	CreateSchemaBlobObjects(path string, data []byte) (*azledger.MultiSectionsObject, error)
+	CreateSchemaBlobObjects(path string, data []byte) (*azobjs.MultiSectionsObject, error)
 	// CreateSchemaContentBytes creates a schema content bytes.
 	CreateSchemaContentBytes(blocks []byte) ([]byte, string, error)
 	// ConvertBytesToFrontendLanguage converts bytes to the frontend language.
