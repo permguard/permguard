@@ -22,7 +22,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 // TestLanguageSpecification tests the language specification.
@@ -49,15 +49,15 @@ func TestCommitCreation(t *testing.T) {
 
 	tree := "4ad3bb52786751f4b6f9839953fe3dcc2278c66648f0d0193f98088b7e4d0c1d"
 	parent := "a294ba66f45afd23f8bda3892728601bb509989a80dbb54d7b513dacb8099d76"
-	commit, err := azledger.NewCommit(tree, parent, "Nicola Gallo", time.Unix(1628704800, 0), "Nicola Gallo", time.Unix(1628704800, 0), "Initial commit")
+	commit, err := azobjs.NewCommit(tree, parent, "Nicola Gallo", time.Unix(1628704800, 0), "Nicola Gallo", time.Unix(1628704800, 0), "Initial commit")
 	assert.Nil(err, "NewCommit should not return an error")
 	assert.NotNil(commit, "Commit should not be nil")
 
-	commitObj, err := langAbs.CreateCommitObject(commit)
+	commitObj, err := azobjs.CreateCommitObject(commit)
 	assert.Nil(err, "CreateCommitObject should not return an error")
 	assert.NotNil(commitObj, "Commit object should not be nil")
 
-	convertedCommit, err := langAbs.ConvertObjectToCommit(commitObj)
+	convertedCommit, err := azobjs.ConvertObjectToCommit(commitObj)
 	assert.Nil(err, "ConvertObjectToCommit should not return an error")
 	assert.NotNil(convertedCommit, "Converted commit should not be nil")
 	assert.Equal(commit.GetTree(), convertedCommit.GetTree(), "Tree mismatch")
@@ -79,27 +79,27 @@ func TestTreeCreation(t *testing.T) {
 	assert.Nil(err, "NewCedarLanguageAbstraction should not return an error")
 	assert.NotNil(langAbs, "Language abstraction should not be nil")
 
-	tree, err := azledger.NewTree()
+	tree, err := azobjs.NewTree()
 	assert.Nil(err, "new tree should not return an error")
 
-	treeItem1, err := azledger.NewTreeEntry("blob", "515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634d3def5fe", "name1", "code1", "codeType1", "cedar", "*", "policy")
+	treeItem1, err := azobjs.NewTreeEntry("blob", "515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634d3def5fe", "name1", "code1", "codeType1", "cedar", "*", "policy")
 	assert.Nil(err, "new tree entry should not return an error")
 	tree.AddEntry(treeItem1)
 
-	treeItem2, err := azledger.NewTreeEntry("blob", "2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca12d9d6170", "name2", "code2", "codeType2", "cedar", "*", "policy")
+	treeItem2, err := azobjs.NewTreeEntry("blob", "2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca12d9d6170", "name2", "code2", "codeType2", "cedar", "*", "policy")
 	assert.Nil(err, "new tree entry should not return an error")
 	tree.AddEntry(treeItem2)
 
-	treeItem3, err := azledger.NewTreeEntry("tree", "fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851", "name3", "code3", "codeType3", "cedar", "*", "policy")
+	treeItem3, err := azobjs.NewTreeEntry("tree", "fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851", "name3", "code3", "codeType3", "cedar", "*", "policy")
 	tree.AddEntry(treeItem3)
 
 	assert.Nil(err, "NewTree should not return an error")
 
-	treeObj, err := langAbs.CreateTreeObject(tree)
+	treeObj, err := azobjs.CreateTreeObject(tree)
 	assert.Nil(err, "CreateTreeObject should not return an error")
 	assert.NotNil(treeObj, "Tree object should not be nil")
 
-	convertedTree, err := langAbs.ConvertObjectToTree(treeObj)
+	convertedTree, err := azobjs.ConvertObjectToTree(treeObj)
 	assert.Nil(err, "ConvertObjectToTree should not return an error")
 	assert.NotNil(convertedTree, "Converted commit should not be nil")
 

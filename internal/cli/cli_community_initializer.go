@@ -26,8 +26,8 @@ import (
 	azicliconfigs "github.com/permguard/permguard/internal/cli/porcelaincommands/configs"
 	azicliwks "github.com/permguard/permguard/internal/cli/porcelaincommands/workspace"
 	aziclizones "github.com/permguard/permguard/internal/cli/porcelaincommands/zones"
+	azlang "github.com/permguard/permguard/pkg/authz/languages"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azlang "github.com/permguard/permguard/pkg/languages"
 )
 
 // CommunityCliInitializer  is the community cli initializer.

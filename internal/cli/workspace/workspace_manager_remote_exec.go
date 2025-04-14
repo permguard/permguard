@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
-	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
@@ -85,7 +85,7 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 			return failedOpErr(output, err)
 		}
 		// Checkout the head
-		remoteCommitID := azledger.ZeroOID
+		remoteCommitID := azobjs.ZeroOID
 		var remoteRef, headRef string
 		remoteRef, headRef, output, err = m.rfsMgr.ExecCheckoutRefFilesForRemote(ledgerInfo.GetRemote(), ledgerInfo.GetZoneID(), ledgerInfo.GetLedger(), srvLedger.LedgerID, remoteCommitID, output, out)
 		if err != nil {
@@ -255,12 +255,12 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			return failedOpErr(nil, err)
 		}
 	}
-	if remoteCommitID != azledger.ZeroOID {
+	if remoteCommitID != azobjs.ZeroOID {
 		commitObj, err := m.cospMgr.ReadObject(remoteCommitID)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		commit, err := absLang.ConvertObjectToCommit(commitObj)
+		commit, err := azobjs.ConvertObjectToCommit(commitObj)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -269,7 +269,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		tree, err := absLang.ConvertObjectToTree(treeObj)
+		tree, err := azobjs.ConvertObjectToTree(treeObj)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -302,7 +302,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
-				classType, codeBlock, err := absLang.ReadObjectContentBytes(entryObj)
+				classType, codeBlock, err := azobjs.ReadObjectContentBytes(entryObj)
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
@@ -333,7 +333,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		}
 		output["code_entries"] = codeEntries
 		if len(codeBlocks) > 0 {
-			codeBlock, ext, err := absLang.CreateMultiPolicyContentBytes(codeBlocks)
+			codeBlock, ext, err := absLang.CreatePolicyContentBytes(codeBlocks)
 			if err != nil {
 				return failedOpErr(nil, err)
 			}

@@ -22,11 +22,11 @@ import (
 	"strings"
 
 	azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
-	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
+	azlang "github.com/permguard/permguard/pkg/authz/languages"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azlang "github.com/permguard/permguard/pkg/languages"
 )
 
 // groupCodeFiles groups the code files.
@@ -248,12 +248,12 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 	if err := m.cospMgr.SaveCodeSourceCodeState(codeObsState); err != nil {
 		return "", blbCodeFiles, err
 	}
-	tree, err := azledger.NewTree()
+	tree, err := azobjs.NewTree()
 	if err != nil {
 		return "", blbCodeFiles, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree object cannot be created", err)
 	}
 	for _, codeObjState := range codeObsState {
-		treeItem, err := azledger.NewTreeEntry(codeObjState.OType, codeObjState.OID, codeObjState.OName, codeObjState.CodeID, codeObjState.CodeType, codeObjState.Language, codeObjState.LanguageVersion, codeObjState.LanguageType)
+		treeItem, err := azobjs.NewTreeEntry(codeObjState.OType, codeObjState.OID, codeObjState.OName, codeObjState.CodeID, codeObjState.CodeType, codeObjState.Language, codeObjState.LanguageVersion, codeObjState.LanguageType)
 		if err != nil {
 			return "", nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be created", err)
 		}
@@ -261,7 +261,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 			return "", blbCodeFiles, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be added to the tree because of errors in the code files", err)
 		}
 	}
-	treeObj, err := absLang.CreateTreeObject(tree)
+	treeObj, err := azobjs.CreateTreeObject(tree)
 	if err != nil {
 		return "", blbCodeFiles, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree object cannot be created", err)
 	}

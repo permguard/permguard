@@ -20,8 +20,8 @@ package mocks
 import (
 	mock "github.com/stretchr/testify/mock"
 
+	azlang "github.com/permguard/permguard/pkg/authz/languages"
 	azcli "github.com/permguard/permguard/pkg/cli"
-	azlang "github.com/permguard/permguard/pkg/languages"
 	azclients "github.com/permguard/permguard/pkg/transport/clients"
 )
 

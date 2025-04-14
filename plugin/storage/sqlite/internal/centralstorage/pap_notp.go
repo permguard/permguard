@@ -21,7 +21,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 
@@ -75,7 +75,7 @@ func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key str
 }
 
 // GetObjectForType gets the object for the type.
-func GetObjectForType[T any](objMng *azledger.ObjectManager, obj *azledger.Object) (*T, error) {
+func GetObjectForType[T any](objMng *azobjs.ObjectManager, obj *azobjs.Object) (*T, error) {
 	objInfo, err := objMng.GetObjectInfo(obj)
 	if err != nil {
 		return nil, err
@@ -89,12 +89,12 @@ func GetObjectForType[T any](objMng *azledger.ObjectManager, obj *azledger.Objec
 }
 
 // readObject reads the object.
-func (s SQLiteCentralStoragePAP) readObject(db *sqlx.DB, zoneID int64, oid string) (*azledger.Object, error) {
+func (s SQLiteCentralStoragePAP) readObject(db *sqlx.DB, zoneID int64, oid string) (*azobjs.Object, error) {
 	keyValue, errkey := s.sqlRepo.GetKeyValue(db, zoneID, oid)
 	if errkey != nil || keyValue == nil || keyValue.Value == nil {
 		return nil, nil
 	}
-	obj, err := azledger.NewObject(keyValue.Value)
+	obj, err := azobjs.NewObject(keyValue.Value)
 	if err != nil {
 		return nil, err
 	}

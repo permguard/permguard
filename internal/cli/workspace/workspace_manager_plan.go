@@ -19,10 +19,9 @@ package workspace
 import (
 	"time"
 
-	azledger "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azlang "github.com/permguard/permguard/pkg/languages"
 )
 
 // plan generates a plan of changes to apply to the remote ledger based on the differences between the local and remote states.
@@ -31,8 +30,8 @@ func (m *WorkspaceManager) plan(currentCodeObsStates []azicliwkscosp.CodeObjectS
 }
 
 // buildPlanTree builds the plan tree.
-func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, absLang azlang.LanguageAbastraction) (*azledger.Tree, *azledger.Object, error) {
-	tree, err := azledger.NewTree()
+func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState) (*azobjs.Tree, *azobjs.Object, error) {
+	tree, err := azobjs.NewTree()
 	if err != nil {
 		return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree cannot be created", err)
 	}
@@ -40,7 +39,7 @@ func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, a
 		if planItem.State == azicliwkscosp.CodeObjectStateDelete {
 			continue
 		}
-		treeItem, err := azledger.NewTreeEntry(planItem.OType, planItem.OID, planItem.OName, planItem.CodeID, planItem.CodeType, planItem.Language, planItem.LanguageVersion, planItem.LanguageType)
+		treeItem, err := azobjs.NewTreeEntry(planItem.OType, planItem.OID, planItem.OName, planItem.CodeID, planItem.CodeType, planItem.Language, planItem.LanguageVersion, planItem.LanguageType)
 		if err != nil {
 			return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be created", err)
 		}
@@ -48,7 +47,7 @@ func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, a
 			return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be added to the tree because of errors in the code files", err)
 		}
 	}
-	treeObj, err := absLang.CreateTreeObject(tree)
+	treeObj, err := azobjs.CreateTreeObject(tree)
 	if err != nil {
 		return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree object cannot be created", err)
 	}
@@ -56,12 +55,12 @@ func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState, a
 }
 
 // buildPlanCommit builds the plan commit.
-func (m *WorkspaceManager) buildPlanCommit(tree string, parentCommitID string, absLang azlang.LanguageAbastraction) (*azledger.Commit, *azledger.Object, error) {
-	commit, err := azledger.NewCommit(tree, parentCommitID, "", time.Now(), "", time.Now(), "cli commit")
+func (m *WorkspaceManager) buildPlanCommit(tree string, parentCommitID string) (*azobjs.Commit, *azobjs.Object, error) {
+	commit, err := azobjs.NewCommit(tree, parentCommitID, "", time.Now(), "", time.Now(), "cli commit")
 	if err != nil {
 		return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "commit cannot be created", err)
 	}
-	commitObj, err := absLang.CreateCommitObject(commit)
+	commitObj, err := azobjs.CreateCommitObject(commit)
 	if err != nil {
 		return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "commit object cannot be created", err)
 	}
