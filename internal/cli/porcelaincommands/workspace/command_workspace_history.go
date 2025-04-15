@@ -53,9 +53,6 @@ func runECommandForHistoryWorkspace(deps azcli.CliDependenciesProvider, cmd *cob
 	}
 	output, err := wksMgr.ExecHistory(outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to show hisotry.")
-		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to show history.", err)
 			printer.Error(sysErr)
