@@ -89,7 +89,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		manifest, err = absLang.BuildManifest(manifest, lang, template)
+		manifest, err = absLang.BuildManifest(manifest, template)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
