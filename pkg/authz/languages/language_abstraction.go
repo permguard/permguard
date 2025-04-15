@@ -47,7 +47,7 @@ type LanguageSpecification interface {
 // LanguageAbastraction is the interface for the language abstraction.
 type LanguageAbastraction interface {
 	// BuildManifest builds the manifest.
-	BuildManifest(manifest *azztasmanifests.Manifest, language, template string) (*azztasmanifests.Manifest, error)
+	BuildManifest(manifest *azztasmanifests.Manifest, template string) (*azztasmanifests.Manifest, error)
 	// ValidateManifest validates the manifest.
 	ValidateManifest(manifest *azztasmanifests.Manifest) (bool, error)
 	// GetLanguageSpecification returns the specification for the language.
