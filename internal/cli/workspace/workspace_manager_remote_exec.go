@@ -149,6 +149,7 @@ func (m *WorkspaceManager) ExecCheckoutLedger(ledgerURI string, out aziclicommon
 	return m.execInternalCheckoutLedger(false, ledgerURI, out)
 }
 
+// execInternalPull executes an internal pull.
 func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
