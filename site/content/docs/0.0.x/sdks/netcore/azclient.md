@@ -129,7 +129,7 @@ try
             "f81aec177f8a44a48b7ceee45e05507f",
             "platform-creator",
             "MagicFarmacia::Platform::Subscription",
-            "MagicFarmacia::Platform::Action::creat4")
+            "MagicFarmacia::Platform::Action::create")
         // RequestID
         .WithRequestId("31243")
         // Principal

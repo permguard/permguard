@@ -216,7 +216,7 @@ var client = new AzClient(config);
 
 var request = new AzAtomicRequestBuilder(285374414806, "f81aec177f8a44a48b7ceee45e05507f",
         "platform-creator", "MagicFarmacia::Platform::Subscription",
-        "MagicFarmacia::Platform::Action::creat4")
+        "MagicFarmacia::Platform::Action::create")
     .WithResourceId("e3a786fd07e24bfa95ba4341d3695ae8").Build();
 
 var response = client.CheckAuth(request);
