@@ -165,40 +165,54 @@ try {
     AZClient client = new AZClient(config);
 
     // Extract values from JSON (matching your provided data)
-    long zoneId = ZONE_ID;
-    String policyStoreId = POLICY_STORE_ID;
-    String requestId = "batch-eval-001";
-    String subjectId = EMAIL;
-    String subjectType = USER;
-    String resourceId = "e3a786fd07e24bfa95ba4341d3695ae8";
-    String resourceType = "MagicFarmacia::Platform::Subscription";
+    long ZONE_ID = 434033150930L;;
+    String POLICY_STORE_ID = "159e2a25fd244f5d96423c53f55100bd";
+    String PRINCIPAL_TYPE = "user";
+    String PRINCIPAL_ID = "amy.smith@acmecorp.com";
+    String PRINCIPAL_SOURCE = "keycloak";
+    String SUBJECT_TYPE = "role-actor";
+    String SUBJECT_ID = "platform-creator";
+    String SUBJECT_SOURCE = "keycloak";
+    String REQUEST_ID = "abc1";
+    String RESOURCE_TYPE = "MagicFarmacia::Platform::Subscription";
+    String RESOURCE_ID = "e3a786fd07e24bfa95ba4341d3695ae8";
+    String ACTION_CREATE = "MagicFarmacia::Platform::Action::create";
+    String ACTION_VIEW = "MagicFarmacia::Platform::Action::view";
 
     // Create Principal
-    Principal principal = new PrincipalBuilder(subjectId)
-            .withType(subjectType)
-            .withSource(KEYCLOAK)
+    Principal principal = new PrincipalBuilder(PRINCIPAL_ID)
+            .withType(PRINCIPAL_TYPE)
+            .withSource(PRINCIPAL_SOURCE)
             .build();
 
     // Create Subject
-    Subject subject = new SubjectBuilder(subjectId)
-            .withType(subjectType)
-            .withSource(KEYCLOAK)
+    Subject subject = new SubjectBuilder(SUBJECT_ID)
+            .withType(SUBJECT_TYPE)
+            .withSource(SUBJECT_SOURCE)
             .withProperty("isSuperUser", true)
             .build();
 
     // Create Resource
-    Resource resource = new ResourceBuilder(resourceType)
-            .withId(resourceId)
+    Resource resource = new ResourceBuilder(RESOURCE_TYPE)
+            .withId(RESOURCE_ID)
             .withProperty("isEnabled", true)
             .build();
 
     // Create Actions
-    Action actionView = new ActionBuilder("MagicFarmacia::Platform::Action::view")
+    Action actionViewEnabled = new ActionBuilder(ACTION_VIEW) //Not Permitted!
             .withProperty("isEnabled", true)
             .build();
 
-    Action actionCreate = new ActionBuilder("MagicFarmacia::Platform::Action::create")
+    Action actionViewDisabled = new ActionBuilder(ACTION_VIEW) //Not Permitted!
+            .withProperty("isEnabled", false)
+            .build();
+
+    Action actionCreateEnabled = new ActionBuilder(ACTION_CREATE) //Permitted!
             .withProperty("isEnabled", true)
+            .build();
+
+    Action actionCreateDisabled = new ActionBuilder(ACTION_CREATE) //Not Permitted!
+            .withProperty("isEnabled", false)
             .build();
 
     // Create Context
@@ -208,13 +222,13 @@ try {
     );
 
     // Create Evaluations
-    Evaluation evaluationView = new EvaluationBuilder(subject, resource, actionView)
-            .withRequestId("1234")
+    Evaluation evaluationOne = new EvaluationBuilder(subject, resource, actionCreateEnabled)
+            .withRequestId("exz1")
             .withContext(context)
             .build();
 
-    Evaluation evaluationCreate = new EvaluationBuilder(subject, resource, actionCreate)
-            .withRequestId("7890")
+    Evaluation evaluationTwo = new EvaluationBuilder(subject, resource, actionCreateEnabled)
+            .withRequestId("exz2")
             .withContext(context)
             .build();
 
@@ -228,12 +242,12 @@ try {
     ));
 
     // Build the AZRequest with multiple evaluations
-    AZRequest request = new AZRequestBuilder(zoneId, policyStoreId)
-            .withRequestId(requestId)
+    AZRequest request = new AZRequestBuilder(ZONE_ID, POLICY_STORE_ID)
+            .withRequestId(REQUEST_ID)
             .withPrincipal(principal)
             .withEntitiesItems(entities.getSchema(), entities)
-            .withEvaluation(evaluationView)
-            .withEvaluation(evaluationCreate)
+            .withEvaluation(evaluationOne)
+            .withEvaluation(evaluationTwo)
             .build();
 
     // Perform authorization check with multiple evaluations
