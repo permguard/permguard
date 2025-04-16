@@ -26,7 +26,7 @@ import (
 	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
-	azplangcedar "github.com/permguard/permguard/plugin/languages/cedar"
+	azplugincedar "github.com/permguard/permguard/plugin/languages/cedar"
 )
 
 // authorizationCheckBuildContextResponse builds the context response for the authorization check.
@@ -168,7 +168,7 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 		}
 	}
 
-	cedarLanguageAbs, err := azplangcedar.NewCedarLanguageAbstraction()
+	cedarLanguageAbs, err := azplugincedar.NewCedarLanguageAbstraction()
 	if err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't validate the language abstraction layer", err)
 	}

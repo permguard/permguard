@@ -19,9 +19,10 @@ package cli
 import (
 	"fmt"
 
+	azcedarlang "github.com/permguard/permguard-ztauthstar-cedar/pkg/cedarlang"
 	azlang "github.com/permguard/permguard/pkg/authz/languages"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azplangcedar "github.com/permguard/permguard/plugin/languages/cedar"
+	azplugincedar "github.com/permguard/permguard/plugin/languages/cedar"
 )
 
 // CommunityLanguageFactory is the factory for the community language.
@@ -34,11 +35,11 @@ func NewCommunityLanguageFactory() (*CommunityLanguageFactory, error) {
 	languageFactory := &CommunityLanguageFactory{
 		languages: map[string]azlang.LanguageAbastraction{},
 	}
-	cedarLanguageAbs, err := azplangcedar.NewCedarLanguageAbstraction()
+	cedarLanguageAbs, err := azplugincedar.NewCedarLanguageAbstraction()
 	if err != nil {
 		return nil, err
 	}
-	languageFactory.languages[azplangcedar.LanguageName] = cedarLanguageAbs
+	languageFactory.languages[azcedarlang.LanguageName] = cedarLanguageAbs
 	return languageFactory, nil
 }
 

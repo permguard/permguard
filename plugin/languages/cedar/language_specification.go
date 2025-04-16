@@ -16,6 +16,10 @@
 
 package cedar
 
+import (
+	azcedarlang "github.com/permguard/permguard-ztauthstar-cedar/pkg/cedarlang"
+)
+
 // CedarLanguageSpecification is the specification for the cedar language.
 type CedarLanguageSpecification struct {
 	language                      string
@@ -36,12 +40,12 @@ func (ls *CedarLanguageSpecification) GetLanguage() string {
 
 // GetLanguageVersion returns the language version.
 func (ls *CedarLanguageSpecification) GetLanguageVersion() string {
-	return LanguageSyntaxVersion
+	return azcedarlang.LanguageSyntaxVersion
 }
 
 // GetLanguageVersionID returns the language version ID.
 func (ls *CedarLanguageSpecification) GetLanguageVersionID() uint32 {
-	return LanguageSyntaxVersionID
+	return azcedarlang.LanguageSyntaxVersionID
 }
 
 // GetFrontendLanguage returns the name of the language.
