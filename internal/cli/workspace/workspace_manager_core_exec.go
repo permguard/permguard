@@ -43,10 +43,10 @@ func (m *WorkspaceManager) ExecPrintContext(output map[string]any, out aziclicom
 type InitParms struct {
 	// Name of the workspace to be used in the manifest.
 	Name string
-	// Language to be used in the manifest.
-	Language string
-	// Template to be used in the manifest.
-	Template string
+	// AuthZLanguage the authz language.
+	AuthZLanguage string
+	// AuthZTemplate the authz template.
+	AuthZTemplate string
 }
 
 // ExecInitWorkspace initializes the workspace.
@@ -69,10 +69,10 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 
 	if initParams != nil {
 		wksName := initParams.Name
-		lang := initParams.Language
-		template := initParams.Template
+		authzLang := initParams.AuthZLanguage
+		authzTemplate := initParams.AuthZTemplate
 
-		absLang, err := m.langFct.GetLanguageAbastraction(lang)
+		absLang, err := m.langFct.GetLanguageAbastraction(authzLang)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -81,7 +81,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		manifest, err = absLang.BuildManifest(manifest, template)
+		manifest, err = absLang.BuildManifest(manifest, authzTemplate)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
