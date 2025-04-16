@@ -94,6 +94,9 @@ tasks:
   dep-ztas:
     desc: get ztas dependency
     cmd: 'go get -u github.com/permguard/permguard-ztauthstar@{{.CLI_ARGS}}'
+  dep-ztas-cedar:
+    desc: get ztas-cedar dependency
+    cmd: 'go get -u github.com/permguard/permguard-ztauthstar-cedar@{{.CLI_ARGS}}'
   # Local
   install: export VERSION=$(git describe --tags --match 'v*' --abbrev=0 | cut -c2-) && export BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S') && export GIT_COMMIT=$(git rev-parse --short HEAD) && make build-cli && cp ./dist/permguard ~/.apps/bin/permguard
   docker:

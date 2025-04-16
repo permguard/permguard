@@ -23,6 +23,7 @@ import (
 
 	"github.com/cedar-policy/cedar-go"
 
+	azcedarlang "github.com/permguard/permguard-ztauthstar-cedar/pkg/cedarlang"
 	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
 	azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
 	azauthzlangvalidators "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/validators"
@@ -30,39 +31,6 @@ import (
 	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azlang "github.com/permguard/permguard/pkg/authz/languages"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-)
-
-const (
-	// LanguageName specifies the canonical name of the Cedar language.
-	LanguageName = "cedar"
-
-	// LanguageCedar represents the unique identifier for the Cedar language.
-	LanguageCedar = "cedar"
-	// LanguageCedarID represents the unique identifier for the Cedar language.
-	LanguageCedarID = uint32(1)
-
-	// LanguageCedarJSON represents the unique identifier for the JSON-based Cedar language.
-	LanguageCedarJSON = "cedar-json"
-	// LanguageCedarJSONID represents the unique identifier for the JSON-based Cedar language.
-	LanguageCedarJSONID = uint32(2)
-
-	// LanguageSyntaxVersion defines the latest syntax version used by the Cedar language.
-	LanguageSyntaxVersion = "0.0"
-	// LanguageSyntaxVersionID defines the latest syntax version ID used by the Cedar language.
-	LanguageSyntaxVersionID = uint32(0)
-	// LanguageSchemaType specifies the schema type for Cedar language.
-	LanguageSchemaType = "schema"
-	// LanguageSchemaTypeID specifies the schema type ID for Cedar language.
-	LanguageSchemaTypeID = uint32(1)
-	// LanguagePolicyType specifies the policy type for Cedar language.
-	LanguagePolicyType = "policy"
-	// LanguagePolicyTypeID specifies the policy type ID for Cedar language.
-	LanguagePolicyTypeID = uint32(2)
-
-	// LanguageFileExtension specifies the standard file extension for Cedar language files.
-	LanguageFileExtension = ".cedar"
-	// LanguageSchemaFileName defines the default filename for the schema definition associated with Cedar.
-	LanguageSchemaFileName = "schema.json"
 )
 
 // CedarLanguageAbstraction is the abstraction for the cedar language.
@@ -101,22 +69,22 @@ func (abs *CedarLanguageAbstraction) ValidateManifest(manifest *azztasmanifests.
 // GetLanguageSpecification returns the specification for the language.
 func (abs *CedarLanguageAbstraction) GetLanguageSpecification() azlang.LanguageSpecification {
 	return &CedarLanguageSpecification{
-		language:                      LanguageName,
-		languageVersion:               LanguageSyntaxVersion,
-		languageVersionID:             LanguageSyntaxVersionID,
-		frontendLanguage:              LanguageCedar,
-		frontendLanguageID:            LanguageCedarID,
-		backendLanguage:               LanguageCedarJSON,
-		backendLanguageID:             LanguageCedarJSONID,
-		supportedPolicyFileExtensions: []string{LanguageFileExtension},
-		supportedSchemaFileNames:      []string{LanguageSchemaFileName},
+		language:                      azcedarlang.LanguageName,
+		languageVersion:               azcedarlang.LanguageSyntaxVersion,
+		languageVersionID:             azcedarlang.LanguageSyntaxVersionID,
+		frontendLanguage:              azcedarlang.LanguageCedar,
+		frontendLanguageID:            azcedarlang.LanguageCedarID,
+		backendLanguage:               azcedarlang.LanguageCedarJSON,
+		backendLanguageID:             azcedarlang.LanguageCedarJSONID,
+		supportedPolicyFileExtensions: []string{azcedarlang.LanguageFileExtension},
+		supportedSchemaFileNames:      []string{azcedarlang.LanguageSchemaFileName},
 	}
 }
 
 // CreatePolicyBlobObjects creates multi sections policy blob objects.
 func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, data []byte) (*azobjs.MultiSectionsObject, error) {
 	langSpec := abs.GetLanguageSpecification()
-	if langSpec.GetFrontendLanguage() != LanguageCedar {
+	if langSpec.GetFrontendLanguage() != azcedarlang.LanguageCedar {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] unsupported frontend language")
 	}
 
@@ -140,8 +108,8 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, da
 		codeType   = azauthzlangtypes.ClassTypePolicy
 		codeTypeID = azauthzlangtypes.ClassTypePolicyID
 
-		langPolicyType   = LanguagePolicyType
-		langPolicyTypeID = LanguagePolicyTypeID
+		langPolicyType   = azcedarlang.LanguagePolicyType
+		langPolicyTypeID = azcedarlang.LanguagePolicyTypeID
 	)
 
 	lang := langSpec.GetBackendLanguage()
@@ -206,13 +174,13 @@ func (abs *CedarLanguageAbstraction) CreatePolicyContentBytes(blocks [][]byte) (
 		}
 		sb.Write(block)
 	}
-	return []byte(sb.String()), LanguageFileExtension, nil
+	return []byte(sb.String()), azcedarlang.LanguageFileExtension, nil
 }
 
 // CreateSchemaBlobObjects creates multi sections schema blob objects.
 func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data []byte) (*azobjs.MultiSectionsObject, error) {
 	langSpec := abs.GetLanguageSpecification()
-	if langSpec.GetFrontendLanguage() != LanguageCedar {
+	if langSpec.GetFrontendLanguage() != azcedarlang.LanguageCedar {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] unsupported frontend language")
 	}
 
@@ -223,8 +191,8 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data [
 		codeType   = azauthzlangtypes.ClassTypeSchema
 		codeTypeID = azauthzlangtypes.ClassTypeSchemaID
 
-		langSchemaType   = LanguageSchemaType
-		langSchemaTypeID = LanguageSchemaTypeID
+		langSchemaType   = azcedarlang.LanguageSchemaType
+		langSchemaTypeID = azcedarlang.LanguageSchemaTypeID
 	)
 
 	lang := langSpec.GetBackendLanguage()
@@ -264,7 +232,7 @@ func (abs *CedarLanguageAbstraction) CreateSchemaContentBytes(blocks []byte) ([]
 	if len(blocks) == 0 {
 		return nil, "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageSyntax, "[cedar] schema cannot be empty")
 	}
-	return blocks, LanguageSchemaFileName, nil
+	return blocks, azcedarlang.LanguageSchemaFileName, nil
 }
 
 // ConvertBytesToFrontendLanguage converts bytes to the frontend language.
@@ -278,14 +246,14 @@ func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(langID, lang
 	}
 	var frontendContent []byte
 	switch langTypeID {
-	case LanguagePolicyTypeID:
+	case azcedarlang.LanguagePolicyTypeID:
 		var cedarPolicy cedar.Policy
 		err := cedarPolicy.UnmarshalJSON(content)
 		if err != nil {
 			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguageSyntax, "[cedar] invalid policy syntax", err)
 		}
 		frontendContent = cedarPolicy.MarshalCedar()
-	case LanguageSchemaTypeID:
+	case azcedarlang.LanguageSchemaTypeID:
 		frontendContent = content
 	default:
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageSyntax, "[cedar] invalid syntax")
