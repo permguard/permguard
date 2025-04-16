@@ -153,6 +153,14 @@ func (m *WorkspaceManager) tryLock() (*flock.Flock, error) {
 	return fileLock, nil
 }
 
+// codeFileInfo represents info about the code file.
+func (m *WorkspaceManager) printFiles(action string, files []string, out aziclicommon.PrinterOutFunc) {
+	out(nil, "", fmt.Sprintf("	- %s:", action), nil, true)
+	for _, file := range files {
+		out(nil, "", fmt.Sprintf("	  	- '%s'", aziclicommon.FileText(aziclicommon.FileText(file))), nil, true)
+	}
+}
+
 // raiseWrongWorkspaceDirError raises an error when the directory is not a workspace directory.
 func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out aziclicommon.PrinterOutFunc) error {
 	out(nil, "", "The current working directory is not a valid Permguard workspace.", nil, true)
@@ -192,3 +200,4 @@ func (m *WorkspaceManager) hasValidManifestWorkspaceDir() (*azztasmfests.Manifes
 	}
 	return nil, nil
 }
+

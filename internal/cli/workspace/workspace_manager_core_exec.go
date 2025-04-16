@@ -27,14 +27,6 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
-// codeFileInfo represents info about the code file.
-func (m *WorkspaceManager) printFiles(action string, files []string, out aziclicommon.PrinterOutFunc) {
-	out(nil, "", fmt.Sprintf("	- %s:", action), nil, true)
-	for _, file := range files {
-		out(nil, "", fmt.Sprintf("	  	- '%s'", aziclicommon.FileText(aziclicommon.FileText(file))), nil, true)
-	}
-}
-
 // ExecPrintContext prints the context.
 func (m *WorkspaceManager) ExecPrintContext(output map[string]any, out aziclicommon.PrinterOutFunc) map[string]any {
 	if !m.ctx.IsVerboseTerminalOutput() {
