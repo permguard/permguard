@@ -20,7 +20,7 @@ const (
 	// EngineName engine name.
 	EngineName = "permguard"
 	// EngineVersion engine version.
-	EngineVersion = "0.0.0+"
+	EngineVersion = "0.0+"
 	// EngineDist engine distribution.
 	EngineDist = "community"
 )
