@@ -18,16 +18,16 @@ package languages
 
 import (
 	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
-	azztasmanifests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	azztasmfests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 // LanguageAbastraction is the interface for the language abstraction.
 type LanguageAbastraction interface {
 	// BuildManifest builds the manifest.
-	BuildManifest(manifest *azztasmanifests.Manifest, template string) (*azztasmanifests.Manifest, error)
+	BuildManifest(manifest *azztasmfests.Manifest, template string) (*azztasmfests.Manifest, error)
 	// ValidateManifest validates the manifest.
-	ValidateManifest(manifest *azztasmanifests.Manifest) (bool, error)
+	ValidateManifest(manifest *azztasmfests.Manifest) (bool, error)
 	// GetFrontendLanguage gets fronted language.
 	GetFrontendLanguage() string
 	// GetFrontendLanguage gets backend language.
@@ -35,17 +35,17 @@ type LanguageAbastraction interface {
 	// GetPolicyFileExtensions gets the policy file extensions.
 	GetPolicyFileExtensions() []string
 	// CreatePolicyBlobObjects creates multi sections policy blob objects.
-	CreatePolicyBlobObjects(manifest *azztasmanifests.Manifest, paritition, path string, data []byte) (*azobjs.MultiSectionsObject, error)
+	CreatePolicyBlobObjects(manifest *azztasmfests.Manifest, paritition, path string, data []byte) (*azobjs.MultiSectionsObject, error)
 	// CreatePolicyContentBytesBody creates a multi policy content bytes.
-	CreatePolicyContentBytes(manifest *azztasmanifests.Manifest, paritition string, blocks [][]byte) ([]byte, string, error)
+	CreatePolicyContentBytes(manifest *azztasmfests.Manifest, paritition string, blocks [][]byte) ([]byte, string, error)
 	// GetSchemaFileNames gets the schema file names.
 	GetSchemaFileNames() []string
 	// CreateSchemaBlobObjects creates multi sections schema blob objects.
-	CreateSchemaBlobObjects(manifest *azztasmanifests.Manifest, paritition, path string, data []byte) (*azobjs.MultiSectionsObject, error)
+	CreateSchemaBlobObjects(manifest *azztasmfests.Manifest, paritition, path string, data []byte) (*azobjs.MultiSectionsObject, error)
 	// CreateSchemaContentBytes creates a schema content bytes.
-	CreateSchemaContentBytes(manifest *azztasmanifests.Manifest, paritition string, blocks []byte) ([]byte, string, error)
+	CreateSchemaContentBytes(manifest *azztasmfests.Manifest, paritition string, blocks []byte) ([]byte, string, error)
 	// ConvertBytesToFrontendLanguage converts bytes to the frontend language.
-	ConvertBytesToFrontendLanguage(manifest *azztasmanifests.Manifest, paritition string, langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error)
+	ConvertBytesToFrontendLanguage(manifest *azztasmfests.Manifest, paritition string, langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error)
 	// AuthorizationCheck checks the authorization.
-	AuthorizationCheck(manifest *azztasmanifests.Manifest, paritition, contextID string, policyStore *azauthzen.PolicyStore, authzCtx *azauthzen.AuthorizationModel) (*azauthzen.AuthorizationDecision, error)
+	AuthorizationCheck(manifest *azztasmfests.Manifest, paritition, contextID string, policyStore *azauthzen.PolicyStore, authzCtx *azauthzen.AuthorizationModel) (*azauthzen.AuthorizationDecision, error)
 }

@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
+	azztasmfests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
@@ -94,7 +95,7 @@ func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastracti
 }
 
 // blobifyPermSchemaFile blobify a permguard schema file.
-func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path string, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile, absLang azlang.LanguageAbastraction, data []byte, file azicliwkscosp.CodeFile) []azicliwkscosp.CodeFile {
+func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path string, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile, absLang azlang.LanguageAbastraction, mfest *azztasmfests.Manifest, mfestPart string, data []byte, file azicliwkscosp.CodeFile) []azicliwkscosp.CodeFile {
 	if schemaFileCount > 1 {
 		codeFile := azicliwkscosp.CodeFile{
 			Path:         strings.TrimPrefix(path, wkdir),
@@ -105,7 +106,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 		}
 		blbCodeFiles = append(blbCodeFiles, codeFile)
 	} else {
-		multiSecObj, err := absLang.CreateSchemaBlobObjects(path, data)
+		multiSecObj, err := absLang.CreateSchemaBlobObjects(mfest, mfestPart, path, data)
 		if err != nil {
 			codeFile := &azicliwkscosp.CodeFile{
 				Kind:         file.Kind,
@@ -146,8 +147,9 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 }
 
 // blobifyPermSchemaFile blobify a permguard code file.
-func (m *WorkspaceManager) blobifyLanguageFile(absLang azlang.LanguageAbastraction, path string, data []byte, file azicliwkscosp.CodeFile, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile) []azicliwkscosp.CodeFile {
-	multiSecObj, err := absLang.CreatePolicyBlobObjects(path, data)
+func (m *WorkspaceManager) blobifyLanguageFile(absLang azlang.LanguageAbastraction, mfest *azztasmfests.Manifest, mfestPart string, path string, data []byte,
+	file azicliwkscosp.CodeFile, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile) []azicliwkscosp.CodeFile {
+	multiSecObj, err := absLang.CreatePolicyBlobObjects(mfest, mfestPart, path, data)
 	if err != nil {
 		codeFile := &azicliwkscosp.CodeFile{
 			Kind:         file.Kind,
@@ -195,7 +197,7 @@ func (m *WorkspaceManager) blobifyLanguageFile(absLang azlang.LanguageAbastracti
 }
 
 // blobifyLocal scans source files and creates a blob for each object.
-func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absLang azlang.LanguageAbastraction) (string, []azicliwkscosp.CodeFile, error) {
+func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absLang azlang.LanguageAbastraction, mfest *azztasmfests.Manifest, mfestPart string) (string, []azicliwkscosp.CodeFile, error) {
 	blbCodeFiles := []azicliwkscosp.CodeFile{}
 	schemaFileNames := absLang.GetSchemaFileNames()
 	if len(schemaFileNames) < 1 {
@@ -211,10 +213,10 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 			return "", nil, err
 		}
 		if file.Kind == azicliwkscosp.CodeFileTypeOfCodeType {
-			blbCodeFiles = m.blobifyLanguageFile(absLang, path, data, file, wkdir, mode, blbCodeFiles)
+			blbCodeFiles = m.blobifyLanguageFile(absLang, mfest, mfestPart, path, data, file, wkdir, mode, blbCodeFiles)
 		} else if file.Kind == azicliwkscosp.CodeFileOfSchemaType {
 			schemaFileCount++
-			blbCodeFiles = m.blobifyPermSchemaFile(schemaFileCount, path, wkdir, mode, blbCodeFiles, absLang, data, file)
+			blbCodeFiles = m.blobifyPermSchemaFile(schemaFileCount, path, wkdir, mode, blbCodeFiles, absLang, mfest, mfestPart, data, file)
 		} else {
 			return "", nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "file type is not supported")
 		}

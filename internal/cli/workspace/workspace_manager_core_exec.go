@@ -21,7 +21,7 @@ import (
 	"path/filepath"
 
 	azvalidators "github.com/permguard/permguard-common/pkg/extensions/validators"
-	azztasmanifests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	azztasmfests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
@@ -85,7 +85,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 			return failedOpErr(nil, err)
 		}
 
-		manifest, err := azztasmanifests.NewManifest("authz", wksName, "")
+		manifest, err := azztasmfests.NewManifest("authz", wksName, "")
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -94,12 +94,12 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 			return failedOpErr(nil, err)
 		}
 
-		manifestData, err := azztasmanifests.ConvertManifestToBytes(manifest, true)
+		manifestData, err := azztasmfests.ConvertManifestToBytes(manifest, true)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
 
-		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.WorkspaceDir, azztasmanifests.ManifestFileName, manifestData, 0644, false)
+		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.WorkspaceDir, azztasmfests.ManifestFileName, manifestData, 0644, false)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
