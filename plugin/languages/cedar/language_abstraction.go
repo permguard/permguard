@@ -51,18 +51,12 @@ func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
 
 // BuildManifest builds the manifest.
 func (abs *CedarLanguageAbstraction) BuildManifest(manifest *azztasmanifests.Manifest, template string) (*azztasmanifests.Manifest, error) {
-	if manifest == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] manifest is nil")
-	}
-	return manifest, nil
+	return azcedarlang.BuildManifest(manifest, template)
 }
 
 // ValidateManifest validates the manifest.
 func (abs *CedarLanguageAbstraction) ValidateManifest(manifest *azztasmanifests.Manifest) (bool, error) {
-	if manifest == nil {
-		return false, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] manifest is nil")
-	}
-	return true, nil
+	return azcedarlang.ValidateManifest(manifest)
 }
 
 // GetLanguageSpecification returns the specification for the language.
