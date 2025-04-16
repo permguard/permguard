@@ -30,7 +30,6 @@ import (
 	azztasmanifests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azengine "github.com/permguard/permguard/pkg/authz/engines"
-	azlang "github.com/permguard/permguard/pkg/authz/languages"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -60,27 +59,26 @@ func (abs *CedarLanguageAbstraction) ValidateManifest(manifest *azztasmanifests.
 	return azcedarlang.ValidateManifest(manifest)
 }
 
-// GetLanguageSpecification returns the specification for the language.
-func (abs *CedarLanguageAbstraction) GetLanguageSpecification() azlang.LanguageSpecification {
-	return &CedarLanguageSpecification{
-		language:                      azcedarlang.LanguageName,
-		languageVersion:               azcedarlang.LanguageSyntaxVersion,
-		languageVersionID:             azcedarlang.LanguageSyntaxVersionID,
-		frontendLanguage:              azcedarlang.LanguageCedar,
-		frontendLanguageID:            azcedarlang.LanguageCedarID,
-		backendLanguage:               azcedarlang.LanguageCedarJSON,
-		backendLanguageID:             azcedarlang.LanguageCedarJSONID,
-		supportedPolicyFileExtensions: []string{azcedarlang.LanguageFileExtension},
-		supportedSchemaFileNames:      []string{azcedarlang.LanguageSchemaFileName},
-	}
+// GetFrontendLanguage gets fronted language.
+func (abs *CedarLanguageAbstraction) GetFrontendLanguage() string {
+	return azcedarlang.LanguageCedar
+}
+
+// GetFrontendLanguage gets backend language.
+func (abs *CedarLanguageAbstraction) GetBackendLanguage() string {
+	return azcedarlang.LanguageCedarJSON
+}
+
+// GetPolicyFileExtensions gets the policy file extensions.
+func (abs *CedarLanguageAbstraction) GetPolicyFileExtensions() []string {
+	return []string { azcedarlang.LanguageFileExtension }
 }
 
 // CreatePolicyBlobObjects creates multi sections policy blob objects.
-func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, data []byte) (*azobjs.MultiSectionsObject, error) {
-	langSpec := abs.GetLanguageSpecification()
-	if langSpec.GetFrontendLanguage() != azcedarlang.LanguageCedar {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] unsupported frontend language")
-	}
+func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(manifest *azztasmanifests.Manifest, paritition, filePath string, data []byte) (*azobjs.MultiSectionsObject, error) {
+	// if langSpec.GetFrontendLanguage() != azcedarlang.LanguageCedar {
+	// 	return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] unsupported frontend language")
+	// }
 
 	policySet, err := cedar.NewPolicySetFromBytes(filePath, data)
 	if err != nil {
@@ -106,10 +104,10 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, da
 		langPolicyTypeID = azcedarlang.LanguagePolicyTypeID
 	)
 
-	lang := langSpec.GetBackendLanguage()
-	langID := langSpec.GetBackendLanguageID()
-	langVersion := langSpec.GetLanguageVersion()
-	langVersionID := langSpec.GetLanguageVersionID()
+	lang := azcedarlang.LanguageCedarJSON
+	langID := azcedarlang.LanguageCedarJSONID
+	langVersion := azcedarlang.LanguageSyntaxVersion
+	langVersionID := azcedarlang.LanguageSyntaxVersionID
 
 	i := -1
 	for _, policy := range policiesMap {
@@ -160,7 +158,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(filePath string, da
 }
 
 // CreatePolicyContentBytes creates a multi policy content bytes.
-func (abs *CedarLanguageAbstraction) CreatePolicyContentBytes(blocks [][]byte) ([]byte, string, error) {
+func (abs *CedarLanguageAbstraction) CreatePolicyContentBytes(manifest *azztasmanifests.Manifest, paritition string, blocks [][]byte) ([]byte, string, error) {
 	var sb strings.Builder
 	for i, block := range blocks {
 		if i > 0 {
@@ -171,12 +169,16 @@ func (abs *CedarLanguageAbstraction) CreatePolicyContentBytes(blocks [][]byte) (
 	return []byte(sb.String()), azcedarlang.LanguageFileExtension, nil
 }
 
+// GetPolicyFileExtensions gets the policy file extensions.
+func (abs *CedarLanguageAbstraction) GetSchemaFileNames() []string {
+	return []string { azcedarlang.LanguageSchemaFileName }
+}
+
 // CreateSchemaBlobObjects creates multi sections schema blob objects.
-func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data []byte) (*azobjs.MultiSectionsObject, error) {
-	langSpec := abs.GetLanguageSpecification()
-	if langSpec.GetFrontendLanguage() != azcedarlang.LanguageCedar {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] unsupported frontend language")
-	}
+func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(manifest *azztasmanifests.Manifest, paritition string, path string, data []byte) (*azobjs.MultiSectionsObject, error) {
+	// if langSpec.GetFrontendLanguage() != azcedarlang.LanguageCedar {
+	// 	return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] unsupported frontend language")
+	// }
 
 	const (
 		objName = azauthzlangtypes.ClassTypeSchema
@@ -189,10 +191,10 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data [
 		langSchemaTypeID = azcedarlang.LanguageSchemaTypeID
 	)
 
-	lang := langSpec.GetBackendLanguage()
-	langID := langSpec.GetBackendLanguageID()
-	langVersion := langSpec.GetLanguageVersion()
-	langVersionID := langSpec.GetLanguageVersionID()
+	lang := azcedarlang.LanguageCedarJSON
+	langID := azcedarlang.LanguageCedarJSONID
+	langVersion := azcedarlang.LanguageSyntaxVersion
+	langVersionID := azcedarlang.LanguageSyntaxVersionID
 
 	//TODO: Implement schema validation
 
@@ -222,7 +224,7 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(path string, data [
 }
 
 // CreateSchemaContentBytes creates a schema content bytes.
-func (abs *CedarLanguageAbstraction) CreateSchemaContentBytes(blocks []byte) ([]byte, string, error) {
+func (abs *CedarLanguageAbstraction) CreateSchemaContentBytes(manifest *azztasmanifests.Manifest, paritition string, blocks []byte) ([]byte, string, error) {
 	if len(blocks) == 0 {
 		return nil, "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageSyntax, "[cedar] schema cannot be empty")
 	}
@@ -230,14 +232,13 @@ func (abs *CedarLanguageAbstraction) CreateSchemaContentBytes(blocks []byte) ([]
 }
 
 // ConvertBytesToFrontendLanguage converts bytes to the frontend language.
-func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error) {
-	langSpec := abs.GetLanguageSpecification()
-	if langSpec.GetBackendLanguageID() != langID {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] invalid backend language")
-	}
-	if langSpec.GetLanguageVersionID() != langVersionID {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] invalid backend language version")
-	}
+func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(manifest *azztasmanifests.Manifest, paritition string, langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error) {
+	// if azcedarlang.LanguageCedarJSONID != langID {
+	// 	return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] invalid backend language")
+	// }
+	// if azcedarlang.LanguageSyntaxVersionID != langVersionID {
+	// 	return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] invalid backend language version")
+	// }
 	var frontendContent []byte
 	switch langTypeID {
 	case azcedarlang.LanguagePolicyTypeID:
@@ -256,7 +257,7 @@ func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(langID, lang
 }
 
 // AuthorizationCheck checks the authorization.
-func (abs *CedarLanguageAbstraction) AuthorizationCheck(contextID string, policyStore *azauthzen.PolicyStore, authzCtx *azauthzen.AuthorizationModel) (*azauthzen.AuthorizationDecision, error) {
+func (abs *CedarLanguageAbstraction) AuthorizationCheck(manifest *azztasmanifests.Manifest, paritition string, contextID string, policyStore *azauthzen.PolicyStore, authzCtx *azauthzen.AuthorizationModel) (*azauthzen.AuthorizationDecision, error) {
 	// Creates a new policy set.
 	ps := cedar.NewPolicySet()
 	for _, policy := range policyStore.GetPolicies() {

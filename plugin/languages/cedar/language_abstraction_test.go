@@ -25,20 +25,6 @@ import (
 	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
-// TestLanguageSpecification tests the language specification.
-func TestLanguageSpecification(t *testing.T) {
-	assert := assert.New(t)
-
-	langAbs, err := NewCedarLanguageAbstraction()
-	assert.Nil(err, "NewCedarLanguageAbstraction should not return an error")
-
-	langSpec := langAbs.GetLanguageSpecification()
-	assert.NotNil(langSpec, "LanguageSpecification should not be nil")
-	assert.NotEmpty(langSpec.GetFrontendLanguage(), "LanguageName should not be empty")
-	assert.GreaterOrEqual(1, len(langSpec.GetSupportedPolicyFileExtensions()), "SupportedPolicyFileExtensions should not be empty")
-	assert.GreaterOrEqual(1, len(langSpec.GetSupportedSchemaFileNames()), "GetSupportedSchemaFileNames should not be empty")
-}
-
 // TestCommitCreation tests the commit creation.
 func TestCommitCreation(t *testing.T) {
 	assert := assert.New(t)

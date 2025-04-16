@@ -115,7 +115,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 		}
 	}
 
-	err = m.hasValidManifestWorkspaceDir()
+	_, err = m.hasValidManifestWorkspaceDir()
 	if err != nil {
 		return failedOpErr(nil, err)
 	}

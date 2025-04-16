@@ -350,8 +350,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
-			langSpec := absLang.GetLanguageSpecification()
-			schemaFileNames := langSpec.GetSupportedSchemaFileNames()
+			schemaFileNames := absLang.GetSchemaFileNames()
 			if len(schemaFileNames) < 1 {
 				return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "no schema file names are supported"))
 			}

@@ -48,9 +48,8 @@ func (m *WorkspaceManager) cleanupLocalArea() (bool, error) {
 
 // scanSourceCodeFiles scans the source code files.
 func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastraction) ([]azicliwkscosp.CodeFile, []azicliwkscosp.CodeFile, error) {
-	langSpec := absLang.GetLanguageSpecification()
-	suppPolicyExts := langSpec.GetSupportedPolicyFileExtensions()
-	suppSchemaFNames := langSpec.GetSupportedSchemaFileNames()
+	suppPolicyExts := absLang.GetPolicyFileExtensions()
+	suppSchemaFNames := absLang.GetSchemaFileNames()
 	ignorePatterns := append([]string{hiddenIgnoreFile, hiddenDir, gitDir, gitIgnoreFile}, suppSchemaFNames...)
 	files, ignoredFiles, err := m.persMgr.ScanAndFilterFiles(azicliwkspers.WorkspaceDir, "", suppPolicyExts, ignorePatterns, hiddenIgnoreFile)
 	if err != nil {
@@ -147,7 +146,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 }
 
 // blobifyPermSchemaFile blobify a permguard code file.
-func (m *WorkspaceManager) blobifylanguageFile(absLang azlang.LanguageAbastraction, path string, data []byte, file azicliwkscosp.CodeFile, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile) []azicliwkscosp.CodeFile {
+func (m *WorkspaceManager) blobifyLanguageFile(absLang azlang.LanguageAbastraction, path string, data []byte, file azicliwkscosp.CodeFile, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile) []azicliwkscosp.CodeFile {
 	multiSecObj, err := absLang.CreatePolicyBlobObjects(path, data)
 	if err != nil {
 		codeFile := &azicliwkscosp.CodeFile{
@@ -198,8 +197,7 @@ func (m *WorkspaceManager) blobifylanguageFile(absLang azlang.LanguageAbastracti
 // blobifyLocal scans source files and creates a blob for each object.
 func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absLang azlang.LanguageAbastraction) (string, []azicliwkscosp.CodeFile, error) {
 	blbCodeFiles := []azicliwkscosp.CodeFile{}
-	langSpec := absLang.GetLanguageSpecification()
-	schemaFileNames := langSpec.GetSupportedSchemaFileNames()
+	schemaFileNames := absLang.GetSchemaFileNames()
 	if len(schemaFileNames) < 1 {
 		return "", nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "no schema file names are supported")
 	}
@@ -213,7 +211,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 			return "", nil, err
 		}
 		if file.Kind == azicliwkscosp.CodeFileTypeOfCodeType {
-			blbCodeFiles = m.blobifylanguageFile(absLang, path, data, file, wkdir, mode, blbCodeFiles)
+			blbCodeFiles = m.blobifyLanguageFile(absLang, path, data, file, wkdir, mode, blbCodeFiles)
 		} else if file.Kind == azicliwkscosp.CodeFileOfSchemaType {
 			schemaFileCount++
 			blbCodeFiles = m.blobifyPermSchemaFile(schemaFileCount, path, wkdir, mode, blbCodeFiles, absLang, data, file)
@@ -269,7 +267,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 		return "", blbCodeFiles, err
 	}
 	treeID := treeObj.GetOID()
-	if err := m.cospMgr.SaveCodeSourceConfig(treeID, langSpec.GetFrontendLanguage()); err != nil {
+	if err := m.cospMgr.SaveCodeSourceConfig(treeID, absLang.GetFrontendLanguage()); err != nil {
 		return treeID, blbCodeFiles, err
 	}
 	return treeID, blbCodeFiles, nil
