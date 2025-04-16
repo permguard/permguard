@@ -29,6 +29,7 @@ import (
 	azauthzlangvalidators "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/validators"
 	azztasmanifests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	azengine "github.com/permguard/permguard/pkg/authz/engines"
 	azlang "github.com/permguard/permguard/pkg/authz/languages"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
@@ -51,7 +52,7 @@ func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
 
 // BuildManifest builds the manifest.
 func (abs *CedarLanguageAbstraction) BuildManifest(manifest *azztasmanifests.Manifest, template string) (*azztasmanifests.Manifest, error) {
-	return azcedarlang.BuildManifest(manifest, template)
+	return azcedarlang.BuildManifest(manifest, template, azengine.EngineName, azengine.EngineVersion, azengine.EngineDist, false)
 }
 
 // ValidateManifest validates the manifest.
