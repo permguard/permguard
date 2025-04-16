@@ -44,7 +44,6 @@ func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
 	if err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] failed to create the object manager", err)
 	}
-
 	return &CedarLanguageAbstraction{
 		objMng: objMng,
 	}, nil
