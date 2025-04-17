@@ -22,18 +22,18 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
-// ManifestLanguageManager manifest language manager.
-type ManifestLanguageManager struct {
+// ManifestLanguageProvider manifest language provider.
+type ManifestLanguageProvider struct {
 	manifest *azztasmfests.Manifest
 	langAbstractions map[string]azlang.LanguageAbastraction
 }
 
-// buildManifestLanguageManager build a new instance of the manifest language manager.
-func (m *WorkspaceManager) buildManifestLanguageManager(manifest *azztasmfests.Manifest) (*ManifestLanguageManager, error) {
+// buildManifestLanguageManager build a new instance of the manifest language provider.
+func (m *WorkspaceManager) buildManifestLanguageManager(manifest *azztasmfests.Manifest) (*ManifestLanguageProvider, error) {
 	if manifest == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrImplementation, "manifest is nil")
 	}
-	mfestLangMgr := &ManifestLanguageManager{
+	mfestLangMgr := &ManifestLanguageProvider{
 		manifest: manifest,
 		langAbstractions: map[string]azlang.LanguageAbastraction{},
 	}
