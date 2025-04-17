@@ -1,37 +1,46 @@
 {
   "Syntax": "0.2.0",
+  "delveConfig": {
+    "showGlobalVariables": false
+  },
   "configurations": [
-      {
-        "name": "cli",
-        "type": "go",
-        "request": "launch",
-        "mode": "auto",
-        "program": "./cmd/cli/main.go",
-        "args": ["init",  "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar", "-v", ],
-        // "args": ["clone", "origin/273165098782/magicfarmacia", "-w", "/Users/nicolagallo/source/tmp/", "-o", "json"],
-        // "args": ["authz", "ledgers", "create", "--name", "branches", "--zone-id", "851990457443", "-w", "/Users/nicolagallo/source/tmp/", "-o", "json"],
-        // "args": ["authz", "check", "requests/ok_onlyone1.json", "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar", "-v", ],
-        // "args": ["plan", "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar", "-v", "-o", "json"],
-        // "args": ["config", "pap-set-target", "dsafasdf", "-v"],
-        "env": {
-            "PERMGUARD_DEBUG": "TRUE",
-        },
-      },
-      {
-          "name": "all-in-one",
-          "type": "go",
-          "request": "launch",
-          "mode": "auto",
-          "program": "./cmd/server-all-in-one/main.go",
-          // "args": ["-h"],
-          "cwd": "${workspaceFolder}",
-          "env": {
-              "PERMGUARD_DEBUG": "TRUE",
-              "PERMGUARD_SERVER_APPDATA": "./samples/volume",
-              "PERMGUARD_LOG_LEVEL": "DEBUG",
-              // "PERMGUARD_SERVER_ZAP_ENABLE_DEFAULT_CREATION": "TRUE",
-              "PERMGUARD_SERVER_ZAP_DATA_FETCH_MAXSIZE": "1000",
-          }
+    {
+      "name": "cli",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "./cmd/cli/main.go",
+      "args": [
+        "refresh",
+        "-w",
+        "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar",
+        "-v"
+      ],
+      // "args": ["init",  "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar", "-v", ],
+      // "args": ["clone", "origin/273165098782/magicfarmacia", "-w", "/Users/nicolagallo/source/tmp/", "-o", "json"],
+      // "args": ["authz", "ledgers", "create", "--name", "branches", "--zone-id", "851990457443", "-w", "/Users/nicolagallo/source/tmp/", "-o", "json"],
+      // "args": ["authz", "check", "requests/ok_onlyone1.json", "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar", "-v", ],
+      // "args": ["plan", "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar", "-v", "-o", "json"],
+      // "args": ["config", "pap-set-target", "dsafasdf", "-v"],
+      "env": {
+        "PERMGUARD_DEBUG": "TRUE"
       }
+    },
+    {
+      "name": "all-in-one",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "./cmd/server-all-in-one/main.go",
+      // "args": ["-h"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PERMGUARD_DEBUG": "TRUE",
+        "PERMGUARD_SERVER_APPDATA": "./samples/volume",
+        "PERMGUARD_LOG_LEVEL": "DEBUG",
+        // "PERMGUARD_SERVER_ZAP_ENABLE_DEFAULT_CREATION": "TRUE",
+        "PERMGUARD_SERVER_ZAP_DATA_FETCH_MAXSIZE": "1000"
+      }
+    }
   ]
 }

@@ -198,6 +198,5 @@ func (m *WorkspaceManager) hasValidManifestWorkspaceDir() (*azztasmfests.Manifes
 			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
 		}
 	}
-	return nil, nil
+	return manifest, nil
 }
-

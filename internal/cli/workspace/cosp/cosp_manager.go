@@ -291,7 +291,7 @@ func (m *COSPManager) ReadRemoteCodePlan(ref string) ([]CodeObjectState, error) 
 	return m.readCodeObjectStates(path)
 }
 
-// ReadRemoteCodePlan reads the code plan from the input remote.
+// CleanCode cleans the code.
 func (m *COSPManager) CleanCode(ref string) (bool, error) {
 	path := filepath.Join(m.getCodeDir(), strings.ToLower(ref))
 	return m.persMgr.DeletePath(azicliwkspers.PermguardDir, path)

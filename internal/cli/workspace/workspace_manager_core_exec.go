@@ -19,7 +19,9 @@ package workspace
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
+	azids "github.com/permguard/permguard-common/pkg/extensions/ids"
 	azvalidators "github.com/permguard/permguard-common/pkg/extensions/validators"
 	azztasmfests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
@@ -52,7 +54,7 @@ type InitParms struct {
 // ExecInitWorkspace initializes the workspace.
 func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to initialize the workspace", nil, true)
+		out(nil, "", "Failed to initialize the workspace.", nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
@@ -69,6 +71,9 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 
 	if initParams != nil {
 		wksName := initParams.Name
+		if len(strings.ReplaceAll(wksName, " ", "")) == 0 {
+			wksName = azids.GenerateID()
+		}
 		authzLang := initParams.AuthZLanguage
 		authzTemplate := initParams.AuthZTemplate
 

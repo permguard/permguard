@@ -69,9 +69,6 @@ func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 	}
 	output, err := wksMgr.ExecInitWorkspace(initParams, outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to initialize the workspace.")
-		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to initialize the workspace.", err)
 			printer.Error(sysErr)

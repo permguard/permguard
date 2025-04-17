@@ -114,9 +114,6 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 			out(nil, "refresh", "The local area was already clean.", nil, true)
 		}
 	}
-
-	// TODO: Fix manifest refactoring
-	mfestPart := "/"
 	mfest, err := m.hasValidManifestWorkspaceDir()
 	if err != nil {
 		return failedOpErr(nil, err)
@@ -129,7 +126,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "Scanning source files.", nil, true)
 	}
-	selectedFiles, ignoredFiles, err := m.scanSourceCodeFiles(absLang)
+	selectedFiles, ignoredFiles, err := m.scanSourceCodeFiles(mfest)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
@@ -159,7 +156,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "Starting blobification process.", nil, true)
 	}
-	treeID, codeFiles, err := m.blobifyLocal(selectedFiles, absLang, mfest, mfestPart)
+	treeID, codeFiles, err := m.blobifyLocal(selectedFiles, absLang, mfest)
 	if err != nil {
 		output = buildOutputForCodeFiles(codeFiles, m, out, output)
 		if m.ctx.IsVerboseTerminalOutput() {

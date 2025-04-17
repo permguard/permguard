@@ -48,9 +48,32 @@ func (m *WorkspaceManager) cleanupLocalArea() (bool, error) {
 }
 
 // scanSourceCodeFiles scans the source code files.
-func (m *WorkspaceManager) scanSourceCodeFiles(absLang azlang.LanguageAbastraction) ([]azicliwkscosp.CodeFile, []azicliwkscosp.CodeFile, error) {
-	suppPolicyExts := absLang.GetPolicyFileExtensions()
-	suppSchemaFNames := absLang.GetSchemaFileNames()
+func (m *WorkspaceManager) scanSourceCodeFiles(mfest *azztasmfests.Manifest) ([]azicliwkscosp.CodeFile, []azicliwkscosp.CodeFile, error) {
+	var suppPolicyExts, suppSchemaFNames []string
+	suppPolicyExtsSet := make(map[string]struct{})
+	suppSchemaFNamesSet := make(map[string]struct{})
+	for _, partition := range mfest.Partitions {
+		if runtime, ok := mfest.Runtimes[partition.Runtime]; ok {
+			absLang, err := m.langFct.GetLanguageAbastraction(runtime.Language.Name)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			for _, ext := range absLang.GetPolicyFileExtensions() {
+				if _, exists := suppPolicyExtsSet[ext]; !exists {
+					suppPolicyExtsSet[ext] = struct{}{}
+					suppPolicyExts = append(suppPolicyExts, ext)
+				}
+			}
+
+			for _, fname := range absLang.GetSchemaFileNames() {
+				if _, exists := suppSchemaFNamesSet[fname]; !exists {
+					suppSchemaFNamesSet[fname] = struct{}{}
+					suppSchemaFNames = append(suppSchemaFNames, fname)
+				}
+			}
+		}
+	}
 	ignorePatterns := append([]string{hiddenIgnoreFile, hiddenDir, gitDir, gitIgnoreFile}, suppSchemaFNames...)
 	files, ignoredFiles, err := m.persMgr.ScanAndFilterFiles(azicliwkspers.WorkspaceDir, "", suppPolicyExts, ignorePatterns, hiddenIgnoreFile)
 	if err != nil {
@@ -147,9 +170,9 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 }
 
 // blobifyPermSchemaFile blobify a permguard code file.
-func (m *WorkspaceManager) blobifyLanguageFile(absLang azlang.LanguageAbastraction, mfest *azztasmfests.Manifest, mfestPart string, path string, data []byte,
+func (m *WorkspaceManager) blobifyLanguageFile(absLang azlang.LanguageAbastraction, mfest *azztasmfests.Manifest, path string, data []byte,
 	file azicliwkscosp.CodeFile, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile) []azicliwkscosp.CodeFile {
-	multiSecObj, err := absLang.CreatePolicyBlobObjects(mfest, mfestPart, path, data)
+	multiSecObj, err := absLang.CreatePolicyBlobObjects(mfest, file.Partition, path, data)
 	if err != nil {
 		codeFile := &azicliwkscosp.CodeFile{
 			Kind:         file.Kind,
@@ -197,7 +220,7 @@ func (m *WorkspaceManager) blobifyLanguageFile(absLang azlang.LanguageAbastracti
 }
 
 // blobifyLocal scans source files and creates a blob for each object.
-func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absLang azlang.LanguageAbastraction, mfest *azztasmfests.Manifest, mfestPart string) (string, []azicliwkscosp.CodeFile, error) {
+func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absLang azlang.LanguageAbastraction, mfest *azztasmfests.Manifest) (string, []azicliwkscosp.CodeFile, error) {
 	blbCodeFiles := []azicliwkscosp.CodeFile{}
 	schemaFileNames := absLang.GetSchemaFileNames()
 	if len(schemaFileNames) < 1 {
@@ -213,10 +236,10 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 			return "", nil, err
 		}
 		if file.Kind == azicliwkscosp.CodeFileTypeOfCodeType {
-			blbCodeFiles = m.blobifyLanguageFile(absLang, mfest, mfestPart, path, data, file, wkdir, mode, blbCodeFiles)
+			blbCodeFiles = m.blobifyLanguageFile(absLang, mfest, path, data, file, wkdir, mode, blbCodeFiles)
 		} else if file.Kind == azicliwkscosp.CodeFileOfSchemaType {
 			schemaFileCount++
-			blbCodeFiles = m.blobifyPermSchemaFile(schemaFileCount, path, wkdir, mode, blbCodeFiles, absLang, mfest, mfestPart, data, file)
+			blbCodeFiles = m.blobifyPermSchemaFile(schemaFileCount, path, wkdir, mode, blbCodeFiles, absLang, mfest, file.Partition, data, file)
 		} else {
 			return "", nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "file type is not supported")
 		}
