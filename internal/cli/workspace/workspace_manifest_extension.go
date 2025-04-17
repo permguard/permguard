@@ -29,7 +29,7 @@ type ManifestLanguageProvider struct {
 }
 
 // buildManifestLanguageManager build a new instance of the manifest language provider.
-func (m *WorkspaceManager) buildManifestLanguageManager(manifest *azztasmfests.Manifest) (*ManifestLanguageProvider, error) {
+func (m *WorkspaceManager) buildManifestLanguageProvider(manifest *azztasmfests.Manifest) (*ManifestLanguageProvider, error) {
 	if manifest == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrImplementation, "manifest is nil")
 	}
