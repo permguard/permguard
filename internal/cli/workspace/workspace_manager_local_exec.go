@@ -114,19 +114,14 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 			out(nil, "refresh", "The local area was already clean.", nil, true)
 		}
 	}
-	mfest, err := m.hasValidManifestWorkspaceDir()
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-	lang := "cedar"
-	absLang, err := m.langFct.GetLanguageAbastraction(lang)
+	langPvd, err := m.buildManifestLanguageProvider()
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "Scanning source files.", nil, true)
 	}
-	selectedFiles, ignoredFiles, err := m.scanSourceCodeFiles(mfest)
+	selectedFiles, ignoredFiles, err := m.scanSourceCodeFiles(langPvd)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
@@ -156,7 +151,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "Starting blobification process.", nil, true)
 	}
-	treeID, codeFiles, err := m.blobifyLocal(selectedFiles, absLang, mfest)
+	treeID, codeFiles, err := m.blobifyLocal(selectedFiles, langPvd)
 	if err != nil {
 		output = buildOutputForCodeFiles(codeFiles, m, out, output)
 		if m.ctx.IsVerboseTerminalOutput() {

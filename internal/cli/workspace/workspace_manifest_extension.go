@@ -28,8 +28,60 @@ type ManifestLanguageProvider struct {
 	langAbstractions map[string]azlang.LanguageAbastraction
 }
 
+// GetPolicyFileExtensions gets policy file extensions.
+func (p *ManifestLanguageProvider) GetPolicyFileExtensions() []string {
+	extSet := make(map[string]struct{})
+	if p.langAbstractions == nil {
+		return nil
+	}
+	for _, langAbs := range p.langAbstractions {
+		for _, ext := range langAbs.GetPolicyFileExtensions() {
+			extSet[ext] = struct{}{}
+		}
+	}
+	fileExts := make([]string, 0, len(extSet))
+	for ext := range extSet {
+		fileExts = append(fileExts, ext)
+	}
+	return fileExts
+}
+
+// GetSchemaFileNames gets schema file names.
+func (p *ManifestLanguageProvider) GetSchemaFileNames() []string {
+	extSet := make(map[string]struct{})
+	if p.langAbstractions == nil {
+		return nil
+	}
+	for _, langAbs := range p.langAbstractions {
+		for _, ext := range langAbs.GetSchemaFileNames() {
+			extSet[ext] = struct{}{}
+		}
+	}
+	fileExts := make([]string, 0, len(extSet))
+	for ext := range extSet {
+		fileExts = append(fileExts, ext)
+	}
+	return fileExts
+}
+
+// GetAbastractLanguage gets the abstract language.
+func (p *ManifestLanguageProvider) GetAbastractLanguage(partition string) (azlang.LanguageAbastraction, error) {
+	if p.langAbstractions == nil {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "parition doens't exists")
+	}
+	absLang, ok := p.langAbstractions[partition]
+	if (!ok) {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "parition doens't exists")
+	}
+	return absLang, nil
+}
+
 // buildManifestLanguageManager build a new instance of the manifest language provider.
-func (m *WorkspaceManager) buildManifestLanguageProvider(manifest *azztasmfests.Manifest) (*ManifestLanguageProvider, error) {
+func (m *WorkspaceManager) buildManifestLanguageProvider() (*ManifestLanguageProvider, error) {
+	manifest, err := m.hasValidManifestWorkspaceDir()
+	if err != nil {
+		return nil, err
+	}
 	if manifest == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrImplementation, "manifest is nil")
 	}

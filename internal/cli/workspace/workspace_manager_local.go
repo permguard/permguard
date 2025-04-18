@@ -22,11 +22,9 @@ import (
 	"strings"
 
 	azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
-	azztasmfests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
-	azlang "github.com/permguard/permguard/pkg/authz/languages"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -48,32 +46,9 @@ func (m *WorkspaceManager) cleanupLocalArea() (bool, error) {
 }
 
 // scanSourceCodeFiles scans the source code files.
-func (m *WorkspaceManager) scanSourceCodeFiles(mfest *azztasmfests.Manifest) ([]azicliwkscosp.CodeFile, []azicliwkscosp.CodeFile, error) {
-	var suppPolicyExts, suppSchemaFNames []string
-	suppPolicyExtsSet := make(map[string]struct{})
-	suppSchemaFNamesSet := make(map[string]struct{})
-	for _, partition := range mfest.Partitions {
-		if runtime, ok := mfest.Runtimes[partition.Runtime]; ok {
-			absLang, err := m.langFct.GetLanguageAbastraction(runtime.Language.Name)
-			if err != nil {
-				return nil, nil, err
-			}
-
-			for _, ext := range absLang.GetPolicyFileExtensions() {
-				if _, exists := suppPolicyExtsSet[ext]; !exists {
-					suppPolicyExtsSet[ext] = struct{}{}
-					suppPolicyExts = append(suppPolicyExts, ext)
-				}
-			}
-
-			for _, fname := range absLang.GetSchemaFileNames() {
-				if _, exists := suppSchemaFNamesSet[fname]; !exists {
-					suppSchemaFNamesSet[fname] = struct{}{}
-					suppSchemaFNames = append(suppSchemaFNames, fname)
-				}
-			}
-		}
-	}
+func (m *WorkspaceManager) scanSourceCodeFiles(langPvd *ManifestLanguageProvider) ([]azicliwkscosp.CodeFile, []azicliwkscosp.CodeFile, error) {
+	suppPolicyExts := langPvd.GetPolicyFileExtensions()
+	suppSchemaFNames := langPvd.GetSchemaFileNames()
 	ignorePatterns := append([]string{hiddenIgnoreFile, hiddenDir, gitDir, gitIgnoreFile}, suppSchemaFNames...)
 	files, ignoredFiles, err := m.persMgr.ScanAndFilterFiles(azicliwkspers.WorkspaceDir, "", suppPolicyExts, ignorePatterns, hiddenIgnoreFile)
 	if err != nil {
@@ -118,7 +93,7 @@ func (m *WorkspaceManager) scanSourceCodeFiles(mfest *azztasmfests.Manifest) ([]
 }
 
 // blobifyPermSchemaFile blobify a permguard schema file.
-func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path string, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile, absLang azlang.LanguageAbastraction, mfest *azztasmfests.Manifest, mfestPart string, data []byte, file azicliwkscosp.CodeFile) []azicliwkscosp.CodeFile {
+func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path string, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile, langPvd *ManifestLanguageProvider, data []byte, file azicliwkscosp.CodeFile) ([]azicliwkscosp.CodeFile, error) {
 	if schemaFileCount > 1 {
 		codeFile := azicliwkscosp.CodeFile{
 			Path:         strings.TrimPrefix(path, wkdir),
@@ -129,6 +104,10 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 		}
 		blbCodeFiles = append(blbCodeFiles, codeFile)
 	} else {
+		absLang, err := langPvd.GetAbastractLanguage(file.Partition)
+		if err == nil {
+			return nil, err
+		}
 		multiSecObj, err := absLang.CreateSchemaBlobObjects(mfest, mfestPart, path, data)
 		if err != nil {
 			codeFile := &azicliwkscosp.CodeFile{
@@ -140,7 +119,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 				ErrorMessage: err.Error(),
 			}
 			blbCodeFiles = append(blbCodeFiles, *codeFile)
-			return blbCodeFiles
+			return blbCodeFiles, nil
 		}
 		secObj := multiSecObj.GetSectionObjects()[0]
 		codeFile := &azicliwkscosp.CodeFile{
@@ -166,13 +145,17 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 		}
 		blbCodeFiles = append(blbCodeFiles, *codeFile)
 	}
-	return blbCodeFiles
+	return blbCodeFiles, nil
 }
 
 // blobifyPermSchemaFile blobify a permguard code file.
-func (m *WorkspaceManager) blobifyLanguageFile(absLang azlang.LanguageAbastraction, mfest *azztasmfests.Manifest, path string, data []byte,
-	file azicliwkscosp.CodeFile, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile) []azicliwkscosp.CodeFile {
-	multiSecObj, err := absLang.CreatePolicyBlobObjects(mfest, file.Partition, path, data)
+func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider, path string, data []byte,
+	file azicliwkscosp.CodeFile, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile) ([]azicliwkscosp.CodeFile, error) {
+	absLang, err := langPvd.GetAbastractLanguage(file.Partition)
+	if (err != nil) {
+		return nil, err
+	}
+	multiSecObj, err := absLang.CreatePolicyBlobObjects(absLang, file.Partition, path, data)
 	if err != nil {
 		codeFile := &azicliwkscosp.CodeFile{
 			Kind:         file.Kind,
@@ -183,7 +166,7 @@ func (m *WorkspaceManager) blobifyLanguageFile(absLang azlang.LanguageAbastracti
 			ErrorMessage: err.Error(),
 		}
 		blbCodeFiles = append(blbCodeFiles, *codeFile)
-		return blbCodeFiles
+		return blbCodeFiles, nil
 	}
 	secObjs := multiSecObj.GetSectionObjects()
 	for _, secObj := range secObjs {
@@ -216,13 +199,13 @@ func (m *WorkspaceManager) blobifyLanguageFile(absLang azlang.LanguageAbastracti
 		}
 		blbCodeFiles = append(blbCodeFiles, *codeFile)
 	}
-	return blbCodeFiles
+	return blbCodeFiles, nil
 }
 
 // blobifyLocal scans source files and creates a blob for each object.
-func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absLang azlang.LanguageAbastraction, mfest *azztasmfests.Manifest) (string, []azicliwkscosp.CodeFile, error) {
+func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, langPvd *ManifestLanguageProvider) (string, []azicliwkscosp.CodeFile, error) {
 	blbCodeFiles := []azicliwkscosp.CodeFile{}
-	schemaFileNames := absLang.GetSchemaFileNames()
+	schemaFileNames := langPvd.GetSchemaFileNames()
 	if len(schemaFileNames) < 1 {
 		return "", nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "no schema file names are supported")
 	}
@@ -236,10 +219,16 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, absL
 			return "", nil, err
 		}
 		if file.Kind == azicliwkscosp.CodeFileTypeOfCodeType {
-			blbCodeFiles = m.blobifyLanguageFile(absLang, mfest, path, data, file, wkdir, mode, blbCodeFiles)
+			blbCodeFiles, err = m.blobifyLanguageFile(langPvd, path, data, file, wkdir, mode, blbCodeFiles)
+			if err == nil {
+				return "", nil, err
+			}
 		} else if file.Kind == azicliwkscosp.CodeFileOfSchemaType {
 			schemaFileCount++
-			blbCodeFiles = m.blobifyPermSchemaFile(schemaFileCount, path, wkdir, mode, blbCodeFiles, absLang, mfest, file.Partition, data, file)
+			blbCodeFiles, err = m.blobifyPermSchemaFile(schemaFileCount, path, wkdir, mode, blbCodeFiles, langPvd, file.Partition, data, file)
+			if err == nil {
+				return "", nil, err
+			}
 		} else {
 			return "", nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "file type is not supported")
 		}
