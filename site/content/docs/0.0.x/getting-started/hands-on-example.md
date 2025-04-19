@@ -28,8 +28,8 @@ The first step is to check out the `MagicFarmacia` playground.
 This example demonstrates Permguard in action and allows testing of its features.
 
 ```text
-git clone git@github.com:permguard/playground-cedar.git
-cd playground-cedar
+git clone git@github.com:permguard/authz-server-playground.git
+cd authz-server-playground/cedar/magicfarmacia/
 ```
 
 ## Start up the AuthZ Server
