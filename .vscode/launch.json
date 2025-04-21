@@ -10,17 +10,17 @@
       "request": "launch",
       "mode": "auto",
       "program": "./cmd/cli/main.go",
-      "args": [
-        "refresh",
-        "-w",
-        "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar",
-        "-v"
-      ],
-      // "args": ["init",  "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar", "-v", ],
+      // "args": [
+      //   "refresh",
+      //   "-w",
+      //   "/Users/nicolagallo/source/nitro/permguard-workspace/repos/authz-server-playground/cedar/magicfarmacia",
+      //   "-v"
+      // ],
+      "args": ["init",  "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/authz-server-playground/cedar/magicfarmacia", "--authz-language", "cedar", "--name", "magicfarmacia", "-v", ],
       // "args": ["clone", "origin/273165098782/magicfarmacia", "-w", "/Users/nicolagallo/source/tmp/", "-o", "json"],
       // "args": ["authz", "ledgers", "create", "--name", "branches", "--zone-id", "851990457443", "-w", "/Users/nicolagallo/source/tmp/", "-o", "json"],
-      // "args": ["authz", "check", "requests/ok_onlyone1.json", "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar", "-v", ],
-      // "args": ["plan", "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-cedar", "-v", "-o", "json"],
+      // "args": ["authz", "check", "requests/ok_onlyone1.json", "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/authz-server-playground/cedar/magicfarmacia", "-v", ],
+      // "args": ["plan", "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/authz-server-playground/cedar/magicfarmacia", "-v", "-o", "json"],
       // "args": ["config", "pap-set-target", "dsafasdf", "-v"],
       "env": {
         "PERMGUARD_DEBUG": "TRUE"
