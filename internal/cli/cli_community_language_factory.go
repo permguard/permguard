@@ -18,8 +18,7 @@ package cli
 
 import (
 	"fmt"
-	"strings"
-
+	
 	azcedarlang "github.com/permguard/permguard-ztauthstar-cedar/pkg/cedarlang"
 	azlang "github.com/permguard/permguard/pkg/authz/languages"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
@@ -46,10 +45,6 @@ func NewCommunityLanguageFactory() (*CommunityLanguageFactory, error) {
 
 // GetLanguageAbastraction gets the language abstraction for the input language.
 func (c *CommunityLanguageFactory) GetLanguageAbastraction(language, version string) (azlang.LanguageAbastraction, error) {
-	//TODO: Write code to manage the version
-	if strings.HasSuffix(language, "+") {
-		language, _ = strings.CutSuffix(language, "+")
-	}
 	langAbs, exists := c.languages[language]
 	if !exists {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, fmt.Sprintf("%s is an invalid language", language))
