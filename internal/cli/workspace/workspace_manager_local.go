@@ -156,7 +156,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider, path string, data []byte,
 	file azicliwkscosp.CodeFile, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile) ([]azicliwkscosp.CodeFile, error) {
 	absLang, err := langPvd.GetAbastractLanguage(file.Partition)
-	if (err != nil) {
+	if err != nil {
 		return nil, err
 	}
 	lang, err := langPvd.GetLanguage(file.Partition)

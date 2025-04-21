@@ -237,18 +237,6 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		return failedOpErr(nil, err)
 	}
 
-	// TODO: Read the language from the authz-model manifest
-	// Creates the abstraction for the language
-	// lang, err := m.cfgMgr.GetLanguage()
-	// if err != nil {
-	// 	return failedOpErr(nil, err)
-	// }
-	lang := "cedar"
-	absLang, err := m.langFct.GetLanguageAbastraction(lang)
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-
 	// Executes the apply for the current head
 	out(nil, "", fmt.Sprintf("Initiating the apply process for ledger %s.", aziclicommon.KeywordText(headCtx.GetLedgerURI())), nil, true)
 
@@ -308,11 +296,17 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		out(nil, "apply", fmt.Sprintf("The commit has been created with id: %s.", aziclicommon.IDText(commitObj.GetOID())), nil, true)
 	}
 
+	// TODO: Review the language in the context of the bag
+	langPvd, err := m.buildManifestLanguageProvider()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+
 	bag := map[string]any{
 		OutFuncKey: func(key string, output string, newLine bool) {
 			out(nil, key, output, nil, newLine)
 		},
-		LanguageAbstractionKey:   absLang,
+		LanguageAbstractionKey:   langPvd,
 		LocalCodeTreeObjectKey:   treeObj,
 		LocalCodeCommitKey:       commit,
 		LocalCodeCommitObjectKey: commitObj,

@@ -17,19 +17,19 @@
 package workspace
 
 import (
-	azlang "github.com/permguard/permguard/pkg/authz/languages"
 	azztasmfests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	azlang "github.com/permguard/permguard/pkg/authz/languages"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 type languageInfo struct {
-	lang *azztasmfests.Language
+	lang    *azztasmfests.Language
 	langAbs azlang.LanguageAbastraction
 }
 
 // ManifestLanguageProvider manifest language provider.
 type ManifestLanguageProvider struct {
-	manifest *azztasmfests.Manifest
+	manifest  *azztasmfests.Manifest
 	langInfos map[string]languageInfo
 }
 
@@ -75,7 +75,7 @@ func (p *ManifestLanguageProvider) GetLanguage(partition string) (*azztasmfests.
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "parition doens't exists")
 	}
 	langInfo, ok := p.langInfos[partition]
-	if (!ok) {
+	if !ok {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "parition doens't exists")
 	}
 	return langInfo.lang, nil
@@ -87,7 +87,7 @@ func (p *ManifestLanguageProvider) GetAbastractLanguage(partition string) (azlan
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "parition doens't exists")
 	}
 	langInfo, ok := p.langInfos[partition]
-	if (!ok) {
+	if !ok {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "parition doens't exists")
 	}
 	return langInfo.langAbs, nil
@@ -103,7 +103,7 @@ func (m *WorkspaceManager) buildManifestLanguageProvider() (*ManifestLanguagePro
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrImplementation, "manifest is nil")
 	}
 	mfestLangMgr := &ManifestLanguageProvider{
-		manifest: manifest,
+		manifest:  manifest,
 		langInfos: map[string]languageInfo{},
 	}
 	for partitionKey, partition := range manifest.Partitions {
@@ -112,12 +112,13 @@ func (m *WorkspaceManager) buildManifestLanguageProvider() (*ManifestLanguagePro
 		}
 		runtime := manifest.Runtimes[partition.Runtime]
 		if _, ok := mfestLangMgr.langInfos[partition.Runtime]; ok {
-			absLang, err := m.langFct.GetLanguageAbastraction(runtime.Language.Name)
+			lang := runtime.Language
+			absLang, err := m.langFct.GetLanguageAbastraction(lang.Name, lang.Version)
 			if err != nil {
 				return nil, err
 			}
 			mfestLangMgr.langInfos[partitionKey] = languageInfo{
-				lang: &runtime.Language,
+				lang:    &runtime.Language,
 				langAbs: absLang,
 			}
 		} else {

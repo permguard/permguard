@@ -77,7 +77,11 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 		authzLang := initParams.AuthZLanguage
 		authzTemplate := initParams.AuthZTemplate
 
-		absLang, err := m.langFct.GetLanguageAbastraction(authzLang)
+		requirement, err := azztasmfests.ParseRequirement(authzLang)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		absLang, err := m.langFct.GetLanguageAbastraction(requirement.GetName(), requirement.GetVersion())
 		if err != nil {
 			return failedOpErr(nil, err)
 		}

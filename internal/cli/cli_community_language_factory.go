@@ -45,7 +45,8 @@ func NewCommunityLanguageFactory() (*CommunityLanguageFactory, error) {
 }
 
 // GetLanguageAbastraction gets the language abstraction for the input language.
-func (c *CommunityLanguageFactory) GetLanguageAbastraction(language string) (azlang.LanguageAbastraction, error) {
+func (c *CommunityLanguageFactory) GetLanguageAbastraction(language, version string) (azlang.LanguageAbastraction, error) {
+	//TODO: Write code to manage the version
 	if strings.HasSuffix(language, "+") {
 		language, _ = strings.CutSuffix(language, "+")
 	}

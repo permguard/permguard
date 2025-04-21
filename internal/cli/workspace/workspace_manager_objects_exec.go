@@ -228,18 +228,6 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 	}
 	defer fileLock.Unlock()
 
-	// TODO: Read the language from the authz-model manifest
-	// Creates the abstraction for the language
-	// lang, err := m.cfgMgr.GetLanguage()
-	// if err != nil {
-	// 	return failedOpErr(nil, err)
-	// }
-	lang := "cedar"
-	absLang, err := m.langFct.GetLanguageAbastraction(lang)
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-
 	filteredObjectsInfos, err := m.getObjectsInfos(includeStorage, includeCode, true, true, true)
 	if err != nil {
 		return failedOpErr(nil, err)
@@ -257,6 +245,16 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 
 	obj := objectInfo.GetObject()
 	objHeader := objectInfo.GetHeader()
+
+	langPvd, err := m.buildManifestLanguageProvider()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	// TODO: replace with the correct language
+	absLang, err := langPvd.GetAbastractLanguage("")
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
 	if m.ctx.IsTerminalOutput() {
 		if showContent {
 			if !showRaw {

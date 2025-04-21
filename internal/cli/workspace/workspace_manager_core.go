@@ -186,7 +186,8 @@ func (m *WorkspaceManager) hasValidManifestWorkspaceDir() (*azztasmfests.Manifes
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
 	}
 	for _, runtime := range manifest.Runtimes {
-		absLang, err := m.langFct.GetLanguageAbastraction(runtime.Language.Name)
+		lang := runtime.Language
+		absLang, err := m.langFct.GetLanguageAbastraction(lang.Name, lang.Version)
 		if err != nil {
 			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
 		}
