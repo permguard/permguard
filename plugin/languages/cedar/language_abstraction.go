@@ -74,7 +74,7 @@ func (abs *CedarLanguageAbstraction) GetFrontendLanguage() string {
 	return azcedarlang.LanguageCedar
 }
 
-// GetFrontendLanguage gets backend language.
+// GetBackendLanguage gets backend language.
 func (abs *CedarLanguageAbstraction) GetBackendLanguage() string {
 	return azcedarlang.LanguageCedarJSON
 }
@@ -185,7 +185,7 @@ func (abs *CedarLanguageAbstraction) GetSchemaFileNames() []string {
 }
 
 // CreateSchemaBlobObjects creates multi sections schema blob objects.
-func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(mfestLang *azztasmfests.Language, paritition string, path string, data []byte) (*azobjs.MultiSectionsObject, error) {
+func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(mfestLang *azztasmfests.Language, path string, data []byte) (*azobjs.MultiSectionsObject, error) {
 	// if langSpec.GetFrontendLanguage() != azcedarlang.LanguageCedar {
 	// 	return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] unsupported frontend language")
 	// }

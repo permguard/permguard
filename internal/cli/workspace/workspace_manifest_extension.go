@@ -22,20 +22,25 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
+type languageInfo struct {
+	lang *azztasmfests.Language
+	langAbs azlang.LanguageAbastraction
+}
+
 // ManifestLanguageProvider manifest language provider.
 type ManifestLanguageProvider struct {
 	manifest *azztasmfests.Manifest
-	langAbstractions map[string]azlang.LanguageAbastraction
+	langInfos map[string]languageInfo
 }
 
 // GetPolicyFileExtensions gets policy file extensions.
 func (p *ManifestLanguageProvider) GetPolicyFileExtensions() []string {
 	extSet := make(map[string]struct{})
-	if p.langAbstractions == nil {
+	if p.langInfos == nil {
 		return nil
 	}
-	for _, langAbs := range p.langAbstractions {
-		for _, ext := range langAbs.GetPolicyFileExtensions() {
+	for _, langInfo := range p.langInfos {
+		for _, ext := range langInfo.langAbs.GetPolicyFileExtensions() {
 			extSet[ext] = struct{}{}
 		}
 	}
@@ -49,11 +54,11 @@ func (p *ManifestLanguageProvider) GetPolicyFileExtensions() []string {
 // GetSchemaFileNames gets schema file names.
 func (p *ManifestLanguageProvider) GetSchemaFileNames() []string {
 	extSet := make(map[string]struct{})
-	if p.langAbstractions == nil {
+	if p.langInfos == nil {
 		return nil
 	}
-	for _, langAbs := range p.langAbstractions {
-		for _, ext := range langAbs.GetSchemaFileNames() {
+	for _, langInfo := range p.langInfos {
+		for _, ext := range langInfo.langAbs.GetSchemaFileNames() {
 			extSet[ext] = struct{}{}
 		}
 	}
@@ -64,16 +69,28 @@ func (p *ManifestLanguageProvider) GetSchemaFileNames() []string {
 	return fileExts
 }
 
-// GetAbastractLanguage gets the abstract language.
-func (p *ManifestLanguageProvider) GetAbastractLanguage(partition string) (azlang.LanguageAbastraction, error) {
-	if p.langAbstractions == nil {
+// GetLanguage gets the language for the input partition.
+func (p *ManifestLanguageProvider) GetLanguage(partition string) (*azztasmfests.Language, error) {
+	if p.langInfos == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "parition doens't exists")
 	}
-	absLang, ok := p.langAbstractions[partition]
+	langInfo, ok := p.langInfos[partition]
 	if (!ok) {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "parition doens't exists")
 	}
-	return absLang, nil
+	return langInfo.lang, nil
+}
+
+// GetAbastractLanguage gets the abstract language for the input partition.
+func (p *ManifestLanguageProvider) GetAbastractLanguage(partition string) (azlang.LanguageAbastraction, error) {
+	if p.langInfos == nil {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "parition doens't exists")
+	}
+	langInfo, ok := p.langInfos[partition]
+	if (!ok) {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "parition doens't exists")
+	}
+	return langInfo.langAbs, nil
 }
 
 // buildManifestLanguageManager build a new instance of the manifest language provider.
@@ -87,19 +104,22 @@ func (m *WorkspaceManager) buildManifestLanguageProvider() (*ManifestLanguagePro
 	}
 	mfestLangMgr := &ManifestLanguageProvider{
 		manifest: manifest,
-		langAbstractions: map[string]azlang.LanguageAbastraction{},
+		langInfos: map[string]languageInfo{},
 	}
 	for partitionKey, partition := range manifest.Partitions {
 		if _, ok := manifest.Runtimes[partition.Runtime]; !ok {
 			continue
 		}
 		runtime := manifest.Runtimes[partition.Runtime]
-		if _, ok := mfestLangMgr.langAbstractions[partition.Runtime]; ok {
+		if _, ok := mfestLangMgr.langInfos[partition.Runtime]; ok {
 			absLang, err := m.langFct.GetLanguageAbastraction(runtime.Language.Name)
 			if err != nil {
 				return nil, err
 			}
-			mfestLangMgr.langAbstractions[partitionKey] = absLang
+			mfestLangMgr.langInfos[partitionKey] = languageInfo{
+				lang: &runtime.Language,
+				langAbs: absLang,
+			}
 		} else {
 			continue
 		}

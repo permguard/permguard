@@ -149,7 +149,7 @@ func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azobjs.Obj
 			langVersionID := header.GetLanguageVersionID()
 			langTypeID := header.GetLanguageTypeID()
 			// TODO: Fix manifest refactoring
-			instanceBytes, err = absLang.ConvertBytesToFrontendLanguage(nil, "", langID, langVersionID, langTypeID, instance)
+			instanceBytes, err = absLang.ConvertBytesToFrontendLanguage(nil, langID, langVersionID, langTypeID, instance)
 			if err != nil {
 				return err
 			}
@@ -192,7 +192,7 @@ func (m *WorkspaceManager) execMapObjectContent(oid string, objInfo azobjs.Objec
 			langTypeID := header.GetLanguageTypeID()
 			langVersionID := header.GetLanguageVersionID()
 			// TODO: Fix manifest refactoring
-			instanceBytes, err = absLang.ConvertBytesToFrontendLanguage(nil, "", langID, langTypeID, langVersionID, instance)
+			instanceBytes, err = absLang.ConvertBytesToFrontendLanguage(nil, langID, langTypeID, langVersionID, instance)
 			if err != nil {
 				return err
 			}

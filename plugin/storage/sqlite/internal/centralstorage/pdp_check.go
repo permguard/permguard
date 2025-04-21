@@ -186,7 +186,7 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 		}
 		contextID := expandedRequest.ContextID
 		// TODO: Fix manifest refactoring
-		authzResponse, err := cedarLanguageAbs.AuthorizationCheck(nil, "", contextID, &authzPolicyStore, &authzCtx)
+		authzResponse, err := cedarLanguageAbs.AuthorizationCheck(nil, contextID, &authzPolicyStore, &authzCtx)
 		if err != nil {
 			evaluation := azmodelspdp.NewEvaluationErrorResponse(expandedRequest.RequestID, azauthzen.AuthzErrInternalErrorCode, err.Error(), azauthzen.AuthzErrInternalErrorMessage)
 			evaluations = append(evaluations, *evaluation)

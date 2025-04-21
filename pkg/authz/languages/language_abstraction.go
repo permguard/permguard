@@ -41,15 +41,15 @@ type LanguageAbastraction interface {
 	// CreatePolicyBlobObjects creates multi sections policy blob objects.
 	CreatePolicyBlobObjects(mfestLang *azztasmfests.Language, path string, data []byte) (*azobjs.MultiSectionsObject, error)
 	// CreatePolicyContentBytesBody creates a multi policy content bytes.
-	CreatePolicyContentBytes(mfestLang *azztasmfests.Language, string, blocks [][]byte) ([]byte, string, error)
+	CreatePolicyContentBytes(mfestLang *azztasmfests.Language, blocks [][]byte) ([]byte, string, error)
 	// GetSchemaFileNames gets the schema file names.
 	GetSchemaFileNames() []string
 	// CreateSchemaBlobObjects creates multi sections schema blob objects.
 	CreateSchemaBlobObjects(mfestLang *azztasmfests.Language, path string, data []byte) (*azobjs.MultiSectionsObject, error)
 	// CreateSchemaContentBytes creates a schema content bytes.
-	CreateSchemaContentBytes(mfestLang *azztasmfests.Language, string, blocks []byte) ([]byte, string, error)
+	CreateSchemaContentBytes(mfestLang *azztasmfests.Language, blocks []byte) ([]byte, string, error)
 	// ConvertBytesToFrontendLanguage converts bytes to the frontend language.
-	ConvertBytesToFrontendLanguage(mfestLang *azztasmfests.Language, string, langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error)
+	ConvertBytesToFrontendLanguage(mfestLang *azztasmfests.Language, langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error)
 	// AuthorizationCheck checks the authorization.
 	AuthorizationCheck(mfestLang *azztasmfests.Language, contextID string, policyStore *azauthzen.PolicyStore, authzCtx *azauthzen.AuthorizationModel) (*azauthzen.AuthorizationDecision, error)
 }

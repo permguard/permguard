@@ -38,7 +38,6 @@ type codeStateConfig struct {
 
 // codeLocalConfig represents the configuration for the code local.
 type codeLocalConfig struct {
-	Language  string          `toml:"language"`
 	CodeState codeStateConfig `toml:"codestate"`
 }
 

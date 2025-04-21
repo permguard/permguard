@@ -323,7 +323,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 					langVersionID := header.GetLanguageVersionID()
 					langTypeID := header.GetLanguageTypeID()
 					// TODO: Fix manifest refactoring
-					langCodeBlock, err := absLang.ConvertBytesToFrontendLanguage(nil, "", langID, langVersionID, langTypeID, codeBlock)
+					langCodeBlock, err := absLang.ConvertBytesToFrontendLanguage(nil, langID, langVersionID, langTypeID, codeBlock)
 					if err != nil {
 						return failedOpErr(nil, err)
 					}
@@ -336,7 +336,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		output["code_entries"] = codeEntries
 		if len(codeBlocks) > 0 {
 			// TODO: Fix manifest refactoring
-			codeBlock, ext, err := absLang.CreatePolicyContentBytes(nil, "", codeBlocks)
+			codeBlock, ext, err := absLang.CreatePolicyContentBytes(nil, codeBlocks)
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
@@ -349,7 +349,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		if schemaBlock != nil {
 			var err error
 			// TODO: Fix manifest refactoring
-			schemaBlock, _, err = absLang.CreateSchemaContentBytes(nil, "", schemaBlock)
+			schemaBlock, _, err = absLang.CreateSchemaContentBytes(nil, schemaBlock)
 			if err != nil {
 				return failedOpErr(nil, err)
 			}

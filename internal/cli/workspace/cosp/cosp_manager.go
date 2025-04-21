@@ -147,9 +147,8 @@ func (m *COSPManager) saveConfig(name string, override bool, cfg any) error {
 }
 
 // SaveCodeSourceConfig saves the code source config file.
-func (m *COSPManager) SaveCodeSourceConfig(treeID, language string) error {
+func (m *COSPManager) SaveCodeSourceConfig(treeID string) error {
 	config := &codeLocalConfig{
-		Language: language,
 		CodeState: codeStateConfig{
 			TreeID: treeID,
 		},

@@ -108,7 +108,11 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 		if err == nil {
 			return nil, err
 		}
-		multiSecObj, err := absLang.CreateSchemaBlobObjects(mfest, mfestPart, path, data)
+		lang, err := langPvd.GetLanguage(file.Partition)
+		if err == nil {
+			return nil, err
+		}
+		multiSecObj, err := absLang.CreateSchemaBlobObjects(lang, path, data)
 		if err != nil {
 			codeFile := &azicliwkscosp.CodeFile{
 				Kind:         file.Kind,
@@ -155,7 +159,11 @@ func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider
 	if (err != nil) {
 		return nil, err
 	}
-	multiSecObj, err := absLang.CreatePolicyBlobObjects(absLang, file.Partition, path, data)
+	lang, err := langPvd.GetLanguage(file.Partition)
+	if err == nil {
+		return nil, err
+	}
+	multiSecObj, err := absLang.CreatePolicyBlobObjects(lang, path, data)
 	if err != nil {
 		codeFile := &azicliwkscosp.CodeFile{
 			Kind:         file.Kind,
@@ -225,7 +233,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, lang
 			}
 		} else if file.Kind == azicliwkscosp.CodeFileOfSchemaType {
 			schemaFileCount++
-			blbCodeFiles, err = m.blobifyPermSchemaFile(schemaFileCount, path, wkdir, mode, blbCodeFiles, langPvd, file.Partition, data, file)
+			blbCodeFiles, err = m.blobifyPermSchemaFile(schemaFileCount, path, wkdir, mode, blbCodeFiles, langPvd, data, file)
 			if err == nil {
 				return "", nil, err
 			}
@@ -281,7 +289,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, lang
 		return "", blbCodeFiles, err
 	}
 	treeID := treeObj.GetOID()
-	if err := m.cospMgr.SaveCodeSourceConfig(treeID, absLang.GetFrontendLanguage()); err != nil {
+	if err := m.cospMgr.SaveCodeSourceConfig(treeID); err != nil {
 		return treeID, blbCodeFiles, err
 	}
 	return treeID, blbCodeFiles, nil
