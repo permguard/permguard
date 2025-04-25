@@ -85,10 +85,6 @@ github.com/permguard/permguard-notp-protocol v0.0.1-0.20250325000214-6c0849aa9d2
 github.com/permguard/permguard-notp-protocol v0.0.1-0.20250325000214-6c0849aa9d2d/go.mod h1:7Z9qtEkI2tKLpRss+Ae4W2UA6P94mTGJnTWjDllXzTQ=
 github.com/permguard/permguard-ztauthstar v0.0.1-0.20250414214902-6640a99e0798 h1:oTNK9q//bVQF0ZxvZ3cKzABLROM3rObDymDYCQEWgfI=
 github.com/permguard/permguard-ztauthstar v0.0.1-0.20250414214902-6640a99e0798/go.mod h1:lrRj24j8pr7BGYKlP9moY9a8ymOnQoBCKHVIlsyGQBU=
-github.com/permguard/permguard-ztauthstar-cedar v0.0.0-20250416175537-890be926effd h1:njvJ3rigBMozbZt2qsuhJmiOMO7AIzmbGRcYnDzfLUo=
-github.com/permguard/permguard-ztauthstar-cedar v0.0.0-20250416175537-890be926effd/go.mod h1:CItt1PPRmFoX+eWf1KAZEU8BzMrLXpwxWAd/1bmb44s=
-github.com/permguard/permguard-ztauthstar-cedar v0.0.0-20250416180620-4d5b6a526716 h1:X8uJw65PS+ILvvkNJg8Usv9kqZGjEgXsPdJUVKXC8Qc=
-github.com/permguard/permguard-ztauthstar-cedar v0.0.0-20250416180620-4d5b6a526716/go.mod h1:CItt1PPRmFoX+eWf1KAZEU8BzMrLXpwxWAd/1bmb44s=
 github.com/permguard/permguard-ztauthstar-cedar v0.0.0-20250416181039-242de43f338e h1:uI90pANbTHlA72fC2RE4KG02la8ips1m4X50kxs70kI=
 github.com/permguard/permguard-ztauthstar-cedar v0.0.0-20250416181039-242de43f338e/go.mod h1:CItt1PPRmFoX+eWf1KAZEU8BzMrLXpwxWAd/1bmb44s=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
