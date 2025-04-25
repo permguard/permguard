@@ -10,13 +10,7 @@
 
 [![Documentation](https://img.shields.io/website?label=Docs&url=https%3A%2F%2Fwww.permguard.com%2F)](https://www.permguard.com/)
 [![PermguardCI](https://github.com/permguard/permguard/actions/workflows/permguard-ci.yml/badge.svg)](https://github.com/permguard/permguard/actions/workflows/permguard-ci.yml)
-[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=permguard_permguard&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=permguard_permguard)
-[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=permguard_permguard&metric=bugs)](https://sonarcloud.io/summary/new_code?id=permguard_permguard)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=permguard_permguard&metric=coverage)](https://sonarcloud.io/summary/new_code?id=permguard_permguard)
-[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=permguard_permguard&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=permguard_permguard)
 [![Go Report Card](https://goreportcard.com/badge/github.com/permguard/permguard)](https://goreportcard.com/report/github.com/permguard/permguard)
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=permguard_permguard&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=permguard_permguard)
-[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=permguard_permguard&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=permguard_permguard)
 
 [![Watch the video on YouTube](https://raw.githubusercontent.com/permguard/permguard-assets/refs/heads/main/video/permguard-thumbnail-preview.png)](https://youtu.be/cH_boKCpLQ8?si=i1fWFHT5kxQQJoYN)
 
