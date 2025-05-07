@@ -24,6 +24,7 @@ import (
 
 	//azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
 	//azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	"github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
@@ -138,8 +139,9 @@ func (m *WorkspaceManager) scanByKind(partition string, kind string, extensions,
 	return includedFiles, ignoredFiles, nil
 }
 
-// blobifyPermSchemaFile blobify a permguard schema file.
-func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path string, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile, langPvd *ManifestLanguageProvider, data []byte, file azicliwkscosp.CodeFile) ([]azicliwkscosp.CodeFile, error) {
+// blobifyPermSchemaFile processes a PermGuard schema file.
+// It enforces that only one schema file is allowed per workspace.
+func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile, langPvd *ManifestLanguageProvider, data []byte, file azicliwkscosp.CodeFile) ([]azicliwkscosp.CodeFile, error) {
 	if schemaFileCount > 1 {
 		codeFile := azicliwkscosp.CodeFile{
 			Path:         strings.TrimPrefix(path, wkdir),
@@ -148,70 +150,51 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 			HasErrors:    true,
 			ErrorMessage: "language: only one schema file is permitted in the workspace. please ensure that there are no duplicate schema files",
 		}
-		blbCodeFiles = append(blbCodeFiles, codeFile)
-	} else {
-		absLang, err := langPvd.GetAbstractLanguage(file.Partition)
-		if err == nil {
-			return nil, err
-		}
-		lang, err := langPvd.GetLanguage(file.Partition)
-		if err == nil {
-			return nil, err
-		}
-		multiSecObj, err := absLang.CreateSchemaBlobObjects(lang, path, data)
-		if err != nil {
-			codeFile := &azicliwkscosp.CodeFile{
-				Kind:         file.Kind,
-				Path:         strings.TrimPrefix(path, wkdir),
-				Section:      0,
-				Mode:         mode,
-				HasErrors:    true,
-				ErrorMessage: err.Error(),
-			}
-			blbCodeFiles = append(blbCodeFiles, *codeFile)
-			return blbCodeFiles, nil
-		}
-		secObj := multiSecObj.GetSectionObjects()[0]
-		codeFile := &azicliwkscosp.CodeFile{
-			Kind:            file.Kind,
-			Path:            strings.TrimPrefix(path, wkdir),
-			Section:         secObj.GetNumberOfSection(),
-			Mode:            mode,
-			HasErrors:       secObj.GetError() != nil,
-			OType:           secObj.GetObjectType(),
-			OName:           secObj.GetObjectName(),
-			CodeID:          secObj.GetCodeID(),
-			CodeType:        secObj.GetCodeType(),
-			Language:        secObj.GetLanguage(),
-			LanguageVersion: secObj.GetLanguageVersion(),
-			LanguageType:    secObj.GetLanguageType(),
-		}
-		if codeFile.HasErrors {
-			codeFile.ErrorMessage = azerrors.ConvertToSystemError(secObj.GetError()).Message()
-		} else {
-			obj := secObj.GetObject()
-			codeFile.OID = obj.GetOID()
-			m.cospMgr.SaveCodeSourceObject(obj.GetOID(), obj.GetContent())
-		}
-		blbCodeFiles = append(blbCodeFiles, *codeFile)
+		return append(blbCodeFiles, codeFile), nil
 	}
-	return blbCodeFiles, nil
-}
 
-// blobifyPermSchemaFile blobify a permguard code file.
-func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider, path string, data []byte,
-	file azicliwkscosp.CodeFile, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile) ([]azicliwkscosp.CodeFile, error) {
 	absLang, err := langPvd.GetAbstractLanguage(file.Partition)
 	if err != nil {
 		return nil, err
 	}
 	lang, err := langPvd.GetLanguage(file.Partition)
-	if err == nil {
+	if err != nil {
+		return nil, err
+	}
+	multiSecObj, err := absLang.CreateSchemaBlobObjects(lang, path, data)
+	if err != nil {
+		codeFile := azicliwkscosp.CodeFile{
+			Kind:         file.Kind,
+			Path:         strings.TrimPrefix(path, wkdir),
+			Section:      0,
+			Mode:         mode,
+			HasErrors:    true,
+			ErrorMessage: err.Error(),
+		}
+		return append(blbCodeFiles, codeFile), nil
+	}
+
+	// Only one section is expected in schema files
+	secObj := multiSecObj.GetSectionObjects()[0]
+	codeFile := m.buildCodeFileFromSection(secObj, file, path, wkdir, mode)
+	return append(blbCodeFiles, codeFile), nil
+}
+
+// blobifyLanguageFile processes a PermGuard policy file containing multiple logical sections.
+func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider, path string, data []byte,
+	file azicliwkscosp.CodeFile, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile) ([]azicliwkscosp.CodeFile, error) {
+
+	absLang, err := langPvd.GetAbstractLanguage(file.Partition)
+	if err != nil {
+		return nil, err
+	}
+	lang, err := langPvd.GetLanguage(file.Partition)
+	if err != nil {
 		return nil, err
 	}
 	multiSecObj, err := absLang.CreatePolicyBlobObjects(lang, path, data)
 	if err != nil {
-		codeFile := &azicliwkscosp.CodeFile{
+		codeFile := azicliwkscosp.CodeFile{
 			Kind:         file.Kind,
 			Path:         strings.TrimPrefix(path, wkdir),
 			Section:      -1,
@@ -219,41 +202,47 @@ func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider
 			HasErrors:    true,
 			ErrorMessage: err.Error(),
 		}
-		blbCodeFiles = append(blbCodeFiles, *codeFile)
-		return blbCodeFiles, nil
+		return append(blbCodeFiles, codeFile), nil
 	}
-	secObjs := multiSecObj.GetSectionObjects()
-	for _, secObj := range secObjs {
-		codeFile := &azicliwkscosp.CodeFile{
-			Kind:            file.Kind,
-			Path:            strings.TrimPrefix(path, wkdir),
-			Section:         secObj.GetNumberOfSection(),
-			Mode:            mode,
-			HasErrors:       secObj.GetError() != nil,
-			OType:           secObj.GetObjectType(),
-			OName:           secObj.GetObjectName(),
-			CodeID:          secObj.GetCodeID(),
-			CodeType:        secObj.GetCodeType(),
-			Language:        secObj.GetLanguage(),
-			LanguageVersion: secObj.GetLanguageVersion(),
-			LanguageType:    secObj.GetLanguageType(),
-		}
-		if codeFile.HasErrors {
-			secErr := secObj.GetError()
-			errMessage := secErr.Error()
-			sysErr := azerrors.ConvertToSystemError(secErr)
-			if sysErr != nil {
-				errMessage = sysErr.Message()
-			}
-			codeFile.ErrorMessage = errMessage
-		} else {
-			obj := secObj.GetObject()
-			codeFile.OID = obj.GetOID()
-			m.cospMgr.SaveCodeSourceObject(obj.GetOID(), obj.GetContent())
-		}
-		blbCodeFiles = append(blbCodeFiles, *codeFile)
+
+	for _, secObj := range multiSecObj.GetSectionObjects() {
+		codeFile := m.buildCodeFileFromSection(secObj, file, path, wkdir, mode)
+		blbCodeFiles = append(blbCodeFiles, codeFile)
 	}
 	return blbCodeFiles, nil
+}
+
+// buildCodeFileFromSection builds a CodeFile from a given SectionObject with metadata, errors and OID assignment.
+func (m *WorkspaceManager) buildCodeFileFromSection(secObj *objects.SectionObject, inputFile azicliwkscosp.CodeFile, path, wkdir string, mode uint32) azicliwkscosp.CodeFile {
+	codeFile := azicliwkscosp.CodeFile{
+		Kind:            inputFile.Kind,
+		Path:            strings.TrimPrefix(path, wkdir),
+		Section:         secObj.GetNumberOfSection(),
+		Mode:            mode,
+		HasErrors:       secObj.GetError() != nil,
+		OType:           secObj.GetObjectType(),
+		OName:           secObj.GetObjectName(),
+		CodeID:          secObj.GetCodeID(),
+		CodeType:        secObj.GetCodeType(),
+		Language:        secObj.GetLanguage(),
+		LanguageVersion: secObj.GetLanguageVersion(),
+		LanguageType:    secObj.GetLanguageType(),
+	}
+
+	if codeFile.HasErrors {
+		err := secObj.GetError()
+		if sysErr := azerrors.ConvertToSystemError(err); sysErr != nil {
+			codeFile.ErrorMessage = sysErr.Message()
+		} else {
+			codeFile.ErrorMessage = err.Error()
+		}
+	} else {
+		obj := secObj.GetObject()
+		codeFile.OID = obj.GetOID()
+		m.cospMgr.SaveCodeSourceObject(obj.GetOID(), obj.GetContent())
+	}
+
+	return codeFile
 }
 
 // blobifyLocal scans source files and creates a blob for each object.
