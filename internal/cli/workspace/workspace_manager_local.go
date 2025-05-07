@@ -65,9 +65,21 @@ func (m *WorkspaceManager) scanSourceCodeFiles(langPvd *ManifestLanguageProvider
 
 		codeFileExts := absLang.GetPolicyFileExtensions()
 		schemaFileNames := absLang.GetSchemaFileNames()
-		
+
+		ignoredPartitionPaths := []string{}
+		if partition == "/" {
+			for _, subPart := range partitions {
+				if subPart == partition {
+					continue
+				}
+				subPart = strings.TrimPrefix(subPart, "/")
+			 	ignoredPartitionPaths = append(ignoredPartitionPaths, filepath.Join(".", subPart))
+			}
+		}
+
 		// Scan code files
 		codeIgnorePatterns := append([]string{hiddenIgnoreFile, hiddenDir, gitDir, gitIgnoreFile}, schemaFileNames...)
+		codeIgnorePatterns = append(codeIgnorePatterns, ignoredPartitionPaths...)
 		codeIncluded, codeIgnored, err := m.scanByKind(partition, azicliwkscosp.CodeFileTypeOfCodeType, codeFileExts, codeIgnorePatterns, workDir)
 		if err != nil {
 			return nil, nil, err
@@ -77,6 +89,7 @@ func (m *WorkspaceManager) scanSourceCodeFiles(langPvd *ManifestLanguageProvider
 
 		// Scan schema files
 		schemaIgnorePatterns := append([]string{hiddenIgnoreFile, hiddenDir, gitDir, gitIgnoreFile}, codeFileExts...)
+		schemaIgnorePatterns = append(schemaIgnorePatterns, ignoredPartitionPaths...)
 		schemaIncluded, schemaIgnored, err := m.scanByKind(partition, azicliwkscosp.CodeFileOfSchemaType, schemaFileNames, schemaIgnorePatterns, workDir)
 		if err != nil {
 			return nil, nil, err
@@ -91,7 +104,8 @@ func (m *WorkspaceManager) scanSourceCodeFiles(langPvd *ManifestLanguageProvider
 // scanByKind scans and filters files of a specific kind (e.g., code or schema) for a given partition.
 // It returns the included files and the ignored files, each annotated with partition and kind.
 func (m *WorkspaceManager) scanByKind(partition string, kind string, extensions, ignorePatterns []string, workDir string) ([]azicliwkscosp.CodeFile, []azicliwkscosp.CodeFile, error) {
-	includedPaths, ignoredPaths, err := m.persMgr.ScanAndFilterFiles(azicliwkspers.WorkspaceDir, "", extensions, ignorePatterns, hiddenIgnoreFile)
+	partitionPath := filepath.Join(".", strings.TrimPrefix(partition, "/"))
+	includedPaths, ignoredPaths, err := m.persMgr.ScanAndFilterFiles(azicliwkspers.WorkspaceDir, partitionPath, extensions, ignorePatterns, hiddenIgnoreFile)
 	if err != nil {
 		return nil, nil, err
 	}
