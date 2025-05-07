@@ -342,7 +342,8 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, lang
 	return "", nil, nil
 }
 
-// retrieveCodeMap retrieves the code map.
+// retrieveCodeMap loads the code map and separates valid and invalid files.
+// A file is considered invalid if it has explicit errors or if its object name is duplicated.
 func (m *WorkspaceManager) retrieveCodeMap() ([]azicliwkscosp.CodeFile, []azicliwkscosp.CodeFile, error) {
 	codeFiles, err := m.cospMgr.ReadCodeSourceCodeMap()
 	if err != nil {
@@ -351,25 +352,31 @@ func (m *WorkspaceManager) retrieveCodeMap() ([]azicliwkscosp.CodeFile, []azicli
 
 	validFiles := []azicliwkscosp.CodeFile{}
 	invalidFiles := []azicliwkscosp.CodeFile{}
-	duplicateFiles := []azicliwkscosp.CodeFile{}
-	nameMap := make(map[string]int)
+	nameCount := make(map[string]int)
 
-	for _, codeFile := range codeFiles {
-		if codeFile.HasErrors {
-			invalidFiles = append(invalidFiles, codeFile)
+	// First pass: count names and collect explicit errors
+	for _, file := range codeFiles {
+		if file.HasErrors {
+			invalidFiles = append(invalidFiles, file)
 		} else {
-			nameMap[codeFile.OName]++
-			if nameMap[codeFile.OName] == 2 {
-				duplicateFiles = append(duplicateFiles, codeFile)
-			}
-			validFiles = append(validFiles, codeFile)
+			nameCount[file.OName]++
 		}
 	}
 
-	for _, dupFile := range duplicateFiles {
-		dupFile.HasErrors = true
-		dupFile.ErrorMessage = "language: duplicate object name found in the code files. please ensure that there are no duplicate object names"
-		invalidFiles = append(invalidFiles, dupFile)
+	// Second pass: detect duplicates and separate valid/invalid
+	for _, file := range codeFiles {
+		if file.HasErrors {
+			continue // already added to invalidFiles
+		}
+
+		if nameCount[file.OName] > 1 {
+			// Duplicate object name found
+			file.HasErrors = true
+			file.ErrorMessage = "language: duplicate object name found in the code files. please ensure that there are no duplicate object names"
+			invalidFiles = append(invalidFiles, file)
+		} else {
+			validFiles = append(validFiles, file)
+		}
 	}
 
 	return validFiles, invalidFiles, nil
