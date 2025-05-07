@@ -17,12 +17,13 @@
 package workspace
 
 import (
+	//"fmt"
 	"fmt"
 	"path/filepath"
 	"strings"
 
-	azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
-	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	//azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
+	//azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
@@ -45,51 +46,82 @@ func (m *WorkspaceManager) cleanupLocalArea() (bool, error) {
 	return m.cospMgr.CleanCodeSource()
 }
 
-// scanSourceCodeFiles scans the source code files.
+// scanSourceCodeFiles scans the source code and schema files across all supported partitions.
+// It returns two lists: the included files and the ignored files.
 func (m *WorkspaceManager) scanSourceCodeFiles(langPvd *ManifestLanguageProvider) ([]azicliwkscosp.CodeFile, []azicliwkscosp.CodeFile, error) {
-	suppPolicyExts := langPvd.GetPolicyFileExtensions()
-	suppSchemaFNames := langPvd.GetSchemaFileNames()
-	ignorePatterns := append([]string{hiddenIgnoreFile, hiddenDir, gitDir, gitIgnoreFile}, suppSchemaFNames...)
-	files, ignoredFiles, err := m.persMgr.ScanAndFilterFiles(azicliwkspers.WorkspaceDir, "", suppPolicyExts, ignorePatterns, hiddenIgnoreFile)
+	partitions := langPvd.GetPartitions()
+	if len(partitions) == 0 {
+		return nil, nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliWorkspace, "no partitions are supported")
+	}
+
+	var scanIncludedFiles, scanIgnoredFiles []azicliwkscosp.CodeFile
+	workDir := m.ctx.GetWorkDir()
+
+	for _, partition := range partitions {
+		absLang, err := langPvd.GetAbstractLanguage(partition)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		codeFileExts := absLang.GetPolicyFileExtensions()
+		schemaFileNames := absLang.GetSchemaFileNames()
+		
+		// Scan code files
+		codeIgnorePatterns := append([]string{hiddenIgnoreFile, hiddenDir, gitDir, gitIgnoreFile}, schemaFileNames...)
+		codeIncluded, codeIgnored, err := m.scanByKind(partition, azicliwkscosp.CodeFileTypeOfCodeType, codeFileExts, codeIgnorePatterns, workDir)
+		if err != nil {
+			return nil, nil, err
+		}
+		scanIncludedFiles = append(scanIncludedFiles, codeIncluded...)
+		scanIgnoredFiles = append(scanIgnoredFiles, codeIgnored...)
+
+		// Scan schema files
+		schemaIgnorePatterns := append([]string{hiddenIgnoreFile, hiddenDir, gitDir, gitIgnoreFile}, codeFileExts...)
+		schemaIncluded, schemaIgnored, err := m.scanByKind(partition, azicliwkscosp.CodeFileOfSchemaType, schemaFileNames, schemaIgnorePatterns, workDir)
+		if err != nil {
+			return nil, nil, err
+		}
+		scanIncludedFiles = append(scanIncludedFiles, schemaIncluded...)
+		scanIgnoredFiles = append(scanIgnoredFiles, schemaIgnored...)
+	}
+
+	return scanIncludedFiles, scanIgnoredFiles, nil
+}
+
+// scanByKind scans and filters files of a specific kind (e.g., code or schema) for a given partition.
+// It returns the included files and the ignored files, each annotated with partition and kind.
+func (m *WorkspaceManager) scanByKind(partition string, kind string, extensions, ignorePatterns []string, workDir string) ([]azicliwkscosp.CodeFile, []azicliwkscosp.CodeFile, error) {
+	includedPaths, ignoredPaths, err := m.persMgr.ScanAndFilterFiles(azicliwkspers.WorkspaceDir, "", extensions, ignorePatterns, hiddenIgnoreFile)
 	if err != nil {
 		return nil, nil, err
 	}
-	codeFiles := make([]azicliwkscosp.CodeFile, len(files))
-	for i, file := range files {
-		codeFiles[i] = azicliwkscosp.CodeFile{Kind: azicliwkscosp.CodeFileTypeOfCodeType, Path: file}
-	}
-	existingSchemaFiles := []string{}
-	for _, schemaFile := range suppSchemaFNames {
-		if exists, _ := m.persMgr.CheckPathIfExists(azicliwkspers.WorkspaceDir, schemaFile); exists {
-			schemaFileName := m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaFile)
-			existingSchemaFiles = append(existingSchemaFiles, schemaFileName)
-			codeFiles = append(codeFiles, azicliwkscosp.CodeFile{Kind: azicliwkscosp.CodeFileOfSchemaType, Path: schemaFileName})
+
+	var includedFiles, ignoredFiles []azicliwkscosp.CodeFile
+	for _, absPath := range includedPaths {
+		relPath, err := filepath.Rel(workDir, absPath)
+		if err != nil {
+			return nil, nil, azerrors.WrapHandledSysError(azerrors.ErrCliWorkspace, fmt.Errorf("failed to compute relative path for included file %q: %w", absPath, err))
 		}
+		includedFiles = append(includedFiles, azicliwkscosp.CodeFile{
+			Partition: partition,
+			Kind:      kind,
+			Path:      relPath,
+		})
 	}
-	schemaFileSet := make(map[string]struct{})
-	for _, schemaFile := range existingSchemaFiles {
-		schemaFileSet[schemaFile] = struct{}{}
-	}
-	ignoredCodeFiles := []azicliwkscosp.CodeFile{}
-	for _, file := range ignoredFiles {
-		if _, exists := schemaFileSet[file]; !exists {
-			ignoredCodeFiles = append(ignoredCodeFiles, azicliwkscosp.CodeFile{Path: file})
+
+	for _, absPath := range ignoredPaths {
+		relPath, err := filepath.Rel(workDir, absPath)
+		if err != nil {
+			return nil, nil, azerrors.WrapHandledSysError(azerrors.ErrCliWorkspace, fmt.Errorf("failed to compute relative path for ignored file %q: %w", absPath, err))
 		}
+		ignoredFiles = append(ignoredFiles, azicliwkscosp.CodeFile{
+			Partition: partition,
+			Kind:      kind,
+			Path:      relPath,
+		})
 	}
-	pwd := m.ctx.GetWorkDir()
-	normalizedCodeFiles := []azicliwkscosp.CodeFile{}
-	for _, codeFile := range codeFiles {
-		relativePath, _ := filepath.Rel(pwd, codeFile.Path)
-		newCodeFile := azicliwkscosp.CodeFile{Kind: codeFile.Kind, Path: relativePath}
-		normalizedCodeFiles = append(normalizedCodeFiles, newCodeFile)
-	}
-	normalizedIgnoredCodeFiles := []azicliwkscosp.CodeFile{}
-	for _, codeFile := range ignoredCodeFiles {
-		relativePath, _ := filepath.Rel(pwd, codeFile.Path)
-		newCodeFile := azicliwkscosp.CodeFile{Kind: codeFile.Kind, Path: relativePath}
-		normalizedIgnoredCodeFiles = append(normalizedIgnoredCodeFiles, newCodeFile)
-	}
-	return normalizedCodeFiles, normalizedIgnoredCodeFiles, nil
+
+	return includedFiles, ignoredFiles, nil
 }
 
 // blobifyPermSchemaFile blobify a permguard schema file.
@@ -104,7 +136,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 		}
 		blbCodeFiles = append(blbCodeFiles, codeFile)
 	} else {
-		absLang, err := langPvd.GetAbastractLanguage(file.Partition)
+		absLang, err := langPvd.GetAbstractLanguage(file.Partition)
 		if err == nil {
 			return nil, err
 		}
@@ -155,7 +187,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path strin
 // blobifyPermSchemaFile blobify a permguard code file.
 func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider, path string, data []byte,
 	file azicliwkscosp.CodeFile, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile) ([]azicliwkscosp.CodeFile, error) {
-	absLang, err := langPvd.GetAbastractLanguage(file.Partition)
+	absLang, err := langPvd.GetAbstractLanguage(file.Partition)
 	if err != nil {
 		return nil, err
 	}
@@ -212,87 +244,88 @@ func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider
 
 // blobifyLocal scans source files and creates a blob for each object.
 func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, langPvd *ManifestLanguageProvider) (string, []azicliwkscosp.CodeFile, error) {
-	blbCodeFiles := []azicliwkscosp.CodeFile{}
-	schemaFileNames := langPvd.GetSchemaFileNames()
-	if len(schemaFileNames) < 1 {
-		return "", nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "no schema file names are supported")
-	}
-	schemaFileName := schemaFileNames[0]
-	schemaFileCount := 0
-	for _, file := range codeFiles {
-		wkdir := m.ctx.GetWorkDir()
-		path := file.Path
-		data, mode, err := m.persMgr.ReadFile(azicliwkspers.WorkspaceDir, path, false)
-		if err != nil {
-			return "", nil, err
-		}
-		if file.Kind == azicliwkscosp.CodeFileTypeOfCodeType {
-			blbCodeFiles, err = m.blobifyLanguageFile(langPvd, path, data, file, wkdir, mode, blbCodeFiles)
-			if err == nil {
-				return "", nil, err
-			}
-		} else if file.Kind == azicliwkscosp.CodeFileOfSchemaType {
-			schemaFileCount++
-			blbCodeFiles, err = m.blobifyPermSchemaFile(schemaFileCount, path, wkdir, mode, blbCodeFiles, langPvd, data, file)
-			if err == nil {
-				return "", nil, err
-			}
-		} else {
-			return "", nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "file type is not supported")
-		}
-	}
-	if schemaFileCount == 0 {
-		codeFile := azicliwkscosp.CodeFile{
-			Path:         m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaFileName),
-			Section:      0,
-			Mode:         0,
-			HasErrors:    true,
-			CodeID:       azauthzlangtypes.ClassTypeSchema,
-			CodeType:     azauthzlangtypes.ClassTypeSchema,
-			ErrorMessage: fmt.Sprintf("language: the schema file '%s' is missing. please ensure there are no duplicate schema files and that the required schema file is present.", schemaFileName),
-		}
-		blbCodeFiles = append(blbCodeFiles, codeFile)
-	}
-	if err := m.cospMgr.SaveCodeSourceCodeMap(blbCodeFiles); err != nil {
-		return "", blbCodeFiles, err
-	}
-	for _, blobCodeFile := range blbCodeFiles {
-		if blobCodeFile.HasErrors {
-			return "", blbCodeFiles, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "blobification process failed because of errors in the code files")
-		}
-	}
-	codeObsState, err := m.cospMgr.ConvertCodeFilesToCodeObjectStates(blbCodeFiles)
-	if err != nil {
-		return "", blbCodeFiles, err
-	}
-	if err := m.cospMgr.SaveCodeSourceCodeState(codeObsState); err != nil {
-		return "", blbCodeFiles, err
-	}
-	tree, err := azobjs.NewTree()
-	if err != nil {
-		return "", blbCodeFiles, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree object cannot be created", err)
-	}
-	for _, codeObjState := range codeObsState {
-		treeItem, err := azobjs.NewTreeEntry(codeObjState.OType, codeObjState.OID, codeObjState.OName, codeObjState.CodeID, codeObjState.CodeType, codeObjState.Language, codeObjState.LanguageVersion, codeObjState.LanguageType)
-		if err != nil {
-			return "", nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be created", err)
-		}
-		if err := tree.AddEntry(treeItem); err != nil {
-			return "", blbCodeFiles, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be added to the tree because of errors in the code files", err)
-		}
-	}
-	treeObj, err := azobjs.CreateTreeObject(tree)
-	if err != nil {
-		return "", blbCodeFiles, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree object cannot be created", err)
-	}
-	if _, err = m.cospMgr.SaveCodeSourceObject(treeObj.GetOID(), treeObj.GetContent()); err != nil {
-		return "", blbCodeFiles, err
-	}
-	treeID := treeObj.GetOID()
-	if err := m.cospMgr.SaveCodeSourceConfig(treeID); err != nil {
-		return treeID, blbCodeFiles, err
-	}
-	return treeID, blbCodeFiles, nil
+	// blbCodeFiles := []azicliwkscosp.CodeFile{}
+	// schemaFileNames := langPvd.GetSchemaFileNames()
+	// if len(schemaFileNames) < 1 {
+	// 	return "", nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "no schema file names are supported")
+	// }
+	// schemaFileName := schemaFileNames[0]
+	// schemaFileCount := 0
+	// for _, file := range codeFiles {
+	// 	wkdir := m.ctx.GetWorkDir()
+	// 	path := file.Path
+	// 	data, mode, err := m.persMgr.ReadFile(azicliwkspers.WorkspaceDir, path, false)
+	// 	if err != nil {
+	// 		return "", nil, err
+	// 	}
+	// 	if file.Kind == azicliwkscosp.CodeFileTypeOfCodeType {
+	// 		blbCodeFiles, err = m.blobifyLanguageFile(langPvd, path, data, file, wkdir, mode, blbCodeFiles)
+	// 		if err == nil {
+	// 			return "", nil, err
+	// 		}
+	// 	} else if file.Kind == azicliwkscosp.CodeFileOfSchemaType {
+	// 		schemaFileCount++
+	// 		blbCodeFiles, err = m.blobifyPermSchemaFile(schemaFileCount, path, wkdir, mode, blbCodeFiles, langPvd, data, file)
+	// 		if err == nil {
+	// 			return "", nil, err
+	// 		}
+	// 	} else {
+	// 		return "", nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "file type is not supported")
+	// 	}
+	// }
+	// if schemaFileCount == 0 {
+	// 	codeFile := azicliwkscosp.CodeFile{
+	// 		Path:         m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaFileName),
+	// 		Section:      0,
+	// 		Mode:         0,
+	// 		HasErrors:    true,
+	// 		CodeID:       azauthzlangtypes.ClassTypeSchema,
+	// 		CodeType:     azauthzlangtypes.ClassTypeSchema,
+	// 		ErrorMessage: fmt.Sprintf("language: the schema file '%s' is missing. please ensure there are no duplicate schema files and that the required schema file is present.", schemaFileName),
+	// 	}
+	// 	blbCodeFiles = append(blbCodeFiles, codeFile)
+	// }
+	// if err := m.cospMgr.SaveCodeSourceCodeMap(blbCodeFiles); err != nil {
+	// 	return "", blbCodeFiles, err
+	// }
+	// for _, blobCodeFile := range blbCodeFiles {
+	// 	if blobCodeFile.HasErrors {
+	// 		return "", blbCodeFiles, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "blobification process failed because of errors in the code files")
+	// 	}
+	// }
+	// codeObsState, err := m.cospMgr.ConvertCodeFilesToCodeObjectStates(blbCodeFiles)
+	// if err != nil {
+	// 	return "", blbCodeFiles, err
+	// }
+	// if err := m.cospMgr.SaveCodeSourceCodeState(codeObsState); err != nil {
+	// 	return "", blbCodeFiles, err
+	// }
+	// tree, err := azobjs.NewTree()
+	// if err != nil {
+	// 	return "", blbCodeFiles, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree object cannot be created", err)
+	// }
+	// for _, codeObjState := range codeObsState {
+	// 	treeItem, err := azobjs.NewTreeEntry(codeObjState.OType, codeObjState.OID, codeObjState.OName, codeObjState.CodeID, codeObjState.CodeType, codeObjState.Language, codeObjState.LanguageVersion, codeObjState.LanguageType)
+	// 	if err != nil {
+	// 		return "", nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be created", err)
+	// 	}
+	// 	if err := tree.AddEntry(treeItem); err != nil {
+	// 		return "", blbCodeFiles, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be added to the tree because of errors in the code files", err)
+	// 	}
+	// }
+	// treeObj, err := azobjs.CreateTreeObject(tree)
+	// if err != nil {
+	// 	return "", blbCodeFiles, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree object cannot be created", err)
+	// }
+	// if _, err = m.cospMgr.SaveCodeSourceObject(treeObj.GetOID(), treeObj.GetContent()); err != nil {
+	// 	return "", blbCodeFiles, err
+	// }
+	// treeID := treeObj.GetOID()
+	// if err := m.cospMgr.SaveCodeSourceConfig(treeID); err != nil {
+	// 	return treeID, blbCodeFiles, err
+	// }
+	// return treeID, blbCodeFiles, nil
+	return "", nil, nil
 }
 
 // retrieveCodeMap retrieves the code map.
