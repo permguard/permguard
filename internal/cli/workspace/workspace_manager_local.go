@@ -17,14 +17,12 @@
 package workspace
 
 import (
-	//"fmt"
 	"fmt"
 	"path/filepath"
 	"strings"
 
-	//azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
-	//azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
-	"github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
+	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
@@ -141,18 +139,7 @@ func (m *WorkspaceManager) scanByKind(partition string, kind string, extensions,
 
 // blobifyPermSchemaFile processes a PermGuard schema file.
 // It enforces that only one schema file is allowed per workspace.
-func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile, langPvd *ManifestLanguageProvider, data []byte, file azicliwkscosp.CodeFile) ([]azicliwkscosp.CodeFile, error) {
-	if schemaFileCount > 1 {
-		codeFile := azicliwkscosp.CodeFile{
-			Path:         strings.TrimPrefix(path, wkdir),
-			Section:      0,
-			Mode:         mode,
-			HasErrors:    true,
-			ErrorMessage: "language: only one schema file is permitted in the workspace. please ensure that there are no duplicate schema files",
-		}
-		return append(blbCodeFiles, codeFile), nil
-	}
-
+func (m *WorkspaceManager) blobifyPermSchemaFile(path, wkdir string, mode uint32, blobifiedCodeFiles []azicliwkscosp.CodeFile, langPvd *ManifestLanguageProvider, data []byte, file azicliwkscosp.CodeFile) ([]azicliwkscosp.CodeFile, error) {
 	absLang, err := langPvd.GetAbstractLanguage(file.Partition)
 	if err != nil {
 		return nil, err
@@ -171,18 +158,18 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(schemaFileCount int, path, wkdi
 			HasErrors:    true,
 			ErrorMessage: err.Error(),
 		}
-		return append(blbCodeFiles, codeFile), nil
+		return append(blobifiedCodeFiles, codeFile), nil
 	}
 
 	// Only one section is expected in schema files
 	secObj := multiSecObj.GetSectionObjects()[0]
 	codeFile := m.buildCodeFileFromSection(secObj, file, path, wkdir, mode)
-	return append(blbCodeFiles, codeFile), nil
+	return append(blobifiedCodeFiles, codeFile), nil
 }
 
 // blobifyLanguageFile processes a PermGuard policy file containing multiple logical sections.
 func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider, path string, data []byte,
-	file azicliwkscosp.CodeFile, wkdir string, mode uint32, blbCodeFiles []azicliwkscosp.CodeFile) ([]azicliwkscosp.CodeFile, error) {
+	file azicliwkscosp.CodeFile, wkdir string, mode uint32, blobifiedCodeFiles []azicliwkscosp.CodeFile) ([]azicliwkscosp.CodeFile, error) {
 
 	absLang, err := langPvd.GetAbstractLanguage(file.Partition)
 	if err != nil {
@@ -202,18 +189,18 @@ func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider
 			HasErrors:    true,
 			ErrorMessage: err.Error(),
 		}
-		return append(blbCodeFiles, codeFile), nil
+		return append(blobifiedCodeFiles, codeFile), nil
 	}
 
 	for _, secObj := range multiSecObj.GetSectionObjects() {
 		codeFile := m.buildCodeFileFromSection(secObj, file, path, wkdir, mode)
-		blbCodeFiles = append(blbCodeFiles, codeFile)
+		blobifiedCodeFiles = append(blobifiedCodeFiles, codeFile)
 	}
-	return blbCodeFiles, nil
+	return blobifiedCodeFiles, nil
 }
 
 // buildCodeFileFromSection builds a CodeFile from a given SectionObject with metadata, errors and OID assignment.
-func (m *WorkspaceManager) buildCodeFileFromSection(secObj *objects.SectionObject, inputFile azicliwkscosp.CodeFile, path, wkdir string, mode uint32) azicliwkscosp.CodeFile {
+func (m *WorkspaceManager) buildCodeFileFromSection(secObj *azobjs.SectionObject, inputFile azicliwkscosp.CodeFile, path, wkdir string, mode uint32) azicliwkscosp.CodeFile {
 	codeFile := azicliwkscosp.CodeFile{
 		Kind:            inputFile.Kind,
 		Path:            strings.TrimPrefix(path, wkdir),
@@ -245,90 +232,130 @@ func (m *WorkspaceManager) buildCodeFileFromSection(secObj *objects.SectionObjec
 	return codeFile
 }
 
-// blobifyLocal scans source files and creates a blob for each object.
+// blobifyLocal processes source files and converts them into blobs, handling both code and schema types.
+// It ensures that only one schema file exists per partition and constructs a tree object to represent the structure.
 func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, langPvd *ManifestLanguageProvider) (string, []azicliwkscosp.CodeFile, error) {
-	// blbCodeFiles := []azicliwkscosp.CodeFile{}
-	// schemaFileNames := langPvd.GetSchemaFileNames()
-	// if len(schemaFileNames) < 1 {
-	// 	return "", nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "no schema file names are supported")
-	// }
-	// schemaFileName := schemaFileNames[0]
-	// schemaFileCount := 0
-	// for _, file := range codeFiles {
-	// 	wkdir := m.ctx.GetWorkDir()
-	// 	path := file.Path
-	// 	data, mode, err := m.persMgr.ReadFile(azicliwkspers.WorkspaceDir, path, false)
-	// 	if err != nil {
-	// 		return "", nil, err
-	// 	}
-	// 	if file.Kind == azicliwkscosp.CodeFileTypeOfCodeType {
-	// 		blbCodeFiles, err = m.blobifyLanguageFile(langPvd, path, data, file, wkdir, mode, blbCodeFiles)
-	// 		if err == nil {
-	// 			return "", nil, err
-	// 		}
-	// 	} else if file.Kind == azicliwkscosp.CodeFileOfSchemaType {
-	// 		schemaFileCount++
-	// 		blbCodeFiles, err = m.blobifyPermSchemaFile(schemaFileCount, path, wkdir, mode, blbCodeFiles, langPvd, data, file)
-	// 		if err == nil {
-	// 			return "", nil, err
-	// 		}
-	// 	} else {
-	// 		return "", nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "file type is not supported")
-	// 	}
-	// }
-	// if schemaFileCount == 0 {
-	// 	codeFile := azicliwkscosp.CodeFile{
-	// 		Path:         m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaFileName),
-	// 		Section:      0,
-	// 		Mode:         0,
-	// 		HasErrors:    true,
-	// 		CodeID:       azauthzlangtypes.ClassTypeSchema,
-	// 		CodeType:     azauthzlangtypes.ClassTypeSchema,
-	// 		ErrorMessage: fmt.Sprintf("language: the schema file '%s' is missing. please ensure there are no duplicate schema files and that the required schema file is present.", schemaFileName),
-	// 	}
-	// 	blbCodeFiles = append(blbCodeFiles, codeFile)
-	// }
-	// if err := m.cospMgr.SaveCodeSourceCodeMap(blbCodeFiles); err != nil {
-	// 	return "", blbCodeFiles, err
-	// }
-	// for _, blobCodeFile := range blbCodeFiles {
-	// 	if blobCodeFile.HasErrors {
-	// 		return "", blbCodeFiles, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "blobification process failed because of errors in the code files")
-	// 	}
-	// }
-	// codeObsState, err := m.cospMgr.ConvertCodeFilesToCodeObjectStates(blbCodeFiles)
-	// if err != nil {
-	// 	return "", blbCodeFiles, err
-	// }
-	// if err := m.cospMgr.SaveCodeSourceCodeState(codeObsState); err != nil {
-	// 	return "", blbCodeFiles, err
-	// }
-	// tree, err := azobjs.NewTree()
-	// if err != nil {
-	// 	return "", blbCodeFiles, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree object cannot be created", err)
-	// }
-	// for _, codeObjState := range codeObsState {
-	// 	treeItem, err := azobjs.NewTreeEntry(codeObjState.OType, codeObjState.OID, codeObjState.OName, codeObjState.CodeID, codeObjState.CodeType, codeObjState.Language, codeObjState.LanguageVersion, codeObjState.LanguageType)
-	// 	if err != nil {
-	// 		return "", nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be created", err)
-	// 	}
-	// 	if err := tree.AddEntry(treeItem); err != nil {
-	// 		return "", blbCodeFiles, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be added to the tree because of errors in the code files", err)
-	// 	}
-	// }
-	// treeObj, err := azobjs.CreateTreeObject(tree)
-	// if err != nil {
-	// 	return "", blbCodeFiles, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree object cannot be created", err)
-	// }
-	// if _, err = m.cospMgr.SaveCodeSourceObject(treeObj.GetOID(), treeObj.GetContent()); err != nil {
-	// 	return "", blbCodeFiles, err
-	// }
-	// treeID := treeObj.GetOID()
-	// if err := m.cospMgr.SaveCodeSourceConfig(treeID); err != nil {
-	// 	return treeID, blbCodeFiles, err
-	// }
-	// return treeID, blbCodeFiles, nil
-	return "", nil, nil
+	blobifiedCodeFiles := []azicliwkscosp.CodeFile{}
+	partitionSchemas := map[string]int{}
+
+	for _, file := range codeFiles {
+		wkdir := m.ctx.GetWorkDir()
+		path := file.Path
+
+		// Read file content and mode from the workspace
+		data, mode, err := m.persMgr.ReadFile(azicliwkspers.WorkspaceDir, path, false)
+		if err != nil {
+			return "", nil, err
+		}
+
+		// Process code files using the language provider
+		if file.Kind == azicliwkscosp.CodeFileTypeOfCodeType {
+			blobifiedCodeFiles, err = m.blobifyLanguageFile(langPvd, path, data, file, wkdir, mode, blobifiedCodeFiles)
+			if err != nil {
+				return "", nil, err
+			}
+		} else if file.Kind == azicliwkscosp.CodeFileOfSchemaType {
+			// Ensure only one schema file per partition
+			partitionSchemas[file.Partition]++
+			if partitionSchemas[file.Partition] > 1 {
+				codeFile := azicliwkscosp.CodeFile{
+					Path:         strings.TrimPrefix(path, wkdir),
+					Section:      0,
+					Mode:         mode,
+					HasErrors:    true,
+					ErrorMessage: "language: only one schema file is permitted in the workspace. Please ensure there are no duplicate schema files.",
+				}
+				blobifiedCodeFiles = append(blobifiedCodeFiles, codeFile)
+			} else {
+				blobifiedCodeFiles, err = m.blobifyPermSchemaFile(path, wkdir, mode, blobifiedCodeFiles, langPvd, data, file)
+				if err != nil {
+					return "", nil, err
+				}
+			}
+		} else {
+			return "", nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "file type is not supported")
+		}
+	}
+
+	// Validate that required schema files are present per partition
+	for partition, schemaCount := range partitionSchemas {
+		if schemaCount > 0 {
+			continue
+		}
+		absLang, err := langPvd.GetAbstractLanguage(partition)
+		if err != nil {
+			return "", nil, err
+		}
+		schemaFileNames := absLang.GetSchemaFileNames()
+		if len(schemaFileNames) > 0 {
+			schemaFileName := schemaFileNames[0]
+			codeFile := azicliwkscosp.CodeFile{
+				Path:         m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaFileName),
+				Section:      0,
+				Mode:         0,
+				HasErrors:    true,
+				CodeID:       azauthzlangtypes.ClassTypeSchema,
+				CodeType:     azauthzlangtypes.ClassTypeSchema,
+				ErrorMessage: fmt.Sprintf("language: the schema file '%s' is missing. Please ensure there are no duplicate schema files and that the required schema file is present.", schemaFileName),
+			}
+			blobifiedCodeFiles = append(blobifiedCodeFiles, codeFile)
+		}
+	}
+
+	// Save code source map
+	if err := m.cospMgr.SaveCodeSourceCodeMap(blobifiedCodeFiles); err != nil {
+		return "", blobifiedCodeFiles, err
+	}
+
+	// Abort if any file has errors
+	for _, file := range blobifiedCodeFiles {
+		if file.HasErrors {
+			return "", blobifiedCodeFiles, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "blobification process failed due to code file errors")
+		}
+	}
+
+	// Convert code files to code object states
+	codeObsState, err := m.cospMgr.ConvertCodeFilesToCodeObjectStates(blobifiedCodeFiles)
+	if err != nil {
+		return "", blobifiedCodeFiles, err
+	}
+
+	// Save the object state
+	if err := m.cospMgr.SaveCodeSourceCodeState(codeObsState); err != nil {
+		return "", blobifiedCodeFiles, err
+	}
+
+	// Build a tree from object states
+	tree, err := azobjs.NewTree()
+	if err != nil {
+		return "", blobifiedCodeFiles, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree object cannot be created", err)
+	}
+	for _, obj := range codeObsState {
+		entry, err := azobjs.NewTreeEntry(obj.OType, obj.OID, obj.OName, obj.CodeID, obj.CodeType, obj.Language, obj.LanguageVersion, obj.LanguageType)
+		if err != nil {
+			return "", nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be created", err)
+		}
+		if err := tree.AddEntry(entry); err != nil {
+			return "", blobifiedCodeFiles, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be added due to file errors", err)
+		}
+	}
+
+	// Create tree object and persist it
+	treeObj, err := azobjs.CreateTreeObject(tree)
+	if err != nil {
+		return "", blobifiedCodeFiles, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree object creation failed", err)
+	}
+	if _, err := m.cospMgr.SaveCodeSourceObject(treeObj.GetOID(), treeObj.GetContent()); err != nil {
+		return "", blobifiedCodeFiles, err
+	}
+
+	// Save tree configuration
+	treeID := treeObj.GetOID()
+	if err := m.cospMgr.SaveCodeSourceConfig(treeID); err != nil {
+		return treeID, blobifiedCodeFiles, err
+	}
+
+	return treeID, blobifiedCodeFiles, nil
 }
 
 // retrieveCodeMap loads the code map and separates valid and invalid files.
