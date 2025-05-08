@@ -33,40 +33,13 @@ type ManifestLanguageProvider struct {
 	langInfos map[string]languageInfo
 }
 
-// GetPolicyFileExtensions gets policy file extensions.
-func (p *ManifestLanguageProvider) GetPolicyFileExtensions() []string {
-	extSet := make(map[string]struct{})
-	if p.langInfos == nil {
-		return nil
+// GetPartitions gets the partitions for the manifest language provider.
+func (p *ManifestLanguageProvider) GetPartitions() []string {
+	partitions := make([]string, 0, len(p.langInfos))
+	for partKey := range p.langInfos {
+		partitions = append(partitions, partKey)
 	}
-	for _, langInfo := range p.langInfos {
-		for _, ext := range langInfo.langAbs.GetPolicyFileExtensions() {
-			extSet[ext] = struct{}{}
-		}
-	}
-	fileExts := make([]string, 0, len(extSet))
-	for ext := range extSet {
-		fileExts = append(fileExts, ext)
-	}
-	return fileExts
-}
-
-// GetSchemaFileNames gets schema file names.
-func (p *ManifestLanguageProvider) GetSchemaFileNames() []string {
-	extSet := make(map[string]struct{})
-	if p.langInfos == nil {
-		return nil
-	}
-	for _, langInfo := range p.langInfos {
-		for _, ext := range langInfo.langAbs.GetSchemaFileNames() {
-			extSet[ext] = struct{}{}
-		}
-	}
-	fileExts := make([]string, 0, len(extSet))
-	for ext := range extSet {
-		fileExts = append(fileExts, ext)
-	}
-	return fileExts
+	return partitions
 }
 
 // GetLanguage gets the language for the input partition.
@@ -81,8 +54,8 @@ func (p *ManifestLanguageProvider) GetLanguage(partition string) (*azztasmfests.
 	return langInfo.lang, nil
 }
 
-// GetAbastractLanguage gets the abstract language for the input partition.
-func (p *ManifestLanguageProvider) GetAbastractLanguage(partition string) (azlang.LanguageAbastraction, error) {
+// GetAbstractLanguage gets the abstract language for the input partition.
+func (p *ManifestLanguageProvider) GetAbstractLanguage(partition string) (azlang.LanguageAbastraction, error) {
 	if p.langInfos == nil {
 		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "parition doens't exists")
 	}
@@ -111,7 +84,7 @@ func (m *WorkspaceManager) buildManifestLanguageProvider() (*ManifestLanguagePro
 			continue
 		}
 		runtime := manifest.Runtimes[partition.Runtime]
-		if _, ok := mfestLangMgr.langInfos[partition.Runtime]; ok {
+		if _, ok := mfestLangMgr.langInfos[partition.Runtime]; !ok {
 			lang := runtime.Language
 			absLang, err := m.langFct.GetLanguageAbastraction(lang.Name, lang.Version)
 			if err != nil {

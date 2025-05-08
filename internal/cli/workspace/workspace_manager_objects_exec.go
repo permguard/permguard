@@ -251,7 +251,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 		return failedOpErr(nil, err)
 	}
 	// TODO: replace with the correct language
-	absLang, err := langPvd.GetAbastractLanguage("")
+	absLang, err := langPvd.GetAbstractLanguage("")
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
