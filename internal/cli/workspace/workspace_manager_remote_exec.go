@@ -19,6 +19,7 @@ package workspace
 import (
 	//"encoding/json"
 	"fmt"
+	"path"
 	"strings"
 
 	azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
@@ -27,9 +28,9 @@ import (
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
 
-	//azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
+	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	//azfiles "github.com/permguard/permguard/pkg/core/files"
+	azfiles "github.com/permguard/permguard/pkg/core/files"
 )
 
 const (
@@ -277,8 +278,8 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			codeMapIds[code.OID] = true
 		}
 
-		//var schemaBlock []byte
 		codeEntries := []map[string]any{}
+		schemaBlocks := map[string][]byte{}
 		codeBlocks := map[string][][]byte{}
 		for _, entry := range tree.GetEntries() {
 			codeEntries = append(codeEntries, map[string]any{
@@ -301,20 +302,23 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
+				objInfo, err := m.objMar.GetObjectInfo(entryObj)
+				if err != nil {
+					return nil, err
+				}
+				header := objInfo.GetHeader()
+				if header == nil {
+					azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "object header is nil")
+				}
 				switch classType {
 				case azauthzlangtypes.ClassTypeSchemaID:
-					//TODO: Fix manifest refactoring
-					//schemaBlock = codeBlock
+					partition := header.GetPartition()
+					if _, ok := schemaBlocks[partition]; !ok {
+						schemaBlocks[partition] = []byte{}
+					}
+					schemaBlocks[partition] = codeBlock
 					continue
 				case azauthzlangtypes.ClassTypePolicyID:
-					objInfo, err := m.objMar.GetObjectInfo(entryObj)
-					if err != nil {
-						return nil, err
-					}
-					header := objInfo.GetHeader()
-					if header == nil {
-						azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "object header is nil")
-					}
 					partition := header.GetPartition()
 					langID := header.GetLanguageID()
 					langVersionID := header.GetLanguageVersionID()
@@ -337,33 +341,41 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			}
 		}
 		output["code_entries"] = codeEntries
-		// TODO: Fix manifest refactoring
-		// if len(codeBlocks) > 0 {
-		// 	//TODO: Fix manifest refactoring
-		// 	codeBlock, ext, err := absLang.CreatePolicyContentBytes(nil, codeBlocks)
-		// 	if err != nil {
-		// 		return failedOpErr(nil, err)
-		// 	}
-		// 	fileName, err := azfiles.GenerateUniqueFile(CodeGenFileName, ext)
-		// 	if err != nil {
-		// 		return failedOpErr(nil, err)
-		// 	}
-		// 	m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, fileName, codeBlock, 0644, false)
-		// }
-		// if schemaBlock != nil {
-		// 	var err error
-		// 	//TODO: Fix manifest refactoring
-		// 	schemaBlock, _, err = absLang.CreateSchemaContentBytes(nil, schemaBlock)
-		// 	if err != nil {
-		// 		return failedOpErr(nil, err)
-		// 	}
-		// 	schemaFileNames := absLang.GetSchemaFileNames()
-		// 	if len(schemaFileNames) < 1 {
-		// 		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "no schema file names are supported"))
-		// 	}
-		// 	schemaFileName := schemaFileNames[0]
-		// 	m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, schemaFileName, schemaBlock, 0644, false)
-		// }
+		for partition, codeBlockItem := range codeBlocks {
+			absLang, err := langPvd.GetAbstractLanguage(partition)
+			if err != nil {
+				return failedOpErr(nil, err)
+			}
+			codeBlock, ext, err := absLang.CreatePolicyContentBytes(nil, codeBlockItem)
+			if err != nil {
+				return failedOpErr(nil, err)
+			}
+			fileName, err := azfiles.GenerateUniqueFile(CodeGenFileName, ext)
+			if err != nil {
+				return failedOpErr(nil, err)
+			}
+			fileBase := strings.TrimPrefix(partition, "/")
+			fileName = path.Join(fileBase, fileName)
+			m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, fileName, codeBlock, 0644, false)
+		}
+		for partition, schemaBlockItem := range schemaBlocks {
+			absLang, err := langPvd.GetAbstractLanguage(partition)
+			if err != nil {
+				return failedOpErr(nil, err)
+			}
+			schemaBlock, _, err := absLang.CreateSchemaContentBytes(nil, schemaBlockItem)
+			if err != nil {
+				return failedOpErr(nil, err)
+			}
+			schemaFileNames := absLang.GetSchemaFileNames()
+			if len(schemaFileNames) < 1 {
+				return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "no schema file names are supported"))
+			}
+			schemaFileName := schemaFileNames[0]
+			fileBase := strings.TrimPrefix(partition, "/")
+			schemaFileName = path.Join(fileBase, schemaFileName)
+			m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, schemaFileName, schemaBlock, 0644, false)
+		}
 	}
 
 	m.cospMgr.CleanCodeSource()
