@@ -25,20 +25,6 @@ import (
 	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
-// TestLanguageSpecification tests the language specification.
-func TestLanguageSpecification(t *testing.T) {
-	assert := assert.New(t)
-
-	langAbs, err := NewCedarLanguageAbstraction()
-	assert.Nil(err, "NewCedarLanguageAbstraction should not return an error")
-
-	langSpec := langAbs.GetLanguageSpecification()
-	assert.NotNil(langSpec, "LanguageSpecification should not be nil")
-	assert.NotEmpty(langSpec.GetFrontendLanguage(), "LanguageName should not be empty")
-	assert.GreaterOrEqual(1, len(langSpec.GetSupportedPolicyFileExtensions()), "SupportedPolicyFileExtensions should not be empty")
-	assert.GreaterOrEqual(1, len(langSpec.GetSupportedSchemaFileNames()), "GetSupportedSchemaFileNames should not be empty")
-}
-
 // TestCommitCreation tests the commit creation.
 func TestCommitCreation(t *testing.T) {
 	assert := assert.New(t)
@@ -82,15 +68,15 @@ func TestTreeCreation(t *testing.T) {
 	tree, err := azobjs.NewTree()
 	assert.Nil(err, "new tree should not return an error")
 
-	treeItem1, err := azobjs.NewTreeEntry("blob", "515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634d3def5fe", "name1", "code1", "codeType1", "cedar", "*", "policy")
+	treeItem1, err := azobjs.NewTreeEntry("/", "blob", "515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634d3def5fe", "name1", "code1", "codeType1", "cedar", "*", "policy")
 	assert.Nil(err, "new tree entry should not return an error")
 	tree.AddEntry(treeItem1)
 
-	treeItem2, err := azobjs.NewTreeEntry("blob", "2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca12d9d6170", "name2", "code2", "codeType2", "cedar", "*", "policy")
+	treeItem2, err := azobjs.NewTreeEntry("/", "blob", "2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca12d9d6170", "name2", "code2", "codeType2", "cedar", "*", "policy")
 	assert.Nil(err, "new tree entry should not return an error")
 	tree.AddEntry(treeItem2)
 
-	treeItem3, err := azobjs.NewTreeEntry("tree", "fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851", "name3", "code3", "codeType3", "cedar", "*", "policy")
+	treeItem3, err := azobjs.NewTreeEntry("/", "tree", "fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851", "name3", "code3", "codeType3", "cedar", "*", "policy")
 	tree.AddEntry(treeItem3)
 
 	assert.Nil(err, "NewTree should not return an error")
