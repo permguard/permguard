@@ -127,22 +127,22 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 		unchanged, created, modified, deleted := 0, 0, 0, 0
 		for _, codeStateObj := range codeStateObjs {
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateUnchanged {
-				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.UnchangedText("="), aziclicommon.IDText(codeStateObj.OID), aziclicommon.UnchangedText(codeStateObj.OName)), nil, true)
+				out(nil, "", fmt.Sprintf("	%s %s %s %s", aziclicommon.UnchangedText("="), aziclicommon.IDText(codeStateObj.Partition), aziclicommon.IDText(codeStateObj.OID), aziclicommon.UnchangedText(codeStateObj.OName)), nil, true)
 				unchangedItems = append(unchangedItems, codeStateObj)
 				unchanged++
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateCreate {
-				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.CreateText("+"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.CreateText(codeStateObj.OName)), nil, true)
+				out(nil, "", fmt.Sprintf("	%s %s %s %s", aziclicommon.CreateText("+"), aziclicommon.IDText(codeStateObj.Partition), aziclicommon.IDText(codeStateObj.OID), aziclicommon.CreateText(codeStateObj.OName)), nil, true)
 				createdItems = append(createdItems, codeStateObj)
 				created++
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateModify {
-				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.ModifyText("~"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.ModifyText(codeStateObj.OName)), nil, true)
+				out(nil, "", fmt.Sprintf("	%s %s %s %s", aziclicommon.ModifyText("~"), aziclicommon.IDText(codeStateObj.Partition), aziclicommon.IDText(codeStateObj.OID), aziclicommon.ModifyText(codeStateObj.OName)), nil, true)
 				modifiedItems = append(modifiedItems, codeStateObj)
 				modified++
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateDelete {
-				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.DeleteText("-"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.DeleteText(codeStateObj.OName)), nil, true)
+				out(nil, "", fmt.Sprintf("	%s %s %s %s", aziclicommon.DeleteText("-"), aziclicommon.IDText(codeStateObj.Partition), aziclicommon.IDText(codeStateObj.OID), aziclicommon.DeleteText(codeStateObj.OName)), nil, true)
 				deletedItems = append(deletedItems, codeStateObj)
 				deleted++
 			}
@@ -237,18 +237,6 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		return failedOpErr(nil, err)
 	}
 
-	// TODO: Read the language from the authz-model manifest
-	// Creates the abstraction for the language
-	// lang, err := m.cfgMgr.GetLanguage()
-	// if err != nil {
-	// 	return failedOpErr(nil, err)
-	// }
-	lang := "cedar"
-	absLang, err := m.langFct.GetLanguageAbastraction(lang)
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-
 	// Executes the apply for the current head
 	out(nil, "", fmt.Sprintf("Initiating the apply process for ledger %s.", aziclicommon.KeywordText(headCtx.GetLedgerURI())), nil, true)
 
@@ -312,7 +300,6 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out aziclicommon.Pri
 		OutFuncKey: func(key string, output string, newLine bool) {
 			out(nil, key, output, nil, newLine)
 		},
-		LanguageAbstractionKey:   absLang,
 		LocalCodeTreeObjectKey:   treeObj,
 		LocalCodeCommitKey:       commit,
 		LocalCodeCommitObjectKey: commitObj,

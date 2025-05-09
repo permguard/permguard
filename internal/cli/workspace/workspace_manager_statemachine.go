@@ -27,8 +27,6 @@ const (
 	OutFuncKey = "output-func"
 	// CommittedKey represents the committed key.
 	CommittedKey = "committed"
-	// LanguageAbstractionKey represents the language abstraction key.
-	LanguageAbstractionKey = "language-abstraction"
 	// LocalCodeTreeObjectKey represents the local code tree object key.
 	LocalCodeTreeObjectKey = "local-code-tree-object"
 	// LocalCodeCommitKey represents the local code commit id key.

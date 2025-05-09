@@ -41,12 +41,12 @@ func runECommandForValidateWorkspace(deps azcli.CliDependenciesProvider, cmd *co
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	absLang, err := deps.GetLanguageFactory()
+	absLangFact, err := deps.GetLanguageFactory()
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, absLang)
+	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, absLangFact)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent

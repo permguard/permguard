@@ -19,21 +19,15 @@ package workspace
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
+	azids "github.com/permguard/permguard-common/pkg/extensions/ids"
 	azvalidators "github.com/permguard/permguard-common/pkg/extensions/validators"
-	azztasmanifests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	azztasmfests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
-
-// codeFileInfo represents info about the code file.
-func (m *WorkspaceManager) printFiles(action string, files []string, out aziclicommon.PrinterOutFunc) {
-	out(nil, "", fmt.Sprintf("	- %s:", action), nil, true)
-	for _, file := range files {
-		out(nil, "", fmt.Sprintf("	  	- '%s'", aziclicommon.FileText(aziclicommon.FileText(file))), nil, true)
-	}
-}
 
 // ExecPrintContext prints the context.
 func (m *WorkspaceManager) ExecPrintContext(output map[string]any, out aziclicommon.PrinterOutFunc) map[string]any {
@@ -51,16 +45,16 @@ func (m *WorkspaceManager) ExecPrintContext(output map[string]any, out aziclicom
 type InitParms struct {
 	// Name of the workspace to be used in the manifest.
 	Name string
-	// Language to be used in the manifest.
-	Language string
-	// Template to be used in the manifest.
-	Template string
+	// AuthZLanguage the authz language.
+	AuthZLanguage string
+	// AuthZTemplate the authz template.
+	AuthZTemplate string
 }
 
 // ExecInitWorkspace initializes the workspace.
 func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to initialize the workspace", nil, true)
+		out(nil, "", "Failed to initialize the workspace.", nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
@@ -77,29 +71,36 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 
 	if initParams != nil {
 		wksName := initParams.Name
-		lang := initParams.Language
-		template := initParams.Template
+		if len(strings.ReplaceAll(wksName, " ", "")) == 0 {
+			wksName = azids.GenerateID()
+		}
+		authzLang := initParams.AuthZLanguage
+		authzTemplate := initParams.AuthZTemplate
 
-		absLang, err := m.langFct.GetLanguageAbastraction(lang)
+		requirement, err := azztasmfests.ParseRequirement(authzLang)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		absLang, err := m.langFct.GetLanguageAbastraction(requirement.GetName(), requirement.GetVersion())
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
 
-		manifest, err := azztasmanifests.NewManifest("authz", wksName, "")
+		manifest, err := azztasmfests.NewManifest("authz", wksName, "")
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		manifest, err = absLang.BuildManifest(manifest, template)
-		if err != nil {
-			return failedOpErr(nil, err)
-		}
-
-		manifestData, err := azztasmanifests.ConvertManifestToBytes(manifest, true)
+		manifest, err = absLang.BuildManifest(manifest, authzTemplate)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
 
-		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.WorkspaceDir, azztasmanifests.ManifestFileName, manifestData, 0644, false)
+		manifestData, err := azztasmfests.ConvertManifestToBytes(manifest, true)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+
+		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.WorkspaceDir, azztasmfests.ManifestFileName, manifestData, 0644, false)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
