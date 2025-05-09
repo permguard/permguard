@@ -86,9 +86,9 @@ func (abs *CedarLanguageAbstraction) GetPolicyFileExtensions() []string {
 
 // CreatePolicyBlobObjects creates multi sections policy blob objects.
 func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(mfestLang *azztasmfests.Language, partition string, filePath string, data []byte) (*azobjs.MultiSectionsObject, error) {
-	// if langSpec.GetFrontendLanguage() != azcedarlang.LanguageCedar {
-	// 	return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] unsupported frontend language")
-	// }
+	if mfestLang.Name != azcedarlang.LanguageCedar {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] unsupported frontend language")
+	}
 
 	policySet, err := cedar.NewPolicySetFromBytes(filePath, data)
 	if err != nil {
@@ -186,9 +186,9 @@ func (abs *CedarLanguageAbstraction) GetSchemaFileNames() []string {
 
 // CreateSchemaBlobObjects creates multi sections schema blob objects.
 func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(mfestLang *azztasmfests.Language, partition string, path string, data []byte) (*azobjs.MultiSectionsObject, error) {
-	// if langSpec.GetFrontendLanguage() != azcedarlang.LanguageCedar {
-	// 	return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] unsupported frontend language")
-	// }
+	if mfestLang.Name != azcedarlang.LanguageCedar {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] unsupported frontend language")
+	}
 
 	const (
 		objName = azauthzlangtypes.ClassTypeSchema
@@ -243,12 +243,12 @@ func (abs *CedarLanguageAbstraction) CreateSchemaContentBytes(mfestLang *azztasm
 
 // ConvertBytesToFrontendLanguage converts bytes to the frontend language.
 func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(mfestLang *azztasmfests.Language, langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error) {
-	// if azcedarlang.LanguageCedarJSONID != langID {
-	// 	return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] invalid backend language")
-	// }
-	// if azcedarlang.LanguageSyntaxVersionID != langVersionID {
-	// 	return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] invalid backend language version")
-	// }
+	if azcedarlang.LanguageCedarJSONID != langID {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] invalid backend language")
+	}
+	if azcedarlang.LanguageSyntaxVersionID != langVersionID {
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] invalid backend language version")
+	}
 	var frontendContent []byte
 	switch langTypeID {
 	case azcedarlang.LanguagePolicyTypeID:
