@@ -19,6 +19,7 @@ package workspace
 import (
 	//"encoding/json"
 	"fmt"
+	"path"
 	"strings"
 
 	azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
@@ -26,6 +27,7 @@ import (
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
+
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azfiles "github.com/permguard/permguard/pkg/core/files"
@@ -160,18 +162,6 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 
 	m.execInternalRefresh(true, out)
 
-	// TODO: Read the language from the authz-model manifest
-	// Creates the abstraction for the language
-	// lang, err := m.cfgMgr.GetLanguage()
-	// if err != nil {
-	// 	return failedOpErr(nil, err)
-	// }
-	lang := "cedar"
-	absLang, err := m.langFct.GetLanguageAbastraction(lang)
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-
 	output := map[string]any{}
 
 	// Read current head settings
@@ -190,9 +180,8 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		OutFuncKey: func(key string, output string, newLine bool) {
 			out(nil, key, output, nil, newLine)
 		},
-		LanguageAbstractionKey: absLang,
-		LocalCodeCommitIDKey:   headCtx.remoteCommitID,
-		HeadContextKey:         headCtx,
+		LocalCodeCommitIDKey: headCtx.remoteCommitID,
+		HeadContextKey:       headCtx,
 	}
 
 	ctx, err := m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetZoneID(), headCtx.GetLedgerID(), bag, m)
@@ -257,6 +246,11 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		}
 	}
 	if remoteCommitID != azobjs.ZeroOID {
+		langPvd, err := m.buildManifestLanguageProvider()
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+
 		commitObj, err := m.cospMgr.ReadObject(remoteCommitID)
 		if err != nil {
 			return failedOpErr(nil, err)
@@ -284,11 +278,12 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			codeMapIds[code.OID] = true
 		}
 
-		var schemaBlock []byte
 		codeEntries := []map[string]any{}
-		codeBlocks := [][]byte{}
+		schemaBlocks := map[string][]byte{}
+		codeBlocks := map[string][][]byte{}
 		for _, entry := range tree.GetEntries() {
 			codeEntries = append(codeEntries, map[string]any{
+				"partition":         entry.GetPartition(),
 				"oid":               entry.GetOID(),
 				"oname":             entry.GetOName(),
 				"type":              entry.GetType(),
@@ -307,34 +302,51 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
+				objInfo, err := m.objMar.GetObjectInfo(entryObj)
+				if err != nil {
+					return nil, err
+				}
+				header := objInfo.GetHeader()
+				if header == nil {
+					azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "object header is nil")
+				}
 				switch classType {
 				case azauthzlangtypes.ClassTypeSchemaID:
-					schemaBlock = codeBlock
+					partition := header.GetPartition()
+					if _, ok := schemaBlocks[partition]; !ok {
+						schemaBlocks[partition] = []byte{}
+					}
+					schemaBlocks[partition] = codeBlock
+					continue
 				case azauthzlangtypes.ClassTypePolicyID:
-					objInfo, err := m.objMar.GetObjectInfo(entryObj)
-					if err != nil {
-						return nil, err
-					}
-					header := objInfo.GetHeader()
-					if header == nil {
-						azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "object header is nil")
-					}
+					partition := header.GetPartition()
 					langID := header.GetLanguageID()
 					langVersionID := header.GetLanguageVersionID()
 					langTypeID := header.GetLanguageTypeID()
-					langCodeBlock, err := absLang.ConvertBytesToFrontendLanguage(langID, langVersionID, langTypeID, codeBlock)
+					absLang, err := langPvd.GetAbstractLanguage(partition)
 					if err != nil {
 						return failedOpErr(nil, err)
 					}
-					codeBlocks = append(codeBlocks, langCodeBlock)
+					langCodeBlock, err := absLang.ConvertBytesToFrontendLanguage(nil, langID, langVersionID, langTypeID, codeBlock)
+					if err != nil {
+						return failedOpErr(nil, err)
+					}
+					if _, ok := codeBlocks[partition]; !ok {
+						codeBlocks[partition] = [][]byte{}
+					}
+					codeBlocks[partition] = append(codeBlocks[partition], langCodeBlock)
 				default:
 					return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "invalid class type"))
 				}
 			}
 		}
 		output["code_entries"] = codeEntries
-		if len(codeBlocks) > 0 {
-			codeBlock, ext, err := absLang.CreatePolicyContentBytes(codeBlocks)
+		for partition, codeBlockItem := range codeBlocks {
+			absLang, err := langPvd.GetAbstractLanguage(partition)
+			if err != nil {
+				return failedOpErr(nil, err)
+			}
+			codeBlock, ext, err := absLang.CreatePolicyContentBytes(nil, codeBlockItem)
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
@@ -342,20 +354,26 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
+			fileBase := strings.TrimPrefix(partition, "/")
+			fileName = path.Join(fileBase, fileName)
 			m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, fileName, codeBlock, 0644, false)
 		}
-		if schemaBlock != nil {
-			var err error
-			schemaBlock, _, err = absLang.CreateSchemaContentBytes(schemaBlock)
+		for partition, schemaBlockItem := range schemaBlocks {
+			absLang, err := langPvd.GetAbstractLanguage(partition)
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
-			langSpec := absLang.GetLanguageSpecification()
-			schemaFileNames := langSpec.GetSupportedSchemaFileNames()
+			schemaBlock, _, err := absLang.CreateSchemaContentBytes(nil, schemaBlockItem)
+			if err != nil {
+				return failedOpErr(nil, err)
+			}
+			schemaFileNames := absLang.GetSchemaFileNames()
 			if len(schemaFileNames) < 1 {
 				return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "no schema file names are supported"))
 			}
 			schemaFileName := schemaFileNames[0]
+			fileBase := strings.TrimPrefix(partition, "/")
+			schemaFileName = path.Join(fileBase, schemaFileName)
 			m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, schemaFileName, schemaBlock, 0644, false)
 		}
 	}

@@ -28,8 +28,8 @@ The first step is to check out the `MagicFarmacia` playground.
 This example demonstrates Permguard in action and allows testing of its features.
 
 ```text
-git clone git@github.com:permguard/playground-cedar.git
-cd playground-cedar
+git clone git@github.com:permguard/authz-server-playground.git
+cd authz-server-playground/cedar/magicfarmacia/
 ```
 
 ## Start up the AuthZ Server
@@ -116,7 +116,7 @@ A workspace represents a local working space. Plese refer to the [CodeOps Worksp
 {{< /callout >}}
 
 ```text
-permguard init --language cedar
+permguard init --authz-language cedar
 permguard remote add origin localhost
 permguard checkout origin/895741663247/magicfarmacia
 ```

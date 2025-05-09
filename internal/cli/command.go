@@ -92,7 +92,7 @@ func Run(cliInitializer azcli.CliInitializer) {
 	// Execute the command.
 	if err := command.Execute(); err != nil {
 		if err != aziclicommon.ErrCommandSilent {
-			// TODO: fix error message
+			//TODO: fix error message
 			fmt.Fprintln(os.Stderr, err)
 		}
 		os.Exit(1)

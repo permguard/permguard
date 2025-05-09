@@ -31,25 +31,29 @@ func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceMan
 	}
 	errorsMap := map[string]any{}
 	for _, codeFile := range codeFiles {
-		if codeFile.HasErrors {
-			cFile := codeFile.Path
-			cSection := codeFile.Section + 1
-			if m.ctx.IsVerboseTerminalOutput() {
-				out(output, "refresh", fmt.Sprintf(`Error in file %s, section %s and error message '%s'.`, aziclicommon.FileText(cFile), aziclicommon.NumberText(cSection), aziclicommon.LogErrorText(codeFile.ErrorMessage)), nil, true)
-			} else if m.ctx.IsJSONOutput() {
-				if _, ok := errorsMap[cFile]; !ok {
-					errorsMap[cFile] = map[string]any{}
-				}
-				fileMap := errorsMap[cFile].(map[string]any)
-				section := fmt.Sprintf("%d", cSection)
-				if _, ok := fileMap[section]; !ok {
-					fileMap[section] = map[string]any{}
-				}
-				sectionMap := fileMap[section].(map[string]any)
-				sectionMap["path"] = cFile
-				sectionMap["section"] = cSection
-				sectionMap["section"] = codeFile.ErrorMessage
+		if !codeFile.HasErrors {
+			continue
+		}
+		cFile := codeFile.Path
+		cPartition := codeFile.Partition
+		cSection := codeFile.Section + 1
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(output, "refresh", fmt.Sprintf(`Error in file %s, partition %s, section %s and error message '%s'.`,
+				aziclicommon.FileText(cFile), aziclicommon.IDText(cPartition), aziclicommon.NumberText(cSection), aziclicommon.LogErrorText(codeFile.ErrorMessage)), nil, true)
+		} else if m.ctx.IsJSONOutput() {
+			if _, ok := errorsMap[cFile]; !ok {
+				errorsMap[cFile] = map[string]any{}
 			}
+			fileMap := errorsMap[cFile].(map[string]any)
+			section := fmt.Sprintf("%d", cSection)
+			if _, ok := fileMap[section]; !ok {
+				fileMap[section] = map[string]any{}
+			}
+			sectionMap := fileMap[section].(map[string]any)
+			sectionMap["path"] = cFile
+			sectionMap["partition"] = cPartition
+			sectionMap["section"] = cSection
+			sectionMap["error_message"] = codeFile.ErrorMessage
 		}
 	}
 	if m.ctx.IsJSONOutput() && len(errorsMap) == 0 {
@@ -57,6 +61,7 @@ func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceMan
 		for _, codeFile := range codeFiles {
 			output["code_files"] = append(output["code_files"].([]map[string]any), map[string]any{
 				"path":          codeFile.Path,
+				"partition":     codeFile.Partition,
 				"section":       codeFile.Section + 1,
 				"oid":           codeFile.OID,
 				"oname":         codeFile.OName,
@@ -114,27 +119,14 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 			out(nil, "refresh", "The local area was already clean.", nil, true)
 		}
 	}
-
-	err = m.hasValidManifestWorkspaceDir()
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
-
-	// TODO: Read the language from the authz-model manifest
-	// Creates the abstraction for the language
-	// lang, err := m.cfgMgr.GetLanguage()
-	// if err != nil {
-	// 	return failedOpErr(nil, err)
-	// }
-	lang := "cedar"
-	absLang, err := m.langFct.GetLanguageAbastraction(lang)
+	langPvd, err := m.buildManifestLanguageProvider()
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "Scanning source files.", nil, true)
 	}
-	selectedFiles, ignoredFiles, err := m.scanSourceCodeFiles(absLang)
+	selectedFiles, ignoredFiles, err := m.scanSourceCodeFiles(langPvd)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
@@ -164,7 +156,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "Starting blobification process.", nil, true)
 	}
-	treeID, codeFiles, err := m.blobifyLocal(selectedFiles, absLang)
+	treeID, codeFiles, err := m.blobifyLocal(selectedFiles, langPvd)
 	if err != nil {
 		output = buildOutputForCodeFiles(codeFiles, m, out, output)
 		if m.ctx.IsVerboseTerminalOutput() {
@@ -222,7 +214,7 @@ func (m *WorkspaceManager) execInternalValidate(internal bool, out aziclicommon.
 		out(nil, "validate", "Retrieving codemap.", nil, true)
 	}
 
-	_, invlsCodeFiles, err := m.retrieveCodeMap()
+	_, invalidCodeFiles, err := m.retrieveCodeMap()
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "validate", "Codemap could not be retrieved.", nil, true)
@@ -233,7 +225,7 @@ func (m *WorkspaceManager) execInternalValidate(internal bool, out aziclicommon.
 		out(nil, "validate", "Codemap retrieved successfully.", nil, true)
 		out(nil, "validate", "Validation process initiated.", nil, true)
 	}
-	if len(invlsCodeFiles) == 0 {
+	if len(invalidCodeFiles) == 0 {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "validate", "Validation completed successfully.", nil, true)
 		}
@@ -246,15 +238,16 @@ func (m *WorkspaceManager) execInternalValidate(internal bool, out aziclicommon.
 		out(nil, "validate", "Validation failed. Invalid code files detected.", nil, true)
 	}
 	if !internal {
-		if len(invlsCodeFiles) == 1 {
+		if len(invalidCodeFiles) == 1 {
 			out(nil, "", "Your workspace has on error in the following file:\n", nil, true)
 
 		} else {
 			out(nil, "", "Your workspace has errors in the following files:\n", nil, true)
 		}
-		for key := range groupCodeFiles(invlsCodeFiles) {
+		groupedCodeFiles := groupCodeFiles(invalidCodeFiles)
+		for key := range groupedCodeFiles {
 			out(nil, "", fmt.Sprintf("	- '%s'", aziclicommon.FileText(key)), nil, true)
-			for _, codeFile := range groupCodeFiles(invlsCodeFiles)[key] {
+			for _, codeFile := range groupedCodeFiles[key] {
 				if codeFile.OID == "" {
 					out(nil, "", fmt.Sprintf("		%s: %s", aziclicommon.NumberText(codeFile.Section+1), aziclicommon.LogErrorText(codeFile.ErrorMessage)), nil, true)
 				} else {

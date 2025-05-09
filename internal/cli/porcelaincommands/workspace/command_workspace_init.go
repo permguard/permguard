@@ -35,10 +35,10 @@ const (
 	commandNameForWorkspaceInit = "workspace-init"
 	// commandNameForWorkspacesInitName is name of the workspace to initialize.
 	commandNameForWorkspacesInitName = "name"
-	// commandNameForWorkspacesInitLanguage is the language of the workspace to initialize.
-	commandNameForWorkspacesInitLanguage = "language"
-	// commandNameForWorkspacesInitTemplate is the template of the workspace to initialize.
-	commandNameForWorkspacesInitTemplate = "template"
+	// commandNameForWorkspacesInitAuthzLanguage is the authz language of the workspace to initialize.
+	commandNameForWorkspacesInitAuthzLanguage = "authz-language"
+	// commandNameForWorkspacesInitAuthzTemplate is the authz template of the workspace to initialize.
+	commandNameForWorkspacesInitAuthzTemplate = "authz-template"
 )
 
 // runECommandForInitWorkspace runs the command for creating an workspace.
@@ -48,30 +48,27 @@ func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	absLang, err := deps.GetLanguageFactory()
+	absLangFact, err := deps.GetLanguageFactory()
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
-	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, absLang)
+	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, absLangFact)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return aziclicommon.ErrCommandSilent
 	}
 
 	name := v.GetString(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName))
-	language := v.GetString(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitLanguage))
-	template := v.GetString(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitTemplate))
+	authzLanguage := v.GetString(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzLanguage))
+	authzTemplate := v.GetString(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzTemplate))
 	initParams := &azicliwksmanager.InitParms{
-		Name:     name,
-		Language: language,
-		Template: template,
+		Name:          name,
+		AuthZLanguage: authzLanguage,
+		AuthZTemplate: authzTemplate,
 	}
 	output, err := wksMgr.ExecInitWorkspace(initParams, outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to initialize the workspace.")
-		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to initialize the workspace.", err)
 			printer.Error(sysErr)
@@ -102,11 +99,11 @@ Examples:
 	command.Flags().String(commandNameForWorkspacesInitName, "", "specify the name of the workspace to initialize")
 	v.BindPFlag(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName), command.Flags().Lookup(commandNameForWorkspacesInitName))
 
-	command.Flags().String(commandNameForWorkspacesInitLanguage, "", "specify the language of the workspace to initialize")
-	v.BindPFlag(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitLanguage), command.Flags().Lookup(commandNameForWorkspacesInitLanguage))
+	command.Flags().String(commandNameForWorkspacesInitAuthzLanguage, "", "specify the authz language of the workspace to initialize")
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzLanguage), command.Flags().Lookup(commandNameForWorkspacesInitAuthzLanguage))
 
-	command.Flags().String(commandNameForWorkspacesInitTemplate, "", "specify the template of the workspace to initialize")
-	v.BindPFlag(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitTemplate), command.Flags().Lookup(commandNameForWorkspacesInitTemplate))
+	command.Flags().String(commandNameForWorkspacesInitAuthzTemplate, "", "specify the authz template of the workspace to initialize")
+	v.BindPFlag(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzTemplate), command.Flags().Lookup(commandNameForWorkspacesInitAuthzTemplate))
 
 	return command
 }

@@ -33,7 +33,7 @@ Below is an example of an `AuthZ Manifest`:
         "license": "Apache-2.0"
     },
     "runtimes": {
-        "cedar0.0+": {
+        "cedar[0.0+]": {
             "language": {
                 "name": "cedar",
                 "version": "0.0+"
@@ -47,7 +47,7 @@ Below is an example of an `AuthZ Manifest`:
     },
     "partitions": {
         "/": {
-            "runtime": "cedar0.0+",
+            "runtime": "cedar[0.0+]",
             "schema": false
         }
     }
