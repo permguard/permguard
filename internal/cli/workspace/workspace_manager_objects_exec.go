@@ -24,7 +24,6 @@ import (
 	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
-	azlang "github.com/permguard/permguard/pkg/authz/languages"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
@@ -122,8 +121,9 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 	return output, nil
 }
 
-// execPrintObjectContent prints the object content.
-func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azobjs.ObjectInfo, absLang azlang.LanguageAbastraction, showFrontendLanguage bool, out aziclicommon.PrinterOutFunc) error {
+// execPrintObjectContent prints the object content in human-readable form,
+// optionally converting blob data to a frontend-friendly format.
+func (m *WorkspaceManager) execPrintObjectContent(langPvd *ManifestLanguageProvider, oid string, objInfo azobjs.ObjectInfo, showFrontendLanguage bool, out aziclicommon.PrinterOutFunc) error {
 	switch instance := objInfo.GetInstance().(type) {
 	case *azobjs.Commit:
 		content, err := m.getCommitString(oid, instance)
@@ -131,251 +131,292 @@ func (m *WorkspaceManager) execPrintObjectContent(oid string, objInfo azobjs.Obj
 			return err
 		}
 		out(nil, "", content, nil, true)
+
 	case *azobjs.Tree:
 		content, err := m.getTreeString(oid, instance)
 		if err != nil {
 			return err
 		}
 		out(nil, "", content, nil, true)
+
 	case []byte:
 		instanceBytes := instance
+
 		if showFrontendLanguage {
-			var err error
 			header := objInfo.GetHeader()
 			if header == nil {
-				azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "object header is nil")
+				return azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "object header is nil")
 			}
-			langID := header.GetLanguageID()
-			langVersionID := header.GetLanguageVersionID()
-			langTypeID := header.GetLanguageTypeID()
-			// TODO: Fix manifest refactoring
-			instanceBytes, err = absLang.ConvertBytesToFrontendLanguage(nil, langID, langVersionID, langTypeID, instance)
+
+			absLang, err := langPvd.GetAbstractLanguage(header.GetPartition())
+			if err != nil {
+				return err
+			}
+
+			instanceBytes, err = absLang.ConvertBytesToFrontendLanguage(
+				nil,
+				header.GetLanguageID(),
+				header.GetLanguageVersionID(),
+				header.GetLanguageTypeID(),
+				instance,
+			)
 			if err != nil {
 				return err
 			}
 		}
+
 		content, _, err := m.getBlobString(instanceBytes)
 		if err != nil {
 			return err
 		}
 		out(nil, "", string(content), nil, true)
+
 	default:
 		out(nil, "", string(objInfo.GetObject().GetContent()), nil, true)
 	}
+
 	return nil
 }
 
-// execMapObjectContent returns the object content as a map.
-func (m *WorkspaceManager) execMapObjectContent(oid string, objInfo azobjs.ObjectInfo, absLang azlang.LanguageAbastraction, showFrontendLanguage bool, outMap map[string]any) error {
+// execMapObjectContent builds a key-value representation of the object content,
+// optionally transforming blob data into a structured frontend format.
+func (m *WorkspaceManager) execMapObjectContent(langPvd *ManifestLanguageProvider, oid string, objInfo azobjs.ObjectInfo, showFrontendLanguage bool, outMap map[string]any) error {
 	var contentMap map[string]any
 	var err error
+
 	switch instance := objInfo.GetInstance().(type) {
 	case *azobjs.Commit:
 		contentMap, err = m.getCommitMap(oid, instance)
 		if err != nil {
 			return err
 		}
+
 	case *azobjs.Tree:
 		contentMap, err = m.getTreeMap(oid, instance)
 		if err != nil {
 			return err
 		}
+
 	case []byte:
 		instanceBytes := instance
+
 		if showFrontendLanguage {
-			var err error
 			header := objInfo.GetHeader()
 			if header == nil {
-				azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "object header is nil")
+				return azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "object header is nil")
 			}
-			langID := header.GetLanguageID()
-			langTypeID := header.GetLanguageTypeID()
-			langVersionID := header.GetLanguageVersionID()
-			// TODO: Fix manifest refactoring
-			instanceBytes, err = absLang.ConvertBytesToFrontendLanguage(nil, langID, langTypeID, langVersionID, instance)
+
+			absLang, err := langPvd.GetAbstractLanguage(header.GetPartition())
+			if err != nil {
+				return err
+			}
+
+			instanceBytes, err = absLang.ConvertBytesToFrontendLanguage(
+				nil,
+				header.GetLanguageID(),
+				header.GetLanguageVersionID(),
+				header.GetLanguageTypeID(),
+				instance,
+			)
 			if err != nil {
 				return err
 			}
 		}
+
 		contentMap, err = m.getBlobMap(instanceBytes)
 		if err != nil {
 			return err
 		}
+
 	default:
-		contentMap = map[string]any{}
-		contentMap["raw_content"] = base64.StdEncoding.EncodeToString(objInfo.GetObject().GetContent())
+		// Fallback: raw base64-encoded content
+		contentMap = map[string]any{
+			"raw_content": base64.StdEncoding.EncodeToString(objInfo.GetObject().GetContent()),
+		}
 	}
-	for key, value := range contentMap {
-		outMap[key] = value
+
+	// Copy all keys to output map
+	for k, v := range contentMap {
+		outMap[k] = v
 	}
+
 	return nil
 }
 
-// ExecObjectsCat cat the object.
+// ExecObjectsCat prints the content or metadata of a specific object identified by its OID.
 func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFrontendLanguage, showRaw, showContent bool, oid string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to access objects in the current workspace.", nil, true)
 		return output, err
 	}
-	output := m.ExecPrintContext(nil, out)
-	if !m.isWorkspaceDir() {
-		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
-	}
 
+	output := m.ExecPrintContext(nil, out)
+
+	// Validate workspace and acquire lock
+	if !m.isWorkspaceDir() {
+		return fail(nil, m.raiseWrongWorkspaceDirError(out))
+	}
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
 	defer fileLock.Unlock()
 
-	filteredObjectsInfos, err := m.getObjectsInfos(includeStorage, includeCode, true, true, true)
+	// Search for the requested object
+	objectInfos, err := m.getObjectsInfos(includeStorage, includeCode, true, true, true)
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
-	var objectInfo *azobjs.ObjectInfo
-	for _, objInfo := range filteredObjectsInfos {
-		if objInfo.GetOID() == oid {
-			objectInfo = &objInfo
+	var selected *azobjs.ObjectInfo
+	for _, info := range objectInfos {
+		if info.GetOID() == oid {
+			selected = &info
 			break
 		}
 	}
-	if objectInfo == nil {
-		return failedOpErr(nil, fmt.Errorf("object not found"))
+	if selected == nil {
+		return fail(nil, fmt.Errorf("object not found"))
 	}
 
-	obj := objectInfo.GetObject()
-	objHeader := objectInfo.GetHeader()
+	obj := selected.GetObject()
+	header := selected.GetHeader()
 
+	// Initialize language provider
 	langPvd, err := m.buildManifestLanguageProvider()
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
-	// TODO: replace with the correct language
-	absLang, err := langPvd.GetAbstractLanguage("")
-	if err != nil {
-		return failedOpErr(nil, err)
-	}
+
+	// Terminal output mode
 	if m.ctx.IsTerminalOutput() {
 		if showContent {
-			if !showRaw {
-				err := m.execPrintObjectContent(oid, *objectInfo, absLang, showFrontendLanguage, out)
-				if err != nil {
-					return failedOpErr(nil, err)
-				}
-			} else {
+			if showRaw {
 				out(nil, "", string(obj.GetContent()), nil, true)
+			} else {
+				if err := m.execPrintObjectContent(langPvd, oid, *selected, showFrontendLanguage, out); err != nil {
+					return fail(nil, err)
+				}
 			}
 		} else {
-			anyOutput := false
-			out(nil, "", fmt.Sprintf("Your workspace object %s:\n", aziclicommon.IDText(objectInfo.GetOID())), nil, true)
-			if anyOutput {
-				out(nil, "", "\n", nil, false)
-			}
-			if !showRaw {
-				err := m.execPrintObjectContent(oid, *objectInfo, absLang, showFrontendLanguage, out)
-				if err != nil {
-					return failedOpErr(nil, err)
-				}
-			} else {
+			out(nil, "", fmt.Sprintf("Your workspace object %s:\n", aziclicommon.IDText(selected.GetOID())), nil, true)
+
+			if showRaw {
 				out(nil, "", string(obj.GetContent()), nil, true)
+			} else {
+				if err := m.execPrintObjectContent(langPvd, oid, *selected, showFrontendLanguage, out); err != nil {
+					return fail(nil, err)
+				}
 			}
+
 			out(nil, "", "\n", nil, false)
+
 			var sb strings.Builder
-			sb.WriteString("type " + aziclicommon.KeywordText(objectInfo.GetType()))
+			sb.WriteString("type " + aziclicommon.KeywordText(selected.GetType()))
 			sb.WriteString(", size " + aziclicommon.NumberText(len(obj.GetContent())))
-			if objHeader != nil {
-				codeID := objHeader.GetCodeID()
-				sb.WriteString(", oname " + aziclicommon.NameText(codeID))
+			if header != nil {
+				sb.WriteString(", oname " + aziclicommon.NameText(header.GetCodeID()))
 			}
 			out(nil, "", sb.String(), nil, true)
 		}
+
+		// JSON output mode
 	} else if m.ctx.IsJSONOutput() {
 		objMap := map[string]any{}
-		if !showRaw {
-			err := m.execMapObjectContent(oid, *objectInfo, absLang, showFrontendLanguage, objMap)
-			if err != nil {
-				return failedOpErr(nil, err)
-			}
-		} else {
+
+		if showRaw {
 			objMap["raw_content"] = base64.StdEncoding.EncodeToString(obj.GetContent())
-		}
-		if !showContent {
-			objMap["oid"] = objectInfo.GetOID()
-			objMap["otype"] = objectInfo.GetType()
-			objMap["osize"] = len(obj.GetContent())
-			if objHeader != nil {
-				codeID := objHeader.GetCodeID()
-				objMap["oname"] = codeID
+		} else {
+			if err := m.execMapObjectContent(langPvd, oid, *selected, showFrontendLanguage, objMap); err != nil {
+				return fail(nil, err)
 			}
 		}
-		objMaps := []map[string]any{}
-		objMaps = append(objMaps, objMap)
-		output = out(output, "objects", objMaps, nil, true)
+
+		if !showContent {
+			objMap["oid"] = selected.GetOID()
+			objMap["otype"] = selected.GetType()
+			objMap["osize"] = len(obj.GetContent())
+			if header != nil {
+				objMap["oname"] = header.GetCodeID()
+			}
+		}
+
+		output = out(output, "objects", []map[string]any{objMap}, nil, true)
 	}
+
 	return output, nil
 }
 
-// ExecHistory show the history.
+// ExecHistory shows the commit history of the current workspace.
 func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to access history in the current workspace.", nil, true)
 		return output, err
 	}
+
 	output := m.ExecPrintContext(nil, out)
+
+	// Ensure we're in a valid workspace
 	if !m.isWorkspaceDir() {
-		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
+		return fail(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
+	// Acquire workspace lock
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
 	defer fileLock.Unlock()
 
-	// Read current head settings
+	// Read current head context
 	headCtx, err := m.getCurrentHeadContext()
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
 
-	// Get history of the current workspace
-	commitInfos := []azicliwkscommon.CommitInfo{}
+	// Load commit history from head
+	var commitInfos []azicliwkscommon.CommitInfo
 	headCommit := headCtx.GetRemoteCommitID()
 	if headCommit != azobjs.ZeroOID {
 		commitInfos, err = m.getHistory(headCommit)
 		if err != nil {
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 	}
 
+	// Terminal output
 	if m.ctx.IsTerminalOutput() {
 		if len(commitInfos) == 0 {
 			out(nil, "", "No history data is available in the current workspace.", nil, true)
 			return output, nil
-		} else {
-			out(nil, "", fmt.Sprintf("Your workspace history %s:\n", aziclicommon.KeywordText(headCtx.GetLedgerURI())), nil, true)
-			for _, commitInfo := range commitInfos {
-				commit := commitInfo.GetCommit()
-				commitStr, err := m.getCommitString(commitInfo.GetCommitOID(), commit)
-				if err != nil {
-					return failedOpErr(nil, err)
-				}
-				out(nil, "", commitStr, nil, true)
-			}
-			out(nil, "", "\n", nil, false)
-			out(nil, "", "total "+aziclicommon.NumberText(len(commitInfos)), nil, true)
 		}
-	} else if m.ctx.IsJSONOutput() {
-		objMaps := []map[string]any{}
-		for _, commitInfo := range commitInfos {
-			commit := commitInfo.GetCommit()
-			objMap, err := m.getCommitMap(commitInfo.GetCommitOID(), commit)
+
+		out(nil, "", fmt.Sprintf("Your workspace history %s:\n", aziclicommon.KeywordText(headCtx.GetLedgerURI())), nil, true)
+
+		for _, info := range commitInfos {
+			commit := info.GetCommit()
+			commitStr, err := m.getCommitString(info.GetCommitOID(), commit)
 			if err != nil {
-				return failedOpErr(nil, err)
+				return fail(nil, err)
+			}
+			out(nil, "", commitStr, nil, true)
+		}
+
+		out(nil, "", "\n", nil, false)
+		out(nil, "", "total "+aziclicommon.NumberText(len(commitInfos)), nil, true)
+
+		// JSON output
+	} else if m.ctx.IsJSONOutput() {
+		var objMaps []map[string]any
+		for _, info := range commitInfos {
+			commit := info.GetCommit()
+			objMap, err := m.getCommitMap(info.GetCommitOID(), commit)
+			if err != nil {
+				return fail(nil, err)
 			}
 			objMaps = append(objMaps, objMap)
 		}
 		output = out(output, "commits", objMaps, nil, true)
 	}
+
 	return output, nil
 }
