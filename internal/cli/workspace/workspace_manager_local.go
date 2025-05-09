@@ -72,7 +72,7 @@ func (m *WorkspaceManager) scanSourceCodeFiles(langPvd *ManifestLanguageProvider
 					continue
 				}
 				subPart = strings.TrimPrefix(subPart, "/")
-			 	ignoredPartitionPaths = append(ignoredPartitionPaths, filepath.Join(".", subPart))
+				ignoredPartitionPaths = append(ignoredPartitionPaths, filepath.Join(".", subPart))
 			}
 		}
 
@@ -139,7 +139,7 @@ func (m *WorkspaceManager) scanByKind(partition string, kind string, extensions,
 
 // blobifyPermSchemaFile processes a PermGuard schema file.
 // It enforces that only one schema file is allowed per workspace.
-func (m *WorkspaceManager) blobifyPermSchemaFile(path, wkdir string, mode uint32, blobifiedCodeFiles []azicliwkscosp.CodeFile, langPvd *ManifestLanguageProvider, data []byte, file azicliwkscosp.CodeFile) ([]azicliwkscosp.CodeFile, error) {
+func (m *WorkspaceManager) blobifyPermSchemaFile(langPvd *ManifestLanguageProvider, partition, path, wkdir string, mode uint32, blobifiedCodeFiles []azicliwkscosp.CodeFile, data []byte, file azicliwkscosp.CodeFile) ([]azicliwkscosp.CodeFile, error) {
 	absLang, err := langPvd.GetAbstractLanguage(file.Partition)
 	if err != nil {
 		return nil, err
@@ -148,7 +148,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(path, wkdir string, mode uint32
 	if err != nil {
 		return nil, err
 	}
-	multiSecObj, err := absLang.CreateSchemaBlobObjects(lang, path, data)
+	multiSecObj, err := absLang.CreateSchemaBlobObjects(lang, partition, path, data)
 	if err != nil {
 		codeFile := azicliwkscosp.CodeFile{
 			Kind:         file.Kind,
@@ -168,7 +168,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(path, wkdir string, mode uint32
 }
 
 // blobifyLanguageFile processes a PermGuard policy file containing multiple logical sections.
-func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider, path string, data []byte,
+func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider, partition string, path string, data []byte,
 	file azicliwkscosp.CodeFile, wkdir string, mode uint32, blobifiedCodeFiles []azicliwkscosp.CodeFile) ([]azicliwkscosp.CodeFile, error) {
 
 	absLang, err := langPvd.GetAbstractLanguage(file.Partition)
@@ -179,7 +179,7 @@ func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider
 	if err != nil {
 		return nil, err
 	}
-	multiSecObj, err := absLang.CreatePolicyBlobObjects(lang, path, data)
+	multiSecObj, err := absLang.CreatePolicyBlobObjects(lang, partition, path, data)
 	if err != nil {
 		codeFile := azicliwkscosp.CodeFile{
 			Kind:         file.Kind,
@@ -248,9 +248,11 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, lang
 			return "", nil, err
 		}
 
+		partition := file.Partition
+
 		// Process code files using the language provider
 		if file.Kind == azicliwkscosp.CodeFileTypeOfCodeType {
-			blobifiedCodeFiles, err = m.blobifyLanguageFile(langPvd, path, data, file, wkdir, mode, blobifiedCodeFiles)
+			blobifiedCodeFiles, err = m.blobifyLanguageFile(langPvd, partition, path, data, file, wkdir, mode, blobifiedCodeFiles)
 			if err != nil {
 				return "", nil, err
 			}
@@ -267,7 +269,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, lang
 				}
 				blobifiedCodeFiles = append(blobifiedCodeFiles, codeFile)
 			} else {
-				blobifiedCodeFiles, err = m.blobifyPermSchemaFile(path, wkdir, mode, blobifiedCodeFiles, langPvd, data, file)
+				blobifiedCodeFiles, err = m.blobifyPermSchemaFile(langPvd, partition, path, wkdir, mode, blobifiedCodeFiles, data, file)
 				if err != nil {
 					return "", nil, err
 				}

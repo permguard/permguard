@@ -85,7 +85,7 @@ func (abs *CedarLanguageAbstraction) GetPolicyFileExtensions() []string {
 }
 
 // CreatePolicyBlobObjects creates multi sections policy blob objects.
-func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(mfestLang *azztasmfests.Language, filePath string, data []byte) (*azobjs.MultiSectionsObject, error) {
+func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(mfestLang *azztasmfests.Language, partition string, filePath string, data []byte) (*azobjs.MultiSectionsObject, error) {
 	// if langSpec.GetFrontendLanguage() != azcedarlang.LanguageCedar {
 	// 	return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] unsupported frontend language")
 	// }
@@ -138,7 +138,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(mfestLang *azztasmf
 			continue
 		}
 
-		header, err := azobjs.NewObjectHeader(true, langID, langVersionID, langPolicyTypeID, codeID, codeTypeID)
+		header, err := azobjs.NewObjectHeader(partition, true, langID, langVersionID, langPolicyTypeID, codeID, codeTypeID)
 		if err != nil {
 			multiSecObj.AddSectionObjectWithError(i, err)
 			continue
@@ -185,7 +185,7 @@ func (abs *CedarLanguageAbstraction) GetSchemaFileNames() []string {
 }
 
 // CreateSchemaBlobObjects creates multi sections schema blob objects.
-func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(mfestLang *azztasmfests.Language, path string, data []byte) (*azobjs.MultiSectionsObject, error) {
+func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(mfestLang *azztasmfests.Language, partition string, path string, data []byte) (*azobjs.MultiSectionsObject, error) {
 	// if langSpec.GetFrontendLanguage() != azcedarlang.LanguageCedar {
 	// 	return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] unsupported frontend language")
 	// }
@@ -212,7 +212,7 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(mfestLang *azztasmf
 	if err != nil {
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] failed to create the multi section object", err)
 	}
-	header, err := azobjs.NewObjectHeader(true, langID, langVersionID, langSchemaTypeID, codeID, codeTypeID)
+	header, err := azobjs.NewObjectHeader(partition, true, langID, langVersionID, langSchemaTypeID, codeID, codeTypeID)
 	if err != nil {
 		multiSecObj.AddSectionObjectWithError(0, err)
 		return multiSecObj, nil
