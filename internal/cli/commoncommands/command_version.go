@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package authn
+package commoncommands
 
 import (
 	"fmt"
@@ -62,7 +62,7 @@ func runECommandForCreateIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 	return nil
 }
 
-// createCommandForVersion creates a command for version.
+// CreateCommandForVersion creates a command for version.
 func CreateCommandForVersion(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "version",

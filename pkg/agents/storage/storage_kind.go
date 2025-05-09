@@ -18,6 +18,7 @@ package storage
 
 import (
 	"strings"
+	"slices"
 )
 
 const (
@@ -45,10 +46,5 @@ func (s StorageKind) Equal(storage StorageKind) bool {
 
 // IsValid returns true if the storage kind is valid.
 func (s StorageKind) IsValid(storages []StorageKind) bool {
-	for _, svc := range storages {
-		if s.Equal(svc) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(storages, s.Equal)
 }
