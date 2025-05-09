@@ -18,50 +18,38 @@ package languages
 
 import (
 	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
-	azztasmanifests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	azztasmfests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
-
-// LanguageSpecification is the interface for the language specification.
-type LanguageSpecification interface {
-	// GetLanguage returns the name of the language.
-	GetLanguage() string
-	// GetLanguageVersion returns the version of the language.
-	GetLanguageVersion() string
-	// GetLanguageVersionID returns the id of the language version.
-	GetLanguageVersionID() uint32
-	// GetFrontendLanguage returns the name of the frontend language.
-	GetFrontendLanguage() string
-	// GetFrontendLanguage returns the id of the frontend language.
-	GetFrontendLanguageID() uint32
-	// GetBackendLanguage returns the name of the backend language.
-	GetBackendLanguage() string
-	// GetBackendLanguageID returns the id of the backend language.
-	GetBackendLanguageID() uint32
-	// GetSupportedPolicyFileExtensions returns the list of supported policy file extensions.
-	GetSupportedPolicyFileExtensions() []string
-	// GetSupportedSchemaFileNames returns the list of supported schema file names.
-	GetSupportedSchemaFileNames() []string
-}
 
 // LanguageAbastraction is the interface for the language abstraction.
 type LanguageAbastraction interface {
 	// BuildManifest builds the manifest.
-	BuildManifest(manifest *azztasmanifests.Manifest, template string) (*azztasmanifests.Manifest, error)
+	BuildManifest(manifest *azztasmfests.Manifest, template string) (*azztasmfests.Manifest, error)
 	// ValidateManifest validates the manifest.
-	ValidateManifest(manifest *azztasmanifests.Manifest) (bool, error)
-	// GetLanguageSpecification returns the specification for the language.
-	GetLanguageSpecification() LanguageSpecification
+	ValidateManifest(manifest *azztasmfests.Manifest) (bool, error)
+	// GetLanguage gets the language name
+	GetLanguage() string
+	// GetLanguageID gets the language id
+	GetLanguageID() uint32
+	// GetFrontendLanguage gets fronted language.
+	GetFrontendLanguage() string
+	// GetFrontendLanguage gets backend language.
+	GetBackendLanguage() string
+	// GetPolicyFileExtensions gets the policy file extensions.
+	GetPolicyFileExtensions() []string
 	// CreatePolicyBlobObjects creates multi sections policy blob objects.
-	CreatePolicyBlobObjects(path string, data []byte) (*azobjs.MultiSectionsObject, error)
+	CreatePolicyBlobObjects(mfestLang *azztasmfests.Language, partition string, path string, data []byte) (*azobjs.MultiSectionsObject, error)
 	// CreatePolicyContentBytesBody creates a multi policy content bytes.
-	CreatePolicyContentBytes(blocks [][]byte) ([]byte, string, error)
+	CreatePolicyContentBytes(mfestLang *azztasmfests.Language, blocks [][]byte) ([]byte, string, error)
+	// GetSchemaFileNames gets the schema file names.
+	GetSchemaFileNames() []string
 	// CreateSchemaBlobObjects creates multi sections schema blob objects.
-	CreateSchemaBlobObjects(path string, data []byte) (*azobjs.MultiSectionsObject, error)
+	CreateSchemaBlobObjects(mfestLang *azztasmfests.Language, partition string, path string, data []byte) (*azobjs.MultiSectionsObject, error)
 	// CreateSchemaContentBytes creates a schema content bytes.
-	CreateSchemaContentBytes(blocks []byte) ([]byte, string, error)
+	CreateSchemaContentBytes(mfestLang *azztasmfests.Language, blocks []byte) ([]byte, string, error)
 	// ConvertBytesToFrontendLanguage converts bytes to the frontend language.
-	ConvertBytesToFrontendLanguage(langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error)
+	ConvertBytesToFrontendLanguage(mfestLang *azztasmfests.Language, langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error)
 	// AuthorizationCheck checks the authorization.
-	AuthorizationCheck(contextID string, policyStore *azauthzen.PolicyStore, authzCtx *azauthzen.AuthorizationModel) (*azauthzen.AuthorizationDecision, error)
+	AuthorizationCheck(mfestLang *azztasmfests.Language, contextID string, policyStore *azauthzen.PolicyStore, authzCtx *azauthzen.AuthorizationModel) (*azauthzen.AuthorizationDecision, error)
 }

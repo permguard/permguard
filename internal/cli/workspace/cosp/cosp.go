@@ -38,13 +38,13 @@ type codeStateConfig struct {
 
 // codeLocalConfig represents the configuration for the code local.
 type codeLocalConfig struct {
-	Language  string          `toml:"language"`
 	CodeState codeStateConfig `toml:"codestate"`
 }
 
 // CodeFile represents the code file.
 type CodeFile struct {
 	Kind            string `json:"kind"`
+	Partition       string `json:"partition"`
 	Path            string `json:"path"`
 	OID             string `json:"oid"`
 	OType           string `json:"otype"`
@@ -71,6 +71,7 @@ func ConvertCodeFilesToPath(files []CodeFile) []string {
 
 // CodeObject represents the code object.
 type CodeObject struct {
+	Partition       string `json:"partition"`
 	OName           string `json:"oname"`
 	OType           string `json:"otype"`
 	OID             string `json:"oid"`

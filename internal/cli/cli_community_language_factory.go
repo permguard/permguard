@@ -44,10 +44,10 @@ func NewCommunityLanguageFactory() (*CommunityLanguageFactory, error) {
 }
 
 // GetLanguageAbastraction gets the language abstraction for the input language.
-func (c *CommunityLanguageFactory) GetLanguageAbastraction(language string) (azlang.LanguageAbastraction, error) {
+func (c *CommunityLanguageFactory) GetLanguageAbastraction(language, version string) (azlang.LanguageAbastraction, error) {
 	langAbs, exists := c.languages[language]
 	if !exists {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, fmt.Sprintf("%s is an invalid language", language))
+		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, fmt.Sprintf("invalid language %s with version %s", language, version))
 	}
 	return langAbs, nil
 }

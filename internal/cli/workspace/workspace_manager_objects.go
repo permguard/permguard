@@ -29,9 +29,11 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
-// GetObjects gets the objects.
+// getObjectsInfos retrieves and filters object metadata based on object type.
 func (m *WorkspaceManager) getObjectsInfos(includeStorage, includeCode, filterCommits, filterTrees, filterBlob bool) ([]azobjs.ObjectInfo, error) {
-	filteredObjects := []azobjs.ObjectInfo{}
+	var filteredObjects []azobjs.ObjectInfo
+
+	// Fetch all raw objects from the COSP manager
 	objects, err := m.cospMgr.GetObjects(includeStorage, includeCode)
 	if err != nil {
 		return nil, err
@@ -40,25 +42,37 @@ func (m *WorkspaceManager) getObjectsInfos(includeStorage, includeCode, filterCo
 		return filteredObjects, nil
 	}
 
+	// Initialize the object manager
 	objMgr, err := azobjs.NewObjectManager()
 	if err != nil {
 		return nil, err
 	}
 
+	// Iterate and filter objects by type
 	for _, object := range objects {
 		objInfo, err := objMgr.GetObjectInfo(&object)
 		if err != nil {
 			return nil, err
 		}
-		if objInfo.GetType() == azobjs.ObjectTypeCommit && !filterCommits {
-			continue
-		} else if objInfo.GetType() == azobjs.ObjectTypeTree && !filterTrees {
-			continue
-		} else if objInfo.GetType() == azobjs.ObjectTypeBlob && !filterBlob {
-			continue
+
+		switch objInfo.GetType() {
+		case azobjs.ObjectTypeCommit:
+			if !filterCommits {
+				continue
+			}
+		case azobjs.ObjectTypeTree:
+			if !filterTrees {
+				continue
+			}
+		case azobjs.ObjectTypeBlob:
+			if !filterBlob {
+				continue
+			}
 		}
+
 		filteredObjects = append(filteredObjects, *objInfo)
 	}
+
 	return filteredObjects, nil
 }
 
@@ -129,13 +143,15 @@ func (m *WorkspaceManager) getTreeString(oid string, tree *azobjs.Tree) (string,
 
 	entries := tree.GetEntries()
 	for _, entry := range entries {
+		partition := entry.GetPartition()
 		language := entry.GetLanguage()
 		languageType := entry.GetLanguageType()
 		languageVersion := entry.GetLanguageVersion()
 		oid := entry.GetOID()
 		oname := entry.GetOName()
 		entryType := entry.GetType()
-		output.WriteString(fmt.Sprintf("\n  - %s %s %s %s %s %s", aziclicommon.IDText(oid), aziclicommon.KeywordText(entryType), aziclicommon.NameText(oname), aziclicommon.LanguageText(language), aziclicommon.LanguageText(languageVersion), aziclicommon.LanguageKeywordText(languageType)))
+		output.WriteString(fmt.Sprintf("\n  - %s %s %s %s %s %s %s", aziclicommon.IDText(oid), aziclicommon.KeywordText(entryType), aziclicommon.NameText(partition),
+			aziclicommon.NameText(oname), aziclicommon.LanguageText(language), aziclicommon.LanguageText(languageVersion), aziclicommon.LanguageKeywordText(languageType)))
 	}
 
 	return output.String(), nil
