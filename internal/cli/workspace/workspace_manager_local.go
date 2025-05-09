@@ -151,7 +151,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(langPvd *ManifestLanguageProvid
 	multiSecObj, err := absLang.CreateSchemaBlobObjects(lang, partition, path, data)
 	if err != nil {
 		codeFile := azicliwkscosp.CodeFile{
-			Partition:   partition,
+			Partition:    partition,
 			Kind:         file.Kind,
 			Path:         strings.TrimPrefix(path, wkdir),
 			Section:      0,
