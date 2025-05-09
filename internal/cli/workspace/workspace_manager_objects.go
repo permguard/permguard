@@ -143,13 +143,14 @@ func (m *WorkspaceManager) getTreeString(oid string, tree *azobjs.Tree) (string,
 
 	entries := tree.GetEntries()
 	for _, entry := range entries {
+		partition := entry.GetPartition()
 		language := entry.GetLanguage()
 		languageType := entry.GetLanguageType()
 		languageVersion := entry.GetLanguageVersion()
 		oid := entry.GetOID()
 		oname := entry.GetOName()
 		entryType := entry.GetType()
-		output.WriteString(fmt.Sprintf("\n  - %s %s %s %s %s %s", aziclicommon.IDText(oid), aziclicommon.KeywordText(entryType),
+		output.WriteString(fmt.Sprintf("\n  - %s %s %s %s %s %s %s", aziclicommon.IDText(oid), aziclicommon.KeywordText(entryType), aziclicommon.NameText(partition),
 			aziclicommon.NameText(oname), aziclicommon.LanguageText(language), aziclicommon.LanguageText(languageVersion), aziclicommon.LanguageKeywordText(languageType)))
 	}
 

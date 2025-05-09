@@ -257,6 +257,7 @@ func (m *COSPManager) BuildCodeSourceCodeStateForTree(tree *azobjs.Tree) ([]Code
 	for _, entry := range tree.GetEntries() {
 		codeObjState := CodeObjectState{
 			CodeObject: CodeObject{
+				Partition:       entry.GetPartition(),
 				OName:           entry.GetOName(),
 				OType:           entry.GetType(),
 				OID:             entry.GetOID(),
@@ -321,6 +322,7 @@ func (m *COSPManager) convertCodeFileToCodeObjectState(codeFile CodeFile) (*Code
 	}
 	return &CodeObjectState{
 		CodeObject: CodeObject{
+			Partition:       codeFile.Partition,
 			OName:           codeFile.OName,
 			OType:           codeFile.OType,
 			OID:             codeFile.OID,
@@ -339,6 +341,7 @@ func (m *COSPManager) saveCodeObjectStates(path string, codeObjects []CodeObject
 		codeObject := record.(CodeObjectState)
 		return []string{
 			codeObject.State,
+			codeObject.Partition,
 			codeObject.OName,
 			codeObject.OType,
 			codeObject.OID,
@@ -366,14 +369,15 @@ func (m *COSPManager) readCodeObjectStates(path string) ([]CodeObjectState, erro
 		codeObject := CodeObjectState{
 			State: record[0],
 			CodeObject: CodeObject{
-				OName:           record[1],
-				OType:           record[2],
-				OID:             record[3],
-				CodeID:          record[4],
-				CodeType:        record[5],
-				Language:        record[6],
-				LanguageVersion: record[7],
-				LanguageType:    record[8],
+				Partition:       record[1],
+				OName:           record[2],
+				OType:           record[3],
+				OID:             record[4],
+				CodeID:          record[5],
+				CodeType:        record[6],
+				Language:        record[7],
+				LanguageVersion: record[8],
+				LanguageType:    record[9],
 			},
 		}
 		codeObjects = append(codeObjects, codeObject)

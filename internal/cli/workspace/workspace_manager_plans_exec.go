@@ -127,22 +127,22 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out aziclicommon.Prin
 		unchanged, created, modified, deleted := 0, 0, 0, 0
 		for _, codeStateObj := range codeStateObjs {
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateUnchanged {
-				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.UnchangedText("="), aziclicommon.IDText(codeStateObj.OID), aziclicommon.UnchangedText(codeStateObj.OName)), nil, true)
+				out(nil, "", fmt.Sprintf("	%s %s %s %s", aziclicommon.UnchangedText("="), aziclicommon.IDText(codeStateObj.Partition), aziclicommon.IDText(codeStateObj.OID), aziclicommon.UnchangedText(codeStateObj.OName)), nil, true)
 				unchangedItems = append(unchangedItems, codeStateObj)
 				unchanged++
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateCreate {
-				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.CreateText("+"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.CreateText(codeStateObj.OName)), nil, true)
+				out(nil, "", fmt.Sprintf("	%s %s %s %s", aziclicommon.CreateText("+"), aziclicommon.IDText(codeStateObj.Partition), aziclicommon.IDText(codeStateObj.OID), aziclicommon.CreateText(codeStateObj.OName)), nil, true)
 				createdItems = append(createdItems, codeStateObj)
 				created++
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateModify {
-				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.ModifyText("~"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.ModifyText(codeStateObj.OName)), nil, true)
+				out(nil, "", fmt.Sprintf("	%s %s %s %s", aziclicommon.ModifyText("~"), aziclicommon.IDText(codeStateObj.Partition), aziclicommon.IDText(codeStateObj.OID), aziclicommon.ModifyText(codeStateObj.OName)), nil, true)
 				modifiedItems = append(modifiedItems, codeStateObj)
 				modified++
 			}
 			if codeStateObj.State == azicliwkscosp.CodeObjectStateDelete {
-				out(nil, "", fmt.Sprintf("	%s %s %s", aziclicommon.DeleteText("-"), aziclicommon.IDText(codeStateObj.OID), aziclicommon.DeleteText(codeStateObj.OName)), nil, true)
+				out(nil, "", fmt.Sprintf("	%s %s %s %s", aziclicommon.DeleteText("-"), aziclicommon.IDText(codeStateObj.Partition), aziclicommon.IDText(codeStateObj.OID), aziclicommon.DeleteText(codeStateObj.OName)), nil, true)
 				deletedItems = append(deletedItems, codeStateObj)
 				deleted++
 			}

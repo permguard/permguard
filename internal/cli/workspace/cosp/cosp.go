@@ -71,6 +71,7 @@ func ConvertCodeFilesToPath(files []CodeFile) []string {
 
 // CodeObject represents the code object.
 type CodeObject struct {
+	Partition       string `json:"partition"`
 	OName           string `json:"oname"`
 	OType           string `json:"otype"`
 	OID             string `json:"oid"`

@@ -151,6 +151,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(langPvd *ManifestLanguageProvid
 	multiSecObj, err := absLang.CreateSchemaBlobObjects(lang, partition, path, data)
 	if err != nil {
 		codeFile := azicliwkscosp.CodeFile{
+			Partition:   partition,
 			Kind:         file.Kind,
 			Path:         strings.TrimPrefix(path, wkdir),
 			Section:      0,
@@ -182,6 +183,7 @@ func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider
 	multiSecObj, err := absLang.CreatePolicyBlobObjects(lang, partition, path, data)
 	if err != nil {
 		codeFile := azicliwkscosp.CodeFile{
+			Partition:    partition,
 			Kind:         file.Kind,
 			Path:         strings.TrimPrefix(path, wkdir),
 			Section:      -1,
@@ -202,6 +204,7 @@ func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider
 // buildCodeFileFromSection builds a CodeFile from a given SectionObject with metadata, errors and OID assignment.
 func (m *WorkspaceManager) buildCodeFileFromSection(secObj *azobjs.SectionObject, inputFile azicliwkscosp.CodeFile, path, wkdir string, mode uint32) azicliwkscosp.CodeFile {
 	codeFile := azicliwkscosp.CodeFile{
+		Partition:       secObj.GetPartition(),
 		Kind:            inputFile.Kind,
 		Path:            strings.TrimPrefix(path, wkdir),
 		Section:         secObj.GetNumberOfSection(),
@@ -261,6 +264,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, lang
 			partitionSchemas[file.Partition]++
 			if partitionSchemas[file.Partition] > 1 {
 				codeFile := azicliwkscosp.CodeFile{
+					Partition:    partition,
 					Path:         strings.TrimPrefix(path, wkdir),
 					Section:      0,
 					Mode:         mode,
@@ -292,6 +296,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, lang
 		if len(schemaFileNames) > 0 {
 			schemaFileName := schemaFileNames[0]
 			codeFile := azicliwkscosp.CodeFile{
+				Partition:    partition,
 				Path:         m.persMgr.GetRelativeDir(azicliwkspers.WorkspaceDir, schemaFileName),
 				Section:      0,
 				Mode:         0,
@@ -333,7 +338,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []azicliwkscosp.CodeFile, lang
 		return "", blobifiedCodeFiles, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree object cannot be created", err)
 	}
 	for _, obj := range codeObsState {
-		entry, err := azobjs.NewTreeEntry(obj.OType, obj.OID, obj.OName, obj.CodeID, obj.CodeType, obj.Language, obj.LanguageVersion, obj.LanguageType)
+		entry, err := azobjs.NewTreeEntry(obj.Partition, obj.OType, obj.OID, obj.OName, obj.CodeID, obj.CodeType, obj.Language, obj.LanguageVersion, obj.LanguageType)
 		if err != nil {
 			return "", nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be created", err)
 		}

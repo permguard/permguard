@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"strings"
 
-	//azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
+	azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
 	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
@@ -152,223 +152,230 @@ func (m *WorkspaceManager) ExecCheckoutLedger(ledgerURI string, out aziclicommon
 
 // execInternalPull executes an internal pull.
 func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
-	//TODO: enable the pull
-	// failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-	// 	if !internal {
-	// 		out(nil, "", "Failed to pull changes from the remote ledger.", nil, true)
-	// 	}
-	// 	return output, err
-	// }
+	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+		if !internal {
+			out(nil, "", "Failed to pull changes from the remote ledger.", nil, true)
+		}
+		return output, err
+	}
 
-	// m.execInternalRefresh(true, out)
+	m.execInternalRefresh(true, out)
 
-	// output := map[string]any{}
+	output := map[string]any{}
 
-	// // Read current head settings
-	// headCtx, err := m.getCurrentHeadContext()
-	// if err != nil {
-	// 	return failedOpErr(nil, err)
-	// }
-	// headRefInfo := headCtx.headRefInfo
-	// remoteRefInfo := headCtx.remoteRefInfo
+	// Read current head settings
+	headCtx, err := m.getCurrentHeadContext()
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
+	headRefInfo := headCtx.headRefInfo
+	remoteRefInfo := headCtx.remoteRefInfo
 
-	// if m.ctx.IsVerboseTerminalOutput() {
-	// 	out(nil, "pull", "Preparing to pull changes from the remote ledger.", nil, true)
-	// }
+	if m.ctx.IsVerboseTerminalOutput() {
+		out(nil, "pull", "Preparing to pull changes from the remote ledger.", nil, true)
+	}
 
-	// //TODO: Review the lang abstraction in the context of the bug
-	// langPvd, err := m.buildManifestLanguageProvider()
-	// if err != nil {
-	// 	return failedOpErr(nil, err)
-	// }
+	bag := map[string]any{
+		OutFuncKey: func(key string, output string, newLine bool) {
+			out(nil, key, output, nil, newLine)
+		},
+		LocalCodeCommitIDKey: headCtx.remoteCommitID,
+		HeadContextKey:       headCtx,
+	}
 
-	// bag := map[string]any{
-	// 	OutFuncKey: func(key string, output string, newLine bool) {
-	// 		out(nil, key, output, nil, newLine)
-	// 	},
-	// 	LanguageAbstractionKey: langPvd,
-	// 	LocalCodeCommitIDKey:   headCtx.remoteCommitID,
-	// 	HeadContextKey:         headCtx,
-	// }
+	ctx, err := m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetZoneID(), headCtx.GetLedgerID(), bag, m)
+	if err != nil {
+		return failedOpErr(nil, err)
+	}
 
-	// ctx, err := m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetZoneID(), headCtx.GetLedgerID(), bag, m)
-	// if err != nil {
-	// 	return failedOpErr(nil, err)
-	// }
+	localCommitID, _ := getFromRuntimeContext[string](ctx, LocalCodeCommitIDKey)
+	output["local_commit_oid"] = localCommitID
 
-	// localCommitID, _ := getFromRuntimeContext[string](ctx, LocalCodeCommitIDKey)
-	// output["local_commit_oid"] = localCommitID
+	localCommitsCount, _ := getFromRuntimeContext[uint32](ctx, LocalCommitsCountKey)
+	output["local_commits_count"] = localCommitsCount
 
-	// localCommitsCount, _ := getFromRuntimeContext[uint32](ctx, LocalCommitsCountKey)
-	// output["local_commits_count"] = localCommitsCount
+	remoteCommitID, _ := getFromRuntimeContext[string](ctx, RemoteCommitIDKey)
+	output["remote_commit_oid"] = remoteCommitID
 
-	// remoteCommitID, _ := getFromRuntimeContext[string](ctx, RemoteCommitIDKey)
-	// output["remote_commit_oid"] = remoteCommitID
+	remoteCommitCount, _ := getFromRuntimeContext[uint32](ctx, RemoteCommitsCountKey)
+	output["remote_commits_count"] = remoteCommitCount
 
-	// remoteCommitCount, _ := getFromRuntimeContext[uint32](ctx, RemoteCommitsCountKey)
-	// output["remote_commits_count"] = remoteCommitCount
+	if localCommitID == remoteCommitID {
+		if m.ctx.IsTerminalOutput() {
+			out(nil, "", "The local workspace is already fully up to date with the remote ledger.", nil, true)
+		}
+	} else if localCommitsCount != remoteCommitCount {
+		if m.ctx.IsTerminalOutput() {
+			out(nil, "", "Not all commits were successfully pulled. Please retry the operation.", nil, true)
+		}
+		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordExists, "not all commits were successfully pulled."))
+	} else {
+		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
+		if !committed || localCommitID == "" || remoteCommitID == "" {
+			if localCommitID != "" && remoteCommitID != "" {
+				_, err := m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
+				if err != nil {
+					return failedOpErr(nil, err)
+				}
+			}
+		}
+		err = m.rfsMgr.SaveRefConfig(remoteRefInfo.GetLedgerID(), remoteRefInfo.GetRef(), remoteCommitID)
+		if err != nil {
+			_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
+			if err != nil {
+				return failedOpErr(nil, err)
+			}
+			return failedOpErr(nil, err)
+		}
+		err = m.rfsMgr.SaveRefWithRemoteConfig(headRefInfo.GetLedgerID(), headRefInfo.GetRef(), remoteRefInfo.GetRef(), remoteCommitID)
+		if err != nil {
+			_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
+			if err != nil {
+				return failedOpErr(nil, err)
+			}
+			return failedOpErr(nil, err)
+		}
+		_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, remoteRefInfo.GetLedgerURI())
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, remoteRefInfo.GetLedgerURI())
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+	}
+	if remoteCommitID != azobjs.ZeroOID {
+		langPvd, err := m.buildManifestLanguageProvider()
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
 
-	// if localCommitID == remoteCommitID {
-	// 	if m.ctx.IsTerminalOutput() {
-	// 		out(nil, "", "The local workspace is already fully up to date with the remote ledger.", nil, true)
-	// 	}
-	// } else if localCommitsCount != remoteCommitCount {
-	// 	if m.ctx.IsTerminalOutput() {
-	// 		out(nil, "", "Not all commits were successfully pulled. Please retry the operation.", nil, true)
-	// 	}
-	// 	return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordExists, "not all commits were successfully pulled."))
-	// } else {
-	// 	committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
-	// 	if !committed || localCommitID == "" || remoteCommitID == "" {
-	// 		if localCommitID != "" && remoteCommitID != "" {
-	// 			_, err := m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
-	// 			if err != nil {
-	// 				return failedOpErr(nil, err)
-	// 			}
-	// 		}
-	// 	}
-	// 	err = m.rfsMgr.SaveRefConfig(remoteRefInfo.GetLedgerID(), remoteRefInfo.GetRef(), remoteCommitID)
-	// 	if err != nil {
-	// 		_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
-	// 		if err != nil {
-	// 			return failedOpErr(nil, err)
-	// 		}
-	// 		return failedOpErr(nil, err)
-	// 	}
-	// 	err = m.rfsMgr.SaveRefWithRemoteConfig(headRefInfo.GetLedgerID(), headRefInfo.GetRef(), remoteRefInfo.GetRef(), remoteCommitID)
-	// 	if err != nil {
-	// 		_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
-	// 		if err != nil {
-	// 			return failedOpErr(nil, err)
-	// 		}
-	// 		return failedOpErr(nil, err)
-	// 	}
-	// 	_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, remoteRefInfo.GetLedgerURI())
-	// 	if err != nil {
-	// 		return failedOpErr(nil, err)
-	// 	}
-	// 	_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, remoteRefInfo.GetLedgerURI())
-	// 	if err != nil {
-	// 		return failedOpErr(nil, err)
-	// 	}
-	// }
-	// if remoteCommitID != azobjs.ZeroOID {
-	// 	commitObj, err := m.cospMgr.ReadObject(remoteCommitID)
-	// 	if err != nil {
-	// 		return failedOpErr(nil, err)
-	// 	}
-	// 	commit, err := azobjs.ConvertObjectToCommit(commitObj)
-	// 	if err != nil {
-	// 		return failedOpErr(nil, err)
-	// 	}
+		commitObj, err := m.cospMgr.ReadObject(remoteCommitID)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		commit, err := azobjs.ConvertObjectToCommit(commitObj)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
 
-	// 	treeObj, err := m.cospMgr.ReadObject(commit.GetTree())
-	// 	if err != nil {
-	// 		return failedOpErr(nil, err)
-	// 	}
-	// 	tree, err := azobjs.ConvertObjectToTree(treeObj)
-	// 	if err != nil {
-	// 		return failedOpErr(nil, err)
-	// 	}
+		treeObj, err := m.cospMgr.ReadObject(commit.GetTree())
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		tree, err := azobjs.ConvertObjectToTree(treeObj)
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
 
-	// 	codeMap, err := m.cospMgr.ReadCodeSourceCodeMap()
-	// 	if err != nil {
-	// 		return failedOpErr(nil, err)
-	// 	}
-	// 	codeMapIds := make(map[string]bool)
-	// 	for _, code := range codeMap {
-	// 		codeMapIds[code.OID] = true
-	// 	}
+		codeMap, err := m.cospMgr.ReadCodeSourceCodeMap()
+		if err != nil {
+			return failedOpErr(nil, err)
+		}
+		codeMapIds := make(map[string]bool)
+		for _, code := range codeMap {
+			codeMapIds[code.OID] = true
+		}
 
-	// 	var schemaBlock []byte
-	// 	codeEntries := []map[string]any{}
-	// 	codeBlocks := [][]byte{}
-	// 	for _, entry := range tree.GetEntries() {
-	// 		codeEntries = append(codeEntries, map[string]any{
-	// 			"oid":               entry.GetOID(),
-	// 			"oname":             entry.GetOName(),
-	// 			"type":              entry.GetType(),
-	// 			"code_id":           entry.GetCodeID(),
-	// 			"code_type":         entry.GetCodeType(),
-	// 			"language":          entry.GetLanguage(),
-	// 			"lanaguage_version": entry.GetLanguageVersion(),
-	// 			"langauge_type":     entry.GetLanguageType(),
-	// 		})
-	// 		if _, ok := codeMapIds[entry.GetOID()]; !ok {
-	// 			entryObj, err := m.cospMgr.ReadObject(entry.GetOID())
-	// 			if err != nil {
-	// 				return failedOpErr(nil, err)
-	// 			}
-	// 			classType, codeBlock, err := azobjs.ReadObjectContentBytes(entryObj)
-	// 			if err != nil {
-	// 				return failedOpErr(nil, err)
-	// 			}
-	// 			switch classType {
-	// 			case azauthzlangtypes.ClassTypeSchemaID:
-	// 				schemaBlock = codeBlock
-	// 			case azauthzlangtypes.ClassTypePolicyID:
-	// 				objInfo, err := m.objMar.GetObjectInfo(entryObj)
-	// 				if err != nil {
-	// 					return nil, err
-	// 				}
-	// 				header := objInfo.GetHeader()
-	// 				if header == nil {
-	// 					azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "object header is nil")
-	// 				}
-	// 				langID := header.GetLanguageID()
-	// 				langVersionID := header.GetLanguageVersionID()
-	// 				langTypeID := header.GetLanguageTypeID()
-	// 				//TODO: Fix manifest refactoring
-	// 				langCodeBlock, err := absLang.ConvertBytesToFrontendLanguage(nil, langID, langVersionID, langTypeID, codeBlock)
-	// 				if err != nil {
-	// 					return failedOpErr(nil, err)
-	// 				}
-	// 				codeBlocks = append(codeBlocks, langCodeBlock)
-	// 			default:
-	// 				return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "invalid class type"))
-	// 			}
-	// 		}
-	// 	}
-	// 	output["code_entries"] = codeEntries
-	// 	if len(codeBlocks) > 0 {
-	// 		//TODO: Fix manifest refactoring
-	// 		codeBlock, ext, err := absLang.CreatePolicyContentBytes(nil, codeBlocks)
-	// 		if err != nil {
-	// 			return failedOpErr(nil, err)
-	// 		}
-	// 		fileName, err := azfiles.GenerateUniqueFile(CodeGenFileName, ext)
-	// 		if err != nil {
-	// 			return failedOpErr(nil, err)
-	// 		}
-	// 		m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, fileName, codeBlock, 0644, false)
-	// 	}
-	// 	if schemaBlock != nil {
-	// 		var err error
-	// 		//TODO: Fix manifest refactoring
-	// 		schemaBlock, _, err = absLang.CreateSchemaContentBytes(nil, schemaBlock)
-	// 		if err != nil {
-	// 			return failedOpErr(nil, err)
-	// 		}
-	// 		schemaFileNames := absLang.GetSchemaFileNames()
-	// 		if len(schemaFileNames) < 1 {
-	// 			return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "no schema file names are supported"))
-	// 		}
-	// 		schemaFileName := schemaFileNames[0]
-	// 		m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, schemaFileName, schemaBlock, 0644, false)
-	// 	}
-	// }
+		//var schemaBlock []byte
+		codeEntries := []map[string]any{}
+		codeBlocks := map[string][][]byte{}
+		for _, entry := range tree.GetEntries() {
+			codeEntries = append(codeEntries, map[string]any{
+				"partition":         entry.GetPartition(),
+				"oid":               entry.GetOID(),
+				"oname":             entry.GetOName(),
+				"type":              entry.GetType(),
+				"code_id":           entry.GetCodeID(),
+				"code_type":         entry.GetCodeType(),
+				"language":          entry.GetLanguage(),
+				"lanaguage_version": entry.GetLanguageVersion(),
+				"langauge_type":     entry.GetLanguageType(),
+			})
+			if _, ok := codeMapIds[entry.GetOID()]; !ok {
+				entryObj, err := m.cospMgr.ReadObject(entry.GetOID())
+				if err != nil {
+					return failedOpErr(nil, err)
+				}
+				classType, codeBlock, err := azobjs.ReadObjectContentBytes(entryObj)
+				if err != nil {
+					return failedOpErr(nil, err)
+				}
+				switch classType {
+				case azauthzlangtypes.ClassTypeSchemaID:
+					//TODO: Fix manifest refactoring
+					//schemaBlock = codeBlock
+					continue
+				case azauthzlangtypes.ClassTypePolicyID:
+					objInfo, err := m.objMar.GetObjectInfo(entryObj)
+					if err != nil {
+						return nil, err
+					}
+					header := objInfo.GetHeader()
+					if header == nil {
+						azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "object header is nil")
+					}
+					partition := header.GetPartition()
+					langID := header.GetLanguageID()
+					langVersionID := header.GetLanguageVersionID()
+					langTypeID := header.GetLanguageTypeID()
+					absLang, err := langPvd.GetAbstractLanguage(partition)
+					if err != nil {
+						return failedOpErr(nil, err)
+					}
+					langCodeBlock, err := absLang.ConvertBytesToFrontendLanguage(nil, langID, langVersionID, langTypeID, codeBlock)
+					if err != nil {
+						return failedOpErr(nil, err)
+					}
+					if _, ok := codeBlocks[partition]; !ok {
+						codeBlocks[partition] = [][]byte{}
+					}
+					codeBlocks[partition] = append(codeBlocks[partition], langCodeBlock)
+				default:
+					return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "invalid class type"))
+				}
+			}
+		}
+		output["code_entries"] = codeEntries
+		// TODO: Fix manifest refactoring
+		// if len(codeBlocks) > 0 {
+		// 	//TODO: Fix manifest refactoring
+		// 	codeBlock, ext, err := absLang.CreatePolicyContentBytes(nil, codeBlocks)
+		// 	if err != nil {
+		// 		return failedOpErr(nil, err)
+		// 	}
+		// 	fileName, err := azfiles.GenerateUniqueFile(CodeGenFileName, ext)
+		// 	if err != nil {
+		// 		return failedOpErr(nil, err)
+		// 	}
+		// 	m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, fileName, codeBlock, 0644, false)
+		// }
+		// if schemaBlock != nil {
+		// 	var err error
+		// 	//TODO: Fix manifest refactoring
+		// 	schemaBlock, _, err = absLang.CreateSchemaContentBytes(nil, schemaBlock)
+		// 	if err != nil {
+		// 		return failedOpErr(nil, err)
+		// 	}
+		// 	schemaFileNames := absLang.GetSchemaFileNames()
+		// 	if len(schemaFileNames) < 1 {
+		// 		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "no schema file names are supported"))
+		// 	}
+		// 	schemaFileName := schemaFileNames[0]
+		// 	m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, schemaFileName, schemaBlock, 0644, false)
+		// }
+	}
 
-	// m.cospMgr.CleanCodeSource()
+	m.cospMgr.CleanCodeSource()
 
-	// if !internal {
-	// 	if m.ctx.IsVerboseTerminalOutput() {
-	// 		out(nil, azicliwkslogs.LogActionPull, "The pull has been completed successfully.", nil, true)
-	// 	}
-	// 	out(nil, "", "Pull process completed successfully.", nil, true)
-	// 	out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote ledger: %s.", aziclicommon.KeywordText(headCtx.GetLedgerURI())), nil, true)
-	// }
-	// return output, nil
-	return nil, nil
+	if !internal {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, azicliwkslogs.LogActionPull, "The pull has been completed successfully.", nil, true)
+		}
+		out(nil, "", "Pull process completed successfully.", nil, true)
+		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote ledger: %s.", aziclicommon.KeywordText(headCtx.GetLedgerURI())), nil, true)
+	}
+	return output, nil
 }
 
 // ExecPull fetches the latest changes from the remote ledger and constructs the remote state.

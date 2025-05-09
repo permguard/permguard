@@ -161,7 +161,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(mfestLang *azztasmf
 			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] failed to get the object info", err)
 		}
 
-		multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), objName, codeID, codeType, lang, langVersion, langPolicyType, i)
+		multiSecObj.AddSectionObjectWithParams(obj, partition, objInfo.GetType(), objName, codeID, codeType, lang, langVersion, langPolicyType, i)
 	}
 
 	return multiSecObj, nil
@@ -229,7 +229,7 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(mfestLang *azztasmf
 		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguageGeneric, "[cedar] failed to get the object info", err)
 	}
 
-	multiSecObj.AddSectionObjectWithParams(obj, objInfo.GetType(), objName, codeID, codeType, lang, langVersion, langSchemaType, 0)
+	multiSecObj.AddSectionObjectWithParams(obj, partition, objInfo.GetType(), objName, codeID, codeType, lang, langVersion, langSchemaType, 0)
 	return multiSecObj, nil
 }
 
