@@ -19,10 +19,10 @@ package cli
 import (
 	"fmt"
 
-	azcedarlang "github.com/permguard/permguard-ztauthstar-cedar/pkg/cedarlang"
 	azlang "github.com/permguard/permguard/pkg/authz/languages"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azplugincedar "github.com/permguard/permguard/plugin/languages/cedar"
+	azcedarlang "github.com/permguard/permguard/ztauthstar-cedar/pkg/cedarlang"
 )
 
 // CommunityLanguageFactory is the factory for the community language.

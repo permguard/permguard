@@ -17,7 +17,7 @@
 package packets
 
 import (
-	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
+	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
 )
 
 // ObjectStatePacket is object state description packet.

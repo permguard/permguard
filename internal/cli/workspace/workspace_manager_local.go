@@ -21,11 +21,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
-	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azauthzlangtypes "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
+	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 // groupCodeFiles groups the code files.

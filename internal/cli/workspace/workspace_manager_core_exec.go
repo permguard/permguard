@@ -21,12 +21,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	azids "github.com/permguard/permguard-common/pkg/extensions/ids"
-	azvalidators "github.com/permguard/permguard-common/pkg/extensions/validators"
-	azztasmfests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	azids "github.com/permguard/permguard/common/pkg/extensions/ids"
+	azvalidators "github.com/permguard/permguard/common/pkg/extensions/validators"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azztasmfests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 )
 
 // ExecPrintContext prints the context.

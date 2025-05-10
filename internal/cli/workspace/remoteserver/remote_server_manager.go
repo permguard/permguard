@@ -25,9 +25,9 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 
-	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
-	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
-	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
+	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
+	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
 )
 
 // RemoteServerManager implements the internal manager for the remote file.

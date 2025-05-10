@@ -17,7 +17,7 @@
 package packets
 
 import (
-	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
+	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
 )
 
 // LocalRefStatePacket is the packet to advertise the local ref state.

@@ -21,10 +21,10 @@ import (
 	"fmt"
 	"strings"
 
-	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 // ExecObjects list the objects.

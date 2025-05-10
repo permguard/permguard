@@ -17,8 +17,8 @@
 package workspace
 
 import (
-	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 // getCurrentHeadContext gets the current head context.

@@ -24,11 +24,11 @@ import (
 
 	"github.com/pelletier/go-toml"
 
-	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 const (

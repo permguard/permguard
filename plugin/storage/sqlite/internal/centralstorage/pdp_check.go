@@ -21,12 +21,12 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
-	azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
-	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
 	azplugincedar "github.com/permguard/permguard/plugin/languages/cedar"
+	azauthzen "github.com/permguard/permguard/ztauthstar/pkg/authzen"
+	azauthzlangtypes "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
+	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 // authorizationCheckBuildContextResponse builds the context response for the authorization check.

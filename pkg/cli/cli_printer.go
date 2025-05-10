@@ -27,7 +27,7 @@ import (
 	"github.com/fatih/color"
 	"google.golang.org/grpc/status"
 
-	azcopier "github.com/permguard/permguard-common/pkg/extensions/copier"
+	azcopier "github.com/permguard/permguard/common/pkg/extensions/copier"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 

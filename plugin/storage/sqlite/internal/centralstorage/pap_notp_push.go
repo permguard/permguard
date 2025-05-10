@@ -17,15 +17,15 @@
 package centralstorage
 
 import (
-	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
-	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
-	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
-	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
 	azagentnotpsm "github.com/permguard/permguard/internal/transport/notp/statemachines"
 	notpagpackets "github.com/permguard/permguard/internal/transport/notp/statemachines/packets"
+	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
+	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
 )
 
 // OnPushHandleNotifyCurrentState notifies the current state.

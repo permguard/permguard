@@ -22,11 +22,11 @@ import (
 	"path"
 	"strings"
 
-	azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
-	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
+	azauthzlangtypes "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
+	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
 	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
