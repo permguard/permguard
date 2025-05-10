@@ -1,0 +1,10 @@
+go 1.24.1
+
+use (
+	.
+	./modules/common
+	./modules/notp-protocol
+	./modules/ztauthstar
+	./modules/ztauthstar-cedar
+	./modules/ztauthstar-rego
+)
