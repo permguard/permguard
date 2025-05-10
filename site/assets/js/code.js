@@ -38,8 +38,8 @@ fmt.Println("❌ Authorization Denied")
     after: `// AFTER
 
 import (
- "github.com/permguard/permguard-go"
- "github.com/permguard/permguard-go/az/azreq"
+ "github.com/permguard/sdk-go"
+ "github.com/permguard/sdk-go/az/azreq"
 )
 
 azClient := permguard.NewAZClient(
@@ -147,7 +147,7 @@ import {
   AZClient,
   withEndpoint,
   AZAtomicRequestBuilder
-} from "permguard-node";
+} from "sdk-node";
 
 const azClient = new AZClient(withEndpoint("localhost", 9094));
 
