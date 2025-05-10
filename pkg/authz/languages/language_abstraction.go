@@ -17,9 +17,9 @@
 package languages
 
 import (
-	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
-	azztasmfests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
-	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	azauthzen "github.com/permguard/permguard/ztauthstar/pkg/authzen"
+	azztasmfests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 // LanguageAbastraction is the interface for the language abstraction.

@@ -17,9 +17,9 @@
 package workspace
 
 import (
-	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
-	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
+	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
 )
 
 const (

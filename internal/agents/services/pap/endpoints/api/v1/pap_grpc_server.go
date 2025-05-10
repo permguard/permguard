@@ -28,11 +28,11 @@ import (
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 
-	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
-	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
-	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
-	notptransport "github.com/permguard/permguard-notp-protocol/pkg/notp/transport"
 	azagentnotpsm "github.com/permguard/permguard/internal/transport/notp/statemachines"
+	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
+	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
+	notptransport "github.com/permguard/permguard/notp-protocol/pkg/notp/transport"
 )
 
 const (

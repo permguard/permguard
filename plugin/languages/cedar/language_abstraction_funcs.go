@@ -21,9 +21,9 @@ import (
 	"fmt"
 	"strings"
 
-	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
+	azauthzen "github.com/permguard/permguard/ztauthstar/pkg/authzen"
 )
 
 // verifyKey verifies the key.

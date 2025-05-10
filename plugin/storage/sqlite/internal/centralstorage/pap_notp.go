@@ -21,12 +21,12 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
 	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
+	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
-	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
 	notpagstatemachines "github.com/permguard/permguard/internal/transport/notp/statemachines"
+	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
 )
 
 const (

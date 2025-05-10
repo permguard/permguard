@@ -17,13 +17,13 @@
 package workspace
 
 import (
-	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
-	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
-	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
-	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
 	notpagpackets "github.com/permguard/permguard/internal/transport/notp/statemachines/packets"
+	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
+	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
 )
 
 // OnPushSendNotifyCurrentState notifies the current state.

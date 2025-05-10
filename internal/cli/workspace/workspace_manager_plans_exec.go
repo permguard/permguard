@@ -19,10 +19,10 @@ package workspace
 import (
 	"fmt"
 
-	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	aziclicommon "github.com/permguard/permguard/internal/cli/common"
 	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
 	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
+	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 // ExecPlan generates a plan of changes to apply to the remote ledger based on the differences between the local and remote states.

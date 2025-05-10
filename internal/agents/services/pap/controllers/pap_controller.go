@@ -17,9 +17,9 @@
 package controllers
 
 import (
-	notppackets "github.com/permguard/permguard-notp-protocol/pkg/notp/packets"
-	notpstatemachines "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines"
-	notpsmpackets "github.com/permguard/permguard-notp-protocol/pkg/notp/statemachines/packets"
+	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
+	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azStorage "github.com/permguard/permguard/pkg/agents/storage"
 	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"

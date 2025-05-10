@@ -21,8 +21,8 @@ import (
 
 	"github.com/spf13/viper"
 
-	azcopier "github.com/permguard/permguard-common/pkg/extensions/copier"
-	azvalidators "github.com/permguard/permguard-common/pkg/extensions/validators"
+	azcopier "github.com/permguard/permguard/common/pkg/extensions/copier"
+	azvalidators "github.com/permguard/permguard/common/pkg/extensions/validators"
 	azservices "github.com/permguard/permguard/pkg/agents/services"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	azoptions "github.com/permguard/permguard/pkg/cli/options"

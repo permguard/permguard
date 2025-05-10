@@ -23,6 +23,13 @@ tasks:
   fmt:
     cmds:
       - find . -name "*.go" -exec go fmt {} \;
+  proto:
+    cmds:
+      - make protoc
+  docs:
+    cmds:
+      - cd site && npm i && npm run dev
+  # Git Flow
   push-docs:
     desc: git push for documentation
     cmd: 'git add -A && git commit -m "docs: {{.CLI_ARGS}}" && git push || echo DONE'
@@ -62,12 +69,6 @@ tasks:
   push-release:
     desc: git push for code change for release
     cmd: 'git add -A && git commit -m "release: {{.CLI_ARGS}}" && git push || echo DONE'
-  proto:
-    cmds:
-      - make protoc
-  docs:
-    cmds:
-      - cd site && npm i && npm run dev
   # Build and Run
   build:
     cmds:
@@ -84,19 +85,6 @@ tasks:
     cmds:
       - make teste2e
     silent: true
-  # Dependencies
-  dep-common:
-    desc: get common dependency
-    cmd: 'go get -u github.com/permguard/permguard-common@{{.CLI_ARGS}}'
-  dep-notp:
-    desc: get notp dependency
-    cmd: 'go get -u github.com/permguard/permguard-notp-protocol@{{.CLI_ARGS}}'
-  dep-ztas:
-    desc: get ztas dependency
-    cmd: 'go get -u github.com/permguard/permguard-ztauthstar@{{.CLI_ARGS}}'
-  dep-ztas-cedar:
-    desc: get ztas-cedar dependency
-    cmd: 'go get -u github.com/permguard/permguard-ztauthstar-cedar@{{.CLI_ARGS}}'
   # Local
   install: export VERSION=$(git describe --tags --match 'v*' --abbrev=0 | cut -c2-) && export BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S') && export GIT_COMMIT=$(git rev-parse --short HEAD) && make build-cli && cp ./dist/permguard ~/.apps/bin/permguard
   docker:

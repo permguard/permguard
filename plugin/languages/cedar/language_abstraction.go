@@ -23,14 +23,14 @@ import (
 
 	"github.com/cedar-policy/cedar-go"
 
-	azcedarlang "github.com/permguard/permguard-ztauthstar-cedar/pkg/cedarlang"
-	azauthzen "github.com/permguard/permguard-ztauthstar/pkg/authzen"
-	azauthzlangtypes "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
-	azauthzlangvalidators "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/validators"
-	azztasmfests "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
-	azobjs "github.com/permguard/permguard-ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 	azengine "github.com/permguard/permguard/pkg/authz/engines"
 	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	azcedarlang "github.com/permguard/permguard/ztauthstar-cedar/pkg/cedarlang"
+	azauthzen "github.com/permguard/permguard/ztauthstar/pkg/authzen"
+	azauthzlangtypes "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
+	azauthzlangvalidators "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/validators"
+	azztasmfests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 // CedarLanguageAbstraction is the abstraction for the cedar language.

@@ -11,10 +11,10 @@ require (
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/pelletier/go-toml v1.9.5
-	github.com/permguard/permguard-common v0.0.1-0.20250324235958-a7cfb846171e
-	github.com/permguard/permguard-notp-protocol v0.0.1-0.20250325000214-6c0849aa9d2d
-	github.com/permguard/permguard-ztauthstar v0.0.1-0.20250509220210-801b87990fe7
-	github.com/permguard/permguard-ztauthstar-cedar v0.0.0-20250421203219-c9f70e071556
+	github.com/permguard/permguard/common v0.0.0-00010101000000-000000000000
+	github.com/permguard/permguard/notp-protocol v0.0.0-00010101000000-000000000000
+	github.com/permguard/permguard/ztauthstar v0.0.0-00010101000000-000000000000
+	github.com/permguard/permguard/ztauthstar-cedar v0.0.0-00010101000000-000000000000
 	github.com/pressly/goose/v3 v3.24.1
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
@@ -61,4 +61,11 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250115164207-1a7da9e5054f // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+)
+
+replace (
+	github.com/permguard/permguard/common => ./modules/common
+	github.com/permguard/permguard/notp-protocol => ./modules/notp-protocol
+	github.com/permguard/permguard/ztauthstar => ./modules/ztauthstar
+	github.com/permguard/permguard/ztauthstar-cedar => ./modules/ztauthstar-cedar
 )
