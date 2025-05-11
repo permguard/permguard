@@ -17,23 +17,23 @@
 package common
 
 import (
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 // CommitInfo define a commit info.
 type CommitInfo struct {
 	oid    string
-	commit *azobjs.Commit
+	commit *objects.Commit
 }
 
 // NewCommitInfo creates a new CommitInfo.
-func NewCommitInfo(oid string, commit *azobjs.Commit) (*CommitInfo, error) {
+func NewCommitInfo(oid string, commit *objects.Commit) (*CommitInfo, error) {
 	if oid == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid commit oid")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid commit oid")
 	}
 	if commit == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid commit")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid commit")
 	}
 	return &CommitInfo{
 		oid:    oid,
@@ -47,6 +47,6 @@ func (c *CommitInfo) GetCommitOID() string {
 }
 
 // GetCommit returns the commit.
-func (c *CommitInfo) GetCommit() *azobjs.Commit {
+func (c *CommitInfo) GetCommit() *objects.Commit {
 	return c.commit
 }

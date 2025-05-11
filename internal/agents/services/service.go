@@ -21,20 +21,20 @@ import (
 
 	"go.uber.org/zap"
 
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/storage"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ServiceConfig represents the service configuration.
 type ServiceConfig struct {
-	hostable         azservices.Hostable
-	storageConnector *azstorage.StorageConnector
-	serviceable      azservices.Serviceable
+	hostable         services.Hostable
+	storageConnector *storage.StorageConnector
+	serviceable      services.Serviceable
 }
 
 // NewServiceConfig creates a new service configuration.
-func newServiceConfig(hostable azservices.Hostable, storageConnector *azstorage.StorageConnector, serviceable azservices.Serviceable) (*ServiceConfig, error) {
+func newServiceConfig(hostable services.Hostable, storageConnector *storage.StorageConnector, serviceable services.Serviceable) (*ServiceConfig, error) {
 	return &ServiceConfig{
 		hostable:         hostable,
 		storageConnector: storageConnector,
@@ -43,34 +43,34 @@ func newServiceConfig(hostable azservices.Hostable, storageConnector *azstorage.
 }
 
 // GetHostable returns the hostable.
-func (c *ServiceConfig) GetHostable() azservices.Hostable {
+func (c *ServiceConfig) GetHostable() services.Hostable {
 	return c.hostable
 }
 
 // GetStorageConnector returns the storage connector.
-func (c *ServiceConfig) GetStorageConnector() *azstorage.StorageConnector {
+func (c *ServiceConfig) GetStorageConnector() *storage.StorageConnector {
 	return c.storageConnector
 }
 
 // GetServiceable returns the serviceable.
-func (c *ServiceConfig) GetServiceable() azservices.Serviceable {
+func (c *ServiceConfig) GetServiceable() services.Serviceable {
 	return c.serviceable
 }
 
 // Service represents the service.
 type Service struct {
 	config    *ServiceConfig
-	ctx       *azservices.ServiceContext
+	ctx       *services.ServiceContext
 	endpoints []*Endpoint
 }
 
 // newService creates a new service.
-func newService(serviceCfg *ServiceConfig, hostContext *azservices.HostContext) (*Service, error) {
+func newService(serviceCfg *ServiceConfig, hostContext *services.HostContext) (*Service, error) {
 	svcCfgReader, err := serviceCfg.serviceable.GetServiceConfigReader()
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrConfigurationGeneric, "cannot get service config reader", err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrConfigurationGeneric, "cannot get service config reader", err)
 	}
-	serviceCtx, err := azservices.NewServiceContext(hostContext, serviceCfg.serviceable.GetService(), svcCfgReader)
+	serviceCtx, err := services.NewServiceContext(hostContext, serviceCfg.serviceable.GetService(), svcCfgReader)
 	if err != nil {
 		return nil, err
 	}

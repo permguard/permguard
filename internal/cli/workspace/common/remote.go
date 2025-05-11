@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"strings"
 
-	azvalidators "github.com/permguard/permguard/common/pkg/extensions/validators"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/common/pkg/extensions/validators"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // RemoteInfo represents the remote information.
@@ -34,13 +34,13 @@ type RemoteInfo struct {
 // NewRemoteInfo creates a new remote info.
 func NewRemoteInfo(server string, zapPort, papPort int) (*RemoteInfo, error) {
 	if server == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid server")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid server")
 	}
 	if zapPort <= 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid zap port")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid zap port")
 	}
 	if papPort <= 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid pap port")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid pap port")
 	}
 	return &RemoteInfo{
 		server:  server,
@@ -67,11 +67,11 @@ func (i *RemoteInfo) GetPAPPort() int {
 // SanitizeRemote sanitizes the remote name.
 func SanitizeRemote(remote string) (string, error) {
 	if len(remote) == 0 {
-		return "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid remote name")
+		return "", cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid remote name")
 	}
 	remote = strings.ToLower(remote)
-	if !azvalidators.ValidateSimpleName(remote) {
-		return "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid remote name %s", remote))
+	if !validators.ValidateSimpleName(remote) {
+		return "", cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid remote name %s", remote))
 	}
 	return remote, nil
 }

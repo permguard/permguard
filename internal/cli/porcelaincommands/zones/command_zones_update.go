@@ -20,9 +20,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -31,16 +31,16 @@ const (
 )
 
 // runECommandForUpdateZone runs the command for creating a zone.
-func runECommandForUpdateZone(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForUpdateZone(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	return runECommandForUpsertZone(deps, cmd, v, commandNameForZonesUpdate, false)
 }
 
 // createCommandForZoneUpdate creates a command for managing zoneupdate.
-func createCommandForZoneUpdate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForZoneUpdate(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update a remote zone",
-		Long: aziclicommon.BuildCliLongTemplate(`This command updates a remote zone.
+		Long: common.BuildCliLongTemplate(`This command updates a remote zone.
 
 Examples:
   # update a zone and output the result in json format
@@ -50,9 +50,9 @@ Examples:
 			return runECommandForUpdateZone(deps, cmd, v)
 		},
 	}
-	command.Flags().Int64(aziclicommon.FlagCommonZoneID, 0, "specify the zone id to update")
-	v.BindPFlag(azoptions.FlagName(commandNameForZonesUpdate, aziclicommon.FlagCommonZoneID), command.Flags().Lookup(aziclicommon.FlagCommonZoneID))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the new zone name")
-	v.BindPFlag(azoptions.FlagName(commandNameForZonesUpdate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	command.Flags().Int64(common.FlagCommonZoneID, 0, "specify the zone id to update")
+	v.BindPFlag(options.FlagName(commandNameForZonesUpdate, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))
+	command.Flags().String(common.FlagCommonName, "", "specify the new zone name")
+	v.BindPFlag(options.FlagName(commandNameForZonesUpdate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

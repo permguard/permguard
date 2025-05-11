@@ -21,67 +21,67 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
-	azplugincedar "github.com/permguard/permguard/plugin/languages/cedar"
-	azauthzen "github.com/permguard/permguard/ztauthstar/pkg/authzen"
-	azauthzlangtypes "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
-	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/pdp"
+	"github.com/permguard/permguard/plugin/languages/cedar"
+	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
+	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
+	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 // authorizationCheckBuildContextResponse builds the context response for the authorization check.
-func authorizationCheckBuildContextResponse(authzDecision *azauthzen.AuthorizationDecision) *azmodelspdp.ContextResponse {
-	ctxResponse := &azmodelspdp.ContextResponse{}
+func authorizationCheckBuildContextResponse(authzDecision *authzen.AuthorizationDecision) *pdp.ContextResponse {
+	ctxResponse := &pdp.ContextResponse{}
 	ctxResponse.ID = authzDecision.GetID()
 
 	adminError := authzDecision.GetAdminError()
 	if adminError != nil {
-		ctxResponse.ReasonAdmin = &azmodelspdp.ReasonResponse{
+		ctxResponse.ReasonAdmin = &pdp.ReasonResponse{
 			Code:    adminError.GetCode(),
 			Message: adminError.GetMessage(),
 		}
-	} else if authzDecision.GetDecision() == false {
-		ctxResponse.ReasonAdmin = &azmodelspdp.ReasonResponse{
-			Code:    azauthzen.AuthzErrInternalErrorCode,
-			Message: azauthzen.AuthzErrInternalErrorMessage,
+	} else if !authzDecision.GetDecision() {
+		ctxResponse.ReasonAdmin = &pdp.ReasonResponse{
+			Code:    authzen.AuthzErrInternalErrorCode,
+			Message: authzen.AuthzErrInternalErrorMessage,
 		}
 	}
 
 	userError := authzDecision.GetUserError()
 	if userError != nil {
-		ctxResponse.ReasonUser = &azmodelspdp.ReasonResponse{
+		ctxResponse.ReasonUser = &pdp.ReasonResponse{
 			Code:    userError.GetCode(),
 			Message: userError.GetMessage(),
 		}
-	} else if authzDecision.GetDecision() == false {
-		ctxResponse.ReasonUser = &azmodelspdp.ReasonResponse{
-			Code:    azauthzen.AuthzErrInternalErrorCode,
-			Message: azauthzen.AuthzErrInternalErrorMessage,
+	} else if !authzDecision.GetDecision() {
+		ctxResponse.ReasonUser = &pdp.ReasonResponse{
+			Code:    authzen.AuthzErrInternalErrorCode,
+			Message: authzen.AuthzErrInternalErrorMessage,
 		}
 	}
 	return ctxResponse
 }
 
 // authorizationCheckReadBytes reads the key value for the authorization check.
-func authorizationCheckReadKeyValue(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azobjs.ObjectManager, zoneID int64, key string) ([]byte, error) {
+func authorizationCheckReadKeyValue(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *objects.ObjectManager, zoneID int64, key string) ([]byte, error) {
 	if db == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageGeneric, "invalid database")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrStorageGeneric, "invalid database")
 	}
 	if objMng == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageGeneric, "invalid object manager")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrStorageGeneric, "invalid object manager")
 	}
 	keyValue, err := s.sqlRepo.GetKeyValue(db, zoneID, key)
 	if err != nil {
 		return nil, err
 	}
 	if keyValue == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageGeneric, "key value is nil")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrStorageGeneric, "key value is nil")
 	}
 	return keyValue.Value, nil
 }
 
 // authorizationCheckReadBytes reads the key value for the authorization check.
-func authorizationCheckReadBytes(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azobjs.ObjectManager, zoneID int64, key string) (string, []byte, error) {
+func authorizationCheckReadBytes(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *objects.ObjectManager, zoneID int64, key string) (string, []byte, error) {
 	value, err := authorizationCheckReadKeyValue(s, db, objMng, zoneID, key)
 	if err != nil {
 		return "", nil, err
@@ -95,7 +95,7 @@ func authorizationCheckReadBytes(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng
 }
 
 // authorizationCheckReadTree reads the tree object for the authorization check.
-func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *azobjs.ObjectManager, zoneID int64, commitID string) (*azobjs.Tree, error) {
+func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *objects.ObjectManager, zoneID int64, commitID string) (*objects.Tree, error) {
 	_, ocontent, err := authorizationCheckReadBytes(s, db, objMng, zoneID, commitID)
 	if err != nil {
 		return nil, err
@@ -112,70 +112,70 @@ func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng 
 }
 
 // AuthorizationCheck performs the authorization check.
-func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckRequest) ([]azmodelspdp.EvaluationResponse, error) {
+func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *pdp.AuthorizationCheckRequest) ([]pdp.EvaluationResponse, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageGeneric, "server couldn't connect to the database", err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageGeneric, "server couldn't connect to the database", err)
 	}
 
 	authzCtx := request.AuthorizationModel
 	dbLedgers, err := s.sqlRepo.FetchLedgers(db, 1, 2, authzCtx.ZoneID, &authzCtx.PolicyStore.ID, nil)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrLanguangeSemantic, "bad request for either zone id or policy store id", err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrLanguangeSemantic, "bad request for either zone id or policy store id", err)
 	}
 	if len(dbLedgers) != 1 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguangeSemantic, "bad request for either zone id or policy store id")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "bad request for either zone id or policy store id")
 	}
 	ledger := dbLedgers[0]
 	ledgerRef := ledger.Ref
-	if ledgerRef == azobjs.ZeroOID {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't validate the ledger reference")
+	if ledgerRef == objects.ZeroOID {
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrServerGeneric, "server couldn't validate the ledger reference")
 	}
 
-	authzPolicyStore := azauthzen.PolicyStore{}
+	authzPolicyStore := authzen.PolicyStore{}
 	authzPolicyStore.SetVersion(ledgerRef)
 
-	objMng, err := azobjs.NewObjectManager()
+	objMng, err := objects.NewObjectManager()
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't create the object manager", err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrServerGeneric, "server couldn't create the object manager", err)
 	}
 	treeObj, err := authorizationCheckReadTree(&s, db, objMng, authzCtx.ZoneID, ledgerRef)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't read the tree", err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrServerGeneric, "server couldn't read the tree", err)
 	}
 	for _, entry := range treeObj.GetEntries() {
 		entryID := entry.GetOID()
-		value, err := authorizationCheckReadKeyValue(&s, db, objMng, authzCtx.ZoneID, entryID)
-		if err != nil {
-			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("server couldn't read the key %s", entryID), err)
+		value, err2 := authorizationCheckReadKeyValue(&s, db, objMng, authzCtx.ZoneID, entryID)
+		if err2 != nil {
+			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrServerGeneric, fmt.Sprintf("server couldn't read the key %s", entryID), err)
 		}
-		obj, err := objMng.DeserializeObjectFromBytes(value)
-		if err != nil {
-			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't deserialize the object from bytes", err)
+		obj, err3 := objMng.DeserializeObjectFromBytes(value)
+		if err3 != nil {
+			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrServerGeneric, "server couldn't deserialize the object from bytes", err)
 		}
-		objInfo, err := objMng.GetObjectInfo(obj)
-		if err != nil {
-			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't read object info", err)
+		objInfo, err4 := objMng.GetObjectInfo(obj)
+		if err4 != nil {
+			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrServerGeneric, "server couldn't read object info", err)
 		}
 		objInfoHeader := objInfo.GetHeader()
 		oid := objInfo.GetOID()
-		if objInfoHeader.GetCodeTypeID() == azauthzlangtypes.ClassTypeSchemaID {
+		if objInfoHeader.GetCodeTypeID() == types.ClassTypeSchemaID {
 			authzPolicyStore.AddSchema(oid, objInfo)
-		} else if objInfoHeader.GetCodeTypeID() == azauthzlangtypes.ClassTypePolicyID {
+		} else if objInfoHeader.GetCodeTypeID() == types.ClassTypePolicyID {
 			authzPolicyStore.AddPolicy(oid, objInfo)
 		} else {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't process the code type id")
+			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrServerGeneric, "server couldn't process the code type id")
 		}
 	}
 
-	cedarLanguageAbs, err := azplugincedar.NewCedarLanguageAbstraction()
+	cedarLanguageAbs, err := cedar.NewCedarLanguageAbstraction()
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, "server couldn't validate the language abstraction layer", err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrServerGeneric, "server couldn't validate the language abstraction layer", err)
 	}
 
-	evaluations := []azmodelspdp.EvaluationResponse{}
+	evaluations := []pdp.EvaluationResponse{}
 	for _, expandedRequest := range request.Evaluations {
-		authzCtx := azauthzen.AuthorizationModel{}
+		authzCtx := authzen.AuthorizationModel{}
 		authzCtx.SetSubject(expandedRequest.Subject.Type, expandedRequest.Subject.ID, expandedRequest.Subject.Source, expandedRequest.Subject.Properties)
 		authzCtx.SetResource(expandedRequest.Resource.Type, expandedRequest.Resource.ID, expandedRequest.Resource.Properties)
 		authzCtx.SetAction(expandedRequest.Action.Name, expandedRequest.Action.Properties)
@@ -188,16 +188,16 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *azmodelspdp.Authori
 		//TODO: Fix manifest refactoring
 		authzResponse, err := cedarLanguageAbs.AuthorizationCheck(nil, contextID, &authzPolicyStore, &authzCtx)
 		if err != nil {
-			evaluation := azmodelspdp.NewEvaluationErrorResponse(expandedRequest.RequestID, azauthzen.AuthzErrInternalErrorCode, err.Error(), azauthzen.AuthzErrInternalErrorMessage)
+			evaluation := pdp.NewEvaluationErrorResponse(expandedRequest.RequestID, authzen.AuthzErrInternalErrorCode, err.Error(), authzen.AuthzErrInternalErrorMessage)
 			evaluations = append(evaluations, *evaluation)
 			continue
 		}
 		if authzResponse == nil {
-			evaluation := azmodelspdp.NewEvaluationErrorResponse(expandedRequest.RequestID, azauthzen.AuthzErrInternalErrorCode, "because of a nil authz response", azauthzen.AuthzErrInternalErrorMessage)
+			evaluation := pdp.NewEvaluationErrorResponse(expandedRequest.RequestID, authzen.AuthzErrInternalErrorCode, "because of a nil authz response", authzen.AuthzErrInternalErrorMessage)
 			evaluations = append(evaluations, *evaluation)
 			continue
 		}
-		evaluation := &azmodelspdp.EvaluationResponse{
+		evaluation := &pdp.EvaluationResponse{
 			RequestID: expandedRequest.RequestID,
 			Decision:  authzResponse.GetDecision(),
 			Context:   authorizationCheckBuildContextResponse(authzResponse),

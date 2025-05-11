@@ -24,9 +24,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelzap "github.com/permguard/permguard/pkg/transport/models/zap"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
+	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // TestCreateZoneWithErrors tests the CreateZone function with errors.
@@ -37,17 +37,17 @@ func TestCreateZoneWithErrors(t *testing.T) {
 		storage, _, _, _, _, _, _ := createSQLiteZAPCentralStorageWithMocks()
 		zones, err := storage.CreateZone(nil)
 		assert.Nil(zones, "zones should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	tests := map[string]struct {
 		IsCustomError bool
 		Error1        error
 	}{
-		"CONNECT-ERROR":  {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
-		"BEGIN-ERROR":    {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"CONNECT-ERROR":  {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
+		"BEGIN-ERROR":    {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
 		"ROLLBACK-ERROR": {IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR")},
-		"COMMIT-ERROR":   {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"COMMIT-ERROR":   {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
 	}
 	for testcase, test := range tests {
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
@@ -64,7 +64,7 @@ func TestCreateZoneWithErrors(t *testing.T) {
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			zone := &azirepos.Zone{
+			zone := &repos.Zone{
 				ZoneID:    232956849236,
 				Name:      "rent-a-car1",
 				CreatedAt: time.Now(),
@@ -79,12 +79,12 @@ func TestCreateZoneWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inZone := &azmodelzap.Zone{}
+		inZone := &zap.Zone{}
 		outZones, err := storage.CreateZone(inZone)
 		assert.Nil(outZones, "zones should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
-			assert.True(azerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
+			assert.True(cerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
 		} else {
 			assert.Equal(test.Error1, err, "error should be equal")
 		}
@@ -97,7 +97,7 @@ func TestCreateZoneWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutZone := &azirepos.Zone{
+	dbOutZone := &repos.Zone{
 		ZoneID:    232956849236,
 		Name:      "rent-a-car1",
 		CreatedAt: time.Now(),
@@ -112,7 +112,7 @@ func TestCreateZoneWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertLedger", mock.Anything, true, mock.Anything).Return(nil, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inZone := &azmodelzap.Zone{}
+	inZone := &zap.Zone{}
 	outZones, err := storage.CreateZone(inZone)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outZones, "zones should not be nil")
@@ -130,17 +130,17 @@ func TestUpdateZoneWithErrors(t *testing.T) {
 		storage, _, _, _, _, _, _ := createSQLiteZAPCentralStorageWithMocks()
 		zones, err := storage.UpdateZone(nil)
 		assert.Nil(zones, "zones should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	tests := map[string]struct {
 		IsCustomError bool
 		Error1        error
 	}{
-		"CONNECT-ERROR":  {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
-		"BEGIN-ERROR":    {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"CONNECT-ERROR":  {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
+		"BEGIN-ERROR":    {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
 		"ROLLBACK-ERROR": {IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR")},
-		"COMMIT-ERROR":   {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"COMMIT-ERROR":   {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
 	}
 	for testcase, test := range tests {
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
@@ -157,7 +157,7 @@ func TestUpdateZoneWithErrors(t *testing.T) {
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			zone := &azirepos.Zone{
+			zone := &repos.Zone{
 				ZoneID:    232956849236,
 				Name:      "rent-a-car1",
 				CreatedAt: time.Now(),
@@ -172,12 +172,12 @@ func TestUpdateZoneWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inZone := &azmodelzap.Zone{}
+		inZone := &zap.Zone{}
 		outZones, err := storage.UpdateZone(inZone)
 		assert.Nil(outZones, "zones should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
-			assert.True(azerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
+			assert.True(cerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
 		} else {
 			assert.Equal(test.Error1, err, "error should be equal")
 		}
@@ -190,7 +190,7 @@ func TestUpdateZoneWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutZone := &azirepos.Zone{
+	dbOutZone := &repos.Zone{
 		ZoneID:    232956849236,
 		Name:      "rent-a-car1",
 		CreatedAt: time.Now(),
@@ -202,7 +202,7 @@ func TestUpdateZoneWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertZone", mock.Anything, false, mock.Anything).Return(dbOutZone, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inZone := &azmodelzap.Zone{}
+	inZone := &zap.Zone{}
 	outZones, err := storage.UpdateZone(inZone)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outZones, "zones should not be nil")
@@ -220,10 +220,10 @@ func TestDeleteZoneWithErrors(t *testing.T) {
 		IsCustomError bool
 		Error1        error
 	}{
-		"CONNECT-ERROR":  {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
-		"BEGIN-ERROR":    {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"CONNECT-ERROR":  {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
+		"BEGIN-ERROR":    {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
 		"ROLLBACK-ERROR": {IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR")},
-		"COMMIT-ERROR":   {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"COMMIT-ERROR":   {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
 	}
 	for testcase, test := range tests {
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
@@ -251,7 +251,7 @@ func TestDeleteZoneWithErrors(t *testing.T) {
 		assert.Nil(outZones, "zones should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
-			assert.True(azerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
+			assert.True(cerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
 		} else {
 			assert.Equal(test.Error1, err, "error should be equal")
 		}
@@ -264,7 +264,7 @@ func TestDeleteZoneWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutZone := &azirepos.Zone{
+	dbOutZone := &repos.Zone{
 		ZoneID:    232956849236,
 		Name:      "rent-a-car1",
 		CreatedAt: time.Now(),
@@ -292,10 +292,10 @@ func TestFetchZoneWithErrors(t *testing.T) {
 
 	{ // Test with invalid page
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, _, _ := createSQLiteZAPCentralStorageWithMocks()
-		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(nil, azerrors.ErrServerGeneric)
+		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(nil, cerrors.ErrServerGeneric)
 		outZones, err := storage.FetchZones(1, 100, nil)
 		assert.Nil(outZones, "zones should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrServerGeneric, err), "error should be errservergeneric")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrServerGeneric, err), "error should be errservergeneric")
 	}
 
 	{ // Test with invalid page
@@ -303,7 +303,7 @@ func TestFetchZoneWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outZones, err := storage.FetchZones(0, 100, nil)
 		assert.Nil(outZones, "zones should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid page size
@@ -311,32 +311,32 @@ func TestFetchZoneWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outZones, err := storage.FetchZones(1, 0, nil)
 		assert.Nil(outZones, "zones should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid zone id
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outZones, err := storage.FetchZones(1, 100, map[string]any{azmodelzap.FieldZoneZoneID: "not valid"})
+		outZones, err := storage.FetchZones(1, 100, map[string]any{zap.FieldZoneZoneID: "not valid"})
 		assert.Nil(outZones, "zones should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid zone name
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outZones, err := storage.FetchZones(1, 100, map[string]any{azmodelzap.FieldZoneName: 2})
+		outZones, err := storage.FetchZones(1, 100, map[string]any{zap.FieldZoneName: 2})
 		assert.Nil(outZones, "zones should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid zone name
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		mockSQLRepo.On("FetchZones", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, azerrors.ErrServerGeneric)
+		mockSQLRepo.On("FetchZones", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, cerrors.ErrServerGeneric)
 		outZones, err := storage.FetchZones(1, 100, nil)
 		assert.Nil(outZones, "zones should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrServerGeneric, err), "error should be errservergeneric")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrServerGeneric, err), "error should be errservergeneric")
 	}
 }
 
@@ -346,7 +346,7 @@ func TestFetchZoneWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutZones := []azirepos.Zone{
+	dbOutZones := []repos.Zone{
 		{
 			ZoneID:    232956849236,
 			Name:      "rent-a-car1",
@@ -364,7 +364,7 @@ func TestFetchZoneWithSuccess(t *testing.T) {
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLRepo.On("FetchZones", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutZones, nil)
 
-	outZones, err := storage.FetchZones(1, 100, map[string]any{azmodelzap.FieldZoneZoneID: int64(506074038324), azmodelzap.FieldZoneName: "rent-a-car2"})
+	outZones, err := storage.FetchZones(1, 100, map[string]any{zap.FieldZoneZoneID: int64(506074038324), zap.FieldZoneName: "rent-a-car2"})
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outZones, "zones should not be nil")
 	assert.Equal(len(dbOutZones), len(outZones), "zones  and dbZones should have the same length")

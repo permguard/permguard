@@ -24,9 +24,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelzap "github.com/permguard/permguard/pkg/transport/models/zap"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
+	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // TestCreateIdentitySourceWithErrors tests the CreateIdentitySource function with errors.
@@ -37,17 +37,17 @@ func TestCreateIdentitySourceWithErrors(t *testing.T) {
 		storage, _, _, _, _, _, _ := createSQLiteZAPCentralStorageWithMocks()
 		identitySources, err := storage.CreateIdentitySource(nil)
 		assert.Nil(identitySources, "identity sources should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	tests := map[string]struct {
 		IsCustomError bool
 		Error1        error
 	}{
-		"CONNECT-ERROR":  {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
-		"BEGIN-ERROR":    {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"CONNECT-ERROR":  {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
+		"BEGIN-ERROR":    {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
 		"ROLLBACK-ERROR": {IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR")},
-		"COMMIT-ERROR":   {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"COMMIT-ERROR":   {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
 	}
 	for testcase, test := range tests {
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
@@ -70,12 +70,12 @@ func TestCreateIdentitySourceWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inIdentitySource := &azmodelzap.IdentitySource{}
+		inIdentitySource := &zap.IdentitySource{}
 		outIdentitySources, err := storage.CreateIdentitySource(inIdentitySource)
 		assert.Nil(outIdentitySources, "identity sources should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
-			assert.True(azerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
+			assert.True(cerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
 		} else {
 			assert.Equal(test.Error1, err, "error should be equal")
 		}
@@ -88,9 +88,9 @@ func TestCreateIdentitySourceWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutIdentitySource := &azirepos.IdentitySource{
+	dbOutIdentitySource := &repos.IdentitySource{
 		ZoneID:           232956849236,
-		IdentitySourceID: azirepos.GenerateUUID(),
+		IdentitySourceID: repos.GenerateUUID(),
 		Name:             "rent-a-car1",
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
@@ -101,7 +101,7 @@ func TestCreateIdentitySourceWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertIdentitySource", mock.Anything, true, mock.Anything).Return(dbOutIdentitySource, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inIdentitySource := &azmodelzap.IdentitySource{}
+	inIdentitySource := &zap.IdentitySource{}
 	outIdentitySources, err := storage.CreateIdentitySource(inIdentitySource)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outIdentitySources, "identity sources should not be nil")
@@ -119,17 +119,17 @@ func TestUpdateIdentitySourceWithErrors(t *testing.T) {
 		storage, _, _, _, _, _, _ := createSQLiteZAPCentralStorageWithMocks()
 		identitySources, err := storage.UpdateIdentitySource(nil)
 		assert.Nil(identitySources, "identity sources should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	tests := map[string]struct {
 		IsCustomError bool
 		Error1        error
 	}{
-		"CONNECT-ERROR":  {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
-		"BEGIN-ERROR":    {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"CONNECT-ERROR":  {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
+		"BEGIN-ERROR":    {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
 		"ROLLBACK-ERROR": {IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR")},
-		"COMMIT-ERROR":   {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"COMMIT-ERROR":   {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
 	}
 	for testcase, test := range tests {
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
@@ -152,12 +152,12 @@ func TestUpdateIdentitySourceWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inIdentitySource := &azmodelzap.IdentitySource{}
+		inIdentitySource := &zap.IdentitySource{}
 		outIdentitySources, err := storage.UpdateIdentitySource(inIdentitySource)
 		assert.Nil(outIdentitySources, "identity sources should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
-			assert.True(azerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
+			assert.True(cerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
 		} else {
 			assert.Equal(test.Error1, err, "error should be equal")
 		}
@@ -170,9 +170,9 @@ func TestUpdateIdentitySourceWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutIdentitySource := &azirepos.IdentitySource{
+	dbOutIdentitySource := &repos.IdentitySource{
 		ZoneID:           232956849236,
-		IdentitySourceID: azirepos.GenerateUUID(),
+		IdentitySourceID: repos.GenerateUUID(),
 		Name:             "rent-a-car1",
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
@@ -183,7 +183,7 @@ func TestUpdateIdentitySourceWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertIdentitySource", mock.Anything, false, mock.Anything).Return(dbOutIdentitySource, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inIdentitySource := &azmodelzap.IdentitySource{}
+	inIdentitySource := &zap.IdentitySource{}
 	outIdentitySources, err := storage.UpdateIdentitySource(inIdentitySource)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outIdentitySources, "identity sources should not be nil")
@@ -201,10 +201,10 @@ func TestDeleteIdentitySourceWithErrors(t *testing.T) {
 		IsCustomError bool
 		Error1        error
 	}{
-		"CONNECT-ERROR":  {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
-		"BEGIN-ERROR":    {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"CONNECT-ERROR":  {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
+		"BEGIN-ERROR":    {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
 		"ROLLBACK-ERROR": {IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR")},
-		"COMMIT-ERROR":   {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"COMMIT-ERROR":   {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
 	}
 	for testcase, test := range tests {
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
@@ -227,12 +227,12 @@ func TestDeleteIdentitySourceWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inIdentitySourceID := azirepos.GenerateUUID()
-		outIdentitySources, err := storage.DeleteIdentitySource(azirepos.GenerateZoneID(), inIdentitySourceID)
+		inIdentitySourceID := repos.GenerateUUID()
+		outIdentitySources, err := storage.DeleteIdentitySource(repos.GenerateZoneID(), inIdentitySourceID)
 		assert.Nil(outIdentitySources, "identity sources should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
-			assert.True(azerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
+			assert.True(cerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
 		} else {
 			assert.Equal(test.Error1, err, "error should be equal")
 		}
@@ -245,9 +245,9 @@ func TestDeleteIdentitySourceWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutIdentitySource := &azirepos.IdentitySource{
+	dbOutIdentitySource := &repos.IdentitySource{
 		ZoneID:           232956849236,
-		IdentitySourceID: azirepos.GenerateUUID(),
+		IdentitySourceID: repos.GenerateUUID(),
 		Name:             "rent-a-car1",
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
@@ -258,8 +258,8 @@ func TestDeleteIdentitySourceWithSuccess(t *testing.T) {
 	mockSQLRepo.On("DeleteIdentitySource", mock.Anything, mock.Anything, mock.Anything).Return(dbOutIdentitySource, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inIdentitySourceID := azirepos.GenerateUUID()
-	outIdentitySources, err := storage.DeleteIdentitySource(azirepos.GenerateZoneID(), inIdentitySourceID)
+	inIdentitySourceID := repos.GenerateUUID()
+	outIdentitySources, err := storage.DeleteIdentitySource(repos.GenerateZoneID(), inIdentitySourceID)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outIdentitySources, "identity sources should not be nil")
 	assert.Equal(dbOutIdentitySource.IdentitySourceID, outIdentitySources.IdentitySourceID, "identity source id should be equal")
@@ -274,10 +274,10 @@ func TestFetchIdentitySourceWithErrors(t *testing.T) {
 
 	{ // Test with invalid page
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, _, _ := createSQLiteZAPCentralStorageWithMocks()
-		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(nil, azerrors.ErrServerGeneric)
+		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(nil, cerrors.ErrServerGeneric)
 		outIdentitySources, err := storage.FetchIdentitySources(1, 100, 232956849236, nil)
 		assert.Nil(outIdentitySources, "identity sources should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrServerGeneric, err), "error should be errservergeneric")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrServerGeneric, err), "error should be errservergeneric")
 	}
 
 	{ // Test with invalid page
@@ -285,7 +285,7 @@ func TestFetchIdentitySourceWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outIdentitySources, err := storage.FetchIdentitySources(0, 100, 232956849236, nil)
 		assert.Nil(outIdentitySources, "identity sources should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid page size
@@ -293,32 +293,32 @@ func TestFetchIdentitySourceWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outIdentitySources, err := storage.FetchIdentitySources(1, 0, 232956849236, nil)
 		assert.Nil(outIdentitySources, "identity sources should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid identity source id
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outIdentitySources, err := storage.FetchIdentitySources(1, 100, 232956849236, map[string]any{azmodelzap.FieldIdentitySourceIdentitySourceID: 232956849236})
+		outIdentitySources, err := storage.FetchIdentitySources(1, 100, 232956849236, map[string]any{zap.FieldIdentitySourceIdentitySourceID: 232956849236})
 		assert.Nil(outIdentitySources, "identity sources should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid identity source name
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outIdentitySources, err := storage.FetchIdentitySources(1, 100, 232956849236, map[string]any{azmodelzap.FieldIdentitySourceName: 2})
+		outIdentitySources, err := storage.FetchIdentitySources(1, 100, 232956849236, map[string]any{zap.FieldIdentitySourceName: 2})
 		assert.Nil(outIdentitySources, "identity sources should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	{ // Test with server error
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		mockSQLRepo.On("FetchIdentitySources", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, azerrors.ErrServerGeneric)
+		mockSQLRepo.On("FetchIdentitySources", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, cerrors.ErrServerGeneric)
 		outIdentitySources, err := storage.FetchIdentitySources(1, 100, 232956849236, nil)
 		assert.Nil(outIdentitySources, "identity sources should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrServerGeneric, err), "error should be errservergeneric")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrServerGeneric, err), "error should be errservergeneric")
 	}
 }
 
@@ -328,17 +328,17 @@ func TestFetchIdentitySourceWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutIdentitySources := []azirepos.IdentitySource{
+	dbOutIdentitySources := []repos.IdentitySource{
 		{
 			ZoneID:           232956849236,
-			IdentitySourceID: azirepos.GenerateUUID(),
+			IdentitySourceID: repos.GenerateUUID(),
 			Name:             "rent-a-car1",
 			CreatedAt:        time.Now(),
 			UpdatedAt:        time.Now(),
 		},
 		{
 			ZoneID:           232956849236,
-			IdentitySourceID: azirepos.GenerateUUID(),
+			IdentitySourceID: repos.GenerateUUID(),
 			Name:             "rent-a-car2",
 			CreatedAt:        time.Now(),
 			UpdatedAt:        time.Now(),
@@ -348,7 +348,7 @@ func TestFetchIdentitySourceWithSuccess(t *testing.T) {
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLRepo.On("FetchIdentitySources", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutIdentitySources, nil)
 
-	outIdentitySources, err := storage.FetchIdentitySources(1, 100, 232956849236, map[string]any{azmodelzap.FieldIdentitySourceIdentitySourceID: azirepos.GenerateUUID(), azmodelzap.FieldIdentitySourceName: "rent-a-car2"})
+	outIdentitySources, err := storage.FetchIdentitySources(1, 100, 232956849236, map[string]any{zap.FieldIdentitySourceIdentitySourceID: repos.GenerateUUID(), zap.FieldIdentitySourceName: "rent-a-car2"})
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outIdentitySources, "identity sources should not be nil")
 	assert.Equal(len(outIdentitySources), len(dbOutIdentitySources), "identity sources and dbIdentitySources should have the same length")

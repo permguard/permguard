@@ -19,19 +19,19 @@ package ref
 import (
 	"fmt"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
-	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
+	"github.com/permguard/permguard/internal/cli/common"
+	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	"github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
 
 // ExecInitalize the ref resources.
 func (m *RefManager) ExecInitalize() error {
-	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, m.getRefsDir())
+	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, m.getRefsDir())
 	if err != nil {
 		return err
 	}
 	headFile := m.getHeadFile()
-	_, err = m.persMgr.CreateFileIfNotExists(azicliwkspers.PermguardDir, headFile)
+	_, err = m.persMgr.CreateFileIfNotExists(persistence.PermguardDir, headFile)
 	if err != nil {
 		return err
 	}
@@ -39,16 +39,16 @@ func (m *RefManager) ExecInitalize() error {
 }
 
 // ExecCheckoutRefFilesForRemote checks out the remote refs files for the remote.
-func (m *RefManager) ExecCheckoutRefFilesForRemote(remote string, zoneID int64, ledger string, ledgerID string, commit string, output map[string]any, out aziclicommon.PrinterOutFunc) (string, string, map[string]any, error) {
+func (m *RefManager) ExecCheckoutRefFilesForRemote(remote string, zoneID int64, ledger string, ledgerID string, commit string, output map[string]any, out common.PrinterOutFunc) (string, string, map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
-	remoteRef := azicliwkscommon.GenerateRemoteRef(remote, zoneID, ledgerID)
+	remoteRef := wkscommon.GenerateRemoteRef(remote, zoneID, ledgerID)
 	err := m.SaveRefConfig(ledgerID, remoteRef, commit)
 	if err != nil {
 		return "", "", output, err
 	}
-	headRef := azicliwkscommon.GenerateHeadRef(zoneID, ledgerID)
+	headRef := wkscommon.GenerateHeadRef(zoneID, ledgerID)
 	err = m.SaveRefWithRemoteConfig(ledgerID, headRef, remoteRef, commit)
 	if err != nil {
 		return "", "", output, err
@@ -57,7 +57,7 @@ func (m *RefManager) ExecCheckoutRefFilesForRemote(remote string, zoneID int64, 
 }
 
 // ExecCheckoutHead checks out the head.
-func (m *RefManager) ExecCheckoutHead(ref string, output map[string]any, out aziclicommon.PrinterOutFunc) (*azicliwkscommon.HeadInfo, map[string]any, error) {
+func (m *RefManager) ExecCheckoutHead(ref string, output map[string]any, out common.PrinterOutFunc) (*wkscommon.HeadInfo, map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -66,7 +66,7 @@ func (m *RefManager) ExecCheckoutHead(ref string, output map[string]any, out azi
 		return nil, output, err
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "head", fmt.Sprintf("Head successfully set to %s.", aziclicommon.KeywordText(ref)), nil, true)
+		out(nil, "head", fmt.Sprintf("Head successfully set to %s.", common.KeywordText(ref)), nil, true)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
 			"ref": ref,

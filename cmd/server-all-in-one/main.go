@@ -19,16 +19,16 @@ package main
 import (
 	"fmt"
 
-	azicli "github.com/permguard/permguard/internal/agents/cli"
-	azictyservers "github.com/permguard/permguard/internal/agents/servers"
-	azservices "github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/internal/agents/cli"
+	"github.com/permguard/permguard/internal/agents/servers"
+	"github.com/permguard/permguard/pkg/agents/services"
 )
 
 func main() {
 	// Run the command with the zap host kind.
-	initializer, err := azictyservers.NewCommunityServerInitializer(azservices.HostAllInOne)
+	initializer, err := servers.NewCommunityServerInitializer(services.HostAllInOne)
 	if err != nil {
 		panic(fmt.Sprintf("server: error creating server: %s", err.Error()))
 	}
-	azicli.Run(initializer, nil, nil)
+	cli.Run(initializer, nil, nil)
 }

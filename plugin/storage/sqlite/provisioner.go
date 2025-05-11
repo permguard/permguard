@@ -28,12 +28,12 @@ import (
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/pkg/cli/options"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
 const (
-	flagDbDir = "dbdir"
+	flagDBDir = "dbdir"
 	flagUp    = "up"
 	flagDown  = "down"
 )
@@ -65,11 +65,11 @@ func NewSQLiteStorageProvisioner() (*SQLiteStorageProvisioner, error) {
 
 // AddFlags adds flags.
 func (p *SQLiteStorageProvisioner) AddFlags(flagSet *flag.FlagSet) error {
-	err := azoptions.AddFlagsForCommon(flagSet)
+	err := options.AddFlagsForCommon(flagSet)
 	if err != nil {
 		return err
 	}
-	flagSet.String(flagDbDir, ".", "file path to the database")
+	flagSet.String(flagDBDir, ".", "file path to the database")
 	flagSet.Bool(flagUp, false, "provision the database")
 	flagSet.Bool(flagDown, false, "deprovision the database")
 	err = p.config.AddFlags(flagSet)
@@ -81,20 +81,20 @@ func (p *SQLiteStorageProvisioner) AddFlags(flagSet *flag.FlagSet) error {
 
 // InitFromViper initializes the configuration from viper.
 func (p *SQLiteStorageProvisioner) InitFromViper(v *viper.Viper) error {
-	debug, logLevel, err := azoptions.InitFromViperForCommon(v)
+	debug, logLevel, err := options.InitFromViperForCommon(v)
 	if err != nil {
 		return err
 	}
 	p.debug = debug
 	p.logLevel = logLevel
-	p.dbDir = v.GetString(flagDbDir)
+	p.dbDir = v.GetString(flagDBDir)
 	p.up = v.GetBool(flagUp)
 	p.down = v.GetBool(flagDown)
 	err = p.config.InitFromViper(v)
 	if err != nil {
 		return err
 	}
-	p.logger, err = azoptions.NewLogger(p.debug, p.logLevel)
+	p.logger, err = options.NewLogger(p.debug, p.logLevel)
 	if err != nil {
 		return err
 	}

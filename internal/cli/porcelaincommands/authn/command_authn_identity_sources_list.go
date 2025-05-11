@@ -23,10 +23,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -35,11 +35,11 @@ const (
 )
 
 // runECommandForListIdentitySources runs the command for creating an identity source.
-func runECommandForListIdentitySources(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForListIdentitySources(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
@@ -47,10 +47,10 @@ func runECommandForListIdentitySources(deps azcli.CliDependenciesProvider, cmd *
 			printer.Println("Failed to list identity sources.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list identity sources", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to list identity sources", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
@@ -58,26 +58,26 @@ func runECommandForListIdentitySources(deps azcli.CliDependenciesProvider, cmd *
 			printer.Println("Failed to list identity sources.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list identity sources", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to list identity sources", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	page := v.GetInt32(azoptions.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonPage))
-	pageSize := v.GetInt32(azoptions.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonPageSize))
-	zoneID := v.GetInt64(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonZoneID))
-	identitySourceID := v.GetString(azoptions.FlagName(commandNameForIdentitySourcesList, flagIdentitySourceID))
-	name := v.GetString(azoptions.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonName))
+	page := v.GetInt32(options.FlagName(commandNameForIdentitySourcesList, common.FlagCommonPage))
+	pageSize := v.GetInt32(options.FlagName(commandNameForIdentitySourcesList, common.FlagCommonPageSize))
+	zoneID := v.GetInt64(options.FlagName(commandNameForIdentitySource, common.FlagCommonZoneID))
+	identitySourceID := v.GetString(options.FlagName(commandNameForIdentitySourcesList, flagIdentitySourceID))
+	name := v.GetString(options.FlagName(commandNameForIdentitySourcesList, common.FlagCommonName))
 	identitySources, err := client.FetchIdentitySourcesBy(page, pageSize, zoneID, identitySourceID, name)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to list identity sources.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list identity sources", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to list identity sources", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
@@ -94,11 +94,11 @@ func runECommandForListIdentitySources(deps azcli.CliDependenciesProvider, cmd *
 }
 
 // createCommandForIdentitySourceList creates a command for managing identity sources list.
-func createCommandForIdentitySourceList(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForIdentitySourceList(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List remote identity sources",
-		Long: aziclicommon.BuildCliLongTemplate(`This command lists all remote identity sources.
+		Long: common.BuildCliLongTemplate(`This command lists all remote identity sources.
 
 Examples:
   # list all identity sources and output in json format
@@ -112,13 +112,13 @@ Examples:
 			return runECommandForListIdentitySources(deps, cmd, v)
 		},
 	}
-	command.Flags().Int32P(aziclicommon.FlagCommonPage, aziclicommon.FlagCommonPageShort, 1, "specify the page number for paginated results")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonPage), command.Flags().Lookup(aziclicommon.FlagCommonPage))
-	command.Flags().Int32P(aziclicommon.FlagCommonPageSize, aziclicommon.FlagCommonPageSizeShort, 1000, "specify the number of results per page")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonPageSize), command.Flags().Lookup(aziclicommon.FlagCommonPageSize))
+	command.Flags().Int32P(common.FlagCommonPage, common.FlagCommonPageShort, 1, "specify the page number for paginated results")
+	v.BindPFlag(options.FlagName(commandNameForIdentitySourcesList, common.FlagCommonPage), command.Flags().Lookup(common.FlagCommonPage))
+	command.Flags().Int32P(common.FlagCommonPageSize, common.FlagCommonPageSizeShort, 1000, "specify the number of results per page")
+	v.BindPFlag(options.FlagName(commandNameForIdentitySourcesList, common.FlagCommonPageSize), command.Flags().Lookup(common.FlagCommonPageSize))
 	command.Flags().String(flagIdentitySourceID, "", "filter results by identity source id")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySourcesList, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "filter results by identity source name")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySourcesList, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	v.BindPFlag(options.FlagName(commandNameForIdentitySourcesList, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
+	command.Flags().String(common.FlagCommonName, "", "filter results by identity source name")
+	v.BindPFlag(options.FlagName(commandNameForIdentitySourcesList, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

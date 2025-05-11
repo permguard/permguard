@@ -20,8 +20,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	azapiv1pap "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	papv1 "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // GrpcPAPClient is a gRPC client for the PAP service.
@@ -32,7 +32,7 @@ type GrpcPAPClient struct {
 // NewGrpcPAPClient creates a new gRPC client for the PAP service.
 func NewGrpcPAPClient(target string) (*GrpcPAPClient, error) {
 	if target == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "target is required")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "target is required")
 	}
 	return &GrpcPAPClient{
 		target: target,
@@ -40,11 +40,11 @@ func NewGrpcPAPClient(target string) (*GrpcPAPClient, error) {
 }
 
 // createGRPCClient creates a new gRPC client.
-func (c *GrpcPAPClient) createGRPCClient() (azapiv1pap.V1PAPServiceClient, *grpc.ClientConn, error) {
+func (c *GrpcPAPClient) createGRPCClient() (papv1.V1PAPServiceClient, *grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(c.target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, nil, err
 	}
-	client := azapiv1pap.NewV1PAPServiceClient(conn)
+	client := papv1.NewV1PAPServiceClient(conn)
 	return client, conn, nil
 }

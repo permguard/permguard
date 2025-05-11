@@ -24,11 +24,11 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
-	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db/testutils"
+	"github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
+	"github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db/testutils"
 )
 
-func CreateConnectionMocks(t *testing.T) (azidb.SQLiteConnector, *sqlx.DB, *sqlx.DB, sqlmock.Sqlmock) {
-	sqlConnector, sqlDB, sqlDBMock := azidbtestutils.NewSqliteConnectionMocks(t)
+func CreateConnectionMocks(t *testing.T) (db.SQLiteConnector, *sqlx.DB, *sqlx.DB, sqlmock.Sqlmock) {
+	sqlConnector, sqlDB, sqlDBMock := testutils.NewSqliteConnectionMocks(t)
 	return sqlConnector, sqlDB, sqlDB, sqlDBMock
 }

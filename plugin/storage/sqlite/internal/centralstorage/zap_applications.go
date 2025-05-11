@@ -19,46 +19,46 @@ package centralstorage
 import (
 	"fmt"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelzap "github.com/permguard/permguard/pkg/transport/models/zap"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
+	repo "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // CreateZone creates a new zone.
-func (s SQLiteCentralStorageZAP) CreateZone(zone *azmodelzap.Zone) (*azmodelzap.Zone, error) {
+func (s SQLiteCentralStorageZAP) CreateZone(zone *zap.Zone) (*zap.Zone, error) {
 	if zone == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, " invalid client input - zone is nil")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, " invalid client input - zone is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repo.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, repo.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbInZone := &azirepos.Zone{
+	dbInZone := &repo.Zone{
 		ZoneID: zone.ZoneID,
 		Name:   zone.Name,
 	}
 	dbOutZone, err := s.sqlRepo.UpsertZone(tx, true, dbInZone)
 	if s.config.GetEnabledDefaultCreation() {
 		if err == nil {
-			tenant := &azirepos.Tenant{
+			tenant := &repo.Tenant{
 				ZoneID: dbOutZone.ZoneID,
 				Name:   TenantDefaultName,
 			}
 			_, err = s.sqlRepo.UpsertTenant(tx, true, tenant)
 		}
 		if err == nil {
-			identitySource := &azirepos.IdentitySource{
+			identitySource := &repo.IdentitySource{
 				ZoneID: dbOutZone.ZoneID,
 				Name:   IdentitySourceDefaultName,
 			}
 			_, err = s.sqlRepo.UpsertIdentitySource(tx, true, identitySource)
 		}
 		if err == nil {
-			ledger := &azirepos.Ledger{
+			ledger := &repo.Ledger{
 				ZoneID: dbOutZone.ZoneID,
 				Name:   LedgerDefaultName,
 			}
@@ -70,25 +70,25 @@ func (s SQLiteCentralStorageZAP) CreateZone(zone *azmodelzap.Zone) (*azmodelzap.
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, repo.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapZoneToAgentZone(dbOutZone)
 }
 
 // UpdateZone updates a zone.
-func (s SQLiteCentralStorageZAP) UpdateZone(zone *azmodelzap.Zone) (*azmodelzap.Zone, error) {
+func (s SQLiteCentralStorageZAP) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
 	if zone == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, " invalid client input - zone is nil")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, " invalid client input - zone is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repo.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, repo.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbInZone := &azirepos.Zone{
+	dbInZone := &repo.Zone{
 		ZoneID: zone.ZoneID,
 		Name:   zone.Name,
 	}
@@ -98,20 +98,20 @@ func (s SQLiteCentralStorageZAP) UpdateZone(zone *azmodelzap.Zone) (*azmodelzap.
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, repo.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapZoneToAgentZone(dbOutzone)
 }
 
 // DeleteZone deletes a zone.
-func (s SQLiteCentralStorageZAP) DeleteZone(zoneID int64) (*azmodelzap.Zone, error) {
+func (s SQLiteCentralStorageZAP) DeleteZone(zoneID int64) (*zap.Zone, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repo.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, repo.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	dbOutzone, err := s.sqlRepo.DeleteZone(tx, zoneID)
 	if err != nil {
@@ -119,33 +119,33 @@ func (s SQLiteCentralStorageZAP) DeleteZone(zoneID int64) (*azmodelzap.Zone, err
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, repo.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapZoneToAgentZone(dbOutzone)
 }
 
 // FetchZones returns all zones.
-func (s SQLiteCentralStorageZAP) FetchZones(page int32, pageSize int32, fields map[string]any) ([]azmodelzap.Zone, error) {
+func (s SQLiteCentralStorageZAP) FetchZones(page int32, pageSize int32, fields map[string]any) ([]zap.Zone, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf(" invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientPagination, fmt.Sprintf(" invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, err
 	}
 	var filterID *int64
-	if _, ok := fields[azmodelzap.FieldZoneZoneID]; ok {
-		zoneID, ok := fields[azmodelzap.FieldZoneZoneID].(int64)
+	if _, ok := fields[zap.FieldZoneZoneID]; ok {
+		zoneID, ok := fields[zap.FieldZoneZoneID].(int64)
 		if !ok {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(" invalid client input - zone id is not valid (zone id: %d)", zoneID))
+			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf(" invalid client input - zone id is not valid (zone id: %d)", zoneID))
 		}
 		filterID = &zoneID
 	}
 	var filterName *string
-	if _, ok := fields[azmodelzap.FieldZoneName]; ok {
-		zoneName, ok := fields[azmodelzap.FieldZoneName].(string)
+	if _, ok := fields[zap.FieldZoneName]; ok {
+		zoneName, ok := fields[zap.FieldZoneName].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(" invalid client input - zone name is not valid (zone name: %s)", zoneName))
+			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf(" invalid client input - zone name is not valid (zone name: %s)", zoneName))
 		}
 		filterName = &zoneName
 	}
@@ -153,11 +153,11 @@ func (s SQLiteCentralStorageZAP) FetchZones(page int32, pageSize int32, fields m
 	if err != nil {
 		return nil, err
 	}
-	zones := make([]azmodelzap.Zone, len(dbZones))
+	zones := make([]zap.Zone, len(dbZones))
 	for i, a := range dbZones {
 		zone, err := mapZoneToAgentZone(&a)
 		if err != nil {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageEntityMapping, fmt.Sprintf(" failed to convert zone entity (%s)", azirepos.LogZoneEntry(&a)))
+			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrStorageEntityMapping, fmt.Sprintf(" failed to convert zone entity (%s)", repo.LogZoneEntry(&a)))
 		}
 		zones[i] = *zone
 	}

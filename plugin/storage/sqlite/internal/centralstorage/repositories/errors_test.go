@@ -23,7 +23,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 func TestWrapSqlite3Error(t *testing.T) {
@@ -33,30 +33,30 @@ func TestWrapSqlite3Error(t *testing.T) {
 	}{
 		"here a sample error 1": {
 			errors.New("here a sample error 1"),
-			azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageConstraintUnique, "constraint failed - here a sample error 1"),
+			cerrors.WrapSystemErrorWithMessage(cerrors.ErrStorageConstraintUnique, "constraint failed - here a sample error 1"),
 		},
 		"here a sample error 2": {
 			sqlite3.Error{Code: sqlite3.ErrConstraint},
-			azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageConstraintUnique, "constraint failed - here a sample error 2"),
+			cerrors.WrapSystemErrorWithMessage(cerrors.ErrStorageConstraintUnique, "constraint failed - here a sample error 2"),
 		},
 		"here a sample error 3": {
 			sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique},
-			azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageConstraintUnique, "unique constraint failed - here a sample error 3"),
+			cerrors.WrapSystemErrorWithMessage(cerrors.ErrStorageConstraintUnique, "unique constraint failed - here a sample error 3"),
 		},
 		"here a sample error 4": {
 			sqlite3.Error{Code: sqlite3.ErrNotFound},
-			azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageNotFound, "record not found - here a sample error 4"),
+			cerrors.WrapSystemErrorWithMessage(cerrors.ErrStorageNotFound, "record not found - here a sample error 4"),
 		},
 		"here a sample error 5": {
 			sqlite3.Error{Code: sqlite3.ErrAuth},
-			azerrors.WrapSystemErrorWithMessage(azerrors.ErrStorageGeneric, "generic error (here a sample error 5)"),
+			cerrors.WrapSystemErrorWithMessage(cerrors.ErrStorageGeneric, "generic error (here a sample error 5)"),
 		},
 	}
 	for message, test := range tests {
 		t.Run(message, func(t *testing.T) {
 			err := WrapSqlite3Error(message, test.ErrorIn)
 			assert.Error(t, err)
-			assert.NotNil(t, azerrors.ConvertToSystemError(test.ErrorOut))
+			assert.NotNil(t, cerrors.ConvertToSystemError(test.ErrorOut))
 		})
 	}
 }

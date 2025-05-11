@@ -24,11 +24,11 @@ import (
 
 	"github.com/pelletier/go-toml"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
-	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	"github.com/permguard/permguard/internal/cli/common"
+	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	"github.com/permguard/permguard/internal/cli/workspace/persistence"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 const (
@@ -36,8 +36,8 @@ const (
 	hiddenCodeDir = "code"
 	// Hidden directories for source code.
 	hiddenSourceCodeDir = "@workspace"
-	// Hidden directories for objects.
-	hiddenObjectsDir = "objects"
+	// Hidden directories for objs.
+	hiddenObjectsDir = "objs"
 	// Hidden config file.
 	hiddenConfigFile = "config"
 	// Hidden code map file.
@@ -48,16 +48,16 @@ const (
 	hiddenCodePlanFile = "plan"
 )
 
-// COSPManager implements the internal manager for code, objects, states and plans.
+// COSPManager implements the internal manager for code, objs, states and plans.
 type COSPManager struct {
-	ctx     *aziclicommon.CliCommandContext
-	persMgr *azicliwkspers.PersistenceManager
-	objMgr  *azobjs.ObjectManager
+	ctx     *common.CliCommandContext
+	persMgr *persistence.PersistenceManager
+	objMgr  *objects.ObjectManager
 }
 
 // NewPlansManager creates a new plansuration manager.
-func NewPlansManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.PersistenceManager) (*COSPManager, error) {
-	objMgr, err := azobjs.NewObjectManager()
+func NewPlansManager(ctx *common.CliCommandContext, persMgr *persistence.PersistenceManager) (*COSPManager, error) {
+	objMgr, err := objects.NewObjectManager()
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (m *COSPManager) getCodeDir() string {
 	return hiddenCodeDir
 }
 
-// getObjectsDir returns the objects directory.
+// getObjectsDir returns the objs directory.
 func (m *COSPManager) getObjectsDir() string {
 	return hiddenObjectsDir
 }
@@ -83,7 +83,7 @@ func (m *COSPManager) getCodeSourceDir() string {
 	return filepath.Join(m.getCodeDir(), hiddenSourceCodeDir)
 }
 
-// getCodeSourceObjectsDir returns the code source objects directory.
+// getCodeSourceObjectsDir returns the code source objs directory.
 func (m *COSPManager) getCodeSourceObjectsDir() string {
 	return filepath.Join(m.getCodeSourceDir(), m.getObjectsDir())
 }
@@ -104,25 +104,25 @@ func (m *COSPManager) getCodeSourceObjectDir(oid string, basePath string) (strin
 
 // CleanCodeSource cleans the code source area.
 func (m *COSPManager) CleanCodeSource() (bool, error) {
-	return m.persMgr.DeletePath(azicliwkspers.PermguardDir, m.getCodeSourceDir())
+	return m.persMgr.DeletePath(persistence.PermguardDir, m.getCodeSourceDir())
 }
 
 // SaveCodeSourceObject saves the object in the code source.
 func (m *COSPManager) SaveCodeSourceObject(oid string, content []byte) (bool, error) {
 	folder, name := m.getCodeSourceObjectDir(oid, m.getCodeSourceDir())
 	path := filepath.Join(folder, name)
-	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, folder)
+	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, folder)
 	if err != nil {
-		return false, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("failed to save object %s", oid), err)
+		return false, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, fmt.Sprintf("failed to save object %s", oid), err)
 	}
-	return m.persMgr.WriteFile(azicliwkspers.PermguardDir, path, content, 0644, true)
+	return m.persMgr.WriteFile(persistence.PermguardDir, path, content, 0644, true)
 }
 
 // ReadCodeSourceObject reads the object from the code source.
-func (m *COSPManager) ReadCodeSourceObject(oid string) (*azobjs.Object, error) {
+func (m *COSPManager) ReadCodeSourceObject(oid string) (*objects.Object, error) {
 	folder, name := m.getCodeSourceObjectDir(oid, m.getCodeSourceDir())
 	path := filepath.Join(folder, name)
-	data, _, err := m.persMgr.ReadFile(azicliwkspers.PermguardDir, path, true)
+	data, _, err := m.persMgr.ReadFile(persistence.PermguardDir, path, true)
 	if err != nil {
 		return nil, err
 	}
@@ -133,15 +133,15 @@ func (m *COSPManager) ReadCodeSourceObject(oid string) (*azobjs.Object, error) {
 func (m *COSPManager) saveConfig(name string, override bool, cfg any) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
-		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "failed to marshal config", err)
+		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "failed to marshal config", err)
 	}
 	if override {
-		_, err = m.persMgr.WriteFile(azicliwkspers.PermguardDir, name, data, 0644, false)
+		_, err = m.persMgr.WriteFile(persistence.PermguardDir, name, data, 0644, false)
 	} else {
-		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermguardDir, name, data, 0644, false)
+		_, err = m.persMgr.WriteFileIfNotExists(persistence.PermguardDir, name, data, 0644, false)
 	}
 	if err != nil {
-		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("failed to write config file %s", name), err)
+		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, fmt.Sprintf("failed to write config file %s", name), err)
 	}
 	return nil
 }
@@ -159,9 +159,9 @@ func (m *COSPManager) SaveCodeSourceConfig(treeID string) error {
 
 // SaveCodeSourceCodeMap saves the code map in the code source.
 func (m *COSPManager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
-	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, m.getCodeSourceDir())
+	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, m.getCodeSourceDir())
 	if err != nil {
-		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "failed to create code plan", err)
+		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "failed to create code plan", err)
 	}
 	path := filepath.Join(m.getCodeSourceDir(), hiddenCodeMapFile)
 	rowFunc := func(record any) []string {
@@ -182,9 +182,9 @@ func (m *COSPManager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 			codeFile.ErrorMessage,
 		}
 	}
-	err = m.persMgr.WriteCSVStream(azicliwkspers.PermguardDir, path, nil, codeFiles, rowFunc, true)
+	err = m.persMgr.WriteCSVStream(persistence.PermguardDir, path, nil, codeFiles, rowFunc, true)
 	if err != nil {
-		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "failed to write code map", err)
+		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "failed to write code map", err)
 	}
 	return nil
 }
@@ -228,9 +228,9 @@ func (m *COSPManager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 		codeFiles = append(codeFiles, codeFile)
 		return nil
 	}
-	err := m.persMgr.ReadCSVStream(azicliwkspers.PermguardDir, path, nil, recordFunc, true)
+	err := m.persMgr.ReadCSVStream(persistence.PermguardDir, path, nil, recordFunc, true)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "failed to read code map", err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "failed to read code map", err)
 	}
 
 	return codeFiles, nil
@@ -249,9 +249,9 @@ func (m *COSPManager) ReadCodeSourceCodeState() ([]CodeObjectState, error) {
 }
 
 // BuildCodeSourceCodeStateForTree builds the code object state for the input tree.
-func (m *COSPManager) BuildCodeSourceCodeStateForTree(tree *azobjs.Tree) ([]CodeObjectState, error) {
+func (m *COSPManager) BuildCodeSourceCodeStateForTree(tree *objects.Tree) ([]CodeObjectState, error) {
 	if tree == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "tree is nil")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordMalformed, "tree is nil")
 	}
 	codeObjectStates := []CodeObjectState{}
 	for _, entry := range tree.GetEntries() {
@@ -277,9 +277,9 @@ func (m *COSPManager) BuildCodeSourceCodeStateForTree(tree *azobjs.Tree) ([]Code
 // SaveRemoteCodePlan saves the code plan for the input remote.
 func (m *COSPManager) SaveRemoteCodePlan(ref string, codeObjects []CodeObjectState) error {
 	path := filepath.Join(m.getCodeDir(), strings.ToLower(ref))
-	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, path)
+	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, path)
 	if err != nil {
-		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "failed to create code plan", err)
+		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "failed to create code plan", err)
 	}
 	path = filepath.Join(path, hiddenCodePlanFile)
 	return m.saveCodeObjectStates(path, codeObjects)
@@ -294,31 +294,31 @@ func (m *COSPManager) ReadRemoteCodePlan(ref string) ([]CodeObjectState, error) 
 // CleanCode cleans the code.
 func (m *COSPManager) CleanCode(ref string) (bool, error) {
 	path := filepath.Join(m.getCodeDir(), strings.ToLower(ref))
-	return m.persMgr.DeletePath(azicliwkspers.PermguardDir, path)
+	return m.persMgr.DeletePath(persistence.PermguardDir, path)
 }
 
 // convertCodeFileToCodeObjectState converts the code file to the code object.
 func (m *COSPManager) convertCodeFileToCodeObjectState(codeFile CodeFile) (*CodeObjectState, error) {
 	if codeFile.OName == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "code file name is empty.")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordMalformed, "code file name is empty.")
 	}
 	if codeFile.OID == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "code file OID is empty.")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordMalformed, "code file OID is empty.")
 	}
 	if codeFile.CodeID == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "code file CodeID is empty.")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordMalformed, "code file CodeID is empty.")
 	}
 	if codeFile.CodeType == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "code file CodeType is empty.")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordMalformed, "code file CodeType is empty.")
 	}
 	if codeFile.Language == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "code file Language is empty.")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordMalformed, "code file Language is empty.")
 	}
 	if codeFile.LanguageVersion == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "code file LanguageVersion is empty.")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordMalformed, "code file LanguageVersion is empty.")
 	}
 	if codeFile.LanguageType == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordMalformed, "code file LanguageType is empty.")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordMalformed, "code file LanguageType is empty.")
 	}
 	return &CodeObjectState{
 		CodeObject: CodeObject{
@@ -335,7 +335,7 @@ func (m *COSPManager) convertCodeFileToCodeObjectState(codeFile CodeFile) (*Code
 	}, nil
 }
 
-// saveCodeObjectStates saves the code objects states.
+// saveCodeObjectStates saves the code objs states.
 func (m *COSPManager) saveCodeObjectStates(path string, codeObjects []CodeObjectState) error {
 	rowFunc := func(record any) []string {
 		codeObject := record.(CodeObjectState)
@@ -352,14 +352,14 @@ func (m *COSPManager) saveCodeObjectStates(path string, codeObjects []CodeObject
 			codeObject.LanguageType,
 		}
 	}
-	err := m.persMgr.WriteCSVStream(azicliwkspers.PermguardDir, path, nil, codeObjects, rowFunc, true)
+	err := m.persMgr.WriteCSVStream(persistence.PermguardDir, path, nil, codeObjects, rowFunc, true)
 	if err != nil {
-		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "failed to write code object state", err)
+		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "failed to write code object state", err)
 	}
 	return nil
 }
 
-// readCodeObjectStates reads the code objects states.
+// readCodeObjectStates reads the code objs states.
 func (m *COSPManager) readCodeObjectStates(path string) ([]CodeObjectState, error) {
 	var codeObjects []CodeObjectState
 	recordFunc := func(record []string) error {
@@ -383,27 +383,27 @@ func (m *COSPManager) readCodeObjectStates(path string) ([]CodeObjectState, erro
 		codeObjects = append(codeObjects, codeObject)
 		return nil
 	}
-	err := m.persMgr.ReadCSVStream(azicliwkspers.PermguardDir, path, nil, recordFunc, true)
+	err := m.persMgr.ReadCSVStream(persistence.PermguardDir, path, nil, recordFunc, true)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "failed to read code state", err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "failed to read code state", err)
 	}
 	return codeObjects, nil
 }
 
-// ConvertCodeFilesToCodeObjectStates converts code files to code objects.
+// ConvertCodeFilesToCodeObjectStates converts code files to code objs.
 func (m *COSPManager) ConvertCodeFilesToCodeObjectStates(codeFiles []CodeFile) ([]CodeObjectState, error) {
-	objects := make([]CodeObjectState, len(codeFiles))
+	objs := make([]CodeObjectState, len(codeFiles))
 	for i, file := range codeFiles {
 		object, err := m.convertCodeFileToCodeObjectState(file)
 		if err != nil {
 			return nil, err
 		}
-		objects[i] = *object
+		objs[i] = *object
 	}
-	return objects, nil
+	return objs, nil
 }
 
-// CalculateCodeObjectsState calculates the code objects state.
+// CalculateCodeObjectsState calculates the code objs state.
 func (m *COSPManager) CalculateCodeObjectsState(currentObjs []CodeObjectState, remoteObjs []CodeObjectState) []CodeObjectState {
 	if currentObjs == nil {
 		currentObjs = []CodeObjectState{}
@@ -443,39 +443,39 @@ func (m *COSPManager) CalculateCodeObjectsState(currentObjs []CodeObjectState, r
 func (m *COSPManager) SaveObject(oid string, content []byte) (bool, error) {
 	folder, name := m.getCodeSourceObjectDir(oid, "")
 	path := filepath.Join(folder, name)
-	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, folder)
+	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, folder)
 	if err != nil {
-		return false, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("failed to save object %s", oid), err)
+		return false, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, fmt.Sprintf("failed to save object %s", oid), err)
 	}
-	return m.persMgr.WriteFile(azicliwkspers.PermguardDir, path, content, 0644, true)
+	return m.persMgr.WriteFile(persistence.PermguardDir, path, content, 0644, true)
 }
 
-// ReadObject reads the object from the objects store.
-func (m *COSPManager) ReadObject(oid string) (*azobjs.Object, error) {
+// ReadObject reads the object from the objs store.
+func (m *COSPManager) ReadObject(oid string) (*objects.Object, error) {
 	folder, name := m.getCodeSourceObjectDir(oid, "")
 	path := filepath.Join(folder, name)
-	data, _, err := m.persMgr.ReadFile(azicliwkspers.PermguardDir, path, true)
+	data, _, err := m.persMgr.ReadFile(persistence.PermguardDir, path, true)
 	if err != nil {
 		return nil, err
 	}
 	return m.objMgr.DeserializeObjectFromBytes(data)
 }
 
-// GetObjects returns the objects.
-func (m *COSPManager) getObjects(path string, isStore bool) ([]azobjs.Object, error) {
-	objects := []azobjs.Object{}
-	dirs, err := m.persMgr.ListDirectories(azicliwkspers.PermguardDir, path)
+// GetObjects returns the objs.
+func (m *COSPManager) getObjects(path string, isStore bool) ([]objects.Object, error) {
+	objs := []objects.Object{}
+	dirs, err := m.persMgr.ListDirectories(persistence.PermguardDir, path)
 	if err != nil {
 		return nil, err
 	}
 	for _, dir := range dirs {
-		files, err := m.persMgr.ListFiles(azicliwkspers.PermguardDir, filepath.Join(path, dir))
+		files, err := m.persMgr.ListFiles(persistence.PermguardDir, filepath.Join(path, dir))
 		if err != nil {
 			return nil, err
 		}
 		for _, file := range files {
 			oid := fmt.Sprintf("%s%s", dir, file)
-			var obj *azobjs.Object
+			var obj *objects.Object
 			if isStore {
 				obj, err = m.ReadObject(oid)
 				if err != nil {
@@ -487,38 +487,38 @@ func (m *COSPManager) getObjects(path string, isStore bool) ([]azobjs.Object, er
 					return nil, err
 				}
 			}
-			objects = append(objects, *obj)
+			objs = append(objs, *obj)
 		}
 	}
-	return objects, nil
+	return objs, nil
 }
 
-// GetObjects returns the objects.
-func (m *COSPManager) GetObjects(includeStorage, includeCode bool) ([]azobjs.Object, error) {
-	objects := []azobjs.Object{}
+// GetObjects returns the objs.
+func (m *COSPManager) GetObjects(includeStorage, includeCode bool) ([]objects.Object, error) {
+	objs := []objects.Object{}
 	if includeCode {
-		if ok, _ := m.persMgr.CheckPathIfExists(azicliwkspers.PermguardDir, m.getCodeSourceObjectsDir()); ok {
+		if ok, _ := m.persMgr.CheckPathIfExists(persistence.PermguardDir, m.getCodeSourceObjectsDir()); ok {
 			codeObjs, err := m.getObjects(m.getCodeSourceObjectsDir(), false)
 			if err != nil {
 				return nil, err
 			}
-			objects = append(objects, codeObjs...)
+			objs = append(objs, codeObjs...)
 		}
 	}
 	if includeStorage {
-		if ok, _ := m.persMgr.CheckPathIfExists(azicliwkspers.PermguardDir, m.getObjectsDir()); ok {
+		if ok, _ := m.persMgr.CheckPathIfExists(persistence.PermguardDir, m.getObjectsDir()); ok {
 			storageObjs, err := m.getObjects(m.getObjectsDir(), true)
 			if err != nil {
 				return nil, err
 			}
-			objects = append(objects, storageObjs...)
+			objs = append(objs, storageObjs...)
 		}
 	}
-	return objects, nil
+	return objs, nil
 }
 
 // GetCommit gets the commit.
-func (m *COSPManager) GetCommit(commitID string) (*azobjs.Commit, error) {
+func (m *COSPManager) GetCommit(commitID string) (*objects.Commit, error) {
 	obj, err := m.ReadObject(commitID)
 	if err != nil {
 		return nil, err
@@ -527,29 +527,29 @@ func (m *COSPManager) GetCommit(commitID string) (*azobjs.Commit, error) {
 	if err != nil {
 		return nil, err
 	}
-	if objInfo.GetType() != azobjs.ObjectTypeCommit {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("oid %s is not a valid commit", commitID))
+	if objInfo.GetType() != objects.ObjectTypeCommit {
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, fmt.Sprintf("oid %s is not a valid commit", commitID))
 	}
-	commit := objInfo.GetInstance().(*azobjs.Commit)
+	commit := objInfo.GetInstance().(*objects.Commit)
 	return commit, nil
 }
 
 // GetHistory gets the commit history.
-func (m *COSPManager) GetHistory(commitID string) ([]azicliwkscommon.CommitInfo, error) {
-	var commits []azicliwkscommon.CommitInfo
+func (m *COSPManager) GetHistory(commitID string) ([]wkscommon.CommitInfo, error) {
+	var commits []wkscommon.CommitInfo
 	commit, err := m.GetCommit(commitID)
 	if err != nil {
 		return nil, err
 	}
 
 	for commit != nil {
-		commitInfo, err := azicliwkscommon.NewCommitInfo(commitID, commit)
+		commitInfo, err := wkscommon.NewCommitInfo(commitID, commit)
 		if err != nil {
 			return nil, err
 		}
 		commits = append(commits, *commitInfo)
 		parentID := commit.GetParent()
-		if parentID == azobjs.ZeroOID {
+		if parentID == objects.ZeroOID {
 			break
 		}
 		commit, err = m.GetCommit(parentID)

@@ -23,8 +23,8 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 
-	azrtmmocks "github.com/permguard/permguard/pkg/agents/runtime/mocks"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/runtime/mocks"
+	"github.com/permguard/permguard/pkg/agents/storage"
 )
 
 // TestSQLiteStorageFactory tests the SQLiteStorageFactory.
@@ -40,8 +40,8 @@ func TestSQLiteStorageFactory(t *testing.T) {
 
 	storageFcty, _ = NewSQLiteStorageFactory(storageFctyCfg)
 
-	runtimeCtx := azrtmmocks.NewRuntimeContextMock(nil, nil)
-	storageCtx, err := azstorage.NewStorageContext(runtimeCtx, azstorage.StorageSQLite)
+	runtimeCtx := mocks.NewRuntimeContextMock(nil, nil)
+	storageCtx, err := storage.NewStorageContext(runtimeCtx, storage.StorageSQLite)
 	if err != nil {
 		t.Fatal(err)
 	}

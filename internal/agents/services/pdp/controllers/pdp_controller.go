@@ -20,10 +20,10 @@ import (
 	"fmt"
 	"strings"
 
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azStorage "github.com/permguard/permguard/pkg/agents/storage"
-	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
-	azauthzen "github.com/permguard/permguard/ztauthstar/pkg/authzen"
+	"github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/transport/models/pdp"
+	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 )
 
 const (
@@ -33,8 +33,8 @@ const (
 
 // PDPController is the controller for the PDP service.
 type PDPController struct {
-	ctx     *azservices.ServiceContext
-	storage azStorage.PDPCentralStorage
+	ctx     *services.ServiceContext
+	storage storage.PDPCentralStorage
 }
 
 // Setup initializes the service.
@@ -43,7 +43,7 @@ func (s PDPController) Setup() error {
 }
 
 // NewPDPController creates a new PDP controller.
-func NewPDPController(serviceContext *azservices.ServiceContext, storage azStorage.PDPCentralStorage) (*PDPController, error) {
+func NewPDPController(serviceContext *services.ServiceContext, storage storage.PDPCentralStorage) (*PDPController, error) {
 	service := PDPController{
 		ctx:     serviceContext,
 		storage: storage,
@@ -52,36 +52,36 @@ func NewPDPController(serviceContext *azservices.ServiceContext, storage azStora
 }
 
 // AuthorizationCheck checks if the request is authorized.
-func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationCheckWithDefaultsRequest) (*azmodelspdp.AuthorizationCheckResponse, error) {
+func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error) {
 	if request == nil {
-		errMsg := fmt.Sprintf("%s: received nil request", azauthzen.AuthzErrBadRequestMessage)
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, "", azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage), nil
+		errMsg := fmt.Sprintf("%s: received nil request", authzen.AuthzErrBadRequestMessage)
+		return pdp.NewAuthorizationCheckErrorResponse(nil, "", authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
 	}
 	requestID := request.RequestID
 	if request.AuthorizationModel == nil {
-		errMsg := fmt.Sprintf("%s: missing authorization model in request", azauthzen.AuthzErrBadRequestMessage)
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, requestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage), nil
+		errMsg := fmt.Sprintf("%s: missing authorization model in request", authzen.AuthzErrBadRequestMessage)
+		return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
 	}
 	if request.AuthorizationModel.PolicyStore == nil {
-		errMsg := fmt.Sprintf("%s: missing policy store in authorization model", azauthzen.AuthzErrBadRequestMessage)
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, requestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage), nil
+		errMsg := fmt.Sprintf("%s: missing policy store in authorization model", authzen.AuthzErrBadRequestMessage)
+		return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
 	}
 	expReq, err := authorizationCheckExpandAuthorizationCheckWithDefaults(request)
 	if err != nil {
-		errMsg := fmt.Sprintf("%s: failed to expand authorization request with defaults", azauthzen.AuthzErrBadRequestMessage)
-		return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, requestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage), nil
+		errMsg := fmt.Sprintf("%s: failed to expand authorization request with defaults", authzen.AuthzErrBadRequestMessage)
+		return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
 	}
 	type evalItem struct {
 		listID int
-		value  *azmodelspdp.EvaluationResponse
+		value  *pdp.EvaluationResponse
 	}
 	evalItems := []evalItem{}
-	reqEvaluations := []azmodelspdp.EvaluationRequest{}
+	reqEvaluations := []pdp.EvaluationRequest{}
 	reqEvaluationsCounter := 0
 	for _, evaluation := range expReq.Evaluations {
 		if request.AuthorizationModel.ZoneID == 0 {
-			errMsg := fmt.Sprintf("%s: invalid zone id", azauthzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage)})
+			errMsg := fmt.Sprintf("%s: invalid zone id", authzen.AuthzErrBadRequestMessage)
+			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
 		policyStore := request.AuthorizationModel.PolicyStore
@@ -89,69 +89,69 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 			policyStore.Kind = LedgerKind
 		}
 		if strings.ToLower(policyStore.Kind) != LedgerKind {
-			errMsg := fmt.Sprintf("%s: invalid zone type", azauthzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage)})
+			errMsg := fmt.Sprintf("%s: invalid zone type", authzen.AuthzErrBadRequestMessage)
+			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
 		if len(strings.TrimSpace(policyStore.ID)) == 0 {
-			errMsg := fmt.Sprintf("%s: invalid policy store id", azauthzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage)})
+			errMsg := fmt.Sprintf("%s: invalid policy store id", authzen.AuthzErrBadRequestMessage)
+			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
 		principal := request.AuthorizationModel.Principal
 		if principal == nil {
-			errMsg := fmt.Sprintf("%s: invalid principal", azauthzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage)})
+			errMsg := fmt.Sprintf("%s: invalid principal", authzen.AuthzErrBadRequestMessage)
+			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
 		if len(strings.TrimSpace(principal.ID)) == 0 {
-			errMsg := fmt.Sprintf("%s: invalid the principal id", azauthzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage)})
+			errMsg := fmt.Sprintf("%s: invalid the principal id", authzen.AuthzErrBadRequestMessage)
+			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
-		if !azmodelspdp.IsValidIdentiyType(principal.Type) {
-			errMsg := fmt.Sprintf("%s: invalid the principal type", azauthzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage)})
+		if !pdp.IsValidIdentiyType(principal.Type) {
+			errMsg := fmt.Sprintf("%s: invalid the principal type", authzen.AuthzErrBadRequestMessage)
+			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
 		if len(strings.TrimSpace(evaluation.Subject.ID)) == 0 {
-			errMsg := fmt.Sprintf("%s: invalid subject id", azauthzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage)})
+			errMsg := fmt.Sprintf("%s: invalid subject id", authzen.AuthzErrBadRequestMessage)
+			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
-		if !azmodelspdp.IsValidIdentiyType(evaluation.Subject.Type) {
-			errMsg := fmt.Sprintf("%s: invalid subject type", azauthzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage)})
+		if !pdp.IsValidIdentiyType(evaluation.Subject.Type) {
+			errMsg := fmt.Sprintf("%s: invalid subject type", authzen.AuthzErrBadRequestMessage)
+			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
-		if !azmodelspdp.IsValidProperties(evaluation.Subject.Properties) {
-			errMsg := fmt.Sprintf("%s: invalid  subject properties", azauthzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage)})
+		if !pdp.IsValidProperties(evaluation.Subject.Properties) {
+			errMsg := fmt.Sprintf("%s: invalid  subject properties", authzen.AuthzErrBadRequestMessage)
+			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
 		if len(strings.TrimSpace(evaluation.Resource.ID)) == 0 {
-			errMsg := fmt.Sprintf("%s: invalid resource id", azauthzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage)})
+			errMsg := fmt.Sprintf("%s: invalid resource id", authzen.AuthzErrBadRequestMessage)
+			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
 		if len(strings.TrimSpace(evaluation.Resource.Type)) == 0 {
-			errMsg := fmt.Sprintf("%s: invalid resource type", azauthzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage)})
+			errMsg := fmt.Sprintf("%s: invalid resource type", authzen.AuthzErrBadRequestMessage)
+			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
-		if !azmodelspdp.IsValidProperties(evaluation.Resource.Properties) {
-			errMsg := fmt.Sprintf("%s: invalid resource properties", azauthzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage)})
+		if !pdp.IsValidProperties(evaluation.Resource.Properties) {
+			errMsg := fmt.Sprintf("%s: invalid resource properties", authzen.AuthzErrBadRequestMessage)
+			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
 		if len(strings.TrimSpace(evaluation.Action.Name)) == 0 {
-			errMsg := fmt.Sprintf("%s: invalid action name", azauthzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage)})
+			errMsg := fmt.Sprintf("%s: invalid action name", authzen.AuthzErrBadRequestMessage)
+			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
-		if !azmodelspdp.IsValidProperties(evaluation.Action.Properties) {
-			errMsg := fmt.Sprintf("%s: invalid action properties", azauthzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: azmodelspdp.NewEvaluationErrorResponse(evaluation.RequestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage)})
+		if !pdp.IsValidProperties(evaluation.Action.Properties) {
+			errMsg := fmt.Sprintf("%s: invalid action properties", authzen.AuthzErrBadRequestMessage)
+			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
 		evalItems = append(evalItems, evalItem{listID: reqEvaluationsCounter, value: nil})
@@ -160,19 +160,19 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 	}
 	reqEvaluationsSize := len(reqEvaluations)
 	expReq.Evaluations = reqEvaluations
-	authzCheckEvaluations := []azmodelspdp.EvaluationResponse{}
+	authzCheckEvaluations := []pdp.EvaluationResponse{}
 	if reqEvaluationsSize > 0 {
 		authzCheckEvaluations, err = s.storage.AuthorizationCheck(expReq)
 		if err != nil {
-			errMsg := fmt.Sprintf("%s: authorization check has failed %s", azauthzen.AuthzErrInternalErrorMessage, err.Error())
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, requestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage), nil
+			errMsg := fmt.Sprintf("%s: authorization check has failed %s", authzen.AuthzErrInternalErrorMessage, err.Error())
+			return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
 		}
 		if len(authzCheckEvaluations) != reqEvaluationsSize {
-			errMsg := fmt.Sprintf("%s: invalid authorization check response size for evaluations", azauthzen.AuthzErrInternalErrorMessage)
-			return azmodelspdp.NewAuthorizationCheckErrorResponse(nil, requestID, azauthzen.AuthzErrBadRequestCode, errMsg, azauthzen.AuthzErrBadRequestMessage), nil
+			errMsg := fmt.Sprintf("%s: invalid authorization check response size for evaluations", authzen.AuthzErrInternalErrorMessage)
+			return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
 		}
 	}
-	evaluations := []azmodelspdp.EvaluationResponse{}
+	evaluations := []pdp.EvaluationResponse{}
 	for i := range len(evalItems) {
 		evalItem := evalItems[i]
 		if evalItem.listID == -1 {
@@ -181,7 +181,7 @@ func (s PDPController) AuthorizationCheck(request *azmodelspdp.AuthorizationChec
 			evaluations = append(evaluations, authzCheckEvaluations[evalItem.listID])
 		}
 	}
-	authzCheckResp := &azmodelspdp.AuthorizationCheckResponse{
+	authzCheckResp := &pdp.AuthorizationCheckResponse{
 		RequestID:   request.RequestID,
 		Evaluations: evaluations,
 	}

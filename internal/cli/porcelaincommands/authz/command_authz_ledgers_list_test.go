@@ -23,19 +23,19 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/mock"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	aztestutils "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
-	azmocks "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
+	"github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
 // TestListCommandForLedgersList tests the listCommandForLedgersList function.
 func TestListCommandForLedgersList(t *testing.T) {
 	args := []string{"-h"}
 	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command lists all remote ledgers."}
-	aztestutils.BaseCommandTest(t, createCommandForLedgerList, args, false, outputs)
+	testutils.BaseCommandTest(t, createCommandForLedgerList, args, false, outputs)
 }
 
 // TestCliLedgersListWithError tests the command for creating an ledger with an error.
@@ -58,18 +58,18 @@ func TestCliLedgersListWithError(t *testing.T) {
 		outputs := []string{""}
 
 		v := viper.New()
-		v.Set(azconfigs.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget), "localhost:9092")
+		v.Set(options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPTarget), "localhost:9092")
 
-		depsMocks := azmocks.NewCliDependenciesMock()
+		depsMocks := mocks.NewCliDependenciesMock()
 		cmd := createCommandForLedgerList(depsMocks, v)
-		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
-		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, test.OutputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
+		cmd.PersistentFlags().StringP(common.FlagWorkingDirectory, common.FlagWorkingDirectoryShort, ".", "work directory")
+		cmd.PersistentFlags().StringP(common.FlagOutput, common.FlagOutputShort, test.OutputType, "output format")
+		cmd.PersistentFlags().BoolP(common.FlagVerbose, common.FlagVerboseShort, true, "true for verbose output")
 
-		papClient := azmocks.NewGrpcPAPClientMock()
-		papClient.On("FetchLedgersBy", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, azerrors.ErrClientParameter)
+		papClient := mocks.NewGrpcPAPClientMock()
+		papClient.On("FetchLedgersBy", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.ErrClientParameter)
 
-		printerMock := azmocks.NewPrinterMock()
+		printerMock := mocks.NewPrinterMock()
 		printerMock.On("Println", mock.Anything).Return()
 		printerMock.On("PrintlnMap", mock.Anything).Return()
 		printerMock.On("Error", mock.Anything).Return()
@@ -77,7 +77,7 @@ func TestCliLedgersListWithError(t *testing.T) {
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 		depsMocks.On("CreateGrpcPAPClient", mock.Anything).Return(papClient, nil)
 
-		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
+		testutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
 		if test.HasError {
 			printerMock.AssertCalled(t, "Error", mock.Anything)
 		} else {
@@ -98,16 +98,16 @@ func TestCliLedgersListWithSuccess(t *testing.T) {
 
 		v := viper.New()
 		v.Set("output", outputType)
-		v.Set(azconfigs.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget), "localhost:9092")
+		v.Set(options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPTarget), "localhost:9092")
 
-		depsMocks := azmocks.NewCliDependenciesMock()
+		depsMocks := mocks.NewCliDependenciesMock()
 		cmd := createCommandForLedgerList(depsMocks, v)
-		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
-		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
+		cmd.PersistentFlags().StringP(common.FlagWorkingDirectory, common.FlagWorkingDirectoryShort, ".", "work directory")
+		cmd.PersistentFlags().StringP(common.FlagOutput, common.FlagOutputShort, outputType, "output format")
+		cmd.PersistentFlags().BoolP(common.FlagVerbose, common.FlagVerboseShort, true, "true for verbose output")
 
-		papClient := azmocks.NewGrpcPAPClientMock()
-		ledgers := []azmodelspap.Ledger{
+		papClient := mocks.NewGrpcPAPClientMock()
+		ledgers := []pap.Ledger{
 			{
 				LedgerID:  "c3160a533ab24fbcb1eab7a09fd85f36",
 				ZoneID:    581616507495,
@@ -125,7 +125,7 @@ func TestCliLedgersListWithSuccess(t *testing.T) {
 		}
 		papClient.On("FetchLedgersBy", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ledgers, nil)
 
-		printerMock := azmocks.NewPrinterMock()
+		printerMock := mocks.NewPrinterMock()
 		outputPrinter := map[string]any{}
 
 		if outputType == "terminal" {
@@ -142,7 +142,7 @@ func TestCliLedgersListWithSuccess(t *testing.T) {
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 		depsMocks.On("CreateGrpcPAPClient", mock.Anything).Return(papClient, nil)
 
-		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
+		testutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
 		printerMock.AssertCalled(t, "PrintlnMap", outputPrinter)
 	}
 }

@@ -21,25 +21,25 @@ import (
 
 	"go.uber.org/zap"
 
-	azcopier "github.com/permguard/permguard/common/pkg/extensions/copier"
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/common/pkg/extensions/copier"
+	"github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/storage"
 )
 
 // HostConfig represents the host configuration.
 type HostConfig struct {
 	logger            *zap.Logger
-	host              azservices.HostKind
-	hostable          azservices.Hostable
-	storageConnector  *azstorage.StorageConnector
-	services          []azservices.ServiceKind
-	servicesFactories map[azservices.ServiceKind]azservices.ServiceFactoryProvider
+	host              services.HostKind
+	hostable          services.Hostable
+	storageConnector  *storage.StorageConnector
+	services          []services.ServiceKind
+	servicesFactories map[services.ServiceKind]services.ServiceFactoryProvider
 	appData           string
 }
 
 // NewHostConfig creates a new host configuration.
-func NewHostConfig(host azservices.HostKind, hostable azservices.Hostable, storageConnector *azstorage.StorageConnector,
-	services []azservices.ServiceKind, servicesFactories map[azservices.ServiceKind]azservices.ServiceFactoryProvider, logger *zap.Logger, appData string,
+func NewHostConfig(host services.HostKind, hostable services.Hostable, storageConnector *storage.StorageConnector,
+	services []services.ServiceKind, servicesFactories map[services.ServiceKind]services.ServiceFactoryProvider, logger *zap.Logger, appData string,
 ) (*HostConfig, error) {
 	return &HostConfig{
 		logger:            logger,
@@ -53,18 +53,18 @@ func NewHostConfig(host azservices.HostKind, hostable azservices.Hostable, stora
 }
 
 // GetHostable returns the hostable.
-func (h *HostConfig) GetHostable() azservices.Hostable {
+func (h *HostConfig) GetHostable() services.Hostable {
 	return h.hostable
 }
 
 // GetStorageConnector returns the storage connector.
-func (h *HostConfig) GetStorageConnector() *azstorage.StorageConnector {
+func (h *HostConfig) GetStorageConnector() *storage.StorageConnector {
 	return h.storageConnector
 }
 
 // GetServicesFactories returns the services factories.
-func (h *HostConfig) GetServicesFactories() map[azservices.ServiceKind]azservices.ServiceFactoryProvider {
-	return azcopier.CopyMap(h.servicesFactories)
+func (h *HostConfig) GetServicesFactories() map[services.ServiceKind]services.ServiceFactoryProvider {
+	return copier.CopyMap(h.servicesFactories)
 }
 
 // GetAppData returns the zone data.
@@ -75,14 +75,14 @@ func (h *HostConfig) GetAppData() string {
 // Host represents the host.
 type Host struct {
 	config   *HostConfig
-	ctx      *azservices.HostContext
+	ctx      *services.HostContext
 	services []*Service
 }
 
 // NewHost creates a new host.
 func NewHost(hostCfg *HostConfig) (*Host, error) {
-	hostCfgReader := azservices.NewHostConfiguration(hostCfg.GetAppData())
-	hostCtx, err := azservices.NewHostContext(hostCfg.host, hostCfg.hostable, hostCfg.logger, hostCfgReader)
+	hostCfgReader := services.NewHostConfiguration(hostCfg.GetAppData())
+	hostCtx, err := services.NewHostContext(hostCfg.host, hostCfg.hostable, hostCfg.logger, hostCfgReader)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func (h *Host) getLogger() *zap.Logger {
 }
 
 // buildServicesForServe builds the services for the host.
-func buildServicesForServe(h *Host, factories []azservices.ServiceFactory, logger *zap.Logger) ([]*Service, bool, bool, error) {
+func buildServicesForServe(h *Host, factories []services.ServiceFactory, logger *zap.Logger) ([]*Service, bool, bool, error) {
 	services := make([]*Service, len(h.config.GetServicesFactories()))
 	for i, factory := range factories {
 		svcable, err := factory.Create()
@@ -125,7 +125,7 @@ func buildServicesForServe(h *Host, factories []azservices.ServiceFactory, logge
 func (h *Host) Serve(ctx context.Context) (bool, error) {
 	logger := h.getLogger()
 	logger.Debug("Host is starting")
-	factories := make([]azservices.ServiceFactory, len(h.config.GetServicesFactories()))
+	factories := make([]services.ServiceFactory, len(h.config.GetServicesFactories()))
 	count := 0
 	for _, servicesFactory := range h.config.GetServicesFactories() {
 		factory, err := servicesFactory.CreateFactory()

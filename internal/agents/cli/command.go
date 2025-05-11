@@ -28,11 +28,11 @@ import (
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 
-	aziservers "github.com/permguard/permguard/internal/agents/servers"
-	azservers "github.com/permguard/permguard/pkg/agents/servers"
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	iservers "github.com/permguard/permguard/internal/agents/servers"
+	"github.com/permguard/permguard/pkg/agents/servers"
+	"github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -52,31 +52,31 @@ var (
 
 // addFlagsForCentralStorage adds the flags for the central storage.
 func addFlagsForCentralStorage(flagSet *flag.FlagSet) error {
-	flagSet.String(azoptions.FlagName(flagPrefixDataStorage, flagSuffixDataStorageCentral), flagValDefDataStorageCentral, "data storage type to be used for central data")
+	flagSet.String(options.FlagName(flagPrefixDataStorage, flagSuffixDataStorageCentral), flagValDefDataStorageCentral, "data storage type to be used for central data")
 	return nil
 }
 
 // addFlagsForServerInitalizer adds the flags for the server initializer.
-func addFlagsForServerInitalizer(serverInitializer azservers.ServerInitializer, v *viper.Viper, command *cobra.Command, serverFactoryCfg *aziservers.ServerFactoryConfig, funcs []func(*flag.FlagSet) error) {
+func addFlagsForServerInitalizer(serverInitializer servers.ServerInitializer, v *viper.Viper, command *cobra.Command, serverFactoryCfg *iservers.ServerFactoryConfig, funcs []func(*flag.FlagSet) error) {
 	var err error
 	msgErroOnAddFlags := "Bootstrapper cannot add flags %s\n"
 
 	if serverInitializer.HasCentralStorage() {
-		err = azoptions.AddCobraFlags(command, v, addFlagsForCentralStorage)
+		err = options.AddCobraFlags(command, v, addFlagsForCentralStorage)
 		if err != nil {
 			fmt.Printf(msgErroOnAddFlags, err.Error())
 			os.Exit(1)
 		}
 	}
 
-	err = azoptions.AddCobraFlags(command, v, serverFactoryCfg.AddFlags)
+	err = options.AddCobraFlags(command, v, serverFactoryCfg.AddFlags)
 	if err != nil {
 		fmt.Printf(msgErroOnAddFlags, err.Error())
 		os.Exit(1)
 	}
 
 	if len(funcs) == 0 {
-		err := azoptions.AddCobraFlags(command, v, funcs...)
+		err := options.AddCobraFlags(command, v, funcs...)
 		if err != nil {
 			fmt.Printf(msgErroOnAddFlags, err.Error())
 			os.Exit(1)
@@ -90,7 +90,7 @@ func addFlagsForServerInitalizer(serverInitializer azservers.ServerInitializer, 
 }
 
 // runECommand runs the command.
-func runECommand(cmdInfo *azservices.HostInfo, serverFactoryCfg *aziservers.ServerFactoryConfig, v *viper.Viper, startup func(*zap.Logger), shutdown func(*zap.Logger)) error {
+func runECommand(cmdInfo *services.HostInfo, serverFactoryCfg *iservers.ServerFactoryConfig, v *viper.Viper, startup func(*zap.Logger), shutdown func(*zap.Logger)) error {
 	if Version == "" {
 		Version = "none"
 	}
@@ -110,7 +110,7 @@ func runECommand(cmdInfo *azservices.HostInfo, serverFactoryCfg *aziservers.Serv
 		fmt.Printf("Bootstrapper failed initializing server factory configuration %s\n", err)
 		os.Exit(1)
 	}
-	serverFactory, err := aziservers.NewServerFactory(serverFactoryCfg)
+	serverFactory, err := iservers.NewServerFactory(serverFactoryCfg)
 	if err != nil {
 		fmt.Printf("Bootstrapper failed  creating factory for  %s\n", cmdInfo.Name)
 		os.Exit(1)
@@ -146,28 +146,28 @@ func runECommand(cmdInfo *azservices.HostInfo, serverFactoryCfg *aziservers.Serv
 }
 
 // Run starts the server and runs the startup and shutdown functions.
-func Run(serverInitializer azservers.ServerInitializer, startup func(*zap.Logger), shutdown func(*zap.Logger), funcs ...func(*flag.FlagSet) error) {
+func Run(serverInitializer servers.ServerInitializer, startup func(*zap.Logger), shutdown func(*zap.Logger), funcs ...func(*flag.FlagSet) error) {
 	if serverInitializer == nil {
 		fmt.Printf("Bootstrapper cannot be initialized as the server initializer is nil\n")
 		os.Exit(1)
 	}
 
-	v, err := azoptions.NewViper()
+	v, err := options.NewViper()
 	if err != nil {
 		fmt.Printf("Bootstrapper cannot create viper %s\n", err.Error())
 		os.Exit(1)
 	}
 
-	centralStorageEngine := azstorage.StorageNone
+	centralStorageEngine := storage.StorageNone
 	if serverInitializer.HasCentralStorage() {
-		centralStorageEngine, err = azstorage.NewStorageKindFromString(stringFromArgs("--", azoptions.FlagName(flagPrefixDataStorage, flagSuffixDataStorageCentral), flagValDefDataStorageCentral, os.Args, v))
+		centralStorageEngine, err = storage.NewStorageKindFromString(stringFromArgs("--", options.FlagName(flagPrefixDataStorage, flagSuffixDataStorageCentral), flagValDefDataStorageCentral, os.Args, v))
 		if err != nil {
 			fmt.Printf("Bootstrapper cannot parse the central storage engine %s\n", err.Error())
 			os.Exit(1)
 		}
 	}
 
-	serverFactoryCfg, err := aziservers.NewServerFactoryConfig(serverInitializer, centralStorageEngine)
+	serverFactoryCfg, err := iservers.NewServerFactoryConfig(serverInitializer, centralStorageEngine)
 	if err != nil {
 		fmt.Printf("Bootstrapper cannot inizialize the server factory config %s\n", err.Error())
 		os.Exit(1)

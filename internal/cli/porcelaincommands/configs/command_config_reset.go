@@ -23,29 +23,29 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azclioptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // runECommandReset runs the command for resetting the config.
-func runECommandReset(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandReset(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	configFile, err := azclioptions.ResetViperConfig(v)
+	configFile, err := options.ResetViperConfig(v)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to reset the cli config file.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to reset the cli config file.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to reset the cli config file.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	var output map[string]any
 	if ctx.IsTerminalOutput() {
@@ -62,11 +62,11 @@ func runECommandReset(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v 
 }
 
 // CreateCommandForConfig for managing config.
-func createCommandForConfigReset(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigReset(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "reset",
 		Short: "Reset the cli config settings",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command resets the cli config settings.`),
+		Long:  common.BuildCliLongTemplate(`This command resets the cli config settings.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandReset(deps, cmd, v)
 		},

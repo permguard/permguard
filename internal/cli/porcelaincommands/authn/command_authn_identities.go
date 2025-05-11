@@ -24,11 +24,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 const (
@@ -41,17 +41,17 @@ const (
 )
 
 // runECommandForCreateIdentity runs the command for creating an identity.
-func runECommandForUpsertIdentity(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+func runECommandForUpsertIdentity(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
 	opGetErroMessage := func(op bool) string {
 		if op {
 			return "Failed to create the identity"
 		}
 		return "Failed to upsert the identity"
 	}
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
@@ -59,10 +59,10 @@ func runECommandForUpsertIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
@@ -70,24 +70,24 @@ func runECommandForUpsertIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	zoneID := v.GetInt64(azoptions.FlagName(commandNameForIdentity, aziclicommon.FlagCommonZoneID))
-	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
-	kind := v.GetString(azoptions.FlagName(flagPrefix, flagIdentityKind))
-	identity := &azmodelszap.Identity{
+	zoneID := v.GetInt64(options.FlagName(commandNameForIdentity, common.FlagCommonZoneID))
+	name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
+	kind := v.GetString(options.FlagName(flagPrefix, flagIdentityKind))
+	identity := &zap.Identity{
 		ZoneID: zoneID,
 		Kind:   kind,
 		Name:   name,
 	}
 	if isCreate {
-		identitySourceID := v.GetString(azoptions.FlagName(flagPrefix, flagIdentitySourceID))
+		identitySourceID := v.GetString(options.FlagName(flagPrefix, flagIdentitySourceID))
 		identity, err = client.CreateIdentity(zoneID, identitySourceID, kind, name)
 	} else {
-		identityID := v.GetString(azoptions.FlagName(flagPrefix, flagIdentityID))
+		identityID := v.GetString(options.FlagName(flagPrefix, flagIdentityID))
 		identity.IdentityID = identityID
 		identity, err = client.UpdateIdentity(identity)
 	}
@@ -96,10 +96,10 @@ func runECommandForUpsertIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, strings.ToLower(opGetErroMessage(isCreate)), err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
@@ -107,7 +107,7 @@ func runECommandForUpsertIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 		identityName := identity.Name
 		output[identityID] = identityName
 	} else if ctx.IsJSONOutput() {
-		output["identities"] = []*azmodelszap.Identity{identity}
+		output["identities"] = []*zap.Identity{identity}
 	}
 	printer.PrintlnMap(output)
 	return nil
@@ -119,16 +119,16 @@ func runECommandForIdentities(cmd *cobra.Command, args []string) error {
 }
 
 // createCommandForIdentities creates a command for managing identities.
-func createCommandForIdentities(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForIdentities(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "identities",
 		Short: "Manage remote identities",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages remote identities.`),
+		Long:  common.BuildCliLongTemplate(`This command manages remote identities.`),
 		RunE:  runECommandForIdentities,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonZoneID, 0, "zone id")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentity, aziclicommon.FlagCommonZoneID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonZoneID))
+	command.PersistentFlags().Int64(common.FlagCommonZoneID, 0, "zone id")
+	v.BindPFlag(options.FlagName(commandNameForIdentity, common.FlagCommonZoneID), command.PersistentFlags().Lookup(common.FlagCommonZoneID))
 
 	command.AddCommand(createCommandForIdentityCreate(deps, v))
 	command.AddCommand(createCommandForIdentityUpdate(deps, v))

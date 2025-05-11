@@ -20,9 +20,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -31,16 +31,16 @@ const (
 )
 
 // runECommandForCreateLedger runs the command for creating a ledger.
-func runECommandForCreateLedger(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForCreateLedger(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	return runECommandForUpsertLedger(deps, cmd, v, commandNameForLedgersCreate, true)
 }
 
 // createCommandForLedgerCreate creates a command for managing ledgercreate.
-func createCommandForLedgerCreate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForLedgerCreate(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create a remote ledger",
-		Long: aziclicommon.BuildCliLongTemplate(`This command creates a remote ledger.
+		Long: common.BuildCliLongTemplate(`This command creates a remote ledger.
 
 Examples:
   # create a ledger and output the result in json format
@@ -50,7 +50,7 @@ Examples:
 			return runECommandForCreateLedger(deps, cmd, v)
 		},
 	}
-	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the name of the ledger to create")
-	v.BindPFlag(azoptions.FlagName(commandNameForLedgersCreate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	command.Flags().String(common.FlagCommonName, "", "specify the name of the ledger to create")
+	v.BindPFlag(options.FlagName(commandNameForLedgersCreate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

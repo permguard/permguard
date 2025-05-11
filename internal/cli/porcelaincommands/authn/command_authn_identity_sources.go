@@ -24,11 +24,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 const (
@@ -39,17 +39,17 @@ const (
 )
 
 // runECommandForCreateIdentitySource runs the command for creating an identity source.
-func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+func runECommandForUpsertIdentitySource(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
 	opGetErroMessage := func(op bool) string {
 		if op {
 			return "Failed to create the identity source"
 		}
 		return "Failed to upsert the identity source"
 	}
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
@@ -57,10 +57,10 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
@@ -68,21 +68,21 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	zoneID := v.GetInt64(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonZoneID))
-	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
-	identitySource := &azmodelszap.IdentitySource{
+	zoneID := v.GetInt64(options.FlagName(commandNameForIdentitySource, common.FlagCommonZoneID))
+	name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
+	identitySource := &zap.IdentitySource{
 		ZoneID: zoneID,
 		Name:   name,
 	}
 	if isCreate {
 		identitySource, err = client.CreateIdentitySource(zoneID, name)
 	} else {
-		identitySourceID := v.GetString(azoptions.FlagName(flagPrefix, flagIdentitySourceID))
+		identitySourceID := v.GetString(options.FlagName(flagPrefix, flagIdentitySourceID))
 		identitySource.IdentitySourceID = identitySourceID
 		identitySource, err = client.UpdateIdentitySource(identitySource)
 	}
@@ -91,10 +91,10 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
@@ -102,7 +102,7 @@ func runECommandForUpsertIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 		identitieSourceName := identitySource.Name
 		output[identitySourceID] = identitieSourceName
 	} else if ctx.IsJSONOutput() {
-		output["identity_sources"] = []*azmodelszap.IdentitySource{identitySource}
+		output["identity_sources"] = []*zap.IdentitySource{identitySource}
 	}
 	printer.PrintlnMap(output)
 	return nil
@@ -114,16 +114,16 @@ func runECommandForIdentitySources(cmd *cobra.Command, args []string) error {
 }
 
 // createCommandForIdentitySources creates a command for managing identity sources.
-func createCommandForIdentitySources(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForIdentitySources(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "identitysources",
 		Short: "Manage remote identity sources",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages remote identity sources.`),
+		Long:  common.BuildCliLongTemplate(`This command manages remote identity sources.`),
 		RunE:  runECommandForIdentitySources,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonZoneID, 0, "zone id")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonZoneID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonZoneID))
+	command.PersistentFlags().Int64(common.FlagCommonZoneID, 0, "zone id")
+	v.BindPFlag(options.FlagName(commandNameForIdentitySource, common.FlagCommonZoneID), command.PersistentFlags().Lookup(common.FlagCommonZoneID))
 
 	command.AddCommand(createCommandForIdentitySourceCreate(deps, v))
 	command.AddCommand(createCommandForIdentitySourceUpdate(deps, v))

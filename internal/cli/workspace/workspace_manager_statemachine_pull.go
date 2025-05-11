@@ -17,7 +17,7 @@
 package workspace
 
 import (
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 
 	notpagpackets "github.com/permguard/permguard/internal/transport/notp/statemachines/packets"
 	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
@@ -63,7 +63,7 @@ func (m *WorkspaceManager) OnPullHandleRequestCurrentStateResponse(handlerCtx *n
 		return handlerReturn, nil
 	}
 	if localRefSPacket.HasConflicts {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliWorkspace, "conflicts detected in the remote ledger.")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliWorkspace, "conflicts detected in the remote ledger.")
 	}
 	handlerCtx.Set(RemoteCommitIDKey, localRefSPacket.RefCommit)
 	handlerCtx.Set(RemoteCommitsCountKey, localRefSPacket.NumberOfCommits)

@@ -21,22 +21,22 @@ import (
 	"path/filepath"
 	"strings"
 
-	azids "github.com/permguard/permguard/common/pkg/extensions/ids"
-	azvalidators "github.com/permguard/permguard/common/pkg/extensions/validators"
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azztasmfests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	"github.com/permguard/permguard/common/pkg/extensions/ids"
+	"github.com/permguard/permguard/common/pkg/extensions/validators"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/workspace/persistence"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 )
 
 // ExecPrintContext prints the context.
-func (m *WorkspaceManager) ExecPrintContext(output map[string]any, out aziclicommon.PrinterOutFunc) map[string]any {
+func (m *WorkspaceManager) ExecPrintContext(output map[string]any, out common.PrinterOutFunc) map[string]any {
 	if !m.ctx.IsVerboseTerminalOutput() {
 		return output
 	}
 	context := m.persMgr.GetContext()
 	for key, value := range context {
-		out(nil, "context", fmt.Sprintf("%s '%s'.", key, aziclicommon.FileText(value)), nil, true)
+		out(nil, "context", fmt.Sprintf("%s '%s'.", key, common.FileText(value)), nil, true)
 	}
 	return output
 }
@@ -52,7 +52,7 @@ type InitParms struct {
 }
 
 // ExecInitWorkspace initializes the workspace.
-func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to initialize the workspace.", nil, true)
 		return output, err
@@ -60,7 +60,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 	m.ExecPrintContext(nil, out)
 
 	homeHiddenDir := m.getHomeHiddenDir()
-	res, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.WorkDir, homeHiddenDir)
+	res, err := m.persMgr.CreateDirIfNotExists(persistence.WorkDir, homeHiddenDir)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
@@ -72,12 +72,12 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 	if initParams != nil {
 		wksName := initParams.Name
 		if len(strings.ReplaceAll(wksName, " ", "")) == 0 {
-			wksName = azids.GenerateID()
+			wksName = ids.GenerateID()
 		}
 		authzLang := initParams.AuthZLanguage
 		authzTemplate := initParams.AuthZTemplate
 
-		requirement, err := azztasmfests.ParseRequirement(authzLang)
+		requirement, err := manifests.ParseRequirement(authzLang)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -86,7 +86,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 			return failedOpErr(nil, err)
 		}
 
-		manifest, err := azztasmfests.NewManifest("authz", wksName, "")
+		manifest, err := manifests.NewManifest("authz", wksName, "")
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -95,12 +95,12 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 			return failedOpErr(nil, err)
 		}
 
-		manifestData, err := azztasmfests.ConvertManifestToBytes(manifest, true)
+		manifestData, err := manifests.ConvertManifestToBytes(manifest, true)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
 
-		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.WorkspaceDir, azztasmfests.ManifestFileName, manifestData, 0644, false)
+		_, err = m.persMgr.WriteFileIfNotExists(persistence.WorkspaceDir, manifests.ManifestFileName, manifestData, 0644, false)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -113,7 +113,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 	defer fileLock.Unlock()
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "init", fmt.Sprintf("Initializing Permguard workspace in '%s'.", aziclicommon.FileText(homeHiddenDir)), nil, true)
+		out(nil, "init", fmt.Sprintf("Initializing Permguard workspace in '%s'.", common.FileText(homeHiddenDir)), nil, true)
 	}
 
 	initializers := []func() error{
@@ -136,9 +136,9 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 	}
 	var msg string
 	if firstInit {
-		msg = fmt.Sprintf("Initialized empty permguard ledger in '%s'.", aziclicommon.FileText(m.getHomeDir()))
+		msg = fmt.Sprintf("Initialized empty permguard ledger in '%s'.", common.FileText(m.getHomeDir()))
 	} else {
-		msg = fmt.Sprintf("Reinitialized existing permguard ledger in '%s'.", aziclicommon.FileText(m.getHomeDir()))
+		msg = fmt.Sprintf("Reinitialized existing permguard ledger in '%s'.", common.FileText(m.getHomeDir()))
 	}
 	out(nil, "", msg, nil, true)
 	output := map[string]any{}
@@ -156,22 +156,22 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out aziclico
 }
 
 // execInternalAddRemote adds a remote.
-func (m *WorkspaceManager) execInternalAddRemote(internal bool, remote string, server string, zapPort int, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) execInternalAddRemote(internal bool, remote string, server string, zapPort int, papPort int, out common.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
-			out(nil, "", fmt.Sprintf("Failed to add remote %s.", aziclicommon.KeywordText(remote)), nil, true)
+			out(nil, "", fmt.Sprintf("Failed to add remote %s.", common.KeywordText(remote)), nil, true)
 		}
 		return output, err
 	}
 
-	if !azvalidators.IsValidHostname(server) {
-		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid server %s", server)))
+	if !validators.IsValidHostname(server) {
+		return failedOpErr(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid server %s", server)))
 	}
-	if !azvalidators.IsValidPort(zapPort) {
-		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid zap port %d", zapPort)))
+	if !validators.IsValidPort(zapPort) {
+		return failedOpErr(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid zap port %d", zapPort)))
 	}
-	if !azvalidators.IsValidPort(papPort) {
-		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid pap port %d", papPort)))
+	if !validators.IsValidPort(papPort) {
+		return failedOpErr(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid pap port %d", papPort)))
 	}
 
 	output, err := m.cfgMgr.ExecAddRemote(remote, server, zapPort, papPort, nil, out)
@@ -182,9 +182,9 @@ func (m *WorkspaceManager) execInternalAddRemote(internal bool, remote string, s
 }
 
 // ExecAddRemote adds a remote.
-func (m *WorkspaceManager) ExecAddRemote(remote string, server string, zapPort int, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecAddRemote(remote string, server string, zapPort int, papPort int, out common.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to add remote %s.", aziclicommon.KeywordText(remote)), nil, true)
+		out(nil, "", fmt.Sprintf("Failed to add remote %s.", common.KeywordText(remote)), nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
@@ -202,9 +202,9 @@ func (m *WorkspaceManager) ExecAddRemote(remote string, server string, zapPort i
 }
 
 // ExecRemoveRemote removes a remote.
-func (m *WorkspaceManager) ExecRemoveRemote(remote string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecRemoveRemote(remote string, out common.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to remove remote %s.", aziclicommon.KeywordText(remote)), nil, true)
+		out(nil, "", fmt.Sprintf("Failed to remove remote %s.", common.KeywordText(remote)), nil, true)
 		return output, err
 	}
 	output := m.ExecPrintContext(nil, out)
@@ -226,14 +226,14 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out aziclicommon.Prin
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "remote", "Failed to delete remote: it is associated with the current HEAD.", nil, true)
 		}
-		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliWorkspace, fmt.Sprintf("cannot remove the remote used by the currently checked out zone %s", remote)))
+		return failedOpErr(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliWorkspace, fmt.Sprintf("cannot remove the remote used by the currently checked out zone %s", remote)))
 	}
 	output, err = m.cfgMgr.ExecRemoveRemote(remote, output, out)
 	return output, err
 }
 
 // ExecListRemotes lists the remotes.
-func (m *WorkspaceManager) ExecListRemotes(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecListRemotes(out common.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to list remotes.", nil, true)
 		return output, err
@@ -254,7 +254,7 @@ func (m *WorkspaceManager) ExecListRemotes(out aziclicommon.PrinterOutFunc) (map
 }
 
 // ExecListLedgers lists the ledgers.
-func (m *WorkspaceManager) ExecListLedgers(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecListLedgers(out common.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to list ledgers.", nil, true)
 		return output, err

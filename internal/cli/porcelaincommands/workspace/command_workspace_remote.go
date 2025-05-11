@@ -23,10 +23,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/workspace"
+	"github.com/permguard/permguard/pkg/cli"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -35,21 +35,21 @@ const (
 )
 
 // runECommandForRemoteWorkspace runs the command for creating an workspace.
-func runECommandForRemoteWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForRemoteWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	langAbs, err := deps.GetLanguageFactory()
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, langAbs)
+	wksMgr, err := workspace.NewInternalManager(ctx, langAbs)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	output, err := wksMgr.ExecListRemotes(outFunc(ctx, printer))
 	if err != nil {
@@ -57,10 +57,10 @@ func runECommandForRemoteWorkspace(deps azcli.CliDependenciesProvider, cmd *cobr
 			printer.Println("Failed to list remotes.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to list remotes.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to list remotes.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
 		printer.PrintlnMap(output)
@@ -69,11 +69,11 @@ func runECommandForRemoteWorkspace(deps azcli.CliDependenciesProvider, cmd *cobr
 }
 
 // CreateCommandForWorkspaceRemote creates a command for remoteializing a permguard workspace.
-func CreateCommandForWorkspaceRemote(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceRemote(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "remote",
 		Short: `Manage remote server for tracking and interaction`,
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages remote server for tracking and interaction`),
+		Long:  common.BuildCliLongTemplate(`This command manages remote server for tracking and interaction`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForRemoteWorkspace(deps, cmd, v)
 		},

@@ -19,13 +19,13 @@ package workspace
 import (
 	"fmt"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/workspace/cosp"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // buildOutputForCodeFiles builds the output for the code files.
-func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceManager, out aziclicommon.PrinterOutFunc, output map[string]any) map[string]any {
+func buildOutputForCodeFiles(codeFiles []cosp.CodeFile, m *WorkspaceManager, out common.PrinterOutFunc, output map[string]any) map[string]any {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -39,7 +39,7 @@ func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceMan
 		cSection := codeFile.Section + 1
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(output, "refresh", fmt.Sprintf(`Error in file %s, partition %s, section %s and error message '%s'.`,
-				aziclicommon.FileText(cFile), aziclicommon.IDText(cPartition), aziclicommon.NumberText(cSection), aziclicommon.LogErrorText(codeFile.ErrorMessage)), nil, true)
+				common.FileText(cFile), common.IDText(cPartition), common.NumberText(cSection), common.LogErrorText(codeFile.ErrorMessage)), nil, true)
 		} else if m.ctx.IsJSONOutput() {
 			if _, ok := errorsMap[cFile]; !ok {
 				errorsMap[cFile] = map[string]any{}
@@ -77,7 +77,7 @@ func buildOutputForCodeFiles(codeFiles []azicliwkscosp.CodeFile, m *WorkspaceMan
 }
 
 // ExecRefresh scans source files in the current directory and synchronizes the local state,
-func (m *WorkspaceManager) ExecRefresh(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecRefresh(out common.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to refresh the current workspace.", nil, true)
 		return output, err
@@ -97,7 +97,7 @@ func (m *WorkspaceManager) ExecRefresh(out aziclicommon.PrinterOutFunc) (map[str
 }
 
 // execInternalRefresh scans source files in the current directory and synchronizes the local state,
-func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) execInternalRefresh(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
 			out(nil, "", "Failed to refresh the current workspace.", nil, true)
@@ -142,15 +142,15 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 			return "items"
 		}
 		out(nil, "refresh", fmt.Sprintf("Scanned %s %s, selected %s %s, and ignored %s %s.",
-			aziclicommon.NumberText(totalCount), fileWord(totalCount), aziclicommon.NumberText(selectedCount), fileWord(selectedCount), aziclicommon.NumberText(ignoredCount), fileWord(ignoredCount)), nil, true)
+			common.NumberText(totalCount), fileWord(totalCount), common.NumberText(selectedCount), fileWord(selectedCount), common.NumberText(ignoredCount), fileWord(ignoredCount)), nil, true)
 		out(nil, "", "", nil, true)
-		m.printFiles("excluded_files", azicliwkscosp.ConvertCodeFilesToPath(ignoredFiles), out)
-		m.printFiles("processed_files", azicliwkscosp.ConvertCodeFilesToPath(selectedFiles), out)
+		m.printFiles("excluded_files", cosp.ConvertCodeFilesToPath(ignoredFiles), out)
+		m.printFiles("processed_files", cosp.ConvertCodeFilesToPath(selectedFiles), out)
 		out(nil, "", "", nil, true)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		output = map[string]any{
-			"excluded_files":  azicliwkscosp.ConvertCodeFilesToPath(ignoredFiles),
-			"processed_files": azicliwkscosp.ConvertCodeFilesToPath(selectedFiles),
+			"excluded_files":  cosp.ConvertCodeFilesToPath(ignoredFiles),
+			"processed_files": cosp.ConvertCodeFilesToPath(selectedFiles),
 		}
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
@@ -171,7 +171,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 	output = buildOutputForCodeFiles(codeFiles, m, out, output)
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "Blobification process completed successfully.", nil, true)
-		out(nil, "refresh", fmt.Sprintf("New tree created with id: %s.", aziclicommon.IDText(treeID)), nil, true)
+		out(nil, "refresh", fmt.Sprintf("New tree created with id: %s.", common.IDText(treeID)), nil, true)
 	}
 	if !internal {
 		out(nil, "", "Your workspace has been refreshed.", nil, true)
@@ -181,7 +181,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out aziclicommon.P
 }
 
 // ExecValidate validates the local state.
-func (m *WorkspaceManager) ExecValidate(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecValidate(out common.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to validate the current workspace.", nil, true)
 		return output, err
@@ -201,7 +201,7 @@ func (m *WorkspaceManager) ExecValidate(out aziclicommon.PrinterOutFunc) (map[st
 }
 
 // execInternalValidate validates the local state.
-func (m *WorkspaceManager) execInternalValidate(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) execInternalValidate(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
 			out(nil, "", "Failed to validate the current workspace.", nil, true)
@@ -246,18 +246,18 @@ func (m *WorkspaceManager) execInternalValidate(internal bool, out aziclicommon.
 		}
 		groupedCodeFiles := groupCodeFiles(invalidCodeFiles)
 		for key := range groupedCodeFiles {
-			out(nil, "", fmt.Sprintf("	- '%s'", aziclicommon.FileText(key)), nil, true)
+			out(nil, "", fmt.Sprintf("	- '%s'", common.FileText(key)), nil, true)
 			for _, codeFile := range groupedCodeFiles[key] {
 				if codeFile.OID == "" {
-					out(nil, "", fmt.Sprintf("		%s: %s", aziclicommon.NumberText(codeFile.Section+1), aziclicommon.LogErrorText(codeFile.ErrorMessage)), nil, true)
+					out(nil, "", fmt.Sprintf("		%s: %s", common.NumberText(codeFile.Section+1), common.LogErrorText(codeFile.ErrorMessage)), nil, true)
 				} else {
-					out(nil, "", fmt.Sprintf("		%s: %s %s", aziclicommon.NumberText(codeFile.Section+1),
-						aziclicommon.IDText(codeFile.OID), aziclicommon.NameText(codeFile.OName)), nil, true)
-					out(nil, "", fmt.Sprintf("		   %s", aziclicommon.LogErrorText(codeFile.ErrorMessage)), nil, true)
+					out(nil, "", fmt.Sprintf("		%s: %s %s", common.NumberText(codeFile.Section+1),
+						common.IDText(codeFile.OID), common.NameText(codeFile.OName)), nil, true)
+					out(nil, "", fmt.Sprintf("		   %s", common.LogErrorText(codeFile.ErrorMessage)), nil, true)
 				}
 			}
 		}
 		out(nil, "", "\nPlease fix the errors to proceed.", nil, true)
 	}
-	return failedOpErr(output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "validation errors found in code files within the workspace. please check the logs for more details."))
+	return failedOpErr(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, "validation errors found in code files within the workspace. please check the logs for more details."))
 }

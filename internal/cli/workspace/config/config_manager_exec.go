@@ -20,9 +20,9 @@ import (
 	"fmt"
 	"strings"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/internal/cli/common"
+	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ExecInitialize initializes the config resources.
@@ -39,16 +39,16 @@ func (m *ConfigManager) ExecInitialize() error {
 }
 
 // ExecAddRemote adds a remote.
-func (m *ConfigManager) ExecAddRemote(remote string, server string, zap int, pap int, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *ConfigManager) ExecAddRemote(remote string, server string, zap int, pap int, output map[string]any, out common.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
-	remote, err := azicliwkscommon.SanitizeRemote(remote)
+	remote, err := wkscommon.SanitizeRemote(remote)
 	if err != nil {
 		return output, err
 	}
-	if azicliwkscommon.IsReservedKeyword(remote) {
-		return output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("remote %s is a reserved keyword", remote))
+	if wkscommon.IsReservedKeyword(remote) {
+		return output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("remote %s is a reserved keyword", remote))
 	}
 	server = strings.ToLower(server)
 	cfg, err := m.readConfig()
@@ -57,7 +57,7 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, zap int, pap
 	}
 	for rmt := range cfg.Remotes {
 		if remote == rmt {
-			return output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordExists, fmt.Sprintf("remote %s already exists", remote))
+			return output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordExists, fmt.Sprintf("remote %s already exists", remote))
 		}
 	}
 	cfgRemote := remoteConfig{
@@ -67,7 +67,7 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, zap int, pap
 	}
 	cfg.Remotes[remote] = cfgRemote
 	m.saveConfig(true, cfg)
-	out(nil, "", fmt.Sprintf("Remote %s has been added.", aziclicommon.KeywordText(remote)), nil, true)
+	out(nil, "", fmt.Sprintf("Remote %s has been added.", common.KeywordText(remote)), nil, true)
 	output = map[string]any{}
 	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
@@ -85,11 +85,11 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, zap int, pap
 }
 
 // ExecRemoveRemote removes a remote.
-func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, out common.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
-	remote, err := azicliwkscommon.SanitizeRemote(remote)
+	remote, err := wkscommon.SanitizeRemote(remote)
 	if err != nil {
 		return output, err
 	}
@@ -98,15 +98,15 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 		return output, err
 	}
 	if _, ok := cfg.Remotes[remote]; !ok {
-		return output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordNotFound, fmt.Sprintf("remote %s does not exist", remote))
+		return output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordNotFound, fmt.Sprintf("remote %s does not exist", remote))
 	}
 	for ledger := range cfg.Ledgers {
 		if cfg.Ledgers[ledger].Remote == remote {
-			return output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordExists, fmt.Sprintf("remote %s is used by ledger %s", remote, ledger))
+			return output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordExists, fmt.Sprintf("remote %s is used by ledger %s", remote, ledger))
 		}
 	}
 	cfgRemote := cfg.Remotes[remote]
-	out(nil, "", fmt.Sprintf("Remote %s has been removed.", aziclicommon.KeywordText(remote)), nil, true)
+	out(nil, "", fmt.Sprintf("Remote %s has been removed.", common.KeywordText(remote)), nil, true)
 	output = map[string]any{}
 	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
@@ -126,7 +126,7 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 }
 
 // ExecListRemotes lists the remotes.
-func (m *ConfigManager) ExecListRemotes(output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *ConfigManager) ExecListRemotes(output map[string]any, out common.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -144,7 +144,7 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out aziclicommon.
 		} else {
 			out(nil, "", "Your workspace configured remotes:\n", nil, true)
 			for _, remote := range remotes {
-				out(nil, "", fmt.Sprintf("	- %s", aziclicommon.KeywordText(remote)), nil, true)
+				out(nil, "", fmt.Sprintf("	- %s", common.KeywordText(remote)), nil, true)
 			}
 			out(nil, "", "\n", nil, false)
 		}
@@ -166,7 +166,7 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out aziclicommon.
 }
 
 // ExecAddLedger adds a ledger.
-func (m *ConfigManager) ExecAddLedger(ledgerURI, ref, remote, ledger, ledgerID string, zoneID int64, output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *ConfigManager) ExecAddLedger(ledgerURI, ref, remote, ledger, ledgerID string, zoneID int64, output map[string]any, out common.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -200,9 +200,9 @@ func (m *ConfigManager) ExecAddLedger(ledgerURI, ref, remote, ledger, ledgerID s
 		m.saveConfig(true, cfg)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "ledger", fmt.Sprintf("Ref successfully set to %s.", aziclicommon.KeywordText(cfgLedger.Ref)), nil, true)
+		out(nil, "ledger", fmt.Sprintf("Ref successfully set to %s.", common.KeywordText(cfgLedger.Ref)), nil, true)
 	}
-	out(nil, "", fmt.Sprintf("Ledger %s has been added.", aziclicommon.KeywordText(ledger)), nil, true)
+	out(nil, "", fmt.Sprintf("Ledger %s has been added.", common.KeywordText(ledger)), nil, true)
 	output = map[string]any{}
 	if m.ctx.IsJSONOutput() {
 		remotes := []any{}
@@ -219,7 +219,7 @@ func (m *ConfigManager) ExecAddLedger(ledgerURI, ref, remote, ledger, ledgerID s
 }
 
 // ExecListLedgers lists the ledgers.
-func (m *ConfigManager) ExecListLedgers(output map[string]any, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *ConfigManager) ExecListLedgers(output map[string]any, out common.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -242,7 +242,7 @@ func (m *ConfigManager) ExecListLedgers(output map[string]any, out aziclicommon.
 		} else {
 			out(nil, "", "Your workspace configured ledgers:\n", nil, true)
 			for _, ledger := range ledgers {
-				out(nil, "", fmt.Sprintf("	- %s", aziclicommon.KeywordText(ledger)), nil, true)
+				out(nil, "", fmt.Sprintf("	- %s", common.KeywordText(ledger)), nil, true)
 			}
 			out(nil, "", "\n", nil, false)
 		}

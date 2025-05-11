@@ -19,18 +19,18 @@ package services
 import (
 	"google.golang.org/grpc"
 
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/storage"
 )
 
 // EndpointInitializer is the service endpoint factory.
 type EndpointInitializer struct {
 	service      ServiceKind
 	port         int
-	registration func(*grpc.Server, *ServiceContext, *EndpointContext, *azstorage.StorageConnector) error
+	registration func(*grpc.Server, *ServiceContext, *EndpointContext, *storage.StorageConnector) error
 }
 
 // NewEndpointInitializer creates a new service endpoint factory.
-func NewEndpointInitializer(service ServiceKind, port int, registration func(*grpc.Server, *ServiceContext, *EndpointContext, *azstorage.StorageConnector) error) (EndpointInitializer, error) {
+func NewEndpointInitializer(service ServiceKind, port int, registration func(*grpc.Server, *ServiceContext, *EndpointContext, *storage.StorageConnector) error) (EndpointInitializer, error) {
 	return EndpointInitializer{
 		service:      service,
 		port:         port,
@@ -49,6 +49,6 @@ func (d EndpointInitializer) GetPort() int {
 }
 
 // GetRegistration returns the registration.
-func (d EndpointInitializer) GetRegistration() func(*grpc.Server, *ServiceContext, *EndpointContext, *azstorage.StorageConnector) error {
+func (d EndpointInitializer) GetRegistration() func(*grpc.Server, *ServiceContext, *EndpointContext, *storage.StorageConnector) error {
 	return d.registration
 }

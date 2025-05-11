@@ -25,7 +25,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azfiles "github.com/permguard/permguard/pkg/core/files"
+	"github.com/permguard/permguard/pkg/core/files"
 )
 
 // configureViper configures the viper.
@@ -75,7 +75,7 @@ func NewViperFromConfig(onCreation func(*viper.Viper) map[string]any) (*viper.Vi
 	configPath := filepath.Join(homeDir, ".permguard")
 	configName := "config"
 	config := filepath.Join(configPath, configName+".toml")
-	_, err = azfiles.CreateFileIfNotExists(config)
+	_, err = files.CreateFileIfNotExists(config)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func NewViperFromConfig(onCreation func(*viper.Viper) map[string]any) (*viper.Vi
 // ResetViperConfig resets the viper config.
 func ResetViperConfig(v *viper.Viper) (string, error) {
 	configFile := v.ConfigFileUsed()
-	_, err := azfiles.DeletePath(configFile)
+	_, err := files.DeletePath(configFile)
 	return configFile, err
 }
 

@@ -20,9 +20,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -31,16 +31,16 @@ const (
 )
 
 // runECommandForUpdateIdentitySource runs the command for creating an identity source.
-func runECommandForUpdateIdentitySource(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForUpdateIdentitySource(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	return runECommandForUpsertIdentitySource(deps, cmd, v, commandNameForIdentitySourcesUpdate, false)
 }
 
 // createCommandForIdentitySourceUpdate creates a command for managing identity source update.
-func createCommandForIdentitySourceUpdate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForIdentitySourceUpdate(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update a remote identity source",
-		Long: aziclicommon.BuildCliLongTemplate(`This command updates a remote identity source.
+		Long: common.BuildCliLongTemplate(`This command updates a remote identity source.
 
 Examples:
   # update an identity source and output the result in json format
@@ -51,8 +51,8 @@ Examples:
 		},
 	}
 	command.Flags().String(flagIdentitySourceID, "", "specify the id of the identity source to update")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySourcesUpdate, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the new name for the identity source")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySourcesUpdate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	v.BindPFlag(options.FlagName(commandNameForIdentitySourcesUpdate, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
+	command.Flags().String(common.FlagCommonName, "", "specify the new name for the identity source")
+	v.BindPFlag(options.FlagName(commandNameForIdentitySourcesUpdate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

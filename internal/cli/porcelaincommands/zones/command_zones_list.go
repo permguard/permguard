@@ -23,10 +23,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -35,11 +35,11 @@ const (
 )
 
 // runECommandForListZones runs the command for creating a zone.
-func runECommandForListZones(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForListZones(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
@@ -47,10 +47,10 @@ func runECommandForListZones(deps azcli.CliDependenciesProvider, cmd *cobra.Comm
 			printer.Println("Failed to list zones.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list zones", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to list zones", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
@@ -58,16 +58,16 @@ func runECommandForListZones(deps azcli.CliDependenciesProvider, cmd *cobra.Comm
 			printer.Println("Failed to list zones.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to list zones", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to list zones", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 
-	page := v.GetInt32(azoptions.FlagName(commandNameForZonesList, aziclicommon.FlagCommonPage))
-	pageSize := v.GetInt32(azoptions.FlagName(commandNameForZonesList, aziclicommon.FlagCommonPageSize))
-	zoneID := v.GetInt64(azoptions.FlagName(commandNameForZonesList, aziclicommon.FlagCommonZoneID))
-	name := v.GetString(azoptions.FlagName(commandNameForZonesList, aziclicommon.FlagCommonName))
+	page := v.GetInt32(options.FlagName(commandNameForZonesList, common.FlagCommonPage))
+	pageSize := v.GetInt32(options.FlagName(commandNameForZonesList, common.FlagCommonPageSize))
+	zoneID := v.GetInt64(options.FlagName(commandNameForZonesList, common.FlagCommonZoneID))
+	name := v.GetString(options.FlagName(commandNameForZonesList, common.FlagCommonName))
 
 	zones, err := client.FetchZonesBy(page, pageSize, zoneID, name)
 	if err != nil {
@@ -75,10 +75,10 @@ func runECommandForListZones(deps azcli.CliDependenciesProvider, cmd *cobra.Comm
 			printer.Println("Failed to list zones.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to list zones", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to list zones", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
@@ -94,11 +94,11 @@ func runECommandForListZones(deps azcli.CliDependenciesProvider, cmd *cobra.Comm
 }
 
 // createCommandForZoneList creates a command for managing zonelist.
-func createCommandForZoneList(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForZoneList(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List remote zones",
-		Long: aziclicommon.BuildCliLongTemplate(`This command lists all remote zones.
+		Long: common.BuildCliLongTemplate(`This command lists all remote zones.
 
 Examples:
   # list all zones and output the result in json format
@@ -114,13 +114,13 @@ Examples:
 			return runECommandForListZones(deps, cmd, v)
 		},
 	}
-	command.Flags().Int32P(aziclicommon.FlagCommonPage, aziclicommon.FlagCommonPageShort, 1, "specify the page number for pagination")
-	v.BindPFlag(azoptions.FlagName(commandNameForZonesList, aziclicommon.FlagCommonPage), command.Flags().Lookup(aziclicommon.FlagCommonPage))
-	command.Flags().Int32P(aziclicommon.FlagCommonPageSize, aziclicommon.FlagCommonPageSizeShort, 1000, "specify the number of items per page")
-	v.BindPFlag(azoptions.FlagName(commandNameForZonesList, aziclicommon.FlagCommonPageSize), command.Flags().Lookup(aziclicommon.FlagCommonPageSize))
-	command.Flags().Int64(aziclicommon.FlagCommonZoneID, 0, "filter results by zone ID")
-	v.BindPFlag(azoptions.FlagName(commandNameForZonesList, aziclicommon.FlagCommonZoneID), command.Flags().Lookup(aziclicommon.FlagCommonZoneID))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "filter results by zone name")
-	v.BindPFlag(azoptions.FlagName(commandNameForZonesList, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	command.Flags().Int32P(common.FlagCommonPage, common.FlagCommonPageShort, 1, "specify the page number for pagination")
+	v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonPage), command.Flags().Lookup(common.FlagCommonPage))
+	command.Flags().Int32P(common.FlagCommonPageSize, common.FlagCommonPageSizeShort, 1000, "specify the number of items per page")
+	v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonPageSize), command.Flags().Lookup(common.FlagCommonPageSize))
+	command.Flags().Int64(common.FlagCommonZoneID, 0, "filter results by zone ID")
+	v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))
+	command.Flags().String(common.FlagCommonName, "", "filter results by zone name")
+	v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

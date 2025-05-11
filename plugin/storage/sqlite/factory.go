@@ -21,20 +21,20 @@ import (
 
 	"github.com/spf13/viper"
 
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azicentralstorage "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage"
-	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
+	"github.com/permguard/permguard/pkg/agents/storage"
+	cerros "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage"
+	"github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
 // SQLiteStorageFactoryConfig holds the configuration for the server factory.
 type SQLiteStorageFactoryConfig struct {
-	config *azidb.SQLiteConnectionConfig
+	config *db.SQLiteConnectionConfig
 }
 
 // NewSQLiteStorageFactoryConfig creates a new server factory configuration.
 func NewSQLiteStorageFactoryConfig() (*SQLiteStorageFactoryConfig, error) {
-	dbConnCfg, err := azidb.NewSQLiteConnectionConfig()
+	dbConnCfg, err := db.NewSQLiteConnectionConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -57,15 +57,15 @@ func (c *SQLiteStorageFactoryConfig) InitFromViper(v *viper.Viper) error {
 // SQLiteStorageFactory holds the configuration for the server factory.
 type SQLiteStorageFactory struct {
 	config          *SQLiteStorageFactoryConfig
-	sqliteConnector azidb.SQLiteConnector
+	sqliteConnector db.SQLiteConnector
 }
 
 // NewSQLiteStorageFactory creates a new server factory configuration.
 func NewSQLiteStorageFactory(storageFctyCfg *SQLiteStorageFactoryConfig) (*SQLiteStorageFactory, error) {
 	if storageFctyCfg == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "storage factory configuration cannot be nil")
+		return nil, cerros.WrapSystemErrorWithMessage(cerros.ErrConfigurationGeneric, "storage factory configuration cannot be nil")
 	}
-	connection, err := azidb.NewSQLiteConnection(storageFctyCfg.config)
+	connection, err := db.NewSQLiteConnection(storageFctyCfg.config)
 	if err != nil {
 		return nil, err
 	}
@@ -76,6 +76,6 @@ func NewSQLiteStorageFactory(storageFctyCfg *SQLiteStorageFactoryConfig) (*SQLit
 }
 
 // CreateCentralStorage returns the central storage.
-func (f *SQLiteStorageFactory) CreateCentralStorage(storageContext *azstorage.StorageContext) (azstorage.CentralStorage, error) {
-	return azicentralstorage.NewSQLiteCentralStorage(storageContext, f.sqliteConnector)
+func (f *SQLiteStorageFactory) CreateCentralStorage(storageContext *storage.StorageContext) (storage.CentralStorage, error) {
+	return centralstorage.NewSQLiteCentralStorage(storageContext, f.sqliteConnector)
 }

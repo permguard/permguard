@@ -23,11 +23,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 const (
@@ -36,11 +36,11 @@ const (
 )
 
 // runECommandForDeleteIdentitySource runs the command for creating an identity source.
-func runECommandForDeleteIdentitySource(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForDeleteIdentitySource(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
@@ -48,10 +48,10 @@ func runECommandForDeleteIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 			printer.Println("Failed to delete the identity source.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the identity source", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to delete the identity source", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
@@ -59,23 +59,23 @@ func runECommandForDeleteIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 			printer.Println("Failed to delete the identity source.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the identity source", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to delete the identity source", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	zoneID := v.GetInt64(azoptions.FlagName(commandNameForIdentitySource, aziclicommon.FlagCommonZoneID))
-	identitySourceID := v.GetString(azoptions.FlagName(commandNameForIdentitySourcesDelete, flagIdentitySourceID))
+	zoneID := v.GetInt64(options.FlagName(commandNameForIdentitySource, common.FlagCommonZoneID))
+	identitySourceID := v.GetString(options.FlagName(commandNameForIdentitySourcesDelete, flagIdentitySourceID))
 	identitySource, err := client.DeleteIdentitySource(zoneID, identitySourceID)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to delete the identity source.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the identity source", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to delete the identity source", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
@@ -83,18 +83,18 @@ func runECommandForDeleteIdentitySource(deps azcli.CliDependenciesProvider, cmd 
 		identitySourceName := identitySource.Name
 		output[identitySourceID] = identitySourceName
 	} else if ctx.IsJSONOutput() {
-		output["identity_sources"] = []*azmodelszap.IdentitySource{identitySource}
+		output["identity_sources"] = []*zap.IdentitySource{identitySource}
 	}
 	printer.PrintlnMap(output)
 	return nil
 }
 
 // createCommandForIdentitySourceDelete creates a command for managing identity sources delete.
-func createCommandForIdentitySourceDelete(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForIdentitySourceDelete(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a remote identity source",
-		Long: aziclicommon.BuildCliLongTemplate(`This command deletes a remote identity source.
+		Long: common.BuildCliLongTemplate(`This command deletes a remote identity source.
 
 Examples:
   # delete an identity source and output the result in json format
@@ -105,6 +105,6 @@ Examples:
 		},
 	}
 	command.Flags().String(flagIdentitySourceID, "", "specify the id of the identity source to delete")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySourcesDelete, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
+	v.BindPFlag(options.FlagName(commandNameForIdentitySourcesDelete, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
 	return command
 }

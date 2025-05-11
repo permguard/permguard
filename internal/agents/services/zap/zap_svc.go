@@ -19,22 +19,22 @@ package zap
 import (
 	"google.golang.org/grpc"
 
-	azctrlzap "github.com/permguard/permguard/internal/agents/services/zap/controllers"
-	azapiv1zap "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
-	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	zapctrl "github.com/permguard/permguard/internal/agents/services/zap/controllers"
+	zapv1 "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
+	"github.com/permguard/permguard/pkg/agents/runtime"
+	"github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/storage"
 )
 
 // ZAPService holds the configuration for the server.
 type ZAPService struct {
 	config       *ZAPServiceConfig
-	configReader azruntime.ServiceConfigReader
+	configReader runtime.ServiceConfigReader
 }
 
 // NewZAPService creates a new server  configuration.
 func NewZAPService(zapServiceCfg *ZAPServiceConfig) (*ZAPService, error) {
-	configReader, err := azservices.NewServiceConfiguration(zapServiceCfg.GetConfigData())
+	configReader, err := services.NewServiceConfiguration(zapServiceCfg.GetConfigData())
 	if err != nil {
 		return nil, err
 	}
@@ -45,16 +45,16 @@ func NewZAPService(zapServiceCfg *ZAPServiceConfig) (*ZAPService, error) {
 }
 
 // GetService returns the service kind.
-func (f *ZAPService) GetService() azservices.ServiceKind {
+func (f *ZAPService) GetService() services.ServiceKind {
 	return f.config.GetService()
 }
 
 // GetEndpoints returns the service kind.
-func (f *ZAPService) GetEndpoints() ([]azservices.EndpointInitializer, error) {
-	endpoint, err := azservices.NewEndpointInitializer(
+func (f *ZAPService) GetEndpoints() ([]services.EndpointInitializer, error) {
+	endpoint, err := services.NewEndpointInitializer(
 		f.config.GetService(),
 		f.config.GetPort(),
-		func(grpcServer *grpc.Server, srvCtx *azservices.ServiceContext, endptCtx *azservices.EndpointContext, storageConnector *azstorage.StorageConnector) error {
+		func(grpcServer *grpc.Server, srvCtx *services.ServiceContext, endptCtx *services.EndpointContext, storageConnector *storage.StorageConnector) error {
 			storageKind := f.config.GetStorageCentralEngine()
 			centralStorage, err := storageConnector.GetCentralStorage(storageKind, endptCtx)
 			if err != nil {
@@ -64,7 +64,7 @@ func (f *ZAPService) GetEndpoints() ([]azservices.EndpointInitializer, error) {
 			if err != nil {
 				return err
 			}
-			controller, err := azctrlzap.NewZAPController(srvCtx, zapCentralStorage)
+			controller, err := zapctrl.NewZAPController(srvCtx, zapCentralStorage)
 			if err != nil {
 				return nil
 			}
@@ -72,18 +72,18 @@ func (f *ZAPService) GetEndpoints() ([]azservices.EndpointInitializer, error) {
 			if err != nil {
 				return err
 			}
-			zapServer, err := azapiv1zap.NewV1ZAPServer(endptCtx, controller)
-			azapiv1zap.RegisterV1ZAPServiceServer(grpcServer, zapServer)
+			zapServer, err := zapv1.NewV1ZAPServer(endptCtx, controller)
+			zapv1.RegisterV1ZAPServiceServer(grpcServer, zapServer)
 			return err
 		})
 	if err != nil {
 		return nil, err
 	}
-	endpoints := []azservices.EndpointInitializer{endpoint}
+	endpoints := []services.EndpointInitializer{endpoint}
 	return endpoints, nil
 }
 
 // GetServiceConfigReader returns the service configuration reader.
-func (f *ZAPService) GetServiceConfigReader() (azruntime.ServiceConfigReader, error) {
+func (f *ZAPService) GetServiceConfigReader() (runtime.ServiceConfigReader, error) {
 	return f.configReader, nil
 }

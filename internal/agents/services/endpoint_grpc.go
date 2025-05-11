@@ -25,11 +25,11 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
-	azservices "github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/services"
 )
 
 // withServerUnaryInterceptor returns a grpc.ServerOption that adds a unary interceptor to the server.
-func withServerUnaryInterceptor(serviceCtx *azservices.EndpointContext) grpc.ServerOption {
+func withServerUnaryInterceptor(serviceCtx *services.EndpointContext) grpc.ServerOption {
 	return grpc.UnaryInterceptor(func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		logger := serviceCtx.GetLogger()
 		defer func() {

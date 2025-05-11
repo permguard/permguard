@@ -25,8 +25,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
 )
 
 // validateArg is the function to validate the arguments.
@@ -38,7 +38,7 @@ var validateArg = func(cmd *cobra.Command, args []string) error {
 }
 
 // outFunc is the function to output the result.
-var outFunc = func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter) aziclicommon.PrinterOutFunc {
+var outFunc = func(ctx *common.CliCommandContext, printer cli.CliPrinter) common.PrinterOutFunc {
 	return func(output map[string]any, key string, value any, err error, newLine bool) map[string]any {
 		if ctx.IsJSONOutput() {
 			key = strings.ReplaceAll(key, "-", "_")
@@ -48,7 +48,7 @@ var outFunc = func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter
 		}
 		if key != "" && ctx.IsVerboseTerminalOutput() {
 			timestamp := time.Now().Format(time.TimeOnly)
-			key = fmt.Sprintf("%s %s", aziclicommon.TimeStampText(timestamp), aziclicommon.LogHeaderText(key))
+			key = fmt.Sprintf("%s %s", common.TimeStampText(timestamp), common.LogHeaderText(key))
 		}
 		output[key] = value
 		if ctx.IsTerminalOutput() {
@@ -67,7 +67,7 @@ var outFunc = func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter
 }
 
 // CreateCommandsForWorkspace creates the workspace commands.
-func CreateCommandsForWorkspace(deps azcli.CliDependenciesProvider, v *viper.Viper) []*cobra.Command {
+func CreateCommandsForWorkspace(deps cli.CliDependenciesProvider, v *viper.Viper) []*cobra.Command {
 	commands := []*cobra.Command{
 		CreateCommandForWorkspaceInit(deps, v),
 		CreateCommandForWorkspaceRemote(deps, v),

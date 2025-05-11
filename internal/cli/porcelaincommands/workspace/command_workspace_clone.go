@@ -25,12 +25,12 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azfiles "github.com/permguard/permguard/pkg/core/files"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/workspace"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/core/files"
 )
 
 const (
@@ -39,73 +39,73 @@ const (
 )
 
 // runECommandForCloneWorkspace runs the command for creating an workspace.
-func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForCloneWorkspace(args []string, deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	if len(args) < 1 {
 		color.Red("Invalid arguments")
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	ledgerURI := strings.ToLower(args[0])
 	if !strings.HasPrefix(ledgerURI, "permguard@") {
 		color.Red("Invalid arguments")
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	ledger := strings.TrimPrefix(ledgerURI, "permguard@")
 	elements := strings.Split(ledger, "/")
 	if len(elements) < 3 {
 		color.Red("Invalid arguments")
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	folder := elements[2]
-	workDir, err := cmd.Flags().GetString(aziclicommon.FlagWorkingDirectory)
+	workDir, err := cmd.Flags().GetString(common.FlagWorkingDirectory)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	ledgerFolder := filepath.Join(workDir, folder)
-	cmd.Flags().Set(aziclicommon.FlagWorkingDirectory, ledgerFolder)
-	if ok, _ := azfiles.CheckPathIfExists(ledgerFolder); ok {
+	cmd.Flags().Set(common.FlagWorkingDirectory, ledgerFolder)
+	if ok, _ := files.CheckPathIfExists(ledgerFolder); ok {
 		color.Red(fmt.Sprintf("The ledger %s already exists", ledgerFolder))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	azfiles.CreateDirIfNotExists(ledgerFolder)
+	files.CreateDirIfNotExists(ledgerFolder)
 
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	if len(args) < 1 {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to clone the workspace.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to clone the workspace.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to clone the workspace.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	langFct, err := deps.GetLanguageFactory()
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, langFct)
+	wksMgr, err := workspace.NewInternalManager(ctx, langFct)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	zapPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagZAP))
-	papPort := v.GetInt(azoptions.FlagName(commandNameForWorkspacesClone, flagPAP))
+	zapPort := v.GetInt(options.FlagName(commandNameForWorkspacesClone, flagZAP))
+	papPort := v.GetInt(options.FlagName(commandNameForWorkspacesClone, flagPAP))
 	output, err := wksMgr.ExecCloneLedger(ledgerURI, zapPort, papPort, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to clone the workspace.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to clone the workspace.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to clone the workspace.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
 		printer.PrintlnMap(output)
@@ -114,11 +114,11 @@ func runECommandForCloneWorkspace(args []string, deps azcli.CliDependenciesProvi
 }
 
 // CreateCommandForWorkspaceClone creates a command for cloneializing a permguard workspace.
-func CreateCommandForWorkspaceClone(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceClone(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "clone",
 		Short: "Clone a remote ledger to the local permguard workspace",
-		Long: aziclicommon.BuildCliLongTemplate(`This command clones a remote ledger to the local permguard workspace.
+		Long: common.BuildCliLongTemplate(`This command clones a remote ledger to the local permguard workspace.
 
 Examples:
   # clone a remote ledger to the local permguard workspace
@@ -129,8 +129,8 @@ Examples:
 	}
 
 	command.Flags().Int(flagZAP, 9091, "specify the port number for the ZAP")
-	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesClone, flagZAP), command.Flags().Lookup(flagZAP))
+	v.BindPFlag(options.FlagName(commandNameForWorkspacesClone, flagZAP), command.Flags().Lookup(flagZAP))
 	command.Flags().Int(flagPAP, 9092, "specify the port number for the PAP")
-	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesClone, flagPAP), command.Flags().Lookup(flagPAP))
+	v.BindPFlag(options.FlagName(commandNameForWorkspacesClone, flagPAP), command.Flags().Lookup(flagPAP))
 	return command
 }

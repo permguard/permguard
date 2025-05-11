@@ -19,9 +19,9 @@ package v1
 import (
 	"context"
 
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
-	grpc "google.golang.org/grpc"
+	"github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
+	"google.golang.org/grpc"
 )
 
 // ZAPService is the service for the ZAP.
@@ -29,44 +29,44 @@ type ZAPService interface {
 	Setup() error
 
 	// CreateZone creates a new zone.
-	CreateZone(zone *azmodelszap.Zone) (*azmodelszap.Zone, error)
+	CreateZone(zone *zap.Zone) (*zap.Zone, error)
 	// UpdateZone updates a zone.
-	UpdateZone(zone *azmodelszap.Zone) (*azmodelszap.Zone, error)
+	UpdateZone(zone *zap.Zone) (*zap.Zone, error)
 	// DeleteZone deletes a zone.
-	DeleteZone(zoneID int64) (*azmodelszap.Zone, error)
+	DeleteZone(zoneID int64) (*zap.Zone, error)
 	// FetchZones returns all zones.
-	FetchZones(page int32, pageSize int32, filter map[string]any) ([]azmodelszap.Zone, error)
+	FetchZones(page int32, pageSize int32, filter map[string]any) ([]zap.Zone, error)
 
 	// CreateIdentitySource creates a new identity source.
-	CreateIdentitySource(identitySource *azmodelszap.IdentitySource) (*azmodelszap.IdentitySource, error)
+	CreateIdentitySource(identitySource *zap.IdentitySource) (*zap.IdentitySource, error)
 	// UpdateIdentitySource updates an identity source.
-	UpdateIdentitySource(identitySource *azmodelszap.IdentitySource) (*azmodelszap.IdentitySource, error)
+	UpdateIdentitySource(identitySource *zap.IdentitySource) (*zap.IdentitySource, error)
 	// DeleteIdentitySource deletes an identity source.
-	DeleteIdentitySource(zoneID int64, identitySourceID string) (*azmodelszap.IdentitySource, error)
+	DeleteIdentitySource(zoneID int64, identitySourceID string) (*zap.IdentitySource, error)
 	// FetchIdentitySources returns all identity sources.
-	FetchIdentitySources(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelszap.IdentitySource, error)
+	FetchIdentitySources(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]zap.IdentitySource, error)
 
 	// CreateIdentity creates a new identity.
-	CreateIdentity(identity *azmodelszap.Identity) (*azmodelszap.Identity, error)
+	CreateIdentity(identity *zap.Identity) (*zap.Identity, error)
 	// UpdateIdentity updates an identity.
-	UpdateIdentity(identity *azmodelszap.Identity) (*azmodelszap.Identity, error)
+	UpdateIdentity(identity *zap.Identity) (*zap.Identity, error)
 	// DeleteIdentity deletes an identity.
-	DeleteIdentity(zoneID int64, identityID string) (*azmodelszap.Identity, error)
+	DeleteIdentity(zoneID int64, identityID string) (*zap.Identity, error)
 	// FetchIdentities returns all identities.
-	FetchIdentities(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelszap.Identity, error)
+	FetchIdentities(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]zap.Identity, error)
 
 	// CreateTenant creates a new tenant.
-	CreateTenant(tenant *azmodelszap.Tenant) (*azmodelszap.Tenant, error)
+	CreateTenant(tenant *zap.Tenant) (*zap.Tenant, error)
 	// UpdateTenant updates a tenant.
-	UpdateTenant(tenant *azmodelszap.Tenant) (*azmodelszap.Tenant, error)
+	UpdateTenant(tenant *zap.Tenant) (*zap.Tenant, error)
 	// DeleteTenant deletes a tenant.
-	DeleteTenant(zoneID int64, tenantID string) (*azmodelszap.Tenant, error)
+	DeleteTenant(zoneID int64, tenantID string) (*zap.Tenant, error)
 	// FetchTenants returns all tenants.
-	FetchTenants(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelszap.Tenant, error)
+	FetchTenants(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]zap.Tenant, error)
 }
 
 // NewV1ZAPServer creates a new ZAP server.
-func NewV1ZAPServer(endpointCtx *azservices.EndpointContext, Service ZAPService) (*V1ZAPServer, error) {
+func NewV1ZAPServer(endpointCtx *services.EndpointContext, Service ZAPService) (*V1ZAPServer, error) {
 	return &V1ZAPServer{
 		ctx:     endpointCtx,
 		service: Service,
@@ -76,13 +76,13 @@ func NewV1ZAPServer(endpointCtx *azservices.EndpointContext, Service ZAPService)
 // V1ZAPServer is the gRPC server for the ZAP.
 type V1ZAPServer struct {
 	UnimplementedV1ZAPServiceServer
-	ctx     *azservices.EndpointContext
+	ctx     *services.EndpointContext
 	service ZAPService
 }
 
 // CreateZone creates a new zone.
 func (s *V1ZAPServer) CreateZone(ctx context.Context, zoneRequest *ZoneCreateRequest) (*ZoneResponse, error) {
-	zone, err := s.service.CreateZone(&azmodelszap.Zone{Name: zoneRequest.Name})
+	zone, err := s.service.CreateZone(&zap.Zone{Name: zoneRequest.Name})
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +91,7 @@ func (s *V1ZAPServer) CreateZone(ctx context.Context, zoneRequest *ZoneCreateReq
 
 // UpdateZone updates a zone.
 func (s *V1ZAPServer) UpdateZone(ctx context.Context, zoneRequest *ZoneUpdateRequest) (*ZoneResponse, error) {
-	zone, err := s.service.UpdateZone((&azmodelszap.Zone{ZoneID: zoneRequest.ZoneID, Name: zoneRequest.Name}))
+	zone, err := s.service.UpdateZone((&zap.Zone{ZoneID: zoneRequest.ZoneID, Name: zoneRequest.Name}))
 	if err != nil {
 		return nil, err
 	}
@@ -111,10 +111,10 @@ func (s *V1ZAPServer) DeleteZone(ctx context.Context, zoneRequest *ZoneDeleteReq
 func (s *V1ZAPServer) FetchZones(zoneRequest *ZoneFetchRequest, stream grpc.ServerStreamingServer[ZoneResponse]) error {
 	fields := map[string]any{}
 	if zoneRequest.ZoneID != nil {
-		fields[azmodelszap.FieldZoneZoneID] = *zoneRequest.ZoneID
+		fields[zap.FieldZoneZoneID] = *zoneRequest.ZoneID
 	}
 	if zoneRequest.Name != nil {
-		fields[azmodelszap.FieldZoneName] = *zoneRequest.Name
+		fields[zap.FieldZoneName] = *zoneRequest.Name
 
 	}
 	page := int32(0)
@@ -141,7 +141,7 @@ func (s *V1ZAPServer) FetchZones(zoneRequest *ZoneFetchRequest, stream grpc.Serv
 
 // CreateIdentitySource creates a new identity source.
 func (s *V1ZAPServer) CreateIdentitySource(ctx context.Context, identitySourceRequest *IdentitySourceCreateRequest) (*IdentitySourceResponse, error) {
-	identitySource, err := s.service.CreateIdentitySource(&azmodelszap.IdentitySource{ZoneID: identitySourceRequest.ZoneID, Name: identitySourceRequest.Name})
+	identitySource, err := s.service.CreateIdentitySource(&zap.IdentitySource{ZoneID: identitySourceRequest.ZoneID, Name: identitySourceRequest.Name})
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +150,7 @@ func (s *V1ZAPServer) CreateIdentitySource(ctx context.Context, identitySourceRe
 
 // UpdateIdentitySource updates an identity source.
 func (s *V1ZAPServer) UpdateIdentitySource(ctx context.Context, identitySourceRequest *IdentitySourceUpdateRequest) (*IdentitySourceResponse, error) {
-	identitySource, err := s.service.UpdateIdentitySource((&azmodelszap.IdentitySource{IdentitySourceID: identitySourceRequest.IdentitySourceID, ZoneID: identitySourceRequest.ZoneID, Name: identitySourceRequest.Name}))
+	identitySource, err := s.service.UpdateIdentitySource((&zap.IdentitySource{IdentitySourceID: identitySourceRequest.IdentitySourceID, ZoneID: identitySourceRequest.ZoneID, Name: identitySourceRequest.Name}))
 	if err != nil {
 		return nil, err
 	}
@@ -169,12 +169,12 @@ func (s *V1ZAPServer) DeleteIdentitySource(ctx context.Context, identitySourceRe
 // FetchIdentitySources returns all identity sources.
 func (s *V1ZAPServer) FetchIdentitySources(identitySourceRequest *IdentitySourceFetchRequest, stream grpc.ServerStreamingServer[IdentitySourceResponse]) error {
 	fields := map[string]any{}
-	fields[azmodelszap.FieldIdentitySourceZoneID] = identitySourceRequest.ZoneID
+	fields[zap.FieldIdentitySourceZoneID] = identitySourceRequest.ZoneID
 	if identitySourceRequest.Name != nil {
-		fields[azmodelszap.FieldIdentitySourceName] = *identitySourceRequest.Name
+		fields[zap.FieldIdentitySourceName] = *identitySourceRequest.Name
 	}
 	if identitySourceRequest.IdentitySourceID != nil {
-		fields[azmodelszap.FieldIdentitySourceIdentitySourceID] = *identitySourceRequest.IdentitySourceID
+		fields[zap.FieldIdentitySourceIdentitySourceID] = *identitySourceRequest.IdentitySourceID
 	}
 	page := int32(0)
 	if identitySourceRequest.Page != nil {
@@ -200,7 +200,7 @@ func (s *V1ZAPServer) FetchIdentitySources(identitySourceRequest *IdentitySource
 
 // CreateIdentity creates a new identity.
 func (s *V1ZAPServer) CreateIdentity(ctx context.Context, identityRequest *IdentityCreateRequest) (*IdentityResponse, error) {
-	identity, err := s.service.CreateIdentity(&azmodelszap.Identity{ZoneID: identityRequest.ZoneID, IdentitySourceID: identityRequest.IdentitySourceID, Kind: identityRequest.Kind, Name: identityRequest.Name})
+	identity, err := s.service.CreateIdentity(&zap.Identity{ZoneID: identityRequest.ZoneID, IdentitySourceID: identityRequest.IdentitySourceID, Kind: identityRequest.Kind, Name: identityRequest.Name})
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +209,7 @@ func (s *V1ZAPServer) CreateIdentity(ctx context.Context, identityRequest *Ident
 
 // UpdateIdentity updates an identity.
 func (s *V1ZAPServer) UpdateIdentity(ctx context.Context, identityRequest *IdentityUpdateRequest) (*IdentityResponse, error) {
-	identity, err := s.service.UpdateIdentity((&azmodelszap.Identity{IdentityID: identityRequest.IdentityID, ZoneID: identityRequest.ZoneID, Kind: identityRequest.Kind, Name: identityRequest.Name}))
+	identity, err := s.service.UpdateIdentity((&zap.Identity{IdentityID: identityRequest.IdentityID, ZoneID: identityRequest.ZoneID, Kind: identityRequest.Kind, Name: identityRequest.Name}))
 	if err != nil {
 		return nil, err
 	}
@@ -228,18 +228,18 @@ func (s *V1ZAPServer) DeleteIdentity(ctx context.Context, identityRequest *Ident
 // FetchIdentities returns all identities.
 func (s *V1ZAPServer) FetchIdentities(identityRequest *IdentityFetchRequest, stream grpc.ServerStreamingServer[IdentityResponse]) error {
 	fields := map[string]any{}
-	fields[azmodelszap.FieldIdentityZoneID] = identityRequest.ZoneID
+	fields[zap.FieldIdentityZoneID] = identityRequest.ZoneID
 	if identityRequest.IdentitySourceID != nil {
-		fields[azmodelszap.FieldIdentityIdentitySourceID] = *identityRequest.IdentitySourceID
+		fields[zap.FieldIdentityIdentitySourceID] = *identityRequest.IdentitySourceID
 	}
 	if identityRequest.IdentityID != nil {
-		fields[azmodelszap.FieldIdentityIdentityID] = *identityRequest.IdentityID
+		fields[zap.FieldIdentityIdentityID] = *identityRequest.IdentityID
 	}
 	if identityRequest.Kind != nil {
-		fields[azmodelszap.FieldIdentityKind] = *identityRequest.Kind
+		fields[zap.FieldIdentityKind] = *identityRequest.Kind
 	}
 	if identityRequest.Name != nil {
-		fields[azmodelszap.FieldIdentityName] = *identityRequest.Name
+		fields[zap.FieldIdentityName] = *identityRequest.Name
 	}
 	page := int32(0)
 	if identityRequest.Page != nil {
@@ -265,7 +265,7 @@ func (s *V1ZAPServer) FetchIdentities(identityRequest *IdentityFetchRequest, str
 
 // CreateTenant creates a new tenant.
 func (s *V1ZAPServer) CreateTenant(ctx context.Context, tenantRequest *TenantCreateRequest) (*TenantResponse, error) {
-	tenant, err := s.service.CreateTenant(&azmodelszap.Tenant{ZoneID: tenantRequest.ZoneID, Name: tenantRequest.Name})
+	tenant, err := s.service.CreateTenant(&zap.Tenant{ZoneID: tenantRequest.ZoneID, Name: tenantRequest.Name})
 	if err != nil {
 		return nil, err
 	}
@@ -274,7 +274,7 @@ func (s *V1ZAPServer) CreateTenant(ctx context.Context, tenantRequest *TenantCre
 
 // UpdateTenant updates a tenant.
 func (s *V1ZAPServer) UpdateTenant(ctx context.Context, tenantRequest *TenantUpdateRequest) (*TenantResponse, error) {
-	tenant, err := s.service.UpdateTenant((&azmodelszap.Tenant{TenantID: tenantRequest.TenantID, ZoneID: tenantRequest.ZoneID, Name: tenantRequest.Name}))
+	tenant, err := s.service.UpdateTenant((&zap.Tenant{TenantID: tenantRequest.TenantID, ZoneID: tenantRequest.ZoneID, Name: tenantRequest.Name}))
 	if err != nil {
 		return nil, err
 	}
@@ -293,12 +293,12 @@ func (s *V1ZAPServer) DeleteTenant(ctx context.Context, tenantRequest *TenantDel
 // FetchTenants returns all tenants.
 func (s *V1ZAPServer) FetchTenants(tenantRequest *TenantFetchRequest, stream grpc.ServerStreamingServer[TenantResponse]) error {
 	fields := map[string]any{}
-	fields[azmodelszap.FieldTenantZoneID] = tenantRequest.ZoneID
+	fields[zap.FieldTenantZoneID] = tenantRequest.ZoneID
 	if tenantRequest.Name != nil {
-		fields[azmodelszap.FieldTenantName] = *tenantRequest.Name
+		fields[zap.FieldTenantName] = *tenantRequest.Name
 	}
 	if tenantRequest.TenantID != nil {
-		fields[azmodelszap.FieldTenantTenantID] = *tenantRequest.TenantID
+		fields[zap.FieldTenantTenantID] = *tenantRequest.TenantID
 	}
 	page := int32(0)
 	if tenantRequest.Page != nil {

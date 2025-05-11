@@ -23,10 +23,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/workspace"
+	"github.com/permguard/permguard/pkg/cli"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -35,31 +35,31 @@ const (
 )
 
 // runECommandForCheckoutWorkspace runs the command for creating an workspace.
-func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForCheckoutWorkspace(args []string, deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	if len(args) < 1 {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to checkout the workspace.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to checkout the workspace.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to checkout the workspace.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	langFct, err := deps.GetLanguageFactory()
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, langFct)
+	wksMgr, err := workspace.NewInternalManager(ctx, langFct)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	ledger := args[0]
 	output, err := wksMgr.ExecCheckoutLedger(ledger, outFunc(ctx, printer))
@@ -68,10 +68,10 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 			printer.Println("Failed to checkout the workspace.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to checkout the workspace.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to checkout the workspace.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
 		printer.PrintlnMap(output)
@@ -80,11 +80,11 @@ func runECommandForCheckoutWorkspace(args []string, deps azcli.CliDependenciesPr
 }
 
 // CreateCommandForWorkspaceCheckout creates a command for checkoutializing a permguard workspace.
-func CreateCommandForWorkspaceCheckout(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceCheckout(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "checkout",
 		Short: `Check out the contents of a remote ledger to the local permguard workspace`,
-		Long: aziclicommon.BuildCliLongTemplate(`This command checks out the contents of a remote ledger to the local permguard workspace.
+		Long: common.BuildCliLongTemplate(`This command checks out the contents of a remote ledger to the local permguard workspace.
 
 Examples:
   # check out the contents of a remote ledger to the local permguard workspace

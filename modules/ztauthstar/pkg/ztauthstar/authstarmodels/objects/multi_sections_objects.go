@@ -19,7 +19,7 @@ package objects
 import (
 	"errors"
 
-	azcopier "github.com/permguard/permguard/common/pkg/extensions/copier"
+	"github.com/permguard/permguard/common/pkg/extensions/copier"
 )
 
 // SectionObject represents a section object.
@@ -124,7 +124,7 @@ func (m *MultiSectionsObject) GetPath() string {
 
 // GetSectionObjects returns the section objects.
 func (m *MultiSectionsObject) GetSectionObjects() []*SectionObject {
-	return azcopier.CopySlice(m.objSections)
+	return copier.CopySlice(m.objSections)
 }
 
 // GetNumberOfSections returns the number of sections.

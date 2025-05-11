@@ -24,15 +24,15 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelzap "github.com/permguard/permguard/pkg/transport/models/zap"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 // runECommandForUpsertZone runs the command for creating or updating a zone.
-func runECommandForUpsertZone(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+func runECommandForUpsertZone(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
 	opGetErroMessage := func(op bool) string {
 		if op {
 			return "Failed to create the zone"
@@ -41,12 +41,12 @@ func runECommandForUpsertZone(deps azcli.CliDependenciesProvider, cmd *cobra.Com
 	}
 	if deps == nil {
 		color.Red("cli: an issue has been detected with the cli code configuration. please create a github issue with the details")
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
@@ -54,10 +54,10 @@ func runECommandForUpsertZone(deps azcli.CliDependenciesProvider, cmd *cobra.Com
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
@@ -65,18 +65,18 @@ func runECommandForUpsertZone(deps azcli.CliDependenciesProvider, cmd *cobra.Com
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
-	var zone *azmodelzap.Zone
+	name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
+	var zone *zap.Zone
 	if isCreate {
 		zone, err = client.CreateZone(name)
 	} else {
-		zoneID := v.GetInt64(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonZoneID))
-		inputZone := &azmodelzap.Zone{
+		zoneID := v.GetInt64(options.FlagName(flagPrefix, common.FlagCommonZoneID))
+		inputZone := &zap.Zone{
 			ZoneID: zoneID,
 			Name:   name,
 		}
@@ -87,17 +87,17 @@ func runECommandForUpsertZone(deps azcli.CliDependenciesProvider, cmd *cobra.Com
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
 		zoneID := fmt.Sprintf("%d", zone.ZoneID)
 		output[zoneID] = zone.Name
 	} else if ctx.IsJSONOutput() {
-		output["zones"] = []*azmodelzap.Zone{zone}
+		output["zones"] = []*zap.Zone{zone}
 	}
 	printer.PrintlnMap(output)
 	return nil
@@ -109,16 +109,16 @@ func runECommandForZones(cmd *cobra.Command, args []string) error {
 }
 
 // CreateCommandForZones creates a command for managing zones.
-func CreateCommandForZones(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForZones(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "zones",
 		Short: "Manage zones on the remote server",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages zones on the remote server.`),
+		Long:  common.BuildCliLongTemplate(`This command manages zones on the remote server.`),
 		RunE:  runECommandForZones,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonZoneID, 0, "filter results by zone ID across all subcommands")
-	v.BindPFlag(azoptions.FlagName(commandNameForZonesList, aziclicommon.FlagCommonZoneID), command.Flags().Lookup(aziclicommon.FlagCommonZoneID))
+	command.PersistentFlags().Int64(common.FlagCommonZoneID, 0, "filter results by zone ID across all subcommands")
+	v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))
 
 	command.AddCommand(createCommandForZoneCreate(deps, v))
 	command.AddCommand(createCommandForZoneUpdate(deps, v))

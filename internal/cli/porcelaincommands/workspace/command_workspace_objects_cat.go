@@ -23,11 +23,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/workspace"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -42,31 +42,31 @@ const (
 )
 
 // runECommandForObjectsCatWorkspace runs the command for catting the object content.
-func runECommandForObjectsCatWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, oid string) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForObjectsCatWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, oid string) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	absLangFact, err := deps.GetLanguageFactory()
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, absLangFact)
+	wksMgr, err := workspace.NewInternalManager(ctx, absLangFact)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	includeStorage := v.GetBool(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListObjects))
-	includeCode := v.GetBool(azoptions.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListCode))
+	includeStorage := v.GetBool(options.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListObjects))
+	includeCode := v.GetBool(options.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListCode))
 	if !includeStorage && !includeCode {
 		includeStorage = true
 	}
 
-	showFrontendLanguage := v.GetBool(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesFrontendLanguage))
-	showRaw := v.GetBool(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatRaw))
-	showContent := v.GetBool(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatContent))
+	showFrontendLanguage := v.GetBool(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesFrontendLanguage))
+	showRaw := v.GetBool(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatRaw))
+	showContent := v.GetBool(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatContent))
 
 	output, err := wksMgr.ExecObjectsCat(includeStorage, includeCode, showFrontendLanguage, showRaw, showContent, oid, outFunc(ctx, printer))
 	if err != nil {
@@ -74,10 +74,10 @@ func runECommandForObjectsCatWorkspace(deps azcli.CliDependenciesProvider, cmd *
 			printer.Println("Failed to cat the object.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to cat the object.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to cat the object.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
 		printer.PrintlnMap(output)
@@ -86,11 +86,11 @@ func runECommandForObjectsCatWorkspace(deps azcli.CliDependenciesProvider, cmd *
 }
 
 // CreateCommandForWorkspaceObjectsCat creates the command for catting the object content.
-func CreateCommandForWorkspaceObjectsCat(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceObjectsCat(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "cat",
 		Short: "Cat the object content",
-		Long: aziclicommon.BuildCliLongTemplate(`This command cats the object content.
+		Long: common.BuildCliLongTemplate(`This command cats the object content.
 
 Examples:
   # print the object content
@@ -102,13 +102,13 @@ Examples:
 	}
 
 	command.Flags().Bool(commandNameForWorkspacesCatRaw, false, "display the raw, unprocessed content")
-	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatRaw), command.Flags().Lookup(commandNameForWorkspacesCatRaw))
+	v.BindPFlag(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatRaw), command.Flags().Lookup(commandNameForWorkspacesCatRaw))
 
 	command.Flags().Bool(commandNameForWorkspacesCatContent, false, "display only the processed content")
-	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatContent), command.Flags().Lookup(commandNameForWorkspacesCatContent))
+	v.BindPFlag(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatContent), command.Flags().Lookup(commandNameForWorkspacesCatContent))
 
 	command.Flags().Bool(commandNameForWorkspacesFrontendLanguage, false, "display the content formatted using the front-end language")
-	v.BindPFlag(azoptions.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesFrontendLanguage), command.Flags().Lookup(commandNameForWorkspacesFrontendLanguage))
+	v.BindPFlag(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesFrontendLanguage), command.Flags().Lookup(commandNameForWorkspacesFrontendLanguage))
 
 	return command
 }

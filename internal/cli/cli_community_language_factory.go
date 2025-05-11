@@ -19,35 +19,35 @@ package cli
 import (
 	"fmt"
 
-	azlang "github.com/permguard/permguard/pkg/authz/languages"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azplugincedar "github.com/permguard/permguard/plugin/languages/cedar"
-	azcedarlang "github.com/permguard/permguard/ztauthstar-cedar/pkg/cedarlang"
+	"github.com/permguard/permguard/pkg/authz/languages"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/plugin/languages/cedar"
+	"github.com/permguard/permguard/ztauthstar-cedar/pkg/cedarlang"
 )
 
 // CommunityLanguageFactory is the factory for the community language.
 type CommunityLanguageFactory struct {
-	languages map[string]azlang.LanguageAbastraction
+	languages map[string]languages.LanguageAbastraction
 }
 
 // NewCommunityLanguageFactory creates a new community language factory.
 func NewCommunityLanguageFactory() (*CommunityLanguageFactory, error) {
 	languageFactory := &CommunityLanguageFactory{
-		languages: map[string]azlang.LanguageAbastraction{},
+		languages: map[string]languages.LanguageAbastraction{},
 	}
-	cedarLanguageAbs, err := azplugincedar.NewCedarLanguageAbstraction()
+	cedarLanguageAbs, err := cedar.NewCedarLanguageAbstraction()
 	if err != nil {
 		return nil, err
 	}
-	languageFactory.languages[azcedarlang.LanguageName] = cedarLanguageAbs
+	languageFactory.languages[cedarlang.LanguageName] = cedarLanguageAbs
 	return languageFactory, nil
 }
 
 // GetLanguageAbastraction gets the language abstraction for the input language.
-func (c *CommunityLanguageFactory) GetLanguageAbastraction(language, version string) (azlang.LanguageAbastraction, error) {
+func (c *CommunityLanguageFactory) GetLanguageAbastraction(language, version string) (languages.LanguageAbastraction, error) {
 	langAbs, exists := c.languages[language]
 	if !exists {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, fmt.Sprintf("invalid language %s with version %s", language, version))
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrConfigurationGeneric, fmt.Sprintf("invalid language %s with version %s", language, version))
 	}
 	return langAbs, nil
 }

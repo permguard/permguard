@@ -20,9 +20,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -31,16 +31,16 @@ const (
 )
 
 // runECommandForUpdateTenant runs the command for creating a tenant.
-func runECommandForUpdateTenant(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForUpdateTenant(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	return runECommandForUpsertTenant(deps, cmd, v, commandNameForTenantsUpdate, false)
 }
 
 // createCommandForTenantUpdate creates a command for managing tenantupdate.
-func createCommandForTenantUpdate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForTenantUpdate(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update a remote tenant",
-		Long: aziclicommon.BuildCliLongTemplate(`This command updates a remote tenant.
+		Long: common.BuildCliLongTemplate(`This command updates a remote tenant.
 
 Examples:
   # update a tenant and output the result in json format
@@ -51,8 +51,8 @@ Examples:
 		},
 	}
 	command.Flags().String(flagTenantID, "", "specify the id of the tenant to update")
-	v.BindPFlag(azoptions.FlagName(commandNameForTenantsUpdate, flagTenantID), command.Flags().Lookup(flagTenantID))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the new name for the tenant")
-	v.BindPFlag(azoptions.FlagName(commandNameForTenantsUpdate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	v.BindPFlag(options.FlagName(commandNameForTenantsUpdate, flagTenantID), command.Flags().Lookup(flagTenantID))
+	command.Flags().String(common.FlagCommonName, "", "specify the new name for the tenant")
+	v.BindPFlag(options.FlagName(commandNameForTenantsUpdate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

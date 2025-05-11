@@ -23,19 +23,19 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/mock"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	aztestutils "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
-	azmocks "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 // TestListCommandForTenantsList tests the listCommandForTenantsList function.
 func TestListCommandForTenantsList(t *testing.T) {
 	args := []string{"-h"}
 	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command lists all remote tenants."}
-	aztestutils.BaseCommandTest(t, createCommandForTenantList, args, false, outputs)
+	testutils.BaseCommandTest(t, createCommandForTenantList, args, false, outputs)
 }
 
 // TestCliTenantsListWithError tests the command for creating an tenant with an error.
@@ -58,18 +58,18 @@ func TestCliTenantsListWithError(t *testing.T) {
 		outputs := []string{""}
 
 		v := viper.New()
-		v.Set(azconfigs.FlagName(aziclicommon.FlagPrefixZAP, aziclicommon.FlagSuffixZAPTarget), "localhost:9092")
+		v.Set(options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPTarget), "localhost:9092")
 
-		depsMocks := azmocks.NewCliDependenciesMock()
+		depsMocks := mocks.NewCliDependenciesMock()
 		cmd := createCommandForTenantList(depsMocks, v)
-		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
-		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, test.OutputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
+		cmd.PersistentFlags().StringP(common.FlagWorkingDirectory, common.FlagWorkingDirectoryShort, ".", "work directory")
+		cmd.PersistentFlags().StringP(common.FlagOutput, common.FlagOutputShort, test.OutputType, "output format")
+		cmd.PersistentFlags().BoolP(common.FlagVerbose, common.FlagVerboseShort, true, "true for verbose output")
 
-		zapClient := azmocks.NewGrpcZAPClientMock()
-		zapClient.On("FetchTenantsBy", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, azerrors.ErrClientParameter)
+		zapClient := mocks.NewGrpcZAPClientMock()
+		zapClient.On("FetchTenantsBy", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, cerrors.ErrClientParameter)
 
-		printerMock := azmocks.NewPrinterMock()
+		printerMock := mocks.NewPrinterMock()
 		printerMock.On("Println", mock.Anything).Return()
 		printerMock.On("PrintlnMap", mock.Anything).Return()
 		printerMock.On("Error", mock.Anything).Return()
@@ -77,7 +77,7 @@ func TestCliTenantsListWithError(t *testing.T) {
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 		depsMocks.On("CreateGrpcZAPClient", mock.Anything).Return(zapClient, nil)
 
-		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
+		testutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
 		if test.HasError {
 			printerMock.AssertCalled(t, "Error", mock.Anything)
 		} else {
@@ -98,16 +98,16 @@ func TestCliTenantsListWithSuccess(t *testing.T) {
 
 		v := viper.New()
 		v.Set("output", outputType)
-		v.Set(azconfigs.FlagName(aziclicommon.FlagPrefixZAP, aziclicommon.FlagSuffixZAPTarget), "localhost:9092")
+		v.Set(options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPTarget), "localhost:9092")
 
-		depsMocks := azmocks.NewCliDependenciesMock()
+		depsMocks := mocks.NewCliDependenciesMock()
 		cmd := createCommandForTenantList(depsMocks, v)
-		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
-		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
+		cmd.PersistentFlags().StringP(common.FlagWorkingDirectory, common.FlagWorkingDirectoryShort, ".", "work directory")
+		cmd.PersistentFlags().StringP(common.FlagOutput, common.FlagOutputShort, outputType, "output format")
+		cmd.PersistentFlags().BoolP(common.FlagVerbose, common.FlagVerboseShort, true, "true for verbose output")
 
-		zapClient := azmocks.NewGrpcZAPClientMock()
-		tenants := []azmodelszap.Tenant{
+		zapClient := mocks.NewGrpcZAPClientMock()
+		tenants := []zap.Tenant{
 			{
 				TenantID:  "c3160a533ab24fbcb1eab7a09fd85f36",
 				ZoneID:    581616507495,
@@ -125,7 +125,7 @@ func TestCliTenantsListWithSuccess(t *testing.T) {
 		}
 		zapClient.On("FetchTenantsBy", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tenants, nil)
 
-		printerMock := azmocks.NewPrinterMock()
+		printerMock := mocks.NewPrinterMock()
 		outputPrinter := map[string]any{}
 
 		if outputType == "terminal" {
@@ -142,7 +142,7 @@ func TestCliTenantsListWithSuccess(t *testing.T) {
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 		depsMocks.On("CreateGrpcZAPClient", mock.Anything).Return(zapClient, nil)
 
-		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
+		testutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
 		printerMock.AssertCalled(t, "PrintlnMap", outputPrinter)
 	}
 }

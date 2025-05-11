@@ -23,11 +23,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 const (
@@ -36,11 +36,11 @@ const (
 )
 
 // runECommandForDeleteTenant runs the command for creating a tenant.
-func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForDeleteTenant(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
@@ -48,10 +48,10 @@ func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 			printer.Println("Failed to delete the tenant.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the tenant", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to delete the tenant", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
@@ -59,23 +59,23 @@ func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 			printer.Println("Failed to delete the tenant.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the tenant", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to delete the tenant", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	zoneID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonZoneID))
-	tenantID := v.GetString(azoptions.FlagName(commandNameForTenantsDelete, flagTenantID))
+	zoneID := v.GetInt64(options.FlagName(commandNameForTenant, common.FlagCommonZoneID))
+	tenantID := v.GetString(options.FlagName(commandNameForTenantsDelete, flagTenantID))
 	tenant, err := client.DeleteTenant(zoneID, tenantID)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to delete the tenant.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the tenant", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to delete the tenant", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
@@ -83,18 +83,18 @@ func runECommandForDeleteTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		tenantName := tenant.Name
 		output[tenantID] = tenantName
 	} else if ctx.IsJSONOutput() {
-		output["tenant"] = []*azmodelszap.Tenant{tenant}
+		output["tenant"] = []*zap.Tenant{tenant}
 	}
 	printer.PrintlnMap(output)
 	return nil
 }
 
 // createCommandForTenantDelete creates a command for managing tenantdelete.
-func createCommandForTenantDelete(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForTenantDelete(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a remote tenant",
-		Long: aziclicommon.BuildCliLongTemplate(`This command deletes a remote tenant.
+		Long: common.BuildCliLongTemplate(`This command deletes a remote tenant.
 
 Examples:
   # delete a tenant and output the result in json format
@@ -105,6 +105,6 @@ Examples:
 		},
 	}
 	command.Flags().String(flagTenantID, "", "specify the ID of the tenant to delete")
-	v.BindPFlag(azoptions.FlagName(commandNameForTenantsDelete, flagTenantID), command.Flags().Lookup(flagTenantID))
+	v.BindPFlag(options.FlagName(commandNameForTenantsDelete, flagTenantID), command.Flags().Lookup(flagTenantID))
 	return command
 }

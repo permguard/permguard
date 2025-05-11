@@ -23,10 +23,10 @@ import (
 
 	"path/filepath"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
-	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
-	azvalidators "github.com/permguard/permguard/pkg/core/validators"
+	"github.com/permguard/permguard/internal/cli/common"
+	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	"github.com/permguard/permguard/internal/cli/workspace/persistence"
+	"github.com/permguard/permguard/pkg/core/validators"
 )
 
 type LogAction string
@@ -44,12 +44,12 @@ const (
 
 // LogsManager implements the internal manager for the logs file.
 type LogsManager struct {
-	ctx     *aziclicommon.CliCommandContext
-	persMgr *azicliwkspers.PersistenceManager
+	ctx     *common.CliCommandContext
+	persMgr *persistence.PersistenceManager
 }
 
 // NewLogsManager creates a new logsuration manager.
-func NewLogsManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.PersistenceManager) (*LogsManager, error) {
+func NewLogsManager(ctx *common.CliCommandContext, persMgr *persistence.PersistenceManager) (*LogsManager, error) {
 	return &LogsManager{
 		ctx:     ctx,
 		persMgr: persMgr,
@@ -62,14 +62,14 @@ func (c *LogsManager) getLogsDir() string {
 }
 
 // Log an entry
-func (c *LogsManager) Log(refInfo *azicliwkscommon.RefInfo, origin string, target string, action LogAction, actionStatus bool, actionDetail string) (bool, error) {
+func (c *LogsManager) Log(refInfo *wkscommon.RefInfo, origin string, target string, action LogAction, actionStatus bool, actionDetail string) (bool, error) {
 	if refInfo == nil {
 		return false, fmt.Errorf("Invalid ref info")
 	}
-	if err := azvalidators.ValidateSHA256("logs", origin); err != nil {
+	if err := validators.ValidateSHA256("logs", origin); err != nil {
 		return false, fmt.Errorf("Invalid origin sha256")
 	}
-	if err := azvalidators.ValidateSHA256("logs", target); err != nil {
+	if err := validators.ValidateSHA256("logs", target); err != nil {
 		return false, fmt.Errorf("Invalid target sha256")
 	}
 	if strings.TrimSpace(string(action)) == "" {
@@ -79,12 +79,12 @@ func (c *LogsManager) Log(refInfo *azicliwkscommon.RefInfo, origin string, targe
 		return false, fmt.Errorf("Invalid action")
 	}
 	logDir := refInfo.GetLedgerFilePath(false)
-	_, err := c.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, logDir)
+	_, err := c.persMgr.CreateDirIfNotExists(persistence.PermguardDir, logDir)
 	if err != nil {
 		return false, err
 	}
 	logFile := filepath.Join(c.getLogsDir(), logDir, refInfo.GetLedgerID())
-	_, err = c.persMgr.CreateFileIfNotExists(azicliwkspers.PermguardDir, logFile)
+	_, err = c.persMgr.CreateFileIfNotExists(persistence.PermguardDir, logFile)
 	if err != nil {
 		return false, err
 	}
@@ -94,5 +94,5 @@ func (c *LogsManager) Log(refInfo *azicliwkscommon.RefInfo, origin string, targe
 		status = "failed"
 	}
 	logLine := fmt.Sprintf("%s %s %s %s %s %s\n", origin, target, timestamp, strings.ToLower(string(action)), status, strings.ToLower(actionDetail))
-	return c.persMgr.AppendToFile(azicliwkspers.PermguardDir, logFile, []byte(logLine), false)
+	return c.persMgr.AppendToFile(persistence.PermguardDir, logFile, []byte(logLine), false)
 }

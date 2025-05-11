@@ -19,12 +19,12 @@ package authz
 import (
 	"testing"
 
-	aztestutils "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
 )
 
 // TestCreateCommandForLedgers tests the createCommandForLedgers function.
 func TestCreateCommandForLedgers(t *testing.T) {
 	args := []string{"-h"}
 	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command manages ledgers on the remote server."}
-	aztestutils.BaseCommandTest(t, createCommandForLedgers, args, false, outputs)
+	testutils.BaseCommandTest(t, createCommandForLedgers, args, false, outputs)
 }

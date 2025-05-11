@@ -23,11 +23,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/workspace"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -42,27 +42,27 @@ const (
 )
 
 // runECommandForInitWorkspace runs the command for creating an workspace.
-func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForInitWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	absLangFact, err := deps.GetLanguageFactory()
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, absLangFact)
+	wksMgr, err := workspace.NewInternalManager(ctx, absLangFact)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 
-	name := v.GetString(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName))
-	authzLanguage := v.GetString(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzLanguage))
-	authzTemplate := v.GetString(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzTemplate))
-	initParams := &azicliwksmanager.InitParms{
+	name := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName))
+	authzLanguage := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzLanguage))
+	authzTemplate := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzTemplate))
+	initParams := &workspace.InitParms{
 		Name:          name,
 		AuthZLanguage: authzLanguage,
 		AuthZTemplate: authzTemplate,
@@ -70,10 +70,10 @@ func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 	output, err := wksMgr.ExecInitWorkspace(initParams, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to initialize the workspace.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to initialize the workspace.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
 		printer.PrintlnMap(output)
@@ -82,11 +82,11 @@ func runECommandForInitWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 }
 
 // CreateCommandForWorkspaceInit creates a command for initializing a permguard workspace.
-func CreateCommandForWorkspaceInit(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceInit(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize a permguard workspace",
-		Long: aziclicommon.BuildCliLongTemplate(`This command initializes a permguard workspace.
+		Long: common.BuildCliLongTemplate(`This command initializes a permguard workspace.
 
 Examples:
   # initialize a new working directory
@@ -97,13 +97,13 @@ Examples:
 	}
 
 	command.Flags().String(commandNameForWorkspacesInitName, "", "specify the name of the workspace to initialize")
-	v.BindPFlag(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName), command.Flags().Lookup(commandNameForWorkspacesInitName))
+	v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName), command.Flags().Lookup(commandNameForWorkspacesInitName))
 
 	command.Flags().String(commandNameForWorkspacesInitAuthzLanguage, "", "specify the authz language of the workspace to initialize")
-	v.BindPFlag(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzLanguage), command.Flags().Lookup(commandNameForWorkspacesInitAuthzLanguage))
+	v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzLanguage), command.Flags().Lookup(commandNameForWorkspacesInitAuthzLanguage))
 
 	command.Flags().String(commandNameForWorkspacesInitAuthzTemplate, "", "specify the authz template of the workspace to initialize")
-	v.BindPFlag(azoptions.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzTemplate), command.Flags().Lookup(commandNameForWorkspacesInitAuthzTemplate))
+	v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzTemplate), command.Flags().Lookup(commandNameForWorkspacesInitAuthzTemplate))
 
 	return command
 }

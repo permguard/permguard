@@ -21,12 +21,12 @@ import (
 
 	"github.com/spf13/viper"
 
-	azcopier "github.com/permguard/permguard/common/pkg/extensions/copier"
-	azvalidators "github.com/permguard/permguard/common/pkg/extensions/validators"
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/common/pkg/extensions/copier"
+	"github.com/permguard/permguard/common/pkg/extensions/validators"
+	"github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -40,53 +40,53 @@ const (
 
 // ZAPServiceConfig holds the configuration for the server.
 type ZAPServiceConfig struct {
-	serviceKind azservices.ServiceKind
+	serviceKind services.ServiceKind
 	config      map[string]any
 }
 
 // NewZAPServiceConfig creates a new server factory configuration.
 func NewZAPServiceConfig() (*ZAPServiceConfig, error) {
 	return &ZAPServiceConfig{
-		serviceKind: azservices.ServiceZAP,
+		serviceKind: services.ServiceZAP,
 		config:      map[string]any{},
 	}, nil
 }
 
 // AddFlags adds flags.
 func (c *ZAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
-	flagSet.Int(azoptions.FlagName(flagServerZAPPrefix, flagSuffixGrpcPort), 9091, "port to be used for exposing the zap grpc services")
-	flagSet.String(azoptions.FlagName(flagStorageZAPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage-engine-central option")
-	flagSet.Int(azoptions.FlagName(flagServerZAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
-	flagSet.Bool(azoptions.FlagName(flagServerZAPPrefix, flagEnableDefaultCreation), false, "the creation of default entities (e.g., tenants, identity sources) during data creation")
+	flagSet.Int(options.FlagName(flagServerZAPPrefix, flagSuffixGrpcPort), 9091, "port to be used for exposing the zap grpc services")
+	flagSet.String(options.FlagName(flagStorageZAPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage-engine-central option")
+	flagSet.Int(options.FlagName(flagServerZAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
+	flagSet.Bool(options.FlagName(flagServerZAPPrefix, flagEnableDefaultCreation), false, "the creation of default entities (e.g., tenants, identity sources) during data creation")
 	return nil
 }
 
 // InitFromViper initializes the configuration from viper.
 func (c *ZAPServiceConfig) InitFromViper(v *viper.Viper) error {
 	// retrieve the grpc port
-	flagName := azoptions.FlagName(flagServerZAPPrefix, flagSuffixGrpcPort)
+	flagName := options.FlagName(flagServerZAPPrefix, flagSuffixGrpcPort)
 	grpcPort := v.GetInt(flagName)
-	if !azvalidators.IsValidPort(grpcPort) {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliArguments, "invalid port")
+	if !validators.IsValidPort(grpcPort) {
+		return cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliArguments, "invalid port")
 	}
 	c.config[flagSuffixGrpcPort] = grpcPort
 	// retrieve the data fetch max page size
-	flagName = azoptions.FlagName(flagServerZAPPrefix, flagCentralEngine)
+	flagName = options.FlagName(flagServerZAPPrefix, flagCentralEngine)
 	centralStorageEngine := v.GetString(flagName)
-	storageCEng, err := azstorage.NewStorageKindFromString(centralStorageEngine)
+	storageCEng, err := storage.NewStorageKindFromString(centralStorageEngine)
 	if err != nil {
-		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "invalid central sotrage engine", err)
+		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "invalid central sotrage engine", err)
 	}
 	c.config[flagCentralEngine] = storageCEng
 	// retrieve the data fetch max page size
-	flagName = azoptions.FlagName(flagServerZAPPrefix, flagDataFetchMaxPageSize)
+	flagName = options.FlagName(flagServerZAPPrefix, flagDataFetchMaxPageSize)
 	dataFetchMaxPageSize := v.GetInt(flagName)
 	if dataFetchMaxPageSize <= 0 {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliArguments, "invalid data fetch max page size")
+		return cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliArguments, "invalid data fetch max page size")
 	}
 	c.config[flagDataFetchMaxPageSize] = dataFetchMaxPageSize
 	// retrieve the enable default creation
-	flagName = azoptions.FlagName(flagServerZAPPrefix, flagEnableDefaultCreation)
+	flagName = options.FlagName(flagServerZAPPrefix, flagEnableDefaultCreation)
 	enableDefaultCreation := v.GetBool(flagName)
 	c.config[flagEnableDefaultCreation] = enableDefaultCreation
 	return nil
@@ -94,7 +94,7 @@ func (c *ZAPServiceConfig) InitFromViper(v *viper.Viper) error {
 
 // GetConfigData returns the configuration data.
 func (c *ZAPServiceConfig) GetConfigData() map[string]any {
-	return azcopier.CopyMap(c.config)
+	return copier.CopyMap(c.config)
 }
 
 // GetPort returns the port.
@@ -103,8 +103,8 @@ func (c *ZAPServiceConfig) GetPort() int {
 }
 
 // GetStorageCentralEngine returns the storage central engine.
-func (c *ZAPServiceConfig) GetStorageCentralEngine() azstorage.StorageKind {
-	return c.config[flagCentralEngine].(azstorage.StorageKind)
+func (c *ZAPServiceConfig) GetStorageCentralEngine() storage.StorageKind {
+	return c.config[flagCentralEngine].(storage.StorageKind)
 }
 
 // GetDataFetchMaxPageSize returns the maximum number of items to fetch per request.
@@ -118,6 +118,6 @@ func (c *ZAPServiceConfig) GetEnabledDefaultCreation() bool {
 }
 
 // GetService returns the service kind.
-func (c *ZAPServiceConfig) GetService() azservices.ServiceKind {
+func (c *ZAPServiceConfig) GetService() services.ServiceKind {
 	return c.serviceKind
 }

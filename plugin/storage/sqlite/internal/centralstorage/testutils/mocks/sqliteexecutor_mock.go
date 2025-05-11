@@ -21,8 +21,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/mock"
 
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
+	"github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
 // MockSqliteExecutor sqlite executor mock
@@ -36,7 +36,7 @@ func NewMockSqliteExecutor() *MockSqliteExecutor {
 }
 
 // Connect connects to the sqlite database.
-func (m *MockSqliteExecutor) Connect(ctx *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector) (*sqlx.DB, error) {
+func (m *MockSqliteExecutor) Connect(ctx *storage.StorageContext, sqliteConnector db.SQLiteConnector) (*sqlx.DB, error) {
 	args := m.Called(ctx, sqliteConnector)
 	var r0 *sqlx.DB
 	if val, ok := args.Get(0).(*sqlx.DB); ok {

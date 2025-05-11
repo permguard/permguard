@@ -23,10 +23,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/workspace"
+	"github.com/permguard/permguard/pkg/cli"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -35,21 +35,21 @@ const (
 )
 
 // runECommandForLedgerWorkspace runs the command for the local ledger.
-func runECommandForLedgerWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForLedgerWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	langAbs, err := deps.GetLanguageFactory()
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, langAbs)
+	wksMgr, err := workspace.NewInternalManager(ctx, langAbs)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	output, err := wksMgr.ExecListLedgers(outFunc(ctx, printer))
 	if err != nil {
@@ -57,10 +57,10 @@ func runECommandForLedgerWorkspace(deps azcli.CliDependenciesProvider, cmd *cobr
 			printer.Println("Failed to list ledgers.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to list ledgers.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to list ledgers.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
 		printer.PrintlnMap(output)
@@ -69,11 +69,11 @@ func runECommandForLedgerWorkspace(deps azcli.CliDependenciesProvider, cmd *cobr
 }
 
 // CreateCommandForWorkspaceLedger creates a command for ledgerializing a permguard workspace.
-func CreateCommandForWorkspaceLedger(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceLedger(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "ledger",
 		Short: `Manage the ledger`,
-		Long:  aziclicommon.BuildCliLongTemplate(`This command Manages the ledger.`),
+		Long:  common.BuildCliLongTemplate(`This command Manages the ledger.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForLedgerWorkspace(deps, cmd, v)
 		},

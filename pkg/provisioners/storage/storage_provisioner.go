@@ -17,7 +17,7 @@
 package storage
 
 import (
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 // StorageProvisionerInfo declares the storage provisioner information.
@@ -30,7 +30,7 @@ type StorageProvisionerInfo struct {
 
 // StorageProvisioner is the storage provisioner.
 type StorageProvisioner interface {
-	azoptions.Configurable
+	options.Configurable
 	// Up provision the storage.
 	Up() error
 	// Down deprovision the storage.

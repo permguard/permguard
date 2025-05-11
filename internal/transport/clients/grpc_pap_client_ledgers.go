@@ -20,36 +20,36 @@ import (
 	"context"
 	"io"
 
-	azapiv1pap "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelpap "github.com/permguard/permguard/pkg/transport/models/pap"
+	papv1 "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
 // CreateLedger creates a new ledger.
-func (c *GrpcPAPClient) CreateLedger(zoneID int64, kind string, name string) (*azmodelpap.Ledger, error) {
+func (c *GrpcPAPClient) CreateLedger(zoneID int64, kind string, name string) (*pap.Ledger, error) {
 	client, conn, err := c.createGRPCClient()
 	defer conn.Close()
 	if err != nil {
 		return nil, err
 	}
-	ledger, err := client.CreateLedger(context.Background(), &azapiv1pap.LedgerCreateRequest{ZoneID: zoneID, Name: name, Kind: kind})
+	ledger, err := client.CreateLedger(context.Background(), &papv1.LedgerCreateRequest{ZoneID: zoneID, Name: name, Kind: kind})
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1pap.MapGrpcLedgerResponseToAgentLedger(ledger)
+	return papv1.MapGrpcLedgerResponseToAgentLedger(ledger)
 }
 
 // UpdateLedger updates an ledger.
-func (c *GrpcPAPClient) UpdateLedger(ledger *azmodelpap.Ledger) (*azmodelpap.Ledger, error) {
+func (c *GrpcPAPClient) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, error) {
 	if ledger == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "invalid ledger instance")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "invalid ledger instance")
 	}
 	client, conn, err := c.createGRPCClient()
 	defer conn.Close()
 	if err != nil {
 		return nil, err
 	}
-	updatedLedger, err := client.UpdateLedger(context.Background(), &azapiv1pap.LedgerUpdateRequest{
+	updatedLedger, err := client.UpdateLedger(context.Background(), &papv1.LedgerUpdateRequest{
 		LedgerID: ledger.LedgerID,
 		ZoneID:   ledger.ZoneID,
 		Kind:     ledger.Kind,
@@ -58,46 +58,46 @@ func (c *GrpcPAPClient) UpdateLedger(ledger *azmodelpap.Ledger) (*azmodelpap.Led
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1pap.MapGrpcLedgerResponseToAgentLedger(updatedLedger)
+	return papv1.MapGrpcLedgerResponseToAgentLedger(updatedLedger)
 }
 
 // DeleteLedger deletes an ledger.
-func (c *GrpcPAPClient) DeleteLedger(zoneID int64, ledgerID string) (*azmodelpap.Ledger, error) {
+func (c *GrpcPAPClient) DeleteLedger(zoneID int64, ledgerID string) (*pap.Ledger, error) {
 	client, conn, err := c.createGRPCClient()
 	defer conn.Close()
 	if err != nil {
 		return nil, err
 	}
-	ledger, err := client.DeleteLedger(context.Background(), &azapiv1pap.LedgerDeleteRequest{ZoneID: zoneID, LedgerID: ledgerID})
+	ledger, err := client.DeleteLedger(context.Background(), &papv1.LedgerDeleteRequest{ZoneID: zoneID, LedgerID: ledgerID})
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1pap.MapGrpcLedgerResponseToAgentLedger(ledger)
+	return papv1.MapGrpcLedgerResponseToAgentLedger(ledger)
 }
 
 // FetchLedgers returns all ledgers.
-func (c *GrpcPAPClient) FetchLedgers(page int32, pageSize int32, zoneID int64) ([]azmodelpap.Ledger, error) {
+func (c *GrpcPAPClient) FetchLedgers(page int32, pageSize int32, zoneID int64) ([]pap.Ledger, error) {
 	return c.FetchLedgersBy(page, pageSize, zoneID, "", "", "")
 }
 
 // FetchLedgersByID returns all ledgers filtering by ledger id.
-func (c *GrpcPAPClient) FetchLedgersByID(page int32, pageSize int32, zoneID int64, ledgerID string) ([]azmodelpap.Ledger, error) {
+func (c *GrpcPAPClient) FetchLedgersByID(page int32, pageSize int32, zoneID int64, ledgerID string) ([]pap.Ledger, error) {
 	return c.FetchLedgersBy(page, pageSize, zoneID, ledgerID, "", "")
 }
 
 // FetchLedgersByName returns all ledgers filtering by name.
-func (c *GrpcPAPClient) FetchLedgersByName(page int32, pageSize int32, zoneID int64, name string) ([]azmodelpap.Ledger, error) {
+func (c *GrpcPAPClient) FetchLedgersByName(page int32, pageSize int32, zoneID int64, name string) ([]pap.Ledger, error) {
 	return c.FetchLedgersBy(page, pageSize, zoneID, "", "", name)
 }
 
 // FetchLedgersBy returns all ledgers filtering by ledger id and name.
-func (c *GrpcPAPClient) FetchLedgersBy(page int32, pageSize int32, zoneID int64, ledgerID string, kind string, name string) ([]azmodelpap.Ledger, error) {
+func (c *GrpcPAPClient) FetchLedgersBy(page int32, pageSize int32, zoneID int64, ledgerID string, kind string, name string) ([]pap.Ledger, error) {
 	client, conn, err := c.createGRPCClient()
 	defer conn.Close()
 	if err != nil {
 		return nil, err
 	}
-	ledgerFetchRequest := &azapiv1pap.LedgerFetchRequest{}
+	ledgerFetchRequest := &papv1.LedgerFetchRequest{}
 	ledgerFetchRequest.Page = &page
 	ledgerFetchRequest.PageSize = &pageSize
 	if zoneID > 0 {
@@ -116,7 +116,7 @@ func (c *GrpcPAPClient) FetchLedgersBy(page int32, pageSize int32, zoneID int64,
 	if err != nil {
 		return nil, err
 	}
-	ledgers := []azmodelpap.Ledger{}
+	ledgers := []pap.Ledger{}
 	for {
 		response, err := stream.Recv()
 		if err == io.EOF {
@@ -125,7 +125,7 @@ func (c *GrpcPAPClient) FetchLedgersBy(page int32, pageSize int32, zoneID int64,
 		if err != nil {
 			return nil, err
 		}
-		ledger, err := azapiv1pap.MapGrpcLedgerResponseToAgentLedger(response)
+		ledger, err := papv1.MapGrpcLedgerResponseToAgentLedger(response)
 		if err != nil {
 			return nil, err
 		}

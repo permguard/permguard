@@ -17,17 +17,17 @@
 package main
 
 import (
-	azcli "github.com/permguard/permguard/internal/provisioners/storage/cli"
-	azstorage "github.com/permguard/permguard/pkg/provisioners/storage"
-	azsqlite "github.com/permguard/permguard/plugin/storage/sqlite"
+	"github.com/permguard/permguard/internal/provisioners/storage/cli"
+	"github.com/permguard/permguard/pkg/provisioners/storage"
+	"github.com/permguard/permguard/plugin/storage/sqlite"
 )
 
 // PosgresStorageInitializer is the storage initializer.
 type PosgresStorageInitializer struct{}
 
 // GetStorageProvisionerInfo returns the infos of the storage provisioner.
-func (s *PosgresStorageInitializer) GetStorageProvisionerInfo() azstorage.StorageProvisionerInfo {
-	return azstorage.StorageProvisionerInfo{
+func (s *PosgresStorageInitializer) GetStorageProvisionerInfo() storage.StorageProvisionerInfo {
+	return storage.StorageProvisionerInfo{
 		Name:  "SQLite Storage Provisioner",
 		Use:   "Provision the SQLite storage",
 		Short: "Provision the SQLite storage",
@@ -35,11 +35,11 @@ func (s *PosgresStorageInitializer) GetStorageProvisionerInfo() azstorage.Storag
 }
 
 // GetStorageProvisioner returns the storage provisioner.
-func (s *PosgresStorageInitializer) GetStorageProvisioner() (azstorage.StorageProvisioner, error) {
-	return azsqlite.NewSQLiteStorageProvisioner()
+func (s *PosgresStorageInitializer) GetStorageProvisioner() (storage.StorageProvisioner, error) {
+	return sqlite.NewSQLiteStorageProvisioner()
 }
 
 func main() {
 	// Run the provisioner.
-	azcli.Run(&PosgresStorageInitializer{})
+	cli.Run(&PosgresStorageInitializer{})
 }

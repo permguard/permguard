@@ -23,10 +23,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/workspace"
+	"github.com/permguard/permguard/pkg/cli"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -35,31 +35,31 @@ const (
 )
 
 // runECommandForRemoteRemoveWorkspace runs the command for creating an workspace.
-func runECommandForRemoteRemoveWorkspace(args []string, deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForRemoteRemoveWorkspace(args []string, deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	if len(args) < 1 {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to remove the remote.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to remove the remote.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to remove the remote.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	langAbs, err := deps.GetLanguageFactory()
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, langAbs)
+	wksMgr, err := workspace.NewInternalManager(ctx, langAbs)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	remote := args[0]
 	output, err := wksMgr.ExecRemoveRemote(remote, outFunc(ctx, printer))
@@ -68,10 +68,10 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps azcli.CliDependenci
 			printer.Println("Failed to remove the remote.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to remove the remote.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to remove the remote.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
 		printer.PrintlnMap(output)
@@ -80,11 +80,11 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps azcli.CliDependenci
 }
 
 // CreateCommandForWorkspaceRemoteRemove creates a command for remoteremoveializing a permguard workspace.
-func CreateCommandForWorkspaceRemoteRemove(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceRemoteRemove(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "remove",
 		Short: `remove a remote ledger from the configuration`,
-		Long: aziclicommon.BuildCliLongTemplate(`This command removes a remote ledger from the configuration.
+		Long: common.BuildCliLongTemplate(`This command removes a remote ledger from the configuration.
 
 Examples:
   # remove a remote ledger from the configuration

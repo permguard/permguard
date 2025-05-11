@@ -24,9 +24,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
-	azapiv1pap "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
+	papv1 "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
 
-	azagentnotpsm "github.com/permguard/permguard/internal/transport/notp/statemachines"
+	notptransportsm "github.com/permguard/permguard/internal/transport/notp/statemachines"
 	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
 	notptransport "github.com/permguard/permguard/notp-protocol/pkg/notp/transport"
@@ -38,9 +38,9 @@ const (
 )
 
 // createWiredStateMachine creates a wired state machine.
-func (c *GrpcPAPClient) createWiredStateMachine(stream grpc.BidiStreamingClient[azapiv1pap.PackMessage, azapiv1pap.PackMessage], hostHandler notpstatemachines.HostHandler) (*notpstatemachines.StateMachine, error) {
+func (c *GrpcPAPClient) createWiredStateMachine(stream grpc.BidiStreamingClient[papv1.PackMessage, papv1.PackMessage], hostHandler notpstatemachines.HostHandler) (*notpstatemachines.StateMachine, error) {
 	var sender notptransport.WireSendFunc = func(packet *notppackets.Packet) error {
-		pack := &azapiv1pap.PackMessage{
+		pack := &papv1.PackMessage{
 			Data: packet.Data,
 		}
 		return stream.Send(pack)
@@ -74,7 +74,7 @@ func (c *GrpcPAPClient) NOTPStream(hostHandler notpstatemachines.HostHandler, zo
 	if err != nil {
 		return nil, err
 	}
-	ctx := metadata.AppendToOutgoingContext(context.Background(), azagentnotpsm.ZoneIDKey, strconv.FormatInt(zoneID, 10), azagentnotpsm.LedgerIDKey, ledgerID)
+	ctx := metadata.AppendToOutgoingContext(context.Background(), notptransportsm.ZoneIDKey, strconv.FormatInt(zoneID, 10), notptransportsm.LedgerIDKey, ledgerID)
 	stream, err := client.NOTPStream(ctx)
 	if err != nil {
 		return nil, err

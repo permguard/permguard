@@ -19,22 +19,22 @@ package v1
 import (
 	"google.golang.org/protobuf/types/known/structpb"
 
-	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
+	"github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 
 // MapGrpcPolicyStoreToAgentPolicyStore maps the gRPC policy store to the agent policy store.
-func MapGrpcPolicyStoreToAgentPolicyStore(policyStore *PolicyStore) (*azmodelspdp.PolicyStore, error) {
+func MapGrpcPolicyStoreToAgentPolicyStore(policyStore *PolicyStore) (*pdp.PolicyStore, error) {
 	if policyStore == nil {
 		return nil, nil
 	}
-	target := &azmodelspdp.PolicyStore{}
+	target := &pdp.PolicyStore{}
 	target.ID = policyStore.ID
 	target.Kind = policyStore.Kind
 	return target, nil
 }
 
 // MapAgentPolicyStoreToGrpcPolicyStore maps the agent policy store to the gRPC policy store.
-func MapAgentPolicyStoreToGrpcPolicyStore(policyStore *azmodelspdp.PolicyStore) (*PolicyStore, error) {
+func MapAgentPolicyStoreToGrpcPolicyStore(policyStore *pdp.PolicyStore) (*PolicyStore, error) {
 	if policyStore == nil {
 		return nil, nil
 	}
@@ -45,11 +45,11 @@ func MapAgentPolicyStoreToGrpcPolicyStore(policyStore *azmodelspdp.PolicyStore) 
 }
 
 // MapGrpcPrincipalToAgentPrincipal maps the gRPC principal to the agent principal.
-func MapGrpcPrincipalToAgentPrincipal(principal *Principal) (*azmodelspdp.Principal, error) {
+func MapGrpcPrincipalToAgentPrincipal(principal *Principal) (*pdp.Principal, error) {
 	if principal == nil {
 		return nil, nil
 	}
-	target := &azmodelspdp.Principal{}
+	target := &pdp.Principal{}
 	target.ID = principal.ID
 	target.Type = principal.Type
 	if principal.Source != nil {
@@ -65,7 +65,7 @@ func MapGrpcPrincipalToAgentPrincipal(principal *Principal) (*azmodelspdp.Princi
 }
 
 // MapAgentPrincipalToGrpcPrincipal maps the agent principal to the gRPC principal.
-func MapAgentPrincipalToGrpcPrincipal(principal *azmodelspdp.Principal) (*Principal, error) {
+func MapAgentPrincipalToGrpcPrincipal(principal *pdp.Principal) (*Principal, error) {
 	if principal == nil {
 		return nil, nil
 	}
@@ -85,11 +85,11 @@ func MapAgentPrincipalToGrpcPrincipal(principal *azmodelspdp.Principal) (*Princi
 }
 
 // MapGrpcEntitiesToAgentEntities maps the gRPC entities to the agent entities.
-func MapGrpcEntitiesToAgentEntities(entities *Entities) (*azmodelspdp.Entities, error) {
+func MapGrpcEntitiesToAgentEntities(entities *Entities) (*pdp.Entities, error) {
 	if entities == nil {
 		return nil, nil
 	}
-	target := &azmodelspdp.Entities{}
+	target := &pdp.Entities{}
 	target.Schema = entities.Schema
 	if entities.Items != nil {
 		items := []map[string]any{}
@@ -102,7 +102,7 @@ func MapGrpcEntitiesToAgentEntities(entities *Entities) (*azmodelspdp.Entities, 
 }
 
 // MapAgentEntitiesToGrpcEntities maps the agent entities to the gRPC entities.
-func MapAgentEntitiesToGrpcEntities(entities *azmodelspdp.Entities) (*Entities, error) {
+func MapAgentEntitiesToGrpcEntities(entities *pdp.Entities) (*Entities, error) {
 	if entities == nil {
 		return nil, nil
 	}
@@ -123,11 +123,11 @@ func MapAgentEntitiesToGrpcEntities(entities *azmodelspdp.Entities) (*Entities, 
 }
 
 // MapGrpcSubjectToAgentSubject maps the gRPC subject to the agent subject.
-func MapGrpcSubjectToAgentSubject(subject *Subject) (*azmodelspdp.Subject, error) {
+func MapGrpcSubjectToAgentSubject(subject *Subject) (*pdp.Subject, error) {
 	if subject == nil {
 		return nil, nil
 	}
-	target := &azmodelspdp.Subject{}
+	target := &pdp.Subject{}
 	target.ID = subject.ID
 	target.Type = subject.Type
 	if subject.Source != nil {
@@ -140,7 +140,7 @@ func MapGrpcSubjectToAgentSubject(subject *Subject) (*azmodelspdp.Subject, error
 }
 
 // MapAgentSubjectToGrpcSubject maps the agent subject to the gRPC subject.
-func MapAgentSubjectToGrpcSubject(subject *azmodelspdp.Subject) (*Subject, error) {
+func MapAgentSubjectToGrpcSubject(subject *pdp.Subject) (*Subject, error) {
 	if subject == nil {
 		return nil, nil
 	}
@@ -161,11 +161,11 @@ func MapAgentSubjectToGrpcSubject(subject *azmodelspdp.Subject) (*Subject, error
 }
 
 // MapGrpcResourceToAgentResource maps the gRPC resource to the agent resource.
-func MapGrpcResourceToAgentResource(resource *Resource) (*azmodelspdp.Resource, error) {
+func MapGrpcResourceToAgentResource(resource *Resource) (*pdp.Resource, error) {
 	if resource == nil {
 		return nil, nil
 	}
-	target := &azmodelspdp.Resource{}
+	target := &pdp.Resource{}
 	target.ID = resource.ID
 	target.Type = resource.Type
 	if resource.Properties != nil {
@@ -175,7 +175,7 @@ func MapGrpcResourceToAgentResource(resource *Resource) (*azmodelspdp.Resource, 
 }
 
 // MapAgentResourceToGrpcResource maps the agent resource to the gRPC resource.
-func MapAgentResourceToGrpcResource(resource *azmodelspdp.Resource) (*Resource, error) {
+func MapAgentResourceToGrpcResource(resource *pdp.Resource) (*Resource, error) {
 	if resource == nil {
 		return nil, nil
 	}
@@ -193,11 +193,11 @@ func MapAgentResourceToGrpcResource(resource *azmodelspdp.Resource) (*Resource, 
 }
 
 // MapGrpcActionToAgentAction maps the gRPC action to the agent action.
-func MapGrpcActionToAgentAction(action *Action) (*azmodelspdp.Action, error) {
+func MapGrpcActionToAgentAction(action *Action) (*pdp.Action, error) {
 	if action == nil {
 		return nil, nil
 	}
-	target := &azmodelspdp.Action{}
+	target := &pdp.Action{}
 	target.Name = action.Name
 	if action.Properties != nil {
 		target.Properties = action.Properties.AsMap()
@@ -206,7 +206,7 @@ func MapGrpcActionToAgentAction(action *Action) (*azmodelspdp.Action, error) {
 }
 
 // MapAgentActionToGrpcAction maps the agent action to the gRPC action.
-func MapAgentActionToGrpcAction(action *azmodelspdp.Action) (*Action, error) {
+func MapAgentActionToGrpcAction(action *pdp.Action) (*Action, error) {
 	if action == nil {
 		return nil, nil
 	}
@@ -223,11 +223,11 @@ func MapAgentActionToGrpcAction(action *azmodelspdp.Action) (*Action, error) {
 }
 
 // MapGrpcEvaluationRequestToAgentEvaluationRequest maps the gRPC evaluation request to the agent evaluation request.
-func MapGrpcEvaluationRequestToAgentEvaluationRequest(evaluationRequest *EvaluationRequest) (*azmodelspdp.EvaluationRequest, error) {
+func MapGrpcEvaluationRequestToAgentEvaluationRequest(evaluationRequest *EvaluationRequest) (*pdp.EvaluationRequest, error) {
 	if evaluationRequest == nil {
 		return nil, nil
 	}
-	target := &azmodelspdp.EvaluationRequest{}
+	target := &pdp.EvaluationRequest{}
 	if evaluationRequest.RequestID != nil && len(*evaluationRequest.RequestID) > 0 {
 		target.RequestID = *evaluationRequest.RequestID
 	}
@@ -259,7 +259,7 @@ func MapGrpcEvaluationRequestToAgentEvaluationRequest(evaluationRequest *Evaluat
 }
 
 // MapAgentEvaluationRequestToGrpcEvaluationRequest maps the agent evaluation request to the gRPC evaluation request.
-func MapAgentEvaluationRequestToGrpcEvaluationRequest(evaluationRequest *azmodelspdp.EvaluationRequest) (*EvaluationRequest, error) {
+func MapAgentEvaluationRequestToGrpcEvaluationRequest(evaluationRequest *pdp.EvaluationRequest) (*EvaluationRequest, error) {
 	if evaluationRequest == nil {
 		return nil, nil
 	}
@@ -297,8 +297,8 @@ func MapAgentEvaluationRequestToGrpcEvaluationRequest(evaluationRequest *azmodel
 }
 
 // MapGrpcAuthorizationModelRequestToAgentAuthorizationModelRequest maps the gRPC authorization context request to the agent authorization context request.
-func MapGrpcAuthorizationModelRequestToAgentAuthorizationModelRequest(request *AuthorizationModelRequest) (*azmodelspdp.AuthorizationModelRequest, error) {
-	req := &azmodelspdp.AuthorizationModelRequest{}
+func MapGrpcAuthorizationModelRequestToAgentAuthorizationModelRequest(request *AuthorizationModelRequest) (*pdp.AuthorizationModelRequest, error) {
+	req := &pdp.AuthorizationModelRequest{}
 	req.ZoneID = request.ZoneID
 	if request.PolicyStore != nil {
 		policyStore, err := MapGrpcPolicyStoreToAgentPolicyStore(request.PolicyStore)
@@ -325,7 +325,7 @@ func MapGrpcAuthorizationModelRequestToAgentAuthorizationModelRequest(request *A
 }
 
 // MapAgentAuthorizationModelRequestToGrpcAuthorizationModelRequest maps the agent authorization context request to the gRPC authorization context request.
-func MapAgentAuthorizationModelRequestToGrpcAuthorizationModelRequest(request *azmodelspdp.AuthorizationModelRequest) (*AuthorizationModelRequest, error) {
+func MapAgentAuthorizationModelRequestToGrpcAuthorizationModelRequest(request *pdp.AuthorizationModelRequest) (*AuthorizationModelRequest, error) {
 	req := &AuthorizationModelRequest{}
 	req.ZoneID = request.ZoneID
 	if request.PolicyStore != nil {
@@ -353,11 +353,11 @@ func MapAgentAuthorizationModelRequestToGrpcAuthorizationModelRequest(request *a
 }
 
 // MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest maps the gRPC authorization check request to the agent authorization check request.
-func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *AuthorizationCheckRequest) (*azmodelspdp.AuthorizationCheckWithDefaultsRequest, error) {
+func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *AuthorizationCheckRequest) (*pdp.AuthorizationCheckWithDefaultsRequest, error) {
 	if request == nil {
 		return nil, nil
 	}
-	req := &azmodelspdp.AuthorizationCheckWithDefaultsRequest{}
+	req := &pdp.AuthorizationCheckWithDefaultsRequest{}
 	if request.RequestID != nil {
 		req.RequestID = *request.RequestID
 	} else {
@@ -377,7 +377,7 @@ func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *A
 		}
 		req.Subject = subject
 	} else {
-		req.Subject = &azmodelspdp.Subject{}
+		req.Subject = &pdp.Subject{}
 	}
 	if request.Resource != nil {
 		resource, err := MapGrpcResourceToAgentResource(request.Resource)
@@ -386,7 +386,7 @@ func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *A
 		}
 		req.Resource = resource
 	} else {
-		req.Resource = &azmodelspdp.Resource{}
+		req.Resource = &pdp.Resource{}
 	}
 	if request.Action != nil {
 		action, err := MapGrpcActionToAgentAction(request.Action)
@@ -395,7 +395,7 @@ func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *A
 		}
 		req.Action = action
 	} else {
-		req.Action = &azmodelspdp.Action{}
+		req.Action = &pdp.Action{}
 	}
 	if request.Context != nil {
 		req.Context = request.Context.AsMap()
@@ -403,7 +403,7 @@ func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *A
 		req.Context = map[string]any{}
 	}
 	if request.Evaluations != nil {
-		evaluations := []azmodelspdp.EvaluationRequest{}
+		evaluations := []pdp.EvaluationRequest{}
 		for _, evaluationRequest := range request.Evaluations {
 			evaluation, err := MapGrpcEvaluationRequestToAgentEvaluationRequest(evaluationRequest)
 			if len(evaluation.RequestID) == 0 {
@@ -416,13 +416,13 @@ func MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request *A
 		}
 		req.Evaluations = evaluations
 	} else {
-		req.Evaluations = []azmodelspdp.EvaluationRequest{}
+		req.Evaluations = []pdp.EvaluationRequest{}
 	}
 	return req, nil
 }
 
 // MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest maps the agent authorization check request to the gRPC authorization check request.
-func MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest(request *azmodelspdp.AuthorizationCheckWithDefaultsRequest) (*AuthorizationCheckRequest, error) {
+func MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest(request *pdp.AuthorizationCheckWithDefaultsRequest) (*AuthorizationCheckRequest, error) {
 	if request == nil {
 		return nil, nil
 	}
@@ -486,18 +486,18 @@ func MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest(request *a
 }
 
 // MapGrpcReasonResponseToAgentReasonResponse maps the gRPC reason response to the agent reason response.
-func MapGrpcReasonResponseToAgentReasonResponse(reasonResponse *ReasonResponse) (*azmodelspdp.ReasonResponse, error) {
+func MapGrpcReasonResponseToAgentReasonResponse(reasonResponse *ReasonResponse) (*pdp.ReasonResponse, error) {
 	if reasonResponse == nil {
 		return nil, nil
 	}
-	target := &azmodelspdp.ReasonResponse{}
+	target := &pdp.ReasonResponse{}
 	target.Code = reasonResponse.Code
 	target.Message = reasonResponse.Message
 	return target, nil
 }
 
 // MapAgentReasonResponseToGrpcReasonResponse maps the agent reason response to the gRPC reason response.
-func MapAgentReasonResponseToGrpcReasonResponse(reasonResponse *azmodelspdp.ReasonResponse) (*ReasonResponse, error) {
+func MapAgentReasonResponseToGrpcReasonResponse(reasonResponse *pdp.ReasonResponse) (*ReasonResponse, error) {
 	if reasonResponse == nil {
 		return nil, nil
 	}
@@ -508,11 +508,11 @@ func MapAgentReasonResponseToGrpcReasonResponse(reasonResponse *azmodelspdp.Reas
 }
 
 // MapGrpcContextResponseToAgentContextResponse maps the gRPC context response to the agent context response.
-func MapGrpcContextResponseToAgentContextResponse(contextResponse *ContextResponse) (*azmodelspdp.ContextResponse, error) {
+func MapGrpcContextResponseToAgentContextResponse(contextResponse *ContextResponse) (*pdp.ContextResponse, error) {
 	if contextResponse == nil {
 		return nil, nil
 	}
-	target := &azmodelspdp.ContextResponse{}
+	target := &pdp.ContextResponse{}
 	target.ID = contextResponse.ID
 	if contextResponse.ReasonAdmin != nil {
 		reasonAdmin, err := MapGrpcReasonResponseToAgentReasonResponse(contextResponse.ReasonAdmin)
@@ -532,7 +532,7 @@ func MapGrpcContextResponseToAgentContextResponse(contextResponse *ContextRespon
 }
 
 // MapAgentContextResponseToGrpcContextResponse maps the agent context response to the gRPC context response.
-func MapAgentContextResponseToGrpcContextResponse(contextResponse *azmodelspdp.ContextResponse) (*ContextResponse, error) {
+func MapAgentContextResponseToGrpcContextResponse(contextResponse *pdp.ContextResponse) (*ContextResponse, error) {
 	if contextResponse == nil {
 		return nil, nil
 	}
@@ -556,11 +556,11 @@ func MapAgentContextResponseToGrpcContextResponse(contextResponse *azmodelspdp.C
 }
 
 // MapGrpcEvaluationResponseToAgentEvaluationResponse maps the gRPC evaluation response to the agent evaluation response.
-func MapGrpcEvaluationResponseToAgentEvaluationResponse(evaluationResponse *EvaluationResponse) (*azmodelspdp.EvaluationResponse, error) {
+func MapGrpcEvaluationResponseToAgentEvaluationResponse(evaluationResponse *EvaluationResponse) (*pdp.EvaluationResponse, error) {
 	if evaluationResponse == nil {
 		return nil, nil
 	}
-	target := &azmodelspdp.EvaluationResponse{}
+	target := &pdp.EvaluationResponse{}
 	target.Decision = evaluationResponse.Decision
 	if evaluationResponse.RequestID != nil {
 		target.RequestID = *evaluationResponse.RequestID
@@ -578,7 +578,7 @@ func MapGrpcEvaluationResponseToAgentEvaluationResponse(evaluationResponse *Eval
 }
 
 // MapAgentEvaluationResponseToGrpcEvaluationResponse maps the agent evaluation response to the gRPC evaluation response.
-func MapAgentEvaluationResponseToGrpcEvaluationResponse(evaluationResponse *azmodelspdp.EvaluationResponse) (*EvaluationResponse, error) {
+func MapAgentEvaluationResponseToGrpcEvaluationResponse(evaluationResponse *pdp.EvaluationResponse) (*EvaluationResponse, error) {
 	if evaluationResponse == nil {
 		return nil, nil
 	}
@@ -596,7 +596,7 @@ func MapAgentEvaluationResponseToGrpcEvaluationResponse(evaluationResponse *azmo
 }
 
 // MapAgentAuthorizationCheckResponseToGrpcAuthorizationCheckResponse maps the agent authorization check response to the gRPC authorization check response.
-func MapAgentAuthorizationCheckResponseToGrpcAuthorizationCheckResponse(response *azmodelspdp.AuthorizationCheckResponse) (*AuthorizationCheckResponse, error) {
+func MapAgentAuthorizationCheckResponseToGrpcAuthorizationCheckResponse(response *pdp.AuthorizationCheckResponse) (*AuthorizationCheckResponse, error) {
 	if response == nil {
 		return nil, nil
 	}
@@ -625,11 +625,11 @@ func MapAgentAuthorizationCheckResponseToGrpcAuthorizationCheckResponse(response
 }
 
 // MapGrpcAuthorizationCheckResponseToAgentAuthorizationCheckResponse maps the gRPC authorization check response to the agent authorization check response.
-func MapGrpcAuthorizationCheckResponseToAgentAuthorizationCheckResponse(response *AuthorizationCheckResponse) (*azmodelspdp.AuthorizationCheckResponse, error) {
+func MapGrpcAuthorizationCheckResponseToAgentAuthorizationCheckResponse(response *AuthorizationCheckResponse) (*pdp.AuthorizationCheckResponse, error) {
 	if response == nil {
 		return nil, nil
 	}
-	target := &azmodelspdp.AuthorizationCheckResponse{}
+	target := &pdp.AuthorizationCheckResponse{}
 	target.Decision = response.Decision
 	if response.RequestID != nil {
 		target.RequestID = *response.RequestID
@@ -644,7 +644,7 @@ func MapGrpcAuthorizationCheckResponseToAgentAuthorizationCheckResponse(response
 		target.Context = context
 	}
 	if response.Evaluations != nil {
-		evaluations := []azmodelspdp.EvaluationResponse{}
+		evaluations := []pdp.EvaluationResponse{}
 		for _, evaluationResponse := range response.Evaluations {
 			evaluation, err := MapGrpcEvaluationResponseToAgentEvaluationResponse(evaluationResponse)
 			if err != nil {

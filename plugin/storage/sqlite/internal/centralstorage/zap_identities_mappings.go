@@ -17,17 +17,17 @@
 package centralstorage
 
 import (
-	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
+	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // mapIdentityToAgentIdentity maps an Identity to a model Identity.
-func mapIdentityToAgentIdentity(identity *azirepos.Identity) (*azmodelszap.Identity, error) {
-	kind, err := azirepos.ConvertIdentityKindToString(identity.Kind)
+func mapIdentityToAgentIdentity(identity *repos.Identity) (*zap.Identity, error) {
+	kind, err := repos.ConvertIdentityKindToString(identity.Kind)
 	if err != nil {
 		return nil, err
 	}
-	return &azmodelszap.Identity{
+	return &zap.Identity{
 		IdentityID:       identity.IdentityID,
 		CreatedAt:        identity.CreatedAt,
 		UpdatedAt:        identity.UpdatedAt,

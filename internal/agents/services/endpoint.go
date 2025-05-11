@@ -24,21 +24,21 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/storage"
 )
 
 // EndpointConfig represents the endpoint configuration.
 type EndpointConfig struct {
-	hostable         azservices.Hostable
-	storageConnector *azstorage.StorageConnector
-	service          azservices.ServiceKind
+	hostable         services.Hostable
+	storageConnector *storage.StorageConnector
+	service          services.ServiceKind
 	port             int
-	registration     func(*grpc.Server, *azservices.ServiceContext, *azservices.EndpointContext, *azstorage.StorageConnector) error
+	registration     func(*grpc.Server, *services.ServiceContext, *services.EndpointContext, *storage.StorageConnector) error
 }
 
 // newEndpointConfig creates a new endpoint configuration.
-func newEndpointConfig(hostable azservices.Hostable, service azservices.ServiceKind, storageConnector *azstorage.StorageConnector, port int, registration func(*grpc.Server, *azservices.ServiceContext, *azservices.EndpointContext, *azstorage.StorageConnector) error) (*EndpointConfig, error) {
+func newEndpointConfig(hostable services.Hostable, service services.ServiceKind, storageConnector *storage.StorageConnector, port int, registration func(*grpc.Server, *services.ServiceContext, *services.EndpointContext, *storage.StorageConnector) error) (*EndpointConfig, error) {
 	return &EndpointConfig{
 		hostable:         hostable,
 		storageConnector: storageConnector,
@@ -49,17 +49,17 @@ func newEndpointConfig(hostable azservices.Hostable, service azservices.ServiceK
 }
 
 // GetHostable returns the hostable.
-func (c *EndpointConfig) GetHostable() azservices.Hostable {
+func (c *EndpointConfig) GetHostable() services.Hostable {
 	return c.hostable
 }
 
 // GetStorageConnector returns the storage connector.
-func (c *EndpointConfig) GetStorageConnector() *azstorage.StorageConnector {
+func (c *EndpointConfig) GetStorageConnector() *storage.StorageConnector {
 	return c.storageConnector
 }
 
 // GetService returns the service kind.
-func (c *EndpointConfig) GetService() azservices.ServiceKind {
+func (c *EndpointConfig) GetService() services.ServiceKind {
 	return c.service
 }
 
@@ -69,20 +69,20 @@ func (c *EndpointConfig) GetPort() int {
 }
 
 // GetRegistration returns the registration function.
-func (c *EndpointConfig) GetRegistration() func(*grpc.Server, *azservices.ServiceContext, *azservices.EndpointContext, *azstorage.StorageConnector) error {
+func (c *EndpointConfig) GetRegistration() func(*grpc.Server, *services.ServiceContext, *services.EndpointContext, *storage.StorageConnector) error {
 	return c.registration
 }
 
 // Endpoint represents the endpoint.
 type Endpoint struct {
 	config     *EndpointConfig
-	ctx        *azservices.EndpointContext
+	ctx        *services.EndpointContext
 	grpcServer *grpc.Server
 }
 
 // newEndpoint creates a new grpcendpoint.
-func newEndpoint(endpointCfg *EndpointConfig, serviceCtx *azservices.ServiceContext) (*Endpoint, error) {
-	grpcendpointCtx, err := azservices.NewEndpointContext(serviceCtx, endpointCfg.port)
+func newEndpoint(endpointCfg *EndpointConfig, serviceCtx *services.ServiceContext) (*Endpoint, error) {
+	grpcendpointCtx, err := services.NewEndpointContext(serviceCtx, endpointCfg.port)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func (e *Endpoint) getLogger() *zap.Logger {
 }
 
 // Serve starts the grpcendpoint.
-func (e *Endpoint) Serve(ctx context.Context, serviceCtx *azservices.ServiceContext) (bool, error) {
+func (e *Endpoint) Serve(ctx context.Context, serviceCtx *services.ServiceContext) (bool, error) {
 	logger := e.getLogger()
 	logger.Debug("Endpoint is starting")
 	grpcServer := grpc.NewServer(

@@ -21,18 +21,18 @@ import (
 
 	"github.com/spf13/viper"
 
-	azservers "github.com/permguard/permguard/pkg/agents/servers"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/servers"
+	"github.com/permguard/permguard/pkg/agents/storage"
 )
 
 // ServerFactoryConfig holds the configuration for the server factory.
 type ServerFactoryConfig struct {
 	config               *ServerConfig
-	centralStorageEngine azstorage.StorageKind
+	centralStorageEngine storage.StorageKind
 }
 
 // NewServerFactoryConfig creates a new server factory configuration.
-func NewServerFactoryConfig(initializer azservers.ServerInitializer, centralStorageEngine azstorage.StorageKind) (*ServerFactoryConfig, error) {
+func NewServerFactoryConfig(initializer servers.ServerInitializer, centralStorageEngine storage.StorageKind) (*ServerFactoryConfig, error) {
 	host := initializer.GetHost()
 	storages := initializer.GetStorages(centralStorageEngine)
 	storagesFactories, err := initializer.GetStoragesFactories(centralStorageEngine)

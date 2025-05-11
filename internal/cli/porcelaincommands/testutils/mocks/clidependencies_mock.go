@@ -20,9 +20,9 @@ package mocks
 import (
 	mock "github.com/stretchr/testify/mock"
 
-	azlang "github.com/permguard/permguard/pkg/authz/languages"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azclients "github.com/permguard/permguard/pkg/transport/clients"
+	"github.com/permguard/permguard/pkg/authz/languages"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/transport/clients"
 )
 
 // CliDependenciesMock is a mock type for the CliDependencies type.
@@ -31,50 +31,50 @@ type CliDependenciesMock struct {
 }
 
 // CreatePrinter creates a new printer.
-func (m *CliDependenciesMock) CreatePrinter(verbose bool, output string) (azcli.CliPrinter, error) {
+func (m *CliDependenciesMock) CreatePrinter(verbose bool, output string) (cli.CliPrinter, error) {
 	args := m.Called(verbose, output)
-	var r0 azcli.CliPrinter
-	if val, ok := args.Get(0).(azcli.CliPrinter); ok {
+	var r0 cli.CliPrinter
+	if val, ok := args.Get(0).(cli.CliPrinter); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
 // CreateGrpcZAPClient creates a new gRPC ZAP client.
-func (m *CliDependenciesMock) CreateGrpcZAPClient(zapTarget string) (azclients.GrpcZAPClient, error) {
+func (m *CliDependenciesMock) CreateGrpcZAPClient(zapTarget string) (clients.GrpcZAPClient, error) {
 	args := m.Called(zapTarget)
-	var r0 azclients.GrpcZAPClient
-	if val, ok := args.Get(0).(azclients.GrpcZAPClient); ok {
+	var r0 clients.GrpcZAPClient
+	if val, ok := args.Get(0).(clients.GrpcZAPClient); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
 // CreateGrpcPAPClient creates a new gRPC PAP client.
-func (m *CliDependenciesMock) CreateGrpcPAPClient(papTarget string) (azclients.GrpcPAPClient, error) {
+func (m *CliDependenciesMock) CreateGrpcPAPClient(papTarget string) (clients.GrpcPAPClient, error) {
 	args := m.Called(papTarget)
-	var r0 azclients.GrpcPAPClient
-	if val, ok := args.Get(0).(azclients.GrpcPAPClient); ok {
+	var r0 clients.GrpcPAPClient
+	if val, ok := args.Get(0).(clients.GrpcPAPClient); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
 // CreateGrpcPDPClient creates a new gRPC PDP client.
-func (m *CliDependenciesMock) CreateGrpcPDPClient(pdpTarget string) (azclients.GrpcPDPClient, error) {
+func (m *CliDependenciesMock) CreateGrpcPDPClient(pdpTarget string) (clients.GrpcPDPClient, error) {
 	args := m.Called(pdpTarget)
-	var r0 azclients.GrpcPDPClient
-	if val, ok := args.Get(0).(azclients.GrpcPDPClient); ok {
+	var r0 clients.GrpcPDPClient
+	if val, ok := args.Get(0).(clients.GrpcPDPClient); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
 // GetLanguageFactory returns the language factory.
-func (m *CliDependenciesMock) GetLanguageFactory() (azlang.LanguageFactory, error) {
+func (m *CliDependenciesMock) GetLanguageFactory() (languages.LanguageFactory, error) {
 	args := m.Called()
-	var r0 azlang.LanguageFactory
-	if val, ok := args.Get(0).(azlang.LanguageFactory); ok {
+	var r0 languages.LanguageFactory
+	if val, ok := args.Get(0).(languages.LanguageFactory); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)

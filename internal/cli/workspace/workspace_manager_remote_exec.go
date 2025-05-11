@@ -22,15 +22,15 @@ import (
 	"path"
 	"strings"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
-	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
-	azauthzlangtypes "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
-	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	"github.com/permguard/permguard/internal/cli/common"
+	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	"github.com/permguard/permguard/internal/cli/workspace/logs"
+	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
+	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
-	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azfiles "github.com/permguard/permguard/pkg/core/files"
+	"github.com/permguard/permguard/internal/cli/workspace/persistence"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/core/files"
 )
 
 const (
@@ -41,10 +41,10 @@ const (
 )
 
 // execInternalCheckoutLedger checks out a ledger.
-func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI string, out common.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
-			out(nil, "", fmt.Sprintf("Failed to check out the ledger %s.", aziclicommon.KeywordText(ledgerURI)), nil, true)
+			out(nil, "", fmt.Sprintf("Failed to check out the ledger %s.", common.KeywordText(ledgerURI)), nil, true)
 		}
 		return output, err
 	}
@@ -53,7 +53,7 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 	}
 
 	// Verifies the ledger URI and check if it already exists
-	ledgerInfo, err := azicliwkscommon.GetLedgerInfoFromURI(ledgerURI)
+	ledgerInfo, err := wkscommon.GetLedgerInfoFromURI(ledgerURI)
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
@@ -83,11 +83,11 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 		// Add the ledger
 		ref := m.rfsMgr.GenerateRef(ledgerInfo.GetRemote(), ledgerInfo.GetZoneID(), srvLedger.LedgerID)
 		output, err = m.cfgMgr.ExecAddLedger(ledgerURI, ref, ledgerInfo.GetRemote(), ledgerInfo.GetLedger(), srvLedger.LedgerID, ledgerInfo.GetZoneID(), nil, out)
-		if err != nil && !azerrors.AreErrorsEqual(err, azerrors.ErrCliRecordExists) {
+		if err != nil && !cerrors.AreErrorsEqual(err, cerrors.ErrCliRecordExists) {
 			return failedOpErr(output, err)
 		}
 		// Checkout the head
-		remoteCommitID := azobjs.ZeroOID
+		remoteCommitID := objects.ZeroOID
 		var remoteRef, headRef string
 		remoteRef, headRef, output, err = m.rfsMgr.ExecCheckoutRefFilesForRemote(ledgerInfo.GetRemote(), ledgerInfo.GetZoneID(), ledgerInfo.GetLedger(), srvLedger.LedgerID, remoteCommitID, output, out)
 		if err != nil {
@@ -98,7 +98,7 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		_, err = m.logsMgr.Log(remoteRefInfo, remoteCommitID, remoteCommitID, azicliwkslogs.LogActionCheckout, true, remoteRef)
+		_, err = m.logsMgr.Log(remoteRefInfo, remoteCommitID, remoteCommitID, logs.LogActionCheckout, true, remoteRef)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -107,7 +107,7 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		_, err = m.logsMgr.Log(headRefInfo, remoteCommitID, remoteCommitID, azicliwkslogs.LogActionCheckout, true, remoteRef)
+		_, err = m.logsMgr.Log(headRefInfo, remoteCommitID, remoteCommitID, logs.LogActionCheckout, true, remoteRef)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -117,7 +117,7 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 	if err != nil {
 		return failedOpErr(nil, err)
 	}
-	remoteRef := azicliwkscommon.GenerateHeadRef(refInfo.GetZoneID(), refInfo.GetLedger())
+	remoteRef := wkscommon.GenerateHeadRef(refInfo.GetZoneID(), refInfo.GetLedger())
 	_, output, err = m.rfsMgr.ExecCheckoutHead(remoteRef, output, out)
 	if err != nil {
 		return failedOpErr(nil, err)
@@ -132,9 +132,9 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 }
 
 // ExecCheckoutLedger checks out a ledger.
-func (m *WorkspaceManager) ExecCheckoutLedger(ledgerURI string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecCheckoutLedger(ledgerURI string, out common.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to checkout the ledger %s.", aziclicommon.KeywordText(ledgerURI)), nil, true)
+		out(nil, "", fmt.Sprintf("Failed to checkout the ledger %s.", common.KeywordText(ledgerURI)), nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
@@ -152,7 +152,7 @@ func (m *WorkspaceManager) ExecCheckoutLedger(ledgerURI string, out aziclicommon
 }
 
 // execInternalPull executes an internal pull.
-func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
 			out(nil, "", "Failed to pull changes from the remote ledger.", nil, true)
@@ -209,12 +209,12 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", "Not all commits were successfully pulled. Please retry the operation.", nil, true)
 		}
-		return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordExists, "not all commits were successfully pulled."))
+		return failedOpErr(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordExists, "not all commits were successfully pulled."))
 	} else {
 		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 		if !committed || localCommitID == "" || remoteCommitID == "" {
 			if localCommitID != "" && remoteCommitID != "" {
-				_, err := m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
+				_, err := m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
@@ -222,7 +222,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		}
 		err = m.rfsMgr.SaveRefConfig(remoteRefInfo.GetLedgerID(), remoteRefInfo.GetRef(), remoteCommitID)
 		if err != nil {
-			_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
+			_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
@@ -230,22 +230,22 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		}
 		err = m.rfsMgr.SaveRefWithRemoteConfig(headRefInfo.GetLedgerID(), headRefInfo.GetRef(), remoteRefInfo.GetRef(), remoteCommitID)
 		if err != nil {
-			_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
+			_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
 			return failedOpErr(nil, err)
 		}
-		_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, remoteRefInfo.GetLedgerURI())
+		_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, true, remoteRefInfo.GetLedgerURI())
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, azicliwkslogs.LogActionPull, true, remoteRefInfo.GetLedgerURI())
+		_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, true, remoteRefInfo.GetLedgerURI())
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
 	}
-	if remoteCommitID != azobjs.ZeroOID {
+	if remoteCommitID != objects.ZeroOID {
 		langPvd, err := m.buildManifestLanguageProvider()
 		if err != nil {
 			return failedOpErr(nil, err)
@@ -255,7 +255,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		commit, err := azobjs.ConvertObjectToCommit(commitObj)
+		commit, err := objects.ConvertObjectToCommit(commitObj)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -264,7 +264,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
-		tree, err := azobjs.ConvertObjectToTree(treeObj)
+		tree, err := objects.ConvertObjectToTree(treeObj)
 		if err != nil {
 			return failedOpErr(nil, err)
 		}
@@ -298,7 +298,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
-				classType, codeBlock, err := azobjs.ReadObjectContentBytes(entryObj)
+				classType, codeBlock, err := objects.ReadObjectContentBytes(entryObj)
 				if err != nil {
 					return failedOpErr(nil, err)
 				}
@@ -308,17 +308,17 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 				}
 				header := objInfo.GetHeader()
 				if header == nil {
-					azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "object header is nil")
+					cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "object header is nil")
 				}
 				switch classType {
-				case azauthzlangtypes.ClassTypeSchemaID:
+				case types.ClassTypeSchemaID:
 					partition := header.GetPartition()
 					if _, ok := schemaBlocks[partition]; !ok {
 						schemaBlocks[partition] = []byte{}
 					}
 					schemaBlocks[partition] = codeBlock
 					continue
-				case azauthzlangtypes.ClassTypePolicyID:
+				case types.ClassTypePolicyID:
 					partition := header.GetPartition()
 					langID := header.GetLanguageID()
 					langVersionID := header.GetLanguageVersionID()
@@ -336,7 +336,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 					}
 					codeBlocks[partition] = append(codeBlocks[partition], langCodeBlock)
 				default:
-					return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "invalid class type"))
+					return failedOpErr(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, "invalid class type"))
 				}
 			}
 		}
@@ -350,13 +350,13 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
-			fileName, err := azfiles.GenerateUniqueFile(CodeGenFileName, ext)
+			fileName, err := files.GenerateUniqueFile(CodeGenFileName, ext)
 			if err != nil {
 				return failedOpErr(nil, err)
 			}
 			fileBase := strings.TrimPrefix(partition, "/")
 			fileName = path.Join(fileBase, fileName)
-			m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, fileName, codeBlock, 0644, false)
+			m.persMgr.WriteFile(persistence.WorkspaceDir, fileName, codeBlock, 0644, false)
 		}
 		for partition, schemaBlockItem := range schemaBlocks {
 			absLang, err := langPvd.GetAbstractLanguage(partition)
@@ -369,12 +369,12 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 			}
 			schemaFileNames := absLang.GetSchemaFileNames()
 			if len(schemaFileNames) < 1 {
-				return failedOpErr(nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliFileOperation, "no schema file names are supported"))
+				return failedOpErr(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, "no schema file names are supported"))
 			}
 			schemaFileName := schemaFileNames[0]
 			fileBase := strings.TrimPrefix(partition, "/")
 			schemaFileName = path.Join(fileBase, schemaFileName)
-			m.persMgr.WriteFile(azicliwkspers.WorkspaceDir, schemaFileName, schemaBlock, 0644, false)
+			m.persMgr.WriteFile(persistence.WorkspaceDir, schemaFileName, schemaBlock, 0644, false)
 		}
 	}
 
@@ -382,16 +382,16 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out aziclicommon.Prin
 
 	if !internal {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, azicliwkslogs.LogActionPull, "The pull has been completed successfully.", nil, true)
+			out(nil, logs.LogActionPull, "The pull has been completed successfully.", nil, true)
 		}
 		out(nil, "", "Pull process completed successfully.", nil, true)
-		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote ledger: %s.", aziclicommon.KeywordText(headCtx.GetLedgerURI())), nil, true)
+		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote ledger: %s.", common.KeywordText(headCtx.GetLedgerURI())), nil, true)
 	}
 	return output, nil
 }
 
 // ExecPull fetches the latest changes from the remote ledger and constructs the remote state.
-func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecPull(out common.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to pull changes from the remote ledger.", nil, true)
 		return output, err
@@ -411,9 +411,9 @@ func (m *WorkspaceManager) ExecPull(out aziclicommon.PrinterOutFunc) (map[string
 }
 
 // ExecCloneLedger clones a ledger.
-func (m *WorkspaceManager) ExecCloneLedger(ledgerURI string, zapPort, papPort int, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecCloneLedger(ledgerURI string, zapPort, papPort int, out common.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to clone the ledger %s.", aziclicommon.KeywordText(ledgerURI)), nil, true)
+		out(nil, "", fmt.Sprintf("Failed to clone the ledger %s.", common.KeywordText(ledgerURI)), nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
@@ -421,12 +421,12 @@ func (m *WorkspaceManager) ExecCloneLedger(ledgerURI string, zapPort, papPort in
 	var output map[string]any
 	ledgerURI = strings.ToLower(ledgerURI)
 	if !strings.HasPrefix(ledgerURI, "permguard@") {
-		return failedOpErr(output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid ledger URI"))
+		return failedOpErr(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ledger URI"))
 	}
 	ledgerURI = strings.TrimPrefix(ledgerURI, "permguard@")
 	elements := strings.Split(ledgerURI, "/")
 	if len(elements) != 3 {
-		return failedOpErr(output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid ledger URI"))
+		return failedOpErr(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ledger URI"))
 	}
 
 	uriServer := elements[0]
@@ -453,7 +453,7 @@ func (m *WorkspaceManager) ExecCloneLedger(ledgerURI string, zapPort, papPort in
 		}
 	}
 	if aborted {
-		return failedOpErr(output, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "operation has been aborted"))
+		return failedOpErr(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "operation has been aborted"))
 	}
 	return output, nil
 }

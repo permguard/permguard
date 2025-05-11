@@ -19,22 +19,22 @@ package pdp
 import (
 	"google.golang.org/grpc"
 
-	azctrlpdp "github.com/permguard/permguard/internal/agents/services/pdp/controllers"
-	azapiv1pdp "github.com/permguard/permguard/internal/agents/services/pdp/endpoints/api/v1"
-	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	pdpctrl "github.com/permguard/permguard/internal/agents/services/pdp/controllers"
+	pdpv1 "github.com/permguard/permguard/internal/agents/services/pdp/endpoints/api/v1"
+	"github.com/permguard/permguard/pkg/agents/runtime"
+	"github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/storage"
 )
 
 // PDPService holds the configuration for the server.
 type PDPService struct {
 	config       *PDPServiceConfig
-	configReader azruntime.ServiceConfigReader
+	configReader runtime.ServiceConfigReader
 }
 
 // NewPDPService creates a new server  configuration.
 func NewPDPService(pdpServiceCfg *PDPServiceConfig) (*PDPService, error) {
-	configReader, err := azservices.NewServiceConfiguration(pdpServiceCfg.GetConfigData())
+	configReader, err := services.NewServiceConfiguration(pdpServiceCfg.GetConfigData())
 	if err != nil {
 		return nil, err
 	}
@@ -45,16 +45,16 @@ func NewPDPService(pdpServiceCfg *PDPServiceConfig) (*PDPService, error) {
 }
 
 // GetService returns the service kind.
-func (f *PDPService) GetService() azservices.ServiceKind {
+func (f *PDPService) GetService() services.ServiceKind {
 	return f.config.GetService()
 }
 
 // GetEndpoints returns the service kind.
-func (f *PDPService) GetEndpoints() ([]azservices.EndpointInitializer, error) {
-	endpoint, err := azservices.NewEndpointInitializer(
+func (f *PDPService) GetEndpoints() ([]services.EndpointInitializer, error) {
+	endpoint, err := services.NewEndpointInitializer(
 		f.config.GetService(),
 		f.config.GetPort(),
-		func(grpcServer *grpc.Server, srvCtx *azservices.ServiceContext, endptCtx *azservices.EndpointContext, storageConnector *azstorage.StorageConnector) error {
+		func(grpcServer *grpc.Server, srvCtx *services.ServiceContext, endptCtx *services.EndpointContext, storageConnector *storage.StorageConnector) error {
 			storageKind := f.config.GetStorageCentralEngine()
 			centralStorage, err := storageConnector.GetCentralStorage(storageKind, endptCtx)
 			if err != nil {
@@ -64,7 +64,7 @@ func (f *PDPService) GetEndpoints() ([]azservices.EndpointInitializer, error) {
 			if err != nil {
 				return err
 			}
-			controller, err := azctrlpdp.NewPDPController(srvCtx, pdpCentralStorage)
+			controller, err := pdpctrl.NewPDPController(srvCtx, pdpCentralStorage)
 			if err != nil {
 				return nil
 			}
@@ -72,18 +72,18 @@ func (f *PDPService) GetEndpoints() ([]azservices.EndpointInitializer, error) {
 			if err != nil {
 				return err
 			}
-			pdpServer, err := azapiv1pdp.NewV1PDPServer(endptCtx, controller)
-			azapiv1pdp.RegisterV1PDPServiceServer(grpcServer, pdpServer)
+			pdpServer, err := pdpv1.NewV1PDPServer(endptCtx, controller)
+			pdpv1.RegisterV1PDPServiceServer(grpcServer, pdpServer)
 			return err
 		})
 	if err != nil {
 		return nil, err
 	}
-	endpoints := []azservices.EndpointInitializer{endpoint}
+	endpoints := []services.EndpointInitializer{endpoint}
 	return endpoints, nil
 }
 
 // GetServiceConfigReader returns the service configuration reader.
-func (f *PDPService) GetServiceConfigReader() (azruntime.ServiceConfigReader, error) {
+func (f *PDPService) GetServiceConfigReader() (runtime.ServiceConfigReader, error) {
 	return f.configReader, nil
 }

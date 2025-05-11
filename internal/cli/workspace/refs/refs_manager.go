@@ -22,10 +22,10 @@ import (
 
 	"github.com/pelletier/go-toml"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
-	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/internal/cli/common"
+	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	"github.com/permguard/permguard/internal/cli/workspace/persistence"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -37,12 +37,12 @@ const (
 
 // RefManager implements the internal manager for the ref files.
 type RefManager struct {
-	ctx     *aziclicommon.CliCommandContext
-	persMgr *azicliwkspers.PersistenceManager
+	ctx     *common.CliCommandContext
+	persMgr *persistence.PersistenceManager
 }
 
 // NewRefManager creates a new refuration manager.
-func NewRefManager(ctx *aziclicommon.CliCommandContext, persMgr *azicliwkspers.PersistenceManager) (*RefManager, error) {
+func NewRefManager(ctx *common.CliCommandContext, persMgr *persistence.PersistenceManager) (*RefManager, error) {
 	return &RefManager{
 		ctx:     ctx,
 		persMgr: persMgr,
@@ -61,7 +61,7 @@ func (m *RefManager) getHeadFile() string {
 
 // getRefFile returns the ref file.
 func (m *RefManager) getRefFile(ref string) (string, error) {
-	refInfo, err := azicliwkscommon.ConvertStringWithLedgerIDToRefInfo(ref)
+	refInfo, err := wkscommon.ConvertStringWithLedgerIDToRefInfo(ref)
 	if err != nil {
 		return "", err
 	}
@@ -74,7 +74,7 @@ func (m *RefManager) ensureRefFileExists(ref string) error {
 	if err != nil {
 		return err
 	}
-	_, err = m.persMgr.CreateFileIfNotExists(azicliwkspers.PermguardDir, refFile)
+	_, err = m.persMgr.CreateFileIfNotExists(persistence.PermguardDir, refFile)
 	if err != nil {
 		return err
 	}
@@ -83,8 +83,8 @@ func (m *RefManager) ensureRefFileExists(ref string) error {
 
 // GenerateRef generates the ref.
 func (m *RefManager) GenerateRef(remote string, zoneID int64, ledgerID string) string {
-	refInfo, _ := azicliwkscommon.NewRefInfoFromLedgerName(remote, zoneID, ledgerID)
-	ref := azicliwkscommon.ConvertRefInfoToString(refInfo)
+	refInfo, _ := wkscommon.NewRefInfoFromLedgerName(remote, zoneID, ledgerID)
+	ref := wkscommon.ConvertRefInfoToString(refInfo)
 	return ref
 }
 
@@ -92,15 +92,15 @@ func (m *RefManager) GenerateRef(remote string, zoneID int64, ledgerID string) s
 func (m *RefManager) saveConfig(name string, override bool, cfg any) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
-		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "failed to marshal config", err)
+		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "failed to marshal config", err)
 	}
 	if override {
-		_, err = m.persMgr.WriteFile(azicliwkspers.PermguardDir, name, data, 0644, false)
+		_, err = m.persMgr.WriteFile(persistence.PermguardDir, name, data, 0644, false)
 	} else {
-		_, err = m.persMgr.WriteFileIfNotExists(azicliwkspers.PermguardDir, name, data, 0644, false)
+		_, err = m.persMgr.WriteFileIfNotExists(persistence.PermguardDir, name, data, 0644, false)
 	}
 	if err != nil {
-		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("failed to write config file %s", name), err)
+		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, fmt.Sprintf("failed to write config file %s", name), err)
 	}
 	return nil
 }
@@ -123,7 +123,7 @@ func (m *RefManager) SaveHeadConfig(ref string) error {
 // readHeadConfig reads the config file.
 func (m *RefManager) readHeadConfig() (*headConfig, error) {
 	var config headConfig
-	err := m.persMgr.ReadTOMLFile(azicliwkspers.PermguardDir, m.getHeadFile(), &config)
+	err := m.persMgr.ReadTOMLFile(persistence.PermguardDir, m.getHeadFile(), &config)
 	return &config, err
 }
 
@@ -163,7 +163,7 @@ func (m *RefManager) readRefConfig(ref string) (*refConfig, error) {
 		return nil, err
 	}
 	var config refConfig
-	err = m.persMgr.ReadTOMLFile(azicliwkspers.PermguardDir, refPath, &config)
+	err = m.persMgr.ReadTOMLFile(persistence.PermguardDir, refPath, &config)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +177,7 @@ func (m *RefManager) GetRefUpstreamRef(ref string) (string, error) {
 		return "", err
 	}
 	if refCfg == nil {
-		return "", azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "invalid ref config file", err)
+		return "", cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "invalid ref config file", err)
 
 	}
 	return refCfg.Objects.UpstreamRef, nil
@@ -190,7 +190,7 @@ func (m *RefManager) GetRefLedgerID(ref string) (string, error) {
 		return "", err
 	}
 	if refCfg == nil {
-		return "", azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "invalid ref config file", err)
+		return "", cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "invalid ref config file", err)
 
 	}
 	return refCfg.Objects.LedgerID, nil
@@ -203,18 +203,18 @@ func (m *RefManager) GetRefCommit(ref string) (string, error) {
 		return "", err
 	}
 	if refCfg == nil {
-		return "", azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "invalid ref config file", err)
+		return "", cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "invalid ref config file", err)
 	}
 	return refCfg.Objects.Commit, nil
 }
 
 // GetCurrentHead gets the current head.
-func (m *RefManager) GetCurrentHead() (*azicliwkscommon.HeadInfo, error) {
+func (m *RefManager) GetCurrentHead() (*wkscommon.HeadInfo, error) {
 	cfgHead, err := m.readHeadConfig()
 	if err != nil {
 		return nil, err
 	}
-	return azicliwkscommon.NewHeadInfo(cfgHead.Reference.Ref)
+	return wkscommon.NewHeadInfo(cfgHead.Reference.Ref)
 }
 
 // GetCurrentHeadRef gets the current head ref.
@@ -245,15 +245,15 @@ func (m *RefManager) GetCurrentHeadCommit() (string, error) {
 }
 
 // GetRefInfo gets the ref information.
-func (m *RefManager) GetRefInfo(ref string) (*azicliwkscommon.RefInfo, error) {
+func (m *RefManager) GetRefInfo(ref string) (*wkscommon.RefInfo, error) {
 	if len(ref) == 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid ref")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ref")
 	}
-	return azicliwkscommon.ConvertStringWithLedgerIDToRefInfo(ref)
+	return wkscommon.ConvertStringWithLedgerIDToRefInfo(ref)
 }
 
 // GetCurrentHeadRefInfo gets the current head ref information.
-func (m *RefManager) GetCurrentHeadRefInfo() (*azicliwkscommon.RefInfo, error) {
+func (m *RefManager) GetCurrentHeadRefInfo() (*wkscommon.RefInfo, error) {
 	headInfo, err := m.GetCurrentHead()
 	if err != nil {
 		return nil, err

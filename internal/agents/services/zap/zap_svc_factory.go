@@ -21,7 +21,7 @@ import (
 
 	"github.com/spf13/viper"
 
-	azservices "github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/services"
 )
 
 // ZAPServiceFactoryConfig holds the configuration for the server factory.
@@ -64,7 +64,7 @@ func NewZAPServiceFactory(serviceFctyCfg *ZAPServiceFactoryConfig) (*ZAPServiceF
 }
 
 // Create creates a new service.
-func (f *ZAPServiceFactory) Create() (azservices.Serviceable, error) {
+func (f *ZAPServiceFactory) Create() (services.Serviceable, error) {
 	service, err := NewZAPService(f.config.config)
 	return service, err
 }

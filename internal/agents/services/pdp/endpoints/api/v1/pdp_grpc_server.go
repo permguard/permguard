@@ -20,21 +20,21 @@ import (
 	"context"
 	"encoding/json"
 
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
-	azauthzen "github.com/permguard/permguard/ztauthstar/pkg/authzen"
+	"github.com/permguard/permguard/pkg/agents/services"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/pdp"
+	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 	"go.uber.org/zap"
 )
 
 // PDPService is the service for the PDP.
 type PDPService interface {
 	// AuthorizationCheck checks the authorization.
-	AuthorizationCheck(request *azmodelspdp.AuthorizationCheckWithDefaultsRequest) (*azmodelspdp.AuthorizationCheckResponse, error)
+	AuthorizationCheck(request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error)
 }
 
 // NewV1PDPServer creates a new PDP server.
-func NewV1PDPServer(endpointCtx *azservices.EndpointContext, Service PDPService) (*V1PDPServer, error) {
+func NewV1PDPServer(endpointCtx *services.EndpointContext, Service PDPService) (*V1PDPServer, error) {
 	return &V1PDPServer{
 		ctx:     endpointCtx,
 		service: Service,
@@ -44,7 +44,7 @@ func NewV1PDPServer(endpointCtx *azservices.EndpointContext, Service PDPService)
 // V1PDPServer is the gRPC server for the PDP.
 type V1PDPServer struct {
 	UnimplementedV1PDPServiceServer
-	ctx     *azservices.EndpointContext
+	ctx     *services.EndpointContext
 	service PDPService
 }
 
@@ -61,11 +61,11 @@ func (s *V1PDPServer) AuthorizationCheck(ctx context.Context, request *Authoriza
 	}
 	req, err := MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request)
 	if req == nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, "request cannot be nil", err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, "request cannot be nil", err)
 	}
 	authzResponse, err := s.service.AuthorizationCheck(req)
 	if err != nil {
-		authzResponse = &azmodelspdp.AuthorizationCheckResponse{
+		authzResponse = &pdp.AuthorizationCheckResponse{
 			RequestID: req.RequestID,
 			Decision:  false,
 		}
@@ -74,7 +74,7 @@ func (s *V1PDPServer) AuthorizationCheck(ctx context.Context, request *Authoriza
 			if len(requestID) == 0 {
 				requestID = req.RequestID
 			}
-			evalResponse := azmodelspdp.NewEvaluationErrorResponse(requestID, azauthzen.AuthzErrBadRequestCode, err.Error(), azauthzen.AuthzErrBadRequestMessage)
+			evalResponse := pdp.NewEvaluationErrorResponse(requestID, authzen.AuthzErrBadRequestCode, err.Error(), authzen.AuthzErrBadRequestMessage)
 			authzResponse.Evaluations = append(authzResponse.Evaluations, *evalResponse)
 		}
 		if len(authzResponse.Evaluations) == 1 {

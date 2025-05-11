@@ -23,124 +23,123 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azvalidators "github.com/permguard/permguard/common/pkg/extensions/validators"
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azclioptions "github.com/permguard/permguard/pkg/cli/options"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/common/pkg/extensions/validators"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // viperWriteEndpoint writes the setting to the viper configuration.
 func viperWriteEndpoint(v *viper.Viper, key string, value string) error {
-	if !azvalidators.IsValidHostnamePort(value) {
+	if !validators.IsValidHostnamePort(value) {
 		return fmt.Errorf("invalid hostname port")
 	}
 	valueMap := map[string]interface{}{
 		key: value,
 	}
-	return azclioptions.OverrideViperFromConfig(v, valueMap)
+	return options.OverrideViperFromConfig(v, valueMap)
 }
 
 // runECommandForZAPSet runs the command for setting the zap gRPC target.
-func runECommandForZAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForZAPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	if len(args) == 0 {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to set the zap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to set the zap target.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to set the zap target.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixZAP, aziclicommon.FlagSuffixZAPTarget), args[0])
+	err = viperWriteEndpoint(v, options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPTarget), args[0])
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to set the zap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to set the zap target.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to set the zap target.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	return nil
 }
 
 // runECommandForPAPSet runs the command for setting the pap gRPC target.
-func runECommandForPAPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForPAPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	if len(args) == 0 {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to set the pap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to set the pap target.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to set the pap target.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget), args[0])
+	err = viperWriteEndpoint(v, options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPTarget), args[0])
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to set the pap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to set the pap target.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to set the pap target.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	return nil
 }
 
 // runECommandForPDPSet runs the command for setting the pdp gRPC target.
-func runECommandForPDPSet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForPDPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	if len(args) == 0 {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to set the zap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to set the pdp target.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to set the pdp target.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	err = viperWriteEndpoint(v, azoptions.FlagName(aziclicommon.FlagPrefixPDP, aziclicommon.FlagSuffixPDPTarget), args[0])
+	err = viperWriteEndpoint(v, options.FlagName(common.FlagPrefixPDP, common.FlagSuffixPDPTarget), args[0])
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to set the zap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to set the pdp target.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to set the pdp target.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	return nil
 }
 
 // CreateCommandForConfig for managing config.
-func createCommandForConfigZAPSet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigZAPSet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "zap-set-target",
 		Short: "Set the zap grpc target",
-		Long: aziclicommon.BuildCliLongTemplate(`This command sets the zap grpc target.
+		Long: common.BuildCliLongTemplate(`This command sets the zap grpc target.
 
 Examples:
 # set the zap gRPC target to localhost:9091
@@ -154,11 +153,11 @@ permguard config zap-set-target localhost:9091
 }
 
 // CreateCommandForConfig for managing config.
-func createCommandForConfigPAPSet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigPAPSet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pap-set-target",
 		Short: "Set the pap grpc target",
-		Long: aziclicommon.BuildCliLongTemplate(`This command sets the pap grpc target.
+		Long: common.BuildCliLongTemplate(`This command sets the pap grpc target.
 
 Examples:
 # set the pap gRPC target to localhost:9092
@@ -172,11 +171,11 @@ permguard config pap-set-target localhost:9092
 }
 
 // CreateCommandForConfig for managing config.
-func createCommandForConfigPDPSet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigPDPSet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pdp-set-target",
 		Short: "Set the pdp grpc target",
-		Long: aziclicommon.BuildCliLongTemplate(`This command sets the pdp grpc target.
+		Long: common.BuildCliLongTemplate(`This command sets the pdp grpc target.
 
 Examples:
 # set the pdp gRPC target to localhost:9094

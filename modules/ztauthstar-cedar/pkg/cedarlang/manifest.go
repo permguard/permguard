@@ -20,7 +20,7 @@ import (
 	"errors"
 	"fmt"
 
-	azztasmfst "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 )
 
 const (
@@ -28,7 +28,7 @@ const (
 )
 
 // BuildManifest builds the manifest.
-func BuildManifest(manifest *azztasmfst.Manifest, template string, engineName, engineVersion, engineDist string, schema bool) (*azztasmfst.Manifest, error) {
+func BuildManifest(manifest *manifests.Manifest, template string, engineName, engineVersion, engineDist string, schema bool) (*manifests.Manifest, error) {
 	if manifest == nil {
 		return nil, errors.New("[cedar] manifest is nil")
 	}
@@ -42,21 +42,21 @@ func BuildManifest(manifest *azztasmfst.Manifest, template string, engineName, e
 		return nil, errors.New("[cedar] engine distribution is not valid")
 	}
 	if manifest.Runtimes == nil {
-		manifest.Runtimes = map[string]azztasmfst.Runtime{}
+		manifest.Runtimes = map[string]manifests.Runtime{}
 	}
 	if manifest.Partitions == nil {
-		manifest.Partitions = map[string]azztasmfst.Partition{}
+		manifest.Partitions = map[string]manifests.Partition{}
 	}
 	runtimeKey := fmt.Sprintf("%s[%s+]", LanguageCedar, LanguageSyntaxVersion)
 	_, ok := manifest.Runtimes[runtimeKey]
 	if !ok {
-		runtime := azztasmfst.Runtime{
-			Engine: azztasmfst.Engine{
+		runtime := manifests.Runtime{
+			Engine: manifests.Engine{
 				Name:         engineName,
 				Version:      engineVersion,
 				Distribution: engineDist,
 			},
-			Language: azztasmfst.Language{
+			Language: manifests.Language{
 				Name:    LanguageCedar,
 				Version: fmt.Sprintf("%s+", LanguageSyntaxVersion),
 			},
@@ -65,7 +65,7 @@ func BuildManifest(manifest *azztasmfst.Manifest, template string, engineName, e
 	}
 	partition, ok := manifest.Partitions[partitionKey]
 	if !ok {
-		partition = azztasmfst.Partition{
+		partition = manifests.Partition{
 			Runtime: runtimeKey,
 			Schema:  schema,
 		}
@@ -76,7 +76,7 @@ func BuildManifest(manifest *azztasmfst.Manifest, template string, engineName, e
 }
 
 // ValidateManifest validates the manifest.
-func ValidateManifest(manifest *azztasmfst.Manifest) (bool, error) {
+func ValidateManifest(manifest *manifests.Manifest) (bool, error) {
 	if manifest == nil {
 		return false, errors.New("[cedar] manifest is nil")
 	}
@@ -87,7 +87,7 @@ func ValidateManifest(manifest *azztasmfst.Manifest) (bool, error) {
 		return false, errors.New("[cedar] manifest has invalid partitions")
 	}
 	if manifest.Partitions == nil {
-		manifest.Partitions = map[string]azztasmfst.Partition{}
+		manifest.Partitions = map[string]manifests.Partition{}
 	}
 	runtimeKey := fmt.Sprintf("%s[%s+]", LanguageCedar, LanguageSyntaxVersion)
 	_, ok := manifest.Runtimes[runtimeKey]

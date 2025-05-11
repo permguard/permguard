@@ -23,10 +23,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/workspace"
+	"github.com/permguard/permguard/pkg/cli"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -35,21 +35,21 @@ const (
 )
 
 // runECommandForApplyWorkspace runs the command for creating an workspace.
-func runECommandForApplyWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForApplyWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	absLangFact, err := deps.GetLanguageFactory()
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, absLangFact)
+	wksMgr, err := workspace.NewInternalManager(ctx, absLangFact)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	output, err := wksMgr.ExecApply(outFunc(ctx, printer))
 	if err != nil {
@@ -57,10 +57,10 @@ func runECommandForApplyWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra
 			printer.Println("Failed to apply workspace changes.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to apply workspace changes.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to apply workspace changes.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
 		printer.PrintlnMap(output)
@@ -69,11 +69,11 @@ func runECommandForApplyWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra
 }
 
 // CreateCommandForWorkspaceApply creates a command for applyializing a permguard workspace.
-func CreateCommandForWorkspaceApply(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceApply(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "apply",
 		Short: "Apply the plan to the remote ledger",
-		Long: aziclicommon.BuildCliLongTemplate(`This command applies the plan to the remote ledger.
+		Long: common.BuildCliLongTemplate(`This command applies the plan to the remote ledger.
 
 Examples:
   # apply the plan to the remote ledger

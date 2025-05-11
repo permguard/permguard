@@ -21,7 +21,7 @@ import (
 
 	_ "embed"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -79,4 +79,4 @@ func BuildCliLongTemplate(content string) string {
 }
 
 // ErrCommandSilent is an error that is used to indicate that the command should not print an error message.
-var ErrCommandSilent = azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "silent error")
+var ErrCommandSilent = cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "silent error")

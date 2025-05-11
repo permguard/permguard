@@ -20,82 +20,82 @@ import (
 	"context"
 	"io"
 
-	azapiv1zap "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelzap "github.com/permguard/permguard/pkg/transport/models/zap"
+	zapv1 "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 // CreateZone creates a new zone.
-func (c *GrpcZAPClient) CreateZone(name string) (*azmodelzap.Zone, error) {
+func (c *GrpcZAPClient) CreateZone(name string) (*zap.Zone, error) {
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-	zone, err := client.CreateZone(context.Background(), &azapiv1zap.ZoneCreateRequest{Name: name})
+	zone, err := client.CreateZone(context.Background(), &zapv1.ZoneCreateRequest{Name: name})
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1zap.MapGrpcZoneResponseToAgentZone(zone)
+	return zapv1.MapGrpcZoneResponseToAgentZone(zone)
 }
 
 // UpdateZone updates a zone.
-func (c *GrpcZAPClient) UpdateZone(zone *azmodelzap.Zone) (*azmodelzap.Zone, error) {
+func (c *GrpcZAPClient) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
 	if zone == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "invalid zone instance")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "invalid zone instance")
 	}
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-	updatedZone, err := client.UpdateZone(context.Background(), &azapiv1zap.ZoneUpdateRequest{
+	updatedZone, err := client.UpdateZone(context.Background(), &zapv1.ZoneUpdateRequest{
 		ZoneID: zone.ZoneID,
 		Name:   zone.Name,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1zap.MapGrpcZoneResponseToAgentZone(updatedZone)
+	return zapv1.MapGrpcZoneResponseToAgentZone(updatedZone)
 }
 
 // DeleteZone deletes a zone.
-func (c *GrpcZAPClient) DeleteZone(zoneID int64) (*azmodelzap.Zone, error) {
+func (c *GrpcZAPClient) DeleteZone(zoneID int64) (*zap.Zone, error) {
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-	zone, err := client.DeleteZone(context.Background(), &azapiv1zap.ZoneDeleteRequest{ZoneID: zoneID})
+	zone, err := client.DeleteZone(context.Background(), &zapv1.ZoneDeleteRequest{ZoneID: zoneID})
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1zap.MapGrpcZoneResponseToAgentZone(zone)
+	return zapv1.MapGrpcZoneResponseToAgentZone(zone)
 }
 
 // FetchZones returns all zones.
-func (c *GrpcZAPClient) FetchZones(page int32, pageSize int32) ([]azmodelzap.Zone, error) {
+func (c *GrpcZAPClient) FetchZones(page int32, pageSize int32) ([]zap.Zone, error) {
 	return c.FetchZonesBy(page, pageSize, 0, "")
 }
 
 // FetchZonesByID returns all zones filtering by zone id.
-func (c *GrpcZAPClient) FetchZonesByID(page int32, pageSize int32, zoneID int64) ([]azmodelzap.Zone, error) {
+func (c *GrpcZAPClient) FetchZonesByID(page int32, pageSize int32, zoneID int64) ([]zap.Zone, error) {
 	return c.FetchZonesBy(page, pageSize, zoneID, "")
 }
 
 // FetchZonesByName returns all zones filtering by name.
-func (c *GrpcZAPClient) FetchZonesByName(page int32, pageSize int32, name string) ([]azmodelzap.Zone, error) {
+func (c *GrpcZAPClient) FetchZonesByName(page int32, pageSize int32, name string) ([]zap.Zone, error) {
 	return c.FetchZonesBy(page, pageSize, 0, name)
 }
 
 // FetchZonesBy returns all zones filtering by zone id and name.
-func (c *GrpcZAPClient) FetchZonesBy(page int32, pageSize int32, zoneID int64, name string) ([]azmodelzap.Zone, error) {
+func (c *GrpcZAPClient) FetchZonesBy(page int32, pageSize int32, zoneID int64, name string) ([]zap.Zone, error) {
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-	zoneFetchRequest := &azapiv1zap.ZoneFetchRequest{}
+	zoneFetchRequest := &zapv1.ZoneFetchRequest{}
 	zoneFetchRequest.Page = &page
 	zoneFetchRequest.PageSize = &pageSize
 	if zoneID > 0 {
@@ -108,7 +108,7 @@ func (c *GrpcZAPClient) FetchZonesBy(page int32, pageSize int32, zoneID int64, n
 	if err != nil {
 		return nil, err
 	}
-	zones := []azmodelzap.Zone{}
+	zones := []zap.Zone{}
 	for {
 		response, err := stream.Recv()
 		if err == io.EOF {
@@ -117,7 +117,7 @@ func (c *GrpcZAPClient) FetchZonesBy(page int32, pageSize int32, zoneID int64, n
 		if err != nil {
 			return nil, err
 		}
-		zone, err := azapiv1zap.MapGrpcZoneResponseToAgentZone(response)
+		zone, err := zapv1.MapGrpcZoneResponseToAgentZone(response)
 		if err != nil {
 			return nil, err
 		}

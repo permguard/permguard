@@ -26,8 +26,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azvalidators "github.com/permguard/permguard/pkg/core/validators"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/core/validators"
 )
 
 // GenerateZoneID generates a random zone id.
@@ -43,14 +43,14 @@ func GenerateZoneID() int64 {
 // UpsertZone creates or updates a zone.
 func (r *Repository) UpsertZone(tx *sql.Tx, isCreate bool, zone *Zone) (*Zone, error) {
 	if zone == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - zone data is missing or malformed (%s)", LogZoneEntry(zone)))
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - zone data is missing or malformed (%s)", LogZoneEntry(zone)))
 	}
-	if !isCreate && azvalidators.ValidateCodeID("zone", zone.ZoneID) != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - zone id is not valid (%s)", LogZoneEntry(zone)))
+	if !isCreate && validators.ValidateCodeID("zone", zone.ZoneID) != nil {
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - zone id is not valid (%s)", LogZoneEntry(zone)))
 	}
-	if err := azvalidators.ValidateName("zone", zone.Name); err != nil {
+	if err := validators.ValidateName("zone", zone.Name); err != nil {
 		errorMessage := "invalid client input - zone name is not valid (%s)"
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogZoneEntry(zone)), err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogZoneEntry(zone)), err)
 	}
 
 	zoneID := zone.ZoneID
@@ -86,8 +86,8 @@ func (r *Repository) UpsertZone(tx *sql.Tx, isCreate bool, zone *Zone) (*Zone, e
 
 // DeleteZone deletes a zone.
 func (r *Repository) DeleteZone(tx *sql.Tx, zoneID int64) (*Zone, error) {
-	if err := azvalidators.ValidateCodeID("zone", zoneID); err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - zone id is not valid (id: %d)", zoneID), err)
+	if err := validators.ValidateCodeID("zone", zoneID); err != nil {
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - zone id is not valid (id: %d)", zoneID), err)
 	}
 
 	var dbZone Zone
@@ -114,7 +114,7 @@ func (r *Repository) DeleteZone(tx *sql.Tx, zoneID int64) (*Zone, error) {
 // FetchZones retrieves zones.
 func (r *Repository) FetchZones(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]Zone, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	var dbZones []Zone
 
@@ -124,8 +124,8 @@ func (r *Repository) FetchZones(db *sqlx.DB, page int32, pageSize int32, filterI
 
 	if filterID != nil {
 		zoneID := *filterID
-		if err := azvalidators.ValidateCodeID("zone", zoneID); err != nil {
-			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf("invalid client input - zone id is not valid (id: %d)", zoneID), err)
+		if err := validators.ValidateCodeID("zone", zoneID); err != nil {
+			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientID, fmt.Sprintf("invalid client input - zone id is not valid (id: %d)", zoneID), err)
 		}
 		conditions = append(conditions, "zone_id = ?")
 		args = append(args, zoneID)
@@ -133,8 +133,8 @@ func (r *Repository) FetchZones(db *sqlx.DB, page int32, pageSize int32, filterI
 
 	if filterName != nil {
 		zoneName := *filterName
-		if err := azvalidators.ValidateName("zone", zoneName); err != nil {
-			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientName, fmt.Sprintf("invalid client input - zone name is not valid (name: %s)", zoneName), err)
+		if err := validators.ValidateName("zone", zoneName); err != nil {
+			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientName, fmt.Sprintf("invalid client input - zone name is not valid (name: %s)", zoneName), err)
 		}
 		zoneName = "%" + zoneName + "%"
 		conditions = append(conditions, "name LIKE ?")

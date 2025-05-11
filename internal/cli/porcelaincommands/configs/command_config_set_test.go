@@ -22,16 +22,16 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/mock"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	aztestutils "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
-	azmocks "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
 )
 
 // TestCreateCommandForConfigZAPSet tests the createCommandForConfigZAPSet function.
 func TestCreateCommandForConfigZAPSet(t *testing.T) {
 	args := []string{"-h"}
 	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command sets the zap grpc target."}
-	aztestutils.BaseCommandTest(t, createCommandForConfigZAPSet, args, false, outputs)
+	testutils.BaseCommandTest(t, createCommandForConfigZAPSet, args, false, outputs)
 }
 
 // TestCliConfigSetZAPTarget tests the command for setting the zap target.
@@ -47,20 +47,20 @@ func TestCliConfigSetZAPTargetWithError(t *testing.T) {
 		v := viper.New()
 		v.Set("output", outputType)
 
-		depsMocks := azmocks.NewCliDependenciesMock()
+		depsMocks := mocks.NewCliDependenciesMock()
 		cmd := createCommandForConfigZAPSet(depsMocks, v)
-		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
-		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
+		cmd.PersistentFlags().StringP(common.FlagWorkingDirectory, common.FlagWorkingDirectoryShort, ".", "work directory")
+		cmd.PersistentFlags().StringP(common.FlagOutput, common.FlagOutputShort, outputType, "output format")
+		cmd.PersistentFlags().BoolP(common.FlagVerbose, common.FlagVerboseShort, true, "true for verbose output")
 
-		printerMock := azmocks.NewPrinterMock()
+		printerMock := mocks.NewPrinterMock()
 		printerMock.On("Println", mock.Anything).Return()
 		printerMock.On("PrintlnMap", mock.Anything).Return()
 		printerMock.On("Error", mock.Anything).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 
-		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
+		testutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
 	}
 }
 
@@ -68,7 +68,7 @@ func TestCliConfigSetZAPTargetWithError(t *testing.T) {
 func TestCreateCommandForConfigPAPSet(t *testing.T) {
 	args := []string{"-h"}
 	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command sets the pap grpc target."}
-	aztestutils.BaseCommandTest(t, createCommandForConfigPAPSet, args, false, outputs)
+	testutils.BaseCommandTest(t, createCommandForConfigPAPSet, args, false, outputs)
 }
 
 // TestCliConfigSetPAPTarget tests the command for setting the pap target.
@@ -84,19 +84,19 @@ func TestCliConfigSetPAPTargetWithError(t *testing.T) {
 		v := viper.New()
 		v.Set("output", outputType)
 
-		depsMocks := azmocks.NewCliDependenciesMock()
+		depsMocks := mocks.NewCliDependenciesMock()
 		cmd := createCommandForConfigPAPSet(depsMocks, v)
-		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
-		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
+		cmd.PersistentFlags().StringP(common.FlagWorkingDirectory, common.FlagWorkingDirectoryShort, ".", "work directory")
+		cmd.PersistentFlags().StringP(common.FlagOutput, common.FlagOutputShort, outputType, "output format")
+		cmd.PersistentFlags().BoolP(common.FlagVerbose, common.FlagVerboseShort, true, "true for verbose output")
 
-		printerMock := azmocks.NewPrinterMock()
+		printerMock := mocks.NewPrinterMock()
 		printerMock.On("Println", mock.Anything).Return()
 		printerMock.On("PrintlnMap", mock.Anything).Return()
 		printerMock.On("Error", mock.Anything).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 
-		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
+		testutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
 	}
 }

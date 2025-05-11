@@ -24,19 +24,19 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/mock"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	aztestutils "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
-	azmocks "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelzap "github.com/permguard/permguard/pkg/transport/models/zap"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 // TestCreateCommandForZonesCreate tests the createCommandForZonesCreate function.
 func TestCreateCommandForZonesCreate(t *testing.T) {
 	args := []string{"-h"}
 	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command creates a remote zone."}
-	aztestutils.BaseCommandTest(t, createCommandForZoneCreate, args, false, outputs)
+	testutils.BaseCommandTest(t, createCommandForZoneCreate, args, false, outputs)
 }
 
 // TestCliZonesCreateWithError tests the command for creating a zone with an error.
@@ -59,18 +59,18 @@ func TestCliZonesCreateWithError(t *testing.T) {
 		outputs := []string{""}
 
 		v := viper.New()
-		v.Set(azconfigs.FlagName(aziclicommon.FlagPrefixZAP, aziclicommon.FlagSuffixZAPTarget), "localhost:9092")
+		v.Set(options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPTarget), "localhost:9092")
 
-		depsMocks := azmocks.NewCliDependenciesMock()
+		depsMocks := mocks.NewCliDependenciesMock()
 		cmd := createCommandForZoneCreate(depsMocks, v)
-		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
-		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, test.OutputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
+		cmd.PersistentFlags().StringP(common.FlagWorkingDirectory, common.FlagWorkingDirectoryShort, ".", "work directory")
+		cmd.PersistentFlags().StringP(common.FlagOutput, common.FlagOutputShort, test.OutputType, "output format")
+		cmd.PersistentFlags().BoolP(common.FlagVerbose, common.FlagVerboseShort, true, "true for verbose output")
 
-		zapClient := azmocks.NewGrpcZAPClientMock()
-		zapClient.On("CreateZone", mock.Anything).Return(nil, azerrors.ErrClientParameter)
+		zapClient := mocks.NewGrpcZAPClientMock()
+		zapClient.On("CreateZone", mock.Anything).Return(nil, cerrors.ErrClientParameter)
 
-		printerMock := azmocks.NewPrinterMock()
+		printerMock := mocks.NewPrinterMock()
 		printerMock.On("Println", mock.Anything).Return()
 		printerMock.On("PrintlnMap", mock.Anything).Return()
 		printerMock.On("Error", mock.Anything).Return()
@@ -78,7 +78,7 @@ func TestCliZonesCreateWithError(t *testing.T) {
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 		depsMocks.On("CreateGrpcZAPClient", mock.Anything).Return(zapClient, nil)
 
-		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
+		testutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
 		if test.HasError {
 			printerMock.AssertCalled(t, "Error", mock.Anything)
 		} else {
@@ -99,16 +99,16 @@ func TestCliZonesCreateWithSuccess(t *testing.T) {
 
 		v := viper.New()
 		v.Set("output", outputType)
-		v.Set(azconfigs.FlagName(aziclicommon.FlagPrefixZAP, aziclicommon.FlagSuffixZAPTarget), "localhost:9092")
+		v.Set(options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPTarget), "localhost:9092")
 
-		depsMocks := azmocks.NewCliDependenciesMock()
+		depsMocks := mocks.NewCliDependenciesMock()
 		cmd := createCommandForZoneCreate(depsMocks, v)
-		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
-		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
+		cmd.PersistentFlags().StringP(common.FlagWorkingDirectory, common.FlagWorkingDirectoryShort, ".", "work directory")
+		cmd.PersistentFlags().StringP(common.FlagOutput, common.FlagOutputShort, outputType, "output format")
+		cmd.PersistentFlags().BoolP(common.FlagVerbose, common.FlagVerboseShort, true, "true for verbose output")
 
-		zapClient := azmocks.NewGrpcZAPClientMock()
-		zone := &azmodelzap.Zone{
+		zapClient := mocks.NewGrpcZAPClientMock()
+		zone := &zap.Zone{
 			ZoneID:    581616507495,
 			Name:      "mycorporate",
 			CreatedAt: time.Now(),
@@ -116,14 +116,14 @@ func TestCliZonesCreateWithSuccess(t *testing.T) {
 		}
 		zapClient.On("CreateZone", mock.Anything).Return(zone, nil)
 
-		printerMock := azmocks.NewPrinterMock()
+		printerMock := mocks.NewPrinterMock()
 		outputPrinter := map[string]any{}
 
 		if outputType == "terminal" {
 			zoneID := fmt.Sprintf("%d", zone.ZoneID)
 			outputPrinter[zoneID] = zone.Name
 		} else {
-			outputPrinter["zones"] = []*azmodelzap.Zone{zone}
+			outputPrinter["zones"] = []*zap.Zone{zone}
 		}
 		printerMock.On("PrintMap", outputPrinter).Return()
 		printerMock.On("PrintlnMap", outputPrinter).Return()
@@ -131,7 +131,7 @@ func TestCliZonesCreateWithSuccess(t *testing.T) {
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 		depsMocks.On("CreateGrpcZAPClient", mock.Anything).Return(zapClient, nil)
 
-		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
+		testutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
 		printerMock.AssertCalled(t, "PrintlnMap", outputPrinter)
 	}
 }

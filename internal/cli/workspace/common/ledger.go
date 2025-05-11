@@ -21,8 +21,8 @@ import (
 	"strconv"
 	"strings"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azvalidators "github.com/permguard/permguard/pkg/core/validators"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/core/validators"
 )
 
 // LedgerInfo contains the ledger information.
@@ -65,36 +65,36 @@ func GetLedgerURIFromLedgerInfo(ledgerInfo *LedgerInfo) (string, error) {
 // GetLedgerInfoFromURI gets the ledger information from the URI.
 func GetLedgerInfoFromURI(ledgerURI string) (*LedgerInfo, error) {
 	if len(ledgerURI) == 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid ledger uri")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ledger uri")
 	}
 	result := &LedgerInfo{}
 	ledgerURI = strings.ToLower(ledgerURI)
 	items := strings.Split(ledgerURI, "/")
 	if len(items) < 3 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid ledger %s", ledgerURI))
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid ledger %s", ledgerURI))
 	}
 
 	remoteName, err := SanitizeRemote(items[0])
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid remote %s", remoteName), err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid remote %s", remoteName), err)
 	}
 	result.remote = remoteName
 
 	zoneIDStr := items[1]
 	zoneID, err := strconv.ParseInt(zoneIDStr, 10, 64)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid zone id %s", zoneIDStr), err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid zone id %s", zoneIDStr), err)
 	}
-	err = azvalidators.ValidateCodeID("ledger", zoneID)
+	err = validators.ValidateCodeID("ledger", zoneID)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid zone id %s", zoneIDStr), err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid zone id %s", zoneIDStr), err)
 	}
 	result.zoneID = zoneID
 
 	ledgerName := items[2]
-	err = azvalidators.ValidateName("ledger", ledgerName)
+	err = validators.ValidateName("ledger", ledgerName)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid ledger name %s", ledgerName), err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid ledger name %s", ledgerName), err)
 	}
 	result.ledger = ledgerName
 	return result, nil
@@ -103,7 +103,7 @@ func GetLedgerInfoFromURI(ledgerURI string) (*LedgerInfo, error) {
 // SanitizeLedger sanitizes the remote name.
 func SanitizeLedger(ledgerURI string) (string, error) {
 	if len(ledgerURI) == 0 {
-		return "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "invalid ledger uri")
+		return "", cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ledger uri")
 	}
 	ledgerURI = strings.ToLower(ledgerURI)
 	if _, err := GetLedgerInfoFromURI(ledgerURI); err != nil {

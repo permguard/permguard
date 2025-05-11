@@ -27,8 +27,8 @@ import (
 	"github.com/fatih/color"
 	"google.golang.org/grpc/status"
 
-	azcopier "github.com/permguard/permguard/common/pkg/extensions/copier"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/common/pkg/extensions/copier"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -110,7 +110,7 @@ type CliPrinterTerminal struct {
 func NewCliPrinterTerminal(verbose bool, output string) (*CliPrinterTerminal, error) {
 	out := strings.ToUpper(output)
 	if out != OutputTerminal && out != OutputJSON {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "invalid output")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "invalid output")
 	}
 	return &CliPrinterTerminal{
 		verbose: verbose,
@@ -257,7 +257,7 @@ func (cp *CliPrinterTerminal) createOutputWithputError(errCode string, errMsg st
 			output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, errCode, errMsg)}
 		}
 	} else {
-		sysErr := azerrors.NewSystemError(errCode).(azerrors.SystemError)
+		sysErr := cerrors.NewSystemError(errCode).(cerrors.SystemError)
 		if cp.output == OutputJSON {
 			output = map[string]any{"errorCode": sysErr.Code(), "errorMessage": sysErr.Message()}
 		} else {
@@ -270,7 +270,7 @@ func (cp *CliPrinterTerminal) createOutputWithputError(errCode string, errMsg st
 // createOutputWithError creates the output with the error.
 func (cp *CliPrinterTerminal) createOutputWithError(errInputMsg string) map[string]any {
 	var output map[string]any
-	code := azerrors.ZeroErrorCode
+	code := cerrors.ZeroErrorCode
 	if cp.verbose {
 		if cp.output == OutputJSON {
 			output = map[string]any{"errorCode": code, "errorMessage": errInputMsg}
@@ -319,7 +319,7 @@ func (cp *CliPrinterTerminal) ErrorWithOutput(output map[string]any, err error) 
 		}
 	}
 	if len(errorOutput) > 0 {
-		output = azcopier.MergeMaps(output, errorOutput)
+		output = copier.MergeMaps(output, errorOutput)
 	}
 	switch cp.output {
 	case OutputJSON:

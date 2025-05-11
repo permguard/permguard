@@ -20,14 +20,14 @@ import (
 	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
 	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azStorage "github.com/permguard/permguard/pkg/agents/storage"
-	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
+	"github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
 type PAPController struct {
-	ctx     *azservices.ServiceContext
-	storage azStorage.PAPCentralStorage
+	ctx     *services.ServiceContext
+	storage storage.PAPCentralStorage
 }
 
 // Setup initializes the service.
@@ -36,7 +36,7 @@ func (s PAPController) Setup() error {
 }
 
 // NewPAPController creates a new PAP controller.
-func NewPAPController(serviceContext *azservices.ServiceContext, storage azStorage.PAPCentralStorage) (*PAPController, error) {
+func NewPAPController(serviceContext *services.ServiceContext, storage storage.PAPCentralStorage) (*PAPController, error) {
 	service := PAPController{
 		ctx:     serviceContext,
 		storage: storage,
@@ -45,22 +45,22 @@ func NewPAPController(serviceContext *azservices.ServiceContext, storage azStora
 }
 
 // CreateLedger creates a new ledger.
-func (s PAPController) CreateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error) {
+func (s PAPController) CreateLedger(ledger *pap.Ledger) (*pap.Ledger, error) {
 	return s.storage.CreateLedger(ledger)
 }
 
 // UpdateLedger updates an ledger.
-func (s PAPController) UpdateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error) {
+func (s PAPController) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, error) {
 	return s.storage.UpdateLedger(ledger)
 }
 
 // DeleteLedger deletes an ledger.
-func (s PAPController) DeleteLedger(zoneID int64, ledgerID string) (*azmodelspap.Ledger, error) {
+func (s PAPController) DeleteLedger(zoneID int64, ledgerID string) (*pap.Ledger, error) {
 	return s.storage.DeleteLedger(zoneID, ledgerID)
 }
 
 // FetchLedgers gets all ledgers.
-func (s PAPController) FetchLedgers(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelspap.Ledger, error) {
+func (s PAPController) FetchLedgers(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]pap.Ledger, error) {
 	return s.storage.FetchLedgers(page, pageSize, zoneID, fields)
 }
 

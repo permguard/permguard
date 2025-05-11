@@ -22,7 +22,7 @@ import (
 
 	"go.uber.org/zap"
 
-	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
+	"github.com/permguard/permguard/pkg/agents/runtime"
 )
 
 const (
@@ -35,11 +35,11 @@ type storageCtxKey struct{}
 // StorageContext is the storage context.
 type StorageContext struct {
 	ctx       context.Context
-	parentCtx azruntime.RuntimeContext
+	parentCtx runtime.RuntimeContext
 }
 
 // NewStorageContext creates a new storage context.
-func NewStorageContext(runtimeContext azruntime.RuntimeContext, storage StorageKind) (*StorageContext, error) {
+func NewStorageContext(runtimeContext runtime.RuntimeContext, storage StorageKind) (*StorageContext, error) {
 	newLogger := runtimeContext.GetLogger().With(zap.String(string("storage"), storage.String()))
 	data := map[string]any{ctxStgStorageKey: storage, ctxStgLoggerKey: newLogger}
 	ctx := context.WithValue(runtimeContext.GetContext(), storageCtxKey{}, data)
@@ -76,11 +76,11 @@ func (s *StorageContext) GetLogMessage(message string) string {
 }
 
 // GetHostConfigReader returns the host configuration reader.
-func (s *StorageContext) GetHostConfigReader() (azruntime.HostConfigReader, error) {
+func (s *StorageContext) GetHostConfigReader() (runtime.HostConfigReader, error) {
 	return s.parentCtx.GetHostConfigReader()
 }
 
 // GetServiceConfigReader returns the service configuration reader.
-func (s *StorageContext) GetServiceConfigReader() (azruntime.ServiceConfigReader, error) {
+func (s *StorageContext) GetServiceConfigReader() (runtime.ServiceConfigReader, error) {
 	return s.parentCtx.GetServiceConfigReader()
 }

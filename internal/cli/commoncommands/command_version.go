@@ -23,9 +23,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/common"
 
-	azcli "github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli"
 )
 
 const (
@@ -34,11 +34,11 @@ const (
 )
 
 // runECommandForCreateIdentity runs the command for creating an identity.
-func runECommandForCreateIdentity(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForCreateIdentity(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
 		version, versionMap := ctx.GetClientVersion()
@@ -63,11 +63,11 @@ func runECommandForCreateIdentity(deps azcli.CliDependenciesProvider, cmd *cobra
 }
 
 // CreateCommandForVersion creates a command for version.
-func CreateCommandForVersion(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForVersion(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "version",
 		Short: "Show the version details",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command shows the version details.`),
+		Long:  common.BuildCliLongTemplate(`This command shows the version details.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCreateIdentity(deps, cmd, v)
 		},

@@ -23,13 +23,13 @@ import (
 	"github.com/jmoiron/sqlx"
 	mock "github.com/stretchr/testify/mock"
 
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
-	azidbmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db/testutils/mocks"
+	"github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
+	"github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db/testutils/mocks"
 )
 
 // NewSqliteConnectionMocks creates mocks for the SQLite connection.
-func NewSqliteConnectionMocks(t *testing.T) (azidb.SQLiteConnector, *sqlx.DB, sqlmock.Sqlmock) {
+func NewSqliteConnectionMocks(t *testing.T) (db.SQLiteConnector, *sqlx.DB, sqlmock.Sqlmock) {
 	sqlDB, sqlMock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)
@@ -39,8 +39,8 @@ func NewSqliteConnectionMocks(t *testing.T) (azidb.SQLiteConnector, *sqlx.DB, sq
 	if err != nil {
 		t.Fatal(err)
 	}
-	sqlConnMock := azidbmocks.NewSQLiteConnectionMock()
-	sqlConnMock.On("GetStorage").Return(azstorage.StorageSQLite)
+	sqlConnMock := mocks.NewSQLiteConnectionMock()
+	sqlConnMock.On("GetStorage").Return(storage.StorageSQLite)
 	sqlConnMock.On("Connect", mock.Anything, mock.Anything).Return(sqlxDB, nil)
 	sqlConnMock.On("Close", sqlxDB).Return(nil)
 	return sqlConnMock, sqlxDB, sqlMock

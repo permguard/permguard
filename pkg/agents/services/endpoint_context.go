@@ -22,7 +22,7 @@ import (
 
 	"go.uber.org/zap"
 
-	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
+	"github.com/permguard/permguard/pkg/agents/runtime"
 )
 
 const (
@@ -76,11 +76,11 @@ func (e *EndpointContext) GetLogMessage(message string) string {
 }
 
 // GetHostConfigReader returns the host configuration reader.
-func (e *EndpointContext) GetHostConfigReader() (azruntime.HostConfigReader, error) {
+func (e *EndpointContext) GetHostConfigReader() (runtime.HostConfigReader, error) {
 	return e.parentCtx.GetHostConfigReader()
 }
 
 // GetServiceConfigReader returns the service configuration reader.
-func (e *EndpointContext) GetServiceConfigReader() (azruntime.ServiceConfigReader, error) {
+func (e *EndpointContext) GetServiceConfigReader() (runtime.ServiceConfigReader, error) {
 	return e.parentCtx.GetServiceConfigReader()
 }

@@ -1,22 +1,48 @@
 {
-    "go.inferGopath": false,
-    "go.lintOnSave": "package",
-    "go.vetOnSave": "package",
-    "go.buildTags": "",
-    "go.buildFlags": [],
-    "go.lintFlags": [],
-    "go.vetFlags": [],
-    "go.coverOnSave": false,
-    "go.alternateTools": {
-      "go-langserver": "gopls",
-    },
-    "go.testEnvVars": {
-      "E2E": "FALSE",
-      "SEEDDATA": "TRUE"
-    },
-    "[go]": {
-        "editor.codeActionsOnSave": {
-            "source.organizeImports": "explicit"
-        },
+  "go.inferGopath": false,
+  "go.lintOnSave": "package",
+  "go.vetOnSave": "package",
+  "go.buildTags": "",
+  "go.buildFlags": [],
+  "go.lintFlags": [],
+  "go.vetFlags": [],
+  "go.coverOnSave": false,
+  "go.alternateTools": {
+    "go-langserver": "gopls"
+  },
+  "go.testEnvVars": {
+    "E2E": "FALSE",
+    "SEEDDATA": "TRUE"
+  },
+  "[go]": {
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
     }
+  },
+  "gopls": {
+    "build.experimentalWorkspaceModule": true,
+    "ui.diagnostic.analyses": {
+      "unusedparams": true,
+      "nilness": true,
+      "shadow": true,
+      "unusedwrite": true
+    },
+    "ui.diagnostic.codelenses": {
+      "generate": true,
+      "gc_details": true,
+      "regenerate_cgo": true,
+      "tidy": true,
+      "upgrade_dependency": true,
+      "vendor": true
+    },
+    "directoryFilters": ["-**/vendor"],
+    "analyses": {
+      "unreachable": true,
+      "unusedparams": true,
+      "nilness": true,
+      "unusedwrite": true,
+      "shadow": true
+    },
+    "staticcheck": true
+  }
 }

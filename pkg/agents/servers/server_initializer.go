@@ -17,20 +17,20 @@
 package servers
 
 import (
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/storage"
 )
 
 // ServerInitializer is the server initializer.
 type ServerInitializer interface {
 	// Embeds the storage initializer.
-	azstorage.StorageInitializer
+	storage.StorageInitializer
 	// Embeds the service initializer.
-	azservices.ServiceInitializer
+	services.ServiceInitializer
 	// GetHost returns the service kind set as host.
-	GetHost() azservices.HostKind
+	GetHost() services.HostKind
 	// GetHostInfo returns the infos of the service kind set as host.
-	GetHostInfo() *azservices.HostInfo
+	GetHostInfo() *services.HostInfo
 	// HasCentralStorage returns true if a central storage is required.
 	HasCentralStorage() bool
 }

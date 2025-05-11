@@ -9,15 +9,15 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azprovisioners "github.com/permguard/permguard/pkg/provisioners/storage"
+	"github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/pkg/provisioners/storage"
 )
 
 //go:embed "art.txt"
 var asciiArt string
 
 // runECommand runs the command.
-func runECommand(cmdInfo azprovisioners.StorageProvisionerInfo, storageProvisioner azprovisioners.StorageProvisioner, v *viper.Viper) error {
+func runECommand(cmdInfo storage.StorageProvisionerInfo, storageProvisioner storage.StorageProvisioner, v *viper.Viper) error {
 	fmt.Println(asciiArt)
 	fmt.Printf("Permguard %s - Copyright © 2022 Nitro Agility S.r.l.\n", cmdInfo.Name)
 	fmt.Println("")
@@ -39,14 +39,14 @@ func runECommand(cmdInfo azprovisioners.StorageProvisionerInfo, storageProvision
 }
 
 // Run the provisionier.
-func Run(provisionerInitializer azprovisioners.StorageProvisionerInitializer) {
+func Run(provisionerInitializer storage.StorageProvisionerInitializer) {
 	if provisionerInitializer == nil {
 		fmt.Printf("Storage provisioner cannot be nil\n")
 		os.Exit(1)
 	}
 
 	// Create the command.
-	v, err := azoptions.NewViper()
+	v, err := options.NewViper()
 	if err != nil {
 		fmt.Printf("Storage provisioner cannot create viper %s\n", err.Error())
 		os.Exit(1)
@@ -68,7 +68,7 @@ func Run(provisionerInitializer azprovisioners.StorageProvisionerInitializer) {
 		},
 	}
 
-	err = azoptions.AddCobraFlags(command, v, storageProvisioner.AddFlags)
+	err = options.AddCobraFlags(command, v, storageProvisioner.AddFlags)
 	if err != nil {
 		fmt.Printf("Storage provisioner cannot add flags %s\n", err.Error())
 		os.Exit(1)

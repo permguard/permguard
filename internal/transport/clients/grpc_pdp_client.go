@@ -20,8 +20,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	azapiv1pdp "github.com/permguard/permguard/internal/agents/services/pdp/endpoints/api/v1"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	pdpv1 "github.com/permguard/permguard/internal/agents/services/pdp/endpoints/api/v1"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // GrpcPDPClient is a gRPC client for the PDP service.
@@ -32,7 +32,7 @@ type GrpcPDPClient struct {
 // NewGrpcPDPClient creates a new gRPC client for the PDP service.
 func NewGrpcPDPClient(target string) (*GrpcPDPClient, error) {
 	if target == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "target is required")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "target is required")
 	}
 	return &GrpcPDPClient{
 		target: target,
@@ -40,11 +40,11 @@ func NewGrpcPDPClient(target string) (*GrpcPDPClient, error) {
 }
 
 // createGRPCClient creates a new gRPC client.
-func (c *GrpcPDPClient) createGRPCClient() (azapiv1pdp.V1PDPServiceClient, *grpc.ClientConn, error) {
+func (c *GrpcPDPClient) createGRPCClient() (pdpv1.V1PDPServiceClient, *grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(c.target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, nil, err
 	}
-	client := azapiv1pdp.NewV1PDPServiceClient(conn)
+	client := pdpv1.NewV1PDPServiceClient(conn)
 	return client, conn, nil
 }

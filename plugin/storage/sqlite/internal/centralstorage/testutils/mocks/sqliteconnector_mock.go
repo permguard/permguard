@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
 
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/storage"
 )
 
 // MockSQLiteConnector sqlite connector mock
@@ -36,17 +36,17 @@ func NewMockSQLiteConnector() *MockSQLiteConnector {
 }
 
 // GetStorage returns the storage kind.
-func (m *MockSQLiteConnector) GetStorage() azstorage.StorageKind {
+func (m *MockSQLiteConnector) GetStorage() storage.StorageKind {
 	args := m.Called()
-	var r0 azstorage.StorageKind
-	if val, ok := args.Get(0).(azstorage.StorageKind); ok {
+	var r0 storage.StorageKind
+	if val, ok := args.Get(0).(storage.StorageKind); ok {
 		r0 = val
 	}
 	return r0
 }
 
 // Connect connects to the sqlite database.
-func (m *MockSQLiteConnector) Connect(logger *zap.Logger, ctx *azstorage.StorageContext) (*sqlx.DB, error) {
+func (m *MockSQLiteConnector) Connect(logger *zap.Logger, ctx *storage.StorageContext) (*sqlx.DB, error) {
 	args := m.Called(logger, ctx)
 	var r0 *sqlx.DB
 	if val, ok := args.Get(0).(*sqlx.DB); ok {
@@ -56,7 +56,7 @@ func (m *MockSQLiteConnector) Connect(logger *zap.Logger, ctx *azstorage.Storage
 }
 
 // Disconnect disconnects from the sqlite database.
-func (m *MockSQLiteConnector) Disconnect(logger *zap.Logger, ctx *azstorage.StorageContext) error {
+func (m *MockSQLiteConnector) Disconnect(logger *zap.Logger, ctx *storage.StorageContext) error {
 	args := m.Called(logger, ctx)
 	return args.Error(0)
 }
