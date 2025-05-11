@@ -34,7 +34,7 @@ func LogErrorText(text string) string {
 	return out.Sprintf("%s", text)
 }
 
-// TimeStampText returns the timestamp text.
+// BoolText returns the bool text.
 func BoolText(text bool) string {
 	out := color.New(color.FgGreen)
 	if !text {
@@ -91,7 +91,7 @@ func LanguageText(text string) string {
 	return out.Sprintf("%s", text)
 }
 
-// LanguageText returns the language text.
+// LanguageKeywordText returns the language keyword text.
 func LanguageKeywordText(text string) string {
 	out := color.New(color.FgHiWhite)
 	return out.Sprintf("%s", text)

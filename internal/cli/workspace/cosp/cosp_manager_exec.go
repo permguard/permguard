@@ -17,15 +17,15 @@
 package cosp
 
 import (
-	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
+	"github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
 
 // ExecInitalize the plans resources.
 func (m *COSPManager) ExecInitalize() error {
-	_, err := m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, m.getCodeDir())
+	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, m.getCodeDir())
 	if err != nil {
 		return err
 	}
-	_, err = m.persMgr.CreateDirIfNotExists(azicliwkspers.PermguardDir, m.getObjectsDir())
+	_, err = m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, m.getObjectsDir())
 	return err
 }

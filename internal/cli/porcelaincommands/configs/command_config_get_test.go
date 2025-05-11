@@ -22,17 +22,17 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/mock"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	aztestutils "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
-	azmocks "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
-	azconfigs "github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
+	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 // TestCreateCommandForConfigZAPGet tests the createCommandForConfigZAPGet function.
 func TestCreateCommandForConfigZAPGet(t *testing.T) {
 	args := []string{"-h"}
 	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command gets the zap grpc target."}
-	aztestutils.BaseCommandTest(t, createCommandForConfigZAPGet, args, false, outputs)
+	testutils.BaseCommandTest(t, createCommandForConfigZAPGet, args, false, outputs)
 }
 
 // TestCliConfigGetZAPTarget tests the command for getting the zap target.
@@ -47,15 +47,15 @@ func TestCliConfigGetZAPTarget(t *testing.T) {
 
 		v := viper.New()
 		v.Set("output", outputType)
-		v.Set(azconfigs.FlagName(aziclicommon.FlagPrefixZAP, aziclicommon.FlagSuffixZAPTarget), "localhost:9092")
+		v.Set(options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPTarget), "localhost:9092")
 
-		depsMocks := azmocks.NewCliDependenciesMock()
+		depsMocks := mocks.NewCliDependenciesMock()
 		cmd := createCommandForConfigZAPGet(depsMocks, v)
-		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
-		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
+		cmd.PersistentFlags().StringP(common.FlagWorkingDirectory, common.FlagWorkingDirectoryShort, ".", "work directory")
+		cmd.PersistentFlags().StringP(common.FlagOutput, common.FlagOutputShort, outputType, "output format")
+		cmd.PersistentFlags().BoolP(common.FlagVerbose, common.FlagVerboseShort, true, "true for verbose output")
 
-		printerMock := azmocks.NewPrinterMock()
+		printerMock := mocks.NewPrinterMock()
 		outputPrinter := map[string]any{}
 
 		if outputType == "terminal" {
@@ -68,7 +68,7 @@ func TestCliConfigGetZAPTarget(t *testing.T) {
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 
-		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
+		testutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
 		printerMock.AssertCalled(t, "PrintlnMap", outputPrinter)
 	}
 }
@@ -77,7 +77,7 @@ func TestCliConfigGetZAPTarget(t *testing.T) {
 func TestCreateCommandForConfigPAPGet(t *testing.T) {
 	args := []string{"-h"}
 	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command gets the pap grpc target."}
-	aztestutils.BaseCommandTest(t, createCommandForConfigPAPGet, args, false, outputs)
+	testutils.BaseCommandTest(t, createCommandForConfigPAPGet, args, false, outputs)
 }
 
 // TestCliConfigGetPAPTarget tests the command for getting the pap target.
@@ -92,15 +92,15 @@ func TestCliConfigGetPAPTarget(t *testing.T) {
 
 		v := viper.New()
 		v.Set("output", outputType)
-		v.Set(azconfigs.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget), "localhost:9092")
+		v.Set(options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPTarget), "localhost:9092")
 
-		depsMocks := azmocks.NewCliDependenciesMock()
+		depsMocks := mocks.NewCliDependenciesMock()
 		cmd := createCommandForConfigPAPGet(depsMocks, v)
-		cmd.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "work directory")
-		cmd.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, outputType, "output format")
-		cmd.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, true, "true for verbose output")
+		cmd.PersistentFlags().StringP(common.FlagWorkingDirectory, common.FlagWorkingDirectoryShort, ".", "work directory")
+		cmd.PersistentFlags().StringP(common.FlagOutput, common.FlagOutputShort, outputType, "output format")
+		cmd.PersistentFlags().BoolP(common.FlagVerbose, common.FlagVerboseShort, true, "true for verbose output")
 
-		printerMock := azmocks.NewPrinterMock()
+		printerMock := mocks.NewPrinterMock()
 		outputPrinter := map[string]any{}
 
 		if outputType == "terminal" {
@@ -113,7 +113,7 @@ func TestCliConfigGetPAPTarget(t *testing.T) {
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 
-		aztestutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
+		testutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
 		printerMock.AssertCalled(t, "PrintlnMap", outputPrinter)
 	}
 }

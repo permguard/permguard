@@ -28,9 +28,9 @@ import (
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -40,31 +40,31 @@ const (
 
 // SQLiteConnectionConfig holds the configuration for the connection.
 type SQLiteConnectionConfig struct {
-	storageKind azstorage.StorageKind
+	storageKind storage.StorageKind
 	dbName      string
 }
 
 // NewSQLiteConnectionConfig creates a new connection factory configuration.
 func NewSQLiteConnectionConfig() (*SQLiteConnectionConfig, error) {
 	return &SQLiteConnectionConfig{
-		storageKind: azstorage.StorageSQLite,
+		storageKind: storage.StorageSQLite,
 	}, nil
 }
 
 // AddFlags adds flags.
 func (c *SQLiteConnectionConfig) AddFlags(flagSet *flag.FlagSet) error {
-	flagSet.String(azoptions.FlagName(flagPrefixEndingSQLite, flagSuffixDBName), "permguard", "sqlite database name")
+	flagSet.String(options.FlagName(flagPrefixEndingSQLite, flagSuffixDBName), "permguard", "sqlite database name")
 	return nil
 }
 
 // InitFromViper initializes the configuration from viper.
 func (c *SQLiteConnectionConfig) InitFromViper(v *viper.Viper) error {
-	c.dbName = strings.ToLower(v.GetString(azoptions.FlagName(flagPrefixEndingSQLite, flagSuffixDBName)))
+	c.dbName = strings.ToLower(v.GetString(options.FlagName(flagPrefixEndingSQLite, flagSuffixDBName)))
 	return nil
 }
 
 // GetStorage returns the storage kind.
-func (c *SQLiteConnectionConfig) GetStorage() azstorage.StorageKind {
+func (c *SQLiteConnectionConfig) GetStorage() storage.StorageKind {
 	return c.storageKind
 }
 
@@ -76,11 +76,11 @@ func (c *SQLiteConnectionConfig) GetDBName() string {
 // SQLiteConnector is the interface for the sqlite connector.
 type SQLiteConnector interface {
 	// GetStorage returns the storage kind.
-	GetStorage() azstorage.StorageKind
+	GetStorage() storage.StorageKind
 	// Connect connects to sqlite and return a client.
-	Connect(logger *zap.Logger, ctx *azstorage.StorageContext) (*sqlx.DB, error)
+	Connect(logger *zap.Logger, ctx *storage.StorageContext) (*sqlx.DB, error)
 	// Disconnect disconnects from sqlite.
-	Disconnect(logger *zap.Logger, ctx *azstorage.StorageContext) error
+	Disconnect(logger *zap.Logger, ctx *storage.StorageContext) error
 }
 
 // SQLiteConnection holds the connection's configuration.
@@ -93,7 +93,7 @@ type SQLiteConnection struct {
 // NewSQLiteConnection creates a connection.
 func NewSQLiteConnection(connectionCgf *SQLiteConnectionConfig) (SQLiteConnector, error) {
 	if connectionCgf == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "sqlite connection configuration cannot be nil")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrConfigurationGeneric, "sqlite connection configuration cannot be nil")
 	}
 	return &SQLiteConnection{
 		config: connectionCgf,
@@ -101,12 +101,12 @@ func NewSQLiteConnection(connectionCgf *SQLiteConnectionConfig) (SQLiteConnector
 }
 
 // GetStorage returns the storage kind.
-func (c *SQLiteConnection) GetStorage() azstorage.StorageKind {
+func (c *SQLiteConnection) GetStorage() storage.StorageKind {
 	return c.config.GetStorage()
 }
 
 // Connect connects to sqlite and return a client.
-func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *azstorage.StorageContext) (*sqlx.DB, error) {
+func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *storage.StorageContext) (*sqlx.DB, error) {
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
 	if c.db != nil {
@@ -114,7 +114,7 @@ func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *azstorage.StorageCon
 	}
 	hostCfgReader, err := ctx.GetHostConfigReader()
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageGeneric, "cannot get host config reader", err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageGeneric, "cannot get host config reader", err)
 	}
 	filePath := hostCfgReader.GetAppData()
 	dbName := c.config.GetDBName()
@@ -124,7 +124,7 @@ func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *azstorage.StorageCon
 	dbPath := filepath.Join(filePath, dbName)
 	db, err := sqlx.Connect("sqlite3", dbPath)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageGeneric, "cannot connect to sqlite", err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageGeneric, "cannot connect to sqlite", err)
 	}
 	db.Exec("PRAGMA foreign_keys = ON;")
 	c.db = db
@@ -132,7 +132,7 @@ func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *azstorage.StorageCon
 }
 
 // Disconnect disconnects from sqlite.
-func (c *SQLiteConnection) Disconnect(logger *zap.Logger, ctx *azstorage.StorageContext) error {
+func (c *SQLiteConnection) Disconnect(logger *zap.Logger, ctx *storage.StorageContext) error {
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
 	if c.db == nil {
@@ -140,7 +140,7 @@ func (c *SQLiteConnection) Disconnect(logger *zap.Logger, ctx *azstorage.Storage
 	}
 	err := c.db.Close()
 	if err != nil {
-		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageGeneric, "cannot disconnect from sqlite", err)
+		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageGeneric, "cannot disconnect from sqlite", err)
 	}
 	c.db = nil
 	return nil

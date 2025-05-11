@@ -19,12 +19,12 @@ package v1
 import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
+	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
 // MapGrpcLedgerResponseToAgentLedger maps the gRPC ledger to the agent ledger.
-func MapGrpcLedgerResponseToAgentLedger(ledger *LedgerResponse) (*azmodelspap.Ledger, error) {
-	return &azmodelspap.Ledger{
+func MapGrpcLedgerResponseToAgentLedger(ledger *LedgerResponse) (*pap.Ledger, error) {
+	return &pap.Ledger{
 		LedgerID:  ledger.LedgerID,
 		CreatedAt: ledger.CreatedAt.AsTime(),
 		UpdatedAt: ledger.UpdatedAt.AsTime(),
@@ -36,7 +36,7 @@ func MapGrpcLedgerResponseToAgentLedger(ledger *LedgerResponse) (*azmodelspap.Le
 }
 
 // MapAgentLedgerToGrpcLedgerResponse maps the agent ledger to the gRPC ledger.
-func MapAgentLedgerToGrpcLedgerResponse(ledger *azmodelspap.Ledger) (*LedgerResponse, error) {
+func MapAgentLedgerToGrpcLedgerResponse(ledger *pap.Ledger) (*LedgerResponse, error) {
 	return &LedgerResponse{
 		LedgerID:  ledger.LedgerID,
 		CreatedAt: timestamppb.New(ledger.CreatedAt),

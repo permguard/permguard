@@ -23,11 +23,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelzap "github.com/permguard/permguard/pkg/transport/models/zap"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 const (
@@ -36,11 +36,11 @@ const (
 )
 
 // runECommandForDeleteZone runs the command for creating a zone.
-func runECommandForDeleteZone(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForDeleteZone(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
@@ -48,10 +48,10 @@ func runECommandForDeleteZone(deps azcli.CliDependenciesProvider, cmd *cobra.Com
 			printer.Println("Failed to delete the zone.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the zone", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to delete the zone", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
@@ -59,40 +59,40 @@ func runECommandForDeleteZone(deps azcli.CliDependenciesProvider, cmd *cobra.Com
 			printer.Println("Failed to delete the zone.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the zone", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to delete the zone", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	zoneID := v.GetInt64(azoptions.FlagName(commandNameForZonesDelete, aziclicommon.FlagCommonZoneID))
+	zoneID := v.GetInt64(options.FlagName(commandNameForZonesDelete, common.FlagCommonZoneID))
 	zone, err := client.DeleteZone(zoneID)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to delete the zone.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to delete the zone", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to delete the zone", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
 		zoneID := fmt.Sprintf("%d", zone.ZoneID)
 		output[zoneID] = zone.Name
 	} else if ctx.IsJSONOutput() {
-		output["zones"] = []*azmodelzap.Zone{zone}
+		output["zones"] = []*zap.Zone{zone}
 	}
 	printer.PrintlnMap(output)
 	return nil
 }
 
 // createCommandForZoneDelete creates a command for managing zonedelete.
-func createCommandForZoneDelete(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForZoneDelete(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a remote zone",
-		Long: aziclicommon.BuildCliLongTemplate(`This command deletes a remote zone.
+		Long: common.BuildCliLongTemplate(`This command deletes a remote zone.
 
 Examples:
   # delete a zone and output the result in json format
@@ -102,7 +102,7 @@ Examples:
 			return runECommandForDeleteZone(deps, cmd, v)
 		},
 	}
-	command.Flags().Int64(aziclicommon.FlagCommonZoneID, 0, "specify the unique zone id")
-	v.BindPFlag(azoptions.FlagName(commandNameForZonesDelete, aziclicommon.FlagCommonZoneID), command.Flags().Lookup(aziclicommon.FlagCommonZoneID))
+	command.Flags().Int64(common.FlagCommonZoneID, 0, "specify the unique zone id")
+	v.BindPFlag(options.FlagName(commandNameForZonesDelete, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))
 	return command
 }

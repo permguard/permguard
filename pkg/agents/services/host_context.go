@@ -22,7 +22,7 @@ import (
 
 	"go.uber.org/zap"
 
-	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
+	"github.com/permguard/permguard/pkg/agents/runtime"
 )
 
 const (
@@ -40,7 +40,7 @@ type HostContext struct {
 }
 
 // NewHostContext creates a new host context.
-func NewHostContext(host HostKind, hostable Hostable, logger *zap.Logger, configReader azruntime.HostConfigReader) (*HostContext, error) {
+func NewHostContext(host HostKind, hostable Hostable, logger *zap.Logger, configReader runtime.HostConfigReader) (*HostContext, error) {
 	newLogger := logger.With(zap.String(string("host"), host.String()))
 	data := map[string]any{ctxHostHostkey: host, ctxHostServerkey: hostable, ctxHostLoggerkey: newLogger, ctxHostCfgReader: configReader}
 	ctx := context.Background()
@@ -66,8 +66,8 @@ func (h *HostContext) GetLogger() *zap.Logger {
 }
 
 // GetHostConfigReader returns the host configuration reader.
-func (h *HostContext) GetHostConfigReader() (azruntime.HostConfigReader, error) {
-	return h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHostCfgReader].(azruntime.HostConfigReader), nil
+func (h *HostContext) GetHostConfigReader() (runtime.HostConfigReader, error) {
+	return h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHostCfgReader].(runtime.HostConfigReader), nil
 }
 
 // Shutdown shuts down the service.

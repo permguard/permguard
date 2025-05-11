@@ -23,17 +23,17 @@ import (
 
 	"github.com/gofrs/flock"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwkscfg "github.com/permguard/permguard/internal/cli/workspace/config"
-	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
-	azicliwkslogs "github.com/permguard/permguard/internal/cli/workspace/logs"
-	azicliwkspers "github.com/permguard/permguard/internal/cli/workspace/persistence"
-	azicliwksrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
-	azicliwksremotesrv "github.com/permguard/permguard/internal/cli/workspace/remoteserver"
-	azlang "github.com/permguard/permguard/pkg/authz/languages"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azztasmfests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
-	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/workspace/config"
+	"github.com/permguard/permguard/internal/cli/workspace/cosp"
+	"github.com/permguard/permguard/internal/cli/workspace/logs"
+	"github.com/permguard/permguard/internal/cli/workspace/persistence"
+	refs "github.com/permguard/permguard/internal/cli/workspace/refs"
+	"github.com/permguard/permguard/internal/cli/workspace/remoteserver"
+	"github.com/permguard/permguard/pkg/authz/languages"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 const (
@@ -51,46 +51,46 @@ const (
 
 // WorkspaceManager implements the internal manager to manage the .permguard directory.
 type WorkspaceManager struct {
-	ctx       *aziclicommon.CliCommandContext
+	ctx       *common.CliCommandContext
 	homeDir   string
-	objMar    *azobjs.ObjectManager
-	langFct   azlang.LanguageFactory
-	persMgr   *azicliwkspers.PersistenceManager
-	rmSrvtMgr *azicliwksremotesrv.RemoteServerManager
-	cfgMgr    *azicliwkscfg.ConfigManager
-	logsMgr   *azicliwkslogs.LogsManager
-	rfsMgr    *azicliwksrefs.RefManager
-	cospMgr   *azicliwkscosp.COSPManager
+	objMar    *objects.ObjectManager
+	langFct   languages.LanguageFactory
+	persMgr   *persistence.PersistenceManager
+	rmSrvtMgr *remoteserver.RemoteServerManager
+	cfgMgr    *config.ConfigManager
+	logsMgr   *logs.LogsManager
+	rfsMgr    *refs.RefManager
+	cospMgr   *cosp.COSPManager
 }
 
 // NewInternalManager creates a new internal manager.
-func NewInternalManager(ctx *aziclicommon.CliCommandContext, langFct azlang.LanguageFactory) (*WorkspaceManager, error) {
+func NewInternalManager(ctx *common.CliCommandContext, langFct languages.LanguageFactory) (*WorkspaceManager, error) {
 	homeDir := ctx.GetWorkDir()
-	objMar, err := azobjs.NewObjectManager()
+	objMar, err := objects.NewObjectManager()
 	if err != nil {
 		return nil, err
 	}
-	persMgr, err := azicliwkspers.NewPersistenceManager(homeDir, hiddenDir, ctx)
+	persMgr, err := persistence.NewPersistenceManager(homeDir, hiddenDir, ctx)
 	if err != nil {
 		return nil, err
 	}
-	rmSrvtMgr, err := azicliwksremotesrv.NewRemoteServerManager(ctx)
+	rmSrvtMgr, err := remoteserver.NewRemoteServerManager(ctx)
 	if err != nil {
 		return nil, err
 	}
-	cfgMgr, err := azicliwkscfg.NewConfigManager(ctx, persMgr)
+	cfgMgr, err := config.NewConfigManager(ctx, persMgr)
 	if err != nil {
 		return nil, err
 	}
-	logsMgr, err := azicliwkslogs.NewLogsManager(ctx, persMgr)
+	logsMgr, err := logs.NewLogsManager(ctx, persMgr)
 	if err != nil {
 		return nil, err
 	}
-	rfsMgr, err := azicliwksrefs.NewRefManager(ctx, persMgr)
+	rfsMgr, err := refs.NewRefManager(ctx, persMgr)
 	if err != nil {
 		return nil, err
 	}
-	cospMgr, err := azicliwkscosp.NewPlansManager(ctx, persMgr)
+	cospMgr, err := cosp.NewPlansManager(ctx, persMgr)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +129,7 @@ func (m *WorkspaceManager) isWorkspaceDir() bool {
 	if err != nil {
 		return false
 	}
-	currentDir := m.persMgr.GetPath(azicliwkspers.WorkspaceDir, "")
+	currentDir := m.persMgr.GetPath(persistence.WorkspaceDir, "")
 	currentDir, err = filepath.Abs(currentDir)
 	if err != nil {
 		return false
@@ -137,66 +137,66 @@ func (m *WorkspaceManager) isWorkspaceDir() bool {
 	if homeDir == currentDir {
 		return false
 	}
-	isValid, _ := m.persMgr.CheckPathIfExists(azicliwkspers.PermguardDir, "")
+	isValid, _ := m.persMgr.CheckPathIfExists(persistence.PermguardDir, "")
 	return isValid
 }
 
 // tryLock tries to lock the workspace.
 func (m *WorkspaceManager) tryLock() (*flock.Flock, error) {
 	lockFile := m.getLockFile()
-	m.persMgr.CreateFileIfNotExists(azicliwkspers.WorkDir, lockFile)
+	m.persMgr.CreateFileIfNotExists(persistence.WorkDir, lockFile)
 	fileLock := flock.New(lockFile)
 	lock, err := fileLock.TryLock()
 	if !lock || err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, fmt.Sprintf("could not acquire the lock, another process is using it %s", m.getLockFile()), err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, fmt.Sprintf("could not acquire the lock, another process is using it %s", m.getLockFile()), err)
 	}
 	return fileLock, nil
 }
 
 // codeFileInfo represents info about the code file.
-func (m *WorkspaceManager) printFiles(action string, files []string, out aziclicommon.PrinterOutFunc) {
+func (m *WorkspaceManager) printFiles(action string, files []string, out common.PrinterOutFunc) {
 	out(nil, "", fmt.Sprintf("	- %s:", action), nil, true)
 	for _, file := range files {
-		out(nil, "", fmt.Sprintf("	  	- '%s'", aziclicommon.FileText(aziclicommon.FileText(file))), nil, true)
+		out(nil, "", fmt.Sprintf("	  	- '%s'", common.FileText(common.FileText(file))), nil, true)
 	}
 }
 
 // raiseWrongWorkspaceDirError raises an error when the directory is not a workspace directory.
-func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out aziclicommon.PrinterOutFunc) error {
+func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out common.PrinterOutFunc) error {
 	out(nil, "", "The current working directory is not a valid Permguard workspace.", nil, true)
 	out(nil, "", "Please initialize the workspace by running the 'init' command.", nil, true)
-	return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliWorkspaceDir, fmt.Sprintf("%s is not a permguard workspace directory", m.getHomeHiddenDir()))
+	return cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliWorkspaceDir, fmt.Sprintf("%s is not a permguard workspace directory", m.getHomeHiddenDir()))
 }
 
 // hasValidManifestWorkspaceDir checks if the directory is a valid workspace directory.
-func (m *WorkspaceManager) hasValidManifestWorkspaceDir() (*azztasmfests.Manifest, error) {
-	manifestData, _, err := m.persMgr.ReadFile(azicliwkspers.WorkspaceDir, azztasmfests.ManifestFileName, false)
+func (m *WorkspaceManager) hasValidManifestWorkspaceDir() (*manifests.Manifest, error) {
+	manifestData, _, err := m.persMgr.ReadFile(persistence.WorkspaceDir, manifests.ManifestFileName, false)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "could not read the manifest file in the workspace directory", err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliWorkspaceDir, "could not read the manifest file in the workspace directory", err)
 	}
-	manifest, err := azztasmfests.ConvertBytesToManifest(manifestData)
+	manifest, err := manifests.ConvertBytesToManifest(manifestData)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
 	}
-	ok, err := azztasmfests.ValidateManifest(manifest)
+	ok, err := manifests.ValidateManifest(manifest)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
 	}
 	if !ok {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
 	}
 	for _, runtime := range manifest.Runtimes {
 		lang := runtime.Language
 		absLang, err := m.langFct.GetLanguageAbastraction(lang.Name, lang.Version)
 		if err != nil {
-			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
+			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
 		}
 		ok, err = absLang.ValidateManifest(manifest)
 		if err != nil {
-			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
+			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
 		}
 		if !ok {
-			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
+			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
 		}
 	}
 	return manifest, nil

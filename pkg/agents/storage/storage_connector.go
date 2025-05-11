@@ -17,7 +17,7 @@
 package storage
 
 import (
-	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
+	"github.com/permguard/permguard/pkg/agents/runtime"
 )
 
 // StorageConnector is the storage connector.
@@ -35,7 +35,7 @@ func NewStorageConnector(defaultStorageKind StorageKind, facatories map[StorageK
 }
 
 // GetCentralStorage returns the central storage.
-func (s StorageConnector) GetCentralStorage(storageKind StorageKind, runtimeCotext azruntime.RuntimeContext) (CentralStorage, error) {
+func (s StorageConnector) GetCentralStorage(storageKind StorageKind, runtimeCotext runtime.RuntimeContext) (CentralStorage, error) {
 	if storageKind == "" {
 		storageKind = s.defaultStorageKind
 	}

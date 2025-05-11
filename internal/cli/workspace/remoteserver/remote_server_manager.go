@@ -19,11 +19,11 @@ package remoteserver
 import (
 	"fmt"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
-	aziclients "github.com/permguard/permguard/internal/transport/clients"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
+	"github.com/permguard/permguard/internal/cli/common"
+	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	"github.com/permguard/permguard/internal/transport/clients"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/pap"
 
 	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
@@ -32,31 +32,31 @@ import (
 
 // RemoteServerManager implements the internal manager for the remote file.
 type RemoteServerManager struct {
-	ctx *aziclicommon.CliCommandContext
+	ctx *common.CliCommandContext
 }
 
 // NewRemoteServerManager creates a new remoteuration manager.
-func NewRemoteServerManager(ctx *aziclicommon.CliCommandContext) (*RemoteServerManager, error) {
+func NewRemoteServerManager(ctx *common.CliCommandContext) (*RemoteServerManager, error) {
 	return &RemoteServerManager{
 		ctx: ctx,
 	}, nil
 }
 
 // GetServerRemoteLedger gets the remote ledger from the server.
-func (m *RemoteServerManager) GetServerRemoteLedger(remoteInfo *azicliwkscommon.RemoteInfo, ledgerInfo *azicliwkscommon.LedgerInfo) (*azmodelspap.Ledger, error) {
+func (m *RemoteServerManager) GetServerRemoteLedger(remoteInfo *wkscommon.RemoteInfo, ledgerInfo *wkscommon.LedgerInfo) (*pap.Ledger, error) {
 	if remoteInfo == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "remote info is nil")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "remote info is nil")
 	}
 	if ledgerInfo == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, "ledger info is nil")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "ledger info is nil")
 	}
 	zoneerver := fmt.Sprintf("%s:%d", remoteInfo.GetServer(), remoteInfo.GetZAPPort())
-	zapClient, err := aziclients.NewGrpcZAPClient(zoneerver)
+	zapClient, err := clients.NewGrpcZAPClient(zoneerver)
 	if err != nil {
 		return nil, err
 	}
 	pppServer := fmt.Sprintf("%s:%d", remoteInfo.GetServer(), remoteInfo.GetPAPPort())
-	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
+	papClient, err := clients.NewGrpcPAPClient(pppServer)
 	if err != nil {
 		return nil, err
 	}
@@ -64,14 +64,14 @@ func (m *RemoteServerManager) GetServerRemoteLedger(remoteInfo *azicliwkscommon.
 	ledger := ledgerInfo.GetLedger()
 	srvZones, err := zapClient.FetchZonesByID(1, 1, zoneID)
 	if err != nil || srvZones == nil || len(srvZones) == 0 {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("zone %d does not exist", zoneID), err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("zone %d does not exist", zoneID), err)
 	}
 	srvLedger, err := papClient.FetchLedgersByName(1, 1, zoneID, ledger)
 	if err != nil || srvLedger == nil || len(srvLedger) == 0 {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("ledger %s does not exist", ledger), err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("ledger %s does not exist", ledger), err)
 	}
 	if srvLedger[0].Name != ledger {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliRecordNotFound, fmt.Sprintf("ledger %s not found", ledger))
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordNotFound, fmt.Sprintf("ledger %s not found", ledger))
 	}
 	return &srvLedger[0], nil
 }
@@ -96,7 +96,7 @@ type NOTPClient interface {
 // NOTPPush push objects using the NOTP protocol.
 func (m *RemoteServerManager) NOTPPush(server string, papPort int, zoneID int64, ledgerID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
 	pppServer := fmt.Sprintf("%s:%d", server, papPort)
-	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
+	papClient, err := clients.NewGrpcPAPClient(pppServer)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, zoneID int64,
 			case notpsmpackets.RespondCurrentStateMessage:
 				return clientProvider.OnPushHandleNotifyCurrentStateResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.PublisherNegotiationStateID:
@@ -119,7 +119,7 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, zoneID int64,
 			case notpsmpackets.RespondNegotiationRequestMessage:
 				return clientProvider.OnPushSendNegotiationResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.PublisherDataStreamStateID:
@@ -127,7 +127,7 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, zoneID int64,
 			case notpsmpackets.ExchangeDataStreamMessage:
 				return clientProvider.OnPushExchangeDataStream(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.PublisherCommitStateID:
@@ -135,10 +135,10 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, zoneID int64,
 			case notpsmpackets.CommitMessage:
 				return clientProvider.OnPushHandleCommitResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 		default:
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid state %d", handlerCtx.GetCurrentStateID()))
+			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid state %d", handlerCtx.GetCurrentStateID()))
 		}
 	}
 	return papClient.NOTPStream(hostHandler, zoneID, ledgerID, bag, notpstatemachines.PushFlowType)
@@ -147,7 +147,7 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, zoneID int64,
 // NOTPPull pull objects using the NOTP protocol.
 func (m *RemoteServerManager) NOTPPull(server string, papPort int, zoneID int64, ledgerID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
 	pppServer := fmt.Sprintf("%s:%d", server, papPort)
-	papClient, err := aziclients.NewGrpcPAPClient(pppServer)
+	papClient, err := clients.NewGrpcPAPClient(pppServer)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +160,7 @@ func (m *RemoteServerManager) NOTPPull(server string, papPort int, zoneID int64,
 			case notpsmpackets.RespondCurrentStateMessage:
 				return clientProvider.OnPullHandleRequestCurrentStateResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.SubscriberNegotiationStateID:
@@ -170,7 +170,7 @@ func (m *RemoteServerManager) NOTPPull(server string, papPort int, zoneID int64,
 			case notpsmpackets.RespondNegotiationRequestMessage:
 				return clientProvider.OnPullHandleNegotiationResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.SubscriberDataStreamStateID:
@@ -178,7 +178,7 @@ func (m *RemoteServerManager) NOTPPull(server string, papPort int, zoneID int64,
 			case notpsmpackets.ExchangeDataStreamMessage:
 				return clientProvider.OnPullHandleExchangeDataStream(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.SubscriberCommitStateID:
@@ -186,10 +186,10 @@ func (m *RemoteServerManager) NOTPPull(server string, papPort int, zoneID int64,
 			case notpsmpackets.CommitMessage:
 				return clientProvider.OnPullSendCommit(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 		default:
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliInput, fmt.Sprintf("invalid state %d", handlerCtx.GetCurrentStateID()))
+			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid state %d", handlerCtx.GetCurrentStateID()))
 		}
 	}
 	return papClient.NOTPStream(hostHandler, zoneID, ledgerID, bag, notpstatemachines.PullFlowType)

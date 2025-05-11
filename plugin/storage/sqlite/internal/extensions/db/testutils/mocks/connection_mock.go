@@ -22,7 +22,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	mock "github.com/stretchr/testify/mock"
 
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/storage"
 )
 
 // SQLiteConnectionMock is a mock type for the SQLiteConnection type.
@@ -31,31 +31,31 @@ type SQLiteConnectionMock struct {
 }
 
 // GetStorage returns the storage kind.
-func (c *SQLiteConnectionMock) GetStorage() azstorage.StorageKind {
+func (c *SQLiteConnectionMock) GetStorage() storage.StorageKind {
 	ret := c.Called()
 
-	var r0 azstorage.StorageKind
-	if rf, ok := ret.Get(0).(func() azstorage.StorageKind); ok {
+	var r0 storage.StorageKind
+	if rf, ok := ret.Get(0).(func() storage.StorageKind); ok {
 		r0 = rf()
 	} else {
-		r0 = ret.Get(0).(azstorage.StorageKind)
+		r0 = ret.Get(0).(storage.StorageKind)
 	}
 	return r0
 }
 
 // Connect connects to the storage.
-func (c *SQLiteConnectionMock) Connect(logger *zap.Logger, ctx *azstorage.StorageContext) (*sqlx.DB, error) {
+func (c *SQLiteConnectionMock) Connect(logger *zap.Logger, ctx *storage.StorageContext) (*sqlx.DB, error) {
 	ret := c.Called(logger, ctx)
 
 	var r0 *sqlx.DB
-	if rf, ok := ret.Get(0).(func(*zap.Logger, *azstorage.StorageContext) *sqlx.DB); ok {
+	if rf, ok := ret.Get(0).(func(*zap.Logger, *storage.StorageContext) *sqlx.DB); ok {
 		r0 = rf(logger, ctx)
 	} else {
 		r0 = ret.Get(0).(*sqlx.DB)
 	}
 
 	var r1 error = nil
-	if rf, ok := ret.Get(1).(func(*zap.Logger, *azstorage.StorageContext) error); ok {
+	if rf, ok := ret.Get(1).(func(*zap.Logger, *storage.StorageContext) error); ok {
 		r1 = rf(logger, ctx)
 	} else {
 		if ret.Get(1) != nil {
@@ -66,11 +66,11 @@ func (c *SQLiteConnectionMock) Connect(logger *zap.Logger, ctx *azstorage.Storag
 }
 
 // Disconnect disconnects the connection.
-func (c *SQLiteConnectionMock) Disconnect(logger *zap.Logger, ctx *azstorage.StorageContext) error {
+func (c *SQLiteConnectionMock) Disconnect(logger *zap.Logger, ctx *storage.StorageContext) error {
 	ret := c.Called(logger, ctx)
 
 	var r0 error = nil
-	if rf, ok := ret.Get(0).(func(*zap.Logger, *azstorage.StorageContext) error); ok {
+	if rf, ok := ret.Get(0).(func(*zap.Logger, *storage.StorageContext) error); ok {
 		r0 = rf(logger, ctx)
 	} else {
 		if ret.Get(0) != nil {

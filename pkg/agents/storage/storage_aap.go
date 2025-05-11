@@ -17,44 +17,44 @@
 package storage
 
 import (
-	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 // ZAPCentralStorage is the interface for the ZAP central storage.
 type ZAPCentralStorage interface {
 	// CreateZone creates a new zone.
-	CreateZone(zone *azmodelszap.Zone) (*azmodelszap.Zone, error)
+	CreateZone(zone *zap.Zone) (*zap.Zone, error)
 	// UpdateZone updates a zone.
-	UpdateZone(zone *azmodelszap.Zone) (*azmodelszap.Zone, error)
+	UpdateZone(zone *zap.Zone) (*zap.Zone, error)
 	// DeleteZone deletes a zone.
-	DeleteZone(zoneID int64) (*azmodelszap.Zone, error)
+	DeleteZone(zoneID int64) (*zap.Zone, error)
 	// FetchZones returns all zones filtering by search criteria.
-	FetchZones(page int32, pageSize int32, fields map[string]any) ([]azmodelszap.Zone, error)
+	FetchZones(page int32, pageSize int32, fields map[string]any) ([]zap.Zone, error)
 
 	// CreateIdentitySource creates a new identity source.
-	CreateIdentitySource(identitySource *azmodelszap.IdentitySource) (*azmodelszap.IdentitySource, error)
+	CreateIdentitySource(identitySource *zap.IdentitySource) (*zap.IdentitySource, error)
 	// UpdateIdentitySource updates an identity source.
-	UpdateIdentitySource(identitySource *azmodelszap.IdentitySource) (*azmodelszap.IdentitySource, error)
+	UpdateIdentitySource(identitySource *zap.IdentitySource) (*zap.IdentitySource, error)
 	// DeleteIdentitySource deletes an identity source.
-	DeleteIdentitySource(zoneID int64, identitySourceID string) (*azmodelszap.IdentitySource, error)
+	DeleteIdentitySource(zoneID int64, identitySourceID string) (*zap.IdentitySource, error)
 	// FetchIdentitySources gets all identity sources.
-	FetchIdentitySources(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelszap.IdentitySource, error)
+	FetchIdentitySources(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]zap.IdentitySource, error)
 
 	// CreateIdentity creates a new identity.
-	CreateIdentity(identity *azmodelszap.Identity) (*azmodelszap.Identity, error)
+	CreateIdentity(identity *zap.Identity) (*zap.Identity, error)
 	// UpdateIdentity updates an identity.
-	UpdateIdentity(identity *azmodelszap.Identity) (*azmodelszap.Identity, error)
+	UpdateIdentity(identity *zap.Identity) (*zap.Identity, error)
 	// DeleteIdentity deletes an identity.
-	DeleteIdentity(zoneID int64, identityID string) (*azmodelszap.Identity, error)
+	DeleteIdentity(zoneID int64, identityID string) (*zap.Identity, error)
 	// FetchIdentities gets all identities.
-	FetchIdentities(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelszap.Identity, error)
+	FetchIdentities(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]zap.Identity, error)
 
 	// CreateTenant creates a new tenant.
-	CreateTenant(tenant *azmodelszap.Tenant) (*azmodelszap.Tenant, error)
+	CreateTenant(tenant *zap.Tenant) (*zap.Tenant, error)
 	// UpdateTenant updates a tenant.
-	UpdateTenant(tenant *azmodelszap.Tenant) (*azmodelszap.Tenant, error)
+	UpdateTenant(tenant *zap.Tenant) (*zap.Tenant, error)
 	// DeleteTenant deletes a tenant.
-	DeleteTenant(zoneID int64, tenantID string) (*azmodelszap.Tenant, error)
+	DeleteTenant(zoneID int64, tenantID string) (*zap.Tenant, error)
 	// FetchTenants gets all tenants.
-	FetchTenants(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelszap.Tenant, error)
+	FetchTenants(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]zap.Tenant, error)
 }

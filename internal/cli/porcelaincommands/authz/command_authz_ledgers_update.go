@@ -20,9 +20,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -31,16 +31,16 @@ const (
 )
 
 // runECommandForUpdateLedger runs the command for creating a ledger.
-func runECommandForUpdateLedger(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForUpdateLedger(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	return runECommandForUpsertLedger(deps, cmd, v, commandNameForLedgersUpdate, false)
 }
 
 // createCommandForLedgerUpdate creates a command for managing ledgerupdate.
-func createCommandForLedgerUpdate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForLedgerUpdate(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update a remote ledger",
-		Long: aziclicommon.BuildCliLongTemplate(`This command updates a remote ledger.
+		Long: common.BuildCliLongTemplate(`This command updates a remote ledger.
 
 Examples:
   # update a ledger and output the result in json format
@@ -51,8 +51,8 @@ Examples:
 		},
 	}
 	command.Flags().String(flagLedgerID, "", "specify the ID of the ledger to update")
-	v.BindPFlag(azoptions.FlagName(commandNameForLedgersUpdate, flagLedgerID), command.Flags().Lookup(flagLedgerID))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the new name for the ledger")
-	v.BindPFlag(azoptions.FlagName(commandNameForLedgersUpdate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	v.BindPFlag(options.FlagName(commandNameForLedgersUpdate, flagLedgerID), command.Flags().Lookup(flagLedgerID))
+	command.Flags().String(common.FlagCommonName, "", "specify the new name for the ledger")
+	v.BindPFlag(options.FlagName(commandNameForLedgersUpdate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

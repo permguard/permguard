@@ -19,12 +19,12 @@ package authn
 import (
 	"testing"
 
-	aztestutils "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
 )
 
 // TestCreateCommandForTenants tests the createCommandForTenants function.
 func TestCreateCommandForTenants(t *testing.T) {
 	args := []string{"-h"}
 	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command manages remote tenants."}
-	aztestutils.BaseCommandTest(t, createCommandForTenants, args, false, outputs)
+	testutils.BaseCommandTest(t, createCommandForTenants, args, false, outputs)
 }

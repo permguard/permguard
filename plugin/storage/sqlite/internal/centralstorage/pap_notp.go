@@ -21,9 +21,9 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
-	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/pap"
+	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
 	notpagstatemachines "github.com/permguard/permguard/internal/transport/notp/statemachines"
 	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
@@ -75,7 +75,7 @@ func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key str
 }
 
 // GetObjectForType gets the object for the type.
-func GetObjectForType[T any](objMng *azobjs.ObjectManager, obj *azobjs.Object) (*T, error) {
+func GetObjectForType[T any](objMng *objects.ObjectManager, obj *objects.Object) (*T, error) {
 	objInfo, err := objMng.GetObjectInfo(obj)
 	if err != nil {
 		return nil, err
@@ -83,18 +83,18 @@ func GetObjectForType[T any](objMng *azobjs.ObjectManager, obj *azobjs.Object) (
 	instance := objInfo.GetInstance()
 	value, ok := instance.(*T)
 	if !ok {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageFile, "invalid object type")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguageFile, "invalid object type")
 	}
 	return value, nil
 }
 
 // readObject reads the object.
-func (s SQLiteCentralStoragePAP) readObject(db *sqlx.DB, zoneID int64, oid string) (*azobjs.Object, error) {
+func (s SQLiteCentralStoragePAP) readObject(db *sqlx.DB, zoneID int64, oid string) (*objects.Object, error) {
 	keyValue, errkey := s.sqlRepo.GetKeyValue(db, zoneID, oid)
 	if errkey != nil || keyValue == nil || keyValue.Value == nil {
 		return nil, nil
 	}
-	obj, err := azobjs.NewObject(keyValue.Value)
+	obj, err := objects.NewObject(keyValue.Value)
 	if err != nil {
 		return nil, err
 	}
@@ -113,17 +113,17 @@ func (s SQLiteCentralStoragePAP) extractMetaData(ctx *notpstatemachines.HandlerC
 }
 
 // readLedgerFromHandlerContext reads the ledger from the handler context.
-func (s SQLiteCentralStoragePAP) readLedgerFromHandlerContext(handlerCtx *notpstatemachines.HandlerContext) (*azmodelspap.Ledger, error) {
+func (s SQLiteCentralStoragePAP) readLedgerFromHandlerContext(handlerCtx *notpstatemachines.HandlerContext) (*pap.Ledger, error) {
 	zoneID, ledgerID := s.extractMetaData(handlerCtx)
 	fields := map[string]any{
-		azmodelspap.FieldLedgerLedgerID: ledgerID,
+		pap.FieldLedgerLedgerID: ledgerID,
 	}
 	ledgers, err := s.FetchLedgers(1, 1, zoneID, fields)
 	if err != nil {
 		return nil, err
 	}
 	if len(ledgers) == 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "ledger not found.")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "ledger not found.")
 	}
 	return &ledgers[0], nil
 }

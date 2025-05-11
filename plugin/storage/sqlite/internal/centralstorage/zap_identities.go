@@ -19,9 +19,9 @@ package centralstorage
 import (
 	"fmt"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelzap "github.com/permguard/permguard/pkg/transport/models/zap"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
+	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 const (
@@ -29,23 +29,23 @@ const (
 )
 
 // CreateIdentity creates a new identity.
-func (s SQLiteCentralStorageZAP) CreateIdentity(identity *azmodelzap.Identity) (*azmodelzap.Identity, error) {
+func (s SQLiteCentralStorageZAP) CreateIdentity(identity *zap.Identity) (*zap.Identity, error) {
 	if identity == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid client input - identity is nil")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid client input - identity is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	kind, err := azirepos.ConvertIdentityKindToID(identity.Kind)
+	kind, err := repos.ConvertIdentityKindToID(identity.Kind)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity kind %s is not valid", identity.Kind), err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity kind %s is not valid", identity.Kind), err)
 	}
-	dbInIdentity := &azirepos.Identity{
+	dbInIdentity := &repos.Identity{
 		ZoneID:           identity.ZoneID,
 		IdentitySourceID: identity.IdentitySourceID,
 		Kind:             kind,
@@ -57,29 +57,29 @@ func (s SQLiteCentralStorageZAP) CreateIdentity(identity *azmodelzap.Identity) (
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapIdentityToAgentIdentity(dbOutIdentity)
 }
 
 // UpdateIdentity updates an identity.
-func (s SQLiteCentralStorageZAP) UpdateIdentity(identity *azmodelzap.Identity) (*azmodelzap.Identity, error) {
+func (s SQLiteCentralStorageZAP) UpdateIdentity(identity *zap.Identity) (*zap.Identity, error) {
 	if identity == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid client input - identity is nil")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid client input - identity is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	kind, err := azirepos.ConvertIdentityKindToID(identity.Kind)
+	kind, err := repos.ConvertIdentityKindToID(identity.Kind)
 	if err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity kind %s is not valid", identity.Kind), err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity kind %s is not valid", identity.Kind), err)
 	}
-	dbInIdentity := &azirepos.Identity{
+	dbInIdentity := &repos.Identity{
 		IdentityID:       identity.IdentityID,
 		ZoneID:           identity.ZoneID,
 		IdentitySourceID: identity.IdentitySourceID,
@@ -92,20 +92,20 @@ func (s SQLiteCentralStorageZAP) UpdateIdentity(identity *azmodelzap.Identity) (
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapIdentityToAgentIdentity(dbOutIdentity)
 }
 
 // DeleteIdentity deletes an identity.
-func (s SQLiteCentralStorageZAP) DeleteIdentity(zoneID int64, identityID string) (*azmodelzap.Identity, error) {
+func (s SQLiteCentralStorageZAP) DeleteIdentity(zoneID int64, identityID string) (*zap.Identity, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	dbOutIdentity, err := s.sqlRepo.DeleteIdentity(tx, zoneID, identityID)
 	if err != nil {
@@ -113,33 +113,33 @@ func (s SQLiteCentralStorageZAP) DeleteIdentity(zoneID int64, identityID string)
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapIdentityToAgentIdentity(dbOutIdentity)
 }
 
 // FetchIdentities returns all identities.
-func (s SQLiteCentralStorageZAP) FetchIdentities(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelzap.Identity, error) {
+func (s SQLiteCentralStorageZAP) FetchIdentities(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]zap.Identity, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, err
 	}
 	var filterID *string
-	if _, ok := fields[azmodelzap.FieldIdentityIdentityID]; ok {
-		identityID, ok := fields[azmodelzap.FieldIdentityIdentityID].(string)
+	if _, ok := fields[zap.FieldIdentityIdentityID]; ok {
+		identityID, ok := fields[zap.FieldIdentityIdentityID].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity id is not valid (identity id: %s)", identityID))
+			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity id is not valid (identity id: %s)", identityID))
 		}
 		filterID = &identityID
 	}
 	var filterName *string
-	if _, ok := fields[azmodelzap.FieldIdentityName]; ok {
-		identityName, ok := fields[azmodelzap.FieldIdentityName].(string)
+	if _, ok := fields[zap.FieldIdentityName]; ok {
+		identityName, ok := fields[zap.FieldIdentityName].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity name is not valid (identity name: %s)", identityName))
+			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity name is not valid (identity name: %s)", identityName))
 		}
 		filterName = &identityName
 	}
@@ -147,11 +147,11 @@ func (s SQLiteCentralStorageZAP) FetchIdentities(page int32, pageSize int32, zon
 	if err != nil {
 		return nil, err
 	}
-	identities := make([]azmodelzap.Identity, len(dbIdentities))
+	identities := make([]zap.Identity, len(dbIdentities))
 	for i, a := range dbIdentities {
 		identity, err := mapIdentityToAgentIdentity(&a)
 		if err != nil {
-			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageEntityMapping, fmt.Sprintf("failed to convert identity entity (%s)", azirepos.LogIdentityEntry(&a)), err)
+			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageEntityMapping, fmt.Sprintf("failed to convert identity entity (%s)", repos.LogIdentityEntry(&a)), err)
 		}
 		identities[i] = *identity
 	}

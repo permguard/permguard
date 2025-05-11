@@ -19,12 +19,12 @@ package authn
 import (
 	"testing"
 
-	aztestutils "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
 )
 
 // TestUpdateCommandForIdentities tests the updateCommandForIdentities function.
 func TestUpdateCommandForIdentities(t *testing.T) {
 	args := []string{"-h"}
 	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command manages remote identities."}
-	aztestutils.BaseCommandTest(t, createCommandForIdentities, args, false, outputs)
+	testutils.BaseCommandTest(t, createCommandForIdentities, args, false, outputs)
 }

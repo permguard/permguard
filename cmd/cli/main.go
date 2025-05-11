@@ -19,14 +19,14 @@ package main
 import (
 	"fmt"
 
-	azicli "github.com/permguard/permguard/internal/cli"
+	"github.com/permguard/permguard/internal/cli"
 )
 
 func main() {
 	// Run the cli
-	initializer, err := azicli.NewCommunityCliInitializer()
+	initializer, err := cli.NewCommunityCliInitializer()
 	if err != nil {
 		panic(fmt.Sprintf("cli: error creating cli: %s", err.Error()))
 	}
-	azicli.Run(initializer)
+	cli.Run(initializer)
 }

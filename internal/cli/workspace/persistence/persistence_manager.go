@@ -20,8 +20,8 @@ import (
 	"os"
 	"path/filepath"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azfiles "github.com/permguard/permguard/pkg/core/files"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/core/files"
 )
 
 type RelativeDir uint8
@@ -39,11 +39,11 @@ const (
 type PersistenceManager struct {
 	rootDir      string
 	permguardDir string
-	ctx          *aziclicommon.CliCommandContext
+	ctx          *common.CliCommandContext
 }
 
 // NewPersistenceManager creates a new persistenceuration manager.
-func NewPersistenceManager(rootDir string, permguardDir string, ctx *aziclicommon.CliCommandContext) (*PersistenceManager, error) {
+func NewPersistenceManager(rootDir string, permguardDir string, ctx *common.CliCommandContext) (*PersistenceManager, error) {
 	return &PersistenceManager{
 		rootDir:      rootDir,
 		permguardDir: permguardDir,
@@ -86,88 +86,88 @@ func (p *PersistenceManager) GetPath(relative RelativeDir, name string) string {
 // CheckPathIfExists checks if a file exists.
 func (p *PersistenceManager) CheckPathIfExists(relative RelativeDir, name string) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.CheckPathIfExists(name)
+	return files.CheckPathIfExists(name)
 }
 
 // DeleteFile deletes a file.
 func (p *PersistenceManager) DeletePath(relative RelativeDir, name string) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.DeletePath(name)
+	return files.DeletePath(name)
 }
 
 // CreateDirIfNotExists creates a directory if it does not exist.
 func (p *PersistenceManager) CreateDirIfNotExists(relative RelativeDir, name string) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.CreateDirIfNotExists(name)
+	return files.CreateDirIfNotExists(name)
 }
 
 // CreateFileIfNotExists creates a file if it does not exist.
 func (p *PersistenceManager) CreateFileIfNotExists(relative RelativeDir, name string) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.CreateFileIfNotExists(name)
+	return files.CreateFileIfNotExists(name)
 }
 
 // WriteFileIfNotExists writes a file if it does not exist.
 func (p *PersistenceManager) WriteFileIfNotExists(relative RelativeDir, name string, data []byte, perm os.FileMode, compressed bool) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.WriteFileIfNotExists(name, data, perm, compressed)
+	return files.WriteFileIfNotExists(name, data, perm, compressed)
 }
 
 // WriteFile writes a file.
 func (p *PersistenceManager) WriteFile(relative RelativeDir, name string, data []byte, perm os.FileMode, compressed bool) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.WriteFile(name, data, perm, compressed)
+	return files.WriteFile(name, data, perm, compressed)
 }
 
 // AppendToFile appends to a file.
 func (p *PersistenceManager) AppendToFile(relative RelativeDir, name string, data []byte, compressed bool) (bool, error) {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.AppendToFile(name, data, compressed)
+	return files.AppendToFile(name, data, compressed)
 }
 
 // ReadFile reads a file.
 func (p *PersistenceManager) ReadFile(relative RelativeDir, name string, compressed bool) ([]byte, uint32, error) {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.ReadFile(name, compressed)
+	return files.ReadFile(name, compressed)
 }
 
 // ListDirectories lists directories.
 func (p *PersistenceManager) ListDirectories(relative RelativeDir, name string) ([]string, error) {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.ListDirectories(name)
+	return files.ListDirectories(name)
 }
 
 // ListFiles lists files.
 func (p *PersistenceManager) ListFiles(relative RelativeDir, name string) ([]string, error) {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.ListFiles(name)
+	return files.ListFiles(name)
 }
 
 // ScanAndFilterFiles scans and filters files.
 func (p *PersistenceManager) ScanAndFilterFiles(relative RelativeDir, name string, exts []string, ignorePatterns []string, ignoreFile string) ([]string, []string, error) {
 	name = p.GetRelativeDir(relative, name)
 	ignoreFile = p.GetRelativeDir(relative, ignoreFile)
-	ignoreFilePatterns, err := azfiles.ReadIgnoreFile(ignoreFile)
+	ignoreFilePatterns, err := files.ReadIgnoreFile(ignoreFile)
 	if err == nil {
 		ignorePatterns = append(ignorePatterns, ignoreFilePatterns...)
 	}
-	return azfiles.ScanAndFilterFiles(name, exts, ignorePatterns)
+	return files.ScanAndFilterFiles(name, exts, ignorePatterns)
 }
 
 // WriteCSVStream writes a CSV stream.
 func (p *PersistenceManager) WriteCSVStream(relative RelativeDir, name string, header []string, records any, rowFunc func(any) []string, compressed bool) error {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.WriteCSVStream(name, header, records, rowFunc, compressed)
+	return files.WriteCSVStream(name, header, records, rowFunc, compressed)
 }
 
 // ReadCSVStream reads from a CSV stream.
 func (p *PersistenceManager) ReadCSVStream(relative RelativeDir, name string, header []string, recordFunc func([]string) error, compressed bool) error {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.ReadCSVStream(name, header, recordFunc, compressed)
+	return files.ReadCSVStream(name, header, recordFunc, compressed)
 }
 
 // ReadTOMLFile reads a TOML file.
 func (p *PersistenceManager) ReadTOMLFile(relative RelativeDir, name string, v any) error {
 	name = p.GetRelativeDir(relative, name)
-	return azfiles.ReadTOMLFile(name, v)
+	return files.ReadTOMLFile(name, v)
 }

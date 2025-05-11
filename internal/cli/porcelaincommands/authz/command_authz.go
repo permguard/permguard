@@ -20,8 +20,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
 )
 
 // runECommandForAuthZ runs the command for managing authz.
@@ -30,11 +30,11 @@ func runECommandForAuthZ(cmd *cobra.Command) error {
 }
 
 // CreateCommandForAuthZ for managing authz.
-func CreateCommandForAuthZ(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForAuthZ(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "authz",
 		Short: "Manage ledgers on the remote server",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command enables managament of ledgers on the remote server.`),
+		Long:  common.BuildCliLongTemplate(`This command enables managament of ledgers on the remote server.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForAuthZ(cmd)
 		},

@@ -23,10 +23,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azclicommons "github.com/permguard/permguard/internal/cli/commoncommands"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/internal/cli/common"
+	commoncmds "github.com/permguard/permguard/internal/cli/commoncommands"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 var (
@@ -41,13 +41,13 @@ func runECommand(cmd *cobra.Command) error {
 }
 
 // Run the provisionier.
-func Run(cliInitializer azcli.CliInitializer) {
+func Run(cliInitializer cli.CliInitializer) {
 	// Create the command.
-	v, err := azoptions.NewViperFromConfig(func(v *viper.Viper) map[string]any {
+	v, err := options.NewViperFromConfig(func(v *viper.Viper) map[string]any {
 		mapValues := map[string]any{
-			azoptions.FlagName(aziclicommon.FlagPrefixZAP, aziclicommon.FlagSuffixZAPTarget): "localhost:9091",
-			azoptions.FlagName(aziclicommon.FlagPrefixPAP, aziclicommon.FlagSuffixPAPTarget): "localhost:9092",
-			azoptions.FlagName(aziclicommon.FlagPrefixPDP, aziclicommon.FlagSuffixPDPTarget): "localhost:9094",
+			options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPTarget): "localhost:9091",
+			options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPTarget): "localhost:9092",
+			options.FlagName(common.FlagPrefixPDP, common.FlagSuffixPDPTarget): "localhost:9094",
 		}
 		return mapValues
 	})
@@ -58,7 +58,7 @@ func Run(cliInitializer azcli.CliInitializer) {
 	if err != nil {
 		os.Exit(1)
 	}
-	depsProvider, err := aziclicommon.NewCliDependenciesProvider(langFct)
+	depsProvider, err := common.NewCliDependenciesProvider(langFct)
 	if err != nil {
 		os.Exit(1)
 	}
@@ -78,11 +78,11 @@ func Run(cliInitializer azcli.CliInitializer) {
 		},
 	}
 
-	command.PersistentFlags().StringP(aziclicommon.FlagWorkingDirectory, aziclicommon.FlagWorkingDirectoryShort, ".", "workdir")
-	command.PersistentFlags().StringP(aziclicommon.FlagOutput, aziclicommon.FlagOutputShort, "terminal", "output format")
-	command.PersistentFlags().BoolP(aziclicommon.FlagVerbose, aziclicommon.FlagVerboseShort, false, "true for verbose output")
+	command.PersistentFlags().StringP(common.FlagWorkingDirectory, common.FlagWorkingDirectoryShort, ".", "workdir")
+	command.PersistentFlags().StringP(common.FlagOutput, common.FlagOutputShort, "terminal", "output format")
+	command.PersistentFlags().BoolP(common.FlagVerbose, common.FlagVerboseShort, false, "true for verbose output")
 
-	command.AddCommand(azclicommons.CreateCommandForVersion(depsProvider, v))
+	command.AddCommand(commoncmds.CreateCommandForVersion(depsProvider, v))
 
 	// Add sub commands.
 	for _, subCommand := range commands {
@@ -91,7 +91,7 @@ func Run(cliInitializer azcli.CliInitializer) {
 
 	// Execute the command.
 	if err := command.Execute(); err != nil {
-		if err != aziclicommon.ErrCommandSilent {
+		if err != common.ErrCommandSilent {
 			//TODO: fix error message
 			fmt.Fprintln(os.Stderr, err)
 		}

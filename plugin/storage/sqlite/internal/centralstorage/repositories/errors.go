@@ -22,7 +22,7 @@ import (
 
 	"github.com/mattn/go-sqlite3"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -48,7 +48,7 @@ func readErroMapParam(key string, params map[string]string) string {
 func WrapSqlite3ErrorWithParams(msg string, err error, params map[string]string) error {
 	sqliteErr, ok := err.(sqlite3.Error)
 	if !ok {
-		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageGeneric, fmt.Sprintf("(%s)", msg), err)
+		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageGeneric, fmt.Sprintf("(%s)", msg), err)
 	}
 	switch sqliteErr.Code {
 	case sqlite3.ErrConstraint:
@@ -56,16 +56,16 @@ func WrapSqlite3ErrorWithParams(msg string, err error, params map[string]string)
 			if sqliteErr.ExtendedCode == sqlite3.ErrConstraintForeignKey {
 				foreignKey := readErroMapParam(WrapSqlite3ParamForeignKey, params)
 				if foreignKey != "" {
-					return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageConstraintForeignKey, fmt.Sprintf("%s validation failed: the provided zone id does not exist - %s", foreignKey, msg), err)
+					return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageConstraintForeignKey, fmt.Sprintf("%s validation failed: the provided zone id does not exist - %s", foreignKey, msg), err)
 				}
-				return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageConstraintForeignKey, fmt.Sprintf("foreign key constraint failed - %s", msg), err)
+				return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageConstraintForeignKey, fmt.Sprintf("foreign key constraint failed - %s", msg), err)
 			}
-			return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageConstraintUnique, fmt.Sprintf("unique constraint failed - %s", msg), err)
+			return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageConstraintUnique, fmt.Sprintf("unique constraint failed - %s", msg), err)
 		}
-		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageConstraintUnique, fmt.Sprintf("constraint failed - %s", msg), err)
+		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageConstraintUnique, fmt.Sprintf("constraint failed - %s", msg), err)
 	case sqlite3.ErrNotFound:
-		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageNotFound, fmt.Sprintf("record not found - %s", msg), err)
+		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageNotFound, fmt.Sprintf("record not found - %s", msg), err)
 	default:
-		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageGeneric, fmt.Sprintf("generic error (%s)", msg), err)
+		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageGeneric, fmt.Sprintf("generic error (%s)", msg), err)
 	}
 }

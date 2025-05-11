@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	azvalidators "github.com/permguard/permguard/common/pkg/extensions/validators"
+	"github.com/permguard/permguard/common/pkg/extensions/validators"
 )
 
 // ValidatePolicyName validates a policy name.
@@ -35,7 +35,7 @@ func ValidatePolicyName(name string) (bool, error) {
 	vName := struct {
 		Name string `validate:"required,name"`
 	}{Name: name}
-	if isValid, err := azvalidators.ValidateInstance(vName); err != nil || !isValid {
+	if isValid, err := validators.ValidateInstance(vName); err != nil || !isValid {
 		return false, fmt.Errorf("language: name %s is not valid.", vName.Name)
 	}
 	return true, nil

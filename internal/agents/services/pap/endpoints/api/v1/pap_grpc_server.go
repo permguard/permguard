@@ -24,11 +24,11 @@ import (
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
+	"github.com/permguard/permguard/pkg/agents/services"
+	czerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/pap"
 
-	azagentnotpsm "github.com/permguard/permguard/internal/transport/notp/statemachines"
+	notptransportsm "github.com/permguard/permguard/internal/transport/notp/statemachines"
 	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
 	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
@@ -44,13 +44,13 @@ const (
 type PAPService interface {
 	Setup() error
 	// CreateLedger creates a new ledger.
-	CreateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error)
+	CreateLedger(ledger *pap.Ledger) (*pap.Ledger, error)
 	// UpdateLedger updates an ledger.
-	UpdateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error)
+	UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, error)
 	// DeleteLedger deletes an ledger.
-	DeleteLedger(zoneID int64, ledgerID string) (*azmodelspap.Ledger, error)
+	DeleteLedger(zoneID int64, ledgerID string) (*pap.Ledger, error)
 	// FetchLedgers gets all ledgers.
-	FetchLedgers(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelspap.Ledger, error)
+	FetchLedgers(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]pap.Ledger, error)
 	// OnPullHandleRequestCurrentState handles the request for the current state.
 	OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPullSendNotifyCurrentStateResponse notifies the current state.
@@ -78,7 +78,7 @@ type PAPService interface {
 }
 
 // NewV1PAPServer creates a new PAP server.
-func NewV1PAPServer(endpointCtx *azservices.EndpointContext, Service PAPService) (*V1PAPServer, error) {
+func NewV1PAPServer(endpointCtx *services.EndpointContext, Service PAPService) (*V1PAPServer, error) {
 	return &V1PAPServer{
 		ctx:     endpointCtx,
 		service: Service,
@@ -88,13 +88,13 @@ func NewV1PAPServer(endpointCtx *azservices.EndpointContext, Service PAPService)
 // V1PAPServer is the gRPC server for the PAP.
 type V1PAPServer struct {
 	UnimplementedV1PAPServiceServer
-	ctx     *azservices.EndpointContext
+	ctx     *services.EndpointContext
 	service PAPService
 }
 
 // CreateLedger creates a new ledger.
 func (s *V1PAPServer) CreateLedger(ctx context.Context, ledgerRequest *LedgerCreateRequest) (*LedgerResponse, error) {
-	ledger, err := s.service.CreateLedger(&azmodelspap.Ledger{ZoneID: ledgerRequest.ZoneID, Name: ledgerRequest.Name, Kind: ledgerRequest.Kind})
+	ledger, err := s.service.CreateLedger(&pap.Ledger{ZoneID: ledgerRequest.ZoneID, Name: ledgerRequest.Name, Kind: ledgerRequest.Kind})
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (s *V1PAPServer) CreateLedger(ctx context.Context, ledgerRequest *LedgerCre
 
 // UpdateLedger updates a ledger.
 func (s *V1PAPServer) UpdateLedger(ctx context.Context, ledgerRequest *LedgerUpdateRequest) (*LedgerResponse, error) {
-	ledger, err := s.service.UpdateLedger((&azmodelspap.Ledger{LedgerID: ledgerRequest.LedgerID, ZoneID: ledgerRequest.ZoneID, Name: ledgerRequest.Name}))
+	ledger, err := s.service.UpdateLedger((&pap.Ledger{LedgerID: ledgerRequest.LedgerID, ZoneID: ledgerRequest.ZoneID, Name: ledgerRequest.Name}))
 	if err != nil {
 		return nil, err
 	}
@@ -122,15 +122,15 @@ func (s *V1PAPServer) DeleteLedger(ctx context.Context, ledgerRequest *LedgerDel
 // FetchLedgers returns all ledgers.
 func (s *V1PAPServer) FetchLedgers(ledgerRequest *LedgerFetchRequest, stream grpc.ServerStreamingServer[LedgerResponse]) error {
 	fields := map[string]any{}
-	fields[azmodelspap.FieldLedgerZoneID] = ledgerRequest.ZoneID
+	fields[pap.FieldLedgerZoneID] = ledgerRequest.ZoneID
 	if ledgerRequest.Kind != nil {
-		fields[azmodelspap.FieldLedgerKind] = *ledgerRequest.Kind
+		fields[pap.FieldLedgerKind] = *ledgerRequest.Kind
 	}
 	if ledgerRequest.Name != nil {
-		fields[azmodelspap.FieldLedgerName] = *ledgerRequest.Name
+		fields[pap.FieldLedgerName] = *ledgerRequest.Name
 	}
 	if ledgerRequest.LedgerID != nil {
-		fields[azmodelspap.FieldLedgerLedgerID] = *ledgerRequest.LedgerID
+		fields[pap.FieldLedgerLedgerID] = *ledgerRequest.LedgerID
 	}
 	page := int32(0)
 	if ledgerRequest.Page != nil {
@@ -191,7 +191,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.RespondCurrentStateMessage:
 				return s.service.OnPullSendNotifyCurrentStateResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.PublisherNegotiationStateID:
@@ -201,7 +201,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.RespondNegotiationRequestMessage:
 				return s.service.OnPullHandleNegotiationResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.PublisherDataStreamStateID:
@@ -209,7 +209,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.ExchangeDataStreamMessage:
 				return s.service.OnPullHandleExchangeDataStream(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.PublisherCommitStateID:
@@ -217,7 +217,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.CommitMessage:
 				return s.service.OnPullHandleCommit(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.ProcessNotifyObjectsStateID:
@@ -227,7 +227,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.RespondCurrentStateMessage:
 				return s.service.OnPushSendNotifyCurrentStateResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.SubscriberNegotiationStateID:
@@ -237,7 +237,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.RespondNegotiationRequestMessage:
 				return s.service.OnPushHandleNegotiationResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.SubscriberDataStreamStateID:
@@ -245,7 +245,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.ExchangeDataStreamMessage:
 				return s.service.OnPushHandleExchangeDataStream(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 
 		case notpstatemachines.SubscriberCommitStateID:
@@ -253,10 +253,10 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.CommitMessage:
 				return s.service.OnPushSendCommit(handlerCtx, statePacket, packets)
 			default:
-				return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
 			}
 		default:
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, fmt.Sprintf("invalid state %d", handlerCtx.GetCurrentStateID()))
+			return nil, czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, fmt.Sprintf("invalid state %d", handlerCtx.GetCurrentStateID()))
 		}
 	}
 	stateMachine, err := notpstatemachines.NewLeaderStateMachine(hostHandler, transportLayer)
@@ -270,16 +270,16 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
 	md, ok := metadata.FromIncomingContext(stream.Context())
 	if !ok {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "notp stream missing metadata")
+		return czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, "notp stream missing metadata")
 
 	}
-	zoneID, ok := md[azagentnotpsm.ZoneIDKey]
+	zoneID, ok := md[notptransportsm.ZoneIDKey]
 	if !ok || len(zoneID) == 0 {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "notp stream missing zone id")
+		return czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, "notp stream missing zone id")
 	}
-	respositoryID, ok := md[azagentnotpsm.LedgerIDKey]
+	respositoryID, ok := md[notptransportsm.LedgerIDKey]
 	if !ok || len(respositoryID) == 0 {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrServerGeneric, "notp stream missing ledger id")
+		return czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, "notp stream missing ledger id")
 	}
 
 	stateMachine, err := s.createWiredStateMachine(stream)
@@ -287,11 +287,11 @@ func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, Pa
 		return err
 	}
 	bag := map[string]any{}
-	bag[azagentnotpsm.ZoneIDKey] = zoneID[0]
-	bag[azagentnotpsm.LedgerIDKey] = respositoryID[0]
+	bag[notptransportsm.ZoneIDKey] = zoneID[0]
+	bag[notptransportsm.LedgerIDKey] = respositoryID[0]
 	_, err = stateMachine.Run(bag, notpstatemachines.UnknownFlowType)
 	if err != nil {
-		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrServerGeneric, "notp stream unhandled err", err)
+		return czerrors.WrapHandledSysErrorWithMessage(czerrors.ErrServerGeneric, "notp stream unhandled err", err)
 	}
 	return nil
 }

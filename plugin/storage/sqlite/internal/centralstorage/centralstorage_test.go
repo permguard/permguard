@@ -24,10 +24,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	azrtmmocks "github.com/permguard/permguard/pkg/agents/runtime/mocks"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/testutils/mocks"
+	"github.com/permguard/permguard/pkg/agents/runtime/mocks"
+	"github.com/permguard/permguard/pkg/agents/storage"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	testutilsmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/testutils/mocks"
 )
 
 // TestSqliteExecutor tests the sqlite executor.
@@ -35,24 +35,24 @@ func TestSqliteExecutor(t *testing.T) {
 	assert := assert.New(t)
 
 	{
-		mockRuntimeCtx := azrtmmocks.NewRuntimeContextMock(nil, nil)
-		mockStorageCtx, _ := azstorage.NewStorageContext(mockRuntimeCtx, azstorage.StorageSQLite)
-		mockConnector := azmocks.NewMockSQLiteConnector()
+		mockRuntimeCtx := mocks.NewRuntimeContextMock(nil, nil)
+		mockStorageCtx, _ := storage.NewStorageContext(mockRuntimeCtx, storage.StorageSQLite)
+		mockConnector := testutilsmocks.NewMockSQLiteConnector()
 
 		sqliteExec := &SqliteExec{}
 
-		mockConnector.On("Connect", mock.Anything, mockStorageCtx).Return(nil, azerrors.ErrServerGeneric)
+		mockConnector.On("Connect", mock.Anything, mockStorageCtx).Return(nil, cerrors.ErrServerGeneric)
 
 		db, err := sqliteExec.Connect(mockStorageCtx, mockConnector)
 		assert.Nil(db, "db should be nil")
 		assert.NotNil(err, "error should not be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrStorageGeneric, err), "error should be errservergeneric")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageGeneric, err), "error should be errservergeneric")
 	}
 
 	{
-		mockRuntimeCtx := azrtmmocks.NewRuntimeContextMock(nil, nil)
-		mockStorageCtx, _ := azstorage.NewStorageContext(mockRuntimeCtx, azstorage.StorageSQLite)
-		mockConnector := azmocks.NewMockSQLiteConnector()
+		mockRuntimeCtx := mocks.NewRuntimeContextMock(nil, nil)
+		mockStorageCtx, _ := storage.NewStorageContext(mockRuntimeCtx, storage.StorageSQLite)
+		mockConnector := testutilsmocks.NewMockSQLiteConnector()
 
 		sqlDB, _, _ := sqlmock.New()
 		sqlxDB := sqlx.NewDb(sqlDB, "sqlite3")
@@ -74,9 +74,9 @@ func TestNewSQLiteCentralStorage(t *testing.T) {
 	assert := assert.New(t)
 
 	{
-		mockRuntimeCtx := azrtmmocks.NewRuntimeContextMock(nil, nil)
-		mockStorageCtx, _ := azstorage.NewStorageContext(mockRuntimeCtx, azstorage.StorageSQLite)
-		mockConnector := azmocks.NewMockSQLiteConnector()
+		mockRuntimeCtx := mocks.NewRuntimeContextMock(nil, nil)
+		mockStorageCtx, _ := storage.NewStorageContext(mockRuntimeCtx, storage.StorageSQLite)
+		mockConnector := testutilsmocks.NewMockSQLiteConnector()
 
 		sqliteExec, err := NewSQLiteCentralStorage(mockStorageCtx, mockConnector)
 		assert.Nil(err)

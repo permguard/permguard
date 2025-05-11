@@ -24,11 +24,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 const (
@@ -39,17 +39,17 @@ const (
 )
 
 // runECommandForCreateTenant runs the command for creating a tenant.
-func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+func runECommandForUpsertTenant(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
 	opGetErroMessage := func(op bool) string {
 		if op {
 			return "Failed to create the tenant"
 		}
 		return "Failed to upsert the tenant"
 	}
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
@@ -57,10 +57,10 @@ func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcZAPClient(zapTarget)
 	if err != nil {
@@ -68,21 +68,21 @@ func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	zoneID := v.GetInt64(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonZoneID))
-	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
-	tenant := &azmodelszap.Tenant{
+	zoneID := v.GetInt64(options.FlagName(commandNameForTenant, common.FlagCommonZoneID))
+	name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
+	tenant := &zap.Tenant{
 		ZoneID: zoneID,
 		Name:   name,
 	}
 	if isCreate {
 		tenant, err = client.CreateTenant(zoneID, name)
 	} else {
-		tenantID := v.GetString(azoptions.FlagName(flagPrefix, flagTenantID))
+		tenantID := v.GetString(options.FlagName(flagPrefix, flagTenantID))
 		tenant.TenantID = tenantID
 		tenant, err = client.UpdateTenant(tenant)
 	}
@@ -91,10 +91,10 @@ func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
@@ -102,7 +102,7 @@ func runECommandForUpsertTenant(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		tenantName := tenant.Name
 		output[tenantID] = tenantName
 	} else if ctx.IsJSONOutput() {
-		output["tenants"] = []*azmodelszap.Tenant{tenant}
+		output["tenants"] = []*zap.Tenant{tenant}
 	}
 	printer.PrintlnMap(output)
 	return nil
@@ -114,16 +114,16 @@ func runECommandForTenants(cmd *cobra.Command, args []string) error {
 }
 
 // createCommandForTenants creates a command for managing tenants.
-func createCommandForTenants(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForTenants(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "tenants",
 		Short: "Manage remote Tenants",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages remote tenants.`),
+		Long:  common.BuildCliLongTemplate(`This command manages remote tenants.`),
 		RunE:  runECommandForTenants,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonZoneID, 0, "zone id")
-	v.BindPFlag(azoptions.FlagName(commandNameForTenant, aziclicommon.FlagCommonZoneID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonZoneID))
+	command.PersistentFlags().Int64(common.FlagCommonZoneID, 0, "zone id")
+	v.BindPFlag(options.FlagName(commandNameForTenant, common.FlagCommonZoneID), command.PersistentFlags().Lookup(common.FlagCommonZoneID))
 
 	command.AddCommand(createCommandForTenantCreate(deps, v))
 	command.AddCommand(createCommandForTenantUpdate(deps, v))

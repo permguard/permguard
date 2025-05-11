@@ -20,9 +20,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -31,16 +31,16 @@ const (
 )
 
 // runECommandForCreateIdentity runs the command for creating an identity.
-func runECommandForCreateIdentity(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForCreateIdentity(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	return runECommandForUpsertIdentity(deps, cmd, v, commandNameForIdentitiesCreate, true)
 }
 
 // createCommandForIdentityCreate creates a command for managing identitycreate.
-func createCommandForIdentityCreate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForIdentityCreate(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create a remote identity",
-		Long: aziclicommon.BuildCliLongTemplate(`This command creates a remote identity.
+		Long: common.BuildCliLongTemplate(`This command creates a remote identity.
 
 Examples:
   # create an user identity and output the result in json format
@@ -54,10 +54,10 @@ Examples:
 		},
 	}
 	command.Flags().String(flagIdentitySourceID, "", "specify the identity source id")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesCreate, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
+	v.BindPFlag(options.FlagName(commandNameForIdentitiesCreate, flagIdentitySourceID), command.Flags().Lookup(flagIdentitySourceID))
 	command.Flags().String(flagIdentityKind, "", "specify the type of identity")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesCreate, flagIdentityKind), command.Flags().Lookup(flagIdentityKind))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the name of the identity")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesCreate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	v.BindPFlag(options.FlagName(commandNameForIdentitiesCreate, flagIdentityKind), command.Flags().Lookup(flagIdentityKind))
+	command.Flags().String(common.FlagCommonName, "", "specify the name of the identity")
+	v.BindPFlag(options.FlagName(commandNameForIdentitiesCreate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

@@ -21,16 +21,16 @@ import (
 	"fmt"
 	"strings"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
-	azauthzen "github.com/permguard/permguard/ztauthstar/pkg/authzen"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/pdp"
+	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 )
 
 // verifyKey verifies the key.
 func verifyKey(key string) (bool, error) {
 	key = strings.ToUpper(key)
-	if key == azmodelspdp.Permguard {
-		return false, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageSyntax, fmt.Sprintf("[cedar] invalid entity identifier: %s is reserved by permguard and cannot be used", key))
+	if key == pdp.Permguard {
+		return false, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguageSyntax, fmt.Sprintf("[cedar] invalid entity identifier: %s is reserved by permguard and cannot be used", key))
 	}
 	return true, nil
 }
@@ -39,7 +39,7 @@ func verifyKey(key string) (bool, error) {
 func verifyUIDType(uidType string) (bool, error) {
 	uidTypeSnz := strings.ToLower(uidType)
 	if strings.HasPrefix(uidTypeSnz, "permguard::") {
-		return false, azerrors.WrapSystemErrorWithMessage(azerrors.ErrLanguageSyntax, fmt.Sprintf("[cedar] invalid entity identifier: %s is reserved by permguard and cannot be used", uidType))
+		return false, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguageSyntax, fmt.Sprintf("[cedar] invalid entity identifier: %s is reserved by permguard and cannot be used", uidType))
 	}
 	return true, nil
 }
@@ -59,10 +59,10 @@ func verifyUIDTypeFromEntityMap(entityMap []map[string]any) (bool, error) {
 }
 
 // createAuthorizationErrors creates authorization errors.
-func createAuthorizationErrors(code string, adminMessage, userMessage string) (*azauthzen.AuthorizationError, *azauthzen.AuthorizationError) {
-	var adminError, userError *azauthzen.AuthorizationError
-	adminError, _ = azauthzen.NewAuthorizationError(code, adminMessage)
-	userError, _ = azauthzen.NewAuthorizationError(code, userMessage)
+func createAuthorizationErrors(code string, adminMessage, userMessage string) (*authzen.AuthorizationError, *authzen.AuthorizationError) {
+	var adminError, userError *authzen.AuthorizationError
+	adminError, _ = authzen.NewAuthorizationError(code, adminMessage)
+	userError, _ = authzen.NewAuthorizationError(code, userMessage)
 	return adminError, userError
 }
 
@@ -70,11 +70,11 @@ func createAuthorizationErrors(code string, adminMessage, userMessage string) (*
 func createPermguardSubjectKind(kind string) (string, error) {
 	kind = strings.ToUpper(kind)
 	switch kind {
-	case azmodelspdp.PermguardUser:
+	case pdp.PermguardUser:
 		kind = "Permguard::IAM::User"
-	case azmodelspdp.PermguardRoleActor:
+	case pdp.PermguardRoleActor:
 		kind = "Permguard::IAM::RoleActor"
-	case azmodelspdp.PermguardTwinActor:
+	case pdp.PermguardTwinActor:
 		kind = "Permguard::IAM::TwinActor"
 	}
 	return kind, nil

@@ -19,9 +19,9 @@ package centralstorage
 import (
 	"fmt"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelzap "github.com/permguard/permguard/pkg/transport/models/zap"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
+	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 const (
@@ -29,19 +29,19 @@ const (
 )
 
 // CreateIdentitySource creates a new identity source.
-func (s SQLiteCentralStorageZAP) CreateIdentitySource(identitySource *azmodelzap.IdentitySource) (*azmodelzap.IdentitySource, error) {
+func (s SQLiteCentralStorageZAP) CreateIdentitySource(identitySource *zap.IdentitySource) (*zap.IdentitySource, error) {
 	if identitySource == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid client input - identity source is nil")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid client input - identity source is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbInIdentitySource := &azirepos.IdentitySource{
+	dbInIdentitySource := &repos.IdentitySource{
 		ZoneID: identitySource.ZoneID,
 		Name:   identitySource.Name,
 	}
@@ -51,25 +51,25 @@ func (s SQLiteCentralStorageZAP) CreateIdentitySource(identitySource *azmodelzap
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapIdentitySourceToAgentIdentitySource(dbOutIdentitySource)
 }
 
 // UpdateIdentitySource updates an identity source.
-func (s SQLiteCentralStorageZAP) UpdateIdentitySource(identitySource *azmodelzap.IdentitySource) (*azmodelzap.IdentitySource, error) {
+func (s SQLiteCentralStorageZAP) UpdateIdentitySource(identitySource *zap.IdentitySource) (*zap.IdentitySource, error) {
 	if identitySource == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid client input - identity source is nil")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid client input - identity source is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
-	dbInIdentitySource := &azirepos.IdentitySource{
+	dbInIdentitySource := &repos.IdentitySource{
 		IdentitySourceID: identitySource.IdentitySourceID,
 		ZoneID:           identitySource.ZoneID,
 		Name:             identitySource.Name,
@@ -80,20 +80,20 @@ func (s SQLiteCentralStorageZAP) UpdateIdentitySource(identitySource *azmodelzap
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapIdentitySourceToAgentIdentitySource(dbOutIdentitySource)
 }
 
 // DeleteIdentitySource deletes an identity source.
-func (s SQLiteCentralStorageZAP) DeleteIdentitySource(zoneID int64, identitySourceID string) (*azmodelzap.IdentitySource, error) {
+func (s SQLiteCentralStorageZAP) DeleteIdentitySource(zoneID int64, identitySourceID string) (*zap.IdentitySource, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	dbOutIdentitySource, err := s.sqlRepo.DeleteIdentitySource(tx, zoneID, identitySourceID)
 	if err != nil {
@@ -101,33 +101,33 @@ func (s SQLiteCentralStorageZAP) DeleteIdentitySource(zoneID int64, identitySour
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 	}
 	return mapIdentitySourceToAgentIdentitySource(dbOutIdentitySource)
 }
 
 // FetchIdentitySources returns all identity sources.
-func (s SQLiteCentralStorageZAP) FetchIdentitySources(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelzap.IdentitySource, error) {
+func (s SQLiteCentralStorageZAP) FetchIdentitySources(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]zap.IdentitySource, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, err
 	}
 	var filterID *string
-	if _, ok := fields[azmodelzap.FieldIdentitySourceIdentitySourceID]; ok {
-		identitySourceID, ok := fields[azmodelzap.FieldIdentitySourceIdentitySourceID].(string)
+	if _, ok := fields[zap.FieldIdentitySourceIdentitySourceID]; ok {
+		identitySourceID, ok := fields[zap.FieldIdentitySourceIdentitySourceID].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity source id is not valid (identity source id: %s)", identitySourceID))
+			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity source id is not valid (identity source id: %s)", identitySourceID))
 		}
 		filterID = &identitySourceID
 	}
 	var filterName *string
-	if _, ok := fields[azmodelzap.FieldIdentitySourceName]; ok {
-		identitySourceName, ok := fields[azmodelzap.FieldIdentitySourceName].(string)
+	if _, ok := fields[zap.FieldIdentitySourceName]; ok {
+		identitySourceName, ok := fields[zap.FieldIdentitySourceName].(string)
 		if !ok {
-			return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity source name is not valid (identity source name: %s)", identitySourceName))
+			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity source name is not valid (identity source name: %s)", identitySourceName))
 		}
 		filterName = &identitySourceName
 	}
@@ -135,11 +135,11 @@ func (s SQLiteCentralStorageZAP) FetchIdentitySources(page int32, pageSize int32
 	if err != nil {
 		return nil, err
 	}
-	identitySources := make([]azmodelzap.IdentitySource, len(dbIdentitySources))
+	identitySources := make([]zap.IdentitySource, len(dbIdentitySources))
 	for i, a := range dbIdentitySources {
 		identitySource, err := mapIdentitySourceToAgentIdentitySource(&a)
 		if err != nil {
-			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrStorageEntityMapping, fmt.Sprintf("failed to convert identity source entity (%s)", azirepos.LogIdentitySourceEntry(&a)), err)
+			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageEntityMapping, fmt.Sprintf("failed to convert identity source entity (%s)", repos.LogIdentitySourceEntry(&a)), err)
 		}
 		identitySources[i] = *identitySource
 	}

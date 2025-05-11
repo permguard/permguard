@@ -23,19 +23,19 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 
-	azrtmmocks "github.com/permguard/permguard/pkg/agents/runtime/mocks"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/testutils/mocks"
+	"github.com/permguard/permguard/pkg/agents/runtime/mocks"
+	"github.com/permguard/permguard/pkg/agents/storage"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	csmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/testutils/mocks"
 )
 
 // createSQLiteZAPCentralStorageWithMocks creates a new SQLiteCentralStorageZAP with mocks.
-func createSQLiteZAPCentralStorageWithMocks() (*SQLiteCentralStorageZAP, *azstorage.StorageContext, *azmocks.MockSQLiteConnector, *azmocks.MockSqliteRepo, *azmocks.MockSqliteExecutor, *sqlx.DB, sqlmock.Sqlmock) {
-	mockRuntimeCtx := azrtmmocks.NewRuntimeContextMock(nil, nil)
-	mockStorageCtx, _ := azstorage.NewStorageContext(mockRuntimeCtx, azstorage.StorageSQLite)
-	mockConnector := azmocks.NewMockSQLiteConnector()
-	mockSQLRepo := azmocks.NewMockSqliteRepo()
-	mockSQLExec := azmocks.NewMockSqliteExecutor()
+func createSQLiteZAPCentralStorageWithMocks() (*SQLiteCentralStorageZAP, *storage.StorageContext, *csmocks.MockSQLiteConnector, *csmocks.MockSqliteRepo, *csmocks.MockSqliteExecutor, *sqlx.DB, sqlmock.Sqlmock) {
+	mockRuntimeCtx := mocks.NewRuntimeContextMock(nil, nil)
+	mockStorageCtx, _ := storage.NewStorageContext(mockRuntimeCtx, storage.StorageSQLite)
+	mockConnector := csmocks.NewMockSQLiteConnector()
+	mockSQLRepo := csmocks.NewMockSqliteRepo()
+	mockSQLExec := csmocks.NewMockSqliteExecutor()
 	storage, _ := newSQLiteZAPCentralStorage(mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec)
 	sqlDB, sqlMock, _ := sqlmock.New()
 	sqlxDB := sqlx.NewDb(sqlDB, "sqlite3")
@@ -48,5 +48,5 @@ func TestNewSQLiteZAPCentralStorage(t *testing.T) {
 	storage, err := newSQLiteZAPCentralStorage(nil, nil, nil, nil)
 	assert.Nil(storage, "storage should be nil")
 	assert.NotNil(err, "error should not be nil")
-	assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+	assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 }

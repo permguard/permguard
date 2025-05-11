@@ -19,7 +19,7 @@ package v1
 import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	azmodelszap "github.com/permguard/permguard/pkg/transport/models/zap"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 // MapPointerStringToString maps a pointer string to a string.
@@ -32,8 +32,8 @@ func MapPointerStringToString(str *string) string {
 }
 
 // MapGrpcZoneResponseToAgentZone maps the gRPC zone to the agent zone.
-func MapGrpcZoneResponseToAgentZone(zone *ZoneResponse) (*azmodelszap.Zone, error) {
-	return &azmodelszap.Zone{
+func MapGrpcZoneResponseToAgentZone(zone *ZoneResponse) (*zap.Zone, error) {
+	return &zap.Zone{
 		ZoneID:    zone.ZoneID,
 		CreatedAt: zone.CreatedAt.AsTime(),
 		UpdatedAt: zone.UpdatedAt.AsTime(),
@@ -42,7 +42,7 @@ func MapGrpcZoneResponseToAgentZone(zone *ZoneResponse) (*azmodelszap.Zone, erro
 }
 
 // MapAgentZoneToGrpcZoneResponse maps the agent zone to the gRPC zone.
-func MapAgentZoneToGrpcZoneResponse(zone *azmodelszap.Zone) (*ZoneResponse, error) {
+func MapAgentZoneToGrpcZoneResponse(zone *zap.Zone) (*ZoneResponse, error) {
 	return &ZoneResponse{
 		ZoneID:    zone.ZoneID,
 		CreatedAt: timestamppb.New(zone.CreatedAt),
@@ -52,8 +52,8 @@ func MapAgentZoneToGrpcZoneResponse(zone *azmodelszap.Zone) (*ZoneResponse, erro
 }
 
 // MapGrpcTenantResponseToAgentTenant maps the gRPC tenant to the agent tenant.
-func MapGrpcTenantResponseToAgentTenant(tenant *TenantResponse) (*azmodelszap.Tenant, error) {
-	return &azmodelszap.Tenant{
+func MapGrpcTenantResponseToAgentTenant(tenant *TenantResponse) (*zap.Tenant, error) {
+	return &zap.Tenant{
 		TenantID:  tenant.TenantID,
 		CreatedAt: tenant.CreatedAt.AsTime(),
 		UpdatedAt: tenant.UpdatedAt.AsTime(),
@@ -63,7 +63,7 @@ func MapGrpcTenantResponseToAgentTenant(tenant *TenantResponse) (*azmodelszap.Te
 }
 
 // MapAgentTenantToGrpcTenantResponse maps the agent tenant to the gRPC tenant.
-func MapAgentTenantToGrpcTenantResponse(tenant *azmodelszap.Tenant) (*TenantResponse, error) {
+func MapAgentTenantToGrpcTenantResponse(tenant *zap.Tenant) (*TenantResponse, error) {
 	return &TenantResponse{
 		TenantID:  tenant.TenantID,
 		CreatedAt: timestamppb.New(tenant.CreatedAt),
@@ -74,8 +74,8 @@ func MapAgentTenantToGrpcTenantResponse(tenant *azmodelszap.Tenant) (*TenantResp
 }
 
 // MapGrpcIdentitySourceResponseToAgentIdentitySource maps the gRPC identity source to the agent identity source.
-func MapGrpcIdentitySourceResponseToAgentIdentitySource(identitySource *IdentitySourceResponse) (*azmodelszap.IdentitySource, error) {
-	return &azmodelszap.IdentitySource{
+func MapGrpcIdentitySourceResponseToAgentIdentitySource(identitySource *IdentitySourceResponse) (*zap.IdentitySource, error) {
+	return &zap.IdentitySource{
 		IdentitySourceID: identitySource.IdentitySourceID,
 		CreatedAt:        identitySource.CreatedAt.AsTime(),
 		UpdatedAt:        identitySource.UpdatedAt.AsTime(),
@@ -85,7 +85,7 @@ func MapGrpcIdentitySourceResponseToAgentIdentitySource(identitySource *Identity
 }
 
 // MapAgentIdentitySourceToGrpcIdentitySourceResponse maps the agent identity source to the gRPC identity source.
-func MapAgentIdentitySourceToGrpcIdentitySourceResponse(identitySource *azmodelszap.IdentitySource) (*IdentitySourceResponse, error) {
+func MapAgentIdentitySourceToGrpcIdentitySourceResponse(identitySource *zap.IdentitySource) (*IdentitySourceResponse, error) {
 	return &IdentitySourceResponse{
 		IdentitySourceID: identitySource.IdentitySourceID,
 		CreatedAt:        timestamppb.New(identitySource.CreatedAt),
@@ -96,8 +96,8 @@ func MapAgentIdentitySourceToGrpcIdentitySourceResponse(identitySource *azmodels
 }
 
 // MapGrpcIdentityResponseToAgentIdentity maps the gRPC identity to the agent identity.
-func MapGrpcIdentityResponseToAgentIdentity(identity *IdentityResponse) (*azmodelszap.Identity, error) {
-	return &azmodelszap.Identity{
+func MapGrpcIdentityResponseToAgentIdentity(identity *IdentityResponse) (*zap.Identity, error) {
+	return &zap.Identity{
 		IdentityID:       identity.IdentityID,
 		CreatedAt:        identity.CreatedAt.AsTime(),
 		UpdatedAt:        identity.UpdatedAt.AsTime(),
@@ -109,7 +109,7 @@ func MapGrpcIdentityResponseToAgentIdentity(identity *IdentityResponse) (*azmode
 }
 
 // MapAgentIdentityToGrpcIdentityResponse maps the agent identity to the gRPC identity.
-func MapAgentIdentityToGrpcIdentityResponse(identity *azmodelszap.Identity) (*IdentityResponse, error) {
+func MapAgentIdentityToGrpcIdentityResponse(identity *zap.Identity) (*IdentityResponse, error) {
 	return &IdentityResponse{
 		IdentityID:       identity.IdentityID,
 		CreatedAt:        timestamppb.New(identity.CreatedAt),

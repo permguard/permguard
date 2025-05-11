@@ -21,7 +21,7 @@ import (
 
 	"go.uber.org/zap"
 
-	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
+	"github.com/permguard/permguard/pkg/agents/runtime"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -70,27 +70,27 @@ func (c *RuntimeContextMock) GetContext() context.Context {
 }
 
 // GetHostConfigReader returns the host configuration reader.
-func (c *RuntimeContextMock) GetHostConfigReader() (azruntime.HostConfigReader, error) {
+func (c *RuntimeContextMock) GetHostConfigReader() (runtime.HostConfigReader, error) {
 	ret := c.Called()
 
-	var r0 azruntime.HostConfigReader
-	if rf, ok := ret.Get(0).(func() azruntime.HostConfigReader); ok {
+	var r0 runtime.HostConfigReader
+	if rf, ok := ret.Get(0).(func() runtime.HostConfigReader); ok {
 		r0 = rf()
 	} else {
-		r0 = ret.Get(0).(azruntime.HostConfigReader)
+		r0 = ret.Get(0).(runtime.HostConfigReader)
 	}
 	return r0, ret.Error(1)
 }
 
 // GetServiceConfigReader returns the service configuration reader.
-func (c *RuntimeContextMock) GetServiceConfigReader() (azruntime.ServiceConfigReader, error) {
+func (c *RuntimeContextMock) GetServiceConfigReader() (runtime.ServiceConfigReader, error) {
 	ret := c.Called()
 
-	var r0 azruntime.ServiceConfigReader
-	if rf, ok := ret.Get(0).(func() azruntime.ServiceConfigReader); ok {
+	var r0 runtime.ServiceConfigReader
+	if rf, ok := ret.Get(0).(func() runtime.ServiceConfigReader); ok {
 		r0 = rf()
 	} else {
-		r0 = ret.Get(0).(azruntime.ServiceConfigReader)
+		r0 = ret.Get(0).(runtime.ServiceConfigReader)
 	}
 	return r0, ret.Error(1)
 }

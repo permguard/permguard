@@ -24,16 +24,16 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 
-	azmocks "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
-	azcli "github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
+	"github.com/permguard/permguard/pkg/cli"
 )
 
 // BaseCommandTest tests the command.
-func BaseCommandTest(t *testing.T, cmdFunc func(azcli.CliDependenciesProvider, *viper.Viper) *cobra.Command, args []string, hasError bool, outputs []string) {
+func BaseCommandTest(t *testing.T, cmdFunc func(cli.CliDependenciesProvider, *viper.Viper) *cobra.Command, args []string, hasError bool, outputs []string) {
 	assert := assert.New(t)
 	v := viper.New()
 
-	depsMocks := azmocks.NewCliDependenciesMock()
+	depsMocks := mocks.NewCliDependenciesMock()
 	cmd := cmdFunc(depsMocks, v)
 	assert.NotNil(cmd, "The command should not be nil")
 

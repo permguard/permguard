@@ -28,11 +28,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 
 const (
@@ -41,21 +41,21 @@ const (
 )
 
 // runECommandForCheck runs the command for executing check.
-func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	handleInputError := func(ctx *aziclicommon.CliCommandContext, printer azcli.CliPrinter, err error, message string) error {
+	handleInputError := func(ctx *common.CliCommandContext, printer cli.CliPrinter, err error, message string) error {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to check the authorization request.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, message, err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, message, err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	var input *os.File
 	if len(args) > 0 {
@@ -78,7 +78,7 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 		return handleInputError(ctx, printer, err, "Invalid input for the authz check.")
 	}
 	jsonString := builder.String()
-	var authzReq azmodelspdp.AuthorizationCheckWithDefaultsRequest
+	var authzReq pdp.AuthorizationCheckWithDefaultsRequest
 	err = json.Unmarshal([]byte(jsonString), &authzReq)
 	if err != nil {
 		return handleInputError(ctx, printer, err, "Invalid input for the authz check.")
@@ -90,10 +90,10 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 			printer.Println("Failed to check the authorization request.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to check the authorization request.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to check the authorization request.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcPDPClient(pdpTarget)
 	if err != nil {
@@ -101,10 +101,10 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 			printer.Println("Failed to check the authorization request.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to check the authorization request.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to check the authorization request.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	authzResp, err := client.AuthorizationCheck(&authzReq)
 	if err != nil {
@@ -112,29 +112,29 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 			printer.Println("Failed to check the authorization request.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to check the authorization request.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to check the authorization request.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	if ctx.IsTerminalOutput() {
 		decision := authzResp.Decision
-		printer.Println(fmt.Sprintf("Authorization check response: %v", aziclicommon.BoolText(decision)))
+		printer.Println(fmt.Sprintf("Authorization check response: %v", common.BoolText(decision)))
 		if authzReq.RequestID != "" {
-			printer.Println(fmt.Sprintf("%s: %s", aziclicommon.KeywordText("Request ID"), aziclicommon.CreateText(authzReq.RequestID)))
+			printer.Println(fmt.Sprintf("%s: %s", common.KeywordText("Request ID"), common.CreateText(authzReq.RequestID)))
 		}
 		if !decision {
 			contextID := "none"
 			if authzResp.Context != nil && len(authzResp.Context.ID) > 0 {
 				contextID = authzResp.Context.ID
 			}
-			printer.Println(fmt.Sprintf("%s: %s", aziclicommon.KeywordText("Context ID"), aziclicommon.CreateText(contextID)))
+			printer.Println(fmt.Sprintf("%s: %s", common.KeywordText("Context ID"), common.CreateText(contextID)))
 			if authzResp.Context != nil {
 				if authzResp.Context.ReasonAdmin != nil {
-					printer.Println(fmt.Sprintf("  %s: Error: %s - %s ", aziclicommon.KeywordText("Reason Admin"), aziclicommon.IDText(authzResp.Context.ReasonAdmin.Code), authzResp.Context.ReasonAdmin.Message))
+					printer.Println(fmt.Sprintf("  %s: Error: %s - %s ", common.KeywordText("Reason Admin"), common.IDText(authzResp.Context.ReasonAdmin.Code), authzResp.Context.ReasonAdmin.Message))
 				}
 				if authzResp.Context.ReasonUser != nil {
-					printer.Println(fmt.Sprintf("  %s: Error: %s - %s ", aziclicommon.KeywordText("Reason User"), aziclicommon.IDText(authzResp.Context.ReasonUser.Code), authzResp.Context.ReasonUser.Message))
+					printer.Println(fmt.Sprintf("  %s: Error: %s - %s ", common.KeywordText("Reason User"), common.IDText(authzResp.Context.ReasonUser.Code), authzResp.Context.ReasonUser.Message))
 				}
 			}
 			if len(authzResp.Evaluations) > 0 {
@@ -148,13 +148,13 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 					if len(requestID) == 0 {
 						requestID = "none"
 					}
-					printer.Println(fmt.Sprintf("  - %s: %s, %s: %s, %s: %v", aziclicommon.KeywordText("Request ID"), aziclicommon.CreateText(requestID), aziclicommon.KeywordText("Context ID"), aziclicommon.CreateText(contextID), aziclicommon.KeywordText("Decision"), eval.Decision))
+					printer.Println(fmt.Sprintf("  - %s: %s, %s: %s, %s: %v", common.KeywordText("Request ID"), common.CreateText(requestID), common.KeywordText("Context ID"), common.CreateText(contextID), common.KeywordText("Decision"), eval.Decision))
 					if eval.Context != nil {
 						if eval.Context.ReasonAdmin != nil {
-							printer.Println(fmt.Sprintf("    - %s: Error: %s - %s ", aziclicommon.KeywordText("Reason Admin"), aziclicommon.IDText(eval.Context.ReasonAdmin.Code), eval.Context.ReasonAdmin.Message))
+							printer.Println(fmt.Sprintf("    - %s: Error: %s - %s ", common.KeywordText("Reason Admin"), common.IDText(eval.Context.ReasonAdmin.Code), eval.Context.ReasonAdmin.Message))
 						}
 						if eval.Context.ReasonUser != nil {
-							printer.Println(fmt.Sprintf("    - %s: Error: %s - %s ", aziclicommon.KeywordText("Reason User"), aziclicommon.IDText(eval.Context.ReasonUser.Code), eval.Context.ReasonUser.Message))
+							printer.Println(fmt.Sprintf("    - %s: Error: %s - %s ", common.KeywordText("Reason User"), common.IDText(eval.Context.ReasonUser.Code), eval.Context.ReasonUser.Message))
 						}
 					}
 				}
@@ -169,11 +169,11 @@ func runECommandForCheck(deps azcli.CliDependenciesProvider, cmd *cobra.Command,
 }
 
 // createCommandForCheck creates a command for executing check.
-func createCommandForCheck(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForCheck(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "check",
 		Short: "Check an authorization request",
-		Long: aziclicommon.BuildCliLongTemplate(`This command checks an authorization request.
+		Long: common.BuildCliLongTemplate(`This command checks an authorization request.
 
 Examples:
   # check an authorization request
@@ -184,8 +184,8 @@ Examples:
 		},
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonZoneID, 0, "zone id")
-	v.BindPFlag(azoptions.FlagName(commandNameForCheck, aziclicommon.FlagCommonZoneID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonZoneID))
+	command.PersistentFlags().Int64(common.FlagCommonZoneID, 0, "zone id")
+	v.BindPFlag(options.FlagName(commandNameForCheck, common.FlagCommonZoneID), command.PersistentFlags().Lookup(common.FlagCommonZoneID))
 
 	return command
 }

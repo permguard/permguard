@@ -19,8 +19,8 @@ package centralstorage
 import (
 	"fmt"
 
-	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/runtime"
+	"github.com/permguard/permguard/pkg/agents/storage"
 )
 
 const (
@@ -36,11 +36,11 @@ const (
 
 // SQLiteCentralStorageConfig is the SQLite central storage configuration.
 type SQLiteCentralStorageConfig struct {
-	configReader azruntime.ServiceConfigReader
+	configReader runtime.ServiceConfigReader
 }
 
 // NewSQLiteCentralStorageConfig creates a new SQLite central storage configuration.
-func NewSQLiteCentralStorageConfig(ctx *azstorage.StorageContext) (*SQLiteCentralStorageConfig, error) {
+func NewSQLiteCentralStorageConfig(ctx *storage.StorageContext) (*SQLiteCentralStorageConfig, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("storage: invalid storage context")
 	}

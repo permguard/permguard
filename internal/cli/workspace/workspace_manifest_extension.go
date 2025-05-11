@@ -17,19 +17,19 @@
 package workspace
 
 import (
-	azlang "github.com/permguard/permguard/pkg/authz/languages"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azztasmfests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	"github.com/permguard/permguard/pkg/authz/languages"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 )
 
 type languageInfo struct {
-	lang    *azztasmfests.Language
-	langAbs azlang.LanguageAbastraction
+	lang    *manifests.Language
+	langAbs languages.LanguageAbastraction
 }
 
 // ManifestLanguageProvider manifest language provider.
 type ManifestLanguageProvider struct {
-	manifest  *azztasmfests.Manifest
+	manifest  *manifests.Manifest
 	langInfos map[string]languageInfo
 }
 
@@ -43,25 +43,25 @@ func (p *ManifestLanguageProvider) GetPartitions() []string {
 }
 
 // GetLanguage gets the language for the input partition.
-func (p *ManifestLanguageProvider) GetLanguage(partition string) (*azztasmfests.Language, error) {
+func (p *ManifestLanguageProvider) GetLanguage(partition string) (*manifests.Language, error) {
 	if p.langInfos == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "parition doens't exists")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrConfigurationGeneric, "parition doens't exists")
 	}
 	langInfo, ok := p.langInfos[partition]
 	if !ok {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "parition doens't exists")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrConfigurationGeneric, "parition doens't exists")
 	}
 	return langInfo.lang, nil
 }
 
 // GetAbstractLanguage gets the abstract language for the input partition.
-func (p *ManifestLanguageProvider) GetAbstractLanguage(partition string) (azlang.LanguageAbastraction, error) {
+func (p *ManifestLanguageProvider) GetAbstractLanguage(partition string) (languages.LanguageAbastraction, error) {
 	if p.langInfos == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "parition doens't exists")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrConfigurationGeneric, "parition doens't exists")
 	}
 	langInfo, ok := p.langInfos[partition]
 	if !ok {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrConfigurationGeneric, "parition doens't exists")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrConfigurationGeneric, "parition doens't exists")
 	}
 	return langInfo.langAbs, nil
 }
@@ -73,7 +73,7 @@ func (m *WorkspaceManager) buildManifestLanguageProvider() (*ManifestLanguagePro
 		return nil, err
 	}
 	if manifest == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrImplementation, "manifest is nil")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrImplementation, "manifest is nil")
 	}
 	mfestLangMgr := &ManifestLanguageProvider{
 		manifest:  manifest,

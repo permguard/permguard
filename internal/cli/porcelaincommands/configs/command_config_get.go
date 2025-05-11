@@ -23,17 +23,17 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // runECommandForZAPGet runs the command for getting the zap gRPC target.
-func runECommandForZAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForZAPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	zapTarget, err := ctx.GetZAPTarget()
 	if err != nil {
@@ -41,21 +41,21 @@ func runECommandForZAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 			printer.Println("Failed to get the zap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to get the zap target.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to get the zap target.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	printer.PrintlnMap(map[string]any{"zap_target": zapTarget})
 	return nil
 }
 
 // runECommandForPAPGet runs the command for getting the pap gRPC target.
-func runECommandForPAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForPAPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	papTarget, err := ctx.GetPAPTarget()
 	if err != nil {
@@ -63,21 +63,21 @@ func runECommandForPAPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 			printer.Println("Failed to get the pap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to get the pap target.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to get the pap target.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	printer.PrintlnMap(map[string]any{"pap_target": papTarget})
 	return nil
 }
 
 // runECommandForPDPGet runs the command for getting the pdp gRPC target.
-func runECommandForPDPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForPDPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	pdpTarget, err := ctx.GetPDPTarget()
 	if err != nil {
@@ -85,21 +85,21 @@ func runECommandForPDPGet(deps azcli.CliDependenciesProvider, cmd *cobra.Command
 			printer.Println("Failed to get the pdp target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to get the pdp target.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to get the pdp target.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	printer.PrintlnMap(map[string]any{"pdp_target": pdpTarget})
 	return nil
 }
 
 // CreateCommandForConfig for managing config.
-func createCommandForConfigZAPGet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigZAPGet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "zap-get-target",
 		Short: "Get the zap grpc target",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command gets the zap grpc target.`),
+		Long:  common.BuildCliLongTemplate(`This command gets the zap grpc target.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForZAPGet(deps, cmd, v)
 		},
@@ -108,11 +108,11 @@ func createCommandForConfigZAPGet(deps azcli.CliDependenciesProvider, v *viper.V
 }
 
 // CreateCommandForConfig for managing config.
-func createCommandForConfigPAPGet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigPAPGet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pap-get-target",
 		Short: "Get the pap grpc target",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command gets the pap grpc target.`),
+		Long:  common.BuildCliLongTemplate(`This command gets the pap grpc target.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForPAPGet(deps, cmd, v)
 		},
@@ -121,11 +121,11 @@ func createCommandForConfigPAPGet(deps azcli.CliDependenciesProvider, v *viper.V
 }
 
 // CreateCommandForConfig for managing config.
-func createCommandForConfigPDPGet(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigPDPGet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pdp-get-target",
 		Short: "Get the pdp grpc target",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command gets the pdp grpc target.`),
+		Long:  common.BuildCliLongTemplate(`This command gets the pdp grpc target.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForPDPGet(deps, cmd, v)
 		},

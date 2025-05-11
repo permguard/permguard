@@ -21,12 +21,12 @@ import (
 
 	"github.com/spf13/viper"
 
-	azcopier "github.com/permguard/permguard/common/pkg/extensions/copier"
-	azvalidators "github.com/permguard/permguard/common/pkg/extensions/validators"
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/common/pkg/extensions/copier"
+	"github.com/permguard/permguard/common/pkg/extensions/validators"
+	"github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -39,48 +39,48 @@ const (
 
 // PDPServiceConfig holds the configuration for the server.
 type PDPServiceConfig struct {
-	service azservices.ServiceKind
+	service services.ServiceKind
 	config  map[string]any
 }
 
 // NewPDPServiceConfig creates a new server factory configuration.
 func NewPDPServiceConfig() (*PDPServiceConfig, error) {
 	return &PDPServiceConfig{
-		service: azservices.ServicePDP,
+		service: services.ServicePDP,
 		config:  map[string]any{},
 	}, nil
 }
 
 // AddFlags adds flags.
 func (c *PDPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
-	flagSet.Int(azoptions.FlagName(flagServerPDPPrefix, flagSuffixGrpcPort), 9094, "port to be used for exposing the pdp grpc services")
-	flagSet.String(azoptions.FlagName(flagStoragePDPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage-engine-central option")
-	flagSet.Int(azoptions.FlagName(flagServerPDPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
+	flagSet.Int(options.FlagName(flagServerPDPPrefix, flagSuffixGrpcPort), 9094, "port to be used for exposing the pdp grpc services")
+	flagSet.String(options.FlagName(flagStoragePDPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage-engine-central option")
+	flagSet.Int(options.FlagName(flagServerPDPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
 	return nil
 }
 
 // InitFromViper initializes the configuration from viper.
 func (c *PDPServiceConfig) InitFromViper(v *viper.Viper) error {
 	// retrieve the grpc port
-	flagName := azoptions.FlagName(flagServerPDPPrefix, flagSuffixGrpcPort)
+	flagName := options.FlagName(flagServerPDPPrefix, flagSuffixGrpcPort)
 	grpcPort := v.GetInt(flagName)
-	if !azvalidators.IsValidPort(grpcPort) {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliArguments, "invalid port")
+	if !validators.IsValidPort(grpcPort) {
+		return cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliArguments, "invalid port")
 	}
 	c.config[flagSuffixGrpcPort] = grpcPort
 	// retrieve the data fetch max page size
-	flagName = azoptions.FlagName(flagServerPDPPrefix, flagCentralEngine)
+	flagName = options.FlagName(flagServerPDPPrefix, flagCentralEngine)
 	centralStorageEngine := v.GetString(flagName)
-	storageCEng, err := azstorage.NewStorageKindFromString(centralStorageEngine)
+	storageCEng, err := storage.NewStorageKindFromString(centralStorageEngine)
 	if err != nil {
-		return azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "invalid central sotrage engine", err)
+		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "invalid central sotrage engine", err)
 	}
 	c.config[flagCentralEngine] = storageCEng
 	// retrieve the data fetch max page size
-	flagName = azoptions.FlagName(flagServerPDPPrefix, flagDataFetchMaxPageSize)
+	flagName = options.FlagName(flagServerPDPPrefix, flagDataFetchMaxPageSize)
 	dataFetchMaxPageSize := v.GetInt(flagName)
 	if dataFetchMaxPageSize <= 0 {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliArguments, "invalid data fetch max page size")
+		return cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliArguments, "invalid data fetch max page size")
 	}
 	c.config[flagDataFetchMaxPageSize] = dataFetchMaxPageSize
 	return nil
@@ -88,7 +88,7 @@ func (c *PDPServiceConfig) InitFromViper(v *viper.Viper) error {
 
 // GetConfigData returns the configuration data.
 func (c *PDPServiceConfig) GetConfigData() map[string]any {
-	return azcopier.CopyMap(c.config)
+	return copier.CopyMap(c.config)
 }
 
 // GetPort returns the port.
@@ -96,9 +96,9 @@ func (c *PDPServiceConfig) GetPort() int {
 	return c.config[flagSuffixGrpcPort].(int)
 }
 
-// PDPServiceConfig returns the storage central engine.
-func (c *PDPServiceConfig) GetStorageCentralEngine() azstorage.StorageKind {
-	return c.config[flagCentralEngine].(azstorage.StorageKind)
+// GetStorageCentralEngine returns the storage central engine.
+func (c *PDPServiceConfig) GetStorageCentralEngine() storage.StorageKind {
+	return c.config[flagCentralEngine].(storage.StorageKind)
 }
 
 // GetDataFetchMaxPageSize returns the maximum number of items to fetch per request.
@@ -107,6 +107,6 @@ func (c *PDPServiceConfig) GetDataFetchMaxPageSize() int {
 }
 
 // GetService returns the service kind.
-func (c *PDPServiceConfig) GetService() azservices.ServiceKind {
+func (c *PDPServiceConfig) GetService() services.ServiceKind {
 	return c.service
 }

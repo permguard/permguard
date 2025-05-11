@@ -20,9 +20,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -31,16 +31,16 @@ const (
 )
 
 // runECommandForCreateZone runs the command for creating a zone.
-func runECommandForCreateZone(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForCreateZone(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	return runECommandForUpsertZone(deps, cmd, v, commandNameForZonesCreate, true)
 }
 
 // createCommandForZoneCreate creates a command for managing zonecreate.
-func createCommandForZoneCreate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForZoneCreate(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create a remote zone",
-		Long: aziclicommon.BuildCliLongTemplate(`This command creates a remote zone.
+		Long: common.BuildCliLongTemplate(`This command creates a remote zone.
 
 Examples:
   # create a zone and output the result in json format
@@ -49,7 +49,7 @@ Examples:
 			return runECommandForCreateZone(deps, cmd, v)
 		},
 	}
-	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the zone name")
-	v.BindPFlag(azoptions.FlagName(commandNameForZonesCreate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	command.Flags().String(common.FlagCommonName, "", "specify the zone name")
+	v.BindPFlag(options.FlagName(commandNameForZonesCreate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

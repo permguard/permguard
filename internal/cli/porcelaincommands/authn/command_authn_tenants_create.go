@@ -20,9 +20,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -31,16 +31,16 @@ const (
 )
 
 // runECommandForCreateTenant runs the command for creating a tenant.
-func runECommandForCreateTenant(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForCreateTenant(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	return runECommandForUpsertTenant(deps, cmd, v, commandNameForTenantsCreate, true)
 }
 
 // createCommandForTenantCreate creates a command for managing tenantcreate.
-func createCommandForTenantCreate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForTenantCreate(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create a remote tenant",
-		Long: aziclicommon.BuildCliLongTemplate(`This command creates a remote tenant.
+		Long: common.BuildCliLongTemplate(`This command creates a remote tenant.
 
 Examples:
   # create a tenant and output the result in json format
@@ -50,7 +50,7 @@ Examples:
 			return runECommandForCreateTenant(deps, cmd, v)
 		},
 	}
-	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the name of the tenant to create")
-	v.BindPFlag(azoptions.FlagName(commandNameForTenantsCreate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	command.Flags().String(common.FlagCommonName, "", "specify the name of the tenant to create")
+	v.BindPFlag(options.FlagName(commandNameForTenantsCreate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

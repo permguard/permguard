@@ -21,7 +21,7 @@ import (
 
 	"github.com/spf13/viper"
 
-	azservices "github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/services"
 )
 
 // PAPServiceFactoryConfig holds the configuration for the server factory.
@@ -64,7 +64,7 @@ func NewPAPServiceFactory(papServiceCfg *PAPServiceFactoryConfig) (*PAPServiceFa
 }
 
 // Create creates a new service.
-func (f *PAPServiceFactory) Create() (azservices.Serviceable, error) {
+func (f *PAPServiceFactory) Create() (services.Serviceable, error) {
 	service, err := NewPAPService(f.config.config)
 	return service, err
 }

@@ -20,8 +20,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
 )
 
 // runECommandForConfig runs the command for managing config.
@@ -30,11 +30,11 @@ func runECommandForConfig(cmd *cobra.Command, args []string) error {
 }
 
 // CreateCommandForConfig for managing config.
-func CreateCommandForConfig(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForConfig(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "config",
 		Short: "Configure the command line settings",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command configures the command line settings.`),
+		Long:  common.BuildCliLongTemplate(`This command configures the command line settings.`),
 		RunE:  runECommandForConfig,
 	}
 	command.AddCommand(createCommandForConfigReset(deps, v))

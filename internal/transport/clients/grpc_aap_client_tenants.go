@@ -20,36 +20,36 @@ import (
 	"context"
 	"io"
 
-	azapiv1zap "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelzap "github.com/permguard/permguard/pkg/transport/models/zap"
+	zapv1 "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 // CreateTenant creates a new tenant.
-func (c *GrpcZAPClient) CreateTenant(zoneID int64, name string) (*azmodelzap.Tenant, error) {
+func (c *GrpcZAPClient) CreateTenant(zoneID int64, name string) (*zap.Tenant, error) {
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-	tenant, err := client.CreateTenant(context.Background(), &azapiv1zap.TenantCreateRequest{ZoneID: zoneID, Name: name})
+	tenant, err := client.CreateTenant(context.Background(), &zapv1.TenantCreateRequest{ZoneID: zoneID, Name: name})
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1zap.MapGrpcTenantResponseToAgentTenant(tenant)
+	return zapv1.MapGrpcTenantResponseToAgentTenant(tenant)
 }
 
 // UpdateTenant updates a tenant.
-func (c *GrpcZAPClient) UpdateTenant(tenant *azmodelzap.Tenant) (*azmodelzap.Tenant, error) {
+func (c *GrpcZAPClient) UpdateTenant(tenant *zap.Tenant) (*zap.Tenant, error) {
 	if tenant == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "invalid tenant instance")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "invalid tenant instance")
 	}
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-	updatedTenant, err := client.UpdateTenant(context.Background(), &azapiv1zap.TenantUpdateRequest{
+	updatedTenant, err := client.UpdateTenant(context.Background(), &zapv1.TenantUpdateRequest{
 		TenantID: tenant.TenantID,
 		ZoneID:   tenant.ZoneID,
 		Name:     tenant.Name,
@@ -57,46 +57,46 @@ func (c *GrpcZAPClient) UpdateTenant(tenant *azmodelzap.Tenant) (*azmodelzap.Ten
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1zap.MapGrpcTenantResponseToAgentTenant(updatedTenant)
+	return zapv1.MapGrpcTenantResponseToAgentTenant(updatedTenant)
 }
 
 // DeleteTenant deletes a tenant.
-func (c *GrpcZAPClient) DeleteTenant(zoneID int64, tenantID string) (*azmodelzap.Tenant, error) {
+func (c *GrpcZAPClient) DeleteTenant(zoneID int64, tenantID string) (*zap.Tenant, error) {
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-	tenant, err := client.DeleteTenant(context.Background(), &azapiv1zap.TenantDeleteRequest{ZoneID: zoneID, TenantID: tenantID})
+	tenant, err := client.DeleteTenant(context.Background(), &zapv1.TenantDeleteRequest{ZoneID: zoneID, TenantID: tenantID})
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1zap.MapGrpcTenantResponseToAgentTenant(tenant)
+	return zapv1.MapGrpcTenantResponseToAgentTenant(tenant)
 }
 
 // FetchTenants returns all tenants.
-func (c *GrpcZAPClient) FetchTenants(page int32, pageSize int32, zoneID int64) ([]azmodelzap.Tenant, error) {
+func (c *GrpcZAPClient) FetchTenants(page int32, pageSize int32, zoneID int64) ([]zap.Tenant, error) {
 	return c.FetchTenantsBy(page, pageSize, zoneID, "", "")
 }
 
 // FetchTenantsByID returns all tenants filtering by tenant id.
-func (c *GrpcZAPClient) FetchTenantsByID(page int32, pageSize int32, zoneID int64, tenantID string) ([]azmodelzap.Tenant, error) {
+func (c *GrpcZAPClient) FetchTenantsByID(page int32, pageSize int32, zoneID int64, tenantID string) ([]zap.Tenant, error) {
 	return c.FetchTenantsBy(page, pageSize, zoneID, tenantID, "")
 }
 
 // FetchTenantsByName returns all tenants filtering by name.
-func (c *GrpcZAPClient) FetchTenantsByName(page int32, pageSize int32, zoneID int64, name string) ([]azmodelzap.Tenant, error) {
+func (c *GrpcZAPClient) FetchTenantsByName(page int32, pageSize int32, zoneID int64, name string) ([]zap.Tenant, error) {
 	return c.FetchTenantsBy(page, pageSize, zoneID, "", name)
 }
 
 // FetchTenantsBy returns all tenants filtering by tenant id and name.
-func (c *GrpcZAPClient) FetchTenantsBy(page int32, pageSize int32, zoneID int64, tenantID string, name string) ([]azmodelzap.Tenant, error) {
+func (c *GrpcZAPClient) FetchTenantsBy(page int32, pageSize int32, zoneID int64, tenantID string, name string) ([]zap.Tenant, error) {
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-	tenantFetchRequest := &azapiv1zap.TenantFetchRequest{}
+	tenantFetchRequest := &zapv1.TenantFetchRequest{}
 	tenantFetchRequest.Page = &page
 	tenantFetchRequest.PageSize = &pageSize
 	if zoneID > 0 {
@@ -112,7 +112,7 @@ func (c *GrpcZAPClient) FetchTenantsBy(page int32, pageSize int32, zoneID int64,
 	if err != nil {
 		return nil, err
 	}
-	tenants := []azmodelzap.Tenant{}
+	tenants := []zap.Tenant{}
 	for {
 		response, err := stream.Recv()
 		if err == io.EOF {
@@ -121,7 +121,7 @@ func (c *GrpcZAPClient) FetchTenantsBy(page int32, pageSize int32, zoneID int64,
 		if err != nil {
 			return nil, err
 		}
-		tenant, err := azapiv1zap.MapGrpcTenantResponseToAgentTenant(response)
+		tenant, err := zapv1.MapGrpcTenantResponseToAgentTenant(response)
 		if err != nil {
 			return nil, err
 		}

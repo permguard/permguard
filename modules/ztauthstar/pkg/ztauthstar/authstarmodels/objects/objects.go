@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	azcopier "github.com/permguard/permguard/common/pkg/extensions/copier"
-	azcrypto "github.com/permguard/permguard/common/pkg/extensions/crypto"
+	"github.com/permguard/permguard/common/pkg/extensions/copier"
+	"github.com/permguard/permguard/common/pkg/extensions/crypto"
 )
 
 const (
@@ -117,7 +117,7 @@ func NewObject(content []byte) (*Object, error) {
 		return nil, errors.New("objects: object content is nil")
 	}
 	return &Object{
-		oid:     azcrypto.ComputeSHA256(content),
+		oid:     crypto.ComputeSHA256(content),
 		content: content,
 	}, nil
 }
@@ -376,7 +376,7 @@ func NewTree() (*Tree, error) {
 
 // GetEntries returns the entries of the tree.
 func (t *Tree) GetEntries() []TreeEntry {
-	return azcopier.CopySlice(t.entries)
+	return copier.CopySlice(t.entries)
 }
 
 // AddEntry adds an entry to the tree.

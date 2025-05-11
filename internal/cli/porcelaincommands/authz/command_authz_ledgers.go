@@ -24,11 +24,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
 const (
@@ -41,17 +41,17 @@ const (
 )
 
 // runECommandForCreateLedger runs the command for creating a ledger.
-func runECommandForUpsertLedger(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+func runECommandForUpsertLedger(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
 	opGetErroMessage := func(op bool) string {
 		if op {
 			return "Failed to create the ledger"
 		}
 		return "Failed to upsert the ledger"
 	}
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	papTarget, err := ctx.GetPAPTarget()
 	if err != nil {
@@ -59,10 +59,10 @@ func runECommandForUpsertLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	client, err := deps.CreateGrpcPAPClient(papTarget)
 	if err != nil {
@@ -70,21 +70,21 @@ func runECommandForUpsertLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	zoneID := v.GetInt64(azoptions.FlagName(commandNameForLedger, aziclicommon.FlagCommonZoneID))
-	name := v.GetString(azoptions.FlagName(flagPrefix, aziclicommon.FlagCommonName))
-	ledger := &azmodelspap.Ledger{
+	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
+	name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
+	ledger := &pap.Ledger{
 		ZoneID: zoneID,
 		Name:   name,
 	}
 	if isCreate {
 		ledger, err = client.CreateLedger(zoneID, "policy", name)
 	} else {
-		ledgerID := v.GetString(azoptions.FlagName(flagPrefix, flagLedgerID))
+		ledgerID := v.GetString(options.FlagName(flagPrefix, flagLedgerID))
 		ledger.LedgerID = ledgerID
 		ledger, err = client.UpdateLedger(ledger)
 	}
@@ -93,10 +93,10 @@ func runECommandForUpsertLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
@@ -104,7 +104,7 @@ func runECommandForUpsertLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		ledgerName := ledger.Name
 		output[ledgerID] = ledgerName
 	} else if ctx.IsJSONOutput() {
-		output["ledgers"] = []*azmodelspap.Ledger{ledger}
+		output["ledgers"] = []*pap.Ledger{ledger}
 	}
 	printer.PrintlnMap(output)
 	return nil
@@ -116,16 +116,16 @@ func runECommandForLedgers(cmd *cobra.Command, args []string) error {
 }
 
 // createCommandForLedgers creates a command for managing ledgers.
-func createCommandForLedgers(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForLedgers(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "ledgers",
 		Short: "Manage ledgers on the remote server",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command manages ledgers on the remote server.`),
+		Long:  common.BuildCliLongTemplate(`This command manages ledgers on the remote server.`),
 		RunE:  runECommandForLedgers,
 	}
 
-	command.PersistentFlags().Int64(aziclicommon.FlagCommonZoneID, 0, "zone id")
-	v.BindPFlag(azoptions.FlagName(commandNameForLedger, aziclicommon.FlagCommonZoneID), command.PersistentFlags().Lookup(aziclicommon.FlagCommonZoneID))
+	command.PersistentFlags().Int64(common.FlagCommonZoneID, 0, "zone id")
+	v.BindPFlag(options.FlagName(commandNameForLedger, common.FlagCommonZoneID), command.PersistentFlags().Lookup(common.FlagCommonZoneID))
 
 	command.AddCommand(createCommandForLedgerCreate(deps, v))
 	command.AddCommand(createCommandForLedgerUpdate(deps, v))

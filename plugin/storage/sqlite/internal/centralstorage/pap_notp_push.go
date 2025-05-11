@@ -17,11 +17,11 @@
 package centralstorage
 
 import (
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
-	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
-	azagentnotpsm "github.com/permguard/permguard/internal/transport/notp/statemachines"
+	notptransportsm "github.com/permguard/permguard/internal/transport/notp/statemachines"
 	notpagpackets "github.com/permguard/permguard/internal/transport/notp/statemachines/packets"
 	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
@@ -30,12 +30,12 @@ import (
 
 // OnPushHandleNotifyCurrentState notifies the current state.
 func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-	zoneID, ok := getFromHandlerContext[int64](handlerCtx, azagentnotpsm.ZoneIDKey)
+	zoneID, ok := getFromHandlerContext[int64](handlerCtx, notptransportsm.ZoneIDKey)
 	if !ok || zoneID <= 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid input zone id.")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid input zone id.")
 	}
 	if len(packets) == 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid input packets for notify current state.")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid input packets for notify current state.")
 	}
 	remoteRefPacket := &notpagpackets.RemoteRefStatePacket{}
 	err := notppackets.ConvertPacketable(packets[0], remoteRefPacket)
@@ -43,7 +43,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 		return nil, err
 	}
 	if remoteRefPacket.RefCommit == "" || remoteRefPacket.RefPrevCommit == "" {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid remote ref state packet.")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid remote ref state packet.")
 	}
 	ledger, err := s.readLedgerFromHandlerContext(handlerCtx)
 	if err != nil {
@@ -52,27 +52,27 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 	headCommitID := ledger.Ref
 	hasConflicts := false
 	isUpToDate := false
-	if headCommitID != azobjs.ZeroOID && headCommitID != remoteRefPacket.RefPrevCommit {
-		objMng, err := azobjs.NewObjectManager()
+	if headCommitID != objects.ZeroOID && headCommitID != remoteRefPacket.RefPrevCommit {
+		objMng, err := objects.NewObjectManager()
 		if err != nil {
 			return nil, err
 		}
 		db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 		if err != nil {
-			return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+			return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
 		}
-		hasMatch, history, err := objMng.BuildCommitHistory(headCommitID, remoteRefPacket.RefPrevCommit, false, func(oid string) (*azobjs.Object, error) {
+		hasMatch, history, err := objMng.BuildCommitHistory(headCommitID, remoteRefPacket.RefPrevCommit, false, func(oid string) (*objects.Object, error) {
 			keyValue, errkey := s.sqlRepo.GetKeyValue(db, zoneID, oid)
 			if errkey != nil || keyValue == nil || keyValue.Value == nil {
 				return nil, nil
 			}
-			return azobjs.NewObject(keyValue.Value)
+			return objects.NewObject(keyValue.Value)
 		})
 		if err != nil {
 			return nil, err
 		}
 		hasConflicts = hasMatch && len(history) > 1
-		if headCommitID != azobjs.ZeroOID && remoteRefPacket.RefPrevCommit == azobjs.ZeroOID {
+		if headCommitID != objects.ZeroOID && remoteRefPacket.RefPrevCommit == objects.ZeroOID {
 			hasConflicts = true
 		}
 		isUpToDate = headCommitID == remoteRefPacket.RefCommit
@@ -121,17 +121,17 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNegotiationResponse(handlerCtx *not
 
 // OnPushHandleExchangeDataStream exchanges the data stream.
 func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-	zoneID, ok := getFromHandlerContext[int64](handlerCtx, azagentnotpsm.ZoneIDKey)
+	zoneID, ok := getFromHandlerContext[int64](handlerCtx, notptransportsm.ZoneIDKey)
 	if !ok || zoneID <= 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "invalid input zone id.")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid input zone id.")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, azirepos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, repos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
 	}
 	for _, packet := range packets {
 		objStatePacket := &notpagpackets.ObjectStatePacket{}
@@ -140,7 +140,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 			tx.Rollback()
 			return nil, err
 		}
-		keyValue := &azirepos.KeyValue{
+		keyValue := &repos.KeyValue{
 			ZoneID: zoneID,
 			Key:    objStatePacket.OID,
 			Value:  objStatePacket.Content,
@@ -158,8 +158,12 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 		}
 		remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDKey)
 		err = s.sqlRepo.UpdateLedgerRef(tx, ledger.ZoneID, ledger.LedgerID, ledger.Ref, remoteCommitID)
+		if err != nil {
+			tx.Rollback()
+			return nil, repos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		}
 		if err := tx.Commit(); err != nil {
-			return nil, azirepos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+			return nil, repos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
 		}
 	}
 	handlerReturn := &notpstatemachines.HostHandlerReturn{

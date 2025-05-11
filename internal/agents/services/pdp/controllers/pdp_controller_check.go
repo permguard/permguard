@@ -17,39 +17,39 @@
 package controllers
 
 import (
-	azids "github.com/permguard/permguard/common/pkg/extensions/ids"
-	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
+	"github.com/permguard/permguard/common/pkg/extensions/ids"
+	"github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 
 // authorizationCheckExpandAuthorizationCheckWithDefaults expands the authorization check with defaults.
-func authorizationCheckExpandAuthorizationCheckWithDefaults(request *azmodelspdp.AuthorizationCheckWithDefaultsRequest) (*azmodelspdp.AuthorizationCheckRequest, error) {
-	expReq := &azmodelspdp.AuthorizationCheckRequest{}
+func authorizationCheckExpandAuthorizationCheckWithDefaults(request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckRequest, error) {
+	expReq := &pdp.AuthorizationCheckRequest{}
 	expReq.AuthorizationModel = request.AuthorizationModel
 
 	if len(request.Evaluations) == 0 {
-		expRequest := azmodelspdp.EvaluationRequest{
+		expRequest := pdp.EvaluationRequest{
 			RequestID: request.RequestID,
 			Subject:   request.Subject,
 			Resource:  request.Resource,
 			Action:    request.Action,
 			Context:   request.Context,
-			ContextID: azids.GenerateID(),
+			ContextID: ids.GenerateID(),
 		}
 		if expRequest.Context == nil {
 			expRequest.Context = make(map[string]interface{})
 		}
-		expReq.Evaluations = []azmodelspdp.EvaluationRequest{expRequest}
+		expReq.Evaluations = []pdp.EvaluationRequest{expRequest}
 	} else {
 		requestID := request.RequestID
-		expReq.Evaluations = []azmodelspdp.EvaluationRequest{}
+		expReq.Evaluations = []pdp.EvaluationRequest{}
 		for _, evaluation := range request.Evaluations {
-			expRequest := azmodelspdp.EvaluationRequest{
+			expRequest := pdp.EvaluationRequest{
 				RequestID: request.RequestID,
 				Subject:   request.Subject,
 				Resource:  request.Resource,
 				Action:    request.Action,
 				Context:   request.Context,
-				ContextID: azids.GenerateID(),
+				ContextID: ids.GenerateID(),
 			}
 			if len(evaluation.RequestID) > 0 {
 				expRequest.RequestID = evaluation.RequestID
@@ -65,7 +65,7 @@ func authorizationCheckExpandAuthorizationCheckWithDefaults(request *azmodelspdp
 			if evaluation.Action != nil {
 				expRequest.Action = evaluation.Action
 			}
-			if evaluation.Context != nil && len(evaluation.Context) > 0 {
+			if len(evaluation.Context) > 0 {
 				expRequest.Context = evaluation.Context
 			}
 			if expRequest.Context == nil {

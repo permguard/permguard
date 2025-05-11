@@ -21,14 +21,14 @@ import (
 	"fmt"
 	"strings"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	"github.com/permguard/permguard/internal/cli/common"
+	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 // ExecObjects list the objects.
-func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommits, filterTrees, filterBlob bool, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommits, filterTrees, filterBlob bool, out common.PrinterOutFunc) (map[string]any, error) {
 	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to access objects in the current workspace.", nil, true)
 		return output, err
@@ -62,22 +62,22 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 				objHeader := objInfo.GetHeader()
 				if objHeader != nil {
 					codeID := objHeader.GetCodeID()
-					out(nil, "", fmt.Sprintf("	- %s %s %s", aziclicommon.IDText(objID), aziclicommon.KeywordText(objType), aziclicommon.NameText(codeID)), nil, true)
+					out(nil, "", fmt.Sprintf("	- %s %s %s", common.IDText(objID), common.KeywordText(objType), common.NameText(codeID)), nil, true)
 				} else {
-					out(nil, "", fmt.Sprintf("	- %s %s", aziclicommon.IDText(objID), aziclicommon.KeywordText(objType)), nil, true)
+					out(nil, "", fmt.Sprintf("	- %s %s", common.IDText(objID), common.KeywordText(objType)), nil, true)
 				}
 				switch objInfo.GetType() {
-				case azobjs.ObjectTypeCommit:
+				case objects.ObjectTypeCommit:
 					commits = commits + 1
 					if filterCommits {
 						total += 1
 					}
-				case azobjs.ObjectTypeTree:
+				case objects.ObjectTypeTree:
 					trees = trees + 1
 					if filterTrees {
 						total += 1
 					}
-				case azobjs.ObjectTypeBlob:
+				case objects.ObjectTypeBlob:
 					blobs = blobs + 1
 					if filterBlob {
 						total += 1
@@ -87,16 +87,16 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 			out(nil, "", "\n", nil, false)
 			var sb strings.Builder
 			if filterCommits || filterTrees || filterBlob {
-				sb.WriteString("total " + aziclicommon.NumberText(total))
+				sb.WriteString("total " + common.NumberText(total))
 
 				if filterCommits {
-					sb.WriteString(", commit " + aziclicommon.NumberText(commits))
+					sb.WriteString(", commit " + common.NumberText(commits))
 				}
 				if filterTrees {
-					sb.WriteString(", tree " + aziclicommon.NumberText(trees))
+					sb.WriteString(", tree " + common.NumberText(trees))
 				}
 				if filterBlob {
-					sb.WriteString(", blob " + aziclicommon.NumberText(blobs))
+					sb.WriteString(", blob " + common.NumberText(blobs))
 				}
 				out(nil, "", sb.String(), nil, true)
 			}
@@ -123,16 +123,16 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 
 // execPrintObjectContent prints the object content in human-readable form,
 // optionally converting blob data to a frontend-friendly format.
-func (m *WorkspaceManager) execPrintObjectContent(langPvd *ManifestLanguageProvider, oid string, objInfo azobjs.ObjectInfo, showFrontendLanguage bool, out aziclicommon.PrinterOutFunc) error {
+func (m *WorkspaceManager) execPrintObjectContent(langPvd *ManifestLanguageProvider, oid string, objInfo objects.ObjectInfo, showFrontendLanguage bool, out common.PrinterOutFunc) error {
 	switch instance := objInfo.GetInstance().(type) {
-	case *azobjs.Commit:
+	case *objects.Commit:
 		content, err := m.getCommitString(oid, instance)
 		if err != nil {
 			return err
 		}
 		out(nil, "", content, nil, true)
 
-	case *azobjs.Tree:
+	case *objects.Tree:
 		content, err := m.getTreeString(oid, instance)
 		if err != nil {
 			return err
@@ -145,7 +145,7 @@ func (m *WorkspaceManager) execPrintObjectContent(langPvd *ManifestLanguageProvi
 		if showFrontendLanguage {
 			header := objInfo.GetHeader()
 			if header == nil {
-				return azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "object header is nil")
+				return cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "object header is nil")
 			}
 
 			absLang, err := langPvd.GetAbstractLanguage(header.GetPartition())
@@ -180,18 +180,18 @@ func (m *WorkspaceManager) execPrintObjectContent(langPvd *ManifestLanguageProvi
 
 // execMapObjectContent builds a key-value representation of the object content,
 // optionally transforming blob data into a structured frontend format.
-func (m *WorkspaceManager) execMapObjectContent(langPvd *ManifestLanguageProvider, oid string, objInfo azobjs.ObjectInfo, showFrontendLanguage bool, outMap map[string]any) error {
+func (m *WorkspaceManager) execMapObjectContent(langPvd *ManifestLanguageProvider, oid string, objInfo objects.ObjectInfo, showFrontendLanguage bool, outMap map[string]any) error {
 	var contentMap map[string]any
 	var err error
 
 	switch instance := objInfo.GetInstance().(type) {
-	case *azobjs.Commit:
+	case *objects.Commit:
 		contentMap, err = m.getCommitMap(oid, instance)
 		if err != nil {
 			return err
 		}
 
-	case *azobjs.Tree:
+	case *objects.Tree:
 		contentMap, err = m.getTreeMap(oid, instance)
 		if err != nil {
 			return err
@@ -203,7 +203,7 @@ func (m *WorkspaceManager) execMapObjectContent(langPvd *ManifestLanguageProvide
 		if showFrontendLanguage {
 			header := objInfo.GetHeader()
 			if header == nil {
-				return azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "object header is nil")
+				return cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "object header is nil")
 			}
 
 			absLang, err := langPvd.GetAbstractLanguage(header.GetPartition())
@@ -244,7 +244,7 @@ func (m *WorkspaceManager) execMapObjectContent(langPvd *ManifestLanguageProvide
 }
 
 // ExecObjectsCat prints the content or metadata of a specific object identified by its OID.
-func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFrontendLanguage, showRaw, showContent bool, oid string, out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFrontendLanguage, showRaw, showContent bool, oid string, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to access objects in the current workspace.", nil, true)
 		return output, err
@@ -267,7 +267,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 	if err != nil {
 		return fail(nil, err)
 	}
-	var selected *azobjs.ObjectInfo
+	var selected *objects.ObjectInfo
 	for _, info := range objectInfos {
 		if info.GetOID() == oid {
 			selected = &info
@@ -298,7 +298,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 				}
 			}
 		} else {
-			out(nil, "", fmt.Sprintf("Your workspace object %s:\n", aziclicommon.IDText(selected.GetOID())), nil, true)
+			out(nil, "", fmt.Sprintf("Your workspace object %s:\n", common.IDText(selected.GetOID())), nil, true)
 
 			if showRaw {
 				out(nil, "", string(obj.GetContent()), nil, true)
@@ -311,10 +311,10 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 			out(nil, "", "\n", nil, false)
 
 			var sb strings.Builder
-			sb.WriteString("type " + aziclicommon.KeywordText(selected.GetType()))
-			sb.WriteString(", size " + aziclicommon.NumberText(len(obj.GetContent())))
+			sb.WriteString("type " + common.KeywordText(selected.GetType()))
+			sb.WriteString(", size " + common.NumberText(len(obj.GetContent())))
 			if header != nil {
-				sb.WriteString(", oname " + aziclicommon.NameText(header.GetCodeID()))
+				sb.WriteString(", oname " + common.NameText(header.GetCodeID()))
 			}
 			out(nil, "", sb.String(), nil, true)
 		}
@@ -347,7 +347,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 }
 
 // ExecHistory shows the commit history of the current workspace.
-func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[string]any, error) {
+func (m *WorkspaceManager) ExecHistory(out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to access history in the current workspace.", nil, true)
 		return output, err
@@ -374,9 +374,9 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 	}
 
 	// Load commit history from head
-	var commitInfos []azicliwkscommon.CommitInfo
+	var commitInfos []wkscommon.CommitInfo
 	headCommit := headCtx.GetRemoteCommitID()
-	if headCommit != azobjs.ZeroOID {
+	if headCommit != objects.ZeroOID {
 		commitInfos, err = m.getHistory(headCommit)
 		if err != nil {
 			return fail(nil, err)
@@ -390,7 +390,7 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 			return output, nil
 		}
 
-		out(nil, "", fmt.Sprintf("Your workspace history %s:\n", aziclicommon.KeywordText(headCtx.GetLedgerURI())), nil, true)
+		out(nil, "", fmt.Sprintf("Your workspace history %s:\n", common.KeywordText(headCtx.GetLedgerURI())), nil, true)
 
 		for _, info := range commitInfos {
 			commit := info.GetCommit()
@@ -402,7 +402,7 @@ func (m *WorkspaceManager) ExecHistory(out aziclicommon.PrinterOutFunc) (map[str
 		}
 
 		out(nil, "", "\n", nil, false)
-		out(nil, "", "total "+aziclicommon.NumberText(len(commitInfos)), nil, true)
+		out(nil, "", "total "+common.NumberText(len(commitInfos)), nil, true)
 
 		// JSON output
 	} else if m.ctx.IsJSONOutput() {

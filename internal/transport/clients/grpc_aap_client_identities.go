@@ -20,36 +20,36 @@ import (
 	"context"
 	"io"
 
-	azapiv1zap "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelzap "github.com/permguard/permguard/pkg/transport/models/zap"
+	zapv1 "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 // CreateIdentity creates a new identity.
-func (c *GrpcZAPClient) CreateIdentity(zoneID int64, identitySourceID string, kind string, name string) (*azmodelzap.Identity, error) {
+func (c *GrpcZAPClient) CreateIdentity(zoneID int64, identitySourceID string, kind string, name string) (*zap.Identity, error) {
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-	identity, err := client.CreateIdentity(context.Background(), &azapiv1zap.IdentityCreateRequest{ZoneID: zoneID, Kind: kind, Name: name, IdentitySourceID: identitySourceID})
+	identity, err := client.CreateIdentity(context.Background(), &zapv1.IdentityCreateRequest{ZoneID: zoneID, Kind: kind, Name: name, IdentitySourceID: identitySourceID})
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1zap.MapGrpcIdentityResponseToAgentIdentity(identity)
+	return zapv1.MapGrpcIdentityResponseToAgentIdentity(identity)
 }
 
 // UpdateIdentity updates an identity.
-func (c *GrpcZAPClient) UpdateIdentity(identity *azmodelzap.Identity) (*azmodelzap.Identity, error) {
+func (c *GrpcZAPClient) UpdateIdentity(identity *zap.Identity) (*zap.Identity, error) {
 	if identity == nil {
-		azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "invalid identity instance")
+		cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "invalid identity instance")
 	}
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-	updatedIdentity, err := client.UpdateIdentity(context.Background(), &azapiv1zap.IdentityUpdateRequest{
+	updatedIdentity, err := client.UpdateIdentity(context.Background(), &zapv1.IdentityUpdateRequest{
 		IdentityID: identity.IdentityID,
 		ZoneID:     identity.ZoneID,
 		Kind:       identity.Kind,
@@ -58,46 +58,46 @@ func (c *GrpcZAPClient) UpdateIdentity(identity *azmodelzap.Identity) (*azmodelz
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1zap.MapGrpcIdentityResponseToAgentIdentity(updatedIdentity)
+	return zapv1.MapGrpcIdentityResponseToAgentIdentity(updatedIdentity)
 }
 
 // DeleteIdentity deletes an identity.
-func (c *GrpcZAPClient) DeleteIdentity(zoneID int64, identityID string) (*azmodelzap.Identity, error) {
+func (c *GrpcZAPClient) DeleteIdentity(zoneID int64, identityID string) (*zap.Identity, error) {
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-	identity, err := client.DeleteIdentity(context.Background(), &azapiv1zap.IdentityDeleteRequest{ZoneID: zoneID, IdentityID: identityID})
+	identity, err := client.DeleteIdentity(context.Background(), &zapv1.IdentityDeleteRequest{ZoneID: zoneID, IdentityID: identityID})
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1zap.MapGrpcIdentityResponseToAgentIdentity(identity)
+	return zapv1.MapGrpcIdentityResponseToAgentIdentity(identity)
 }
 
 // FetchIdentities returns all identities.
-func (c *GrpcZAPClient) FetchIdentities(page int32, pageSize int32, zoneID int64) ([]azmodelzap.Identity, error) {
+func (c *GrpcZAPClient) FetchIdentities(page int32, pageSize int32, zoneID int64) ([]zap.Identity, error) {
 	return c.FetchIdentitiesBy(page, pageSize, zoneID, "", "", "", "")
 }
 
 // FetchIdentitiesByID returns all identities filtering by identity id.
-func (c *GrpcZAPClient) FetchIdentitiesByID(page int32, pageSize int32, zoneID int64, identityID string) ([]azmodelzap.Identity, error) {
+func (c *GrpcZAPClient) FetchIdentitiesByID(page int32, pageSize int32, zoneID int64, identityID string) ([]zap.Identity, error) {
 	return c.FetchIdentitiesBy(page, pageSize, zoneID, "", identityID, "", "")
 }
 
 // FetchIdentitiesByEmail returns all identities filtering by name.
-func (c *GrpcZAPClient) FetchIdentitiesByEmail(page int32, pageSize int32, zoneID int64, name string) ([]azmodelzap.Identity, error) {
+func (c *GrpcZAPClient) FetchIdentitiesByEmail(page int32, pageSize int32, zoneID int64, name string) ([]zap.Identity, error) {
 	return c.FetchIdentitiesBy(page, pageSize, zoneID, "", "", "", name)
 }
 
 // FetchIdentitiesBy returns all identities filtering by all criteria.
-func (c *GrpcZAPClient) FetchIdentitiesBy(page int32, pageSize int32, zoneID int64, identitySourceID string, identityID string, kind string, name string) ([]azmodelzap.Identity, error) {
+func (c *GrpcZAPClient) FetchIdentitiesBy(page int32, pageSize int32, zoneID int64, identitySourceID string, identityID string, kind string, name string) ([]zap.Identity, error) {
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-	identityFetchRequest := &azapiv1zap.IdentityFetchRequest{}
+	identityFetchRequest := &zapv1.IdentityFetchRequest{}
 	identityFetchRequest.Page = &page
 	identityFetchRequest.PageSize = &pageSize
 	if zoneID > 0 {
@@ -119,7 +119,7 @@ func (c *GrpcZAPClient) FetchIdentitiesBy(page int32, pageSize int32, zoneID int
 	if err != nil {
 		return nil, err
 	}
-	identities := []azmodelzap.Identity{}
+	identities := []zap.Identity{}
 	for {
 		response, err := stream.Recv()
 		if err == io.EOF {
@@ -128,7 +128,7 @@ func (c *GrpcZAPClient) FetchIdentitiesBy(page int32, pageSize int32, zoneID int
 		if err != nil {
 			return nil, err
 		}
-		identity, err := azapiv1zap.MapGrpcIdentityResponseToAgentIdentity(response)
+		identity, err := zapv1.MapGrpcIdentityResponseToAgentIdentity(response)
 		if err != nil {
 			return nil, err
 		}

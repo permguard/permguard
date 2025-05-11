@@ -19,42 +19,42 @@ package servers
 import (
 	"fmt"
 
-	azcopier "github.com/permguard/permguard/common/pkg/extensions/copier"
-	azipap "github.com/permguard/permguard/internal/agents/services/pap"
-	azipdp "github.com/permguard/permguard/internal/agents/services/pdp"
-	azizap "github.com/permguard/permguard/internal/agents/services/zap"
-	azservers "github.com/permguard/permguard/pkg/agents/servers"
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azisqlite "github.com/permguard/permguard/plugin/storage/sqlite"
+	"github.com/permguard/permguard/common/pkg/extensions/copier"
+	"github.com/permguard/permguard/internal/agents/services/pap"
+	"github.com/permguard/permguard/internal/agents/services/pdp"
+	"github.com/permguard/permguard/internal/agents/services/zap"
+	"github.com/permguard/permguard/pkg/agents/servers"
+	"github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/plugin/storage/sqlite"
 )
 
 // CommunityServerInitializer is the community service factory initializer.
 type CommunityServerInitializer struct {
-	host      azservices.HostKind
-	hostInfos map[azservices.HostKind]*azservices.HostInfo
-	storages  []azstorage.StorageKind
-	services  []azservices.ServiceKind
+	host      services.HostKind
+	hostInfos map[services.HostKind]*services.HostInfo
+	storages  []storage.StorageKind
+	services  []services.ServiceKind
 }
 
 // NewCommunityServerInitializer creates a new community server initializer.
-func NewCommunityServerInitializer(host azservices.HostKind) (azservers.ServerInitializer, error) {
+func NewCommunityServerInitializer(host services.HostKind) (servers.ServerInitializer, error) {
 	template := `The official Permguard Server
 Copyright © 2022 Nitro Agility S.r.l.
 
 %s
 
   Find more information at: https://www.permguard.com/docs/0.0.x/devops/authz-server/configuration-options/`
-	hostInfos := map[azservices.HostKind]*azservices.HostInfo{
-		azservices.HostAllInOne: {Name: "AllInOne", Use: "all-in-one", Short: "The official Permguard Server - Start all services", Long: fmt.Sprintf(template, "Using this option all services are started.")},
-		azservices.HostZAP:      {Name: "ZAP (Zone Administration Point)", Use: "pdp", Short: "The official Permguard Server - Start the ZAP service", Long: fmt.Sprintf(template, "Using this option the Zone Administration Point (ZAP) service is started.")},
-		azservices.HostPAP:      {Name: "PAP (Policy Administration Point)", Use: "pap", Short: "The official Permguard Server - Start the PAP service", Long: fmt.Sprintf(template, "Using this option the Policy Administration Point (PAP) service is started.")},
-		azservices.HostPIP:      {Name: "PIP (Policy Information Point)", Use: "pip", Short: "The official Permguard Server - Start the PIP service", Long: fmt.Sprintf(template, "Using this option the Policy Information Point (PIP) service is started.")},
-		azservices.HostPDP:      {Name: "PDP (Policy Decision Point)", Use: "pdp", Short: "The official Permguard Server - Start the PDP service", Long: fmt.Sprintf(template, "Using this option the Policy Decision Point (PDP) service is started.")},
+	hostInfos := map[services.HostKind]*services.HostInfo{
+		services.HostAllInOne: {Name: "AllInOne", Use: "all-in-one", Short: "The official Permguard Server - Start all services", Long: fmt.Sprintf(template, "Using this option all services are started.")},
+		services.HostZAP:      {Name: "ZAP (Zone Administration Point)", Use: "pdp", Short: "The official Permguard Server - Start the ZAP service", Long: fmt.Sprintf(template, "Using this option the Zone Administration Point (ZAP) service is started.")},
+		services.HostPAP:      {Name: "PAP (Policy Administration Point)", Use: "pap", Short: "The official Permguard Server - Start the PAP service", Long: fmt.Sprintf(template, "Using this option the Policy Administration Point (PAP) service is started.")},
+		services.HostPIP:      {Name: "PIP (Policy Information Point)", Use: "pip", Short: "The official Permguard Server - Start the PIP service", Long: fmt.Sprintf(template, "Using this option the Policy Information Point (PIP) service is started.")},
+		services.HostPDP:      {Name: "PDP (Policy Decision Point)", Use: "pdp", Short: "The official Permguard Server - Start the PDP service", Long: fmt.Sprintf(template, "Using this option the Policy Decision Point (PDP) service is started.")},
 	}
-	hosts := []azservices.HostKind{azservices.HostAllInOne, azservices.HostZAP, azservices.HostPAP, azservices.HostPIP, azservices.HostPDP}
-	storages := []azstorage.StorageKind{azstorage.StorageSQLite}
-	services := []azservices.ServiceKind{azservices.ServiceZAP, azservices.ServicePAP, azservices.ServicePIP, azservices.ServicePDP}
+	hosts := []services.HostKind{services.HostAllInOne, services.HostZAP, services.HostPAP, services.HostPIP, services.HostPDP}
+	storages := []storage.StorageKind{storage.StorageSQLite}
+	services := []services.ServiceKind{services.ServiceZAP, services.ServicePAP, services.ServicePIP, services.ServicePDP}
 
 	if !host.IsValid(hosts) {
 		panic(fmt.Sprintf("server: invalid server kind: %s", host))
@@ -73,20 +73,20 @@ func (c *CommunityServerInitializer) HasCentralStorage() bool {
 }
 
 // GetHost returns the service kind set as host.
-func (c *CommunityServerInitializer) GetHost() azservices.HostKind {
+func (c *CommunityServerInitializer) GetHost() services.HostKind {
 	return c.host
 }
 
 // GetHostInfo returns the infos of the service kind set as host.
-func (c *CommunityServerInitializer) GetHostInfo() *azservices.HostInfo {
+func (c *CommunityServerInitializer) GetHostInfo() *services.HostInfo {
 	return c.hostInfos[c.host]
 }
 
 // GetStorages returns the active storage kinds.
-func (c *CommunityServerInitializer) GetStorages(centralStorageEngine azstorage.StorageKind) []azstorage.StorageKind {
-	storages := []azstorage.StorageKind{}
+func (c *CommunityServerInitializer) GetStorages(centralStorageEngine storage.StorageKind) []storage.StorageKind {
+	storages := []storage.StorageKind{}
 	for _, storageKind := range c.storages {
-		if azstorage.StorageNone.Equal(storageKind) {
+		if storage.StorageNone.Equal(storageKind) {
 			continue
 		}
 		if centralStorageEngine == storageKind {
@@ -97,16 +97,16 @@ func (c *CommunityServerInitializer) GetStorages(centralStorageEngine azstorage.
 }
 
 // GetStoragesFactories returns the storage factories providers.
-func (c *CommunityServerInitializer) GetStoragesFactories(centralStorageEngine azstorage.StorageKind) (map[azstorage.StorageKind]azstorage.StorageFactoryProvider, error) {
-	factories := map[azstorage.StorageKind]azstorage.StorageFactoryProvider{}
+func (c *CommunityServerInitializer) GetStoragesFactories(centralStorageEngine storage.StorageKind) (map[storage.StorageKind]storage.StorageFactoryProvider, error) {
+	factories := map[storage.StorageKind]storage.StorageFactoryProvider{}
 	for _, storageKind := range c.GetStorages(centralStorageEngine) {
 		switch storageKind {
-		case azstorage.StorageSQLite:
-			fFactCfg := func() (azstorage.StorageFactoryConfig, error) { return azisqlite.NewSQLiteStorageFactoryConfig() }
-			fFact := func(config azstorage.StorageFactoryConfig) (azstorage.StorageFactory, error) {
-				return azisqlite.NewSQLiteStorageFactory(config.(*azisqlite.SQLiteStorageFactoryConfig))
+		case storage.StorageSQLite:
+			fFactCfg := func() (storage.StorageFactoryConfig, error) { return sqlite.NewSQLiteStorageFactoryConfig() }
+			fFact := func(config storage.StorageFactoryConfig) (storage.StorageFactory, error) {
+				return sqlite.NewSQLiteStorageFactory(config.(*sqlite.SQLiteStorageFactoryConfig))
 			}
-			fcty, err := azstorage.NewStorageFactoryProvider(fFactCfg, fFact)
+			fcty, err := storage.NewStorageFactoryProvider(fFactCfg, fFact)
 			if err != nil {
 				return nil, err
 			}
@@ -118,45 +118,45 @@ func (c *CommunityServerInitializer) GetStoragesFactories(centralStorageEngine a
 }
 
 // GetServices returns the active service kinds.
-func (c *CommunityServerInitializer) GetServices() []azservices.ServiceKind {
-	return azcopier.CopySlice(c.services)
+func (c *CommunityServerInitializer) GetServices() []services.ServiceKind {
+	return copier.CopySlice(c.services)
 }
 
 // GetServicesFactories returns the service factories providers.
-func (c *CommunityServerInitializer) GetServicesFactories() (map[azservices.ServiceKind]azservices.ServiceFactoryProvider, error) {
-	factories := map[azservices.ServiceKind]azservices.ServiceFactoryProvider{}
+func (c *CommunityServerInitializer) GetServicesFactories() (map[services.ServiceKind]services.ServiceFactoryProvider, error) {
+	factories := map[services.ServiceKind]services.ServiceFactoryProvider{}
 	for _, serviceKind := range c.services {
 		switch serviceKind {
-		case azservices.ServiceZAP:
-			fFactCfg := func() (azservices.ServiceFactoryConfig, error) { return azizap.NewZAPServiceFactoryConfig() }
-			fFact := func(config azservices.ServiceFactoryConfig) (azservices.ServiceFactory, error) {
-				return azizap.NewZAPServiceFactory(config.(*azizap.ZAPServiceFactoryConfig))
+		case services.ServiceZAP:
+			fFactCfg := func() (services.ServiceFactoryConfig, error) { return zap.NewZAPServiceFactoryConfig() }
+			fFact := func(config services.ServiceFactoryConfig) (services.ServiceFactory, error) {
+				return zap.NewZAPServiceFactory(config.(*zap.ZAPServiceFactoryConfig))
 			}
-			fcty, err := azservices.NewServiceFactoryProvider(fFactCfg, fFact)
+			fcty, err := services.NewServiceFactoryProvider(fFactCfg, fFact)
 			if err != nil {
 				return nil, err
 			}
 			factories[serviceKind] = *fcty
 			continue
-		case azservices.ServicePAP:
-			fFactCfg := func() (azservices.ServiceFactoryConfig, error) { return azipap.NewPAPServiceFactoryConfig() }
-			fFact := func(config azservices.ServiceFactoryConfig) (azservices.ServiceFactory, error) {
-				return azipap.NewPAPServiceFactory(config.(*azipap.PAPServiceFactoryConfig))
+		case services.ServicePAP:
+			fFactCfg := func() (services.ServiceFactoryConfig, error) { return pap.NewPAPServiceFactoryConfig() }
+			fFact := func(config services.ServiceFactoryConfig) (services.ServiceFactory, error) {
+				return pap.NewPAPServiceFactory(config.(*pap.PAPServiceFactoryConfig))
 			}
-			fcty, err := azservices.NewServiceFactoryProvider(fFactCfg, fFact)
+			fcty, err := services.NewServiceFactoryProvider(fFactCfg, fFact)
 			if err != nil {
 				return nil, err
 			}
 			factories[serviceKind] = *fcty
 			continue
-		case azservices.ServicePIP:
+		case services.ServicePIP:
 			continue
-		case azservices.ServicePDP:
-			fFactCfg := func() (azservices.ServiceFactoryConfig, error) { return azipdp.NewPDPServiceFactoryConfig() }
-			fFact := func(config azservices.ServiceFactoryConfig) (azservices.ServiceFactory, error) {
-				return azipdp.NewPDPServiceFactory(config.(*azipdp.PDPServiceFactoryConfig))
+		case services.ServicePDP:
+			fFactCfg := func() (services.ServiceFactoryConfig, error) { return pdp.NewPDPServiceFactoryConfig() }
+			fFact := func(config services.ServiceFactoryConfig) (services.ServiceFactory, error) {
+				return pdp.NewPDPServiceFactory(config.(*pdp.PDPServiceFactoryConfig))
 			}
-			fcty, err := azservices.NewServiceFactoryProvider(fFactCfg, fFact)
+			fcty, err := services.NewServiceFactoryProvider(fFactCfg, fFact)
 			if err != nil {
 				return nil, err
 			}

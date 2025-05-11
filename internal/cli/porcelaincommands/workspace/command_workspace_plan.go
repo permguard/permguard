@@ -23,10 +23,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwksmanager "github.com/permguard/permguard/internal/cli/workspace"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/workspace"
+	"github.com/permguard/permguard/pkg/cli"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -35,21 +35,21 @@ const (
 )
 
 // runECommandForPlanWorkspace runs the command for creating an workspace.
-func runECommandForPlanWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForPlanWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	absLangFact, err := deps.GetLanguageFactory()
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
-	wksMgr, err := azicliwksmanager.NewInternalManager(ctx, absLangFact)
+	wksMgr, err := workspace.NewInternalManager(ctx, absLangFact)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	output, err := wksMgr.ExecPlan(outFunc(ctx, printer))
 	if err != nil {
@@ -57,10 +57,10 @@ func runECommandForPlanWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 			printer.Println("Failed execute the plan.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliOperation, "failed to execute the plan.", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to execute the plan.", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
 		printer.PrintlnMap(output)
@@ -69,11 +69,11 @@ func runECommandForPlanWorkspace(deps azcli.CliDependenciesProvider, cmd *cobra.
 }
 
 // CreateCommandForWorkspacePlan creates a command for planializing a permguard workspace.
-func CreateCommandForWorkspacePlan(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspacePlan(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "plan",
 		Short: "Generate a plan of changes to apply to the remote ledger based on the differences between the local and remote states",
-		Long: aziclicommon.BuildCliLongTemplate(`This command generates a plan of changes to apply to the remote ledger based on the differences between the local and remote states.
+		Long: common.BuildCliLongTemplate(`This command generates a plan of changes to apply to the remote ledger based on the differences between the local and remote states.
 
 Examples:
   # generate a plan of changes to apply to the remote ledger based on the differences between the local and remote states

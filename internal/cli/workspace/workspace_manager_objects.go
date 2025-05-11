@@ -22,49 +22,49 @@ import (
 	"fmt"
 	"strings"
 
-	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/internal/cli/common"
+	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // getObjectsInfos retrieves and filters object metadata based on object type.
-func (m *WorkspaceManager) getObjectsInfos(includeStorage, includeCode, filterCommits, filterTrees, filterBlob bool) ([]azobjs.ObjectInfo, error) {
-	var filteredObjects []azobjs.ObjectInfo
+func (m *WorkspaceManager) getObjectsInfos(includeStorage, includeCode, filterCommits, filterTrees, filterBlob bool) ([]objects.ObjectInfo, error) {
+	var filteredObjects []objects.ObjectInfo
 
-	// Fetch all raw objects from the COSP manager
-	objects, err := m.cospMgr.GetObjects(includeStorage, includeCode)
+	// Fetch all raw objs from the COSP manager
+	objs, err := m.cospMgr.GetObjects(includeStorage, includeCode)
 	if err != nil {
 		return nil, err
 	}
-	if len(objects) == 0 {
+	if len(objs) == 0 {
 		return filteredObjects, nil
 	}
 
 	// Initialize the object manager
-	objMgr, err := azobjs.NewObjectManager()
+	objMgr, err := objects.NewObjectManager()
 	if err != nil {
 		return nil, err
 	}
 
-	// Iterate and filter objects by type
-	for _, object := range objects {
+	// Iterate and filter objs by type
+	for _, object := range objs {
 		objInfo, err := objMgr.GetObjectInfo(&object)
 		if err != nil {
 			return nil, err
 		}
 
 		switch objInfo.GetType() {
-		case azobjs.ObjectTypeCommit:
+		case objects.ObjectTypeCommit:
 			if !filterCommits {
 				continue
 			}
-		case azobjs.ObjectTypeTree:
+		case objects.ObjectTypeTree:
 			if !filterTrees {
 				continue
 			}
-		case azobjs.ObjectTypeBlob:
+		case objects.ObjectTypeBlob:
 			if !filterBlob {
 				continue
 			}
@@ -77,7 +77,7 @@ func (m *WorkspaceManager) getObjectsInfos(includeStorage, includeCode, filterCo
 }
 
 // getHistory gets the commit history.
-func (m *WorkspaceManager) getHistory(commit string) ([]azicliwkscommon.CommitInfo, error) {
+func (m *WorkspaceManager) getHistory(commit string) ([]wkscommon.CommitInfo, error) {
 	commitHistory, err := m.cospMgr.GetHistory(commit)
 	if err != nil {
 		return nil, err
@@ -86,9 +86,9 @@ func (m *WorkspaceManager) getHistory(commit string) ([]azicliwkscommon.CommitIn
 }
 
 // getCommitString gets the commit string.
-func (m *WorkspaceManager) getCommitString(oid string, commit *azobjs.Commit) (string, error) {
+func (m *WorkspaceManager) getCommitString(oid string, commit *objects.Commit) (string, error) {
 	if commit == nil {
-		return "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "commit is nil")
+		return "", cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "commit is nil")
 	}
 
 	tree := commit.GetTree()
@@ -101,20 +101,20 @@ func (m *WorkspaceManager) getCommitString(oid string, commit *azobjs.Commit) (s
 			"  - %s: %s\n"+
 			"  - Committer date: %s\n"+
 			"  - Author date: %s",
-		aziclicommon.KeywordText("commit"),
-		aziclicommon.IDText(oid),
-		aziclicommon.KeywordText("tree"),
-		aziclicommon.IDText(tree),
-		aziclicommon.DateText(committerTimestamp),
-		aziclicommon.DateText(authorTimestamp),
+		common.KeywordText("commit"),
+		common.IDText(oid),
+		common.KeywordText("tree"),
+		common.IDText(tree),
+		common.DateText(committerTimestamp),
+		common.DateText(authorTimestamp),
 	)
 	return output, nil
 }
 
 // getCommitMap gets the commit map.
-func (m *WorkspaceManager) getCommitMap(oid string, commit *azobjs.Commit) (map[string]any, error) {
+func (m *WorkspaceManager) getCommitMap(oid string, commit *objects.Commit) (map[string]any, error) {
 	if commit == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "commit is nil")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "commit is nil")
 	}
 
 	output := make(map[string]any)
@@ -132,14 +132,14 @@ func (m *WorkspaceManager) getCommitMap(oid string, commit *azobjs.Commit) (map[
 }
 
 // getTreeString gets the tree string.
-func (m *WorkspaceManager) getTreeString(oid string, tree *azobjs.Tree) (string, error) {
+func (m *WorkspaceManager) getTreeString(oid string, tree *objects.Tree) (string, error) {
 	if tree == nil {
-		return "", azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "tree is nil")
+		return "", cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "tree is nil")
 	}
 
 	var output strings.Builder
 
-	output.WriteString(fmt.Sprintf("%s %s:", aziclicommon.KeywordText("tree"), aziclicommon.IDText(oid)))
+	output.WriteString(fmt.Sprintf("%s %s:", common.KeywordText("tree"), common.IDText(oid)))
 
 	entries := tree.GetEntries()
 	for _, entry := range entries {
@@ -150,17 +150,17 @@ func (m *WorkspaceManager) getTreeString(oid string, tree *azobjs.Tree) (string,
 		oid := entry.GetOID()
 		oname := entry.GetOName()
 		entryType := entry.GetType()
-		output.WriteString(fmt.Sprintf("\n  - %s %s %s %s %s %s %s", aziclicommon.IDText(oid), aziclicommon.KeywordText(entryType), aziclicommon.NameText(partition),
-			aziclicommon.NameText(oname), aziclicommon.LanguageText(language), aziclicommon.LanguageText(languageVersion), aziclicommon.LanguageKeywordText(languageType)))
+		output.WriteString(fmt.Sprintf("\n  - %s %s %s %s %s %s %s", common.IDText(oid), common.KeywordText(entryType), common.NameText(partition),
+			common.NameText(oname), common.LanguageText(language), common.LanguageText(languageVersion), common.LanguageKeywordText(languageType)))
 	}
 
 	return output.String(), nil
 }
 
 // getTreeMap gets the tree map.
-func (m *WorkspaceManager) getTreeMap(oid string, tree *azobjs.Tree) (map[string]any, error) {
+func (m *WorkspaceManager) getTreeMap(oid string, tree *objects.Tree) (map[string]any, error) {
 	if tree == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "tree is nil")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "tree is nil")
 	}
 
 	output := make(map[string]any)
@@ -187,11 +187,11 @@ func (m *WorkspaceManager) getTreeMap(oid string, tree *azobjs.Tree) (map[string
 // getBlobString gets the blob string.
 func (m *WorkspaceManager) getBlobString(blob any) ([]byte, bool, error) {
 	if blob == nil {
-		return nil, false, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "tree is nil")
+		return nil, false, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "tree is nil")
 	}
 	content, hasContent := blob.([]byte)
 	if !hasContent {
-		return nil, false, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "blob content is not a byte array")
+		return nil, false, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "blob content is not a byte array")
 	}
 	return content, true, nil
 }
@@ -199,11 +199,11 @@ func (m *WorkspaceManager) getBlobString(blob any) ([]byte, bool, error) {
 // getBlobString gets the blob map.
 func (m *WorkspaceManager) getBlobMap(blob any) (map[string]any, error) {
 	if blob == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "tree is nil")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "tree is nil")
 	}
 	content, hasContent := blob.([]byte)
 	if !hasContent {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliGeneric, "blob content is not a byte array")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "blob content is not a byte array")
 	}
 	contentMap := make(map[string]any)
 	var result map[string]any

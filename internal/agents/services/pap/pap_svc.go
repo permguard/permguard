@@ -19,22 +19,22 @@ package pap
 import (
 	"google.golang.org/grpc"
 
-	azctrlpap "github.com/permguard/permguard/internal/agents/services/pap/controllers"
-	azapiv1pap "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
-	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	papctrl "github.com/permguard/permguard/internal/agents/services/pap/controllers"
+	papv1 "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
+	"github.com/permguard/permguard/pkg/agents/runtime"
+	"github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/storage"
 )
 
 // PAPService holds the configuration for the server.
 type PAPService struct {
 	config       *PAPServiceConfig
-	configReader azruntime.ServiceConfigReader
+	configReader runtime.ServiceConfigReader
 }
 
 // NewPAPService creates a new server  configuration.
 func NewPAPService(papServiceCfg *PAPServiceConfig) (*PAPService, error) {
-	configReader, err := azservices.NewServiceConfiguration(papServiceCfg.GetConfigData())
+	configReader, err := services.NewServiceConfiguration(papServiceCfg.GetConfigData())
 	if err != nil {
 		return nil, err
 	}
@@ -45,16 +45,16 @@ func NewPAPService(papServiceCfg *PAPServiceConfig) (*PAPService, error) {
 }
 
 // GetService returns the service kind.
-func (f *PAPService) GetService() azservices.ServiceKind {
+func (f *PAPService) GetService() services.ServiceKind {
 	return f.config.GetService()
 }
 
 // GetEndpoints returns the service kind.
-func (f *PAPService) GetEndpoints() ([]azservices.EndpointInitializer, error) {
-	endpoint, err := azservices.NewEndpointInitializer(
+func (f *PAPService) GetEndpoints() ([]services.EndpointInitializer, error) {
+	endpoint, err := services.NewEndpointInitializer(
 		f.config.GetService(),
 		f.config.GetPort(),
-		func(grpcServer *grpc.Server, srvCtx *azservices.ServiceContext, endptCtx *azservices.EndpointContext, storageConnector *azstorage.StorageConnector) error {
+		func(grpcServer *grpc.Server, srvCtx *services.ServiceContext, endptCtx *services.EndpointContext, storageConnector *storage.StorageConnector) error {
 			storageKind := f.config.GetStorageCentralEngine()
 			centralStorage, err := storageConnector.GetCentralStorage(storageKind, endptCtx)
 			if err != nil {
@@ -64,7 +64,7 @@ func (f *PAPService) GetEndpoints() ([]azservices.EndpointInitializer, error) {
 			if err != nil {
 				return err
 			}
-			controller, err := azctrlpap.NewPAPController(srvCtx, papCentralStorage)
+			controller, err := papctrl.NewPAPController(srvCtx, papCentralStorage)
 			if err != nil {
 				return nil
 			}
@@ -72,18 +72,18 @@ func (f *PAPService) GetEndpoints() ([]azservices.EndpointInitializer, error) {
 			if err != nil {
 				return err
 			}
-			papServer, err := azapiv1pap.NewV1PAPServer(endptCtx, controller)
-			azapiv1pap.RegisterV1PAPServiceServer(grpcServer, papServer)
+			papServer, err := papv1.NewV1PAPServer(endptCtx, controller)
+			papv1.RegisterV1PAPServiceServer(grpcServer, papServer)
 			return err
 		})
 	if err != nil {
 		return nil, err
 	}
-	endpoints := []azservices.EndpointInitializer{endpoint}
+	endpoints := []services.EndpointInitializer{endpoint}
 	return endpoints, nil
 }
 
 // GetServiceConfigReader returns the service configuration reader.
-func (f *PAPService) GetServiceConfigReader() (azruntime.ServiceConfigReader, error) {
+func (f *PAPService) GetServiceConfigReader() (runtime.ServiceConfigReader, error) {
 	return f.configReader, nil
 }

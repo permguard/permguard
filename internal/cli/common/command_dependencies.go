@@ -17,45 +17,45 @@
 package common
 
 import (
-	aziclients "github.com/permguard/permguard/internal/transport/clients"
-	azlang "github.com/permguard/permguard/pkg/authz/languages"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azclients "github.com/permguard/permguard/pkg/transport/clients"
+	iclients "github.com/permguard/permguard/internal/transport/clients"
+	"github.com/permguard/permguard/pkg/authz/languages"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/transport/clients"
 )
 
 // cliDependencies implements the Cli dependencies.
 type cliDependencies struct {
-	langFactory azlang.LanguageFactory
+	langFactory languages.LanguageFactory
 }
 
 // CreatePrinter creates a new printer.
-func (c *cliDependencies) CreatePrinter(verbose bool, output string) (azcli.CliPrinter, error) {
-	printer, err := azcli.NewCliPrinterTerminal(verbose, output)
+func (c *cliDependencies) CreatePrinter(verbose bool, output string) (cli.CliPrinter, error) {
+	printer, err := cli.NewCliPrinterTerminal(verbose, output)
 	return printer, err
 }
 
 // CreateGrpcZAPClient creates a new gRPC client for the ZAP service.
-func (c *cliDependencies) CreateGrpcZAPClient(zapTarget string) (azclients.GrpcZAPClient, error) {
-	return aziclients.NewGrpcZAPClient(zapTarget)
+func (c *cliDependencies) CreateGrpcZAPClient(zapTarget string) (clients.GrpcZAPClient, error) {
+	return iclients.NewGrpcZAPClient(zapTarget)
 }
 
 // CreateGrpcPAPClient creates a new gRPC client for the PAP service.
-func (c *cliDependencies) CreateGrpcPAPClient(zapTarget string) (azclients.GrpcPAPClient, error) {
-	return aziclients.NewGrpcPAPClient(zapTarget)
+func (c *cliDependencies) CreateGrpcPAPClient(zapTarget string) (clients.GrpcPAPClient, error) {
+	return iclients.NewGrpcPAPClient(zapTarget)
 }
 
 // CreateGrpcPDPClient creates a new gRPC client for the PDP service.
-func (c *cliDependencies) CreateGrpcPDPClient(zapTarget string) (azclients.GrpcPDPClient, error) {
-	return aziclients.NewGrpcPDPClient(zapTarget)
+func (c *cliDependencies) CreateGrpcPDPClient(zapTarget string) (clients.GrpcPDPClient, error) {
+	return iclients.NewGrpcPDPClient(zapTarget)
 }
 
 // CreateGrpcPAPClient creates a new gRPC client for the PAP service.
-func (c *cliDependencies) GetLanguageFactory() (azlang.LanguageFactory, error) {
+func (c *cliDependencies) GetLanguageFactory() (languages.LanguageFactory, error) {
 	return c.langFactory, nil
 }
 
 // NewCliDependenciesProvider creates a new CliDependenciesProvider.
-func NewCliDependenciesProvider(langFactory azlang.LanguageFactory) (azcli.CliDependenciesProvider, error) {
+func NewCliDependenciesProvider(langFactory languages.LanguageFactory) (cli.CliDependenciesProvider, error) {
 	return &cliDependencies{
 		langFactory: langFactory,
 	}, nil

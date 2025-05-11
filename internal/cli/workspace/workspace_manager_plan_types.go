@@ -17,13 +17,13 @@
 package workspace
 
 import (
-	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	"github.com/permguard/permguard/internal/cli/workspace/common"
 )
 
 // currentHeadContext represents the current head context.
 type currentHeadContext struct {
-	headRefInfo    *azicliwkscommon.RefInfo
-	remoteRefInfo  *azicliwkscommon.RefInfo
+	headRefInfo    *common.RefInfo
+	remoteRefInfo  *common.RefInfo
 	headCommitID   string
 	remoteCommitID string
 	server         string
@@ -56,12 +56,12 @@ func (h *currentHeadContext) GetRef() string {
 }
 
 // GetHeadRefInfo returns the head ref information.
-func (h *currentHeadContext) GetHeadRefInfo() *azicliwkscommon.RefInfo {
+func (h *currentHeadContext) GetHeadRefInfo() *common.RefInfo {
 	return h.headRefInfo
 }
 
 // GetHeadRef returns the head ref information.
-func (h *currentHeadContext) GetRemoteRefInfo() *azicliwkscommon.RefInfo {
+func (h *currentHeadContext) GetRemoteRefInfo() *common.RefInfo {
 	return h.remoteRefInfo
 }
 

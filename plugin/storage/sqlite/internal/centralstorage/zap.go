@@ -17,28 +17,28 @@
 package centralstorage
 
 import (
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
-	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
+	"github.com/permguard/permguard/pkg/agents/storage"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	"github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
 // SQLiteCentralStorageZAP implements the sqlite central storage.
 type SQLiteCentralStorageZAP struct {
-	ctx             *azstorage.StorageContext
-	sqliteConnector azidb.SQLiteConnector
+	ctx             *storage.StorageContext
+	sqliteConnector db.SQLiteConnector
 	sqlRepo         SqliteRepo
 	sqlExec         SqliteExecutor
 	config          *SQLiteCentralStorageConfig
 }
 
 // newSQLiteZAPCentralStorage creates a new SQLiteZAPCentralStorage.
-func newSQLiteZAPCentralStorage(storageContext *azstorage.StorageContext, sqliteConnector azidb.SQLiteConnector, ledger SqliteRepo, sqlExec SqliteExecutor) (*SQLiteCentralStorageZAP, error) {
+func newSQLiteZAPCentralStorage(storageContext *storage.StorageContext, sqliteConnector db.SQLiteConnector, ledger SqliteRepo, sqlExec SqliteExecutor) (*SQLiteCentralStorageZAP, error) {
 	if storageContext == nil || sqliteConnector == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, "storageContext is nil")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "storageContext is nil")
 	}
 	if ledger == nil {
-		ledger = &azirepos.Repository{}
+		ledger = &repos.Repository{}
 	}
 	if sqlExec == nil {
 		sqlExec = &SqliteExec{}

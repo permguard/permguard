@@ -17,8 +17,8 @@
 package workspace
 
 import (
-	azicliwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
-	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	"github.com/permguard/permguard/internal/cli/workspace/common"
+	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 // getCurrentHeadContext gets the current head context.
@@ -64,7 +64,7 @@ func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) 
 	if err != nil {
 		return nil, err
 	}
-	headCtx.headRefInfo, err = azicliwkscommon.BuildRefInfoFromLedgerID(headRefInfo, ledgerID)
+	headCtx.headRefInfo, err = common.BuildRefInfoFromLedgerID(headRefInfo, ledgerID)
 	if err != nil {
 		return nil, err
 	}
@@ -79,19 +79,19 @@ func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) 
 }
 
 // GetCurrentHeadCommit gets the current head commit.
-func (m *WorkspaceManager) GetCurrentHeadCommit(ref string) (*azobjs.Commit, error) {
+func (m *WorkspaceManager) GetCurrentHeadCommit(ref string) (*objects.Commit, error) {
 	remoteCommitID, err := m.rfsMgr.GetRefCommit(ref)
 	if err != nil {
 		return nil, err
 	}
-	if remoteCommitID == azobjs.ZeroOID {
+	if remoteCommitID == objects.ZeroOID {
 		return nil, nil
 	}
 	remoteCommitObj, err := m.cospMgr.ReadObject(remoteCommitID)
 	if err != nil {
 		return nil, err
 	}
-	remoteCommit, err := azobjs.ConvertObjectToCommit(remoteCommitObj)
+	remoteCommit, err := objects.ConvertObjectToCommit(remoteCommitObj)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func (m *WorkspaceManager) GetCurrentHeadCommit(ref string) (*azobjs.Commit, err
 }
 
 // GetCurrentHeadTree gets the current head tree.
-func (m *WorkspaceManager) GetCurrentHeadTree(ref string) (*azobjs.Tree, error) {
+func (m *WorkspaceManager) GetCurrentHeadTree(ref string) (*objects.Tree, error) {
 	commit, err := m.GetCurrentHeadCommit(ref)
 	if err != nil {
 		return nil, err
@@ -111,7 +111,7 @@ func (m *WorkspaceManager) GetCurrentHeadTree(ref string) (*azobjs.Tree, error) 
 	if err != nil {
 		return nil, err
 	}
-	tree, err := azobjs.ConvertObjectToTree(treeObj)
+	tree, err := objects.ConvertObjectToTree(treeObj)
 	if err != nil {
 		return nil, err
 	}

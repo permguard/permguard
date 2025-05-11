@@ -27,8 +27,8 @@ import (
 
 	"github.com/mattn/go-sqlite3"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
 )
 
 // registerIdentityForUpsertMocking registers an identity for upsert mocking.
@@ -95,7 +95,7 @@ func TestRepoUpsertIdentityWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
 	ledger := Repository{}
 
-	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
+	_, sqlDB, _, _ := testutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
 	tx, _ := sqlDB.Begin()
@@ -103,7 +103,7 @@ func TestRepoUpsertIdentityWithInvalidInput(t *testing.T) {
 	{ // Test with nil identity
 		_, err := ledger.UpsertIdentity(tx, true, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid zone id
@@ -113,7 +113,7 @@ func TestRepoUpsertIdentityWithInvalidInput(t *testing.T) {
 		}
 		_, err := ledger.UpsertIdentity(tx, false, dbInIdentity)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid identity id
@@ -123,7 +123,7 @@ func TestRepoUpsertIdentityWithInvalidInput(t *testing.T) {
 		}
 		_, err := ledger.UpsertIdentity(tx, false, dbInIdentity)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid identity name
@@ -135,7 +135,7 @@ func TestRepoUpsertIdentityWithInvalidInput(t *testing.T) {
 			"X-@x"}
 		for _, test := range tests {
 			identityName := test
-			_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
+			_, sqlDB, _, _ := testutils.CreateConnectionMocks(t)
 			defer sqlDB.Close()
 
 			tx, _ := sqlDB.Begin()
@@ -145,7 +145,7 @@ func TestRepoUpsertIdentityWithInvalidInput(t *testing.T) {
 			}
 			dbOutIdentity, err := ledger.UpsertIdentity(tx, true, dbInIdentity)
 			assert.NotNil(err, "error should be not nil")
-			assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+			assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 			assert.Nil(dbOutIdentity, "identity should be nil")
 		}
 	}
@@ -161,7 +161,7 @@ func TestRepoUpsertIdentityWithSuccess(t *testing.T) {
 		false,
 	}
 	for _, test := range tests {
-		_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+		_, sqlDB, _, sqlDBMock := testutils.CreateConnectionMocks(t)
 		defer sqlDB.Close()
 
 		isCreate := test
@@ -220,7 +220,7 @@ func TestRepoUpsertIdentityWithErrors(t *testing.T) {
 		false,
 	}
 	for _, test := range tests {
-		_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+		_, sqlDB, _, sqlDBMock := testutils.CreateConnectionMocks(t)
 		defer sqlDB.Close()
 
 		isCreate := test
@@ -258,7 +258,7 @@ func TestRepoUpsertIdentityWithErrors(t *testing.T) {
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutIdentity, "identity should be nil")
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrStorageConstraintUnique, err), "error should be errstorageconstraintunique")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageConstraintUnique, err), "error should be errstorageconstraintunique")
 	}
 }
 
@@ -267,7 +267,7 @@ func TestRepoDeleteIdentityWithInvalidInput(t *testing.T) {
 	ledger := Repository{}
 
 	assert := assert.New(t)
-	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
+	_, sqlDB, _, _ := testutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
 	tx, _ := sqlDB.Begin()
@@ -275,13 +275,13 @@ func TestRepoDeleteIdentityWithInvalidInput(t *testing.T) {
 	{ // Test with invalid zone id
 		_, err := ledger.DeleteIdentity(tx, 0, GenerateUUID())
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid identity id
 		_, err := ledger.DeleteIdentity(tx, 581616507495, "")
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 }
 
@@ -290,7 +290,7 @@ func TestRepoDeleteIdentityWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 	ledger := Repository{}
 
-	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+	_, sqlDB, _, sqlDBMock := testutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
 	sqlSelect, identity, sqlIdentityRows, sqlDelete := registerIdentityForDeleteMocking()
@@ -329,7 +329,7 @@ func TestRepoDeleteIdentityWithErrors(t *testing.T) {
 		3,
 	}
 	for _, test := range tests {
-		_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+		_, sqlDB, _, sqlDBMock := testutils.CreateConnectionMocks(t)
 		defer sqlDB.Close()
 
 		sqlSelect, identity, sqlIdentityRows, sqlDelete := registerIdentityForDeleteMocking()
@@ -346,11 +346,12 @@ func TestRepoDeleteIdentityWithErrors(t *testing.T) {
 				WillReturnRows(sqlIdentityRows)
 		}
 
-		if test == 2 {
+		switch test {
+		case 2:
 			sqlDBMock.ExpectExec(sqlDelete).
 				WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrPerm})
-		} else if test == 3 {
+		case 3:
 			sqlDBMock.ExpectExec(sqlDelete).
 				WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
 				WillReturnResult(sqlmock.NewResult(0, 0))
@@ -364,9 +365,9 @@ func TestRepoDeleteIdentityWithErrors(t *testing.T) {
 		assert.NotNil(err, "error should be not nil")
 
 		if test == 1 {
-			assert.True(azerrors.AreErrorsEqual(azerrors.ErrStorageNotFound, err), "error should be errstoragenotfound")
+			assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageNotFound, err), "error should be errstoragenotfound")
 		} else {
-			assert.True(azerrors.AreErrorsEqual(azerrors.ErrStorageGeneric, err), "error should be errstoragegeneric")
+			assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageGeneric, err), "error should be errstoragegeneric")
 		}
 	}
 }
@@ -376,40 +377,40 @@ func TestRepoFetchIdentityWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
 	ledger := Repository{}
 
-	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
+	_, sqlDB, _, _ := testutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
 	{ // Test with invalid page
 		_, err := ledger.FetchIdentities(sqlDB, 0, 100, 581616507495, nil, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid page size
 		_, err := ledger.FetchIdentities(sqlDB, 1, 0, 581616507495, nil, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid zone id
 		identityID := GenerateUUID()
 		_, err := ledger.FetchIdentities(sqlDB, 1, 1, 0, &identityID, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientID, err), "error should be errclientid")
 	}
 
 	{ // Test with invalid identity id
 		identityID := ""
 		_, err := ledger.FetchIdentities(sqlDB, 1, 1, 581616507495, &identityID, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientID, err), "error should be errclientid")
 	}
 
 	{ // Test with invalid identity name
 		identityName := "@"
 		_, err := ledger.FetchIdentities(sqlDB, 1, 1, 581616507495, nil, &identityName)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientName, err), "error should be errclientname")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientName, err), "error should be errclientname")
 	}
 }
 
@@ -418,7 +419,7 @@ func TestRepoFetchIdentityWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 	ledger := Repository{}
 
-	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+	_, sqlDB, _, sqlDBMock := testutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
 	sqlSelect, sqlIdentities, sqlIdentityRows := registerIdentityForFetchMocking()

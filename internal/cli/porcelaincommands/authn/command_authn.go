@@ -20,8 +20,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
 )
 
 // runECommandForAuthN runs the command for managing authn.
@@ -30,11 +30,11 @@ func runECommandForAuthN(cmd *cobra.Command) error {
 }
 
 // CreateCommandForAuthN for managing authn.
-func CreateCommandForAuthN(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForAuthN(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "authn",
 		Short: "Manage tenants and identities on the remote server",
-		Long:  aziclicommon.BuildCliLongTemplate(`This command enables managament of tenants and identities on the remote server.`),
+		Long:  common.BuildCliLongTemplate(`This command enables managament of tenants and identities on the remote server.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForAuthN(cmd)
 		},

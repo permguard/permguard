@@ -19,12 +19,12 @@ package zones
 import (
 	"testing"
 
-	aztestutils "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
 )
 
 // TestCreateCommandForZones tests the CreateCommandForZones function.
 func TestCreateCommandForZones(t *testing.T) {
 	args := []string{}
 	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command manages zones on the remote server."}
-	aztestutils.BaseCommandTest(t, CreateCommandForZones, args, false, outputs)
+	testutils.BaseCommandTest(t, CreateCommandForZones, args, false, outputs)
 }

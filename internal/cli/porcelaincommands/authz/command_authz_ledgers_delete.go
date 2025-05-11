@@ -23,11 +23,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
 const (
@@ -36,11 +36,11 @@ const (
 )
 
 // runECommandForDeleteLedger runs the command for creating a ledger.
-func runECommandForDeleteLedger(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
-	ctx, printer, err := aziclicommon.CreateContextAndPrinter(deps, cmd, v)
+func runECommandForDeleteLedger(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	papTarget, err := ctx.GetPAPTarget()
 	if err != nil {
@@ -48,7 +48,7 @@ func runECommandForDeleteLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 			printer.Println("Failed to delete the ledger.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the ledger", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to delete the ledger", err)
 			printer.Error(sysErr)
 		}
 	}
@@ -58,22 +58,22 @@ func runECommandForDeleteLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 			printer.Println("Failed to delete the ledger.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the ledger", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to delete the ledger", err)
 			printer.Error(sysErr)
 		}
 	}
-	zoneID := v.GetInt64(azoptions.FlagName(commandNameForLedger, aziclicommon.FlagCommonZoneID))
-	ledgerID := v.GetString(azoptions.FlagName(commandNameForLedgersDelete, flagLedgerID))
+	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
+	ledgerID := v.GetString(options.FlagName(commandNameForLedgersDelete, flagLedgerID))
 	ledger, err := client.DeleteLedger(zoneID, ledgerID)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to delete the ledger.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliArguments, "failed to delete the ledger", err)
+			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to delete the ledger", err)
 			printer.Error(sysErr)
 		}
-		return aziclicommon.ErrCommandSilent
+		return common.ErrCommandSilent
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
@@ -81,18 +81,18 @@ func runECommandForDeleteLedger(deps azcli.CliDependenciesProvider, cmd *cobra.C
 		ledgerName := ledger.Name
 		output[ledgerID] = ledgerName
 	} else if ctx.IsJSONOutput() {
-		output["ledgers"] = []*azmodelspap.Ledger{ledger}
+		output["ledgers"] = []*pap.Ledger{ledger}
 	}
 	printer.PrintlnMap(output)
 	return nil
 }
 
 // createCommandForLedgerDelete creates a command for managing ledgerdelete.
-func createCommandForLedgerDelete(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForLedgerDelete(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a remote ledger",
-		Long: aziclicommon.BuildCliLongTemplate(`This command deletes a remote ledger.
+		Long: common.BuildCliLongTemplate(`This command deletes a remote ledger.
 
 Examples:
   # delete a ledger and output the result in json format
@@ -103,6 +103,6 @@ Examples:
 		},
 	}
 	command.Flags().String(flagLedgerID, "", "specify the ID of the ledger to delete")
-	v.BindPFlag(azoptions.FlagName(commandNameForLedgersDelete, flagLedgerID), command.Flags().Lookup(flagLedgerID))
+	v.BindPFlag(options.FlagName(commandNameForLedgersDelete, flagLedgerID), command.Flags().Lookup(flagLedgerID))
 	return command
 }

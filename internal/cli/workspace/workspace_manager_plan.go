@@ -19,50 +19,50 @@ package workspace
 import (
 	"time"
 
-	azicliwkscosp "github.com/permguard/permguard/internal/cli/workspace/cosp"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azobjs "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	"github.com/permguard/permguard/internal/cli/workspace/cosp"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 // plan generates a plan of changes to apply to the remote ledger based on the differences between the local and remote states.
-func (m *WorkspaceManager) plan(currentCodeObsStates []azicliwkscosp.CodeObjectState, remoteCodeObsStates []azicliwkscosp.CodeObjectState) ([]azicliwkscosp.CodeObjectState, error) {
+func (m *WorkspaceManager) plan(currentCodeObsStates []cosp.CodeObjectState, remoteCodeObsStates []cosp.CodeObjectState) ([]cosp.CodeObjectState, error) {
 	return m.cospMgr.CalculateCodeObjectsState(currentCodeObsStates, remoteCodeObsStates), nil
 }
 
 // buildPlanTree builds the plan tree.
-func (m *WorkspaceManager) buildPlanTree(plan []azicliwkscosp.CodeObjectState) (*azobjs.Tree, *azobjs.Object, error) {
-	tree, err := azobjs.NewTree()
+func (m *WorkspaceManager) buildPlanTree(plan []cosp.CodeObjectState) (*objects.Tree, *objects.Object, error) {
+	tree, err := objects.NewTree()
 	if err != nil {
-		return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree cannot be created", err)
+		return nil, nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "tree cannot be created", err)
 	}
 	for _, planItem := range plan {
-		if planItem.State == azicliwkscosp.CodeObjectStateDelete {
+		if planItem.State == cosp.CodeObjectStateDelete {
 			continue
 		}
-		treeItem, err := azobjs.NewTreeEntry(planItem.Partition, planItem.OType, planItem.OID, planItem.OName, planItem.CodeID, planItem.CodeType, planItem.Language, planItem.LanguageVersion, planItem.LanguageType)
+		treeItem, err := objects.NewTreeEntry(planItem.Partition, planItem.OType, planItem.OID, planItem.OName, planItem.CodeID, planItem.CodeType, planItem.Language, planItem.LanguageVersion, planItem.LanguageType)
 		if err != nil {
-			return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be created", err)
+			return nil, nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "tree item cannot be created", err)
 		}
 		if err := tree.AddEntry(treeItem); err != nil {
-			return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree item cannot be added to the tree because of errors in the code files", err)
+			return nil, nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "tree item cannot be added to the tree because of errors in the code files", err)
 		}
 	}
-	treeObj, err := azobjs.CreateTreeObject(tree)
+	treeObj, err := objects.CreateTreeObject(tree)
 	if err != nil {
-		return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "tree object cannot be created", err)
+		return nil, nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "tree object cannot be created", err)
 	}
 	return tree, treeObj, nil
 }
 
 // buildPlanCommit builds the plan commit.
-func (m *WorkspaceManager) buildPlanCommit(tree string, parentCommitID string) (*azobjs.Commit, *azobjs.Object, error) {
-	commit, err := azobjs.NewCommit(tree, parentCommitID, "", time.Now(), "", time.Now(), "cli commit")
+func (m *WorkspaceManager) buildPlanCommit(tree string, parentCommitID string) (*objects.Commit, *objects.Object, error) {
+	commit, err := objects.NewCommit(tree, parentCommitID, "", time.Now(), "", time.Now(), "cli commit")
 	if err != nil {
-		return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "commit cannot be created", err)
+		return nil, nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "commit cannot be created", err)
 	}
-	commitObj, err := azobjs.CreateCommitObject(commit)
+	commitObj, err := objects.CreateCommitObject(commit)
 	if err != nil {
-		return nil, nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrCliFileOperation, "commit object cannot be created", err)
+		return nil, nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "commit object cannot be created", err)
 	}
 	return commit, commitObj, nil
 }

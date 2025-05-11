@@ -20,8 +20,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azlang "github.com/permguard/permguard/pkg/authz/languages"
-	azclients "github.com/permguard/permguard/pkg/transport/clients"
+	"github.com/permguard/permguard/pkg/authz/languages"
+	"github.com/permguard/permguard/pkg/transport/clients"
 )
 
 // CliDependenciesProvider is the cli dependencies provider.
@@ -29,13 +29,13 @@ type CliDependenciesProvider interface {
 	// CreatePrinter creates a new printer.
 	CreatePrinter(verbose bool, output string) (CliPrinter, error)
 	// CreateGrpcZAPClient creates a new gRPC client for the ZAP service.
-	CreateGrpcZAPClient(zapTarget string) (azclients.GrpcZAPClient, error)
+	CreateGrpcZAPClient(zapTarget string) (clients.GrpcZAPClient, error)
 	// CreateGrpcPAPClient creates a new gRPC client for the PAP service.
-	CreateGrpcPAPClient(zapTarget string) (azclients.GrpcPAPClient, error)
+	CreateGrpcPAPClient(zapTarget string) (clients.GrpcPAPClient, error)
 	// CreateGrpcPDPClient creates a new gRPC client for the PDP service.
-	CreateGrpcPDPClient(zapTarget string) (azclients.GrpcPDPClient, error)
+	CreateGrpcPDPClient(zapTarget string) (clients.GrpcPDPClient, error)
 	// GetLanguageFactory returns the language factory.
-	GetLanguageFactory() (azlang.LanguageFactory, error)
+	GetLanguageFactory() (languages.LanguageFactory, error)
 }
 
 // CliInitializer is the cli initializer.
@@ -45,5 +45,5 @@ type CliInitializer interface {
 	//  GetCliCommands returns the commands.
 	GetCliCommands(deps CliDependenciesProvider, v *viper.Viper) ([]*cobra.Command, error)
 	// GetLanguageFactory returns the language factory.
-	GetLanguageFactory() (azlang.LanguageFactory, error)
+	GetLanguageFactory() (languages.LanguageFactory, error)
 }

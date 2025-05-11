@@ -26,10 +26,10 @@ import (
 
 	"go.uber.org/zap"
 
-	aziservices "github.com/permguard/permguard/internal/agents/services"
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	iservices "github.com/permguard/permguard/internal/agents/services"
+	"github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 // Server represents the applicative server.
@@ -43,7 +43,7 @@ type Server struct {
 
 // newServer creates a new server.
 func newServer(serverCfg *ServerConfig) (*Server, error) {
-	logger, err := azoptions.NewLogger(serverCfg.debug, serverCfg.logLevel)
+	logger, err := options.NewLogger(serverCfg.debug, serverCfg.logLevel)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func newServer(serverCfg *ServerConfig) (*Server, error) {
 }
 
 // GetHost returns the hsot kind.
-func (s *Server) GetHost() azservices.HostKind {
+func (s *Server) GetHost() services.HostKind {
 	return s.config.host
 }
 
@@ -70,7 +70,7 @@ func (s *Server) GetLogger() *zap.Logger {
 }
 
 // serveExecStop executes the server stop.
-func serveExecStop(ctx context.Context, logger *zap.Logger, hasStarted bool, host *aziservices.Host, onShutdown func(), s *Server) {
+func serveExecStop(ctx context.Context, logger *zap.Logger, hasStarted bool, host *iservices.Host, onShutdown func(), s *Server) {
 	logger.Info("Bootstrapper is stopping the server")
 	if hasStarted {
 		done, err := host.GracefulStop(ctx)
@@ -101,19 +101,19 @@ func (s *Server) Serve(ctx context.Context, onShutdown func()) (bool, error) {
 		return false, nil
 	}
 
-	storageConnector, err := azstorage.NewStorageConnector(s.config.GetCentralStorageEngine(), s.config.GetStoragesFactories())
+	storageConnector, err := storage.NewStorageConnector(s.config.GetCentralStorageEngine(), s.config.GetStoragesFactories())
 	if err != nil {
 		logger.Error("Bootstrapper cannot create the storage connector", zap.Error(err))
 		s.startLock.Unlock()
 		return false, err
 	}
-	hostCfg, err := aziservices.NewHostConfig(s.config.GetHost(), s, storageConnector, s.config.GetServices(), s.config.GetServicesFactories(), logger, s.config.GetAppData())
+	hostCfg, err := iservices.NewHostConfig(s.config.GetHost(), s, storageConnector, s.config.GetServices(), s.config.GetServicesFactories(), logger, s.config.GetAppData())
 	if err != nil {
 		logger.Error("Bootstrapper cannot create the host config", zap.Error(err))
 		s.startLock.Unlock()
 		return false, err
 	}
-	host, err := aziservices.NewHost(hostCfg)
+	host, err := iservices.NewHost(hostCfg)
 	if err != nil {
 		logger.Error("Bootstrapper cannot create the host", zap.Error(err))
 		s.startLock.Unlock()

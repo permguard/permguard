@@ -20,9 +20,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -31,16 +31,16 @@ const (
 )
 
 // runECommandForUpdateIdentity runs the command for creating an identity.
-func runECommandForUpdateIdentity(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForUpdateIdentity(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	return runECommandForUpsertIdentity(deps, cmd, v, commandNameForIdentitiesUpdate, false)
 }
 
 // createCommandForIdentityUpdate creates a command for managing identityupdate.
-func createCommandForIdentityUpdate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForIdentityUpdate(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update a remote identity",
-		Long: aziclicommon.BuildCliLongTemplate(`This command updates a remote identity.
+		Long: common.BuildCliLongTemplate(`This command updates a remote identity.
 
 Examples:
   # update and identity and output the result in json format
@@ -51,10 +51,10 @@ Examples:
 		},
 	}
 	command.Flags().String(flagIdentityID, "", "specify the id of the identity to update")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesUpdate, flagIdentityID), command.Flags().Lookup(flagIdentityID))
+	v.BindPFlag(options.FlagName(commandNameForIdentitiesUpdate, flagIdentityID), command.Flags().Lookup(flagIdentityID))
 	command.Flags().String(flagIdentityKind, "", "specify the new type of the identity")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesUpdate, flagIdentityKind), command.Flags().Lookup(flagIdentityKind))
-	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the new name for the identity")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentitiesUpdate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	v.BindPFlag(options.FlagName(commandNameForIdentitiesUpdate, flagIdentityKind), command.Flags().Lookup(flagIdentityKind))
+	command.Flags().String(common.FlagCommonName, "", "specify the new name for the identity")
+	v.BindPFlag(options.FlagName(commandNameForIdentitiesUpdate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

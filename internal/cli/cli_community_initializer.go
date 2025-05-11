@@ -20,14 +20,14 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azicliauthn "github.com/permguard/permguard/internal/cli/porcelaincommands/authn"
-	azicliauthz "github.com/permguard/permguard/internal/cli/porcelaincommands/authz"
-	azicliconfigs "github.com/permguard/permguard/internal/cli/porcelaincommands/configs"
-	azicliwks "github.com/permguard/permguard/internal/cli/porcelaincommands/workspace"
-	aziclizones "github.com/permguard/permguard/internal/cli/porcelaincommands/zones"
-	azlang "github.com/permguard/permguard/pkg/authz/languages"
-	azcli "github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/authn"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/authz"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/configs"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/workspace"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/zones"
+	"github.com/permguard/permguard/pkg/authz/languages"
+	"github.com/permguard/permguard/pkg/cli"
 )
 
 // CommunityCliInitializer  is the community cli initializer.
@@ -39,22 +39,22 @@ func NewCommunityCliInitializer() (*CommunityCliInitializer, error) {
 }
 
 // GetCliInfo returns the infos of the cli.
-func (s *CommunityCliInitializer) GetCliInfo() azcli.CliInfo {
-	return azcli.CliInfo{
+func (s *CommunityCliInitializer) GetCliInfo() cli.CliInfo {
+	return cli.CliInfo{
 		Name:  "Community Command Line Interface",
 		Use:   "permguard",
 		Short: "The official Permguard© Cli",
-		Long:  aziclicommon.BuildCliLongTemplate("Permguard is an Open Source Multi-Zone, Multi-Tenant, ZTAuth* Provider."),
+		Long:  common.BuildCliLongTemplate("Permguard is an Open Source Multi-Zone, Multi-Tenant, ZTAuth* Provider."),
 	}
 }
 
 // GetCliCommands returns commands.
-func (s *CommunityCliInitializer) GetCliCommands(deps azcli.CliDependenciesProvider, v *viper.Viper) ([]*cobra.Command, error) {
-	zonesCmd := aziclizones.CreateCommandForZones(deps, v)
-	authnCmd := azicliauthn.CreateCommandForAuthN(deps, v)
-	authzCmd := azicliauthz.CreateCommandForAuthZ(deps, v)
-	configCmd := azicliconfigs.CreateCommandForConfig(deps, v)
-	wksCmds := azicliwks.CreateCommandsForWorkspace(deps, v)
+func (s *CommunityCliInitializer) GetCliCommands(deps cli.CliDependenciesProvider, v *viper.Viper) ([]*cobra.Command, error) {
+	zonesCmd := zones.CreateCommandForZones(deps, v)
+	authnCmd := authn.CreateCommandForAuthN(deps, v)
+	authzCmd := authz.CreateCommandForAuthZ(deps, v)
+	configCmd := configs.CreateCommandForConfig(deps, v)
+	wksCmds := workspace.CreateCommandsForWorkspace(deps, v)
 	return append([]*cobra.Command{
 		zonesCmd,
 		authnCmd,
@@ -64,6 +64,6 @@ func (s *CommunityCliInitializer) GetCliCommands(deps azcli.CliDependenciesProvi
 }
 
 // GetLanguageFactory returns the language factory.
-func (s *CommunityCliInitializer) GetLanguageFactory() (azlang.LanguageFactory, error) {
+func (s *CommunityCliInitializer) GetLanguageFactory() (languages.LanguageFactory, error) {
 	return NewCommunityLanguageFactory()
 }

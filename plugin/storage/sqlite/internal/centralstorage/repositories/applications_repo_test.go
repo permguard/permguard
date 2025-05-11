@@ -27,8 +27,8 @@ import (
 
 	"github.com/mattn/go-sqlite3"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azidbtestutils "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
 )
 
 // registerZoneForUpsertMocking registers a zone for upsert mocking.
@@ -86,7 +86,7 @@ func TestRepoUpsertZoneWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
 	ledger := Repository{}
 
-	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
+	_, sqlDB, _, _ := testutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
 	tx, _ := sqlDB.Begin()
@@ -94,7 +94,7 @@ func TestRepoUpsertZoneWithInvalidInput(t *testing.T) {
 	{ // Test with nil zone
 		_, err := ledger.UpsertZone(tx, true, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid zone id
@@ -104,7 +104,7 @@ func TestRepoUpsertZoneWithInvalidInput(t *testing.T) {
 		}
 		_, err := ledger.UpsertZone(tx, false, dbInZone)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid zone name
@@ -116,7 +116,7 @@ func TestRepoUpsertZoneWithInvalidInput(t *testing.T) {
 			"X-@x"}
 		for _, test := range tests {
 			zoneName := test
-			_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
+			_, sqlDB, _, _ := testutils.CreateConnectionMocks(t)
 			defer sqlDB.Close()
 
 			tx, _ := sqlDB.Begin()
@@ -126,7 +126,7 @@ func TestRepoUpsertZoneWithInvalidInput(t *testing.T) {
 			}
 			dbOutZone, err := ledger.UpsertZone(tx, true, dbInZone)
 			assert.NotNil(err, "error should be not nil")
-			assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+			assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 			assert.Nil(dbOutZone, "zones should be nil")
 		}
 	}
@@ -142,7 +142,7 @@ func TestRepoUpsertZoneWithSuccess(t *testing.T) {
 		false,
 	}
 	for _, test := range tests {
-		_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+		_, sqlDB, _, sqlDBMock := testutils.CreateConnectionMocks(t)
 		defer sqlDB.Close()
 
 		isCreate := test
@@ -192,7 +192,7 @@ func TestRepoUpsertZoneWithErrors(t *testing.T) {
 		false,
 	}
 	for _, test := range tests {
-		_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+		_, sqlDB, _, sqlDBMock := testutils.CreateConnectionMocks(t)
 		defer sqlDB.Close()
 
 		isCreate := test
@@ -224,7 +224,7 @@ func TestRepoUpsertZoneWithErrors(t *testing.T) {
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutZone, "zone should be nil")
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrStorageConstraintUnique, err), "error should be errstorageconstraintunique")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageConstraintUnique, err), "error should be errstorageconstraintunique")
 	}
 }
 
@@ -233,7 +233,7 @@ func TestRepoDeleteZoneWithInvalidInput(t *testing.T) {
 	ledger := Repository{}
 
 	assert := assert.New(t)
-	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
+	_, sqlDB, _, _ := testutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
 	tx, _ := sqlDB.Begin()
@@ -241,7 +241,7 @@ func TestRepoDeleteZoneWithInvalidInput(t *testing.T) {
 	{ // Test with invalid zone id
 		_, err := ledger.DeleteZone(tx, 0)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 }
 
@@ -250,7 +250,7 @@ func TestRepoDeleteZoneWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 	ledger := Repository{}
 
-	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+	_, sqlDB, _, sqlDBMock := testutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
 	sqlSelect, zone, sqlZoneRows, sqlDelete := registerZoneForDeleteMocking()
@@ -286,7 +286,7 @@ func TestRepoDeleteZoneWithErrors(t *testing.T) {
 		3,
 	}
 	for _, test := range tests {
-		_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+		_, sqlDB, _, sqlDBMock := testutils.CreateConnectionMocks(t)
 		defer sqlDB.Close()
 
 		sqlSelect, zone, sqlZoneRows, sqlDelete := registerZoneForDeleteMocking()
@@ -303,11 +303,12 @@ func TestRepoDeleteZoneWithErrors(t *testing.T) {
 				WillReturnRows(sqlZoneRows)
 		}
 
-		if test == 2 {
+		switch test {
+		case 2:
 			sqlDBMock.ExpectExec(sqlDelete).
 				WithArgs(sqlmock.AnyArg()).
 				WillReturnError(sqlite3.Error{Code: sqlite3.ErrPerm})
-		} else if test == 3 {
+		case 3:
 			sqlDBMock.ExpectExec(sqlDelete).
 				WithArgs(sqlmock.AnyArg()).
 				WillReturnResult(sqlmock.NewResult(0, 0))
@@ -321,9 +322,9 @@ func TestRepoDeleteZoneWithErrors(t *testing.T) {
 		assert.NotNil(err, "error should be not nil")
 
 		if test == 1 {
-			assert.True(azerrors.AreErrorsEqual(azerrors.ErrStorageNotFound, err), "error should be errstoragenotfound")
+			assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageNotFound, err), "error should be errstoragenotfound")
 		} else {
-			assert.True(azerrors.AreErrorsEqual(azerrors.ErrStorageGeneric, err), "error should be errstoragegeneric")
+			assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageGeneric, err), "error should be errstoragegeneric")
 		}
 	}
 }
@@ -333,33 +334,33 @@ func TestRepoFetchZoneWithInvalidInput(t *testing.T) {
 	assert := assert.New(t)
 	ledger := Repository{}
 
-	_, sqlDB, _, _ := azidbtestutils.CreateConnectionMocks(t)
+	_, sqlDB, _, _ := testutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
 	{ // Test with invalid page
 		_, err := ledger.FetchZones(sqlDB, 0, 100, nil, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid page size
 		_, err := ledger.FetchZones(sqlDB, 1, 0, nil, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid zone id
 		zoneID := int64(0)
 		_, err := ledger.FetchZones(sqlDB, 1, 1, &zoneID, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientID, err), "error should be errclientid")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientID, err), "error should be errclientid")
 	}
 
 	{ // Test with invalid zone id
 		zoneName := "@"
 		_, err := ledger.FetchZones(sqlDB, 1, 1, nil, &zoneName)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientName, err), "error should be errclientname")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientName, err), "error should be errclientname")
 	}
 }
 
@@ -368,7 +369,7 @@ func TestRepoFetchZoneWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 	ledger := Repository{}
 
-	_, sqlDB, _, sqlDBMock := azidbtestutils.CreateConnectionMocks(t)
+	_, sqlDB, _, sqlDBMock := testutils.CreateConnectionMocks(t)
 	defer sqlDB.Close()
 
 	sqlSelect, sqlZones, sqlZoneRows := registerZoneForFetchMocking()

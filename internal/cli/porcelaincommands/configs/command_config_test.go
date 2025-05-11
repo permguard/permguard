@@ -19,12 +19,12 @@ package configs
 import (
 	"testing"
 
-	aztestutils "github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
 )
 
 // TestCreateCommandForConfig tests the CreateCommandForConfig function.
 func TestCreateCommandForConfig(t *testing.T) {
 	args := []string{"-h"}
 	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command configures the command line settings."}
-	aztestutils.BaseCommandTest(t, CreateCommandForConfig, args, false, outputs)
+	testutils.BaseCommandTest(t, CreateCommandForConfig, args, false, outputs)
 }

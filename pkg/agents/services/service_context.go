@@ -22,7 +22,7 @@ import (
 
 	"go.uber.org/zap"
 
-	azruntime "github.com/permguard/permguard/pkg/agents/runtime"
+	"github.com/permguard/permguard/pkg/agents/runtime"
 )
 
 const (
@@ -40,7 +40,7 @@ type ServiceContext struct {
 }
 
 // NewServiceContext creates a new service context.
-func NewServiceContext(hostContext *HostContext, service ServiceKind, configReader azruntime.ServiceConfigReader) (*ServiceContext, error) {
+func NewServiceContext(hostContext *HostContext, service ServiceKind, configReader runtime.ServiceConfigReader) (*ServiceContext, error) {
 	newLogger := hostContext.GetLogger().With(zap.String(string("service"), service.String()))
 	data := map[string]any{ctxSvcServiceKey: service, ctxSvcLoggerKey: newLogger, ctxSvcCfgReader: configReader}
 	ctx := context.WithValue(hostContext.ctx, serviceCtxKey{}, data)
@@ -77,11 +77,11 @@ func (s *ServiceContext) GetLogMessage(message string) string {
 }
 
 // GetHostConfigReader returns the host configuration reader.
-func (s *ServiceContext) GetHostConfigReader() (azruntime.HostConfigReader, error) {
+func (s *ServiceContext) GetHostConfigReader() (runtime.HostConfigReader, error) {
 	return s.parentCtx.GetHostConfigReader()
 }
 
 // GetServiceConfigReader returns the service configuration reader.
-func (s *ServiceContext) GetServiceConfigReader() (azruntime.ServiceConfigReader, error) {
-	return s.ctx.Value(serviceCtxKey{}).(map[string]any)[ctxSvcCfgReader].(azruntime.ServiceConfigReader), nil
+func (s *ServiceContext) GetServiceConfigReader() (runtime.ServiceConfigReader, error) {
+	return s.ctx.Value(serviceCtxKey{}).(map[string]any)[ctxSvcCfgReader].(runtime.ServiceConfigReader), nil
 }

@@ -20,9 +20,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	aziclicommon "github.com/permguard/permguard/internal/cli/common"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 const (
@@ -31,16 +31,16 @@ const (
 )
 
 // runECommandForCreateIdentitySource runs the command for creating an identity source.
-func runECommandForCreateIdentitySource(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForCreateIdentitySource(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	return runECommandForUpsertIdentitySource(deps, cmd, v, commandNameForIdentitySourcesCreate, true)
 }
 
 // createCommandForIdentitySourceCreate creates a command for managing identity sources.
-func createCommandForIdentitySourceCreate(deps azcli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForIdentitySourceCreate(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create a remote identity source",
-		Long: aziclicommon.BuildCliLongTemplate(`This command creates a remote identity source.
+		Long: common.BuildCliLongTemplate(`This command creates a remote identity source.
 
 Examples:
   # create an identity source and output the result in json format
@@ -50,7 +50,7 @@ Examples:
 			return runECommandForCreateIdentitySource(deps, cmd, v)
 		},
 	}
-	command.Flags().String(aziclicommon.FlagCommonName, "", "specify the name of the identity source to create")
-	v.BindPFlag(azoptions.FlagName(commandNameForIdentitySourcesCreate, aziclicommon.FlagCommonName), command.Flags().Lookup(aziclicommon.FlagCommonName))
+	command.Flags().String(common.FlagCommonName, "", "specify the name of the identity source to create")
+	v.BindPFlag(options.FlagName(commandNameForIdentitySourcesCreate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

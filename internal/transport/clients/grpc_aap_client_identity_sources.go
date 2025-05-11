@@ -20,36 +20,36 @@ import (
 	"context"
 	"io"
 
-	azapiv1zap "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelzap "github.com/permguard/permguard/pkg/transport/models/zap"
+	zapv1 "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 // CreateIdentitySource creates a new identity source.
-func (c *GrpcZAPClient) CreateIdentitySource(zoneID int64, name string) (*azmodelzap.IdentitySource, error) {
+func (c *GrpcZAPClient) CreateIdentitySource(zoneID int64, name string) (*zap.IdentitySource, error) {
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-	identitySource, err := client.CreateIdentitySource(context.Background(), &azapiv1zap.IdentitySourceCreateRequest{ZoneID: zoneID, Name: name})
+	identitySource, err := client.CreateIdentitySource(context.Background(), &zapv1.IdentitySourceCreateRequest{ZoneID: zoneID, Name: name})
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1zap.MapGrpcIdentitySourceResponseToAgentIdentitySource(identitySource)
+	return zapv1.MapGrpcIdentitySourceResponseToAgentIdentitySource(identitySource)
 }
 
 // UpdateIdentitySource updates an identity source.
-func (c *GrpcZAPClient) UpdateIdentitySource(identitySource *azmodelzap.IdentitySource) (*azmodelzap.IdentitySource, error) {
+func (c *GrpcZAPClient) UpdateIdentitySource(identitySource *zap.IdentitySource) (*zap.IdentitySource, error) {
 	if identitySource == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientGeneric, "invalid identity source instance")
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "invalid identity source instance")
 	}
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-	updatedIdentitySource, err := client.UpdateIdentitySource(context.Background(), &azapiv1zap.IdentitySourceUpdateRequest{
+	updatedIdentitySource, err := client.UpdateIdentitySource(context.Background(), &zapv1.IdentitySourceUpdateRequest{
 		IdentitySourceID: identitySource.IdentitySourceID,
 		ZoneID:           identitySource.ZoneID,
 		Name:             identitySource.Name,
@@ -57,46 +57,46 @@ func (c *GrpcZAPClient) UpdateIdentitySource(identitySource *azmodelzap.Identity
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1zap.MapGrpcIdentitySourceResponseToAgentIdentitySource(updatedIdentitySource)
+	return zapv1.MapGrpcIdentitySourceResponseToAgentIdentitySource(updatedIdentitySource)
 }
 
 // DeleteIdentitySource deletes an identity source.
-func (c *GrpcZAPClient) DeleteIdentitySource(zoneID int64, identitySourceID string) (*azmodelzap.IdentitySource, error) {
+func (c *GrpcZAPClient) DeleteIdentitySource(zoneID int64, identitySourceID string) (*zap.IdentitySource, error) {
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-	identitySource, err := client.DeleteIdentitySource(context.Background(), &azapiv1zap.IdentitySourceDeleteRequest{ZoneID: zoneID, IdentitySourceID: identitySourceID})
+	identitySource, err := client.DeleteIdentitySource(context.Background(), &zapv1.IdentitySourceDeleteRequest{ZoneID: zoneID, IdentitySourceID: identitySourceID})
 	if err != nil {
 		return nil, err
 	}
-	return azapiv1zap.MapGrpcIdentitySourceResponseToAgentIdentitySource(identitySource)
+	return zapv1.MapGrpcIdentitySourceResponseToAgentIdentitySource(identitySource)
 }
 
 // FetchIdentitySources returns all identity sources.
-func (c *GrpcZAPClient) FetchIdentitySources(page int32, pageSize int32, zoneID int64) ([]azmodelzap.IdentitySource, error) {
+func (c *GrpcZAPClient) FetchIdentitySources(page int32, pageSize int32, zoneID int64) ([]zap.IdentitySource, error) {
 	return c.FetchIdentitySourcesBy(page, pageSize, zoneID, "", "")
 }
 
 // FetchIdentitySourcesByID returns all identity sources filtering by identity source id.
-func (c *GrpcZAPClient) FetchIdentitySourcesByID(page int32, pageSize int32, zoneID int64, identitySourceID string) ([]azmodelzap.IdentitySource, error) {
+func (c *GrpcZAPClient) FetchIdentitySourcesByID(page int32, pageSize int32, zoneID int64, identitySourceID string) ([]zap.IdentitySource, error) {
 	return c.FetchIdentitySourcesBy(page, pageSize, zoneID, identitySourceID, "")
 }
 
 // FetchIdentitySourcesByName returns all identity sources filtering by name.
-func (c *GrpcZAPClient) FetchIdentitySourcesByName(page int32, pageSize int32, zoneID int64, name string) ([]azmodelzap.IdentitySource, error) {
+func (c *GrpcZAPClient) FetchIdentitySourcesByName(page int32, pageSize int32, zoneID int64, name string) ([]zap.IdentitySource, error) {
 	return c.FetchIdentitySourcesBy(page, pageSize, zoneID, "", name)
 }
 
 // FetchIdentitySourcesBy returns all identity sources filtering by identity source id and name.
-func (c *GrpcZAPClient) FetchIdentitySourcesBy(page int32, pageSize int32, zoneID int64, identitySourceID string, name string) ([]azmodelzap.IdentitySource, error) {
+func (c *GrpcZAPClient) FetchIdentitySourcesBy(page int32, pageSize int32, zoneID int64, identitySourceID string, name string) ([]zap.IdentitySource, error) {
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-	identitySourceFetchRequest := &azapiv1zap.IdentitySourceFetchRequest{}
+	identitySourceFetchRequest := &zapv1.IdentitySourceFetchRequest{}
 	identitySourceFetchRequest.Page = &page
 	identitySourceFetchRequest.PageSize = &pageSize
 	if zoneID > 0 {
@@ -112,7 +112,7 @@ func (c *GrpcZAPClient) FetchIdentitySourcesBy(page int32, pageSize int32, zoneI
 	if err != nil {
 		return nil, err
 	}
-	identitySources := []azmodelzap.IdentitySource{}
+	identitySources := []zap.IdentitySource{}
 	for {
 		response, err := stream.Recv()
 		if err == io.EOF {
@@ -121,7 +121,7 @@ func (c *GrpcZAPClient) FetchIdentitySourcesBy(page int32, pageSize int32, zoneI
 		if err != nil {
 			return nil, err
 		}
-		identitySource, err := azapiv1zap.MapGrpcIdentitySourceResponseToAgentIdentitySource(response)
+		identitySource, err := zapv1.MapGrpcIdentitySourceResponseToAgentIdentitySource(response)
 		if err != nil {
 			return nil, err
 		}

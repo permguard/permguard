@@ -23,10 +23,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	azvalidators "github.com/permguard/permguard/common/pkg/extensions/validators"
-	azcli "github.com/permguard/permguard/pkg/cli"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/common/pkg/extensions/validators"
+	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 var (
@@ -36,7 +36,7 @@ var (
 )
 
 // CreateContextAndPrinter creates a new cli context and printer.
-func CreateContextAndPrinter(deps azcli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, azcli.CliPrinter, error) {
+func CreateContextAndPrinter(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, cli.CliPrinter, error) {
 	ctx, err := newCliContext(cmd, v)
 	if err != nil {
 		return nil, nil, err
@@ -65,8 +65,8 @@ func newCliContext(cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, erro
 	if err != nil {
 		return nil, err
 	}
-	if !azvalidators.IsValidPath(workDir) {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("%s is an invalid work directory", workDir))
+	if !validators.IsValidPath(workDir) {
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliDirectoryOperation, fmt.Sprintf("%s is an invalid work directory", workDir))
 	}
 	ctx.workDir = workDir
 	output, err := cmd.Flags().GetString(FlagOutput)
@@ -74,8 +74,8 @@ func newCliContext(cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, erro
 		return nil, err
 	}
 	ctx.output = strings.ToUpper(strings.TrimSpace(output))
-	if ctx.output != azcli.OutputTerminal && ctx.output != azcli.OutputJSON {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliDirectoryOperation, fmt.Sprintf("%s is an invalid output", output))
+	if ctx.output != cli.OutputTerminal && ctx.output != cli.OutputJSON {
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliDirectoryOperation, fmt.Sprintf("%s is an invalid output", output))
 	}
 	verbose, err := cmd.Flags().GetBool(FlagVerbose)
 	if err != nil {
@@ -121,7 +121,7 @@ func (c *CliCommandContext) GetOutput() string {
 
 // IsTerminalOutput returns true if the output is json.
 func (c *CliCommandContext) IsTerminalOutput() bool {
-	return c.GetOutput() == azcli.OutputTerminal
+	return c.GetOutput() == cli.OutputTerminal
 }
 
 // IsNotVerboseTerminalOutput return true if the output is terminal and verbosity is not enabled.
@@ -136,7 +136,7 @@ func (c *CliCommandContext) IsVerboseTerminalOutput() bool {
 
 // IsJSONOutput returns true if the output is json.
 func (c *CliCommandContext) IsJSONOutput() bool {
-	return c.GetOutput() == azcli.OutputJSON
+	return c.GetOutput() == cli.OutputJSON
 }
 
 // IsVerboseJSONOutput returns true if the output is json and verbosity is enabled.
@@ -151,27 +151,27 @@ func (c *CliCommandContext) GetWorkDir() string {
 
 // GetZAPTarget returns the zap target.
 func (c *CliCommandContext) GetZAPTarget() (string, error) {
-	target := c.v.Get(azoptions.FlagName(FlagPrefixZAP, FlagSuffixZAPTarget))
+	target := c.v.Get(options.FlagName(FlagPrefixZAP, FlagSuffixZAPTarget))
 	if target == nil {
-		return "", azerrors.WrapHandledSysError(azerrors.ErrCliConfiguration, fmt.Errorf("zap target is not set"))
+		return "", cerrors.WrapHandledSysError(cerrors.ErrCliConfiguration, fmt.Errorf("zap target is not set"))
 	}
 	return target.(string), nil
 }
 
 // GetPAPTarget returns the pap target.
 func (c *CliCommandContext) GetPAPTarget() (string, error) {
-	target := c.v.Get(azoptions.FlagName(FlagPrefixPAP, FlagSuffixPAPTarget))
+	target := c.v.Get(options.FlagName(FlagPrefixPAP, FlagSuffixPAPTarget))
 	if target == nil {
-		return "", azerrors.WrapHandledSysError(azerrors.ErrCliConfiguration, fmt.Errorf("pap target is not set"))
+		return "", cerrors.WrapHandledSysError(cerrors.ErrCliConfiguration, fmt.Errorf("pap target is not set"))
 	}
 	return target.(string), nil
 }
 
 // GetPDPTarget returns the pdp target.
 func (c *CliCommandContext) GetPDPTarget() (string, error) {
-	target := c.v.Get(azoptions.FlagName(FlagPrefixPDP, FlagSuffixPDPTarget))
+	target := c.v.Get(options.FlagName(FlagPrefixPDP, FlagSuffixPDPTarget))
 	if target == nil {
-		return "", azerrors.WrapHandledSysError(azerrors.ErrCliConfiguration, fmt.Errorf("pdp target is not set"))
+		return "", cerrors.WrapHandledSysError(cerrors.ErrCliConfiguration, fmt.Errorf("pdp target is not set"))
 	}
 	return target.(string), nil
 }

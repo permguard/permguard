@@ -24,8 +24,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azvalidators "github.com/permguard/permguard/pkg/core/validators"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/core/validators"
 )
 
 const (
@@ -36,17 +36,17 @@ const (
 // UpsertTenant creates or updates an tenant.
 func (r *Repository) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant, error) {
 	if tenant == nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - tenant data is missing or malformed (%s)", LogTenantEntry(tenant)))
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - tenant data is missing or malformed (%s)", LogTenantEntry(tenant)))
 	}
-	if err := azvalidators.ValidateCodeID("tenant", tenant.ZoneID); err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidZoneID, tenant.ZoneID), err)
+	if err := validators.ValidateCodeID("tenant", tenant.ZoneID); err != nil {
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidZoneID, tenant.ZoneID), err)
 	}
-	if !isCreate && azvalidators.ValidateUUID("tenant", tenant.TenantID) != nil {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - tenant id is not valid (%s)", LogTenantEntry(tenant)))
+	if !isCreate && validators.ValidateUUID("tenant", tenant.TenantID) != nil {
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - tenant id is not valid (%s)", LogTenantEntry(tenant)))
 	}
-	if err := azvalidators.ValidateName("tenant", tenant.Name); err != nil {
+	if err := validators.ValidateName("tenant", tenant.Name); err != nil {
 		errorMessage := "invalid client input - tenant name is not valid (%s)"
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogTenantEntry(tenant)), err)
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogTenantEntry(tenant)), err)
 	}
 
 	zoneID := tenant.ZoneID
@@ -85,11 +85,11 @@ func (r *Repository) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*T
 
 // DeleteTenant deletes an tenant.
 func (r *Repository) DeleteTenant(tx *sql.Tx, zoneID int64, tenantID string) (*Tenant, error) {
-	if err := azvalidators.ValidateCodeID("tenant", zoneID); err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidZoneID, zoneID), err)
+	if err := validators.ValidateCodeID("tenant", zoneID); err != nil {
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidZoneID, zoneID), err)
 	}
-	if err := azvalidators.ValidateUUID("tenant", tenantID); err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientParameter, fmt.Sprintf("invalid client input - tenant id is not valid (id: %s)", tenantID), err)
+	if err := validators.ValidateUUID("tenant", tenantID); err != nil {
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - tenant id is not valid (id: %s)", tenantID), err)
 	}
 
 	var dbTenant Tenant
@@ -117,10 +117,10 @@ func (r *Repository) DeleteTenant(tx *sql.Tx, zoneID int64, tenantID string) (*T
 // FetchTenants retrieves tenants.
 func (r *Repository) FetchTenants(db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]Tenant, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, azerrors.WrapSystemErrorWithMessage(azerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
 	}
-	if err := azvalidators.ValidateCodeID("tenant", zoneID); err != nil {
-		return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf(errorMessageTenantInvalidZoneID, zoneID), err)
+	if err := validators.ValidateCodeID("tenant", zoneID); err != nil {
+		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientID, fmt.Sprintf(errorMessageTenantInvalidZoneID, zoneID), err)
 	}
 
 	var dbTenants []Tenant
@@ -134,8 +134,8 @@ func (r *Repository) FetchTenants(db *sqlx.DB, page int32, pageSize int32, zoneI
 
 	if filterID != nil {
 		tenantID := *filterID
-		if err := azvalidators.ValidateUUID("tenant", tenantID); err != nil {
-			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientID, fmt.Sprintf("invalid client input - tenant id is not valid (id: %s)", tenantID), err)
+		if err := validators.ValidateUUID("tenant", tenantID); err != nil {
+			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientID, fmt.Sprintf("invalid client input - tenant id is not valid (id: %s)", tenantID), err)
 		}
 		conditions = append(conditions, "tenant_id = ?")
 		args = append(args, tenantID)
@@ -143,8 +143,8 @@ func (r *Repository) FetchTenants(db *sqlx.DB, page int32, pageSize int32, zoneI
 
 	if filterName != nil {
 		tenantName := *filterName
-		if err := azvalidators.ValidateName("tenant", tenantName); err != nil {
-			return nil, azerrors.WrapHandledSysErrorWithMessage(azerrors.ErrClientName, fmt.Sprintf("invalid client input - tenant name is not valid (name: %s)", tenantName), err)
+		if err := validators.ValidateName("tenant", tenantName); err != nil {
+			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientName, fmt.Sprintf("invalid client input - tenant name is not valid (name: %s)", tenantName), err)
 		}
 		tenantName = "%" + tenantName + "%"
 		conditions = append(conditions, "name LIKE ?")

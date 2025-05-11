@@ -21,12 +21,12 @@ import (
 
 	"github.com/spf13/viper"
 
-	azcopier "github.com/permguard/permguard/common/pkg/extensions/copier"
-	azvalidators "github.com/permguard/permguard/common/pkg/extensions/validators"
-	azservices "github.com/permguard/permguard/pkg/agents/services"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/common/pkg/extensions/copier"
+	"github.com/permguard/permguard/common/pkg/extensions/validators"
+	"github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/cli/options"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -36,60 +36,60 @@ const (
 
 // ServerConfig holds the configuration for the server.
 type ServerConfig struct {
-	host                 azservices.HostKind
+	host                 services.HostKind
 	debug                bool
 	logLevel             string
 	appData              string
-	centralStorageEngine azstorage.StorageKind
-	storages             []azstorage.StorageKind
-	storagesFactories    map[azstorage.StorageKind]azstorage.StorageFactoryProvider
-	services             []azservices.ServiceKind
-	servicesFactories    map[azservices.ServiceKind]azservices.ServiceFactoryProvider
+	centralStorageEngine storage.StorageKind
+	storages             []storage.StorageKind
+	storagesFactories    map[storage.StorageKind]storage.StorageFactoryProvider
+	services             []services.ServiceKind
+	servicesFactories    map[services.ServiceKind]services.ServiceFactoryProvider
 }
 
 // newServerConfig creates a new server factory configuration.
-func newServerConfig(host azservices.HostKind, centralStorageEngine azstorage.StorageKind,
-	storages []azstorage.StorageKind, storagesFactories map[azstorage.StorageKind]azstorage.StorageFactoryProvider,
-	services []azservices.ServiceKind, servicesFactories map[azservices.ServiceKind]azservices.ServiceFactoryProvider,
+func newServerConfig(host services.HostKind, centralStorageEngine storage.StorageKind,
+	storages []storage.StorageKind, storagesFactories map[storage.StorageKind]storage.StorageFactoryProvider,
+	services []services.ServiceKind, servicesFactories map[services.ServiceKind]services.ServiceFactoryProvider,
 ) (*ServerConfig, error) {
 	return &ServerConfig{
 		host:                 host,
 		centralStorageEngine: centralStorageEngine,
-		storages:             azcopier.CopySlice(storages),
-		storagesFactories:    azcopier.CopyMap(storagesFactories),
-		services:             azcopier.CopySlice(services),
-		servicesFactories:    azcopier.CopyMap(servicesFactories),
+		storages:             copier.CopySlice(storages),
+		storagesFactories:    copier.CopyMap(storagesFactories),
+		services:             copier.CopySlice(services),
+		servicesFactories:    copier.CopyMap(servicesFactories),
 	}, nil
 }
 
 // GetHost returns the host kind.
-func (c *ServerConfig) GetHost() azservices.HostKind {
+func (c *ServerConfig) GetHost() services.HostKind {
 	return c.host
 }
 
 // GetCentralStorageEngine returns the central storage engine.
-func (c *ServerConfig) GetCentralStorageEngine() azstorage.StorageKind {
+func (c *ServerConfig) GetCentralStorageEngine() storage.StorageKind {
 	return c.centralStorageEngine
 }
 
 // GetStorages returns service kinds.
-func (c *ServerConfig) GetStorages() []azstorage.StorageKind {
-	return azcopier.CopySlice(c.storages)
+func (c *ServerConfig) GetStorages() []storage.StorageKind {
+	return copier.CopySlice(c.storages)
 }
 
 // GetStoragesFactories returns factories.
-func (c *ServerConfig) GetStoragesFactories() map[azstorage.StorageKind]azstorage.StorageFactoryProvider {
-	return azcopier.CopyMap(c.storagesFactories)
+func (c *ServerConfig) GetStoragesFactories() map[storage.StorageKind]storage.StorageFactoryProvider {
+	return copier.CopyMap(c.storagesFactories)
 }
 
 // GetServices returns service kinds.
-func (c *ServerConfig) GetServices() []azservices.ServiceKind {
-	return azcopier.CopySlice(c.services)
+func (c *ServerConfig) GetServices() []services.ServiceKind {
+	return copier.CopySlice(c.services)
 }
 
 // GetServicesFactories returns factories.
-func (c *ServerConfig) GetServicesFactories() map[azservices.ServiceKind]azservices.ServiceFactoryProvider {
-	return azcopier.CopyMap(c.servicesFactories)
+func (c *ServerConfig) GetServicesFactories() map[services.ServiceKind]services.ServiceFactoryProvider {
+	return copier.CopyMap(c.servicesFactories)
 }
 
 // GetAppData returns the zone data.
@@ -99,11 +99,11 @@ func (c *ServerConfig) GetAppData() string {
 
 // AddFlags adds flags.
 func (c *ServerConfig) AddFlags(flagSet *flag.FlagSet) error {
-	err := azoptions.AddFlagsForCommon(flagSet)
+	err := options.AddFlagsForCommon(flagSet)
 	if err != nil {
 		return err
 	}
-	flagSet.String(azoptions.FlagName(flagPrefixServer, flagSuffixAppData), "./", "directory to be used as zone data")
+	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixAppData), "./", "directory to be used as zone data")
 	for _, fcty := range c.storagesFactories {
 		config, _ := fcty.GetFactoryConfig()
 		err = config.AddFlags(flagSet)
@@ -123,15 +123,15 @@ func (c *ServerConfig) AddFlags(flagSet *flag.FlagSet) error {
 
 // InitFromViper initializes the configuration from viper.
 func (c *ServerConfig) InitFromViper(v *viper.Viper) error {
-	debug, logLevel, err := azoptions.InitFromViperForCommon(v)
+	debug, logLevel, err := options.InitFromViperForCommon(v)
 	if err != nil {
 		return err
 	}
 	c.debug = debug
 	c.logLevel = logLevel
-	c.appData = v.GetString(azoptions.FlagName(flagPrefixServer, flagSuffixAppData))
-	if !azvalidators.IsValidPath(c.appData) {
-		return azerrors.WrapSystemErrorWithMessage(azerrors.ErrCliArguments, "invalid zone data directory")
+	c.appData = v.GetString(options.FlagName(flagPrefixServer, flagSuffixAppData))
+	if !validators.IsValidPath(c.appData) {
+		return cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliArguments, "invalid zone data directory")
 	}
 	for _, fcty := range c.storagesFactories {
 		config, err := fcty.GetFactoryConfig()

@@ -21,7 +21,7 @@ import (
 
 	"github.com/spf13/viper"
 
-	azservices "github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/services"
 )
 
 // PDPServiceFactoryConfig holds the configuration for the server factory.
@@ -64,7 +64,7 @@ func NewPDPServiceFactory(pdpServiceCfg *PDPServiceFactoryConfig) (*PDPServiceFa
 }
 
 // Create creates a new service.
-func (f *PDPServiceFactory) Create() (azservices.Serviceable, error) {
+func (f *PDPServiceFactory) Create() (services.Serviceable, error) {
 	service, err := NewPDPService(f.config.config)
 	return service, err
 }

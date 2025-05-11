@@ -17,12 +17,12 @@
 package storage
 
 import (
-	azoptions "github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 // StorageFactoryConfig is the storage factory config.
 type StorageFactoryConfig interface {
-	azoptions.Configurable
+	options.Configurable
 }
 
 // StorageFactory is the storage factory.

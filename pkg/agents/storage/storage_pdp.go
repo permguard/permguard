@@ -17,11 +17,11 @@
 package storage
 
 import (
-	azmodelspdp "github.com/permguard/permguard/pkg/transport/models/pdp"
+	"github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 
 // PDPCentralStorage is the interface for the PDP central storage.
 type PDPCentralStorage interface {
 	// AuthorizationCheck checks if the request is authorized.
-	AuthorizationCheck(request *azmodelspdp.AuthorizationCheckRequest) ([]azmodelspdp.EvaluationResponse, error)
+	AuthorizationCheck(request *pdp.AuthorizationCheckRequest) ([]pdp.EvaluationResponse, error)
 }

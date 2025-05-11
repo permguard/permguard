@@ -24,9 +24,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	azerrors "github.com/permguard/permguard/pkg/core/errors"
-	azmodelzap "github.com/permguard/permguard/pkg/transport/models/zap"
-	azirepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
+	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // TestCreateTenantWithErrors tests the CreateTenant function with errors.
@@ -37,17 +37,17 @@ func TestCreateTenantWithErrors(t *testing.T) {
 		storage, _, _, _, _, _, _ := createSQLiteZAPCentralStorageWithMocks()
 		tenants, err := storage.CreateTenant(nil)
 		assert.Nil(tenants, "tenants should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	tests := map[string]struct {
 		IsCustomError bool
 		Error1        error
 	}{
-		"CONNECT-ERROR":  {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
-		"BEGIN-ERROR":    {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"CONNECT-ERROR":  {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
+		"BEGIN-ERROR":    {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
 		"ROLLBACK-ERROR": {IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR")},
-		"COMMIT-ERROR":   {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"COMMIT-ERROR":   {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
 	}
 	for testcase, test := range tests {
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
@@ -70,12 +70,12 @@ func TestCreateTenantWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inTenant := &azmodelzap.Tenant{}
+		inTenant := &zap.Tenant{}
 		outTenants, err := storage.CreateTenant(inTenant)
 		assert.Nil(outTenants, "tenants should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
-			assert.True(azerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
+			assert.True(cerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
 		} else {
 			assert.Equal(test.Error1, err, "error should be equal")
 		}
@@ -88,9 +88,9 @@ func TestCreateTenantWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutTenant := &azirepos.Tenant{
+	dbOutTenant := &repos.Tenant{
 		ZoneID:    232956849236,
-		TenantID:  azirepos.GenerateUUID(),
+		TenantID:  repos.GenerateUUID(),
 		Name:      "rent-a-car1",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -101,7 +101,7 @@ func TestCreateTenantWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertTenant", mock.Anything, true, mock.Anything).Return(dbOutTenant, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inTenant := &azmodelzap.Tenant{}
+	inTenant := &zap.Tenant{}
 	outTenants, err := storage.CreateTenant(inTenant)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outTenants, "tenants should not be nil")
@@ -119,17 +119,17 @@ func TestUpdateTenantWithErrors(t *testing.T) {
 		storage, _, _, _, _, _, _ := createSQLiteZAPCentralStorageWithMocks()
 		tenants, err := storage.UpdateTenant(nil)
 		assert.Nil(tenants, "tenants should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	tests := map[string]struct {
 		IsCustomError bool
 		Error1        error
 	}{
-		"CONNECT-ERROR":  {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
-		"BEGIN-ERROR":    {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"CONNECT-ERROR":  {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
+		"BEGIN-ERROR":    {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
 		"ROLLBACK-ERROR": {IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR")},
-		"COMMIT-ERROR":   {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"COMMIT-ERROR":   {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
 	}
 	for testcase, test := range tests {
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
@@ -152,12 +152,12 @@ func TestUpdateTenantWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inTenant := &azmodelzap.Tenant{}
+		inTenant := &zap.Tenant{}
 		outTenants, err := storage.UpdateTenant(inTenant)
 		assert.Nil(outTenants, "tenants should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
-			assert.True(azerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
+			assert.True(cerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
 		} else {
 			assert.Equal(test.Error1, err, "error should be equal")
 		}
@@ -170,9 +170,9 @@ func TestUpdateTenantWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutTenant := &azirepos.Tenant{
+	dbOutTenant := &repos.Tenant{
 		ZoneID:    232956849236,
-		TenantID:  azirepos.GenerateUUID(),
+		TenantID:  repos.GenerateUUID(),
 		Name:      "rent-a-car1",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -183,7 +183,7 @@ func TestUpdateTenantWithSuccess(t *testing.T) {
 	mockSQLRepo.On("UpsertTenant", mock.Anything, false, mock.Anything).Return(dbOutTenant, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inTenant := &azmodelzap.Tenant{}
+	inTenant := &zap.Tenant{}
 	outTenants, err := storage.UpdateTenant(inTenant)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outTenants, "tenants should not be nil")
@@ -201,10 +201,10 @@ func TestDeleteTenantWithErrors(t *testing.T) {
 		IsCustomError bool
 		Error1        error
 	}{
-		"CONNECT-ERROR":  {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
-		"BEGIN-ERROR":    {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"CONNECT-ERROR":  {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
+		"BEGIN-ERROR":    {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
 		"ROLLBACK-ERROR": {IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR")},
-		"COMMIT-ERROR":   {IsCustomError: true, Error1: azerrors.ErrStorageGeneric},
+		"COMMIT-ERROR":   {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
 	}
 	for testcase, test := range tests {
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
@@ -227,12 +227,12 @@ func TestDeleteTenantWithErrors(t *testing.T) {
 			assert.FailNow("Unknown testcase")
 		}
 
-		inTenantID := azirepos.GenerateUUID()
-		outTenants, err := storage.DeleteTenant(azirepos.GenerateZoneID(), inTenantID)
+		inTenantID := repos.GenerateUUID()
+		outTenants, err := storage.DeleteTenant(repos.GenerateZoneID(), inTenantID)
 		assert.Nil(outTenants, "tenants should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
-			assert.True(azerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
+			assert.True(cerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
 		} else {
 			assert.Equal(test.Error1, err, "error should be equal")
 		}
@@ -245,9 +245,9 @@ func TestDeleteTenantWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutTenant := &azirepos.Tenant{
+	dbOutTenant := &repos.Tenant{
 		ZoneID:    232956849236,
-		TenantID:  azirepos.GenerateUUID(),
+		TenantID:  repos.GenerateUUID(),
 		Name:      "rent-a-car1",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -258,8 +258,8 @@ func TestDeleteTenantWithSuccess(t *testing.T) {
 	mockSQLRepo.On("DeleteTenant", mock.Anything, mock.Anything, mock.Anything).Return(dbOutTenant, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inTenantID := azirepos.GenerateUUID()
-	outTenants, err := storage.DeleteTenant(azirepos.GenerateZoneID(), inTenantID)
+	inTenantID := repos.GenerateUUID()
+	outTenants, err := storage.DeleteTenant(repos.GenerateZoneID(), inTenantID)
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outTenants, "tenants should not be nil")
 	assert.Equal(dbOutTenant.TenantID, outTenants.TenantID, "tenant id should be equal")
@@ -274,10 +274,10 @@ func TestFetchTenantWithErrors(t *testing.T) {
 
 	{ // Test with invalid page
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, _, _ := createSQLiteZAPCentralStorageWithMocks()
-		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(nil, azerrors.ErrServerGeneric)
+		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(nil, cerrors.ErrServerGeneric)
 		outTenants, err := storage.FetchTenants(1, 100, 232956849236, nil)
 		assert.Nil(outTenants, "tenants should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrServerGeneric, err), "error should be errservergeneric")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrServerGeneric, err), "error should be errservergeneric")
 	}
 
 	{ // Test with invalid page
@@ -285,7 +285,7 @@ func TestFetchTenantWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outTenants, err := storage.FetchTenants(0, 100, 232956849236, nil)
 		assert.Nil(outTenants, "tenants should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid page size
@@ -293,32 +293,32 @@ func TestFetchTenantWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outTenants, err := storage.FetchTenants(1, 0, 232956849236, nil)
 		assert.Nil(outTenants, "tenants should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientPagination, err), "error should be errclientpagination")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid tenant id
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]any{azmodelzap.FieldTenantTenantID: 232956849236})
+		outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]any{zap.FieldTenantTenantID: 232956849236})
 		assert.Nil(outTenants, "tenants should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid tenant name
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]any{azmodelzap.FieldTenantName: 2})
+		outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]any{zap.FieldTenantName: 2})
 		assert.Nil(outTenants, "tenants should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
 	}
 
 	{ // Test with server error
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		mockSQLRepo.On("FetchTenants", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, azerrors.ErrServerGeneric)
+		mockSQLRepo.On("FetchTenants", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, cerrors.ErrServerGeneric)
 		outTenants, err := storage.FetchTenants(1, 100, 232956849236, nil)
 		assert.Nil(outTenants, "tenants should be nil")
-		assert.True(azerrors.AreErrorsEqual(azerrors.ErrServerGeneric, err), "error should be errservergeneric")
+		assert.True(cerrors.AreErrorsEqual(cerrors.ErrServerGeneric, err), "error should be errservergeneric")
 	}
 }
 
@@ -328,17 +328,17 @@ func TestFetchTenantWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutTenants := []azirepos.Tenant{
+	dbOutTenants := []repos.Tenant{
 		{
 			ZoneID:    232956849236,
-			TenantID:  azirepos.GenerateUUID(),
+			TenantID:  repos.GenerateUUID(),
 			Name:      "rent-a-car1",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		},
 		{
 			ZoneID:    232956849236,
-			TenantID:  azirepos.GenerateUUID(),
+			TenantID:  repos.GenerateUUID(),
 			Name:      "rent-a-car2",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
@@ -348,7 +348,7 @@ func TestFetchTenantWithSuccess(t *testing.T) {
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLRepo.On("FetchTenants", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutTenants, nil)
 
-	outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]any{azmodelzap.FieldTenantTenantID: azirepos.GenerateUUID(), azmodelzap.FieldTenantName: "rent-a-car2"})
+	outTenants, err := storage.FetchTenants(1, 100, 232956849236, map[string]any{zap.FieldTenantTenantID: repos.GenerateUUID(), zap.FieldTenantName: "rent-a-car2"})
 	assert.Nil(err, "error should be nil")
 	assert.NotNil(outTenants, "tenants should not be nil")
 	assert.Equal(len(outTenants), len(dbOutTenants), "tenants and dbTenants should have the same length")
