@@ -254,12 +254,13 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *Mani
 		partition := file.Partition
 
 		// Process code files using the language provider
-		if file.Kind == cosp.CodeFileTypeOfCodeType {
+		switch file.Kind {
+		case cosp.CodeFileTypeOfCodeType:
 			blobifiedCodeFiles, err = m.blobifyLanguageFile(langPvd, partition, path, data, file, wkdir, mode, blobifiedCodeFiles)
 			if err != nil {
 				return "", nil, err
 			}
-		} else if file.Kind == cosp.CodeFileOfSchemaType {
+		case cosp.CodeFileOfSchemaType:
 			// Ensure only one schema file per partition
 			partitionSchemas[file.Partition]++
 			if partitionSchemas[file.Partition] > 1 {
@@ -278,7 +279,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *Mani
 					return "", nil, err
 				}
 			}
-		} else {
+		default:
 			return "", nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, "file type is not supported")
 		}
 	}

@@ -31,6 +31,7 @@ import (
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
 	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/core/files"
+	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
 const (
@@ -70,7 +71,8 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "checkout", "Retrieving remote ledger information.", nil, true)
 		}
-		srvLedger, err := m.rmSrvtMgr.GetServerRemoteLedger(remoteInfo, ledgerInfo)
+		var srvLedger *pap.Ledger
+		srvLedger, err = m.rmSrvtMgr.GetServerRemoteLedger(remoteInfo, ledgerInfo)
 		if err != nil {
 			if m.ctx.IsVerboseTerminalOutput() {
 				out(nil, "checkout", "Failed to retrieve remote ledger information.", nil, true)
@@ -97,7 +99,8 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 			return fail(nil, err)
 		}
 		// Read current remote ref info
-		remoteRefInfo, err := m.rfsMgr.GetRefInfo(remoteRef)
+		var remoteRefInfo *wkscommon.RefInfo
+		remoteRefInfo, err = m.rfsMgr.GetRefInfo(remoteRef)
 		if err != nil {
 			return fail(nil, err)
 		}
@@ -106,7 +109,8 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 			return fail(nil, err)
 		}
 		// Read current head ref info
-		headRefInfo, err := m.rfsMgr.GetRefInfo(headRef)
+		var headRefInfo *wkscommon.RefInfo
+		headRefInfo, err = m.rfsMgr.GetRefInfo(headRef)
 		if err != nil {
 			return fail(nil, err)
 		}

@@ -48,8 +48,9 @@ func CheckPathIfExists(name string) (bool, error) {
 
 // DeletePath deletes the input directory.
 func DeletePath(name string) (bool, error) {
-	if _, err := os.Stat(name); err == nil {
-		err := os.RemoveAll(name)
+	var err error
+	if _, err = os.Stat(name); err == nil {
+		err = os.RemoveAll(name)
 		if err != nil {
 			return false, errors.New("core: failed to remove directory")
 		}
@@ -95,15 +96,17 @@ func GenerateUniqueFile(prefix string, extension string) (string, error) {
 
 // CreateFileIfNotExists creates a file if it does not exist.
 func CreateFileIfNotExists(name string) (bool, error) {
-	if _, err := os.Stat(name); err == nil {
+	var err error
+	if _, err = os.Stat(name); err == nil {
 		return false, nil
 	} else if os.IsNotExist(err) {
 		dir := filepath.Dir(name)
-		err := os.MkdirAll(dir, 0755)
+		err = os.MkdirAll(dir, 0755)
 		if err != nil {
 			return false, errors.New("core: failed to create directory")
 		}
-		file, err := os.Create(name)
+		var file *os.File
+		file, err = os.Create(name)
 		if err != nil {
 			return false, errors.New("core: failed to create file")
 		}
