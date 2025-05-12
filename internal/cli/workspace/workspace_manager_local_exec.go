@@ -78,18 +78,18 @@ func buildOutputForCodeFiles(codeFiles []cosp.CodeFile, m *WorkspaceManager, out
 
 // ExecRefresh scans source files in the current directory and synchronizes the local state,
 func (m *WorkspaceManager) ExecRefresh(out common.PrinterOutFunc) (map[string]any, error) {
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to refresh the current workspace.", nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
 	if !m.isWorkspaceDir() {
-		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
+		return fail(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
 	defer fileLock.Unlock()
 
@@ -98,7 +98,7 @@ func (m *WorkspaceManager) ExecRefresh(out common.PrinterOutFunc) (map[string]an
 
 // execInternalRefresh scans source files in the current directory and synchronizes the local state,
 func (m *WorkspaceManager) execInternalRefresh(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+	fail := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
 			out(nil, "", "Failed to refresh the current workspace.", nil, true)
 		}
@@ -110,7 +110,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out common.Printer
 	}
 	cleaned, err := m.cleanupLocalArea()
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		if cleaned {
@@ -121,14 +121,14 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out common.Printer
 	}
 	langPvd, err := m.buildManifestLanguageProvider()
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "Scanning source files.", nil, true)
 	}
 	selectedFiles, ignoredFiles, err := m.scanSourceCodeFiles(langPvd)
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
 	var output map[string]any
 	if m.ctx.IsVerboseTerminalOutput() {
@@ -166,7 +166,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out common.Printer
 			out(nil, "", "Your workspace has errors.", nil, true)
 			out(nil, "", "Please validate and fix the errors to proceed.", nil, true)
 		}
-		return failedOpErr(output, err)
+		return fail(output, err)
 	}
 	output = buildOutputForCodeFiles(codeFiles, m, out, output)
 	if m.ctx.IsVerboseTerminalOutput() {
@@ -182,18 +182,18 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out common.Printer
 
 // ExecValidate validates the local state.
 func (m *WorkspaceManager) ExecValidate(out common.PrinterOutFunc) (map[string]any, error) {
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to validate the current workspace.", nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
 	if !m.isWorkspaceDir() {
-		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
+		return fail(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
 	defer fileLock.Unlock()
 
@@ -202,7 +202,7 @@ func (m *WorkspaceManager) ExecValidate(out common.PrinterOutFunc) (map[string]a
 
 // execInternalValidate validates the local state.
 func (m *WorkspaceManager) execInternalValidate(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+	fail := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
 			out(nil, "", "Failed to validate the current workspace.", nil, true)
 		}
@@ -219,7 +219,7 @@ func (m *WorkspaceManager) execInternalValidate(internal bool, out common.Printe
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "validate", "Codemap could not be retrieved.", nil, true)
 		}
-		return failedOpErr(output, err)
+		return fail(output, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "validate", "Codemap retrieved successfully.", nil, true)
@@ -259,5 +259,5 @@ func (m *WorkspaceManager) execInternalValidate(internal bool, out common.Printe
 		}
 		out(nil, "", "\nPlease fix the errors to proceed.", nil, true)
 	}
-	return failedOpErr(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, "validation errors found in code files within the workspace. please check the logs for more details."))
+	return fail(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, "validation errors found in code files within the workspace. please check the logs for more details."))
 }
