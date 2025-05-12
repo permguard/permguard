@@ -29,24 +29,24 @@ import (
 
 // ExecObjects list the objects.
 func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommits, filterTrees, filterBlob bool, out common.PrinterOutFunc) (map[string]any, error) {
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to access objects in the current workspace.", nil, true)
 		return output, err
 	}
 	output := m.ExecPrintContext(nil, out)
 	if !m.isWorkspaceDir() {
-		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
+		return fail(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
 	defer fileLock.Unlock()
 
 	filteredObjectInfos, err := m.getObjectsInfos(includeStorage, includeCode, filterCommits, filterTrees, filterBlob)
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
 
 	if m.ctx.IsTerminalOutput() {

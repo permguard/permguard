@@ -42,7 +42,7 @@ const (
 
 // execInternalCheckoutLedger checks out a ledger.
 func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI string, out common.PrinterOutFunc) (map[string]any, error) {
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+	fail := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
 			out(nil, "", fmt.Sprintf("Failed to check out the ledger %s.", common.KeywordText(ledgerURI)), nil, true)
 		}
@@ -53,16 +53,19 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 	}
 
 	// Verifies the ledger URI and check if it already exists
-	ledgerInfo, err := wkscommon.GetLedgerInfoFromURI(ledgerURI)
+	var err error
+	var ledgerInfo *wkscommon.LedgerInfo
+	ledgerInfo, err = wkscommon.GetLedgerInfoFromURI(ledgerURI)
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
 	var output map[string]any
 	if ok := m.cfgMgr.CheckLedgerIfExists(ledgerURI); !ok {
 		// Retrieves the remote information
-		remoteInfo, err := m.cfgMgr.GetRemoteInfo(ledgerInfo.GetRemote())
+		var remoteInfo *wkscommon.RemoteInfo
+		remoteInfo, err = m.cfgMgr.GetRemoteInfo(ledgerInfo.GetRemote())
 		if err != nil {
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "checkout", "Retrieving remote ledger information.", nil, true)
@@ -72,7 +75,7 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 			if m.ctx.IsVerboseTerminalOutput() {
 				out(nil, "checkout", "Failed to retrieve remote ledger information.", nil, true)
 			}
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "checkout", "Remote ledger retrieved successfully.", nil, true)
@@ -84,48 +87,48 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 		ref := m.rfsMgr.GenerateRef(ledgerInfo.GetRemote(), ledgerInfo.GetZoneID(), srvLedger.LedgerID)
 		output, err = m.cfgMgr.ExecAddLedger(ledgerURI, ref, ledgerInfo.GetRemote(), ledgerInfo.GetLedger(), srvLedger.LedgerID, ledgerInfo.GetZoneID(), nil, out)
 		if err != nil && !cerrors.AreErrorsEqual(err, cerrors.ErrCliRecordExists) {
-			return failedOpErr(output, err)
+			return fail(output, err)
 		}
 		// Checkout the head
 		remoteCommitID := objects.ZeroOID
 		var remoteRef, headRef string
 		remoteRef, headRef, output, err = m.rfsMgr.ExecCheckoutRefFilesForRemote(ledgerInfo.GetRemote(), ledgerInfo.GetZoneID(), ledgerInfo.GetLedger(), srvLedger.LedgerID, remoteCommitID, output, out)
 		if err != nil {
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 		// Read current remote ref info
 		remoteRefInfo, err := m.rfsMgr.GetRefInfo(remoteRef)
 		if err != nil {
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 		_, err = m.logsMgr.Log(remoteRefInfo, remoteCommitID, remoteCommitID, logs.LogActionCheckout, true, remoteRef)
 		if err != nil {
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 		// Read current head ref info
 		headRefInfo, err := m.rfsMgr.GetRefInfo(headRef)
 		if err != nil {
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 		_, err = m.logsMgr.Log(headRefInfo, remoteCommitID, remoteCommitID, logs.LogActionCheckout, true, remoteRef)
 		if err != nil {
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 	}
 
 	refInfo, err := m.cfgMgr.GetLedgerInfo(ledgerURI)
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
 	remoteRef := wkscommon.GenerateHeadRef(refInfo.GetZoneID(), refInfo.GetLedger())
 	_, output, err = m.rfsMgr.ExecCheckoutHead(remoteRef, output, out)
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
 
 	_, err = m.execInternalPull(true, out)
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
 
 	return output, nil
@@ -133,18 +136,18 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 
 // ExecCheckoutLedger checks out a ledger.
 func (m *WorkspaceManager) ExecCheckoutLedger(ledgerURI string, out common.PrinterOutFunc) (map[string]any, error) {
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", fmt.Sprintf("Failed to checkout the ledger %s.", common.KeywordText(ledgerURI)), nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
 	if !m.isWorkspaceDir() {
-		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
+		return fail(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
 	defer fileLock.Unlock()
 
@@ -153,7 +156,7 @@ func (m *WorkspaceManager) ExecCheckoutLedger(ledgerURI string, out common.Print
 
 // execInternalPull executes an internal pull.
 func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+	fail := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
 			out(nil, "", "Failed to pull changes from the remote ledger.", nil, true)
 		}
@@ -167,7 +170,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 	// Read current head settings
 	headCtx, err := m.getCurrentHeadContext()
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
 	headRefInfo := headCtx.headRefInfo
 	remoteRefInfo := headCtx.remoteRefInfo
@@ -186,7 +189,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 
 	ctx, err := m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetZoneID(), headCtx.GetLedgerID(), bag, m)
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
 
 	localCommitID, _ := getFromRuntimeContext[string](ctx, LocalCodeCommitIDKey)
@@ -209,14 +212,14 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", "Not all commits were successfully pulled. Please retry the operation.", nil, true)
 		}
-		return failedOpErr(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordExists, "not all commits were successfully pulled."))
+		return fail(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordExists, "not all commits were successfully pulled."))
 	} else {
 		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 		if !committed || localCommitID == "" || remoteCommitID == "" {
 			if localCommitID != "" && remoteCommitID != "" {
 				_, err := m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
 				if err != nil {
-					return failedOpErr(nil, err)
+					return fail(nil, err)
 				}
 			}
 		}
@@ -224,54 +227,54 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 		if err != nil {
 			_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
 			if err != nil {
-				return failedOpErr(nil, err)
+				return fail(nil, err)
 			}
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 		err = m.rfsMgr.SaveRefWithRemoteConfig(headRefInfo.GetLedgerID(), headRefInfo.GetRef(), remoteRefInfo.GetRef(), remoteCommitID)
 		if err != nil {
 			_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
 			if err != nil {
-				return failedOpErr(nil, err)
+				return fail(nil, err)
 			}
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 		_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, true, remoteRefInfo.GetLedgerURI())
 		if err != nil {
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 		_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, true, remoteRefInfo.GetLedgerURI())
 		if err != nil {
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 	}
 	if remoteCommitID != objects.ZeroOID {
 		langPvd, err := m.buildManifestLanguageProvider()
 		if err != nil {
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 
 		commitObj, err := m.cospMgr.ReadObject(remoteCommitID)
 		if err != nil {
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 		commit, err := objects.ConvertObjectToCommit(commitObj)
 		if err != nil {
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 
 		treeObj, err := m.cospMgr.ReadObject(commit.GetTree())
 		if err != nil {
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 		tree, err := objects.ConvertObjectToTree(treeObj)
 		if err != nil {
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 
 		codeMap, err := m.cospMgr.ReadCodeSourceCodeMap()
 		if err != nil {
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 		codeMapIds := make(map[string]bool)
 		for _, code := range codeMap {
@@ -296,11 +299,11 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 			if _, ok := codeMapIds[entry.GetOID()]; !ok {
 				entryObj, err := m.cospMgr.ReadObject(entry.GetOID())
 				if err != nil {
-					return failedOpErr(nil, err)
+					return fail(nil, err)
 				}
 				classType, codeBlock, err := objects.ReadObjectContentBytes(entryObj)
 				if err != nil {
-					return failedOpErr(nil, err)
+					return fail(nil, err)
 				}
 				objInfo, err := m.objMar.GetObjectInfo(entryObj)
 				if err != nil {
@@ -325,18 +328,18 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 					langTypeID := header.GetLanguageTypeID()
 					absLang, err := langPvd.GetAbstractLanguage(partition)
 					if err != nil {
-						return failedOpErr(nil, err)
+						return fail(nil, err)
 					}
 					langCodeBlock, err := absLang.ConvertBytesToFrontendLanguage(nil, langID, langVersionID, langTypeID, codeBlock)
 					if err != nil {
-						return failedOpErr(nil, err)
+						return fail(nil, err)
 					}
 					if _, ok := codeBlocks[partition]; !ok {
 						codeBlocks[partition] = [][]byte{}
 					}
 					codeBlocks[partition] = append(codeBlocks[partition], langCodeBlock)
 				default:
-					return failedOpErr(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, "invalid class type"))
+					return fail(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, "invalid class type"))
 				}
 			}
 		}
@@ -344,15 +347,15 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 		for partition, codeBlockItem := range codeBlocks {
 			absLang, err := langPvd.GetAbstractLanguage(partition)
 			if err != nil {
-				return failedOpErr(nil, err)
+				return fail(nil, err)
 			}
 			codeBlock, ext, err := absLang.CreatePolicyContentBytes(nil, codeBlockItem)
 			if err != nil {
-				return failedOpErr(nil, err)
+				return fail(nil, err)
 			}
 			fileName, err := files.GenerateUniqueFile(CodeGenFileName, ext)
 			if err != nil {
-				return failedOpErr(nil, err)
+				return fail(nil, err)
 			}
 			fileBase := strings.TrimPrefix(partition, "/")
 			fileName = path.Join(fileBase, fileName)
@@ -361,15 +364,15 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 		for partition, schemaBlockItem := range schemaBlocks {
 			absLang, err := langPvd.GetAbstractLanguage(partition)
 			if err != nil {
-				return failedOpErr(nil, err)
+				return fail(nil, err)
 			}
 			schemaBlock, _, err := absLang.CreateSchemaContentBytes(nil, schemaBlockItem)
 			if err != nil {
-				return failedOpErr(nil, err)
+				return fail(nil, err)
 			}
 			schemaFileNames := absLang.GetSchemaFileNames()
 			if len(schemaFileNames) < 1 {
-				return failedOpErr(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, "no schema file names are supported"))
+				return fail(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, "no schema file names are supported"))
 			}
 			schemaFileName := schemaFileNames[0]
 			fileBase := strings.TrimPrefix(partition, "/")
@@ -392,18 +395,18 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 
 // ExecPull fetches the latest changes from the remote ledger and constructs the remote state.
 func (m *WorkspaceManager) ExecPull(out common.PrinterOutFunc) (map[string]any, error) {
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to pull changes from the remote ledger.", nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
 	if !m.isWorkspaceDir() {
-		return failedOpErr(nil, m.raiseWrongWorkspaceDirError(out))
+		return fail(nil, m.raiseWrongWorkspaceDirError(out))
 	}
 
 	fileLock, err := m.tryLock()
 	if err != nil {
-		return failedOpErr(nil, err)
+		return fail(nil, err)
 	}
 	defer fileLock.Unlock()
 
@@ -412,7 +415,7 @@ func (m *WorkspaceManager) ExecPull(out common.PrinterOutFunc) (map[string]any, 
 
 // ExecCloneLedger clones a ledger.
 func (m *WorkspaceManager) ExecCloneLedger(ledgerURI string, zapPort, papPort int, out common.PrinterOutFunc) (map[string]any, error) {
-	failedOpErr := func(output map[string]any, err error) (map[string]any, error) {
+	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", fmt.Sprintf("Failed to clone the ledger %s.", common.KeywordText(ledgerURI)), nil, true)
 		return output, err
 	}
@@ -421,12 +424,12 @@ func (m *WorkspaceManager) ExecCloneLedger(ledgerURI string, zapPort, papPort in
 	var output map[string]any
 	ledgerURI = strings.ToLower(ledgerURI)
 	if !strings.HasPrefix(ledgerURI, "permguard@") {
-		return failedOpErr(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ledger URI"))
+		return fail(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ledger URI"))
 	}
 	ledgerURI = strings.TrimPrefix(ledgerURI, "permguard@")
 	elements := strings.Split(ledgerURI, "/")
 	if len(elements) != 3 {
-		return failedOpErr(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ledger URI"))
+		return fail(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ledger URI"))
 	}
 
 	uriServer := elements[0]
@@ -438,7 +441,7 @@ func (m *WorkspaceManager) ExecCloneLedger(ledgerURI string, zapPort, papPort in
 	if err == nil {
 		fileLock, err := m.tryLock()
 		if err != nil {
-			return failedOpErr(nil, err)
+			return fail(nil, err)
 		}
 		defer fileLock.Unlock()
 		output, err = m.execInternalAddRemote(true, OriginRemoteName, uriServer, zapPort, papPort, out)
@@ -453,7 +456,7 @@ func (m *WorkspaceManager) ExecCloneLedger(ledgerURI string, zapPort, papPort in
 		}
 	}
 	if aborted {
-		return failedOpErr(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "operation has been aborted"))
+		return fail(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "operation has been aborted"))
 	}
 	return output, nil
 }

@@ -19,6 +19,7 @@ package manifest
 import (
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 // Requirement it represents the requirement.
@@ -42,7 +43,7 @@ func (r *Requirement) GetVersion() string {
 	return r.version
 }
 
-var re = regexp.MustCompile(`^(\w+)(?:\[(\d+\.\d+\+?)\])?$`)
+var re = regexp.MustCompile(`^([a-zA-Z0-9]+)(?:\[(\d+\.\d+\+?)\])?$`)
 
 // ParseRequirement parse the input requirement.
 func ParseRequirement(s string) (*Requirement, error) {
@@ -50,5 +51,10 @@ func ParseRequirement(s string) (*Requirement, error) {
 	if len(matches) == 0 {
 		return nil, fmt.Errorf("invalid requirement format: %s", s)
 	}
-	return newRequirement(matches[1], matches[2]), nil
+	name := matches[1]
+	version := matches[2]
+	if len(strings.ReplaceAll(version, " ", "")) == 0 {
+		version = "0.0+"
+	}
+	return newRequirement(name, version), nil
 }
