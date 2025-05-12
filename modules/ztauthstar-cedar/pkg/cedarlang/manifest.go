@@ -19,6 +19,7 @@ package cedarlang
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 )
@@ -79,6 +80,9 @@ func BuildManifest(manifest *manifests.Manifest, template string, engineName, en
 func ValidateManifest(manifest *manifests.Manifest) (bool, error) {
 	if manifest == nil {
 		return false, errors.New("[cedar] manifest is nil")
+	}
+	if strings.TrimSpace(manifest.Metadata.Name) == "" {
+		return false, errors.New("[cedar] manifest has invalid name")
 	}
 	if manifest.Runtimes == nil {
 		return false, errors.New("[cedar] manifest has invalid runtimes")

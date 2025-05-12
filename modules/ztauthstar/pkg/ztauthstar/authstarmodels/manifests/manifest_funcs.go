@@ -24,14 +24,13 @@ import (
 
 const (
 	// ManifestFileName is the manifest file name.
-	ManifestFileName = "manifest-authz.json"
+	ManifestFileName = "manifest.json"
 )
 
 // NewManifest creates a new manifest.
-func NewManifest(kind, name, description string) (*Manifest, error) {
+func NewManifest(name, description string) (*Manifest, error) {
 	manifest := &Manifest{
 		Metadata: Metadata{
-			Kind:        kind,
 			Name:        name,
 			Description: description,
 		},

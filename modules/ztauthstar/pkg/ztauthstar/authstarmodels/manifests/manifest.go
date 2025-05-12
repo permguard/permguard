@@ -25,7 +25,6 @@ type Manifest struct {
 
 // Metadata of the manifest.
 type Metadata struct {
-	Kind        string `json:"kind"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Author      string `json:"author"`
