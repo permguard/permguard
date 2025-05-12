@@ -31,7 +31,9 @@ func (m *WorkspaceManager) plan(currentCodeObsStates []cosp.CodeObjectState, rem
 
 // buildPlanTree builds the plan tree.
 func (m *WorkspaceManager) buildPlanTree(plan []cosp.CodeObjectState) (*objects.Tree, *objects.Object, error) {
-	tree, err := objects.NewTree()
+	var err error
+	var tree *objects.Tree
+	tree, err = objects.NewTree()
 	if err != nil {
 		return nil, nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "tree cannot be created", err)
 	}
@@ -39,15 +41,17 @@ func (m *WorkspaceManager) buildPlanTree(plan []cosp.CodeObjectState) (*objects.
 		if planItem.State == cosp.CodeObjectStateDelete {
 			continue
 		}
-		treeItem, err := objects.NewTreeEntry(planItem.Partition, planItem.OType, planItem.OID, planItem.OName, planItem.CodeID, planItem.CodeType, planItem.Language, planItem.LanguageVersion, planItem.LanguageType)
+		var treeItem *objects.TreeEntry
+		treeItem, err = objects.NewTreeEntry(planItem.Partition, planItem.OType, planItem.OID, planItem.OName, planItem.CodeID, planItem.CodeType, planItem.Language, planItem.LanguageVersion, planItem.LanguageType)
 		if err != nil {
 			return nil, nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "tree item cannot be created", err)
 		}
-		if err := tree.AddEntry(treeItem); err != nil {
+		if err = tree.AddEntry(treeItem); err != nil {
 			return nil, nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "tree item cannot be added to the tree because of errors in the code files", err)
 		}
 	}
-	treeObj, err := objects.CreateTreeObject(tree)
+	var treeObj *objects.Object
+	treeObj, err = objects.CreateTreeObject(tree)
 	if err != nil {
 		return nil, nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "tree object cannot be created", err)
 	}

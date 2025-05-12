@@ -23,6 +23,7 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	"github.com/permguard/permguard/pkg/authz/languages"
 	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
@@ -206,7 +207,8 @@ func (m *WorkspaceManager) execMapObjectContent(langPvd *ManifestLanguageProvide
 				return cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "object header is nil")
 			}
 
-			absLang, err := langPvd.GetAbstractLanguage(header.GetPartition())
+			var absLang languages.LanguageAbastraction
+			absLang, err = langPvd.GetAbstractLanguage(header.GetPartition())
 			if err != nil {
 				return err
 			}

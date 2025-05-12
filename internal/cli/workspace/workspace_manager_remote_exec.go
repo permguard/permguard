@@ -25,6 +25,7 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/internal/cli/workspace/logs"
+	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
@@ -172,7 +173,9 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 	output := map[string]any{}
 
 	// Read current head settings
-	headCtx, err := m.getCurrentHeadContext()
+	var err error
+	var headCtx *currentHeadContext
+	headCtx, err = m.getCurrentHeadContext()
 	if err != nil {
 		return fail(nil, err)
 	}
@@ -191,7 +194,8 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 		HeadContextKey:       headCtx,
 	}
 
-	ctx, err := m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetZoneID(), headCtx.GetLedgerID(), bag, m)
+	var ctx *notpstatemachines.StateMachineRuntimeContext
+	ctx, err = m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetZoneID(), headCtx.GetLedgerID(), bag, m)
 	if err != nil {
 		return fail(nil, err)
 	}
@@ -221,7 +225,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 		if !committed || localCommitID == "" || remoteCommitID == "" {
 			if localCommitID != "" && remoteCommitID != "" {
-				_, err := m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
+				_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
 				if err != nil {
 					return fail(nil, err)
 				}

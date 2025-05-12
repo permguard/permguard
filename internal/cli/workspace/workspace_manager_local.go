@@ -246,7 +246,10 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *Mani
 		path := file.Path
 
 		// Read file content and mode from the workspace
-		data, mode, err := m.persMgr.ReadFile(persistence.WorkspaceDir, path, false)
+		var err error
+		var data []byte
+		var mode uint32
+		data, mode, err = m.persMgr.ReadFile(persistence.WorkspaceDir, path, false)
 		if err != nil {
 			return "", nil, err
 		}
@@ -311,7 +314,8 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *Mani
 	}
 
 	// Save code source map
-	if err := m.cospMgr.SaveCodeSourceCodeMap(blobifiedCodeFiles); err != nil {
+	var err error
+	if err = m.cospMgr.SaveCodeSourceCodeMap(blobifiedCodeFiles); err != nil {
 		return "", blobifiedCodeFiles, err
 	}
 
@@ -323,33 +327,37 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *Mani
 	}
 
 	// Convert code files to code object states
-	codeObsState, err := m.cospMgr.ConvertCodeFilesToCodeObjectStates(blobifiedCodeFiles)
+	var codeObsState []cosp.CodeObjectState
+	codeObsState, err = m.cospMgr.ConvertCodeFilesToCodeObjectStates(blobifiedCodeFiles)
 	if err != nil {
 		return "", blobifiedCodeFiles, err
 	}
 
 	// Save the object state
-	if err := m.cospMgr.SaveCodeSourceCodeState(codeObsState); err != nil {
+	if err = m.cospMgr.SaveCodeSourceCodeState(codeObsState); err != nil {
 		return "", blobifiedCodeFiles, err
 	}
 
 	// Build a tree from object states
-	tree, err := objects.NewTree()
+	var tree *objects.Tree
+	tree, err = objects.NewTree()
 	if err != nil {
 		return "", blobifiedCodeFiles, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "tree object cannot be created", err)
 	}
 	for _, obj := range codeObsState {
-		entry, err := objects.NewTreeEntry(obj.Partition, obj.OType, obj.OID, obj.OName, obj.CodeID, obj.CodeType, obj.Language, obj.LanguageVersion, obj.LanguageType)
+		var entry *objects.TreeEntry
+		entry, err = objects.NewTreeEntry(obj.Partition, obj.OType, obj.OID, obj.OName, obj.CodeID, obj.CodeType, obj.Language, obj.LanguageVersion, obj.LanguageType)
 		if err != nil {
 			return "", nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "tree item cannot be created", err)
 		}
-		if err := tree.AddEntry(entry); err != nil {
+		if err = tree.AddEntry(entry); err != nil {
 			return "", blobifiedCodeFiles, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "tree item cannot be added due to file errors", err)
 		}
 	}
 
 	// Create tree object and persist it
-	treeObj, err := objects.CreateTreeObject(tree)
+	var treeObj *objects.Object
+	treeObj, err = objects.CreateTreeObject(tree)
 	if err != nil {
 		return "", blobifiedCodeFiles, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "tree object creation failed", err)
 	}
