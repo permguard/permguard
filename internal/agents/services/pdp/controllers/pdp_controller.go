@@ -17,11 +17,14 @@
 package controllers
 
 import (
+	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/core/files"
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 )
@@ -201,5 +204,30 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 		}
 		authzCheckResp.Decision = allTrue
 	}
+	reader, _ := s.ctx.GetHostConfigReader()
+	appData := reader.GetAppData()
+	decisionLogsPath := filepath.Join(appData, "decisions.log")
+	decisionLogs := s.buildDecisionLogs(expReq, authzCheckResp)
+	for _, decisionLog := range decisionLogs {
+		decision, _ := json.Marshal(decisionLog)
+		files.AppendToFile(decisionLogsPath, append(decision, '\n'), false)
+	}
 	return authzCheckResp, nil
+}
+
+// buildDecisionLogs builds the decision logs.
+func (s PDPController) buildDecisionLogs(req *pdp.AuthorizationCheckRequest, resp *pdp.AuthorizationCheckResponse) ([]map[string]any) {
+	decisionLogs := make([]map[string]any, len(req.Evaluations))
+	for i := range req.Evaluations {
+		reqVal := req.Evaluations[i]
+		respVal := resp.Evaluations[i]
+		decisionMap := map[string]any {}
+		requestMap := map[string]any{}
+		requestMap["authorization_model"] = req.AuthorizationModel
+		requestMap["evaluation"] = reqVal
+		decisionMap["request"] = requestMap
+		decisionMap["response"] = respVal
+		decisionLogs[i] = decisionMap
+	}
+	return decisionLogs
 }
