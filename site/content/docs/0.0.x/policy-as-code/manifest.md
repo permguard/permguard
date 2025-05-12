@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "manifest-authz-2acc79fe1e014fe2ade6d301de843c14"
+    identifier: "manifest-2acc79fe1e014fe2ade6d301de843c14"
 weight: 4002
 toc: true
 seo:

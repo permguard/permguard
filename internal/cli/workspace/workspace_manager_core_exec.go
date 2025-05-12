@@ -91,7 +91,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out common.P
 		}
 
 		var manifest *manifests.Manifest
-		manifest, err = manifests.NewManifest("authz", name, "")
+		manifest, err = manifests.NewManifest(name, "")
 		if err != nil {
 			return fail(nil, err)
 		}

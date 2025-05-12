@@ -288,7 +288,9 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the subject id")
 	}
 	subjectKind := subject.GetType()
-	pmgSubjectKind, err := createPermguardSubjectKind(subjectKind)
+	var err error
+	var pmgSubjectKind string
+	pmgSubjectKind, err = createPermguardSubjectKind(subjectKind)
 	if err != nil {
 		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the subject type")
 	}
@@ -339,7 +341,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 	if err != nil {
 		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the context")
 	}
-	if err := contextRecord.UnmarshalJSON(jsonContext); err != nil {
+	if err = contextRecord.UnmarshalJSON(jsonContext); err != nil {
 		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the context")
 	}
 	hasIllegalKey := false
@@ -360,7 +362,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 	// Build the entities.
 	authzEntities := authzCtx.GetEntities()
 	authzEntitiesItems := authzEntities.GetItems()
-	if _, err := verifyUIDTypeFromEntityMap(authzEntitiesItems); err != nil {
+	if _, err = verifyUIDTypeFromEntityMap(authzEntitiesItems); err != nil {
 		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the entities")
 	}
 	authzEntitiesItems = append(authzEntitiesItems, subjectProperties)
@@ -371,7 +373,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the entities")
 	}
 	var entities cedar.EntityMap
-	if err := json.Unmarshal(jsonEntities, &entities); err != nil {
+	if err = json.Unmarshal(jsonEntities, &entities); err != nil {
 		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the entities")
 	}
 
