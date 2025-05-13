@@ -17,6 +17,7 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -29,7 +30,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/workspace"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/core/files"
 )
 
@@ -79,8 +79,7 @@ func runECommandForCloneWorkspace(args []string, deps cli.CliDependenciesProvide
 			printer.Println("Failed to clone the workspace.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to clone the workspace.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to clone the workspace")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -102,8 +101,7 @@ func runECommandForCloneWorkspace(args []string, deps cli.CliDependenciesProvide
 			printer.Println("Failed to clone the workspace.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to clone the workspace.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to clone the workspace")))
 		}
 		return common.ErrCommandSilent
 	}

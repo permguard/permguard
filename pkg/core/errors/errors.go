@@ -131,13 +131,3 @@ func AreErrorsEqual(err1, err2 error) bool {
 	}
 	return sysErr1.errCode == sysErr2.errCode
 }
-
-// WrapHandledSysErrorWithMessage wrap an handled error and a system error with a message.
-func WrapHandledSysErrorWithMessage(err error, errMessage string, handledErr error) error {
-	sysErr := WrapSystemErrorWithMessage(err, errMessage).(SystemError)
-	if handledErr != nil {
-		sysErr.errMessage = fmt.Sprintf("%s - [handled] %s", sysErr.errMessage, handledErr.Error())
-		sysErr.error = fmt.Errorf(errorMessageCodeMsg, sysErr.errCode, sysErr.errMessage)
-	}
-	return sysErr
-}

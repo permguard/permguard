@@ -123,10 +123,10 @@ func (e *Endpoint) Serve(ctx context.Context, serviceCtx *services.ServiceContex
 				e.config.GetHostable().Shutdown(context.Background())
 			}
 		}()
-		logger := serviceCtx.GetLogger()
-		logger.Info(serviceCtx.GetLogMessage(fmt.Sprintf("Service is serving on port: %d", port)))
+		lgr := serviceCtx.GetLogger()
+		lgr.Info(serviceCtx.GetLogMessage(fmt.Sprintf("Service is serving on port: %d", port)))
 		if err := grpcServer.Serve(lis); err != nil {
-			logger.Error(serviceCtx.GetLogMessage(fmt.Sprintf("Service failed to serve on port: %d", port)), zap.Error(err))
+			lgr.Error(serviceCtx.GetLogMessage(fmt.Sprintf("Service failed to serve on port: %d", port)), zap.Error(err))
 			e.config.GetHostable().Shutdown(context.Background())
 		}
 	}()

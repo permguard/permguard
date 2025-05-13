@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
@@ -83,7 +82,7 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 	}
 	kind, err := repos.ConvertLedgerKindToID(ledger.Kind)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - ledger kind %s is not valid", ledger.Kind), err)
+		return nil, errors.Join(err, fmt.Errorf("storage: invalid client input - ledger kind %s is not valid", ledger.Kind))
 	}
 	dbInLedger := &repos.Ledger{
 		LedgerID: ledger.LedgerID,

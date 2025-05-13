@@ -25,13 +25,12 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/core/validators"
 )
 
 const (
 	// errorMessageLedgerInvalidZoneID is the error message ledger invalid zone id.
-	errorMessageLedgerInvalidZoneID = "invalid client input - zone id is not valid (id: %d)"
+	errorMessageLedgerInvalidZoneID = "storage: invalid client input - zone id is not valid (id: %d)"
 )
 
 const (
@@ -119,23 +118,23 @@ func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*L
 // UpdateLedgerRef updates the ref of a ledger.
 func (r *Repository) UpdateLedgerRef(tx *sql.Tx, zoneID int64, ledgerID, currentRef, newRef string) error {
 	if err := validators.ValidateCodeID(LedgerType, zoneID); err != nil {
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidZoneID, zoneID), err)
+		return errors.Join(err, fmt.Errorf(errorMessageLedgerInvalidZoneID, zoneID))
 	}
 	if err := validators.ValidateUUID(LedgerType, ledgerID); err != nil {
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - ledger id is not valid (id: %s)", ledgerID), err)
+		return errors.Join(err, fmt.Errorf("storage: invalid client input - ledger id is not valid (id: %s)", ledgerID))
 	}
 	if err := validators.ValidateSHA256(LedgerType, currentRef); err != nil {
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - current ref is not valid (ref: %s)", currentRef), err)
+		return 	errors.Join(err, fmt.Errorf("storage: invalid client input - current ref is not valid (ref: %s)", currentRef))
 	}
 	if err := validators.ValidateSHA256(LedgerType, newRef); err != nil {
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - new ref is not valid (ref: %s)", newRef), err)
+		return errors.Join(err, fmt.Errorf("storage: invalid client input - new ref is not valid (ref: %s)", newRef))
 	}
 
 	var dbCurrentRef string
 	err := tx.QueryRow("SELECT ref FROM ledgers WHERE zone_id = ? AND ledger_id = ?", zoneID, ledgerID).Scan(&dbCurrentRef)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientNotFound, fmt.Sprintf("ledger not found (zone_id: %d, ledger_id: %s)", zoneID, ledgerID), err)
+			return errors.Join(err, fmt.Errorf("storage: ledger not found (zone_id: %d, ledger_id: %s)", zoneID, ledgerID))
 		}
 		return WrapSqlite3Error("failed to retrieve current ref for ledger", err)
 	}
@@ -162,10 +161,10 @@ func (r *Repository) UpdateLedgerRef(tx *sql.Tx, zoneID int64, ledgerID, current
 // DeleteLedger deletes a ledger.
 func (r *Repository) DeleteLedger(tx *sql.Tx, zoneID int64, ledgerID string) (*Ledger, error) {
 	if err := validators.ValidateCodeID(LedgerType, zoneID); err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf(errorMessageLedgerInvalidZoneID, zoneID), err)
+		return nil, errors.Join(err, fmt.Errorf(errorMessageLedgerInvalidZoneID, zoneID))
 	}
 	if err := validators.ValidateUUID(LedgerType, ledgerID); err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - ledger id is not valid (id: %s)", ledgerID), err)
+		return nil, errors.Join(err, fmt.Errorf("storage: invalid client input - ledger id is not valid (id: %s)", ledgerID))
 	}
 
 	var dbLedger Ledger
@@ -198,7 +197,7 @@ func (r *Repository) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, zoneI
 		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize)
 	}
 	if err := validators.ValidateCodeID(LedgerType, zoneID); err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientID, fmt.Sprintf(errorMessageLedgerInvalidZoneID, zoneID), err)
+		return nil, fmt.Errorf(errorMessageLedgerInvalidZoneID, zoneID)
 	}
 
 	var dbLedgers []Ledger
@@ -213,7 +212,7 @@ func (r *Repository) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, zoneI
 	if filterID != nil {
 		ledgerID := *filterID
 		if err := validators.ValidateUUID(LedgerType, ledgerID); err != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientID, fmt.Sprintf("invalid client input - ledger id is not valid (id: %s)", ledgerID), err)
+			return nil, errors.Join(err, fmt.Errorf("storage: invalid client input - ledger id is not valid (id: %s)", ledgerID))
 		}
 		conditions = append(conditions, "ledger_id = ?")
 		args = append(args, ledgerID)
@@ -222,7 +221,7 @@ func (r *Repository) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, zoneI
 	if filterName != nil {
 		ledgerName := *filterName
 		if err := validators.ValidateName(LedgerType, ledgerName); err != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientName, fmt.Sprintf("invalid client input - ledger name is not valid (name: %s)", ledgerName), err)
+			return nil, errors.Join(err, fmt.Errorf("storage: invalid client input - ledger name is not valid (name: %s)", ledgerName))
 		}
 		ledgerName = "%" + ledgerName + "%"
 		conditions = append(conditions, "name LIKE ?")
