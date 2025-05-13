@@ -17,6 +17,7 @@
 package repositories
 
 import (
+	"errors"
 	"regexp"
 	"sort"
 	"testing"
@@ -27,7 +28,6 @@ import (
 
 	"github.com/mattn/go-sqlite3"
 
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
 )
 
@@ -94,7 +94,7 @@ func TestRepoUpsertZoneWithInvalidInput(t *testing.T) {
 	{ // Test with nil zone
 		_, err := ledger.UpsertZone(tx, true, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid zone id
@@ -104,7 +104,7 @@ func TestRepoUpsertZoneWithInvalidInput(t *testing.T) {
 		}
 		_, err := ledger.UpsertZone(tx, false, dbInZone)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid zone name
@@ -126,7 +126,7 @@ func TestRepoUpsertZoneWithInvalidInput(t *testing.T) {
 			}
 			dbOutZone, err := ledger.UpsertZone(tx, true, dbInZone)
 			assert.NotNil(err, "error should be not nil")
-			assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+			assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
 			assert.Nil(dbOutZone, "zones should be nil")
 		}
 	}
@@ -224,7 +224,7 @@ func TestRepoUpsertZoneWithErrors(t *testing.T) {
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutZone, "zone should be nil")
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageConstraintUnique, err), "error should be errstorageconstraintunique")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errstorageconstraintunique")
 	}
 }
 
@@ -241,7 +241,7 @@ func TestRepoDeleteZoneWithInvalidInput(t *testing.T) {
 	{ // Test with invalid zone id
 		_, err := ledger.DeleteZone(tx, 0)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
 	}
 }
 
@@ -322,9 +322,9 @@ func TestRepoDeleteZoneWithErrors(t *testing.T) {
 		assert.NotNil(err, "error should be not nil")
 
 		if test == 1 {
-			assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageNotFound, err), "error should be errstoragenotfound")
+			assert.True(errors.Is(errors.New("operation error"), err), "error should be errstoragenotfound")
 		} else {
-			assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageGeneric, err), "error should be errstoragegeneric")
+			assert.True(errors.Is(errors.New("operation error"), err), "error should be errstoragegeneric")
 		}
 	}
 }
@@ -340,27 +340,27 @@ func TestRepoFetchZoneWithInvalidInput(t *testing.T) {
 	{ // Test with invalid page
 		_, err := ledger.FetchZones(sqlDB, 0, 100, nil, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientPagination, err), "error should be errclientpagination")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid page size
 		_, err := ledger.FetchZones(sqlDB, 1, 0, nil, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientPagination, err), "error should be errclientpagination")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid zone id
 		zoneID := int64(0)
 		_, err := ledger.FetchZones(sqlDB, 1, 1, &zoneID, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientID, err), "error should be errclientid")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientid")
 	}
 
 	{ // Test with invalid zone id
 		zoneName := "@"
 		_, err := ledger.FetchZones(sqlDB, 1, 1, nil, &zoneName)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientName, err), "error should be errclientname")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientname")
 	}
 }
 

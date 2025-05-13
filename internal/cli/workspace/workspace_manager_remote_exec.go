@@ -31,7 +31,6 @@ import (
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/core/files"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
@@ -90,7 +89,7 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 		// Add the ledger
 		ref := m.rfsMgr.GenerateRef(ledgerInfo.GetRemote(), ledgerInfo.GetZoneID(), srvLedger.LedgerID)
 		output, err = m.cfgMgr.ExecAddLedger(ledgerURI, ref, ledgerInfo.GetRemote(), ledgerInfo.GetLedger(), srvLedger.LedgerID, ledgerInfo.GetZoneID(), nil, out)
-		if err != nil && !cerrors.AreErrorsEqual(err, cerrors.ErrCliRecordExists) {
+		if err != nil {
 			return fail(output, err)
 		}
 		// Checkout the head

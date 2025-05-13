@@ -17,6 +17,7 @@
 package authz
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -27,7 +28,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
 	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
 	"github.com/permguard/permguard/pkg/cli/options"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
@@ -67,7 +67,7 @@ func TestCliLedgersCreateWithError(t *testing.T) {
 		cmd.PersistentFlags().BoolP(common.FlagVerbose, common.FlagVerboseShort, true, "true for verbose output")
 
 		papClient := mocks.NewGrpcPAPClientMock()
-		papClient.On("CreateLedger", mock.Anything, mock.Anything, mock.Anything).Return(nil, cerrors.ErrClientParameter)
+		papClient.On("CreateLedger", mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("operation error"))
 
 		printerMock := mocks.NewPrinterMock()
 		printerMock.On("Println", mock.Anything).Return()

@@ -17,6 +17,7 @@
 package repositories
 
 import (
+	"errors"
 	"regexp"
 	"sort"
 	"testing"
@@ -27,7 +28,6 @@ import (
 
 	"github.com/mattn/go-sqlite3"
 
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
 )
 
@@ -97,7 +97,7 @@ func TestRepoUpsertIdentitySourceWithInvalidInput(t *testing.T) {
 	{ // Test with nil identity source
 		_, err := ledger.UpsertIdentitySource(tx, true, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid zone id
@@ -107,7 +107,7 @@ func TestRepoUpsertIdentitySourceWithInvalidInput(t *testing.T) {
 		}
 		_, err := ledger.UpsertIdentitySource(tx, false, dbInIdentitySource)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid identity source id
@@ -117,7 +117,7 @@ func TestRepoUpsertIdentitySourceWithInvalidInput(t *testing.T) {
 		}
 		_, err := ledger.UpsertIdentitySource(tx, false, dbInIdentitySource)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid identity source name
@@ -139,7 +139,7 @@ func TestRepoUpsertIdentitySourceWithInvalidInput(t *testing.T) {
 			}
 			dbOutIdentitySource, err := ledger.UpsertIdentitySource(tx, true, dbInIdentitySource)
 			assert.NotNil(err, "error should be not nil")
-			assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+			assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
 			assert.Nil(dbOutIdentitySource, "identity sources should be nil")
 		}
 	}
@@ -242,7 +242,7 @@ func TestRepoUpsertIdentitySourceWithErrors(t *testing.T) {
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutIdentitySource, "identity source should be nil")
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageConstraintUnique, err), "error should be errstorageconstraintunique")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errstorageconstraintunique")
 	}
 }
 
@@ -259,13 +259,13 @@ func TestRepoDeleteIdentitySourceWithInvalidInput(t *testing.T) {
 	{ // Test with invalid zone id
 		_, err := ledger.DeleteIdentitySource(tx, 0, GenerateUUID())
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid identity source id
 		_, err := ledger.DeleteIdentitySource(tx, 581616507495, "")
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
 	}
 }
 
@@ -347,9 +347,9 @@ func TestRepoDeleteIdentitySourceWithErrors(t *testing.T) {
 		assert.NotNil(err, "error should be not nil")
 
 		if test == 1 {
-			assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageNotFound, err), "error should be errstoragenotfound")
+			assert.True(errors.Is(errors.New("operation error"), err), "error should be errstoragenotfound")
 		} else {
-			assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageGeneric, err), "error should be errstoragegeneric")
+			assert.True(errors.Is(errors.New("operation error"), err), "error should be errstoragegeneric")
 		}
 	}
 }
@@ -365,34 +365,34 @@ func TestRepoFetchIdentitySourceWithInvalidInput(t *testing.T) {
 	{ // Test with invalid page
 		_, err := ledger.FetchIdentitySources(sqlDB, 0, 100, 581616507495, nil, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientPagination, err), "error should be errclientpagination")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid page size
 		_, err := ledger.FetchIdentitySources(sqlDB, 1, 0, 581616507495, nil, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientPagination, err), "error should be errclientpagination")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid zone id
 		identitySourceID := GenerateUUID()
 		_, err := ledger.FetchIdentitySources(sqlDB, 1, 1, 0, &identitySourceID, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientID, err), "error should be errclientid")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientid")
 	}
 
 	{ // Test with invalid identity source id
 		identitySourceID := ""
 		_, err := ledger.FetchIdentitySources(sqlDB, 1, 1, 581616507495, &identitySourceID, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientID, err), "error should be errclientid")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientid")
 	}
 
 	{ // Test with invalid identity source name
 		identitySourceName := "@"
 		_, err := ledger.FetchIdentitySources(sqlDB, 1, 1, 581616507495, nil, &identitySourceName)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientName, err), "error should be errclientname")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientname")
 	}
 }
 

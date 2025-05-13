@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"database/sql"
+	"errors"
 	"regexp"
 	"testing"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
 
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
 )
 
@@ -40,7 +40,7 @@ func TestRepoUpsertKeyValueWithInvalidInput(t *testing.T) {
 	{ // Test with nil key-value
 		_, err := ledger.UpsertKeyValue(tx, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
 	}
 
 	{ // Test with empty key
@@ -50,7 +50,7 @@ func TestRepoUpsertKeyValueWithInvalidInput(t *testing.T) {
 		}
 		_, err := ledger.UpsertKeyValue(tx, keyValue)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
 	}
 }
 
@@ -103,7 +103,7 @@ func TestRepoUpsertKeyValueWithErrors(t *testing.T) {
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.Nil(dbOutKeyValue, "key-value should be nil")
 	assert.NotNil(err, "error should be not nil")
-	assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageConstraintUnique, err), "error should be errstorageconstraintunique")
+	assert.True(errors.Is(errors.New("operation error"), err), "error should be errstorageconstraintunique")
 }
 
 // TestRepoGetKeyValueWithSuccess tests the retrieval of a key-value pair with success.
@@ -155,5 +155,5 @@ func TestRepoGetKeyValueWithErrors(t *testing.T) {
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.Nil(dbOutKeyValue, "key-value should be nil")
 	assert.NotNil(err, "error should be not nil")
-	assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageNotFound, err), "error should be errstoragenotfound")
+	assert.True(errors.Is(errors.New("operation error"), err), "error should be errstoragenotfound")
 }

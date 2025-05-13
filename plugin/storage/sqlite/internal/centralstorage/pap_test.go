@@ -17,6 +17,7 @@
 package centralstorage
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -25,7 +26,6 @@ import (
 
 	"github.com/permguard/permguard/pkg/agents/runtime/mocks"
 	"github.com/permguard/permguard/pkg/agents/storage"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	cssmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/testutils/mocks"
 )
 
@@ -48,5 +48,5 @@ func TestNewSQLitePAPCentralStorage(t *testing.T) {
 	storage, err := newSQLitePAPCentralStorage(nil, nil, nil, nil)
 	assert.Nil(storage, "storage should be nil")
 	assert.NotNil(err, "error should not be nil")
-	assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+	assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
 }

@@ -24,7 +24,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
@@ -37,17 +36,17 @@ func TestCreateLedgerWithErrors(t *testing.T) {
 		storage, _, _, _, _, _, _ := createSQLitePAPCentralStorageWithMocks()
 		ledgers, err := storage.CreateLedger(nil)
 		assert.Nil(ledgers, "ledgers should be nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
 	}
 
 	tests := map[string]struct {
 		IsCustomError bool
 		Error1        error
 	}{
-		"CONNECT-ERROR":  {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
-		"BEGIN-ERROR":    {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
+		"CONNECT-ERROR":  {IsCustomError: true, Error1: errors.New("operation error")},
+		"BEGIN-ERROR":    {IsCustomError: true, Error1: errors.New("operation error")},
 		"ROLLBACK-ERROR": {IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR")},
-		"COMMIT-ERROR":   {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
+		"COMMIT-ERROR":   {IsCustomError: true, Error1: errors.New("operation error")},
 	}
 	for testcase, test := range tests {
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLitePAPCentralStorageWithMocks()
@@ -75,7 +74,7 @@ func TestCreateLedgerWithErrors(t *testing.T) {
 		assert.Nil(outLedgers, "ledgers should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
-			assert.True(cerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
+			assert.True(errors.Is(err, test.Error1), "error should be equal")
 		} else {
 			assert.Equal(test.Error1, err, "error should be equal")
 		}
@@ -119,17 +118,17 @@ func TestUpdateLedgerWithErrors(t *testing.T) {
 		storage, _, _, _, _, _, _ := createSQLitePAPCentralStorageWithMocks()
 		ledgers, err := storage.UpdateLedger(nil)
 		assert.Nil(ledgers, "ledgers should be nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
 	}
 
 	tests := map[string]struct {
 		IsCustomError bool
 		Error1        error
 	}{
-		"CONNECT-ERROR":  {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
-		"BEGIN-ERROR":    {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
+		"CONNECT-ERROR":  {IsCustomError: true, Error1: errors.New("operation error")},
+		"BEGIN-ERROR":    {IsCustomError: true, Error1: errors.New("operation error")},
 		"ROLLBACK-ERROR": {IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR")},
-		"COMMIT-ERROR":   {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
+		"COMMIT-ERROR":   {IsCustomError: true, Error1: errors.New("operation error")},
 	}
 	for testcase, test := range tests {
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLitePAPCentralStorageWithMocks()
@@ -158,7 +157,7 @@ func TestUpdateLedgerWithErrors(t *testing.T) {
 		assert.Nil(outLedgers, "ledgers should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
-			assert.True(cerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
+			assert.True(errors.Is(err, test.Error1), "error should be equal")
 		} else {
 			assert.Equal(test.Error1, err, "error should be equal")
 		}
@@ -204,10 +203,10 @@ func TestDeleteLedgerWithErrors(t *testing.T) {
 		IsCustomError bool
 		Error1        error
 	}{
-		"CONNECT-ERROR":  {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
-		"BEGIN-ERROR":    {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
+		"CONNECT-ERROR":  {IsCustomError: true, Error1: errors.New("operation error")},
+		"BEGIN-ERROR":    {IsCustomError: true, Error1: errors.New("operation error")},
 		"ROLLBACK-ERROR": {IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR")},
-		"COMMIT-ERROR":   {IsCustomError: true, Error1: cerrors.ErrStorageGeneric},
+		"COMMIT-ERROR":   {IsCustomError: true, Error1: errors.New("operation error")},
 	}
 	for testcase, test := range tests {
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLitePAPCentralStorageWithMocks()
@@ -235,7 +234,7 @@ func TestDeleteLedgerWithErrors(t *testing.T) {
 		assert.Nil(outLedgers, "ledgers should be nil")
 		assert.Error(err)
 		if test.IsCustomError {
-			assert.True(cerrors.AreErrorsEqual(err, test.Error1), "error should be equal")
+			assert.True(errors.Is(err, test.Error1), "error should be equal")
 		} else {
 			assert.Equal(test.Error1, err, "error should be equal")
 		}
@@ -277,10 +276,10 @@ func TestFetchLedgerWithErrors(t *testing.T) {
 
 	{ // Test with invalid page
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, _, _ := createSQLitePAPCentralStorageWithMocks()
-		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(nil, cerrors.ErrServerGeneric)
+		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(nil, errors.New("operation error"))
 		outLedgers, err := storage.FetchLedgers(1, 100, 232956849236, nil)
 		assert.Nil(outLedgers, "ledgers should be nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrServerGeneric, err), "error should be errservergeneric")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errservergeneric")
 	}
 
 	{ // Test with invalid page
@@ -288,7 +287,7 @@ func TestFetchLedgerWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outLedgers, err := storage.FetchLedgers(0, 100, 232956849236, nil)
 		assert.Nil(outLedgers, "ledgers should be nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientPagination, err), "error should be errclientpagination")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid page size
@@ -296,7 +295,7 @@ func TestFetchLedgerWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outLedgers, err := storage.FetchLedgers(1, 0, 232956849236, nil)
 		assert.Nil(outLedgers, "ledgers should be nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientPagination, err), "error should be errclientpagination")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid ledger id
@@ -304,7 +303,7 @@ func TestFetchLedgerWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outLedgers, err := storage.FetchLedgers(1, 100, 232956849236, map[string]any{pap.FieldLedgerLedgerID: 232956849236})
 		assert.Nil(outLedgers, "ledgers should be nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
 	}
 
 	{ // Test with invalid ledger name
@@ -312,16 +311,16 @@ func TestFetchLedgerWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outLedgers, err := storage.FetchLedgers(1, 100, 232956849236, map[string]any{pap.FieldLedgerName: 2})
 		assert.Nil(outLedgers, "ledgers should be nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
 	}
 
 	{ // Test with server error
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLitePAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		mockSQLRepo.On("FetchLedgers", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, cerrors.ErrServerGeneric)
+		mockSQLRepo.On("FetchLedgers", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("operation error"))
 		outLedgers, err := storage.FetchLedgers(1, 100, 232956849236, nil)
 		assert.Nil(outLedgers, "ledgers should be nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrServerGeneric, err), "error should be errservergeneric")
+		assert.True(errors.Is(errors.New("operation error"), err), "error should be errservergeneric")
 	}
 }
 

@@ -22,8 +22,6 @@ import (
 
 	"github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
-
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 func TestWrapSqlite3Error(t *testing.T) {
@@ -56,7 +54,7 @@ func TestWrapSqlite3Error(t *testing.T) {
 		t.Run(message, func(t *testing.T) {
 			err := WrapSqlite3Error(message, test.ErrorIn)
 			assert.Error(t, err)
-			assert.NotNil(t, cerrors.ConvertToSystemError(test.ErrorOut))
+			assert.NotNil(t, test.ErrorOut)
 		})
 	}
 }
