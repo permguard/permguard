@@ -84,7 +84,7 @@ func createAndHandleAndStreamStatePacketWithValue(runtime *StateMachineRuntimeCo
 	var packet *notpsmpackets.StatePacket
 	hasMore := true
 	for hasMore {
-		statePacket, packetables, handlerHasMore, terminate, err := createAndHandleStatePacket(runtime, messageCode, messageValue, packetables)
+		statePacket, handledPacketable, handlerHasMore, terminate, err := createAndHandleStatePacket(runtime, messageCode, messageValue, packetables)
 		if terminate {
 			err2 := sendTermination(runtime)
 			return nil, true, err2
@@ -95,7 +95,7 @@ func createAndHandleAndStreamStatePacketWithValue(runtime *StateMachineRuntimeCo
 		}
 		hasMore = handlerHasMore
 		packet = statePacket
-		streamPacketables := append([]notppackets.Packetable{statePacket}, packetables...)
+		streamPacketables := append([]notppackets.Packetable{statePacket}, handledPacketable...)
 		err = runtime.SendStream(streamPacketables)
 		if err != nil {
 			err := sendTermination(runtime)
