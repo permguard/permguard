@@ -179,7 +179,7 @@ func (m *COSPManager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 			fmt.Sprintf("%d", codeFile.Mode),
 			fmt.Sprintf("%d", codeFile.Section),
 			fmt.Sprintf("%v", codeFile.HasErrors),
-			codeFile.ErrorMessage,
+			codeFile.Error,
 		}
 	}
 	err = m.persMgr.WriteCSVStream(persistence.PermguardDir, path, nil, codeFiles, rowFunc, true)
@@ -223,7 +223,7 @@ func (m *COSPManager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 			Mode:            mode,
 			Section:         section,
 			HasErrors:       hasErrors,
-			ErrorMessage:    record[12],
+			Error:           record[12],
 		}
 		codeFiles = append(codeFiles, codeFile)
 		return nil

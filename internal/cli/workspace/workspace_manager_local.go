@@ -17,8 +17,8 @@
 package workspace
 
 import (
-	"fmt"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -151,13 +151,13 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(langPvd *ManifestLanguageProvid
 	multiSecObj, err := absLang.CreateSchemaBlobObjects(lang, partition, path, data)
 	if err != nil {
 		codeFile := cosp.CodeFile{
-			Partition:    partition,
-			Kind:         file.Kind,
-			Path:         strings.TrimPrefix(path, wkdir),
-			Section:      0,
-			Mode:         mode,
-			HasErrors:    true,
-			ErrorMessage: err.Error(),
+			Partition: partition,
+			Kind:      file.Kind,
+			Path:      strings.TrimPrefix(path, wkdir),
+			Section:   0,
+			Mode:      mode,
+			HasErrors: true,
+			Error:     err.Error(),
 		}
 		return append(blobifiedCodeFiles, codeFile), nil
 	}
@@ -183,13 +183,13 @@ func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider
 	multiSecObj, err := absLang.CreatePolicyBlobObjects(lang, partition, path, data)
 	if err != nil {
 		codeFile := cosp.CodeFile{
-			Partition:    partition,
-			Kind:         file.Kind,
-			Path:         strings.TrimPrefix(path, wkdir),
-			Section:      -1,
-			Mode:         mode,
-			HasErrors:    true,
-			ErrorMessage: err.Error(),
+			Partition: partition,
+			Kind:      file.Kind,
+			Path:      strings.TrimPrefix(path, wkdir),
+			Section:   -1,
+			Mode:      mode,
+			HasErrors: true,
+			Error:     err.Error(),
 		}
 		return append(blobifiedCodeFiles, codeFile), nil
 	}
@@ -221,7 +221,7 @@ func (m *WorkspaceManager) buildCodeFileFromSection(secObj *objects.SectionObjec
 
 	if codeFile.HasErrors {
 		err := secObj.GetError()
-		codeFile.ErrorMessage = err.Error()
+		codeFile.Error = err.Error()
 	} else {
 		obj := secObj.GetObject()
 		codeFile.OID = obj.GetOID()
@@ -264,12 +264,12 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *Mani
 			partitionSchemas[file.Partition]++
 			if partitionSchemas[file.Partition] > 1 {
 				codeFile := cosp.CodeFile{
-					Partition:    partition,
-					Path:         strings.TrimPrefix(path, wkdir),
-					Section:      0,
-					Mode:         mode,
-					HasErrors:    true,
-					ErrorMessage: "language: only one schema file is permitted in the workspace. Please ensure there are no duplicate schema files.",
+					Partition: partition,
+					Path:      strings.TrimPrefix(path, wkdir),
+					Section:   0,
+					Mode:      mode,
+					HasErrors: true,
+					Error:     "language: only one schema file is permitted in the workspace. Please ensure there are no duplicate schema files.",
 				}
 				blobifiedCodeFiles = append(blobifiedCodeFiles, codeFile)
 			} else {
@@ -296,14 +296,14 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *Mani
 		if len(schemaFileNames) > 0 {
 			schemaFileName := schemaFileNames[0]
 			codeFile := cosp.CodeFile{
-				Partition:    partition,
-				Path:         m.persMgr.GetRelativeDir(persistence.WorkspaceDir, schemaFileName),
-				Section:      0,
-				Mode:         0,
-				HasErrors:    true,
-				CodeID:       types.ClassTypeSchema,
-				CodeType:     types.ClassTypeSchema,
-				ErrorMessage: fmt.Sprintf("language: the schema file '%s' is missing. Please ensure there are no duplicate schema files and that the required schema file is present.", schemaFileName),
+				Partition: partition,
+				Path:      m.persMgr.GetRelativeDir(persistence.WorkspaceDir, schemaFileName),
+				Section:   0,
+				Mode:      0,
+				HasErrors: true,
+				CodeID:    types.ClassTypeSchema,
+				CodeType:  types.ClassTypeSchema,
+				Error:     fmt.Sprintf("language: the schema file '%s' is missing. Please ensure there are no duplicate schema files and that the required schema file is present.", schemaFileName),
 			}
 			blobifiedCodeFiles = append(blobifiedCodeFiles, codeFile)
 		}
@@ -400,7 +400,7 @@ func (m *WorkspaceManager) retrieveCodeMap() ([]cosp.CodeFile, []cosp.CodeFile, 
 		if nameCount[file.OName] > 1 {
 			// Duplicate object name found
 			file.HasErrors = true
-			file.ErrorMessage = "language: duplicate object name found in the code files. please ensure that there are no duplicate object names"
+			file.Error = "language: duplicate object name found in the code files. please ensure that there are no duplicate object names"
 			invalidFiles = append(invalidFiles, file)
 		} else {
 			validFiles = append(validFiles, file)
