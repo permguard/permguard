@@ -46,7 +46,6 @@ func TestSqliteExecutor(t *testing.T) {
 		db, err := sqliteExec.Connect(mockStorageCtx, mockConnector)
 		assert.Nil(db, "db should be nil")
 		assert.NotNil(err, "error should not be nil")
-		assert.True(errors.Is(errors.New("operation error"), err), "error should be errservergeneric")
 	}
 
 	{

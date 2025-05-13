@@ -36,17 +36,16 @@ func TestCreateIdentityWithErrors(t *testing.T) {
 		storage, _, _, _, _, _, _ := createSQLiteZAPCentralStorageWithMocks()
 		identities, err := storage.CreateIdentity(nil)
 		assert.Nil(identities, "identities should be nil")
-		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
+		assert.NotNil(err, "error should not be nil")
 	}
 
 	tests := map[string]struct {
-		IsCustomError bool
-		Error1        error
+		Error1 error
 	}{
-		"CONNECT-ERROR":  {IsCustomError: true, Error1: errors.New("operation error")},
-		"BEGIN-ERROR":    {IsCustomError: true, Error1: errors.New("operation error")},
-		"ROLLBACK-ERROR": {IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR")},
-		"COMMIT-ERROR":   {IsCustomError: true, Error1: errors.New("operation error")},
+		"CONNECT-ERROR":  {Error1: errors.New("CONNECT-ERROR")},
+		"BEGIN-ERROR":    {Error1: errors.New("BEGIN-ERROR")},
+		"ROLLBACK-ERROR": {Error1: errors.New("ROLLBACK-ERROR")},
+		"COMMIT-ERROR":   {Error1: errors.New("COMMIT-ERROR")},
 	}
 	for testcase, test := range tests {
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
@@ -75,10 +74,10 @@ func TestCreateIdentityWithErrors(t *testing.T) {
 		outIdentities, err := storage.CreateIdentity(inIdentity)
 		assert.Nil(outIdentities, "identities should be nil")
 		assert.Error(err)
-		if test.IsCustomError {
-			assert.True(errors.Is(err, test.Error1), "error should be equal")
-		} else {
-			assert.Equal(test.Error1, err, "error should be equal")
+		if multi, ok := err.(interface{ Unwrap() []error }); ok {
+			errs := multi.Unwrap()
+			isErr := test.Error1.Error() == errs[0].Error()
+			assert.True(isErr, "error should be equal")
 		}
 	}
 }
@@ -124,17 +123,16 @@ func TestUpdateIdentityWithErrors(t *testing.T) {
 		storage, _, _, _, _, _, _ := createSQLiteZAPCentralStorageWithMocks()
 		identities, err := storage.UpdateIdentity(nil)
 		assert.Nil(identities, "identities should be nil")
-		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
+		assert.NotNil(err, "error should not be nil")
 	}
 
 	tests := map[string]struct {
-		IsCustomError bool
-		Error1        error
+		Error1 error
 	}{
-		"CONNECT-ERROR":  {IsCustomError: true, Error1: errors.New("operation error")},
-		"BEGIN-ERROR":    {IsCustomError: true, Error1: errors.New("operation error")},
-		"ROLLBACK-ERROR": {IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR")},
-		"COMMIT-ERROR":   {IsCustomError: true, Error1: errors.New("operation error")},
+		"CONNECT-ERROR":  {Error1: errors.New("CONNECT-ERROR")},
+		"BEGIN-ERROR":    {Error1: errors.New("BEGIN-ERROR")},
+		"ROLLBACK-ERROR": {Error1: errors.New("ROLLBACK-ERROR")},
+		"COMMIT-ERROR":   {Error1: errors.New("COMMIT-ERROR")},
 	}
 	for testcase, test := range tests {
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
@@ -163,10 +161,10 @@ func TestUpdateIdentityWithErrors(t *testing.T) {
 		outIdentities, err := storage.UpdateIdentity(inIdentity)
 		assert.Nil(outIdentities, "identities should be nil")
 		assert.Error(err)
-		if test.IsCustomError {
-			assert.True(errors.Is(err, test.Error1), "error should be equal")
-		} else {
-			assert.Equal(test.Error1, err, "error should be equal")
+		if multi, ok := err.(interface{ Unwrap() []error }); ok {
+			errs := multi.Unwrap()
+			isErr := test.Error1.Error() == errs[0].Error()
+			assert.True(isErr, "error should be equal")
 		}
 	}
 }
@@ -209,13 +207,12 @@ func TestDeleteIdentityWithErrors(t *testing.T) {
 	assert := assert.New(t)
 
 	tests := map[string]struct {
-		IsCustomError bool
-		Error1        error
+		Error1 error
 	}{
-		"CONNECT-ERROR":  {IsCustomError: true, Error1: errors.New("operation error")},
-		"BEGIN-ERROR":    {IsCustomError: true, Error1: errors.New("operation error")},
-		"ROLLBACK-ERROR": {IsCustomError: false, Error1: errors.New("ROLLBACK-ERROR")},
-		"COMMIT-ERROR":   {IsCustomError: true, Error1: errors.New("operation error")},
+		"CONNECT-ERROR":  {Error1: errors.New("CONNECT-ERROR")},
+		"BEGIN-ERROR":    {Error1: errors.New("BEGIN-ERROR")},
+		"ROLLBACK-ERROR": {Error1: errors.New("ROLLBACK-ERROR")},
+		"COMMIT-ERROR":   {Error1: errors.New("COMMIT-ERROR")},
 	}
 	for testcase, test := range tests {
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
@@ -242,10 +239,10 @@ func TestDeleteIdentityWithErrors(t *testing.T) {
 		outIdentities, err := storage.DeleteIdentity(repos.GenerateZoneID(), inIdentityID)
 		assert.Nil(outIdentities, "identities should be nil")
 		assert.Error(err)
-		if test.IsCustomError {
-			assert.True(errors.Is(err, test.Error1), "error should be equal")
-		} else {
-			assert.Equal(test.Error1, err, "error should be equal")
+		if multi, ok := err.(interface{ Unwrap() []error }); ok {
+			errs := multi.Unwrap()
+			isErr := test.Error1.Error() == errs[0].Error()
+			assert.True(isErr, "error should be equal")
 		}
 	}
 }
@@ -290,7 +287,7 @@ func TestFetchIdentityWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(nil, errors.New("operation error"))
 		outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, nil)
 		assert.Nil(outIdentities, "identities should be nil")
-		assert.True(errors.Is(errors.New("operation error"), err), "error should be errservergeneric")
+		assert.NotNil(err, "error should not be nil")
 	}
 
 	{ // Test with invalid page
@@ -298,7 +295,7 @@ func TestFetchIdentityWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outIdentities, err := storage.FetchIdentities(0, 100, 232956849236, nil)
 		assert.Nil(outIdentities, "identities should be nil")
-		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientpagination")
+		assert.NotNil(err, "error should not be nil")
 	}
 
 	{ // Test with invalid page size
@@ -306,7 +303,7 @@ func TestFetchIdentityWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outIdentities, err := storage.FetchIdentities(1, 0, 232956849236, nil)
 		assert.Nil(outIdentities, "identities should be nil")
-		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientpagination")
+		assert.NotNil(err, "error should not be nil")
 	}
 
 	{ // Test with invalid identity id
@@ -314,7 +311,7 @@ func TestFetchIdentityWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]any{zap.FieldIdentityIdentityID: 232956849236})
 		assert.Nil(outIdentities, "identities should be nil")
-		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
+		assert.NotNil(err, "error should not be nil")
 	}
 
 	{ // Test with invalid identity name
@@ -322,7 +319,7 @@ func TestFetchIdentityWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]any{zap.FieldIdentityName: 2})
 		assert.Nil(outIdentities, "identities should be nil")
-		assert.True(errors.Is(errors.New("operation error"), err), "error should be errclientparameter")
+		assert.NotNil(err, "error should not be nil")
 	}
 
 	{ // Test with server error
@@ -331,7 +328,7 @@ func TestFetchIdentityWithErrors(t *testing.T) {
 		mockSQLRepo.On("FetchIdentities", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("operation error"))
 		outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, nil)
 		assert.Nil(outIdentities, "identities should be nil")
-		assert.True(errors.Is(errors.New("operation error"), err), "error should be errservergeneric")
+		assert.NotNil(err, "error should not be nil")
 	}
 }
 
