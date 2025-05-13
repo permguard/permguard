@@ -18,13 +18,13 @@ package workspace
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/permguard/permguard/internal/cli/common"
 	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/pkg/authz/languages"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
@@ -146,7 +146,7 @@ func (m *WorkspaceManager) execPrintObjectContent(langPvd *ManifestLanguageProvi
 		if showFrontendLanguage {
 			header := objInfo.GetHeader()
 			if header == nil {
-				return cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "object header is nil")
+				return errors.New("cli: object header s nil")
 			}
 
 			absLang, err := langPvd.GetAbstractLanguage(header.GetPartition())
@@ -204,7 +204,7 @@ func (m *WorkspaceManager) execMapObjectContent(langPvd *ManifestLanguageProvide
 		if showFrontendLanguage {
 			header := objInfo.GetHeader()
 			if header == nil {
-				return cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "object header is nil")
+				return errors.New("cli: object header s nil")
 			}
 
 			var absLang languages.LanguageAbastraction

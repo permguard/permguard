@@ -33,23 +33,23 @@ func TestWrapSqlite3Error(t *testing.T) {
 	}{
 		"here a sample error 1": {
 			errors.New("here a sample error 1"),
-			cerrors.WrapSystemErrorWithMessage(cerrors.ErrStorageConstraintUnique, "constraint failed - here a sample error 1"),
+			errors.New("constraint failed - here a sample error 1"),
 		},
 		"here a sample error 2": {
 			sqlite3.Error{Code: sqlite3.ErrConstraint},
-			cerrors.WrapSystemErrorWithMessage(cerrors.ErrStorageConstraintUnique, "constraint failed - here a sample error 2"),
+			errors.New("constraint failed - here a sample error 2"),
 		},
 		"here a sample error 3": {
 			sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique},
-			cerrors.WrapSystemErrorWithMessage(cerrors.ErrStorageConstraintUnique, "unique constraint failed - here a sample error 3"),
+			errors.New("unique constraint failed - here a sample error 3"),
 		},
 		"here a sample error 4": {
 			sqlite3.Error{Code: sqlite3.ErrNotFound},
-			cerrors.WrapSystemErrorWithMessage(cerrors.ErrStorageNotFound, "record not found - here a sample error 4"),
+			errors.New("record not found - here a sample error 4"),
 		},
 		"here a sample error 5": {
 			sqlite3.Error{Code: sqlite3.ErrAuth},
-			cerrors.WrapSystemErrorWithMessage(cerrors.ErrStorageGeneric, "generic error (here a sample error 5)"),
+			errors.New("generic error (here a sample error 5)"),
 		},
 	}
 	for message, test := range tests {

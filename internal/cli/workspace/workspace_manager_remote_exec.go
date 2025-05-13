@@ -18,6 +18,7 @@ package workspace
 
 import (
 	//"encoding/json"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -220,7 +221,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", "Not all commits were successfully pulled. Please retry the operation.", nil, true)
 		}
-		return fail(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordExists, "not all commits were successfully pulled."))
+		return fail(nil, errors.New("cli: not all commits were successfully pulled"))
 	} else {
 		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 		if !committed || localCommitID == "" || remoteCommitID == "" {
@@ -319,7 +320,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 				}
 				header := objInfo.GetHeader()
 				if header == nil {
-					cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "object header is nil")
+					return nil, errors.New("cli: object header is nil")
 				}
 				switch classType {
 				case types.ClassTypeSchemaID:
@@ -347,7 +348,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 					}
 					codeBlocks[partition] = append(codeBlocks[partition], langCodeBlock)
 				default:
-					return fail(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, "invalid class type"))
+					return fail(nil, errors.New("cli: invalid class type"))
 				}
 			}
 		}
@@ -380,7 +381,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 			}
 			schemaFileNames := absLang.GetSchemaFileNames()
 			if len(schemaFileNames) < 1 {
-				return fail(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, "no schema file names are supported"))
+				return fail(nil, errors.New("cli: no schema file names are supported"))
 			}
 			schemaFileName := schemaFileNames[0]
 			fileBase := strings.TrimPrefix(partition, "/")
@@ -432,12 +433,12 @@ func (m *WorkspaceManager) ExecCloneLedger(ledgerURI string, zapPort, papPort in
 	var output map[string]any
 	ledgerURI = strings.ToLower(ledgerURI)
 	if !strings.HasPrefix(ledgerURI, "permguard@") {
-		return fail(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ledger URI"))
+		return fail(output, errors.New("cli: invalid ledger URI"))
 	}
 	ledgerURI = strings.TrimPrefix(ledgerURI, "permguard@")
 	elements := strings.Split(ledgerURI, "/")
 	if len(elements) != 3 {
-		return fail(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ledger URI"))
+		return fail(output, errors.New("cli: invalid ledger URI"))
 	}
 
 	uriServer := elements[0]
@@ -464,7 +465,7 @@ func (m *WorkspaceManager) ExecCloneLedger(ledgerURI string, zapPort, papPort in
 		}
 	}
 	if aborted {
-		return fail(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "operation has been aborted"))
+		return fail(output, errors.New("cli: operation has been aborted"))
 	}
 	return output, nil
 }

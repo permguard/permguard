@@ -17,11 +17,11 @@
 package centralstorage
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
 
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
 	"github.com/permguard/permguard/plugin/languages/cedar"
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
@@ -65,17 +65,17 @@ func authorizationCheckBuildContextResponse(authzDecision *authzen.Authorization
 // authorizationCheckReadBytes reads the key value for the authorization check.
 func authorizationCheckReadKeyValue(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *objects.ObjectManager, zoneID int64, key string) ([]byte, error) {
 	if db == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrStorageGeneric, "invalid database")
+		return nil, errors.New("storage: invalid database")
 	}
 	if objMng == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrStorageGeneric, "invalid object manager")
+		return nil, errors.New("storage: invalid object manager")
 	}
 	keyValue, err := s.sqlRepo.GetKeyValue(db, zoneID, key)
 	if err != nil {
 		return nil, err
 	}
 	if keyValue == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrStorageGeneric, "key value is nil")
+		return nil, errors.New("storage: key value is nil")
 	}
 	return keyValue.Value, nil
 }
@@ -115,21 +115,21 @@ func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng 
 func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *pdp.AuthorizationCheckRequest) ([]pdp.EvaluationResponse, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageGeneric, "server couldn't connect to the database", err)
+		return nil, errors.Join(err, errors.New("storage: server couldn't connect to the database"))
 	}
 
 	authzCtx := request.AuthorizationModel
 	dbLedgers, err := s.sqlRepo.FetchLedgers(db, 1, 2, authzCtx.ZoneID, &authzCtx.PolicyStore.ID, nil)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrLanguangeSemantic, "bad request for either zone id or policy store id", err)
+		return nil, errors.Join(err, errors.New("storage: bad request for either zone id or policy store id"))
 	}
 	if len(dbLedgers) != 1 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "bad request for either zone id or policy store id")
+		return nil, errors.Join(err, errors.New("storage: bad request for either zone id or policy store id"))
 	}
 	ledger := dbLedgers[0]
 	ledgerRef := ledger.Ref
 	if ledgerRef == objects.ZeroOID {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrServerGeneric, "server couldn't validate the ledger reference")
+		return nil, errors.Join(err, errors.New("storage: server couldn't validate the ledger reference"))
 	}
 
 	authzPolicyStore := authzen.PolicyStore{}
@@ -137,25 +137,25 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *pdp.AuthorizationCh
 
 	objMng, err := objects.NewObjectManager()
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrServerGeneric, "server couldn't create the object manager", err)
+		return nil, errors.Join(err, errors.New("storage: server couldn't create the object manager"))
 	}
 	treeObj, err := authorizationCheckReadTree(&s, db, objMng, authzCtx.ZoneID, ledgerRef)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrServerGeneric, "server couldn't read the tree", err)
+		return nil, errors.Join(err, errors.New("storage: server couldn't read the tree"))
 	}
 	for _, entry := range treeObj.GetEntries() {
 		entryID := entry.GetOID()
 		value, err2 := authorizationCheckReadKeyValue(&s, db, objMng, authzCtx.ZoneID, entryID)
 		if err2 != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrServerGeneric, fmt.Sprintf("server couldn't read the key %s", entryID), err)
+			return nil, errors.Join(err2, fmt.Errorf("storage: server couldn't read the key %s", entryID))
 		}
 		obj, err3 := objMng.DeserializeObjectFromBytes(value)
 		if err3 != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrServerGeneric, "server couldn't deserialize the object from bytes", err)
+			return nil, errors.Join(err3, errors.New("storage: server couldn't deserialize the object from bytes"))
 		}
 		objInfo, err4 := objMng.GetObjectInfo(obj)
 		if err4 != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrServerGeneric, "server couldn't read object info", err)
+			return nil, errors.Join(err4, errors.New("storage: server couldn't read object info"))
 		}
 		objInfoHeader := objInfo.GetHeader()
 		oid := objInfo.GetOID()
@@ -164,13 +164,13 @@ func (s SQLiteCentralStoragePDP) AuthorizationCheck(request *pdp.AuthorizationCh
 		} else if objInfoHeader.GetCodeTypeID() == types.ClassTypePolicyID {
 			authzPolicyStore.AddPolicy(oid, objInfo)
 		} else {
-			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrServerGeneric, "server couldn't process the code type id")
+			return nil, errors.New("storage: server couldn't process the code type id")
 		}
 	}
 
 	cedarLanguageAbs, err := cedar.NewCedarLanguageAbstraction()
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrServerGeneric, "server couldn't validate the language abstraction layer", err)
+		return nil, errors.New("storage: server couldn't validate the language abstraction layer")
 	}
 
 	evaluations := []pdp.EvaluationResponse{}

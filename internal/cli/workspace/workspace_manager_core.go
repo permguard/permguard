@@ -17,6 +17,7 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,7 +32,6 @@ import (
 	refs "github.com/permguard/permguard/internal/cli/workspace/refs"
 	"github.com/permguard/permguard/internal/cli/workspace/remoteserver"
 	"github.com/permguard/permguard/pkg/authz/languages"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
@@ -148,7 +148,7 @@ func (m *WorkspaceManager) tryLock() (*flock.Flock, error) {
 	fileLock := flock.New(lockFile)
 	lock, err := fileLock.TryLock()
 	if !lock || err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, fmt.Sprintf("could not acquire the lock, another process is using it %s", m.getLockFile()), err)
+		return nil, errors.Join(err, fmt.Errorf("cli: could not acquire the lock, another process is using it %s", m.getLockFile()))
 	}
 	return fileLock, nil
 }
@@ -165,38 +165,39 @@ func (m *WorkspaceManager) printFiles(action string, files []string, out common.
 func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out common.PrinterOutFunc) error {
 	out(nil, "", "The current working directory is not a valid Permguard workspace.", nil, true)
 	out(nil, "", "Please initialize the workspace by running the 'init' command.", nil, true)
-	return cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliWorkspaceDir, fmt.Sprintf("%s is not a permguard workspace directory", m.getHomeHiddenDir()))
+	return fmt.Errorf("cli: %s is not a permguard workspace directory", m.getHomeHiddenDir())
 }
 
 // hasValidManifestWorkspaceDir checks if the directory is a valid workspace directory.
 func (m *WorkspaceManager) hasValidManifestWorkspaceDir() (*manifests.Manifest, error) {
 	manifestData, _, err := m.persMgr.ReadFile(persistence.WorkspaceDir, manifests.ManifestFileName, false)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliWorkspaceDir, "could not read the manifest file in the workspace directory", err)
+		return nil, errors.Join(err, errors.New("cli: could not read the manifest file in the workspace directory"))
 	}
 	manifest, err := manifests.ConvertBytesToManifest(manifestData)
+	manifestErr := errors.New("cli: invalid manifest in the workspace directory")
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
+		return nil, errors.Join(err, manifestErr)
 	}
 	ok, err := manifests.ValidateManifest(manifest)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
+		return nil, errors.Join(err, manifestErr)
 	}
 	if !ok {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
+		return nil, errors.Join(err, manifestErr)
 	}
 	for _, runtime := range manifest.Runtimes {
 		lang := runtime.Language
 		absLang, err := m.langFct.GetLanguageAbastraction(lang.Name, lang.Version)
 		if err != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
+			return nil, errors.Join(err, manifestErr)
 		}
 		ok, err = absLang.ValidateManifest(manifest)
 		if err != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
+			return nil, errors.Join(err, manifestErr)
 		}
 		if !ok {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliWorkspaceDir, "invalid manifest in the workspace directory", err)
+			return nil, errors.Join(err, manifestErr)
 		}
 	}
 	return manifest, nil

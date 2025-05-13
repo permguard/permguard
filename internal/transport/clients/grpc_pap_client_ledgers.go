@@ -18,10 +18,10 @@ package clients
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	papv1 "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
@@ -42,7 +42,7 @@ func (c *GrpcPAPClient) CreateLedger(zoneID int64, kind string, name string) (*p
 // UpdateLedger updates an ledger.
 func (c *GrpcPAPClient) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, error) {
 	if ledger == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "invalid ledger instance")
+		return nil, errors.New("client: invalid ledger instance")
 	}
 	client, conn, err := c.createGRPCClient()
 	defer conn.Close()

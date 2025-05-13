@@ -18,6 +18,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -110,7 +111,7 @@ type CliPrinterTerminal struct {
 func NewCliPrinterTerminal(verbose bool, output string) (*CliPrinterTerminal, error) {
 	out := strings.ToUpper(output)
 	if out != OutputTerminal && out != OutputJSON {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "invalid output")
+		return nil, errors.New("cli: invalid output")
 	}
 	return &CliPrinterTerminal{
 		verbose: verbose,

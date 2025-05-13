@@ -17,7 +17,8 @@
 package centralstorage
 
 import (
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"errors"
+
 	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
@@ -32,10 +33,10 @@ import (
 func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	zoneID, ok := getFromHandlerContext[int64](handlerCtx, notptransportsm.ZoneIDKey)
 	if !ok || zoneID <= 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid input zone id.")
+		return nil, errors.New("storage: invalid input zone id")
 	}
 	if len(packets) == 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid input packets for notify current state.")
+		return nil, errors.New("storage: invalid input packets for notify current state")
 	}
 	remoteRefPacket := &notpagpackets.RemoteRefStatePacket{}
 	err := notppackets.ConvertPacketable(packets[0], remoteRefPacket)
@@ -43,7 +44,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 		return nil, err
 	}
 	if remoteRefPacket.RefCommit == "" || remoteRefPacket.RefPrevCommit == "" {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid remote ref state packet.")
+		return nil, errors.New("storage: invalid remote ref state packet")
 	}
 	ledger, err := s.readLedgerFromHandlerContext(handlerCtx)
 	if err != nil {
@@ -123,7 +124,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNegotiationResponse(handlerCtx *not
 func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	zoneID, ok := getFromHandlerContext[int64](handlerCtx, notptransportsm.ZoneIDKey)
 	if !ok || zoneID <= 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid input zone id.")
+		return nil, errors.New("storage: invalid input zone id")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {

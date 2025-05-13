@@ -17,6 +17,7 @@
 package ref
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 
@@ -247,7 +248,7 @@ func (m *RefManager) GetCurrentHeadCommit() (string, error) {
 // GetRefInfo gets the ref information.
 func (m *RefManager) GetRefInfo(ref string) (*wkscommon.RefInfo, error) {
 	if len(ref) == 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ref")
+		return nil, errors.New("cli: invalid ref")
 	}
 	return wkscommon.ConvertStringWithLedgerIDToRefInfo(ref)
 }

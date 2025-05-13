@@ -17,11 +17,11 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace/cosp"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // buildOutputForCodeFiles builds the output for the code files.
@@ -259,5 +259,5 @@ func (m *WorkspaceManager) execInternalValidate(internal bool, out common.Printe
 		}
 		out(nil, "", "\nPlease fix the errors to proceed.", nil, true)
 	}
-	return fail(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, "validation errors found in code files within the workspace. please check the logs for more details."))
+	return fail(output, errors.New("cli: validation errors found in code files within the workspace. please check the logs for more details"))
 }

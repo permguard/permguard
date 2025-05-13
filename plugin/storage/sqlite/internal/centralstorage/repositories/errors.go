@@ -48,7 +48,7 @@ func readErroMapParam(key string, params map[string]string) string {
 func WrapSqlite3ErrorWithParams(msg string, err error, params map[string]string) error {
 	sqliteErr, ok := err.(sqlite3.Error)
 	if !ok {
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageGeneric, fmt.Sprintf("(%s)", msg), err)
+		return errors.Join(err, fmt.Errorf("(%s)", msg))
 	}
 	switch sqliteErr.Code {
 	case sqlite3.ErrConstraint:
