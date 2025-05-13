@@ -41,7 +41,7 @@ func (p *SamplePacket) Serialize() ([]byte, error) {
 // Deserialize deserializes the packet.
 func (p *SamplePacket) Deserialize(data []byte) error {
 	var err error
-	p.Text, data, err = DeserializeString(data, PacketNullByte)
+	p.Text, _, err = DeserializeString(data, PacketNullByte)
 	if err != nil {
 		return err
 	}

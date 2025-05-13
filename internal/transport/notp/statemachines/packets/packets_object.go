@@ -54,7 +54,7 @@ func (p *ObjectStatePacket) Deserialize(data []byte) error {
 	if err != nil {
 		return err
 	}
-	p.Content, data, err = notppackets.DeserializeBytes(data, notppackets.PacketNullByte)
+	p.Content, _, err = notppackets.DeserializeBytes(data, notppackets.PacketNullByte)
 	if err != nil {
 		return err
 	}
