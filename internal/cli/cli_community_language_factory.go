@@ -20,7 +20,6 @@ import (
 	"fmt"
 
 	"github.com/permguard/permguard/pkg/authz/languages"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/plugin/languages/cedar"
 	"github.com/permguard/permguard/ztauthstar-cedar/pkg/cedarlang"
 )
@@ -47,7 +46,7 @@ func NewCommunityLanguageFactory() (*CommunityLanguageFactory, error) {
 func (c *CommunityLanguageFactory) GetLanguageAbastraction(language, version string) (languages.LanguageAbastraction, error) {
 	langAbs, exists := c.languages[language]
 	if !exists {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrConfigurationGeneric, fmt.Sprintf("invalid language %s with version %s", language, version))
+		return nil, fmt.Errorf("cli: invalid language %s with version %s", language, version)
 	}
 	return langAbs, nil
 }

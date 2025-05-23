@@ -19,6 +19,7 @@ package workspace
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -26,7 +27,6 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // getObjectsInfos retrieves and filters object metadata based on object type.
@@ -88,7 +88,7 @@ func (m *WorkspaceManager) getHistory(commit string) ([]wkscommon.CommitInfo, er
 // getCommitString gets the commit string.
 func (m *WorkspaceManager) getCommitString(oid string, commit *objects.Commit) (string, error) {
 	if commit == nil {
-		return "", cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "commit is nil")
+		return "", errors.New("cli: commit is nil")
 	}
 
 	tree := commit.GetTree()
@@ -114,7 +114,7 @@ func (m *WorkspaceManager) getCommitString(oid string, commit *objects.Commit) (
 // getCommitMap gets the commit map.
 func (m *WorkspaceManager) getCommitMap(oid string, commit *objects.Commit) (map[string]any, error) {
 	if commit == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "commit is nil")
+		return nil, errors.New("cli: commit is nil")
 	}
 
 	output := make(map[string]any)
@@ -134,7 +134,7 @@ func (m *WorkspaceManager) getCommitMap(oid string, commit *objects.Commit) (map
 // getTreeString gets the tree string.
 func (m *WorkspaceManager) getTreeString(oid string, tree *objects.Tree) (string, error) {
 	if tree == nil {
-		return "", cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "tree is nil")
+		return "", errors.New("cli: tree is nil")
 	}
 
 	var output strings.Builder
@@ -160,7 +160,7 @@ func (m *WorkspaceManager) getTreeString(oid string, tree *objects.Tree) (string
 // getTreeMap gets the tree map.
 func (m *WorkspaceManager) getTreeMap(oid string, tree *objects.Tree) (map[string]any, error) {
 	if tree == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "tree is nil")
+		return nil, errors.New("cli: tree is nil")
 	}
 
 	output := make(map[string]any)
@@ -187,11 +187,11 @@ func (m *WorkspaceManager) getTreeMap(oid string, tree *objects.Tree) (map[strin
 // getBlobString gets the blob string.
 func (m *WorkspaceManager) getBlobString(blob any) ([]byte, bool, error) {
 	if blob == nil {
-		return nil, false, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "tree is nil")
+		return nil, false, errors.New("cli: tree is nil")
 	}
 	content, hasContent := blob.([]byte)
 	if !hasContent {
-		return nil, false, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "blob content is not a byte array")
+		return nil, false, errors.New("cli: blob content is not a byte array")
 	}
 	return content, true, nil
 }
@@ -199,11 +199,11 @@ func (m *WorkspaceManager) getBlobString(blob any) ([]byte, bool, error) {
 // getBlobString gets the blob map.
 func (m *WorkspaceManager) getBlobMap(blob any) (map[string]any, error) {
 	if blob == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "tree is nil")
+		return nil, errors.New("cli: tree is nil")
 	}
 	content, hasContent := blob.([]byte)
 	if !hasContent {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "blob content is not a byte array")
+		return nil, errors.New("cli: blob content is not a byte array")
 	}
 	contentMap := make(map[string]any)
 	var result map[string]any

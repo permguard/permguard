@@ -17,11 +17,11 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace/cosp"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // buildOutputForCodeFiles builds the output for the code files.
@@ -39,7 +39,7 @@ func buildOutputForCodeFiles(codeFiles []cosp.CodeFile, m *WorkspaceManager, out
 		cSection := codeFile.Section + 1
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(output, "refresh", fmt.Sprintf(`Error in file %s, partition %s, section %s and error message '%s'.`,
-				common.FileText(cFile), common.IDText(cPartition), common.NumberText(cSection), common.LogErrorText(codeFile.ErrorMessage)), nil, true)
+				common.FileText(cFile), common.IDText(cPartition), common.NumberText(cSection), common.LogErrorText(codeFile.Error)), nil, true)
 		} else if m.ctx.IsJSONOutput() {
 			if _, ok := errorsMap[cFile]; !ok {
 				errorsMap[cFile] = map[string]any{}
@@ -53,20 +53,20 @@ func buildOutputForCodeFiles(codeFiles []cosp.CodeFile, m *WorkspaceManager, out
 			sectionMap["path"] = cFile
 			sectionMap["partition"] = cPartition
 			sectionMap["section"] = cSection
-			sectionMap["error_message"] = codeFile.ErrorMessage
+			sectionMap["error"] = codeFile.Error
 		}
 	}
 	if m.ctx.IsJSONOutput() && len(errorsMap) == 0 {
 		output["code_files"] = []map[string]any{}
 		for _, codeFile := range codeFiles {
 			output["code_files"] = append(output["code_files"].([]map[string]any), map[string]any{
-				"path":          codeFile.Path,
-				"partition":     codeFile.Partition,
-				"section":       codeFile.Section + 1,
-				"oid":           codeFile.OID,
-				"oname":         codeFile.OName,
-				"has_errors":    codeFile.HasErrors,
-				"error_message": codeFile.ErrorMessage,
+				"path":       codeFile.Path,
+				"partition":  codeFile.Partition,
+				"section":    codeFile.Section + 1,
+				"oid":        codeFile.OID,
+				"oname":      codeFile.OName,
+				"has_errors": codeFile.HasErrors,
+				"error":      codeFile.Error,
 			})
 		}
 	}
@@ -249,15 +249,15 @@ func (m *WorkspaceManager) execInternalValidate(internal bool, out common.Printe
 			out(nil, "", fmt.Sprintf("	- '%s'", common.FileText(key)), nil, true)
 			for _, codeFile := range groupedCodeFiles[key] {
 				if codeFile.OID == "" {
-					out(nil, "", fmt.Sprintf("		%s: %s", common.NumberText(codeFile.Section+1), common.LogErrorText(codeFile.ErrorMessage)), nil, true)
+					out(nil, "", fmt.Sprintf("		%s: %s", common.NumberText(codeFile.Section+1), common.LogErrorText(codeFile.Error)), nil, true)
 				} else {
 					out(nil, "", fmt.Sprintf("		%s: %s %s", common.NumberText(codeFile.Section+1),
 						common.IDText(codeFile.OID), common.NameText(codeFile.OName)), nil, true)
-					out(nil, "", fmt.Sprintf("		   %s", common.LogErrorText(codeFile.ErrorMessage)), nil, true)
+					out(nil, "", fmt.Sprintf("		   %s", common.LogErrorText(codeFile.Error)), nil, true)
 				}
 			}
 		}
 		out(nil, "", "\nPlease fix the errors to proceed.", nil, true)
 	}
-	return fail(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, "validation errors found in code files within the workspace. please check the logs for more details."))
+	return fail(output, errors.New("cli: validation errors found in code files within the workspace. please check the logs for more details"))
 }

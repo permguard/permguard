@@ -115,7 +115,7 @@ func (p *StatePacket) Deserialize(data []byte) error {
 	if err != nil {
 		return err
 	}
-	p.ErrorCode, data, err = notppackets.DeserializeUint16(data, notppackets.PacketNullByte)
+	p.ErrorCode, _, err = notppackets.DeserializeUint16(data, notppackets.PacketNullByte)
 	if err != nil {
 		return err
 	}

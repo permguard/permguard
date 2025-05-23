@@ -17,6 +17,7 @@
 package authn
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/fatih/color"
@@ -26,7 +27,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -47,8 +47,7 @@ func runECommandForListIdentitySources(deps cli.CliDependenciesProvider, cmd *co
 			printer.Println("Failed to list identity sources.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to list identity sources", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to list identity sources")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -58,8 +57,7 @@ func runECommandForListIdentitySources(deps cli.CliDependenciesProvider, cmd *co
 			printer.Println("Failed to list identity sources.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to list identity sources", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to list identity sources")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -74,8 +72,7 @@ func runECommandForListIdentitySources(deps cli.CliDependenciesProvider, cmd *co
 			printer.Println("Failed to list identity sources.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to list identity sources", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to list identity sources")))
 		}
 		return common.ErrCommandSilent
 	}

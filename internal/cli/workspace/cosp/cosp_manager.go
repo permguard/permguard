@@ -17,6 +17,7 @@
 package cosp
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -27,7 +28,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
@@ -113,7 +113,7 @@ func (m *COSPManager) SaveCodeSourceObject(oid string, content []byte) (bool, er
 	path := filepath.Join(folder, name)
 	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, folder)
 	if err != nil {
-		return false, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, fmt.Sprintf("failed to save object %s", oid), err)
+		return false, errors.Join(err, fmt.Errorf("cli: failed to save object %s", oid))
 	}
 	return m.persMgr.WriteFile(persistence.PermguardDir, path, content, 0644, true)
 }
@@ -133,7 +133,7 @@ func (m *COSPManager) ReadCodeSourceObject(oid string) (*objects.Object, error) 
 func (m *COSPManager) saveConfig(name string, override bool, cfg any) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "failed to marshal config", err)
+		return errors.Join(err, errors.New("cli: failed to marshal config"))
 	}
 	if override {
 		_, err = m.persMgr.WriteFile(persistence.PermguardDir, name, data, 0644, false)
@@ -141,7 +141,7 @@ func (m *COSPManager) saveConfig(name string, override bool, cfg any) error {
 		_, err = m.persMgr.WriteFileIfNotExists(persistence.PermguardDir, name, data, 0644, false)
 	}
 	if err != nil {
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, fmt.Sprintf("failed to write config file %s", name), err)
+		return fmt.Errorf("cli: failed to write config file %s", name)
 	}
 	return nil
 }
@@ -161,7 +161,7 @@ func (m *COSPManager) SaveCodeSourceConfig(treeID string) error {
 func (m *COSPManager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, m.getCodeSourceDir())
 	if err != nil {
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "failed to create code plan", err)
+		return errors.Join(err, errors.New("cli: failed to create code plan"))
 	}
 	path := filepath.Join(m.getCodeSourceDir(), hiddenCodeMapFile)
 	rowFunc := func(record any) []string {
@@ -179,12 +179,12 @@ func (m *COSPManager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 			fmt.Sprintf("%d", codeFile.Mode),
 			fmt.Sprintf("%d", codeFile.Section),
 			fmt.Sprintf("%v", codeFile.HasErrors),
-			codeFile.ErrorMessage,
+			codeFile.Error,
 		}
 	}
 	err = m.persMgr.WriteCSVStream(persistence.PermguardDir, path, nil, codeFiles, rowFunc, true)
 	if err != nil {
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "failed to write code map", err)
+		return errors.Join(err, errors.New("cli: failed to write code map"))
 	}
 	return nil
 }
@@ -223,14 +223,14 @@ func (m *COSPManager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 			Mode:            mode,
 			Section:         section,
 			HasErrors:       hasErrors,
-			ErrorMessage:    record[12],
+			Error:           record[12],
 		}
 		codeFiles = append(codeFiles, codeFile)
 		return nil
 	}
 	err := m.persMgr.ReadCSVStream(persistence.PermguardDir, path, nil, recordFunc, true)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "failed to read code map", err)
+		return nil, errors.Join(err, errors.New("cli: failed to read code map"))
 	}
 
 	return codeFiles, nil
@@ -251,7 +251,7 @@ func (m *COSPManager) ReadCodeSourceCodeState() ([]CodeObjectState, error) {
 // BuildCodeSourceCodeStateForTree builds the code object state for the input tree.
 func (m *COSPManager) BuildCodeSourceCodeStateForTree(tree *objects.Tree) ([]CodeObjectState, error) {
 	if tree == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordMalformed, "tree is nil")
+		return nil, errors.New("cli: tree is nil")
 	}
 	codeObjectStates := []CodeObjectState{}
 	for _, entry := range tree.GetEntries() {
@@ -279,7 +279,7 @@ func (m *COSPManager) SaveRemoteCodePlan(ref string, codeObjects []CodeObjectSta
 	path := filepath.Join(m.getCodeDir(), strings.ToLower(ref))
 	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, path)
 	if err != nil {
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "failed to create code plan", err)
+		return errors.Join(err, errors.New("cli: failed to create code plan"))
 	}
 	path = filepath.Join(path, hiddenCodePlanFile)
 	return m.saveCodeObjectStates(path, codeObjects)
@@ -300,25 +300,25 @@ func (m *COSPManager) CleanCode(ref string) (bool, error) {
 // convertCodeFileToCodeObjectState converts the code file to the code object.
 func (m *COSPManager) convertCodeFileToCodeObjectState(codeFile CodeFile) (*CodeObjectState, error) {
 	if codeFile.OName == "" {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordMalformed, "code file name is empty.")
+		return nil, errors.New("cli: code file name is empty")
 	}
 	if codeFile.OID == "" {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordMalformed, "code file OID is empty.")
+		return nil, errors.New("cli: code file OID is empty")
 	}
 	if codeFile.CodeID == "" {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordMalformed, "code file CodeID is empty.")
+		return nil, errors.New("cli: code file CodeID is empty")
 	}
 	if codeFile.CodeType == "" {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordMalformed, "code file CodeType is empty.")
+		return nil, errors.New("cli: code file CodeType is empty")
 	}
 	if codeFile.Language == "" {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordMalformed, "code file Language is empty.")
+		return nil, errors.New("cli: code file Language is empty")
 	}
 	if codeFile.LanguageVersion == "" {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordMalformed, "code file LanguageVersion is empty.")
+		return nil, errors.New("cli: code file LanguageVersion is empty")
 	}
 	if codeFile.LanguageType == "" {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordMalformed, "code file LanguageType is empty.")
+		return nil, errors.New("cli: code file LanguageType is empty")
 	}
 	return &CodeObjectState{
 		CodeObject: CodeObject{
@@ -354,7 +354,7 @@ func (m *COSPManager) saveCodeObjectStates(path string, codeObjects []CodeObject
 	}
 	err := m.persMgr.WriteCSVStream(persistence.PermguardDir, path, nil, codeObjects, rowFunc, true)
 	if err != nil {
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "failed to write code object state", err)
+		return errors.Join(err, errors.New("cli: failed to write code object state"))
 	}
 	return nil
 }
@@ -385,7 +385,7 @@ func (m *COSPManager) readCodeObjectStates(path string) ([]CodeObjectState, erro
 	}
 	err := m.persMgr.ReadCSVStream(persistence.PermguardDir, path, nil, recordFunc, true)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "failed to read code state", err)
+		return nil, errors.Join(err, errors.New("cli: failed to read code state"))
 	}
 	return codeObjects, nil
 }
@@ -445,7 +445,7 @@ func (m *COSPManager) SaveObject(oid string, content []byte) (bool, error) {
 	path := filepath.Join(folder, name)
 	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, folder)
 	if err != nil {
-		return false, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, fmt.Sprintf("failed to save object %s", oid), err)
+		return false, errors.Join(err, fmt.Errorf("cli: failed to save object %s", oid))
 	}
 	return m.persMgr.WriteFile(persistence.PermguardDir, path, content, 0644, true)
 }
@@ -528,7 +528,7 @@ func (m *COSPManager) GetCommit(commitID string) (*objects.Commit, error) {
 		return nil, err
 	}
 	if objInfo.GetType() != objects.ObjectTypeCommit {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, fmt.Sprintf("oid %s is not a valid commit", commitID))
+		return nil, fmt.Errorf("cli: oid %s is not a valid commit", commitID)
 	}
 	commit := objInfo.GetInstance().(*objects.Commit)
 	return commit, nil

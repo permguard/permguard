@@ -17,11 +17,11 @@
 package common
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/permguard/permguard/common/pkg/extensions/validators"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // RemoteInfo represents the remote information.
@@ -34,13 +34,13 @@ type RemoteInfo struct {
 // NewRemoteInfo creates a new remote info.
 func NewRemoteInfo(server string, zapPort, papPort int) (*RemoteInfo, error) {
 	if server == "" {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid server")
+		return nil, errors.New("cli: invalid server")
 	}
 	if zapPort <= 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid zap port")
+		return nil, errors.New("cli: invalid zap port")
 	}
 	if papPort <= 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid pap port")
+		return nil, errors.New("cli: invalid pap port")
 	}
 	return &RemoteInfo{
 		server:  server,
@@ -67,11 +67,11 @@ func (i *RemoteInfo) GetPAPPort() int {
 // SanitizeRemote sanitizes the remote name.
 func SanitizeRemote(remote string) (string, error) {
 	if len(remote) == 0 {
-		return "", cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid remote name")
+		return "", errors.New("cli: invalid remote name")
 	}
 	remote = strings.ToLower(remote)
 	if !validators.ValidateSimpleName(remote) {
-		return "", cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid remote name %s", remote))
+		return "", fmt.Errorf("cli: invalid remote name %s", remote)
 	}
 	return remote, nil
 }

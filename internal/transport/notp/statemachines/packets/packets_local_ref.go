@@ -68,7 +68,7 @@ func (p *LocalRefStatePacket) Deserialize(data []byte) error {
 	if err != nil {
 		return err
 	}
-	p.OpCode, data, err = notppackets.DeserializeUint16(data, notppackets.PacketNullByte)
+	p.OpCode, _, err = notppackets.DeserializeUint16(data, notppackets.PacketNullByte)
 	if err != nil {
 		return err
 	}

@@ -17,12 +17,12 @@
 package remoteserver
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/permguard/permguard/internal/cli/common"
 	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/internal/transport/clients"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 
 	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
@@ -45,10 +45,10 @@ func NewRemoteServerManager(ctx *common.CliCommandContext) (*RemoteServerManager
 // GetServerRemoteLedger gets the remote ledger from the server.
 func (m *RemoteServerManager) GetServerRemoteLedger(remoteInfo *wkscommon.RemoteInfo, ledgerInfo *wkscommon.LedgerInfo) (*pap.Ledger, error) {
 	if remoteInfo == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "remote info is nil")
+		return nil, errors.New("cli: remote info is nil")
 	}
 	if ledgerInfo == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "ledger info is nil")
+		return nil, errors.New("cli: ledger info is nil")
 	}
 	zoneerver := fmt.Sprintf("%s:%d", remoteInfo.GetServer(), remoteInfo.GetZAPPort())
 	zapClient, err := clients.NewGrpcZAPClient(zoneerver)
@@ -64,14 +64,14 @@ func (m *RemoteServerManager) GetServerRemoteLedger(remoteInfo *wkscommon.Remote
 	ledger := ledgerInfo.GetLedger()
 	srvZones, err := zapClient.FetchZonesByID(1, 1, zoneID)
 	if err != nil || srvZones == nil || len(srvZones) == 0 {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("zone %d does not exist", zoneID), err)
+		return nil, errors.Join(err, fmt.Errorf("cli: zone %d does not exist", zoneID))
 	}
 	srvLedger, err := papClient.FetchLedgersByName(1, 1, zoneID, ledger)
 	if err != nil || srvLedger == nil || len(srvLedger) == 0 {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("ledger %s does not exist", ledger), err)
+		return nil, errors.Join(err, fmt.Errorf("cli: ledger %s does not exist", ledger))
 	}
 	if srvLedger[0].Name != ledger {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordNotFound, fmt.Sprintf("ledger %s not found", ledger))
+		return nil, fmt.Errorf("cli: ledger %s not found", ledger)
 	}
 	return &srvLedger[0], nil
 }
@@ -109,7 +109,7 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, zoneID int64,
 			case notpsmpackets.RespondCurrentStateMessage:
 				return clientProvider.OnPushHandleNotifyCurrentStateResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, fmt.Errorf("cli: invalid message code %d", statePacket.MessageCode)
 			}
 
 		case notpstatemachines.PublisherNegotiationStateID:
@@ -119,7 +119,7 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, zoneID int64,
 			case notpsmpackets.RespondNegotiationRequestMessage:
 				return clientProvider.OnPushSendNegotiationResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, fmt.Errorf("cli: invalid message code %d", statePacket.MessageCode)
 			}
 
 		case notpstatemachines.PublisherDataStreamStateID:
@@ -127,7 +127,7 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, zoneID int64,
 			case notpsmpackets.ExchangeDataStreamMessage:
 				return clientProvider.OnPushExchangeDataStream(handlerCtx, statePacket, packets)
 			default:
-				return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, fmt.Errorf("cli: invalid message code %d", statePacket.MessageCode)
 			}
 
 		case notpstatemachines.PublisherCommitStateID:
@@ -135,10 +135,10 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, zoneID int64,
 			case notpsmpackets.CommitMessage:
 				return clientProvider.OnPushHandleCommitResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, fmt.Errorf("cli: invalid message code %d", statePacket.MessageCode)
 			}
 		default:
-			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid state %d", handlerCtx.GetCurrentStateID()))
+			return nil, fmt.Errorf("cli: invalid state %d", handlerCtx.GetCurrentStateID())
 		}
 	}
 	return papClient.NOTPStream(hostHandler, zoneID, ledgerID, bag, notpstatemachines.PushFlowType)
@@ -160,7 +160,7 @@ func (m *RemoteServerManager) NOTPPull(server string, papPort int, zoneID int64,
 			case notpsmpackets.RespondCurrentStateMessage:
 				return clientProvider.OnPullHandleRequestCurrentStateResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, fmt.Errorf("cli: invalid message code %d", statePacket.MessageCode)
 			}
 
 		case notpstatemachines.SubscriberNegotiationStateID:
@@ -170,7 +170,7 @@ func (m *RemoteServerManager) NOTPPull(server string, papPort int, zoneID int64,
 			case notpsmpackets.RespondNegotiationRequestMessage:
 				return clientProvider.OnPullHandleNegotiationResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, fmt.Errorf("cli: invalid message code %d", statePacket.MessageCode)
 			}
 
 		case notpstatemachines.SubscriberDataStreamStateID:
@@ -178,7 +178,7 @@ func (m *RemoteServerManager) NOTPPull(server string, papPort int, zoneID int64,
 			case notpsmpackets.ExchangeDataStreamMessage:
 				return clientProvider.OnPullHandleExchangeDataStream(handlerCtx, statePacket, packets)
 			default:
-				return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, fmt.Errorf("cli: invalid message code %d", statePacket.MessageCode)
 			}
 
 		case notpstatemachines.SubscriberCommitStateID:
@@ -186,10 +186,10 @@ func (m *RemoteServerManager) NOTPPull(server string, papPort int, zoneID int64,
 			case notpsmpackets.CommitMessage:
 				return clientProvider.OnPullSendCommit(handlerCtx, statePacket, packets)
 			default:
-				return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, fmt.Errorf("cli: invalid message code %d", statePacket.MessageCode)
 			}
 		default:
-			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid state %d", handlerCtx.GetCurrentStateID()))
+			return nil, fmt.Errorf("cli: invalid state %d", handlerCtx.GetCurrentStateID())
 		}
 	}
 	return papClient.NOTPStream(hostHandler, zoneID, ledgerID, bag, notpstatemachines.PullFlowType)

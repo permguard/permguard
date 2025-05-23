@@ -72,10 +72,10 @@ func (w *PacketWriter) AppendDataPacket(packet Packetable) error {
 	}
 	dataType := packet.GetType()
 	data, err := packet.Serialize()
-	data = EncodeByteArray(data)
 	if err != nil {
 		return err
 	}
+	data = EncodeByteArray(data)
 	if w.streamEndIndex == -1 {
 		streamSize := uint64(1)
 		if w.packet.Data, err = writeStreamDataPacket(w.packet.Data, dataType, &streamSize, data); err != nil {

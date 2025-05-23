@@ -17,11 +17,11 @@
 package common
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/core/validators"
 )
 
@@ -65,36 +65,36 @@ func GetLedgerURIFromLedgerInfo(ledgerInfo *LedgerInfo) (string, error) {
 // GetLedgerInfoFromURI gets the ledger information from the URI.
 func GetLedgerInfoFromURI(ledgerURI string) (*LedgerInfo, error) {
 	if len(ledgerURI) == 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ledger uri")
+		return nil, errors.New("cli: invalid ledger uri")
 	}
 	result := &LedgerInfo{}
 	ledgerURI = strings.ToLower(ledgerURI)
 	items := strings.Split(ledgerURI, "/")
 	if len(items) < 3 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid ledger %s", ledgerURI))
+		return nil, fmt.Errorf("cli: invalid ledger %s", ledgerURI)
 	}
 
 	remoteName, err := SanitizeRemote(items[0])
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid remote %s", remoteName), err)
+		return nil, errors.Join(err, fmt.Errorf("cli: invalid remote %s", remoteName))
 	}
 	result.remote = remoteName
 
 	zoneIDStr := items[1]
 	zoneID, err := strconv.ParseInt(zoneIDStr, 10, 64)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid zone id %s", zoneIDStr), err)
+		return nil, errors.Join(err, fmt.Errorf("cli: invalid zone id %s", zoneIDStr))
 	}
 	err = validators.ValidateCodeID("ledger", zoneID)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid zone id %s", zoneIDStr), err)
+		return nil, errors.Join(err, fmt.Errorf("cli: invalid zone id %s", zoneIDStr))
 	}
 	result.zoneID = zoneID
 
 	ledgerName := items[2]
 	err = validators.ValidateName("ledger", ledgerName)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid ledger name %s", ledgerName), err)
+		return nil, errors.Join(err, fmt.Errorf("cli: invalid ledger name %s", ledgerName))
 	}
 	result.ledger = ledgerName
 	return result, nil
@@ -103,7 +103,7 @@ func GetLedgerInfoFromURI(ledgerURI string) (*LedgerInfo, error) {
 // SanitizeLedger sanitizes the remote name.
 func SanitizeLedger(ledgerURI string) (string, error) {
 	if len(ledgerURI) == 0 {
-		return "", cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ledger uri")
+		return "", errors.New("cli: invalid ledger uri")
 	}
 	ledgerURI = strings.ToLower(ledgerURI)
 	if _, err := GetLedgerInfoFromURI(ledgerURI); err != nil {

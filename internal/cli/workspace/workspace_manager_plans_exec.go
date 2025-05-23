@@ -55,15 +55,18 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out common.PrinterOut
 	}
 
 	// Read current head settings
-	headCtx, err := m.getCurrentHeadContext()
+	var err error
+	var headCtx *currentHeadContext
+	headCtx, err = m.getCurrentHeadContext()
 	if err != nil {
 		return fail(nil, err)
 	}
 
 	// Executes the validation for the current head
-	output, err := m.execInternalValidate(true, out)
+	var output map[string]any
+	output, err = m.execInternalValidate(true, out)
 	if err != nil {
-		output, err := fail(output, err)
+		output, err = fail(output, err)
 		return out(output, "", fmt.Sprintf("Please execute '%s' to perform a comprehensive validation check for any potential errors.", common.CliCommandText("permguard validate")), nil, true), err
 	}
 

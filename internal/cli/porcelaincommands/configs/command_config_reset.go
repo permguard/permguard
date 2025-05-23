@@ -17,6 +17,7 @@
 package configs
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/fatih/color"
@@ -26,7 +27,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // runECommandReset runs the command for resetting the config.
@@ -42,8 +42,7 @@ func runECommandReset(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *v
 			printer.Println("Failed to reset the cli config file.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to reset the cli config file.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to reset the cli config file")))
 		}
 		return common.ErrCommandSilent
 	}

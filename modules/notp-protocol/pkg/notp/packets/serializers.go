@@ -80,7 +80,7 @@ func SerializeBool(data []byte, value bool, nullByte byte) []byte {
 		data = make([]byte, 0)
 	}
 	var input byte
-	if value == true {
+	if value {
 		input = 1
 	} else {
 		input = 0
