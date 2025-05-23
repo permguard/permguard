@@ -17,6 +17,7 @@
 package ref
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 
@@ -25,7 +26,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -92,7 +92,7 @@ func (m *RefManager) GenerateRef(remote string, zoneID int64, ledgerID string) s
 func (m *RefManager) saveConfig(name string, override bool, cfg any) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "failed to marshal config", err)
+		return errors.Join(err, errors.New("cli: failed to marshal config"))
 	}
 	if override {
 		_, err = m.persMgr.WriteFile(persistence.PermguardDir, name, data, 0644, false)
@@ -100,7 +100,7 @@ func (m *RefManager) saveConfig(name string, override bool, cfg any) error {
 		_, err = m.persMgr.WriteFileIfNotExists(persistence.PermguardDir, name, data, 0644, false)
 	}
 	if err != nil {
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, fmt.Sprintf("failed to write config file %s", name), err)
+		return errors.Join(err, fmt.Errorf("cli: failed to write config file %s", name))
 	}
 	return nil
 }
@@ -177,7 +177,7 @@ func (m *RefManager) GetRefUpstreamRef(ref string) (string, error) {
 		return "", err
 	}
 	if refCfg == nil {
-		return "", cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "invalid ref config file", err)
+		return "", errors.Join(err, errors.New("cli: invalid ref config file"))
 
 	}
 	return refCfg.Objects.UpstreamRef, nil
@@ -190,7 +190,7 @@ func (m *RefManager) GetRefLedgerID(ref string) (string, error) {
 		return "", err
 	}
 	if refCfg == nil {
-		return "", cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "invalid ref config file", err)
+		return "", errors.Join(err, errors.New("cli: invalid ref config file"))
 
 	}
 	return refCfg.Objects.LedgerID, nil
@@ -203,7 +203,7 @@ func (m *RefManager) GetRefCommit(ref string) (string, error) {
 		return "", err
 	}
 	if refCfg == nil {
-		return "", cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "invalid ref config file", err)
+		return "", errors.Join(err, errors.New("cli: invalid ref config file"))
 	}
 	return refCfg.Objects.Commit, nil
 }
@@ -247,7 +247,7 @@ func (m *RefManager) GetCurrentHeadCommit() (string, error) {
 // GetRefInfo gets the ref information.
 func (m *RefManager) GetRefInfo(ref string) (*wkscommon.RefInfo, error) {
 	if len(ref) == 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ref")
+		return nil, errors.New("cli: invalid ref")
 	}
 	return wkscommon.ConvertStringWithLedgerIDToRefInfo(ref)
 }

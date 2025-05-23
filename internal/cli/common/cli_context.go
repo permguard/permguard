@@ -26,7 +26,6 @@ import (
 	"github.com/permguard/permguard/common/pkg/extensions/validators"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 var (
@@ -66,7 +65,7 @@ func newCliContext(cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, erro
 		return nil, err
 	}
 	if !validators.IsValidPath(workDir) {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliDirectoryOperation, fmt.Sprintf("%s is an invalid work directory", workDir))
+		return nil, fmt.Errorf("cli: %s is an invalid work directory", workDir)
 	}
 	ctx.workDir = workDir
 	output, err := cmd.Flags().GetString(FlagOutput)
@@ -75,7 +74,7 @@ func newCliContext(cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, erro
 	}
 	ctx.output = strings.ToUpper(strings.TrimSpace(output))
 	if ctx.output != cli.OutputTerminal && ctx.output != cli.OutputJSON {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliDirectoryOperation, fmt.Sprintf("%s is an invalid output", output))
+		return nil, fmt.Errorf("cli: %s is an invalid output", output)
 	}
 	verbose, err := cmd.Flags().GetBool(FlagVerbose)
 	if err != nil {
@@ -153,7 +152,7 @@ func (c *CliCommandContext) GetWorkDir() string {
 func (c *CliCommandContext) GetZAPTarget() (string, error) {
 	target := c.v.Get(options.FlagName(FlagPrefixZAP, FlagSuffixZAPTarget))
 	if target == nil {
-		return "", cerrors.WrapHandledSysError(cerrors.ErrCliConfiguration, fmt.Errorf("zap target is not set"))
+		return "", fmt.Errorf("cli: zap target is not set")
 	}
 	return target.(string), nil
 }
@@ -162,7 +161,7 @@ func (c *CliCommandContext) GetZAPTarget() (string, error) {
 func (c *CliCommandContext) GetPAPTarget() (string, error) {
 	target := c.v.Get(options.FlagName(FlagPrefixPAP, FlagSuffixPAPTarget))
 	if target == nil {
-		return "", cerrors.WrapHandledSysError(cerrors.ErrCliConfiguration, fmt.Errorf("pap target is not set"))
+		return "", fmt.Errorf("cli: pap target is not set")
 	}
 	return target.(string), nil
 }
@@ -171,7 +170,7 @@ func (c *CliCommandContext) GetPAPTarget() (string, error) {
 func (c *CliCommandContext) GetPDPTarget() (string, error) {
 	target := c.v.Get(options.FlagName(FlagPrefixPDP, FlagSuffixPDPTarget))
 	if target == nil {
-		return "", cerrors.WrapHandledSysError(cerrors.ErrCliConfiguration, fmt.Errorf("pdp target is not set"))
+		return "", fmt.Errorf("cli: pdp target is not set")
 	}
 	return target.(string), nil
 }

@@ -17,6 +17,7 @@
 package authz
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/fatih/color"
@@ -26,7 +27,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
@@ -48,8 +48,7 @@ func runECommandForDeleteLedger(deps cli.CliDependenciesProvider, cmd *cobra.Com
 			printer.Println("Failed to delete the ledger.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to delete the ledger", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to delete the ledger")))
 		}
 	}
 	client, err := deps.CreateGrpcPAPClient(papTarget)
@@ -58,8 +57,7 @@ func runECommandForDeleteLedger(deps cli.CliDependenciesProvider, cmd *cobra.Com
 			printer.Println("Failed to delete the ledger.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to delete the ledger", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to delete the ledger")))
 		}
 	}
 	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
@@ -70,8 +68,7 @@ func runECommandForDeleteLedger(deps cli.CliDependenciesProvider, cmd *cobra.Com
 			printer.Println("Failed to delete the ledger.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to delete the ledger", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to delete the ledger")))
 		}
 		return common.ErrCommandSilent
 	}

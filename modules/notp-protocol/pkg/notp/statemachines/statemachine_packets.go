@@ -55,8 +55,8 @@ func createAndHandleStatePacket(runtime *StateMachineRuntimeContext, messageCode
 		handlerReturn, err := runtime.HandleStream(handlerCtx, statePacket, packetables)
 		if handlerReturn != nil {
 			if handlerReturn.Terminate {
-				err := sendTermination(runtime)
-				return nil, nil, false, true, err
+				err2:= sendTermination(runtime)
+				return nil, nil, false, true, err2
 			}
 			hasMore = handlerReturn.HasMore
 			handledPacketables = handlerReturn.Packetables
@@ -84,18 +84,18 @@ func createAndHandleAndStreamStatePacketWithValue(runtime *StateMachineRuntimeCo
 	var packet *notpsmpackets.StatePacket
 	hasMore := true
 	for hasMore {
-		statePacket, packetables, handlerHasMore, terminate, err := createAndHandleStatePacket(runtime, messageCode, messageValue, packetables)
+		statePacket, handledPacketable, handlerHasMore, terminate, err := createAndHandleStatePacket(runtime, messageCode, messageValue, packetables)
 		if terminate {
-			err := sendTermination(runtime)
-			return nil, true, err
+			err2 := sendTermination(runtime)
+			return nil, true, err2
 		}
 		if err != nil {
-			err := sendTermination(runtime)
-			return nil, false, fmt.Errorf("notp: failed to create and handle packet: %w", err)
+			err2 := sendTermination(runtime)
+			return nil, false, fmt.Errorf("notp: failed to create and handle packet: %w", err2)
 		}
 		hasMore = handlerHasMore
 		packet = statePacket
-		streamPacketables := append([]notppackets.Packetable{statePacket}, packetables...)
+		streamPacketables := append([]notppackets.Packetable{statePacket}, handledPacketable...)
 		err = runtime.SendStream(streamPacketables)
 		if err != nil {
 			err := sendTermination(runtime)

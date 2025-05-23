@@ -21,8 +21,6 @@ import (
 	"fmt"
 
 	"github.com/mattn/go-sqlite3"
-
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -48,7 +46,7 @@ func readErroMapParam(key string, params map[string]string) string {
 func WrapSqlite3ErrorWithParams(msg string, err error, params map[string]string) error {
 	sqliteErr, ok := err.(sqlite3.Error)
 	if !ok {
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageGeneric, fmt.Sprintf("(%s)", msg), err)
+		return errors.Join(err, fmt.Errorf("(%s)", msg))
 	}
 	switch sqliteErr.Code {
 	case sqlite3.ErrConstraint:
@@ -56,16 +54,16 @@ func WrapSqlite3ErrorWithParams(msg string, err error, params map[string]string)
 			if sqliteErr.ExtendedCode == sqlite3.ErrConstraintForeignKey {
 				foreignKey := readErroMapParam(WrapSqlite3ParamForeignKey, params)
 				if foreignKey != "" {
-					return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageConstraintForeignKey, fmt.Sprintf("%s validation failed: the provided zone id does not exist - %s", foreignKey, msg), err)
+					return errors.Join(err, fmt.Errorf("storage: %s validation failed: the provided zone id does not exist - %s", foreignKey, msg))
 				}
-				return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageConstraintForeignKey, fmt.Sprintf("foreign key constraint failed - %s", msg), err)
+				return errors.Join(err, fmt.Errorf("foreign key constraint failed - %s", msg))
 			}
-			return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageConstraintUnique, fmt.Sprintf("unique constraint failed - %s", msg), err)
+			return errors.Join(err, fmt.Errorf("unique constraint failed - %s", msg))
 		}
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageConstraintUnique, fmt.Sprintf("constraint failed - %s", msg), err)
+		return errors.Join(err, fmt.Errorf("constraint failed - %s", msg))
 	case sqlite3.ErrNotFound:
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageNotFound, fmt.Sprintf("record not found - %s", msg), err)
+		return errors.Join(err, fmt.Errorf("record not found - %s", msg))
 	default:
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageGeneric, fmt.Sprintf("generic error (%s)", msg), err)
+		return errors.Join(err, fmt.Errorf("generic error (%s)", msg))
 	}
 }

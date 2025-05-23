@@ -82,8 +82,7 @@ output:
 
 ```json
 {
-  "error_code": "08102",
-  "error_message": "cli: operation on file failed",
+  "error": "cli: validation errors found in code files within the workspace. please check the logs for more details\ncli: failed to validate the workspace",
   "validation_errors": {
     "platform/platform-policies.cedar": {
       "1": {

@@ -18,13 +18,13 @@ package cedar
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/cedar-policy/cedar-go"
 
 	"github.com/permguard/permguard/pkg/authz/engines"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/ztauthstar-cedar/pkg/cedarlang"
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
@@ -42,7 +42,7 @@ type CedarLanguageAbstraction struct {
 func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
 	objMng, err := objects.NewObjectManager()
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrLanguageGeneric, "[cedar] failed to create the object manager", err)
+		return nil, errors.Join(err, errors.New("cedar: failed to create the object manager"))
 	}
 	return &CedarLanguageAbstraction{
 		objMng: objMng,
@@ -87,14 +87,14 @@ func (abs *CedarLanguageAbstraction) GetPolicyFileExtensions() []string {
 // CreatePolicyBlobObjects creates multi sections policy blob objects.
 func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(mfestLang *manifests.Language, partition string, filePath string, data []byte) (*objects.MultiSectionsObject, error) {
 	if mfestLang.Name != cedarlang.LanguageCedar {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguageGeneric, "[cedar] unsupported frontend language")
+		return nil, errors.New("cedar: unsupported frontend language")
 	}
 
 	policySet, err := cedar.NewPolicySetFromBytes(filePath, data)
 	if err != nil {
 		multiSecObj, err2 := objects.NewMultiSectionsObject(filePath, 0, nil)
 		if err2 != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrLanguageGeneric, "[cedar] failed to create the multi section object", err2)
+			return nil, errors.New("cedar: failed to create the multi section object")
 		}
 		multiSecObj.AddSectionObjectWithError(0, err)
 		return multiSecObj, nil
@@ -103,7 +103,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(mfestLang *manifest
 	policiesMap := policySet.Map()
 	multiSecObj, err := objects.NewMultiSectionsObject(filePath, len(policiesMap), nil)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrLanguageGeneric, "[cedar] failed to create the multi section object", err)
+		return nil, errors.New("cedar: failed to create the multi section object")
 	}
 
 	const (
@@ -125,7 +125,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(mfestLang *manifest
 		var policyID string
 		annPolicyID, exists := policy.Annotations()["id"]
 		if !exists {
-			multiSecObj.AddSectionObjectWithError(i, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguageGeneric, "[cedar] missing the policy id"))
+			multiSecObj.AddSectionObjectWithError(i, errors.New("cedar: missing the policy id"))
 			continue
 		} else {
 			policyID = string(annPolicyID)
@@ -158,7 +158,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(mfestLang *manifest
 
 		objInfo, err := abs.objMng.GetObjectInfo(obj)
 		if err != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrLanguageGeneric, "[cedar] failed to get the object info", err)
+			return nil, errors.Join(err, errors.New("cedar: failed to get the object info"))
 		}
 
 		multiSecObj.AddSectionObjectWithParams(obj, partition, objInfo.GetType(), objName, codeID, codeType, lang, langVersion, langPolicyType, i)
@@ -187,7 +187,7 @@ func (abs *CedarLanguageAbstraction) GetSchemaFileNames() []string {
 // CreateSchemaBlobObjects creates multi sections schema blob objects.
 func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(mfestLang *manifests.Language, partition string, path string, data []byte) (*objects.MultiSectionsObject, error) {
 	if mfestLang.Name != cedarlang.LanguageCedar {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguageGeneric, "[cedar] unsupported frontend language")
+		return nil, errors.New("cedar: unsupported frontend language")
 	}
 
 	const (
@@ -210,7 +210,7 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(mfestLang *manifest
 
 	multiSecObj, err := objects.NewMultiSectionsObject(path, 1, nil)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrLanguageGeneric, "[cedar] failed to create the multi section object", err)
+		return nil, errors.Join(err, errors.New("cedar: failed to create the multi section object"))
 	}
 	header, err := objects.NewObjectHeader(partition, true, langID, langVersionID, langSchemaTypeID, codeID, codeTypeID)
 	if err != nil {
@@ -226,7 +226,7 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(mfestLang *manifest
 
 	objInfo, err := abs.objMng.GetObjectInfo(obj)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrLanguageGeneric, "[cedar] failed to get the object info", err)
+		return nil, errors.Join(err, errors.New("cedar: failed to get the object info"))
 	}
 
 	multiSecObj.AddSectionObjectWithParams(obj, partition, objInfo.GetType(), objName, codeID, codeType, lang, langVersion, langSchemaType, 0)
@@ -236,7 +236,7 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(mfestLang *manifest
 // CreateSchemaContentBytes creates a schema content bytes.
 func (abs *CedarLanguageAbstraction) CreateSchemaContentBytes(mfestLang *manifests.Language, blocks []byte) ([]byte, string, error) {
 	if len(blocks) == 0 {
-		return nil, "", cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguageSyntax, "[cedar] schema cannot be empty")
+		return nil, "", errors.New("cedar: schema cannot be empty")
 	}
 	return blocks, cedarlang.LanguageSchemaFileName, nil
 }
@@ -244,10 +244,10 @@ func (abs *CedarLanguageAbstraction) CreateSchemaContentBytes(mfestLang *manifes
 // ConvertBytesToFrontendLanguage converts bytes to the frontend language.
 func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(mfestLang *manifests.Language, langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error) {
 	if cedarlang.LanguageCedarJSONID != langID {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguageGeneric, "[cedar] invalid backend language")
+		return nil, errors.New("cedar: invalid backend language")
 	}
 	if cedarlang.LanguageSyntaxVersionID != langVersionID {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguageGeneric, "[cedar] invalid backend language version")
+		return nil, errors.New("cedar: invalid backend language version")
 	}
 	var frontendContent []byte
 	switch langTypeID {
@@ -255,13 +255,13 @@ func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(mfestLang *m
 		var cedarPolicy cedar.Policy
 		err := cedarPolicy.UnmarshalJSON(content)
 		if err != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrLanguageSyntax, "[cedar] invalid policy syntax", err)
+			return nil, errors.Join(err, errors.New("cedar: invalid policy syntax"))
 		}
 		frontendContent = cedarPolicy.MarshalCedar()
 	case cedarlang.LanguageSchemaTypeID:
 		frontendContent = content
 	default:
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguageSyntax, "[cedar] invalid syntax")
+		return nil, errors.New( "cedar: invalid syntax")
 	}
 	return frontendContent, nil
 }
@@ -275,7 +275,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 		policyBytes := objInfo.GetInstance().([]byte)
 		var policy cedar.Policy
 		if err := policy.UnmarshalJSON(policyBytes); err != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrLanguageSyntax, "[cedar] policy could not be unmarshalled", err)
+			return nil, errors.Join(err, errors.New("cedar: policy could not be unmarshalled"))
 		}
 		codeID := objInfo.GetHeader().GetCodeID()
 		ps.Add(cedar.PolicyID(codeID), &policy)
@@ -285,33 +285,33 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 	subject := authzCtx.GetSubject()
 	subjectID := subject.GetID()
 	if len(strings.TrimSpace(subjectID)) == 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the subject id")
+		return nil, errors.New("cedar: bad request for the subject id")
 	}
 	subjectKind := subject.GetType()
 	var err error
 	var pmgSubjectKind string
 	pmgSubjectKind, err = createPermguardSubjectKind(subjectKind)
 	if err != nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the subject type")
+		return nil, errors.Join(err, errors.New("cedar: bad request for the subject type"))
 	}
 	subjectProperties, err := createEntityAttribJSON(pmgSubjectKind, subjectID, subject.GetProperties())
 	if err != nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the subject properties")
+		return nil, errors.Join(err, errors.New("cedar: bad request for the subject properties"))
 	}
 
 	// Extract the resource from the authorization context.
 	resource := authzCtx.GetResource()
 	resourceType := resource.GetType()
 	if len(strings.TrimSpace(resourceType)) == 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the resource type")
+		return nil, errors.New("cedar: bad request for the resource type")
 	}
 	resourceID := resource.GetID()
 	if len(strings.TrimSpace(resourceID)) == 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the resource id")
+		return nil, errors.New("cedar: bad request for the resource id")
 	}
 	resourceProperties, err := createEntityAttribJSON(resourceType, resourceID, resource.GetProperties())
 	if err != nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the resource properties")
+		return nil, errors.New( "cedar: bad request for the resource properties")
 	}
 
 	// Extract the action from the authorization context.
@@ -319,19 +319,19 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 	actionID := action.GetID()
 	actiondIndex := strings.LastIndex(actionID, "::")
 	if actiondIndex == -1 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for an invalid action format")
+		return nil, errors.New("cedar: bad request for an invalid action format")
 	}
 	actionType := actionID[:actiondIndex]
 	if len(strings.TrimSpace(actionType)) == 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the action type")
+		return nil, errors.New("cedar: bad request for the action type")
 	}
 	actionID = actionID[actiondIndex+len("::"):]
 	if len(strings.TrimSpace(actionID)) == 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the action id")
+		return nil, errors.New("cedar: bad request for the action id")
 	}
 	actionProperties, err := createEntityAttribJSON(actionType, actionID, action.GetProperties())
 	if err != nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the action properties")
+		return nil, errors.Join(err, errors.New("cedar: bad request for the action properties"))
 	}
 
 	// Extract the context from the authorization context.
@@ -339,10 +339,10 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 	contextRecord := cedar.NewRecord(context)
 	jsonContext, err := json.Marshal(authzCtx.GetContext())
 	if err != nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the context")
+		return nil, errors.Join(err, errors.New("cedar: bad request for the context"))
 	}
 	if err = contextRecord.UnmarshalJSON(jsonContext); err != nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the context")
+		return nil, errors.Join(err, errors.New("cedar: bad request for the context"))
 	}
 	hasIllegalKey := false
 	contextRecord.Iterate(func(key cedar.String, val cedar.Value) bool {
@@ -355,26 +355,25 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 		return true
 	})
 	if hasIllegalKey {
-		errMsg := fmt.Sprintf("[cedar] bad request for an invalid context key, key %s is reserved by permguard and cannot be used", actionID)
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, errMsg)
+		return nil, fmt.Errorf("cedar: bad request for an invalid context key, key %s is reserved by permguard and cannot be used", actionID)
 	}
 
 	// Build the entities.
 	authzEntities := authzCtx.GetEntities()
 	authzEntitiesItems := authzEntities.GetItems()
 	if _, err = verifyUIDTypeFromEntityMap(authzEntitiesItems); err != nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the entities")
+		return nil, errors.Join(err, errors.New("cedar: bad request for the entities"))
 	}
 	authzEntitiesItems = append(authzEntitiesItems, subjectProperties)
 	authzEntitiesItems = append(authzEntitiesItems, actionProperties)
 	authzEntitiesItems = append(authzEntitiesItems, resourceProperties)
 	jsonEntities, err := json.Marshal(authzEntitiesItems)
 	if err != nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the entities")
+		return nil, errors.Join(err, errors.New("cedar: bad request for the entities"))
 	}
 	var entities cedar.EntityMap
 	if err = json.Unmarshal(jsonEntities, &entities); err != nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguangeSemantic, "[cedar] bad request for the entities")
+		return nil, errors.Join(err, errors.New("cedar: bad request for the entities"))
 	}
 
 	// Create the request.
@@ -393,7 +392,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 	// Take the decision.
 	authzDecision, err := authzen.NewAuthorizationDecision(contextID, bool(ok), adminError, userError)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrLanguageGeneric, "[cedar] failed to create the authorization decision", err)
+		return nil, errors.Join(err, errors.New("cedar: failed to create the authorization decision"))
 	}
 	return authzDecision, nil
 }

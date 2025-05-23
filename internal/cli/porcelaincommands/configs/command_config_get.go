@@ -17,6 +17,7 @@
 package configs
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/fatih/color"
@@ -25,7 +26,6 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/pkg/cli"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // runECommandForZAPGet runs the command for getting the zap gRPC target.
@@ -41,8 +41,7 @@ func runECommandForZAPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 			printer.Println("Failed to get the zap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to get the zap target.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to get the zap target")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -63,8 +62,8 @@ func runECommandForPAPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 			printer.Println("Failed to get the pap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to get the pap target.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to get the pap target")))
+
 		}
 		return common.ErrCommandSilent
 	}
@@ -85,8 +84,7 @@ func runECommandForPDPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 			printer.Println("Failed to get the pdp target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to get the pdp target.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to get the pdp target")))
 		}
 		return common.ErrCommandSilent
 	}

@@ -18,19 +18,19 @@ package repositories
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/core/validators"
 )
 
 const (
 	// errorMessageIdentityInvalidZoneID is the error message identity invalid zone id.
-	errorMessageIdentityInvalidZoneID = "invalid client input - zone id is not valid (id: %d)"
+	errorMessageIdentityInvalidZoneID = "storage: invalid client input - zone id is not valid (id: %d)"
 )
 
 // identitiesMap is a map of identity kinds to IDs.
@@ -45,7 +45,7 @@ func ConvertIdentityKindToID(kind string) (int16, error) {
 	cKey := strings.ToLower(kind)
 	value, ok := identitiesMap[cKey]
 	if !ok {
-		return 0, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity kind %s is not valid", kind))
+		return 0, fmt.Errorf("storage: invalid client input - identity kind %s is not valid", kind)
 	}
 	return value, nil
 }
@@ -63,26 +63,26 @@ func ConvertIdentityKindToString(id int16) (string, error) {
 // UpsertIdentity creates or updates an identity.
 func (r *Repository) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identity) (*Identity, error) {
 	if identity == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity data is missing or malformed (%s)", LogIdentityEntry(identity)))
+		return nil, fmt.Errorf("storage: invalid client input - identity data is missing or malformed (%s)", LogIdentityEntry(identity))
 	}
 	if err := validators.ValidateCodeID("identity", identity.ZoneID); err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentityInvalidZoneID, identity.ZoneID), err)
+		return nil, errors.Join(err, fmt.Errorf(errorMessageIdentityInvalidZoneID, identity.ZoneID))
 	}
 	if !isCreate && validators.ValidateUUID("identity", identity.IdentityID) != nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity id is not valid (%s)", LogIdentityEntry(identity)))
+		return nil, fmt.Errorf("storage: invalid client input - identity id is not valid (%s)", LogIdentityEntry(identity))
 	}
 	if isCreate && validators.ValidateUUID("identity", identity.IdentitySourceID) != nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity id is not valid (%s)", LogIdentityEntry(identity)))
+		return nil, fmt.Errorf("storage: invalid client input - identity id is not valid (%s)", LogIdentityEntry(identity))
 	}
 	if identity.Kind == identitiesMap["user"] {
 		if err := validators.ValidateIdentityUserName("identity", identity.Name); err != nil {
 			errorMessage := "invalid client input - identity name is not valid (%s)"
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogIdentityEntry(identity)), err)
+			return nil, errors.Join(err, fmt.Errorf(errorMessage, LogIdentityEntry(identity)))
 		}
 	} else {
 		if err := validators.ValidateName("identity", identity.Name); err != nil {
 			errorMessage := "invalid client input - identity name is not valid (%s)"
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogIdentityEntry(identity)), err)
+			return nil, errors.Join(err, fmt.Errorf(errorMessage, LogIdentityEntry(identity)))
 		}
 	}
 
@@ -127,10 +127,10 @@ func (r *Repository) UpsertIdentity(tx *sql.Tx, isCreate bool, identity *Identit
 // DeleteIdentity deletes an identity.
 func (r *Repository) DeleteIdentity(tx *sql.Tx, zoneID int64, identityID string) (*Identity, error) {
 	if err := validators.ValidateCodeID("identity", zoneID); err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf(errorMessageIdentityInvalidZoneID, zoneID), err)
+		return nil, errors.Join(err, fmt.Errorf(errorMessageIdentityInvalidZoneID, zoneID))
 	}
 	if err := validators.ValidateUUID("identity", identityID); err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity id is not valid (id: %s)", identityID), err)
+		return nil, errors.Join(err, fmt.Errorf("invalid client input - identity id is not valid (id: %s)", identityID))
 	}
 	var dbIdentity Identity
 	err := tx.QueryRow("SELECT zone_id, identity_id, created_at, updated_at, identity_source_id, kind, name FROM identities WHERE zone_id = ? and identity_id = ?", zoneID, identityID).Scan(
@@ -159,10 +159,10 @@ func (r *Repository) DeleteIdentity(tx *sql.Tx, zoneID int64, identityID string)
 // FetchIdentities retrieves identities.
 func (r *Repository) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]Identity, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, fmt.Errorf("invalid client input - page number %d or page size %d is not valid", page, pageSize)
 	}
 	if err := validators.ValidateCodeID("identity", zoneID); err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientID, fmt.Sprintf(errorMessageIdentityInvalidZoneID, zoneID), err)
+		return nil, errors.Join(err, fmt.Errorf(errorMessageIdentityInvalidZoneID, zoneID))
 	}
 
 	var dbIdentities []Identity
@@ -177,7 +177,7 @@ func (r *Repository) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, zo
 	if filterID != nil {
 		identityID := *filterID
 		if err := validators.ValidateUUID("identity", identityID); err != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientID, fmt.Sprintf("invalid client input - identity id is not valid (id: %s)", identityID), err)
+			return nil, errors.Join(err, fmt.Errorf("storage: invalid client input - identity id is not valid (id: %s)", identityID))
 		}
 		conditions = append(conditions, "identity_id = ?")
 		args = append(args, identityID)
@@ -187,7 +187,7 @@ func (r *Repository) FetchIdentities(db *sqlx.DB, page int32, pageSize int32, zo
 		identityName := *filterName
 		if err := validators.ValidateIdentityUserName("identity", identityName); err != nil {
 			if err := validators.ValidateName("identity", identityName); err != nil {
-				return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientName, fmt.Sprintf("invalid client input - identity name is not valid (name: %s)", identityName), err)
+				return nil, errors.Join(err, fmt.Errorf("invalid client input - identity name is not valid (name: %s)", identityName))
 			}
 		}
 		identityName = "%" + identityName + "%"

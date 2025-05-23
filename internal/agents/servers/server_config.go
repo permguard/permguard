@@ -17,6 +17,7 @@
 package servers
 
 import (
+	"errors"
 	"flag"
 
 	"github.com/spf13/viper"
@@ -26,7 +27,6 @@ import (
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/cli/options"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -131,7 +131,7 @@ func (c *ServerConfig) InitFromViper(v *viper.Viper) error {
 	c.logLevel = logLevel
 	c.appData = v.GetString(options.FlagName(flagPrefixServer, flagSuffixAppData))
 	if !validators.IsValidPath(c.appData) {
-		return cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliArguments, "invalid zone data directory")
+		return errors.New("server: invalid app data directory")
 	}
 	for _, fcty := range c.storagesFactories {
 		config, err := fcty.GetFactoryConfig()

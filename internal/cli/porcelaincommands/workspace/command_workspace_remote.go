@@ -17,6 +17,7 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/fatih/color"
@@ -26,7 +27,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace"
 	"github.com/permguard/permguard/pkg/cli"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -57,8 +57,7 @@ func runECommandForRemoteWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.
 			printer.Println("Failed to list remotes.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to list remotes.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to list remote")))
 		}
 		return common.ErrCommandSilent
 	}

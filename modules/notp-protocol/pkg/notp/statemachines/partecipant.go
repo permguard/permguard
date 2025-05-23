@@ -151,6 +151,9 @@ func processStartFlowState(runtime *StateMachineRuntimeContext) (*StateTransitio
 	}
 	flowPacket := &notpsmpackets.StatePacket{}
 	data, err := packetables[0].Serialize()
+	if err != nil {
+		return nil, err
+	}
 	flowPacket.Deserialize(data)
 	if flowPacket.MessageCode != notpsmpackets.FlowIDValue {
 		return nil, fmt.Errorf("notp: process start flow failed to deserialize flow packet")

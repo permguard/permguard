@@ -17,9 +17,9 @@
 package centralstorage
 
 import (
+	"errors"
 	"fmt"
 
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
@@ -31,7 +31,7 @@ const (
 // CreateTenant creates a new tenant.
 func (s SQLiteCentralStorageZAP) CreateTenant(tenant *zap.Tenant) (*zap.Tenant, error) {
 	if tenant == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid client input - tenant is nil")
+		return nil, errors.New("storage: invalid client input - tenant is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -59,7 +59,7 @@ func (s SQLiteCentralStorageZAP) CreateTenant(tenant *zap.Tenant) (*zap.Tenant, 
 // UpdateTenant updates a tenant.
 func (s SQLiteCentralStorageZAP) UpdateTenant(tenant *zap.Tenant) (*zap.Tenant, error) {
 	if tenant == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid client input - tenant is nil")
+		return nil, errors.New("storage: invalid client input - tenant is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -109,7 +109,7 @@ func (s SQLiteCentralStorageZAP) DeleteTenant(zoneID int64, tenantID string) (*z
 // FetchTenants returns all tenants.
 func (s SQLiteCentralStorageZAP) FetchTenants(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]zap.Tenant, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil,  fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize)
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -119,7 +119,7 @@ func (s SQLiteCentralStorageZAP) FetchTenants(page int32, pageSize int32, zoneID
 	if _, ok := fields[zap.FieldTenantTenantID]; ok {
 		tenantID, ok := fields[zap.FieldTenantTenantID].(string)
 		if !ok {
-			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - tenant id is not valid (tenant id: %s)", tenantID))
+			return nil, fmt.Errorf("storage: invalid client input - tenant id is not valid (tenant id: %s)", tenantID)
 		}
 		filterID = &tenantID
 	}
@@ -127,7 +127,7 @@ func (s SQLiteCentralStorageZAP) FetchTenants(page int32, pageSize int32, zoneID
 	if _, ok := fields[zap.FieldTenantName]; ok {
 		tenantName, ok := fields[zap.FieldTenantName].(string)
 		if !ok {
-			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - tenant name is not valid (tenant name: %s)", tenantName))
+			return nil, fmt.Errorf("storage: invalid client input - tenant name is not valid (tenant name: %s)", tenantName)
 		}
 		filterName = &tenantName
 	}
@@ -139,7 +139,7 @@ func (s SQLiteCentralStorageZAP) FetchTenants(page int32, pageSize int32, zoneID
 	for i, a := range dbTenants {
 		tenant, err := mapTenantToAgentTenant(&a)
 		if err != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageEntityMapping, fmt.Sprintf("failed to convert tenant entity (%s)", repos.LogTenantEntry(&a)), err)
+			return nil, errors.Join(err, fmt.Errorf("failed to convert tenant entity (%s)", repos.LogTenantEntry(&a)))
 		}
 		tenants[i] = *tenant
 	}

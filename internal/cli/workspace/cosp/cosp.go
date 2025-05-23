@@ -57,7 +57,7 @@ type CodeFile struct {
 	Mode            uint32 `json:"mode"`
 	Section         int    `json:"section"`
 	HasErrors       bool   `json:"has_errors"`
-	ErrorMessage    string `json:"error_message"`
+	Error           string `json:"error"`
 }
 
 // ConvertCodeFilesToPath converts code files to paths.

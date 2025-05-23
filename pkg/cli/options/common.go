@@ -17,14 +17,13 @@
 package options
 
 import (
+	"errors"
 	"flag"
 	"slices"
 	"strings"
 
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
-
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -62,7 +61,7 @@ func InitFromViperForCommon(v *viper.Viper) (bool, string, error) {
 	debug := v.GetBool(flagDebug)
 	logLevel := strings.ToUpper(v.GetString(FlagName(flagLogLevel)))
 	if !slices.Contains(configValueLogLevels, strings.ToUpper(logLevel)) {
-		return false, "", cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "invalid log level")
+		return false, "", errors.New("cli: invalid log level")
 	}
 	return debug, logLevel, nil
 }

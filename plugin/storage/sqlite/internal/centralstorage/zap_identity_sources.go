@@ -17,9 +17,9 @@
 package centralstorage
 
 import (
+	"errors"
 	"fmt"
 
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
@@ -31,7 +31,7 @@ const (
 // CreateIdentitySource creates a new identity source.
 func (s SQLiteCentralStorageZAP) CreateIdentitySource(identitySource *zap.IdentitySource) (*zap.IdentitySource, error) {
 	if identitySource == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid client input - identity source is nil")
+		return nil, errors.New("storage: invalid client input - identity source is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -59,7 +59,7 @@ func (s SQLiteCentralStorageZAP) CreateIdentitySource(identitySource *zap.Identi
 // UpdateIdentitySource updates an identity source.
 func (s SQLiteCentralStorageZAP) UpdateIdentitySource(identitySource *zap.IdentitySource) (*zap.IdentitySource, error) {
 	if identitySource == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid client input - identity source is nil")
+		return nil, errors.New("storage: invalid client input - identity source is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -109,7 +109,7 @@ func (s SQLiteCentralStorageZAP) DeleteIdentitySource(zoneID int64, identitySour
 // FetchIdentitySources returns all identity sources.
 func (s SQLiteCentralStorageZAP) FetchIdentitySources(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]zap.IdentitySource, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize)
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -119,7 +119,7 @@ func (s SQLiteCentralStorageZAP) FetchIdentitySources(page int32, pageSize int32
 	if _, ok := fields[zap.FieldIdentitySourceIdentitySourceID]; ok {
 		identitySourceID, ok := fields[zap.FieldIdentitySourceIdentitySourceID].(string)
 		if !ok {
-			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity source id is not valid (identity source id: %s)", identitySourceID))
+			return nil, fmt.Errorf("storage: invalid client input - identity source id is not valid (identity source id: %s)", identitySourceID)
 		}
 		filterID = &identitySourceID
 	}
@@ -127,7 +127,7 @@ func (s SQLiteCentralStorageZAP) FetchIdentitySources(page int32, pageSize int32
 	if _, ok := fields[zap.FieldIdentitySourceName]; ok {
 		identitySourceName, ok := fields[zap.FieldIdentitySourceName].(string)
 		if !ok {
-			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity source name is not valid (identity source name: %s)", identitySourceName))
+			return nil, fmt.Errorf("storage: invalid client input - identity source name is not valid (identity source name: %s)", identitySourceName)
 		}
 		filterName = &identitySourceName
 	}
@@ -139,7 +139,7 @@ func (s SQLiteCentralStorageZAP) FetchIdentitySources(page int32, pageSize int32
 	for i, a := range dbIdentitySources {
 		identitySource, err := mapIdentitySourceToAgentIdentitySource(&a)
 		if err != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageEntityMapping, fmt.Sprintf("failed to convert identity source entity (%s)", repos.LogIdentitySourceEntry(&a)), err)
+			return nil, errors.Join(err, fmt.Errorf("storage: failed to convert identity source entity (%s)", repos.LogIdentitySourceEntry(&a)),)
 		}
 		identitySources[i] = *identitySource
 	}

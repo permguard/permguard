@@ -17,6 +17,7 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/fatih/color"
@@ -26,7 +27,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace"
 	"github.com/permguard/permguard/pkg/cli"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -46,8 +46,7 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps cli.CliDependencies
 			printer.Println("Failed to remove the remote.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to remove the remote.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to remove the remote")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -68,8 +67,7 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps cli.CliDependencies
 			printer.Println("Failed to remove the remote.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to remove the remote.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to remove the remote")))
 		}
 		return common.ErrCommandSilent
 	}

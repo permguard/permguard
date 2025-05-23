@@ -17,6 +17,7 @@
 package authn
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/fatih/color"
@@ -26,7 +27,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -47,8 +47,7 @@ func runECommandForListTenants(deps cli.CliDependenciesProvider, cmd *cobra.Comm
 			printer.Println("Failed to list tenants.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to list tenants", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to list tenants")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -58,8 +57,7 @@ func runECommandForListTenants(deps cli.CliDependenciesProvider, cmd *cobra.Comm
 			printer.Println("Failed to list tenants.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to list tenants", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to list tenants")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -74,8 +72,7 @@ func runECommandForListTenants(deps cli.CliDependenciesProvider, cmd *cobra.Comm
 			printer.Println("Failed to list tenants.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to list tenants", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to list tenants")))
 		}
 		return common.ErrCommandSilent
 	}

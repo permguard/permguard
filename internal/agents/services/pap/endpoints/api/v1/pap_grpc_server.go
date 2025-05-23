@@ -18,6 +18,7 @@ package v1
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -25,7 +26,6 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/permguard/permguard/pkg/agents/services"
-	czerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 
 	notptransportsm "github.com/permguard/permguard/internal/transport/notp/statemachines"
@@ -191,7 +191,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.RespondCurrentStateMessage:
 				return s.service.OnPullSendNotifyCurrentStateResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, fmt.Errorf("pap-endpoint: invalid message code %d", statePacket.MessageCode)
 			}
 
 		case notpstatemachines.PublisherNegotiationStateID:
@@ -201,7 +201,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.RespondNegotiationRequestMessage:
 				return s.service.OnPullHandleNegotiationResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, fmt.Errorf("pap-endpoint: invalid message code %d", statePacket.MessageCode)
 			}
 
 		case notpstatemachines.PublisherDataStreamStateID:
@@ -209,7 +209,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.ExchangeDataStreamMessage:
 				return s.service.OnPullHandleExchangeDataStream(handlerCtx, statePacket, packets)
 			default:
-				return nil, czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, fmt.Errorf("pap-endpoint: invalid message code %d", statePacket.MessageCode)
 			}
 
 		case notpstatemachines.PublisherCommitStateID:
@@ -217,7 +217,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.CommitMessage:
 				return s.service.OnPullHandleCommit(handlerCtx, statePacket, packets)
 			default:
-				return nil, czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, fmt.Errorf("pap-endpoint: invalid message code %d", statePacket.MessageCode)
 			}
 
 		case notpstatemachines.ProcessNotifyObjectsStateID:
@@ -227,7 +227,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.RespondCurrentStateMessage:
 				return s.service.OnPushSendNotifyCurrentStateResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, fmt.Errorf("pap-endpoint: invalid message code %d", statePacket.MessageCode)
 			}
 
 		case notpstatemachines.SubscriberNegotiationStateID:
@@ -237,7 +237,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.RespondNegotiationRequestMessage:
 				return s.service.OnPushHandleNegotiationResponse(handlerCtx, statePacket, packets)
 			default:
-				return nil, czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, fmt.Errorf("pap-endpoint: invalid message code %d", statePacket.MessageCode)
 			}
 
 		case notpstatemachines.SubscriberDataStreamStateID:
@@ -245,7 +245,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.ExchangeDataStreamMessage:
 				return s.service.OnPushHandleExchangeDataStream(handlerCtx, statePacket, packets)
 			default:
-				return nil, czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, fmt.Errorf("pap-endpoint: invalid message code %d", statePacket.MessageCode)
 			}
 
 		case notpstatemachines.SubscriberCommitStateID:
@@ -253,10 +253,10 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 			case notpsmpackets.CommitMessage:
 				return s.service.OnPushSendCommit(handlerCtx, statePacket, packets)
 			default:
-				return nil, czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, fmt.Sprintf("invalid message code %d", statePacket.MessageCode))
+				return nil, fmt.Errorf("pap-endpoint: invalid message code %d", statePacket.MessageCode)
 			}
 		default:
-			return nil, czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, fmt.Sprintf("invalid state %d", handlerCtx.GetCurrentStateID()))
+			return nil, fmt.Errorf("pap-endpoint: invalid state %d", handlerCtx.GetCurrentStateID())
 		}
 	}
 	stateMachine, err := notpstatemachines.NewLeaderStateMachine(hostHandler, transportLayer)
@@ -270,16 +270,16 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
 	md, ok := metadata.FromIncomingContext(stream.Context())
 	if !ok {
-		return czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, "notp stream missing metadata")
-
+		return errors.New("pap-endpoint: notp stream missing metadata")
 	}
 	zoneID, ok := md[notptransportsm.ZoneIDKey]
 	if !ok || len(zoneID) == 0 {
-		return czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, "notp stream missing zone id")
+		return errors.New("pap-endpoint: notp stream missing zone id")
+
 	}
 	respositoryID, ok := md[notptransportsm.LedgerIDKey]
 	if !ok || len(respositoryID) == 0 {
-		return czerrors.WrapSystemErrorWithMessage(czerrors.ErrServerGeneric, "notp stream missing ledger id")
+		return errors.New("pap-endpoint: notp stream missing ledger id")
 	}
 
 	stateMachine, err := s.createWiredStateMachine(stream)
@@ -291,7 +291,7 @@ func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, Pa
 	bag[notptransportsm.LedgerIDKey] = respositoryID[0]
 	_, err = stateMachine.Run(bag, notpstatemachines.UnknownFlowType)
 	if err != nil {
-		return czerrors.WrapHandledSysErrorWithMessage(czerrors.ErrServerGeneric, "notp stream unhandled err", err)
+		return errors.Join(err, errors.New("pap-endpoint: notp stream unhandled err"))
 	}
 	return nil
 }

@@ -248,13 +248,13 @@ func NewCommit(tree string, parentCommitID string, author string, authorTimestam
 	if strings.TrimSpace(author) == "" {
 		author = "unknown"
 	}
-	if authorTimestamp == (time.Time{}) {
+	if authorTimestamp.Equal((time.Time{})) {
 		authorTimestamp = time.Now()
 	}
 	if strings.TrimSpace(committer) == "" {
 		committer = "unknown"
 	}
-	if committerTimestamp == (time.Time{}) {
+	if committerTimestamp.Equal((time.Time{})) {
 		committerTimestamp = time.Now()
 	}
 	return &Commit{

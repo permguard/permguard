@@ -17,8 +17,9 @@
 package workspace
 
 import (
+	"errors"
+
 	"github.com/permguard/permguard/pkg/authz/languages"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 )
 
@@ -45,11 +46,11 @@ func (p *ManifestLanguageProvider) GetPartitions() []string {
 // GetLanguage gets the language for the input partition.
 func (p *ManifestLanguageProvider) GetLanguage(partition string) (*manifests.Language, error) {
 	if p.langInfos == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrConfigurationGeneric, "parition doens't exists")
+		return nil, errors.New("cli: parition doens't exists")
 	}
 	langInfo, ok := p.langInfos[partition]
 	if !ok {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrConfigurationGeneric, "parition doens't exists")
+		return nil, errors.New("cli: parition doens't exists")
 	}
 	return langInfo.lang, nil
 }
@@ -57,11 +58,11 @@ func (p *ManifestLanguageProvider) GetLanguage(partition string) (*manifests.Lan
 // GetAbstractLanguage gets the abstract language for the input partition.
 func (p *ManifestLanguageProvider) GetAbstractLanguage(partition string) (languages.LanguageAbastraction, error) {
 	if p.langInfos == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrConfigurationGeneric, "parition doens't exists")
+		return nil, errors.New("cli: parition doens't exists")
 	}
 	langInfo, ok := p.langInfos[partition]
 	if !ok {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrConfigurationGeneric, "parition doens't exists")
+		return nil, errors.New("cli: parition doens't exists")
 	}
 	return langInfo.langAbs, nil
 }
@@ -73,7 +74,7 @@ func (m *WorkspaceManager) buildManifestLanguageProvider() (*ManifestLanguagePro
 		return nil, err
 	}
 	if manifest == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrImplementation, "manifest is nil")
+		return nil, errors.New("cli: manifest is nil")
 	}
 	mfestLangMgr := &ManifestLanguageProvider{
 		manifest:  manifest,

@@ -17,6 +17,7 @@
 package db
 
 import (
+	"errors"
 	"flag"
 	"path/filepath"
 	"strings"
@@ -30,7 +31,6 @@ import (
 
 	"github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/cli/options"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -93,7 +93,7 @@ type SQLiteConnection struct {
 // NewSQLiteConnection creates a connection.
 func NewSQLiteConnection(connectionCgf *SQLiteConnectionConfig) (SQLiteConnector, error) {
 	if connectionCgf == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrConfigurationGeneric, "sqlite connection configuration cannot be nil")
+		return nil, errors.New("storage: sqlite connection configuration cannot be nil")
 	}
 	return &SQLiteConnection{
 		config: connectionCgf,
@@ -114,7 +114,7 @@ func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *storage.StorageConte
 	}
 	hostCfgReader, err := ctx.GetHostConfigReader()
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageGeneric, "cannot get host config reader", err)
+		return nil, errors.Join(err, errors.New("storage: cannot get host config reader"))
 	}
 	filePath := hostCfgReader.GetAppData()
 	dbName := c.config.GetDBName()
@@ -124,7 +124,7 @@ func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *storage.StorageConte
 	dbPath := filepath.Join(filePath, dbName)
 	db, err := sqlx.Connect("sqlite3", dbPath)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageGeneric, "cannot connect to sqlite", err)
+		return nil, errors.Join(err, errors.New("stroage: cannot connect to sqlite"))
 	}
 	db.Exec("PRAGMA foreign_keys = ON;")
 	c.db = db
@@ -140,7 +140,7 @@ func (c *SQLiteConnection) Disconnect(logger *zap.Logger, ctx *storage.StorageCo
 	}
 	err := c.db.Close()
 	if err != nil {
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageGeneric, "cannot disconnect from sqlite", err)
+		return errors.Join(err, errors.New("storage: cannot disconnect from sqlite"))
 	}
 	c.db = nil
 	return nil
