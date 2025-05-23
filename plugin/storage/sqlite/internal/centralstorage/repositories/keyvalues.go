@@ -18,24 +18,23 @@ package repositories
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
-
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // UpsertKeyValue creates or updates a key-value pair.
 func (r *Repository) UpsertKeyValue(tx *sql.Tx, keyValue *KeyValue) (*KeyValue, error) {
 	if keyValue == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid client input - key-value data is missing or malformed")
+		return nil, errors.New("storage: invalid client input - key-value data is missing or malformed")
 	}
 	if keyValue.ZoneID <= 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid client input - zone id is missing or empty")
+		return nil, errors.New("storage: invalid client input - zone id is missing or empty")
 	}
 	if keyValue.Key == "" {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid client input - key is missing or empty")
+		return nil, errors.New("storage: invalid client input - key is missing or empty")
 	}
 
 	zoneID := keyValue.ZoneID
@@ -72,7 +71,7 @@ func (r *Repository) UpsertKeyValue(tx *sql.Tx, keyValue *KeyValue) (*KeyValue, 
 // GetKeyValue retrieves the value for a given key from the key-value store.
 func (r *Repository) GetKeyValue(db *sqlx.DB, zoneID int64, key string) (*KeyValue, error) {
 	if key == "" {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid client input - key is missing or empty")
+		return nil, errors.New("storage: invalid client input - key is missing or empty")
 	}
 
 	var dbKeyValue KeyValue
@@ -83,7 +82,7 @@ func (r *Repository) GetKeyValue(db *sqlx.DB, zoneID int64, key string) (*KeyVal
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageNotFound, fmt.Sprintf("no value found for key (%s)", key), err)
+			return nil, errors.Join(err, fmt.Errorf("no value found for key (%s)", key))
 		}
 		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve key-value pair - operation 'retrieve-key-value' encountered an issue (key: %s)", key), err)
 	}

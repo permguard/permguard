@@ -18,6 +18,7 @@ package repositories
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -26,7 +27,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/core/validators"
 )
 
@@ -43,14 +43,14 @@ func GenerateZoneID() int64 {
 // UpsertZone creates or updates a zone.
 func (r *Repository) UpsertZone(tx *sql.Tx, isCreate bool, zone *Zone) (*Zone, error) {
 	if zone == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - zone data is missing or malformed (%s)", LogZoneEntry(zone)))
+		return nil, fmt.Errorf("storage: invalid client input - zone data is missing or malformed (%s)", LogZoneEntry(zone))
 	}
 	if !isCreate && validators.ValidateCodeID("zone", zone.ZoneID) != nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - zone id is not valid (%s)", LogZoneEntry(zone)))
+		return nil, fmt.Errorf("storage: invalid client input - zone id is not valid (%s)", LogZoneEntry(zone))
 	}
 	if err := validators.ValidateName("zone", zone.Name); err != nil {
 		errorMessage := "invalid client input - zone name is not valid (%s)"
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogZoneEntry(zone)), err)
+		return nil, errors.Join(err, fmt.Errorf(errorMessage, LogZoneEntry(zone)))
 	}
 
 	zoneID := zone.ZoneID
@@ -68,7 +68,7 @@ func (r *Repository) UpsertZone(tx *sql.Tx, isCreate bool, zone *Zone) (*Zone, e
 		if isCreate {
 			action = "create"
 		}
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to %s zone - operation '%s-zone' encountered an issue (%s)", action, action, LogZoneEntry(zone)), err)
+		return nil, errors.Join(err, fmt.Errorf("storage: failed to %s zone - operation '%s-zone' encountered an issue (%s)", action, action, LogZoneEntry(zone)))
 	}
 
 	var dbZone Zone
@@ -79,7 +79,7 @@ func (r *Repository) UpsertZone(tx *sql.Tx, isCreate bool, zone *Zone) (*Zone, e
 		&dbZone.Name,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve zone - operation 'retrieve-created-zone' encountered an issue (%s)", LogZoneEntry(zone)), err)
+		return nil, WrapSqlite3Error(fmt.Sprintf("storage: failed to retrieve zone - operation 'retrieve-created-zone' encountered an issue (%s)", LogZoneEntry(zone)), err)
 	}
 	return &dbZone, nil
 }
@@ -87,7 +87,7 @@ func (r *Repository) UpsertZone(tx *sql.Tx, isCreate bool, zone *Zone) (*Zone, e
 // DeleteZone deletes a zone.
 func (r *Repository) DeleteZone(tx *sql.Tx, zoneID int64) (*Zone, error) {
 	if err := validators.ValidateCodeID("zone", zoneID); err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - zone id is not valid (id: %d)", zoneID), err)
+		return nil, errors.Join(err, fmt.Errorf("storage: invalid client input - zone id is not valid (id: %d)", zoneID))
 	}
 
 	var dbZone Zone
@@ -98,15 +98,15 @@ func (r *Repository) DeleteZone(tx *sql.Tx, zoneID int64) (*Zone, error) {
 		&dbZone.Name,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - zone id is not valid (id: %d)", zoneID), err)
+		return nil, errors.Join(err, fmt.Errorf("storage: invalid client input - zone id is not valid (id: %d)", zoneID))
 	}
 	res, err := tx.Exec("DELETE FROM zones WHERE zone_id = ?", zoneID)
 	if err != nil || res == nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete zone - operation 'delete-zone' encountered an issue (id: %d)", zoneID), err)
+		return nil, errors.Join(err, fmt.Errorf("storage: failed to delete zone - operation 'delete-zone' encountered an issue (id: %d)", zoneID))
 	}
 	rows, err := res.RowsAffected()
 	if err != nil || rows != 1 {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete zone - operation 'delete-zone' encountered an issue (id: %d)", zoneID), err)
+		return nil, errors.Join(err, fmt.Errorf("storage: failed to delete zone - operation 'delete-zone' encountered an issue (id: %d)", zoneID))
 	}
 	return &dbZone, nil
 }
@@ -114,7 +114,7 @@ func (r *Repository) DeleteZone(tx *sql.Tx, zoneID int64) (*Zone, error) {
 // FetchZones retrieves zones.
 func (r *Repository) FetchZones(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]Zone, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize)
 	}
 	var dbZones []Zone
 
@@ -125,7 +125,7 @@ func (r *Repository) FetchZones(db *sqlx.DB, page int32, pageSize int32, filterI
 	if filterID != nil {
 		zoneID := *filterID
 		if err := validators.ValidateCodeID("zone", zoneID); err != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientID, fmt.Sprintf("invalid client input - zone id is not valid (id: %d)", zoneID), err)
+			return nil, errors.Join(err, fmt.Errorf("stroage: invalid client input - zone id is not valid (id: %d)", zoneID))
 		}
 		conditions = append(conditions, "zone_id = ?")
 		args = append(args, zoneID)
@@ -134,7 +134,7 @@ func (r *Repository) FetchZones(db *sqlx.DB, page int32, pageSize int32, filterI
 	if filterName != nil {
 		zoneName := *filterName
 		if err := validators.ValidateName("zone", zoneName); err != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientName, fmt.Sprintf("invalid client input - zone name is not valid (name: %s)", zoneName), err)
+			return nil, errors.Join(err, fmt.Errorf("invalid client input - zone name is not valid (name: %s)", zoneName))
 		}
 		zoneName = "%" + zoneName + "%"
 		conditions = append(conditions, "name LIKE ?")

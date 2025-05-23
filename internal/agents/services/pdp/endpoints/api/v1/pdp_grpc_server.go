@@ -19,9 +19,9 @@ package v1
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"github.com/permguard/permguard/pkg/agents/services"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 	"go.uber.org/zap"
@@ -61,7 +61,7 @@ func (s *V1PDPServer) AuthorizationCheck(ctx context.Context, request *Authoriza
 	}
 	req, err := MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request)
 	if req == nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, "request cannot be nil", err)
+		return nil, errors.Join(err, errors.New("pdp-endpoint: request cannot be nil"))
 	}
 	authzResponse, err := s.service.AuthorizationCheck(req)
 	if err != nil {

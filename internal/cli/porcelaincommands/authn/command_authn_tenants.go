@@ -17,6 +17,7 @@
 package authn
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -27,7 +28,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
@@ -57,8 +57,7 @@ func runECommandForUpsertTenant(deps cli.CliDependenciesProvider, cmd *cobra.Com
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New(strings.ToLower(opGetErroMessage(isCreate)))))
 		}
 		return common.ErrCommandSilent
 	}
@@ -68,8 +67,7 @@ func runECommandForUpsertTenant(deps cli.CliDependenciesProvider, cmd *cobra.Com
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New(strings.ToLower(opGetErroMessage(isCreate)))))
 		}
 		return common.ErrCommandSilent
 	}
@@ -91,8 +89,7 @@ func runECommandForUpsertTenant(deps cli.CliDependenciesProvider, cmd *cobra.Com
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, strings.ToLower(opGetErroMessage(isCreate)), err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New(strings.ToLower(opGetErroMessage(isCreate)))))
 		}
 		return common.ErrCommandSilent
 	}

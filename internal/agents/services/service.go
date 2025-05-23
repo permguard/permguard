@@ -18,12 +18,12 @@ package services
 
 import (
 	"context"
+	"errors"
 
 	"go.uber.org/zap"
 
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ServiceConfig represents the service configuration.
@@ -68,7 +68,7 @@ type Service struct {
 func newService(serviceCfg *ServiceConfig, hostContext *services.HostContext) (*Service, error) {
 	svcCfgReader, err := serviceCfg.serviceable.GetServiceConfigReader()
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrConfigurationGeneric, "cannot get service config reader", err)
+		return nil, errors.Join(err, errors.New("service: cannot get service config reader"))
 	}
 	serviceCtx, err := services.NewServiceContext(hostContext, serviceCfg.serviceable.GetService(), svcCfgReader)
 	if err != nil {

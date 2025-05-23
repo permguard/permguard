@@ -17,9 +17,9 @@
 package centralstorage
 
 import (
+	"errors"
 	"fmt"
 
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 	repo "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
@@ -27,7 +27,7 @@ import (
 // CreateZone creates a new zone.
 func (s SQLiteCentralStorageZAP) CreateZone(zone *zap.Zone) (*zap.Zone, error) {
 	if zone == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, " invalid client input - zone is nil")
+		return nil, errors.New("storage invalid client input - zone is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -78,7 +78,7 @@ func (s SQLiteCentralStorageZAP) CreateZone(zone *zap.Zone) (*zap.Zone, error) {
 // UpdateZone updates a zone.
 func (s SQLiteCentralStorageZAP) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
 	if zone == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, " invalid client input - zone is nil")
+		return nil, errors.New("storage: invalid client input - zone is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -127,7 +127,7 @@ func (s SQLiteCentralStorageZAP) DeleteZone(zoneID int64) (*zap.Zone, error) {
 // FetchZones returns all zones.
 func (s SQLiteCentralStorageZAP) FetchZones(page int32, pageSize int32, fields map[string]any) ([]zap.Zone, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientPagination, fmt.Sprintf(" invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize)
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -137,7 +137,7 @@ func (s SQLiteCentralStorageZAP) FetchZones(page int32, pageSize int32, fields m
 	if _, ok := fields[zap.FieldZoneZoneID]; ok {
 		zoneID, ok := fields[zap.FieldZoneZoneID].(int64)
 		if !ok {
-			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf(" invalid client input - zone id is not valid (zone id: %d)", zoneID))
+			return nil, fmt.Errorf("storage: invalid client input - zone id is not valid (zone id: %d)", zoneID)
 		}
 		filterID = &zoneID
 	}
@@ -145,7 +145,7 @@ func (s SQLiteCentralStorageZAP) FetchZones(page int32, pageSize int32, fields m
 	if _, ok := fields[zap.FieldZoneName]; ok {
 		zoneName, ok := fields[zap.FieldZoneName].(string)
 		if !ok {
-			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf(" invalid client input - zone name is not valid (zone name: %s)", zoneName))
+			return nil, fmt.Errorf("storage: invalid client input - zone name is not valid (zone name: %s)", zoneName)
 		}
 		filterName = &zoneName
 	}
@@ -157,7 +157,7 @@ func (s SQLiteCentralStorageZAP) FetchZones(page int32, pageSize int32, fields m
 	for i, a := range dbZones {
 		zone, err := mapZoneToAgentZone(&a)
 		if err != nil {
-			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrStorageEntityMapping, fmt.Sprintf(" failed to convert zone entity (%s)", repo.LogZoneEntry(&a)))
+			return nil, fmt.Errorf("storage: failed to convert zone entity (%s)", repo.LogZoneEntry(&a))
 		}
 		zones[i] = *zone
 	}

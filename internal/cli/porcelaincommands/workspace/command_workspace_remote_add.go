@@ -17,6 +17,7 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/fatih/color"
@@ -27,7 +28,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/workspace"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -52,8 +52,7 @@ func runECommandForRemoteAddWorkspace(args []string, deps cli.CliDependenciesPro
 			printer.Println("Failed to add the remote.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to add the remote.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to add the remote")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -77,8 +76,7 @@ func runECommandForRemoteAddWorkspace(args []string, deps cli.CliDependenciesPro
 			printer.Println("Failed to add the remote.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to add the remote.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to add the remote")))
 		}
 		return common.ErrCommandSilent
 	}

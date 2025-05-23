@@ -17,6 +17,7 @@
 package pdp
 
 import (
+	"errors"
 	"flag"
 
 	"github.com/spf13/viper"
@@ -26,7 +27,6 @@ import (
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/cli/options"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -65,7 +65,7 @@ func (c *PDPServiceConfig) InitFromViper(v *viper.Viper) error {
 	flagName := options.FlagName(flagServerPDPPrefix, flagSuffixGrpcPort)
 	grpcPort := v.GetInt(flagName)
 	if !validators.IsValidPort(grpcPort) {
-		return cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliArguments, "invalid port")
+		return errors.New("pdp-service: invalid port")
 	}
 	c.config[flagSuffixGrpcPort] = grpcPort
 	// retrieve the data fetch max page size
@@ -73,14 +73,14 @@ func (c *PDPServiceConfig) InitFromViper(v *viper.Viper) error {
 	centralStorageEngine := v.GetString(flagName)
 	storageCEng, err := storage.NewStorageKindFromString(centralStorageEngine)
 	if err != nil {
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "invalid central sotrage engine", err)
+		return errors.Join(err, errors.New("pdp-service: invalid central storage engine"))
 	}
 	c.config[flagCentralEngine] = storageCEng
 	// retrieve the data fetch max page size
 	flagName = options.FlagName(flagServerPDPPrefix, flagDataFetchMaxPageSize)
 	dataFetchMaxPageSize := v.GetInt(flagName)
 	if dataFetchMaxPageSize <= 0 {
-		return cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliArguments, "invalid data fetch max page size")
+		return errors.New("pdp-service: invalid data fetch max page size")
 	}
 	c.config[flagDataFetchMaxPageSize] = dataFetchMaxPageSize
 	return nil

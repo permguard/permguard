@@ -17,9 +17,9 @@
 package centralstorage
 
 import (
+	"errors"
 	"fmt"
 
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
@@ -31,7 +31,7 @@ const (
 // CreateIdentity creates a new identity.
 func (s SQLiteCentralStorageZAP) CreateIdentity(identity *zap.Identity) (*zap.Identity, error) {
 	if identity == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid client input - identity is nil")
+		return nil, errors.New("storage: invalid client input - identity is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -43,7 +43,7 @@ func (s SQLiteCentralStorageZAP) CreateIdentity(identity *zap.Identity) (*zap.Id
 	}
 	kind, err := repos.ConvertIdentityKindToID(identity.Kind)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity kind %s is not valid", identity.Kind), err)
+		return nil, errors.Join(err, fmt.Errorf("storage: invalid client input - identity kind %s is not valid", identity.Kind))
 	}
 	dbInIdentity := &repos.Identity{
 		ZoneID:           identity.ZoneID,
@@ -65,7 +65,7 @@ func (s SQLiteCentralStorageZAP) CreateIdentity(identity *zap.Identity) (*zap.Id
 // UpdateIdentity updates an identity.
 func (s SQLiteCentralStorageZAP) UpdateIdentity(identity *zap.Identity) (*zap.Identity, error) {
 	if identity == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid client input - identity is nil")
+		return nil, errors.New("storage: invalid client input - identity is nil")
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -77,7 +77,7 @@ func (s SQLiteCentralStorageZAP) UpdateIdentity(identity *zap.Identity) (*zap.Id
 	}
 	kind, err := repos.ConvertIdentityKindToID(identity.Kind)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity kind %s is not valid", identity.Kind), err)
+		return nil, errors.Join(err, fmt.Errorf("invalid client input - identity kind %s is not valid", identity.Kind))
 	}
 	dbInIdentity := &repos.Identity{
 		IdentityID:       identity.IdentityID,
@@ -121,7 +121,7 @@ func (s SQLiteCentralStorageZAP) DeleteIdentity(zoneID int64, identityID string)
 // FetchIdentities returns all identities.
 func (s SQLiteCentralStorageZAP) FetchIdentities(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]zap.Identity, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, fmt.Errorf("invalid client input - page number %d or page size %d is not valid", page, pageSize)
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -131,7 +131,7 @@ func (s SQLiteCentralStorageZAP) FetchIdentities(page int32, pageSize int32, zon
 	if _, ok := fields[zap.FieldIdentityIdentityID]; ok {
 		identityID, ok := fields[zap.FieldIdentityIdentityID].(string)
 		if !ok {
-			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity id is not valid (identity id: %s)", identityID))
+			return nil, fmt.Errorf("storage: invalid client input - identity id is not valid (identity id: %s)", identityID)
 		}
 		filterID = &identityID
 	}
@@ -139,7 +139,7 @@ func (s SQLiteCentralStorageZAP) FetchIdentities(page int32, pageSize int32, zon
 	if _, ok := fields[zap.FieldIdentityName]; ok {
 		identityName, ok := fields[zap.FieldIdentityName].(string)
 		if !ok {
-			return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - identity name is not valid (identity name: %s)", identityName))
+			return nil, fmt.Errorf("storage: invalid client input - identity name is not valid (identity name: %s)", identityName)
 		}
 		filterName = &identityName
 	}
@@ -151,7 +151,7 @@ func (s SQLiteCentralStorageZAP) FetchIdentities(page int32, pageSize int32, zon
 	for i, a := range dbIdentities {
 		identity, err := mapIdentityToAgentIdentity(&a)
 		if err != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrStorageEntityMapping, fmt.Sprintf("failed to convert identity entity (%s)", repos.LogIdentityEntry(&a)), err)
+			return nil, errors.Join(err, fmt.Errorf("storage: failed to convert identity entity (%s)", repos.LogIdentityEntry(&a)))
 		}
 		identities[i] = *identity
 	}

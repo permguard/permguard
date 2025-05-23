@@ -17,8 +17,9 @@
 package centralstorage
 
 import (
+	"errors"
+
 	"github.com/permguard/permguard/pkg/agents/storage"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 	"github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
@@ -35,7 +36,7 @@ type SQLiteCentralStoragePDP struct {
 // newSQLitePDPCentralStorage creates a new SQLitePDPCentralStorage.
 func newSQLitePDPCentralStorage(storageContext *storage.StorageContext, sqliteConnector db.SQLiteConnector, ledger SqliteRepo, sqlExec SqliteExecutor) (*SQLiteCentralStoragePDP, error) {
 	if storageContext == nil || sqliteConnector == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "storageContext is nil")
+		return nil, errors.New("storage: storageContext is nil")
 	}
 	if ledger == nil {
 		ledger = &repos.Repository{}

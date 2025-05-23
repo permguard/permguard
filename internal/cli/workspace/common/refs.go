@@ -17,11 +17,10 @@
 package common
 
 import (
+	"errors"
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -39,19 +38,19 @@ const (
 func ConvertStringWithLedgerIDToRefInfo(ref string) (*RefInfo, error) {
 	refObs := strings.Split(ref, refSeparator)
 	if len(refObs) != 5 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "malformed ref")
+		return nil, errors.New("cli: malformed ref")
 	}
 	if refObs[0] != refsPrefix {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ref")
+		return nil, errors.New("cli: invalid ref")
 	}
 	sourceType := refObs[1]
 	if sourceType != remotePrefix && sourceType != headPrefix {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid source type")
+		return nil, errors.New("cli: invalid source type")
 	}
 	remote := refObs[2]
 	zoneID, err := strconv.ParseInt(refObs[3], 10, 64)
 	if err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliInput, "failed to parse zone ID", err)
+		return nil, errors.Join(err, errors.New("cli: failed to parse zone ID"))
 	}
 	ledger := refObs[4]
 	return &RefInfo{
@@ -100,13 +99,13 @@ type RefInfo struct {
 // NewRefInfo creates a new ref information.
 func NewRefInfoFromLedgerName(remote string, zoneID int64, ledgerName string) (*RefInfo, error) {
 	if len(remote) == 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid remote")
+		return nil, errors.New("cli: invalid remote")
 	}
 	if zoneID <= 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid zone ID")
+		return nil, errors.New("cli: invalid zone id")
 	}
 	if len(ledgerName) == 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ledger name")
+		return nil, errors.New("cli: invalid ledger name")
 	}
 	return &RefInfo{
 		sourceType: remotePrefix,
@@ -119,7 +118,7 @@ func NewRefInfoFromLedgerName(remote string, zoneID int64, ledgerName string) (*
 // BuildRefInfoFromLedgerID builds the ref information from the ledger ID.
 func BuildRefInfoFromLedgerID(refInfo *RefInfo, ledgerID string) (*RefInfo, error) {
 	if refInfo == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ref info")
+		return nil, errors.New("cli: invalid ref info")
 	}
 	szRemote, err := SanitizeRemote(refInfo.remote)
 	if err != nil {

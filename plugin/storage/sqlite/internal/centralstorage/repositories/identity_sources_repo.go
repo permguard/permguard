@@ -18,35 +18,34 @@ package repositories
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/core/validators"
 )
 
 const (
 	// errorMessageIdentitySourceInvalidZoneID is the error message identity source invalid zone id.
-	errorMessageIdentitySourceInvalidZoneID = "invalid client input - zone id is not valid (id: %d)"
+	errorMessageIdentitySourceInvalidZoneID = "storage: invalid client input - zone id is not valid (id: %d)"
 )
 
 // UpsertIdentitySource creates or updates an identity source.
 func (r *Repository) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *IdentitySource) (*IdentitySource, error) {
 	if identitySource == nil {
-		return nil, errors.WrapSystemErrorWithMessage(errors.ErrClientParameter, fmt.Sprintf("invalid client input - identity source data is missing or malformed (%s)", LogIdentitySourceEntry(identitySource)))
+		return nil, fmt.Errorf("invalid client input - identity source data is missing or malformed (%s)", LogIdentitySourceEntry(identitySource))
 	}
 	if err := validators.ValidateCodeID("identitySource", identitySource.ZoneID); err != nil {
-		return nil, errors.WrapHandledSysErrorWithMessage(errors.ErrClientParameter, fmt.Sprintf(errorMessageIdentitySourceInvalidZoneID, identitySource.ZoneID), err)
+		return nil, errors.Join(err, fmt.Errorf(errorMessageIdentitySourceInvalidZoneID, identitySource.ZoneID))
 	}
 	if !isCreate && validators.ValidateUUID("identitySource", identitySource.IdentitySourceID) != nil {
-		return nil, errors.WrapSystemErrorWithMessage(errors.ErrClientParameter, fmt.Sprintf("invalid client input - identity source id is not valid (%s)", LogIdentitySourceEntry(identitySource)))
+		return nil, fmt.Errorf("storage: invalid client input - identity source id is not valid (%s)", LogIdentitySourceEntry(identitySource))
 	}
 	if err := validators.ValidateName("identitySource", identitySource.Name); err != nil {
-		errorMessage := "invalid client input - dentity source name is not valid (%s)"
-		return nil, errors.WrapHandledSysErrorWithMessage(errors.ErrClientParameter, fmt.Sprintf(errorMessage, LogIdentitySourceEntry(identitySource)), err)
+		return nil, errors.Join(err, fmt.Errorf("storage: invalid client input - dentity source name is not valid (%s)", LogIdentitySourceEntry(identitySource)))
 	}
 
 	zoneID := identitySource.ZoneID
@@ -86,10 +85,10 @@ func (r *Repository) UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySou
 // DeleteIdentitySource deletes an identity source.
 func (r *Repository) DeleteIdentitySource(tx *sql.Tx, zoneID int64, identitySourceID string) (*IdentitySource, error) {
 	if err := validators.ValidateCodeID("identitySource", zoneID); err != nil {
-		return nil, errors.WrapHandledSysErrorWithMessage(errors.ErrClientParameter, fmt.Sprintf(errorMessageIdentitySourceInvalidZoneID, zoneID), err)
+		return nil, errors.Join(err, fmt.Errorf(errorMessageIdentitySourceInvalidZoneID, zoneID))
 	}
 	if err := validators.ValidateUUID("identitySource", identitySourceID); err != nil {
-		return nil, errors.WrapHandledSysErrorWithMessage(errors.ErrClientParameter, fmt.Sprintf("invalid client input - identity source id is not valid (id: %s)", identitySourceID), err)
+		return nil, errors.Join(err, fmt.Errorf("storage: invalid client input - identity source id is not valid (id: %s)", identitySourceID))
 	}
 
 	var dbIdentitySource IdentitySource
@@ -117,10 +116,10 @@ func (r *Repository) DeleteIdentitySource(tx *sql.Tx, zoneID int64, identitySour
 // FetchIdentitySources retrieves identity sources.
 func (r *Repository) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]IdentitySource, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, errors.WrapSystemErrorWithMessage(errors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize)
 	}
 	if err := validators.ValidateCodeID("identitySource", zoneID); err != nil {
-		return nil, errors.WrapHandledSysErrorWithMessage(errors.ErrClientID, fmt.Sprintf(errorMessageIdentitySourceInvalidZoneID, zoneID), err)
+		return nil, errors.Join(err, fmt.Errorf(errorMessageIdentitySourceInvalidZoneID, zoneID))
 	}
 
 	var dbIdentitySources []IdentitySource
@@ -135,7 +134,7 @@ func (r *Repository) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int3
 	if filterID != nil {
 		identitySourceID := *filterID
 		if err := validators.ValidateUUID("identitySource", identitySourceID); err != nil {
-			return nil, errors.WrapHandledSysErrorWithMessage(errors.ErrClientID, fmt.Sprintf("invalid client input - identity source id is not valid (id: %s)", identitySourceID), err)
+			return nil, errors.Join(err, fmt.Errorf("storage: invalid client input - identity source id is not valid (id: %s)", identitySourceID))
 		}
 		conditions = append(conditions, "identity_source_id = ?")
 		args = append(args, identitySourceID)
@@ -144,7 +143,7 @@ func (r *Repository) FetchIdentitySources(db *sqlx.DB, page int32, pageSize int3
 	if filterName != nil {
 		identitySourceName := *filterName
 		if err := validators.ValidateName("identitySource", identitySourceName); err != nil {
-			return nil, errors.WrapHandledSysErrorWithMessage(errors.ErrClientName, fmt.Sprintf("invalid client input - identity source name is not valid (name: %s)", identitySourceName), err)
+			return nil, errors.Join(err, fmt.Errorf("storage: invalid client input - identity source name is not valid (name: %s)", identitySourceName))
 		}
 		identitySourceName = "%" + identitySourceName + "%"
 		conditions = append(conditions, "name LIKE ?")

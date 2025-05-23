@@ -17,11 +17,12 @@
 package clients
 
 import (
+	"errors"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
 	papv1 "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // GrpcPAPClient is a gRPC client for the PAP service.
@@ -32,7 +33,7 @@ type GrpcPAPClient struct {
 // NewGrpcPAPClient creates a new gRPC client for the PAP service.
 func NewGrpcPAPClient(target string) (*GrpcPAPClient, error) {
 	if target == "" {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "target is required")
+		return nil, errors.New("client: target is required")
 	}
 	return &GrpcPAPClient{
 		target: target,

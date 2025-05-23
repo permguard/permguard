@@ -17,6 +17,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/pelletier/go-toml"
@@ -24,7 +25,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -53,16 +53,16 @@ func (m *ConfigManager) getConfigFile() string {
 
 // readConfig reads the config file.
 func (m *ConfigManager) readConfig() (*config, error) {
-	var config config
-	err := m.persMgr.ReadTOMLFile(persistence.PermguardDir, m.getConfigFile(), &config)
-	return &config, err
+	var cfg config
+	err := m.persMgr.ReadTOMLFile(persistence.PermguardDir, m.getConfigFile(), &cfg)
+	return &cfg, err
 }
 
 // saveConfig saves the config file.
 func (m *ConfigManager) saveConfig(override bool, cfg *config) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "failed to marshal config", err)
+		return errors.Join(err, errors.New("cli: failed to marshal config"))
 	}
 	fileName := m.getConfigFile()
 	if override {
@@ -71,7 +71,7 @@ func (m *ConfigManager) saveConfig(override bool, cfg *config) error {
 		_, err = m.persMgr.WriteFileIfNotExists(persistence.PermguardDir, fileName, data, 0644, false)
 	}
 	if err != nil {
-		return cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, fmt.Sprintf("failed to write config file %s", fileName), err)
+		return errors.Join(err, fmt.Errorf("cli: failed to write config file %s", fileName))
 	}
 	return nil
 }
@@ -87,7 +87,7 @@ func (m *ConfigManager) GetRemoteInfo(remote string) (*wkscommon.RemoteInfo, err
 		return nil, err
 	}
 	if _, ok := cfg.Remotes[remote]; !ok {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordNotFound, fmt.Sprintf("remote %s does not exist", remote))
+		return nil, fmt.Errorf("cli: remote %s does not exist", remote)
 	}
 	cfgRemote := cfg.Remotes[remote]
 	return wkscommon.NewRemoteInfo(cfgRemote.Server, cfgRemote.ZAPPort, cfgRemote.PAPPort)
@@ -100,7 +100,7 @@ func (m *ConfigManager) GetLedgerInfo(ledgerURI string) (*wkscommon.RefInfo, err
 		return nil, err
 	}
 	if _, ok := cfg.Ledgers[ledgerURI]; !ok {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordNotFound, fmt.Sprintf("remote %s does not exist", ledgerURI))
+		return nil, fmt.Errorf("cli: remote %s does not exist", ledgerURI)
 	}
 	cfgLedger := cfg.Ledgers[ledgerURI]
 	refInfo, err := wkscommon.NewRefInfoFromLedgerName(cfgLedger.Remote, cfgLedger.ZoneID, cfgLedger.LedgerName)

@@ -17,11 +17,12 @@
 package clients
 
 import (
+	"errors"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
 	pdpv1 "github.com/permguard/permguard/internal/agents/services/pdp/endpoints/api/v1"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // GrpcPDPClient is a gRPC client for the PDP service.
@@ -32,7 +33,7 @@ type GrpcPDPClient struct {
 // NewGrpcPDPClient creates a new gRPC client for the PDP service.
 func NewGrpcPDPClient(target string) (*GrpcPDPClient, error) {
 	if target == "" {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "target is required")
+		return nil, errors.New("client: target is required")
 	}
 	return &GrpcPDPClient{
 		target: target,

@@ -17,7 +17,8 @@
 package common
 
 import (
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"errors"
+
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
@@ -30,10 +31,10 @@ type CommitInfo struct {
 // NewCommitInfo creates a new CommitInfo.
 func NewCommitInfo(oid string, commit *objects.Commit) (*CommitInfo, error) {
 	if oid == "" {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid commit oid")
+		return nil, errors.New("cli: invalid commit oid")
 	}
 	if commit == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid commit")
+		return nil, errors.New("cli: invalid commit")
 	}
 	return &CommitInfo{
 		oid:    oid,

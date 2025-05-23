@@ -17,13 +17,13 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/permguard/permguard/internal/cli/workspace/cosp"
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
@@ -50,7 +50,7 @@ func (m *WorkspaceManager) cleanupLocalArea() (bool, error) {
 func (m *WorkspaceManager) scanSourceCodeFiles(langPvd *ManifestLanguageProvider) ([]cosp.CodeFile, []cosp.CodeFile, error) {
 	partitions := langPvd.GetPartitions()
 	if len(partitions) == 0 {
-		return nil, nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliWorkspace, "no partitions are supported")
+		return nil, nil, errors.New("cli: no partitions are supported")
 	}
 
 	var scanIncludedFiles, scanIgnoredFiles []cosp.CodeFile
@@ -113,7 +113,7 @@ func (m *WorkspaceManager) scanByKind(partition string, kind string, extensions,
 	for _, absPath := range includedPaths {
 		relPath, err := filepath.Rel(workDir, absPath)
 		if err != nil {
-			return nil, nil, cerrors.WrapHandledSysError(cerrors.ErrCliWorkspace, fmt.Errorf("failed to compute relative path for included file %q: %w", absPath, err))
+			return nil, nil, errors.Join(err, fmt.Errorf("cli: failed to compute relative path for included file %q", absPath))
 		}
 		includedFiles = append(includedFiles, cosp.CodeFile{
 			Partition: partition,
@@ -125,7 +125,7 @@ func (m *WorkspaceManager) scanByKind(partition string, kind string, extensions,
 	for _, absPath := range ignoredPaths {
 		relPath, err := filepath.Rel(workDir, absPath)
 		if err != nil {
-			return nil, nil, cerrors.WrapHandledSysError(cerrors.ErrCliWorkspace, fmt.Errorf("failed to compute relative path for ignored file %q: %w", absPath, err))
+			return nil, nil, errors.Join(err, fmt.Errorf("cli: failed to compute relative path for ignored file %q", absPath))
 		}
 		ignoredFiles = append(ignoredFiles, cosp.CodeFile{
 			Partition: partition,
@@ -151,13 +151,13 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(langPvd *ManifestLanguageProvid
 	multiSecObj, err := absLang.CreateSchemaBlobObjects(lang, partition, path, data)
 	if err != nil {
 		codeFile := cosp.CodeFile{
-			Partition:    partition,
-			Kind:         file.Kind,
-			Path:         strings.TrimPrefix(path, wkdir),
-			Section:      0,
-			Mode:         mode,
-			HasErrors:    true,
-			ErrorMessage: err.Error(),
+			Partition: partition,
+			Kind:      file.Kind,
+			Path:      strings.TrimPrefix(path, wkdir),
+			Section:   0,
+			Mode:      mode,
+			HasErrors: true,
+			Error:     err.Error(),
 		}
 		return append(blobifiedCodeFiles, codeFile), nil
 	}
@@ -183,13 +183,13 @@ func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider
 	multiSecObj, err := absLang.CreatePolicyBlobObjects(lang, partition, path, data)
 	if err != nil {
 		codeFile := cosp.CodeFile{
-			Partition:    partition,
-			Kind:         file.Kind,
-			Path:         strings.TrimPrefix(path, wkdir),
-			Section:      -1,
-			Mode:         mode,
-			HasErrors:    true,
-			ErrorMessage: err.Error(),
+			Partition: partition,
+			Kind:      file.Kind,
+			Path:      strings.TrimPrefix(path, wkdir),
+			Section:   -1,
+			Mode:      mode,
+			HasErrors: true,
+			Error:     err.Error(),
 		}
 		return append(blobifiedCodeFiles, codeFile), nil
 	}
@@ -221,11 +221,7 @@ func (m *WorkspaceManager) buildCodeFileFromSection(secObj *objects.SectionObjec
 
 	if codeFile.HasErrors {
 		err := secObj.GetError()
-		if sysErr := cerrors.ConvertToSystemError(err); sysErr != nil {
-			codeFile.ErrorMessage = sysErr.Message()
-		} else {
-			codeFile.ErrorMessage = err.Error()
-		}
+		codeFile.Error = err.Error()
 	} else {
 		obj := secObj.GetObject()
 		codeFile.OID = obj.GetOID()
@@ -246,7 +242,10 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *Mani
 		path := file.Path
 
 		// Read file content and mode from the workspace
-		data, mode, err := m.persMgr.ReadFile(persistence.WorkspaceDir, path, false)
+		var err error
+		var data []byte
+		var mode uint32
+		data, mode, err = m.persMgr.ReadFile(persistence.WorkspaceDir, path, false)
 		if err != nil {
 			return "", nil, err
 		}
@@ -254,22 +253,23 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *Mani
 		partition := file.Partition
 
 		// Process code files using the language provider
-		if file.Kind == cosp.CodeFileTypeOfCodeType {
+		switch file.Kind {
+		case cosp.CodeFileTypeOfCodeType:
 			blobifiedCodeFiles, err = m.blobifyLanguageFile(langPvd, partition, path, data, file, wkdir, mode, blobifiedCodeFiles)
 			if err != nil {
 				return "", nil, err
 			}
-		} else if file.Kind == cosp.CodeFileOfSchemaType {
+		case cosp.CodeFileOfSchemaType:
 			// Ensure only one schema file per partition
 			partitionSchemas[file.Partition]++
 			if partitionSchemas[file.Partition] > 1 {
 				codeFile := cosp.CodeFile{
-					Partition:    partition,
-					Path:         strings.TrimPrefix(path, wkdir),
-					Section:      0,
-					Mode:         mode,
-					HasErrors:    true,
-					ErrorMessage: "language: only one schema file is permitted in the workspace. Please ensure there are no duplicate schema files.",
+					Partition: partition,
+					Path:      strings.TrimPrefix(path, wkdir),
+					Section:   0,
+					Mode:      mode,
+					HasErrors: true,
+					Error:     "language: only one schema file is permitted in the workspace. Please ensure there are no duplicate schema files.",
 				}
 				blobifiedCodeFiles = append(blobifiedCodeFiles, codeFile)
 			} else {
@@ -278,8 +278,8 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *Mani
 					return "", nil, err
 				}
 			}
-		} else {
-			return "", nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, "file type is not supported")
+		default:
+			return "", nil, errors.New("cli: file type is not supported")
 		}
 	}
 
@@ -296,61 +296,66 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *Mani
 		if len(schemaFileNames) > 0 {
 			schemaFileName := schemaFileNames[0]
 			codeFile := cosp.CodeFile{
-				Partition:    partition,
-				Path:         m.persMgr.GetRelativeDir(persistence.WorkspaceDir, schemaFileName),
-				Section:      0,
-				Mode:         0,
-				HasErrors:    true,
-				CodeID:       types.ClassTypeSchema,
-				CodeType:     types.ClassTypeSchema,
-				ErrorMessage: fmt.Sprintf("language: the schema file '%s' is missing. Please ensure there are no duplicate schema files and that the required schema file is present.", schemaFileName),
+				Partition: partition,
+				Path:      m.persMgr.GetRelativeDir(persistence.WorkspaceDir, schemaFileName),
+				Section:   0,
+				Mode:      0,
+				HasErrors: true,
+				CodeID:    types.ClassTypeSchema,
+				CodeType:  types.ClassTypeSchema,
+				Error:     fmt.Sprintf("language: the schema file '%s' is missing. Please ensure there are no duplicate schema files and that the required schema file is present.", schemaFileName),
 			}
 			blobifiedCodeFiles = append(blobifiedCodeFiles, codeFile)
 		}
 	}
 
 	// Save code source map
-	if err := m.cospMgr.SaveCodeSourceCodeMap(blobifiedCodeFiles); err != nil {
+	var err error
+	if err = m.cospMgr.SaveCodeSourceCodeMap(blobifiedCodeFiles); err != nil {
 		return "", blobifiedCodeFiles, err
 	}
 
 	// Abort if any file has errors
 	for _, file := range blobifiedCodeFiles {
 		if file.HasErrors {
-			return "", blobifiedCodeFiles, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, "blobification process failed due to code file errors")
+			return "", blobifiedCodeFiles, errors.New("cli: blobification process failed due to code file errors")
 		}
 	}
 
 	// Convert code files to code object states
-	codeObsState, err := m.cospMgr.ConvertCodeFilesToCodeObjectStates(blobifiedCodeFiles)
+	var codeObsState []cosp.CodeObjectState
+	codeObsState, err = m.cospMgr.ConvertCodeFilesToCodeObjectStates(blobifiedCodeFiles)
 	if err != nil {
 		return "", blobifiedCodeFiles, err
 	}
 
 	// Save the object state
-	if err := m.cospMgr.SaveCodeSourceCodeState(codeObsState); err != nil {
+	if err = m.cospMgr.SaveCodeSourceCodeState(codeObsState); err != nil {
 		return "", blobifiedCodeFiles, err
 	}
 
 	// Build a tree from object states
-	tree, err := objects.NewTree()
+	var tree *objects.Tree
+	tree, err = objects.NewTree()
 	if err != nil {
-		return "", blobifiedCodeFiles, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "tree object cannot be created", err)
+		return "", blobifiedCodeFiles, errors.Join(err, errors.New("cli: tree object cannot be created"))
 	}
 	for _, obj := range codeObsState {
-		entry, err := objects.NewTreeEntry(obj.Partition, obj.OType, obj.OID, obj.OName, obj.CodeID, obj.CodeType, obj.Language, obj.LanguageVersion, obj.LanguageType)
+		var entry *objects.TreeEntry
+		entry, err = objects.NewTreeEntry(obj.Partition, obj.OType, obj.OID, obj.OName, obj.CodeID, obj.CodeType, obj.Language, obj.LanguageVersion, obj.LanguageType)
 		if err != nil {
-			return "", nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "tree item cannot be created", err)
+			return "", nil, errors.Join(err, errors.New("cli: tree item cannot be created"))
 		}
-		if err := tree.AddEntry(entry); err != nil {
-			return "", blobifiedCodeFiles, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "tree item cannot be added due to file errors", err)
+		if err = tree.AddEntry(entry); err != nil {
+			return "", blobifiedCodeFiles, errors.Join(err, errors.New("cli: tree item cannot be added due to file errors"))
 		}
 	}
 
 	// Create tree object and persist it
-	treeObj, err := objects.CreateTreeObject(tree)
+	var treeObj *objects.Object
+	treeObj, err = objects.CreateTreeObject(tree)
 	if err != nil {
-		return "", blobifiedCodeFiles, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliFileOperation, "tree object creation failed", err)
+		return "", blobifiedCodeFiles, errors.Join(err, errors.New("cli: tree object creation failed"))
 	}
 	if _, err := m.cospMgr.SaveCodeSourceObject(treeObj.GetOID(), treeObj.GetContent()); err != nil {
 		return "", blobifiedCodeFiles, err
@@ -395,7 +400,7 @@ func (m *WorkspaceManager) retrieveCodeMap() ([]cosp.CodeFile, []cosp.CodeFile, 
 		if nameCount[file.OName] > 1 {
 			// Duplicate object name found
 			file.HasErrors = true
-			file.ErrorMessage = "language: duplicate object name found in the code files. please ensure that there are no duplicate object names"
+			file.Error = "language: duplicate object name found in the code files. please ensure that there are no duplicate object names"
 			invalidFiles = append(invalidFiles, file)
 		} else {
 			validFiles = append(validFiles, file)

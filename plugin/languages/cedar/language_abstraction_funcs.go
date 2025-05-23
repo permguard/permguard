@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"strings"
 
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 )
@@ -30,7 +29,7 @@ import (
 func verifyKey(key string) (bool, error) {
 	key = strings.ToUpper(key)
 	if key == pdp.Permguard {
-		return false, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguageSyntax, fmt.Sprintf("[cedar] invalid entity identifier: %s is reserved by permguard and cannot be used", key))
+		return false, fmt.Errorf("cedar: invalid entity identifier: %s is reserved by permguard and cannot be used", key)
 	}
 	return true, nil
 }
@@ -39,7 +38,7 @@ func verifyKey(key string) (bool, error) {
 func verifyUIDType(uidType string) (bool, error) {
 	uidTypeSnz := strings.ToLower(uidType)
 	if strings.HasPrefix(uidTypeSnz, "permguard::") {
-		return false, cerrors.WrapSystemErrorWithMessage(cerrors.ErrLanguageSyntax, fmt.Sprintf("[cedar] invalid entity identifier: %s is reserved by permguard and cannot be used", uidType))
+		return false, fmt.Errorf("cedar: invalid entity identifier: %s is reserved by permguard and cannot be used", uidType)
 	}
 	return true, nil
 }

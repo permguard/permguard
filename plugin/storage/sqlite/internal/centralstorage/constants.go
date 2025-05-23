@@ -18,9 +18,9 @@ package centralstorage
 
 const (
 	// errorMessageCannotConnect is the error message cannot connect.
-	errorMessageCannotConnect = "cannot connect."
+	errorMessageCannotConnect = "cannot connect"
 	// errorMessageCannotBeginTransaction is the error message cannot begin the transaction.
-	errorMessageCannotBeginTransaction = "cannot begin the transaction."
+	errorMessageCannotBeginTransaction = "cannot begin the transaction"
 	// errorMessageCannotCommitTransaction is the error message cannot commit the transaction.
-	errorMessageCannotCommitTransaction = "cannot commit the transaction."
+	errorMessageCannotCommitTransaction = "cannot commit the transaction"
 )

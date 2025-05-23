@@ -17,6 +17,7 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/fatih/color"
@@ -27,7 +28,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/workspace"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -88,8 +88,7 @@ func runECommandForObjectsWorkspace(deps cli.CliDependenciesProvider, cmd *cobra
 			printer.Println("Failed to list objects.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to list objects.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to list objects")))
 		}
 		return common.ErrCommandSilent
 	}

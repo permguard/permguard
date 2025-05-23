@@ -27,7 +27,6 @@ import (
 
 	"github.com/mattn/go-sqlite3"
 
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories/testutils"
 )
 
@@ -103,7 +102,7 @@ func TestRepoUpsertLedgerWithInvalidInput(t *testing.T) {
 	{ // Test with nil ledger
 		_, err := ledger.UpsertLedger(tx, true, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.NotNil(err, "error should not be nil")
 	}
 
 	{ // Test with invalid zone id
@@ -113,7 +112,7 @@ func TestRepoUpsertLedgerWithInvalidInput(t *testing.T) {
 		}
 		_, err := ledger.UpsertLedger(tx, false, dbInLedger)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.NotNil(err, "error should not be nil")
 	}
 
 	{ // Test with invalid ledger id
@@ -123,7 +122,7 @@ func TestRepoUpsertLedgerWithInvalidInput(t *testing.T) {
 		}
 		_, err := ledger.UpsertLedger(tx, false, dbInLedger)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.NotNil(err, "error should not be nil")
 	}
 
 	{ // Test with invalid ledger name
@@ -145,7 +144,7 @@ func TestRepoUpsertLedgerWithInvalidInput(t *testing.T) {
 			}
 			dbOutLedger, err := ledger.UpsertLedger(tx, true, dbInLedger)
 			assert.NotNil(err, "error should be not nil")
-			assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+			assert.NotNil(err, "error should not be nil")
 			assert.Nil(dbOutLedger, "ledger should be nil")
 		}
 	}
@@ -252,7 +251,6 @@ func TestRepoUpsertLedgerWithErrors(t *testing.T) {
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutLedger, "ledger should be nil")
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageConstraintUnique, err), "error should be errstorageconstraintunique")
 	}
 }
 
@@ -269,13 +267,13 @@ func TestRepoDeleteLedgerWithInvalidInput(t *testing.T) {
 	{ // Test with invalid zone id
 		_, err := ledger.DeleteLedger(tx, 0, GenerateUUID())
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.NotNil(err, "error should not be nil")
 	}
 
 	{ // Test with invalid ledger id
 		_, err := ledger.DeleteLedger(tx, 581616507495, "")
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientParameter, err), "error should be errclientparameter")
+		assert.NotNil(err, "error should not be nil")
 	}
 }
 
@@ -355,12 +353,6 @@ func TestRepoDeleteLedgerWithErrors(t *testing.T) {
 		assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 		assert.Nil(dbOutLedger, "ledger should be nil")
 		assert.NotNil(err, "error should be not nil")
-
-		if test == 1 {
-			assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageNotFound, err), "error should be errstoragenotfound")
-		} else {
-			assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageGeneric, err), "error should be errstoragegeneric")
-		}
 	}
 }
 
@@ -375,34 +367,29 @@ func TestRepoFetchLedgerWithInvalidInput(t *testing.T) {
 	{ // Test with invalid page
 		_, err := ledger.FetchLedgers(sqlDB, 0, 100, 581616507495, nil, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid page size
 		_, err := ledger.FetchLedgers(sqlDB, 1, 0, 581616507495, nil, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientPagination, err), "error should be errclientpagination")
 	}
 
 	{ // Test with invalid zone id
 		ledgerID := GenerateUUID()
 		_, err := ledger.FetchLedgers(sqlDB, 1, 1, 0, &ledgerID, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientID, err), "error should be errclientid")
 	}
 
 	{ // Test with invalid ledger id
 		ledgerID := ""
 		_, err := ledger.FetchLedgers(sqlDB, 1, 1, 581616507495, &ledgerID, nil)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientID, err), "error should be errclientid")
 	}
 
 	{ // Test with invalid ledger name
 		ledgerName := "@"
 		_, err := ledger.FetchLedgers(sqlDB, 1, 1, 581616507495, nil, &ledgerName)
 		assert.NotNil(err, "error should be not nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientName, err), "error should be errclientname")
 	}
 }
 

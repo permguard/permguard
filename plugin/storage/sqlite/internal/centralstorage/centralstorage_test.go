@@ -17,6 +17,7 @@
 package centralstorage
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -26,7 +27,6 @@ import (
 
 	"github.com/permguard/permguard/pkg/agents/runtime/mocks"
 	"github.com/permguard/permguard/pkg/agents/storage"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	testutilsmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/testutils/mocks"
 )
 
@@ -41,12 +41,11 @@ func TestSqliteExecutor(t *testing.T) {
 
 		sqliteExec := &SqliteExec{}
 
-		mockConnector.On("Connect", mock.Anything, mockStorageCtx).Return(nil, cerrors.ErrServerGeneric)
+		mockConnector.On("Connect", mock.Anything, mockStorageCtx).Return(nil, errors.New("operation error"))
 
 		db, err := sqliteExec.Connect(mockStorageCtx, mockConnector)
 		assert.Nil(db, "db should be nil")
 		assert.NotNil(err, "error should not be nil")
-		assert.True(cerrors.AreErrorsEqual(cerrors.ErrStorageGeneric, err), "error should be errservergeneric")
 	}
 
 	{
