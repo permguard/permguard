@@ -18,10 +18,10 @@ package clients
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	zapv1 "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
@@ -42,7 +42,7 @@ func (c *GrpcZAPClient) CreateIdentity(zoneID int64, identitySourceID string, ki
 // UpdateIdentity updates an identity.
 func (c *GrpcZAPClient) UpdateIdentity(identity *zap.Identity) (*zap.Identity, error) {
 	if identity == nil {
-		cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "invalid identity instance")
+		return nil, errors.New("client: invalid identity instance")
 	}
 	client, conn, err := c.createGRPCClient()
 	if err != nil {

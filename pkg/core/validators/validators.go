@@ -21,7 +21,6 @@ import (
 	"strings"
 
 	"github.com/permguard/permguard/common/pkg/extensions/validators"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ValidateCodeID validates a zone ID.
@@ -30,12 +29,12 @@ func ValidateCodeID(entity string, zoneID int64) error {
 		ZoneID int64 `validate:"required,gt=0"`
 	}{ZoneID: zoneID}
 	if isValid, err := validators.ValidateInstance(vZoneID); err != nil || !isValid {
-		return fmt.Errorf("validators: %s name %d is not valid. %w", entity, vZoneID.ZoneID, cerrors.ErrClientID)
+		return fmt.Errorf("validators: %s name %d is not valid", entity, vZoneID.ZoneID)
 	}
 	min := int64(100000000000)
 	max := int64(999999999999)
 	if zoneID < min || zoneID > max {
-		return fmt.Errorf("validators: %s name %d is not valid. it must be between %d and %d. %w", entity, zoneID, min, max, cerrors.ErrClientID)
+		return fmt.Errorf("validators: %s name %d is not valid. it must be between %d and %d", entity, zoneID, min, max)
 	}
 	return nil
 }
@@ -57,11 +56,11 @@ func formatAsUUID(s string) string {
 // ValidateSHA256 validates a SHA256 hash.
 func ValidateSHA256(entity string, hash string) error {
 	if len(hash) != 64 {
-		return fmt.Errorf("validators: %s hash %s is not valid. %w", entity, hash, cerrors.ErrClientSHA256)
+		return fmt.Errorf("validators: %s hash %s is not valid", entity, hash)
 	}
 	for _, c := range hash {
 		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-			return fmt.Errorf("validators: %s hash %s contains invalid characters. %w", entity, hash, cerrors.ErrClientSHA256)
+			return fmt.Errorf("validators: %s hash %s contains invalid characters", entity, hash)
 		}
 	}
 	return nil
@@ -74,7 +73,7 @@ func ValidateUUID(entity string, id string) error {
 		ID string `validate:"required,uuid4"`
 	}{ID: formattedID}
 	if isValid, err := validators.ValidateInstance(vID); err != nil || !isValid {
-		return fmt.Errorf("validators: %s name %s is not valid. %w", entity, vID.ID, cerrors.ErrClientUUID)
+		return fmt.Errorf("validators: %s name %s is not valid", entity, vID.ID)
 	}
 	return nil
 }
@@ -89,7 +88,7 @@ func ValidateIdentityUserName(entity string, name string) error {
 		Email string `validate:"required,email"`
 	}{Email: name}
 	if isValid, err := validators.ValidateInstance(vEmail); err != nil || !isValid {
-		return fmt.Errorf("validators: %s identity name %s is not valid. %w", entity, vEmail.Email, cerrors.ErrClientName)
+		return fmt.Errorf("validators: %s identity name %s is not valid", entity, vEmail.Email)
 	}
 	return nil
 }
@@ -98,16 +97,16 @@ func ValidateIdentityUserName(entity string, name string) error {
 func ValidateName(entity string, name string) error {
 	sanitized := strings.ToLower(strings.TrimSpace(name))
 	if strings.HasPrefix(name, "permguard") {
-		return fmt.Errorf("validators: %s name %s is not valid. it cannot have 'permguard' as a prefix. %w", entity, name, cerrors.ErrClientName)
+		return fmt.Errorf("validators: %s name %s is not valid. it cannot have 'permguard' as a prefix", entity, name)
 	}
 	if name != sanitized {
-		return fmt.Errorf("validators: %s name %s is not valid. it must be in lower case. %w", entity, name, cerrors.ErrClientName)
+		return fmt.Errorf("validators: %s name %s is not valid. it must be in lower case", entity, name)
 	}
 	vName := struct {
 		Name string `validate:"required,name"`
 	}{Name: name}
 	if isValid, err := validators.ValidateInstance(vName); err != nil || !isValid {
-		return fmt.Errorf("validators: %s name %s is not valid. %w", entity, vName.Name, cerrors.ErrClientName)
+		return fmt.Errorf("validators: %s name %s is not valid", entity, vName.Name)
 	}
 	return nil
 }

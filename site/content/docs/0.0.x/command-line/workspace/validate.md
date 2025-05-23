@@ -86,8 +86,7 @@ output:
 
 ```json
 {
-  "error_code": "08102",
-  "error_message": "cli: operation on file failed",
+  "error": "cli: operation on file failed",
   "validation_errors": {
     "platform/platform-policies.cedar": {
       "1": {

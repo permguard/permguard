@@ -17,6 +17,7 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/fatih/color"
@@ -26,7 +27,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace"
 	"github.com/permguard/permguard/pkg/cli"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 const (
@@ -57,8 +57,7 @@ func runECommandForPullWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Co
 			printer.Println("Failed execute the pull.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to execute the pull.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to execute the pull")))
 		}
 		return common.ErrCommandSilent
 	}

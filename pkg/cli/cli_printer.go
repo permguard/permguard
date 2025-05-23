@@ -18,6 +18,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -28,12 +29,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/permguard/permguard/common/pkg/extensions/copier"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
-)
-
-const (
-	// errorMessageCodeMsg is the error message code message.
-	errorMessageCodeMsg = "[%s] %s"
 )
 
 const (
@@ -110,7 +105,7 @@ type CliPrinterTerminal struct {
 func NewCliPrinterTerminal(verbose bool, output string) (*CliPrinterTerminal, error) {
 	out := strings.ToUpper(output)
 	if out != OutputTerminal && out != OutputJSON {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliGeneric, "invalid output")
+		return nil, errors.New("cli: invalid output")
 	}
 	return &CliPrinterTerminal{
 		verbose: verbose,
@@ -222,68 +217,20 @@ func (cp *CliPrinterTerminal) print(output map[string]any, newLine bool) {
 	}
 }
 
-// extractCodeAndMessage takes an input string and returns the code and the message as separate strings.
-func (cp *CliPrinterTerminal) extractCodeAndMessage(input string) (string, string, error) {
-	codePrefix := "code: "
-	messagePrefix := "message: "
-
-	codeIndex := strings.Index(input, codePrefix)
-	messageIndex := strings.Index(input, messagePrefix)
-
-	if codeIndex == -1 || messageIndex == -1 {
-		return "", "", fmt.Errorf("invalid input format")
-	}
-
-	codeStart := codeIndex + len(codePrefix)
-	codeEnd := strings.Index(input[codeStart:], ",")
-	if codeEnd == -1 {
-		return "", "", fmt.Errorf("invalid input format")
-	}
-	code := input[codeStart : codeStart+codeEnd]
-
-	messageStart := messageIndex + len(messagePrefix)
-	message := input[messageStart:]
-
-	return code, message, nil
-}
-
 // createOutputWithputError creates the output with the error.
-func (cp *CliPrinterTerminal) createOutputWithputError(errCode string, errMsg string) map[string]any {
+func (cp *CliPrinterTerminal) createOutputWithputError(errMsg string) map[string]any {
 	var output map[string]any
 	if cp.verbose {
 		if cp.output == OutputJSON {
-			output = map[string]any{"errorCode": errCode, "errorMessage": errMsg}
+			output = map[string]any{"error": errMsg}
 		} else {
-			output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, errCode, errMsg)}
+			output = map[string]any{"error": errMsg}
 		}
 	} else {
-		sysErr := cerrors.NewSystemError(errCode).(cerrors.SystemError)
 		if cp.output == OutputJSON {
-			output = map[string]any{"errorCode": sysErr.Code(), "errorMessage": sysErr.Message()}
+			output = map[string]any{"error": errMsg}
 		} else {
-			output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, sysErr.Code(), sysErr.Message())}
-		}
-	}
-	return output
-}
-
-// createOutputWithError creates the output with the error.
-func (cp *CliPrinterTerminal) createOutputWithError(errInputMsg string) map[string]any {
-	var output map[string]any
-	code := cerrors.ZeroErrorCode
-	if cp.verbose {
-		if cp.output == OutputJSON {
-			output = map[string]any{"errorCode": code, "errorMessage": errInputMsg}
-		} else {
-			output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, code, errInputMsg)}
-
-		}
-	} else {
-		message := "unknown error"
-		if cp.output == OutputJSON {
-			output = map[string]any{"errorCode": code, "errorMessage": message}
-		} else {
-			output = map[string]any{"error": fmt.Sprintf(errorMessageCodeMsg, code, message)}
+			output = map[string]any{"error": errMsg}
 		}
 	}
 	return output
@@ -311,12 +258,7 @@ func (cp *CliPrinterTerminal) ErrorWithOutput(output map[string]any, err error) 
 		} else {
 			errInputMsg = err.Error()
 		}
-		code, msg, err := cp.extractCodeAndMessage(errInputMsg)
-		if err != nil {
-			errorOutput = cp.createOutputWithError(errInputMsg)
-		} else {
-			errorOutput = cp.createOutputWithputError(code, msg)
-		}
+		errorOutput = cp.createOutputWithputError(errInputMsg)
 	}
 	if len(errorOutput) > 0 {
 		output = copier.MergeMaps(output, errorOutput)

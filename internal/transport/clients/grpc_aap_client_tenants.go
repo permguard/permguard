@@ -18,10 +18,10 @@ package clients
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	zapv1 "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
@@ -42,7 +42,7 @@ func (c *GrpcZAPClient) CreateTenant(zoneID int64, name string) (*zap.Tenant, er
 // UpdateTenant updates a tenant.
 func (c *GrpcZAPClient) UpdateTenant(tenant *zap.Tenant) (*zap.Tenant, error) {
 	if tenant == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "invalid tenant instance")
+		return nil, errors.New("client: invalid tenant instance")
 	}
 	client, conn, err := c.createGRPCClient()
 	if err != nil {

@@ -17,6 +17,7 @@
 package authn
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/fatih/color"
@@ -26,7 +27,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
@@ -48,8 +48,7 @@ func runECommandForDeleteIdentity(deps cli.CliDependenciesProvider, cmd *cobra.C
 			printer.Println("Failed to delete the identity.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to delete the identity", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to delete the identity")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -60,8 +59,7 @@ func runECommandForDeleteIdentity(deps cli.CliDependenciesProvider, cmd *cobra.C
 			printer.Println("Failed to delete the identity.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to delete the identity", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to delete the identity")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -73,8 +71,7 @@ func runECommandForDeleteIdentity(deps cli.CliDependenciesProvider, cmd *cobra.C
 			printer.Println("Failed to delete the identity.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to delete the identity", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to delete the identity")))
 		}
 		return common.ErrCommandSilent
 	}

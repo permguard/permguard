@@ -17,6 +17,7 @@
 package zones
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/fatih/color"
@@ -26,7 +27,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
@@ -48,8 +48,7 @@ func runECommandForDeleteZone(deps cli.CliDependenciesProvider, cmd *cobra.Comma
 			printer.Println("Failed to delete the zone.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to delete the zone", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to delete the zone")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -59,8 +58,7 @@ func runECommandForDeleteZone(deps cli.CliDependenciesProvider, cmd *cobra.Comma
 			printer.Println("Failed to delete the zone.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to delete the zone", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to delete the zone")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -71,8 +69,7 @@ func runECommandForDeleteZone(deps cli.CliDependenciesProvider, cmd *cobra.Comma
 			printer.Println("Failed to delete the zone.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, "failed to delete the zone", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to delete the zone")))
 		}
 		return common.ErrCommandSilent
 	}

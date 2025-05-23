@@ -20,8 +20,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // TestValidateCodeID tests the ValidateCodeID function.
@@ -46,7 +44,6 @@ func TestValidateCodeID(t *testing.T) {
 		result := ValidateCodeID(tc.entity, int64(tc.zoneID))
 		if tc.hasError {
 			assert.NotNil(result, "error should not be nil")
-			assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientID, result), "error should be ErrClientID")
 		} else {
 			assert.Nil(result, "error should be nil")
 		}
@@ -76,7 +73,6 @@ func TestValidateUUID(t *testing.T) {
 		result := ValidateUUID(tc.entity, tc.UUID)
 		if tc.hasError {
 			assert.NotNil(result, "error should not be nil")
-			assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientUUID, result), "error should be ErrClientUUID")
 		} else {
 			assert.Nil(result, "error should be nil")
 		}
@@ -109,7 +105,6 @@ func TestValidateName(t *testing.T) {
 		result := ValidateName(tc.entity, tc.name)
 		if tc.hasError {
 			assert.NotNil(result, "error should not be nil")
-			assert.True(cerrors.AreErrorsEqual(cerrors.ErrClientName, result), "error should be ErrClientName")
 		} else {
 			assert.Nil(result, "error should be nil")
 		}

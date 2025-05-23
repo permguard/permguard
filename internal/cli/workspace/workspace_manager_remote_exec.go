@@ -18,6 +18,7 @@ package workspace
 
 import (
 	//"encoding/json"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -25,12 +26,13 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/internal/cli/workspace/logs"
+	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/core/files"
+	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
 const (
@@ -70,7 +72,8 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "checkout", "Retrieving remote ledger information.", nil, true)
 		}
-		srvLedger, err := m.rmSrvtMgr.GetServerRemoteLedger(remoteInfo, ledgerInfo)
+		var srvLedger *pap.Ledger
+		srvLedger, err = m.rmSrvtMgr.GetServerRemoteLedger(remoteInfo, ledgerInfo)
 		if err != nil {
 			if m.ctx.IsVerboseTerminalOutput() {
 				out(nil, "checkout", "Failed to retrieve remote ledger information.", nil, true)
@@ -86,7 +89,7 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 		// Add the ledger
 		ref := m.rfsMgr.GenerateRef(ledgerInfo.GetRemote(), ledgerInfo.GetZoneID(), srvLedger.LedgerID)
 		output, err = m.cfgMgr.ExecAddLedger(ledgerURI, ref, ledgerInfo.GetRemote(), ledgerInfo.GetLedger(), srvLedger.LedgerID, ledgerInfo.GetZoneID(), nil, out)
-		if err != nil && !cerrors.AreErrorsEqual(err, cerrors.ErrCliRecordExists) {
+		if err != nil {
 			return fail(output, err)
 		}
 		// Checkout the head
@@ -97,7 +100,8 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 			return fail(nil, err)
 		}
 		// Read current remote ref info
-		remoteRefInfo, err := m.rfsMgr.GetRefInfo(remoteRef)
+		var remoteRefInfo *wkscommon.RefInfo
+		remoteRefInfo, err = m.rfsMgr.GetRefInfo(remoteRef)
 		if err != nil {
 			return fail(nil, err)
 		}
@@ -106,7 +110,8 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 			return fail(nil, err)
 		}
 		// Read current head ref info
-		headRefInfo, err := m.rfsMgr.GetRefInfo(headRef)
+		var headRefInfo *wkscommon.RefInfo
+		headRefInfo, err = m.rfsMgr.GetRefInfo(headRef)
 		if err != nil {
 			return fail(nil, err)
 		}
@@ -168,7 +173,9 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 	output := map[string]any{}
 
 	// Read current head settings
-	headCtx, err := m.getCurrentHeadContext()
+	var err error
+	var headCtx *currentHeadContext
+	headCtx, err = m.getCurrentHeadContext()
 	if err != nil {
 		return fail(nil, err)
 	}
@@ -187,7 +194,8 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 		HeadContextKey:       headCtx,
 	}
 
-	ctx, err := m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetZoneID(), headCtx.GetLedgerID(), bag, m)
+	var ctx *notpstatemachines.StateMachineRuntimeContext
+	ctx, err = m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetZoneID(), headCtx.GetLedgerID(), bag, m)
 	if err != nil {
 		return fail(nil, err)
 	}
@@ -212,12 +220,12 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", "Not all commits were successfully pulled. Please retry the operation.", nil, true)
 		}
-		return fail(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordExists, "not all commits were successfully pulled."))
+		return fail(nil, errors.New("cli: not all commits were successfully pulled"))
 	} else {
 		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 		if !committed || localCommitID == "" || remoteCommitID == "" {
 			if localCommitID != "" && remoteCommitID != "" {
-				_, err := m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
+				_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
 				if err != nil {
 					return fail(nil, err)
 				}
@@ -311,7 +319,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 				}
 				header := objInfo.GetHeader()
 				if header == nil {
-					cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "object header is nil")
+					return nil, errors.New("cli: object header is nil")
 				}
 				switch classType {
 				case types.ClassTypeSchemaID:
@@ -339,7 +347,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 					}
 					codeBlocks[partition] = append(codeBlocks[partition], langCodeBlock)
 				default:
-					return fail(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, "invalid class type"))
+					return fail(nil, errors.New("cli: invalid class type"))
 				}
 			}
 		}
@@ -372,7 +380,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 			}
 			schemaFileNames := absLang.GetSchemaFileNames()
 			if len(schemaFileNames) < 1 {
-				return fail(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliFileOperation, "no schema file names are supported"))
+				return fail(nil, errors.New("cli: no schema file names are supported"))
 			}
 			schemaFileName := schemaFileNames[0]
 			fileBase := strings.TrimPrefix(partition, "/")
@@ -424,12 +432,12 @@ func (m *WorkspaceManager) ExecCloneLedger(ledgerURI string, zapPort, papPort in
 	var output map[string]any
 	ledgerURI = strings.ToLower(ledgerURI)
 	if !strings.HasPrefix(ledgerURI, "permguard@") {
-		return fail(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ledger URI"))
+		return fail(output, errors.New("cli: invalid ledger URI"))
 	}
 	ledgerURI = strings.TrimPrefix(ledgerURI, "permguard@")
 	elements := strings.Split(ledgerURI, "/")
 	if len(elements) != 3 {
-		return fail(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "invalid ledger URI"))
+		return fail(output, errors.New("cli: invalid ledger URI"))
 	}
 
 	uriServer := elements[0]
@@ -456,7 +464,7 @@ func (m *WorkspaceManager) ExecCloneLedger(ledgerURI string, zapPort, papPort in
 		}
 	}
 	if aborted {
-		return fail(output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, "operation has been aborted"))
+		return fail(output, errors.New("cli: operation has been aborted"))
 	}
 	return output, nil
 }

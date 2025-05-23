@@ -18,35 +18,34 @@ package repositories
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/core/validators"
 )
 
 const (
 	// errorMessageTenantInvalidZoneID is the error message tenant invalid zone id.
-	errorMessageTenantInvalidZoneID = "invalid client input - zone id is not valid (id: %d)"
+	errorMessageTenantInvalidZoneID = "storage: invalid client input - zone id is not valid (id: %d)"
 )
 
 // UpsertTenant creates or updates an tenant.
 func (r *Repository) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*Tenant, error) {
 	if tenant == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - tenant data is missing or malformed (%s)", LogTenantEntry(tenant)))
+		return nil, fmt.Errorf("storage: invalid client input - tenant data is missing or malformed (%s)", LogTenantEntry(tenant))
 	}
 	if err := validators.ValidateCodeID("tenant", tenant.ZoneID); err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidZoneID, tenant.ZoneID), err)
+		return nil, errors.Join(err, fmt.Errorf(errorMessageTenantInvalidZoneID, tenant.ZoneID))
 	}
 	if !isCreate && validators.ValidateUUID("tenant", tenant.TenantID) != nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - tenant id is not valid (%s)", LogTenantEntry(tenant)))
+		return nil, fmt.Errorf("storage: invalid client input - tenant id is not valid (%s)", LogTenantEntry(tenant))
 	}
 	if err := validators.ValidateName("tenant", tenant.Name); err != nil {
-		errorMessage := "invalid client input - tenant name is not valid (%s)"
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf(errorMessage, LogTenantEntry(tenant)), err)
+		return nil, errors.Join(err, fmt.Errorf("storage: invalid client input - tenant name is not valid (%s)", LogTenantEntry(tenant)))
 	}
 
 	zoneID := tenant.ZoneID
@@ -86,10 +85,10 @@ func (r *Repository) UpsertTenant(tx *sql.Tx, isCreate bool, tenant *Tenant) (*T
 // DeleteTenant deletes an tenant.
 func (r *Repository) DeleteTenant(tx *sql.Tx, zoneID int64, tenantID string) (*Tenant, error) {
 	if err := validators.ValidateCodeID("tenant", zoneID); err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf(errorMessageTenantInvalidZoneID, zoneID), err)
+		return nil, errors.Join(err, fmt.Errorf(errorMessageTenantInvalidZoneID, zoneID))
 	}
 	if err := validators.ValidateUUID("tenant", tenantID); err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientParameter, fmt.Sprintf("invalid client input - tenant id is not valid (id: %s)", tenantID), err)
+		return nil, errors.Join(err, fmt.Errorf("storage: invalid client input - tenant id is not valid (id: %s)", tenantID))
 	}
 
 	var dbTenant Tenant
@@ -117,10 +116,10 @@ func (r *Repository) DeleteTenant(tx *sql.Tx, zoneID int64, tenantID string) (*T
 // FetchTenants retrieves tenants.
 func (r *Repository) FetchTenants(db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]Tenant, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientPagination, fmt.Sprintf("invalid client input - page number %d or page size %d is not valid", page, pageSize))
+		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize)
 	}
 	if err := validators.ValidateCodeID("tenant", zoneID); err != nil {
-		return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientID, fmt.Sprintf(errorMessageTenantInvalidZoneID, zoneID), err)
+		return nil, errors.Join(err, fmt.Errorf(errorMessageTenantInvalidZoneID, zoneID))
 	}
 
 	var dbTenants []Tenant
@@ -135,7 +134,7 @@ func (r *Repository) FetchTenants(db *sqlx.DB, page int32, pageSize int32, zoneI
 	if filterID != nil {
 		tenantID := *filterID
 		if err := validators.ValidateUUID("tenant", tenantID); err != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientID, fmt.Sprintf("invalid client input - tenant id is not valid (id: %s)", tenantID), err)
+			return nil, errors.Join(err, fmt.Errorf("storage: invalid client input - tenant id is not valid (id: %s)", tenantID))
 		}
 		conditions = append(conditions, "tenant_id = ?")
 		args = append(args, tenantID)
@@ -144,7 +143,7 @@ func (r *Repository) FetchTenants(db *sqlx.DB, page int32, pageSize int32, zoneI
 	if filterName != nil {
 		tenantName := *filterName
 		if err := validators.ValidateName("tenant", tenantName); err != nil {
-			return nil, cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrClientName, fmt.Sprintf("invalid client input - tenant name is not valid (name: %s)", tenantName), err)
+			return nil, errors.Join(err, fmt.Errorf("storage: invalid client input - tenant name is not valid (name: %s)", tenantName))
 		}
 		tenantName = "%" + tenantName + "%"
 		conditions = append(conditions, "name LIKE ?")

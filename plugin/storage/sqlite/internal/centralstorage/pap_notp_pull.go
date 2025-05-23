@@ -17,7 +17,8 @@
 package centralstorage
 
 import (
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"errors"
+
 	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
@@ -32,10 +33,10 @@ import (
 func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	zoneID, ok := getFromHandlerContext[int64](handlerCtx, notptransportsm.ZoneIDKey)
 	if !ok || zoneID <= 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid input zone id.")
+		return nil, errors.New("storage: invalid input zone id")
 	}
 	if len(packets) == 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid input packets for notify current state.")
+		return nil, errors.New("storage: invalid input packets for notify current state")
 	}
 	remoteRefSPacket := &notpagpackets.RemoteRefStatePacket{}
 	err := notppackets.ConvertPacketable(packets[0], remoteRefSPacket)
@@ -43,7 +44,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 		return nil, err
 	}
 	if remoteRefSPacket.RefCommit == "" || remoteRefSPacket.RefPrevCommit == "" {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid remote ref state packet.")
+		return nil,  errors.New("storage: invalid remote ref state packet")
 	}
 	ledger, err := s.readLedgerFromHandlerContext(handlerCtx)
 	if err != nil {
@@ -116,7 +117,7 @@ func (s SQLiteCentralStoragePAP) OnPullSendNotifyCurrentStateResponse(handlerCtx
 func (s SQLiteCentralStoragePAP) OnPullSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	zoneID, ok := getFromHandlerContext[int64](handlerCtx, notptransportsm.ZoneIDKey)
 	if !ok || zoneID <= 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid input zone id.")
+		return nil, errors.New("storage: invalid input zone id")
 	}
 	localCommitID, _ := getFromHandlerContext[string](handlerCtx, LocalCommitIDKey)
 	remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDKey)
@@ -226,7 +227,7 @@ func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(zoneID int64, com
 func (s SQLiteCentralStoragePAP) OnPullHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	zoneID, ok := getFromHandlerContext[int64](handlerCtx, notptransportsm.ZoneIDKey)
 	if !ok || zoneID <= 0 {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientParameter, "invalid input zone id.")
+		return nil, errors.New("storage: invalid input zone id")
 	}
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,

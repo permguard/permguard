@@ -18,10 +18,10 @@ package clients
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	zapv1 "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
@@ -42,7 +42,7 @@ func (c *GrpcZAPClient) CreateZone(name string) (*zap.Zone, error) {
 // UpdateZone updates a zone.
 func (c *GrpcZAPClient) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
 	if zone == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "invalid zone instance")
+		return nil, errors.New( "grpc-client: invalid zone instance")
 	}
 	client, conn, err := c.createGRPCClient()
 	if err != nil {

@@ -17,7 +17,8 @@
 package workspace
 
 import (
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
+	"errors"
+
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
 	notpagpackets "github.com/permguard/permguard/internal/transport/notp/statemachines/packets"
@@ -63,7 +64,7 @@ func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *no
 		return handlerReturn, nil
 	}
 	if localRefSPacket.HasConflicts {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliWorkspace, "conflicts detected in the remote ledger.")
+		return nil, errors.New("cli: conflicts detected in the remote ledger")
 	}
 	handlerCtx.Set(RemoteCommitIDKey, localRefSPacket.RefCommit)
 	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)

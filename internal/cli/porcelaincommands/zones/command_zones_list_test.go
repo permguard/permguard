@@ -17,6 +17,7 @@
 package zones
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -28,7 +29,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils"
 	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
 	"github.com/permguard/permguard/pkg/cli/options"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
@@ -68,7 +68,7 @@ func TestCliZonesListWithError(t *testing.T) {
 		cmd.PersistentFlags().BoolP(common.FlagVerbose, common.FlagVerboseShort, true, "true for verbose output")
 
 		zapClient := mocks.NewGrpcZAPClientMock()
-		zapClient.On("FetchZonesBy", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, cerrors.ErrClientParameter)
+		zapClient.On("FetchZonesBy", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("operation error"))
 
 		printerMock := mocks.NewPrinterMock()
 		printerMock.On("Println", mock.Anything).Return()

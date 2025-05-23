@@ -17,11 +17,12 @@
 package clients
 
 import (
+	"errors"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
 	zapv1 "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // GrpcZAPClient is a gRPC client for the ZAP service.
@@ -32,7 +33,7 @@ type GrpcZAPClient struct {
 // NewGrpcZAPClient creates a new gRPC client for the ZAP service.
 func NewGrpcZAPClient(target string) (*GrpcZAPClient, error) {
 	if target == "" {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrClientGeneric, "target is required")
+		return nil, errors.New( "grpc-client: target is required")
 	}
 	return &GrpcZAPClient{
 		target: target,

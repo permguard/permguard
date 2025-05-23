@@ -26,7 +26,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
 	"github.com/permguard/permguard/pkg/authz/languages"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 )
 
@@ -171,13 +170,13 @@ func (m *WorkspaceManager) execInternalAddRemote(internal bool, remote string, s
 	}
 
 	if !validators.IsValidHostname(server) {
-		return fail(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid server %s", server)))
+		return fail(nil,  fmt.Errorf("cli: invalid server %s", server))
 	}
 	if !validators.IsValidPort(zapPort) {
-		return fail(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid zap port %d", zapPort)))
+		return fail(nil, fmt.Errorf("cli: invalid zap port %d", zapPort))
 	}
 	if !validators.IsValidPort(papPort) {
-		return fail(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("invalid pap port %d", papPort)))
+		return fail(nil, fmt.Errorf("cli: invalid pap port %d", papPort))
 	}
 
 	output, err := m.cfgMgr.ExecAddRemote(remote, server, zapPort, papPort, nil, out)
@@ -232,7 +231,7 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out common.PrinterOut
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "remote", "Failed to delete remote: it is associated with the current HEAD.", nil, true)
 		}
-		return fail(nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliWorkspace, fmt.Sprintf("cannot remove the remote used by the currently checked out zone %s", remote)))
+		return fail(nil, fmt.Errorf("cli: cannot remove the remote used by the currently checked out zone %s", remote))
 	}
 	output, err = m.cfgMgr.ExecRemoveRemote(remote, output, out)
 	return output, err

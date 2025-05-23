@@ -17,6 +17,7 @@
 package configs
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/fatih/color"
@@ -27,7 +28,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // viperWriteEndpoint writes the setting to the viper configuration.
@@ -53,8 +53,7 @@ func runECommandForZAPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 			printer.Println("Failed to set the zap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to set the zap target.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to set the zap target")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -64,8 +63,7 @@ func runECommandForZAPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 			printer.Println("Failed to set the zap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to set the zap target.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to set the zap target")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -84,8 +82,7 @@ func runECommandForPAPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 			printer.Println("Failed to set the pap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to set the pap target.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to set the pap target")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -95,8 +92,7 @@ func runECommandForPAPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 			printer.Println("Failed to set the pap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to set the pap target.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to set the pap target")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -115,8 +111,7 @@ func runECommandForPDPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 			printer.Println("Failed to set the zap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to set the pdp target.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to set the pdp target")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -126,8 +121,7 @@ func runECommandForPDPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 			printer.Println("Failed to set the zap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to set the pdp target.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("cli: failed to set the pdp target")))
 		}
 		return common.ErrCommandSilent
 	}

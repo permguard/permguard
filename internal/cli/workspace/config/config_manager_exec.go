@@ -22,20 +22,19 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 )
 
 // ExecInitialize initializes the config resources.
 func (m *ConfigManager) ExecInitialize() error {
 	version, _ := m.ctx.GetClientVersion()
-	config := config{
+	cfg := config{
 		Core: coreConfig{
 			ClientVersion: version,
 		},
 		Remotes: map[string]remoteConfig{},
 		Ledgers: map[string]ledgerConfig{},
 	}
-	return m.saveConfig(false, &config)
+	return m.saveConfig(false, &cfg)
 }
 
 // ExecAddRemote adds a remote.
@@ -48,7 +47,7 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, zap int, pap
 		return output, err
 	}
 	if wkscommon.IsReservedKeyword(remote) {
-		return output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliInput, fmt.Sprintf("remote %s is a reserved keyword", remote))
+		return output, fmt.Errorf("cli: remote %s is a reserved keyword", remote)
 	}
 	server = strings.ToLower(server)
 	cfg, err := m.readConfig()
@@ -57,7 +56,7 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, zap int, pap
 	}
 	for rmt := range cfg.Remotes {
 		if remote == rmt {
-			return output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordExists, fmt.Sprintf("remote %s already exists", remote))
+			return output, fmt.Errorf("cli: remote %s already exists", remote)
 		}
 	}
 	cfgRemote := remoteConfig{
@@ -98,11 +97,11 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 		return output, err
 	}
 	if _, ok := cfg.Remotes[remote]; !ok {
-		return output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordNotFound, fmt.Sprintf("remote %s does not exist", remote))
+		return output, fmt.Errorf("cli: remote %s does not exist", remote)
 	}
 	for ledger := range cfg.Ledgers {
 		if cfg.Ledgers[ledger].Remote == remote {
-			return output, cerrors.WrapSystemErrorWithMessage(cerrors.ErrCliRecordExists, fmt.Sprintf("remote %s is used by ledger %s", remote, ledger))
+			return output, fmt.Errorf("cli: remote %s is used by ledger %s", remote, ledger)
 		}
 	}
 	cfgRemote := cfg.Remotes[remote]
@@ -176,8 +175,8 @@ func (m *ConfigManager) ExecAddLedger(ledgerURI, ref, remote, ledger, ledgerID s
 	}
 	var cfgLedger ledgerConfig
 	exists := false
-	for ledger := range cfg.Ledgers {
-		if ledger == ledger && cfg.Ledgers[ledgerURI].Remote == remote {
+	for range cfg.Ledgers {
+		if cfg.Ledgers[ledgerURI].Remote == remote {
 			cfgLedger = cfg.Ledgers[ledgerURI]
 			exists = true
 			break

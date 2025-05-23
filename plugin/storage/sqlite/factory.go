@@ -17,12 +17,12 @@
 package sqlite
 
 import (
+	"errors"
 	"flag"
 
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/pkg/agents/storage"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage"
 	"github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
@@ -63,7 +63,7 @@ type SQLiteStorageFactory struct {
 // NewSQLiteStorageFactory creates a new server factory configuration.
 func NewSQLiteStorageFactory(storageFctyCfg *SQLiteStorageFactoryConfig) (*SQLiteStorageFactory, error) {
 	if storageFctyCfg == nil {
-		return nil, cerrors.WrapSystemErrorWithMessage(cerrors.ErrConfigurationGeneric, "storage factory configuration cannot be nil")
+		return nil, errors.New("storage: storage factory configuration cannot be nil")
 	}
 	connection, err := db.NewSQLiteConnection(storageFctyCfg.config)
 	if err != nil {

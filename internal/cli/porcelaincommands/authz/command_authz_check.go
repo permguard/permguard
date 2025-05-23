@@ -19,6 +19,7 @@ package authz
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,7 +32,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
-	cerrors "github.com/permguard/permguard/pkg/core/errors"
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 
@@ -52,8 +52,7 @@ func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v
 			printer.Println("Failed to check the authorization request.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliOperation, message, err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, fmt.Errorf("cli: %s", message)))
 		}
 		return common.ErrCommandSilent
 	}
@@ -74,8 +73,8 @@ func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v
 	for scanner.Scan() {
 		builder.WriteString(scanner.Text())
 	}
-	if err := scanner.Err(); err != nil {
-		return handleInputError(ctx, printer, err, "Invalid input for the authz check.")
+	if err2 := scanner.Err(); err2 != nil {
+		return handleInputError(ctx, printer, err2, "Invalid input for the authz check.")
 	}
 	jsonString := builder.String()
 	var authzReq pdp.AuthorizationCheckWithDefaultsRequest
@@ -90,8 +89,7 @@ func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v
 			printer.Println("Failed to check the authorization request.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to check the authorization request.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("storage: failed to check the authorization request")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -101,8 +99,7 @@ func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v
 			printer.Println("Failed to check the authorization request.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to check the authorization request.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("storage: failed to check the authorization request")))
 		}
 		return common.ErrCommandSilent
 	}
@@ -112,8 +109,8 @@ func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v
 			printer.Println("Failed to check the authorization request.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			sysErr := cerrors.WrapHandledSysErrorWithMessage(cerrors.ErrCliArguments, "failed to check the authorization request.", err)
-			printer.Error(sysErr)
+			printer.Error(errors.Join(err, errors.New("storage: failed to check the authorization request")))
+
 		}
 		return common.ErrCommandSilent
 	}
