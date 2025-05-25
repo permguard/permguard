@@ -2,9 +2,9 @@ go 1.24.3
 
 use (
 	.
-	./modules/common
-	./modules/notp-protocol
+	./common
+	./notp-protocol
 	./ztauthstar
-	./modules/ztauthstar-cedar
-	./modules/ztauthstar-rego
+	./ztauthstar-cedar
+	./ztauthstar-rego
 )
