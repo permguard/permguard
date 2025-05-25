@@ -139,7 +139,7 @@ func (s SQLiteCentralStorageZAP) FetchIdentitySources(page int32, pageSize int32
 	for i, a := range dbIdentitySources {
 		identitySource, err := mapIdentitySourceToAgentIdentitySource(&a)
 		if err != nil {
-			return nil, errors.Join(err, fmt.Errorf("storage: failed to convert identity source entity (%s)", repos.LogIdentitySourceEntry(&a)),)
+			return nil, errors.Join(err, fmt.Errorf("storage: failed to convert identity source entity (%s)", repos.LogIdentitySourceEntry(&a)))
 		}
 		identitySources[i] = *identitySource
 	}

@@ -216,12 +216,12 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 }
 
 // buildDecisionLogs builds the decision logs.
-func (s PDPController) buildDecisionLogs(req *pdp.AuthorizationCheckRequest, resp *pdp.AuthorizationCheckResponse) ([]map[string]any) {
+func (s PDPController) buildDecisionLogs(req *pdp.AuthorizationCheckRequest, resp *pdp.AuthorizationCheckResponse) []map[string]any {
 	decisionLogs := make([]map[string]any, len(req.Evaluations))
 	for i := range req.Evaluations {
 		reqVal := req.Evaluations[i]
 		respVal := resp.Evaluations[i]
-		decisionMap := map[string]any {}
+		decisionMap := map[string]any{}
 		requestMap := map[string]any{}
 		requestMap["authorization_model"] = req.AuthorizationModel
 		requestMap["evaluation"] = reqVal

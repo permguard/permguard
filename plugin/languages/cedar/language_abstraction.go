@@ -261,7 +261,7 @@ func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(mfestLang *m
 	case cedarlang.LanguageSchemaTypeID:
 		frontendContent = content
 	default:
-		return nil, errors.New( "cedar: invalid syntax")
+		return nil, errors.New("cedar: invalid syntax")
 	}
 	return frontendContent, nil
 }
@@ -311,7 +311,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 	}
 	resourceProperties, err := createEntityAttribJSON(resourceType, resourceID, resource.GetProperties())
 	if err != nil {
-		return nil, errors.New( "cedar: bad request for the resource properties")
+		return nil, errors.New("cedar: bad request for the resource properties")
 	}
 
 	// Extract the action from the authorization context.
