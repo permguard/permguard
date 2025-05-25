@@ -64,8 +64,8 @@ require (
 )
 
 replace (
-	github.com/permguard/permguard/common => ./modules/common
-	github.com/permguard/permguard/notp-protocol => ./modules/notp-protocol
-	github.com/permguard/permguard/ztauthstar => ./modules/ztauthstar
-	github.com/permguard/permguard/ztauthstar-cedar => ./modules/ztauthstar-cedar
+	github.com/permguard/permguard/common => ./common
+	github.com/permguard/permguard/notp-protocol => ./notp-protocol
+	github.com/permguard/permguard/ztauthstar => ./ztauthstar
+	github.com/permguard/permguard/ztauthstar-cedar => ./ztauthstar-cedar
 )

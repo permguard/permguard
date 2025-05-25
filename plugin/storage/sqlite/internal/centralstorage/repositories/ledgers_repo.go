@@ -124,7 +124,7 @@ func (r *Repository) UpdateLedgerRef(tx *sql.Tx, zoneID int64, ledgerID, current
 		return errors.Join(err, fmt.Errorf("storage: invalid client input - ledger id is not valid (id: %s)", ledgerID))
 	}
 	if err := validators.ValidateSHA256(LedgerType, currentRef); err != nil {
-		return 	errors.Join(err, fmt.Errorf("storage: invalid client input - current ref is not valid (ref: %s)", currentRef))
+		return errors.Join(err, fmt.Errorf("storage: invalid client input - current ref is not valid (ref: %s)", currentRef))
 	}
 	if err := validators.ValidateSHA256(LedgerType, newRef); err != nil {
 		return errors.Join(err, fmt.Errorf("storage: invalid client input - new ref is not valid (ref: %s)", newRef))

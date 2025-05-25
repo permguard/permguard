@@ -33,7 +33,7 @@ type GrpcZAPClient struct {
 // NewGrpcZAPClient creates a new gRPC client for the ZAP service.
 func NewGrpcZAPClient(target string) (*GrpcZAPClient, error) {
 	if target == "" {
-		return nil, errors.New( "grpc-client: target is required")
+		return nil, errors.New("grpc-client: target is required")
 	}
 	return &GrpcZAPClient{
 		target: target,

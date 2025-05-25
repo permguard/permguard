@@ -55,7 +55,7 @@ func createAndHandleStatePacket(runtime *StateMachineRuntimeContext, messageCode
 		handlerReturn, err := runtime.HandleStream(handlerCtx, statePacket, packetables)
 		if handlerReturn != nil {
 			if handlerReturn.Terminate {
-				err2:= sendTermination(runtime)
+				err2 := sendTermination(runtime)
 				return nil, nil, false, true, err2
 			}
 			hasMore = handlerReturn.HasMore

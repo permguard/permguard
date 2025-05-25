@@ -42,7 +42,7 @@ func (c *GrpcZAPClient) CreateZone(name string) (*zap.Zone, error) {
 // UpdateZone updates a zone.
 func (c *GrpcZAPClient) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
 	if zone == nil {
-		return nil, errors.New( "grpc-client: invalid zone instance")
+		return nil, errors.New("grpc-client: invalid zone instance")
 	}
 	client, conn, err := c.createGRPCClient()
 	if err != nil {

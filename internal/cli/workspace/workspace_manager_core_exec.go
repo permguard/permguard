@@ -170,7 +170,7 @@ func (m *WorkspaceManager) execInternalAddRemote(internal bool, remote string, s
 	}
 
 	if !validators.IsValidHostname(server) {
-		return fail(nil,  fmt.Errorf("cli: invalid server %s", server))
+		return fail(nil, fmt.Errorf("cli: invalid server %s", server))
 	}
 	if !validators.IsValidPort(zapPort) {
 		return fail(nil, fmt.Errorf("cli: invalid zap port %d", zapPort))
