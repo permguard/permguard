@@ -26,7 +26,7 @@ ENV GIT_COMMIT=$GIT_COMMIT
 
 RUN apk add --no-cache make gcc musl-dev
 WORKDIR /opt/build
-COPY go.mod go.sum ./
+COPY go.mod go.sum go.work go.work.sum ./
 RUN go mod download
 
 COPY . .
