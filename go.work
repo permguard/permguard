@@ -4,7 +4,7 @@ use (
 	.
 	./modules/common
 	./modules/notp-protocol
-	./modules/ztauthstar
+	./ztauthstar
 	./modules/ztauthstar-cedar
 	./modules/ztauthstar-rego
 )
