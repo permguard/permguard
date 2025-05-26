@@ -147,9 +147,9 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 | OPTION   | MEANING                                                                                     |
 |----------|---------------------------------------------------------------------------------------------|
-| `none`   | Disables decision logging entirely.                                                         |
-| `stdout` | Writes decision logs to standard output, useful for debugging or container environments.    |
-| `file`   | Persists decision logs to a file on disk (log file location is configurable separately).    |
+| `NONE`   | Disables decision logging entirely.                                                         |
+| `STDOUT` | Writes decision logs to standard output, useful for debugging or container environments.    |
+| `FILE`   | Persists decision logs to a file on disk (log file location is configurable separately).    |
 
 </details>
 
