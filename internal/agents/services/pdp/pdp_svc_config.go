@@ -26,6 +26,7 @@ import (
 	"github.com/permguard/permguard/common/pkg/extensions/validators"
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/decisions"
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 
@@ -35,6 +36,7 @@ const (
 	flagSuffixGrpcPort       = "grpc-port"
 	flagCentralEngine        = "engine-central"
 	flagDataFetchMaxPageSize = "data-fetch-maxpagesize"
+	flagSuffixDecisionLog    = "decision-log"
 )
 
 // PDPServiceConfig holds the configuration for the server.
@@ -56,6 +58,7 @@ func (c *PDPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(options.FlagName(flagServerPDPPrefix, flagSuffixGrpcPort), 9094, "port to be used for exposing the pdp grpc services")
 	flagSet.String(options.FlagName(flagStoragePDPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage-engine-central option")
 	flagSet.Int(options.FlagName(flagServerPDPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
+	flagSet.String(options.FlagName(flagStoragePDPPrefix, flagSuffixDecisionLog), "", "specifies where to send decision logs --server-pdp-decision-log option")
 	return nil
 }
 
@@ -68,7 +71,7 @@ func (c *PDPServiceConfig) InitFromViper(v *viper.Viper) error {
 		return errors.New("pdp-service: invalid port")
 	}
 	c.config[flagSuffixGrpcPort] = grpcPort
-	// retrieve the data fetch max page size
+	// retrieve the central storage engine
 	flagName = options.FlagName(flagServerPDPPrefix, flagCentralEngine)
 	centralStorageEngine := v.GetString(flagName)
 	storageCEng, err := storage.NewStorageKindFromString(centralStorageEngine)
@@ -83,6 +86,14 @@ func (c *PDPServiceConfig) InitFromViper(v *viper.Viper) error {
 		return errors.New("pdp-service: invalid data fetch max page size")
 	}
 	c.config[flagDataFetchMaxPageSize] = dataFetchMaxPageSize
+	// retrieve the decision log
+	flagName = options.FlagName(flagServerPDPPrefix, flagSuffixDecisionLog)
+	decisionLog := v.GetString(flagName)
+	decisionLogType, err := decisions.NewDecisionLogKindFromString(decisionLog)
+	if err != nil {
+		return errors.Join(err, errors.New("pdp-service: invalid decision log"))
+	}
+	c.config[flagSuffixDecisionLog] = decisionLogType
 	return nil
 }
 
@@ -104,6 +115,11 @@ func (c *PDPServiceConfig) GetStorageCentralEngine() storage.StorageKind {
 // GetDataFetchMaxPageSize returns the maximum number of items to fetch per request.
 func (c *PDPServiceConfig) GetDataFetchMaxPageSize() int {
 	return c.config[flagDataFetchMaxPageSize].(int)
+}
+
+// GetDecisionLog returns the decision log.
+func (c *PDPServiceConfig) GetDecisionLog() string {
+	return c.config[flagSuffixDecisionLog].(string)
 }
 
 // GetService returns the service kind.
