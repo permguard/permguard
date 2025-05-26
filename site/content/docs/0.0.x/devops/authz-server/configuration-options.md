@@ -140,7 +140,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
 
-**\--server-pdp-decision-log**: *specifies where to send decision logs (default `none`, options `none`, `stdout`, `file`).*
+**\--server-pdp-decision-log**: *specifies where to send decision logs (default `NONE`, options `NONE`, `STDOUT`, `FILE`).*
 
 <details>
   <summary>Options</summary>
