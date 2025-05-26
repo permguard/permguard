@@ -140,6 +140,19 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
 
+**\--decision-log**: *specifies where to send decision logs (default `none`, options `none`, `stdout`, `file`).*
+
+<details>
+  <summary>Options</summary>
+
+| OPTION   | MEANING                                                                                     |
+|----------|---------------------------------------------------------------------------------------------|
+| `none`   | Disables decision logging entirely.                                                         |
+| `stdout` | Writes decision logs to standard output, useful for debugging or container environments.    |
+| `file`   | Persists decision logs to a file on disk (log file location is configurable separately).    |
+
+</details>
+
 ## Provisioners
 
 Regardless of the chosen distribution, the binary accepts the following options:
