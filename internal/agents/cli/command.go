@@ -38,7 +38,7 @@ import (
 const (
 	flagPrefixDataStorage        = "storage"
 	flagSuffixDataStorageCentral = "engine-central"
-	flagValDefDataStorageCentral = "sqlite"
+	flagValDefDataStorageCentral = "SQLITE"
 )
 
 //go:embed "art.txt"
