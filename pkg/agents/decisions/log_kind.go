@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	DecisionLogNone   DecisionLogKind = ""
+	DecisionLogNone   DecisionLogKind = "NONE"
 	DecisionLogStdOut DecisionLogKind = "STDOUT"
-	DecisionLogFile DecisionLogKind = "FILE"
+	DecisionLogFile   DecisionLogKind = "FILE"
 )
 
 // DecisionLogKind is the type of decision log.
@@ -32,6 +32,9 @@ type DecisionLogKind string
 
 // NewDecisionLogKindFromString creates a new decision log kind from a string.
 func NewDecisionLogKindFromString(decisionLog string) (DecisionLogKind, error) {
+	if strings.TrimSpace(decisionLog) == "" {
+		decisionLog = string(DecisionLogNone)
+	}
 	return DecisionLogKind(strings.ToUpper(decisionLog)), nil
 }
 

@@ -24,9 +24,9 @@ import (
 
 	"github.com/permguard/permguard/common/pkg/extensions/copier"
 	"github.com/permguard/permguard/common/pkg/extensions/validators"
+	"github.com/permguard/permguard/pkg/agents/decisions"
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
-	"github.com/permguard/permguard/pkg/agents/decisions"
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 
