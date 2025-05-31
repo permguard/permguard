@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/permguard/permguard/internal/agents/decisions"
 	"github.com/permguard/permguard/pkg/agents/runtime"
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
@@ -30,6 +31,7 @@ import (
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
 	"github.com/permguard/permguard/plugin/languages/cedar"
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
+	"go.uber.org/zap"
 )
 
 const (
@@ -63,10 +65,9 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 		errMsg := fmt.Sprintf("%s: received nil request", authzen.AuthzErrBadRequestMessage)
 		return pdp.NewAuthorizationCheckErrorResponse(nil, "", authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
 	}
-	cfgReader, _ := s.ctx.GetServiceConfigReader()
-	decisionLog, err := runtime.GetTypedValue[string](cfgReader.GetValue, "decision-log")
+	cfgReader, err := s.ctx.GetServiceConfigReader()
 	if err != nil {
-		return nil, errors.Join(err, errors.New("pdp-service:  failed to get decision logs configuration"))
+		return nil, errors.Join(err, errors.New("pdp-service: failed to get service config reader"))
 	}
 	requestID := request.RequestID
 	if request.AuthorizationModel == nil {
@@ -174,14 +175,14 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 	authzCheckEvaluations := []pdp.EvaluationResponse{}
 	if reqEvaluationsSize > 0 {
 		authzModel := expReq.AuthorizationModel
-		authzPolicyStore, err := s.storage.LoadPolicyStore(authzModel.ZoneID, authzModel.PolicyStore.ID)
-		if err != nil {
-			errMsg := fmt.Sprintf("%s: authorization check has failed %s", authzen.AuthzErrInternalErrorMessage, err.Error())
+		authzPolicyStore, err2 := s.storage.LoadPolicyStore(authzModel.ZoneID, authzModel.PolicyStore.ID)
+		if err2 != nil {
+			errMsg := fmt.Sprintf("%s: authorization check has failed %s", authzen.AuthzErrInternalErrorMessage, err2.Error())
 			return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
 		}
-		cedarLanguageAbs, err := cedar.NewCedarLanguageAbstraction()
-		if err != nil {
-			errMsg := fmt.Sprintf("%s: authorization check has failed %s", authzen.AuthzErrInternalErrorMessage, err.Error())
+		cedarLanguageAbs, err2 := cedar.NewCedarLanguageAbstraction()
+		if err2 != nil {
+			errMsg := fmt.Sprintf("%s: authorization check has failed %s", authzen.AuthzErrInternalErrorMessage, err2.Error())
 			return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
 		}
 		authzCheckEvaluations = []pdp.EvaluationResponse{}
@@ -197,9 +198,9 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 			}
 			contextID := expandedRequest.ContextID
 			//TODO: Fix manifest refactoring
-			authzResponse, err := cedarLanguageAbs.AuthorizationCheck(nil, contextID, authzPolicyStore, &authzCtx)
-			if err != nil {
-				evaluation := pdp.NewEvaluationErrorResponse(expandedRequest.RequestID, authzen.AuthzErrInternalErrorCode, err.Error(), authzen.AuthzErrInternalErrorMessage)
+			authzResponse, err2 := cedarLanguageAbs.AuthorizationCheck(nil, contextID, authzPolicyStore, &authzCtx)
+			if err2 != nil {
+				evaluation := pdp.NewEvaluationErrorResponse(expandedRequest.RequestID, authzen.AuthzErrInternalErrorCode, err2.Error(), authzen.AuthzErrInternalErrorMessage)
 				authzCheckEvaluations = append(authzCheckEvaluations, *evaluation)
 				continue
 			}
@@ -249,18 +250,33 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 		}
 		authzCheckResp.Decision = allTrue
 	}
-	if decisionLog != "NONE" {
-		reader, _ := s.ctx.GetHostConfigReader()
-		appData := reader.GetAppData()
-		reader.GetAppData()
-		decisionLogsPath := filepath.Join(appData, "decisions.log")
+	decisionLog, err := runtime.GetTypedValue[string](cfgReader.GetValue, "decision-log")
+	if err != nil {
+		return nil, errors.Join(err, errors.New("pdp-service:  failed to get decision logs configuration"))
+	}
+	if decisions.ShouldLogDecision(decisionLog) {
+		var decisionLogsPath string
+		decisionKind := decisions.DecisionLogKind(decisionLog)
+		if decisionKind == decisions.DecisionLogFile {
+			hostReader, err := s.ctx.GetHostConfigReader()
+			if err != nil {
+				return nil, errors.Join(err, errors.New("pdp-service: failed to get host config reader"))
+			}
+			decisionLogsPath = filepath.Join(hostReader.GetAppData(), "decisions.log")
+		}
 		decisionLogs := s.buildDecisionLogs(expReq, authzCheckResp)
+		logger := s.ctx.GetLogger()
 		for _, decisionLog := range decisionLogs {
 			decision, _ := json.Marshal(decisionLog)
-			files.AppendToFile(decisionLogsPath, append(decision, '\n'), false)
+			switch decisionKind {
+			case decisions.DecisionLogFile:
+				files.AppendToFile(decisionLogsPath, append(decision, '\n'), false)
+			case decisions.DecisionLogStdOut:
+				logger.Info("Decision log", zap.String("decision", string(decision)))
+			}
 		}
 	}
-	return authzCheckResp, nil
+  	return authzCheckResp, nil
 }
 
 // buildDecisionLogs builds the decision logs.

@@ -24,7 +24,7 @@ import (
 
 	"github.com/permguard/permguard/common/pkg/extensions/copier"
 	"github.com/permguard/permguard/common/pkg/extensions/validators"
-	"github.com/permguard/permguard/pkg/agents/decisions"
+	"github.com/permguard/permguard/internal/agents/decisions"
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/cli/options"
@@ -58,7 +58,7 @@ func (c *PDPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(options.FlagName(flagServerPDPPrefix, flagSuffixGrpcPort), 9094, "port to be used for exposing the pdp grpc services")
 	flagSet.String(options.FlagName(flagStoragePDPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage-engine-central option")
 	flagSet.Int(options.FlagName(flagServerPDPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
-	flagSet.String(options.FlagName(flagStoragePDPPrefix, flagSuffixDecisionLog), decisions.DecisionLogNone.String(), "specifies where to send decision logs output type")
+	flagSet.String(options.FlagName(flagServerPDPPrefix, flagSuffixDecisionLog), decisions.DecisionLogNone.String(), "specifies where to send decision logs output type")
 	return nil
 }
 
