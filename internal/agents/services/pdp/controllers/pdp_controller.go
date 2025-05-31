@@ -26,6 +26,7 @@ import (
 	"github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/core/files"
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
+	"github.com/permguard/permguard/plugin/languages/cedar"
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 )
 
@@ -165,10 +166,47 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 	expReq.Evaluations = reqEvaluations
 	authzCheckEvaluations := []pdp.EvaluationResponse{}
 	if reqEvaluationsSize > 0 {
-		authzCheckEvaluations, err = s.storage.AuthorizationCheck(expReq)
+		authzModel := expReq.AuthorizationModel
+		authzPolicyStore, err := s.storage.LoadPolicyStore(authzModel.ZoneID, authzModel.PolicyStore.ID)
 		if err != nil {
 			errMsg := fmt.Sprintf("%s: authorization check has failed %s", authzen.AuthzErrInternalErrorMessage, err.Error())
 			return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
+		}
+		cedarLanguageAbs, err := cedar.NewCedarLanguageAbstraction()
+		if err != nil {
+			errMsg := fmt.Sprintf("%s: authorization check has failed %s", authzen.AuthzErrInternalErrorMessage, err.Error())
+			return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
+		}
+		authzCheckEvaluations = []pdp.EvaluationResponse{}
+		for _, expandedRequest := range expReq.Evaluations {
+			authzCtx := authzen.AuthorizationModel{}
+			authzCtx.SetSubject(expandedRequest.Subject.Type, expandedRequest.Subject.ID, expandedRequest.Subject.Source, expandedRequest.Subject.Properties)
+			authzCtx.SetResource(expandedRequest.Resource.Type, expandedRequest.Resource.ID, expandedRequest.Resource.Properties)
+			authzCtx.SetAction(expandedRequest.Action.Name, expandedRequest.Action.Properties)
+			authzCtx.SetContext(expandedRequest.Context)
+			entities := expReq.AuthorizationModel.Entities
+			if entities != nil {
+				authzCtx.SetEntities(entities.Schema, entities.Items)
+			}
+			contextID := expandedRequest.ContextID
+			//TODO: Fix manifest refactoring
+			authzResponse, err := cedarLanguageAbs.AuthorizationCheck(nil, contextID, authzPolicyStore, &authzCtx)
+			if err != nil {
+				evaluation := pdp.NewEvaluationErrorResponse(expandedRequest.RequestID, authzen.AuthzErrInternalErrorCode, err.Error(), authzen.AuthzErrInternalErrorMessage)
+				authzCheckEvaluations = append(authzCheckEvaluations, *evaluation)
+				continue
+			}
+			if authzResponse == nil {
+				evaluation := pdp.NewEvaluationErrorResponse(expandedRequest.RequestID, authzen.AuthzErrInternalErrorCode, "because of a nil authz response", authzen.AuthzErrInternalErrorMessage)
+				authzCheckEvaluations = append(authzCheckEvaluations, *evaluation)
+				continue
+			}
+			evaluation := &pdp.EvaluationResponse{
+				RequestID: expandedRequest.RequestID,
+				Decision:  authzResponse.GetDecision(),
+				Context:   authorizationCheckBuildContextResponse(authzResponse),
+			}
+			authzCheckEvaluations = append(authzCheckEvaluations, *evaluation)
 		}
 		if len(authzCheckEvaluations) != reqEvaluationsSize {
 			errMsg := fmt.Sprintf("%s: invalid authorization check response size for evaluations", authzen.AuthzErrInternalErrorMessage)
