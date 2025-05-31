@@ -18,6 +18,8 @@ package runtime
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 
 	"go.uber.org/zap"
 )
@@ -46,4 +48,37 @@ type HostConfigReader interface {
 type ServiceConfigReader interface {
 	// GetValue returns the value for the given key.
 	GetValue(key string) (any, error)
+}
+
+// GetTypedValue retrieves a value of type T from any value.
+func GetTypedValue[T any](getFunc func(string) (any, error), key string) (T, error) {
+	value, err := getFunc(key)
+	if err != nil {
+		var zero T
+		return zero, fmt.Errorf("failed to get value for key %q: %w", key, err)
+	}
+
+	if typed, ok := value.(T); ok {
+		return typed, nil
+	}
+
+	var zero T
+	switch any(zero).(type) {
+	case string:
+		switch v := value.(type) {
+		case fmt.Stringer:
+			return any(v.String()).(T), nil
+		case []byte:
+			return any(string(v)).(T), nil
+		case string:
+			return any(v).(T), nil
+		}
+	case int:
+		switch v := value.(type) {
+		case int8, int16, int32, int64, uint8, uint16, uint32, uint64:
+			return any(int(reflect.ValueOf(v).Int())).(T), nil
+		}
+	}
+
+	return zero, fmt.Errorf("type mismatch for key %q: value is %T, expected %T", key, value, zero)
 }
