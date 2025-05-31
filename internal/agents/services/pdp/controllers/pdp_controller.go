@@ -272,7 +272,7 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 			case decisions.DecisionLogFile:
 				files.AppendToFile(decisionLogsPath, append(decision, '\n'), false)
 			case decisions.DecisionLogStdOut:
-				logger.Info("Decision log", zap.String("decision", string(decision)))
+				logger.Info("DECISION-LOG", zap.String("decision", string(decision)))
 			}
 		}
 	}
