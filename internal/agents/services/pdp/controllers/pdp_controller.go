@@ -18,10 +18,12 @@ package controllers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
 
+	"github.com/permguard/permguard/pkg/agents/runtime"
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/core/files"
@@ -60,6 +62,11 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 	if request == nil {
 		errMsg := fmt.Sprintf("%s: received nil request", authzen.AuthzErrBadRequestMessage)
 		return pdp.NewAuthorizationCheckErrorResponse(nil, "", authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
+	}
+	cfgReader, _ := s.ctx.GetServiceConfigReader()
+	decisionLog, err := runtime.GetTypedValue[string](cfgReader.GetValue, "decision-log")
+	if err != nil {
+		return nil, errors.Join(err, errors.New("pdp-service:  failed to get decision logs configuration"))
 	}
 	requestID := request.RequestID
 	if request.AuthorizationModel == nil {
@@ -242,13 +249,16 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 		}
 		authzCheckResp.Decision = allTrue
 	}
-	reader, _ := s.ctx.GetHostConfigReader()
-	appData := reader.GetAppData()
-	decisionLogsPath := filepath.Join(appData, "decisions.log")
-	decisionLogs := s.buildDecisionLogs(expReq, authzCheckResp)
-	for _, decisionLog := range decisionLogs {
-		decision, _ := json.Marshal(decisionLog)
-		files.AppendToFile(decisionLogsPath, append(decision, '\n'), false)
+	if decisionLog != "NONE" {
+		reader, _ := s.ctx.GetHostConfigReader()
+		appData := reader.GetAppData()
+		reader.GetAppData()
+		decisionLogsPath := filepath.Join(appData, "decisions.log")
+		decisionLogs := s.buildDecisionLogs(expReq, authzCheckResp)
+		for _, decisionLog := range decisionLogs {
+			decision, _ := json.Marshal(decisionLog)
+			files.AppendToFile(decisionLogsPath, append(decision, '\n'), false)
+		}
 	}
 	return authzCheckResp, nil
 }
