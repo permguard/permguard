@@ -17,11 +17,11 @@
 package storage
 
 import (
-	"github.com/permguard/permguard/pkg/transport/models/pdp"
+	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 )
 
 // PDPCentralStorage is the interface for the PDP central storage.
 type PDPCentralStorage interface {
-	// AuthorizationCheck checks if the request is authorized.
-	AuthorizationCheck(request *pdp.AuthorizationCheckRequest) ([]pdp.EvaluationResponse, error)
+	// LoadPolicyStore loads the policy store for a given zone ID and store ID.
+	LoadPolicyStore(zoneID int64, storeID string) (*authzen.PolicyStore, error)
 }
