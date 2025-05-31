@@ -52,3 +52,8 @@ func (s DecisionLogKind) Equal(decisionLog DecisionLogKind) bool {
 func (s DecisionLogKind) IsValid(decisionLog []DecisionLogKind) bool {
 	return slices.ContainsFunc(decisionLog, s.Equal)
 }
+
+// ShouldLogDecision checks if the decision log kind is valid for logging decisions.
+func ShouldLogDecision(decisionLog string) bool {
+	return DecisionLogKind(decisionLog).IsValid([]DecisionLogKind{DecisionLogStdOut, DecisionLogFile})
+}
