@@ -81,28 +81,28 @@ func authorizationCheckExpandAuthorizationCheckWithDefaults(request *pdp.Authori
 // authorizationCheckBuildContextResponse builds the context response for the authorization check.
 func authorizationCheckBuildContextResponse(authzDecision *authzen.AuthorizationDecision) *pdp.ContextResponse {
 	ctxResponse := &pdp.ContextResponse{}
-	ctxResponse.ID = authzDecision.GetID()
+	ctxResponse.ID = authzDecision.ID()
 
-	adminError := authzDecision.GetAdminError()
+	adminError := authzDecision.AdminError()
 	if adminError != nil {
 		ctxResponse.ReasonAdmin = &pdp.ReasonResponse{
-			Code:    adminError.GetCode(),
-			Message: adminError.GetMessage(),
+			Code:    adminError.Code(),
+			Message: adminError.Message(),
 		}
-	} else if !authzDecision.GetDecision() {
+	} else if !authzDecision.Decision() {
 		ctxResponse.ReasonAdmin = &pdp.ReasonResponse{
 			Code:    authzen.AuthzErrInternalErrorCode,
 			Message: authzen.AuthzErrInternalErrorMessage,
 		}
 	}
 
-	userError := authzDecision.GetUserError()
+	userError := authzDecision.UserError()
 	if userError != nil {
 		ctxResponse.ReasonUser = &pdp.ReasonResponse{
-			Code:    userError.GetCode(),
-			Message: userError.GetMessage(),
+			Code:    userError.Code(),
+			Message: userError.Message(),
 		}
-	} else if !authzDecision.GetDecision() {
+	} else if !authzDecision.Decision() {
 		ctxResponse.ReasonUser = &pdp.ReasonResponse{
 			Code:    authzen.AuthzErrInternalErrorCode,
 			Message: authzen.AuthzErrInternalErrorMessage,

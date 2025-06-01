@@ -51,7 +51,7 @@ const (
 
 // getFromHandlerContext gets the value from the handler context.
 func getFromRuntimeContext[T any](ctx *notpstatemachines.StateMachineRuntimeContext, key string) (T, bool) {
-	value, ok := ctx.Get(key)
+	value, ok := ctx.Value(key)
 	if !ok {
 		var zero T
 		return zero, false
@@ -66,7 +66,7 @@ func getFromRuntimeContext[T any](ctx *notpstatemachines.StateMachineRuntimeCont
 
 // getFromHandlerContext gets the value from the handler context.
 func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key string) (T, bool) {
-	value, ok := ctx.Get(key)
+	value, ok := ctx.Value(key)
 	if !ok {
 		var zero T
 		return zero, false

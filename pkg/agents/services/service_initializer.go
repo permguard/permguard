@@ -18,8 +18,8 @@ package services
 
 // ServiceInitializer is the service initializer.
 type ServiceInitializer interface {
-	// GetServices returns the active service kinds.
-	GetServices() []ServiceKind
-	// GetServicesFactories returns the list of the required services factories providers.
-	GetServicesFactories() (map[ServiceKind]ServiceFactoryProvider, error)
+	// Services returns the active service kinds.
+	Services() []ServiceKind
+	// ServicesFactories returns the list of the required services factories providers.
+	ServicesFactories() (map[ServiceKind]ServiceFactoryProvider, error)
 }

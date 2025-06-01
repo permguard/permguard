@@ -22,13 +22,13 @@ type AuthorizationError struct {
 	message string
 }
 
-// GetCode returns the code.
-func (a *AuthorizationError) GetCode() string {
+// Code returns the code.
+func (a *AuthorizationError) Code() string {
 	return a.code
 }
 
-// GetMessage returns the message.
-func (a *AuthorizationError) GetMessage() string {
+// Message returns the message.
+func (a *AuthorizationError) Message() string {
 	return a.message
 }
 
@@ -58,22 +58,22 @@ func NewAuthorizationDecision(id string, decision bool, adminError *Authorizatio
 	}, nil
 }
 
-// GetID returns the ID.
-func (a *AuthorizationDecision) GetID() string {
+// ID returns the ID.
+func (a *AuthorizationDecision) ID() string {
 	return a.id
 }
 
-// GetDecision returns the decision.
-func (a *AuthorizationDecision) GetDecision() bool {
+// Decision returns the decision.
+func (a *AuthorizationDecision) Decision() bool {
 	return a.decision
 }
 
-// GetAdminError returns the admin error.
-func (a *AuthorizationDecision) GetAdminError() *AuthorizationError {
+// AdminError returns the admin error.
+func (a *AuthorizationDecision) AdminError() *AuthorizationError {
 	return a.adminError
 }
 
-// GetUserError returns the user error.
-func (a *AuthorizationDecision) GetUserError() *AuthorizationError {
+// UserError returns the user error.
+func (a *AuthorizationDecision) UserError() *AuthorizationError {
 	return a.userError
 }

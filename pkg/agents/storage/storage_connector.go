@@ -34,8 +34,8 @@ func NewStorageConnector(defaultStorageKind StorageKind, facatories map[StorageK
 	}, nil
 }
 
-// GetCentralStorage returns the central storage.
-func (s StorageConnector) GetCentralStorage(storageKind StorageKind, runtimeCotext runtime.RuntimeContext) (CentralStorage, error) {
+// CentralStorage returns the central storage.
+func (s StorageConnector) CentralStorage(storageKind StorageKind, runtimeCotext runtime.RuntimeContext) (CentralStorage, error) {
 	if storageKind == "" {
 		storageKind = s.defaultStorageKind
 	}

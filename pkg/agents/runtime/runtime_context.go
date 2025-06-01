@@ -26,28 +26,28 @@ import (
 
 // RuntimeContext is the interface for the runtime context.
 type RuntimeContext interface {
-	// GetLogger returns the logger.
-	GetLogger() *zap.Logger
-	// GetParentLoggerMessage returns the parent logger message.
-	GetParentLoggerMessage() string
-	// GetHostConfigReader returns the host configuration reader.
-	GetHostConfigReader() (HostConfigReader, error)
-	// GetServiceConfigReader returns the service configuration reader.
-	GetServiceConfigReader() (ServiceConfigReader, error)
-	// GetContext returns the context.
-	GetContext() context.Context
+	// Logger returns the logger.
+	Logger() *zap.Logger
+	// ParentLoggerMessage returns the parent logger message.
+	ParentLoggerMessage() string
+	// HostConfigReader returns the host configuration reader.
+	HostConfigReader() (HostConfigReader, error)
+	// ServiceConfigReader returns the service configuration reader.
+	ServiceConfigReader() (ServiceConfigReader, error)
+	// Context returns the context.
+	Context() context.Context
 }
 
 // HostConfigReader declares the host configuration reader.
 type HostConfigReader interface {
-	// GetAppData returns the zone data.
-	GetAppData() string
+	// AppData returns the zone data.
+	AppData() string
 }
 
 // ServiceConfigReader declares the service configuration reader.
 type ServiceConfigReader interface {
-	// GetValue returns the value for the given key.
-	GetValue(key string) (any, error)
+	// Value returns the value for the given key.
+	Value(key string) (any, error)
 }
 
 // GetTypedValue retrieves a value of type T from any value.

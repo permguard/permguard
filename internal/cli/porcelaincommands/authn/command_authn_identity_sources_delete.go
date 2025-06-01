@@ -42,7 +42,7 @@ func runECommandForDeleteIdentitySource(deps cli.CliDependenciesProvider, cmd *c
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	zapTarget, err := ctx.GetZAPTarget()
+	zapTarget, err := ctx.ZAPTarget()
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to delete the identity source.")

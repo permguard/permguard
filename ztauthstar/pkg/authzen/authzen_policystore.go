@@ -25,8 +25,8 @@ type StoreItem struct {
 	objectInfo *objects.ObjectInfo
 }
 
-// GetObjectInfo returns the object info of the store item.
-func (s *StoreItem) GetObjectInfo() *objects.ObjectInfo {
+// ObjectInfo returns the object info of the store item.
+func (s *StoreItem) ObjectInfo() *objects.ObjectInfo {
 	return s.objectInfo
 }
 
@@ -43,8 +43,8 @@ func (ps *PolicyStore) AddSchema(schemaID string, objectInfo *objects.ObjectInfo
 	ps.schemas = append(ps.schemas, schema)
 }
 
-// GetSchemas returns the schemas of the policy store.
-func (ps *PolicyStore) GetSchemas() []StoreItem {
+// Schemas returns the schemas of the policy store.
+func (ps *PolicyStore) Schemas() []StoreItem {
 	return ps.schemas
 }
 
@@ -53,8 +53,8 @@ func (ps *PolicyStore) SetVersion(version string) {
 	ps.version = version
 }
 
-// GetVersion returns the version of the policy store.
-func (ps *PolicyStore) GetVersion() string {
+// Version returns the version of the policy store.
+func (ps *PolicyStore) Version() string {
 	return ps.version
 }
 
@@ -64,7 +64,7 @@ func (ps *PolicyStore) AddPolicy(policyID string, objectInfo *objects.ObjectInfo
 	ps.policies = append(ps.policies, policy)
 }
 
-// GetPolicies returns the policies of the policy store.
-func (ps *PolicyStore) GetPolicies() []StoreItem {
+// Policies returns the policies of the policy store.
+func (ps *PolicyStore) Policies() []StoreItem {
 	return ps.policies
 }

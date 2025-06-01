@@ -51,7 +51,7 @@ func runECommandForUpsertIdentitySource(deps cli.CliDependenciesProvider, cmd *c
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	zapTarget, err := ctx.GetZAPTarget()
+	zapTarget, err := ctx.ZAPTarget()
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))

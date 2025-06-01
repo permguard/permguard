@@ -31,18 +31,18 @@ import (
 // withServerUnaryInterceptor returns a grpc.ServerOption that adds a unary interceptor to the server.
 func withServerUnaryInterceptor(serviceCtx *services.EndpointContext) grpc.ServerOption {
 	return grpc.UnaryInterceptor(func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		logger := serviceCtx.GetLogger()
+		logger := serviceCtx.Logger()
 		defer func() {
 			if err := recover(); err != nil {
-				logger.Error(serviceCtx.GetLogMessage(fmt.Sprintf("Request generted a panic: %v stacktrace:%s", err, debug.Stack())))
+				logger.Error(serviceCtx.LogMessage(fmt.Sprintf("Request generted a panic: %v stacktrace:%s", err, debug.Stack())))
 			}
 		}()
 		start := time.Now()
 		h, err := handler(ctx, req)
 		if err != nil {
-			logger.Error(serviceCtx.GetLogMessage(fmt.Sprintf("Request failed to be served - method:%s duration:%s error:%v", info.FullMethod, time.Since(start), err)), zap.Error(err))
+			logger.Error(serviceCtx.LogMessage(fmt.Sprintf("Request failed to be served - method:%s duration:%s error:%v", info.FullMethod, time.Since(start), err)), zap.Error(err))
 		} else {
-			logger.Debug(serviceCtx.GetLogMessage(fmt.Sprintf("Request - method:%s duration:%s", info.FullMethod, time.Since(start))), zap.Duration("duration", time.Since(start)))
+			logger.Debug(serviceCtx.LogMessage(fmt.Sprintf("Request - method:%s duration:%s", info.FullMethod, time.Since(start))), zap.Duration("duration", time.Since(start)))
 		}
 		return h, err
 	})

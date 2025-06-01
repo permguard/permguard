@@ -46,15 +46,15 @@ func TestCommitCreation(t *testing.T) {
 	convertedCommit, err := objects.ConvertObjectToCommit(commitObj)
 	assert.Nil(err, "ConvertObjectToCommit should not return an error")
 	assert.NotNil(convertedCommit, "Converted commit should not be nil")
-	assert.Equal(commit.GetTree(), convertedCommit.GetTree(), "Tree mismatch")
-	assert.Equal(commit.GetParent(), convertedCommit.GetParent(), "Parent mismatch")
-	commitMetdata := commit.GetMetaData()
-	convertedMetdata := convertedCommit.GetMetaData()
-	assert.Equal(commitMetdata.GetAuthor(), convertedMetdata.GetAuthor(), "Author mismatch")
-	assert.Equal(commitMetdata.GetAuthorTimestamp().Unix(), convertedMetdata.GetAuthorTimestamp().Unix(), "Author timestamp mismatch")
-	assert.Equal(commitMetdata.GetCommitter(), convertedMetdata.GetCommitter(), "Committer mismatch")
-	assert.Equal(commitMetdata.GetCommitterTimestamp().Unix(), convertedMetdata.GetCommitterTimestamp().Unix(), "Committer timestamp mismatch")
-	assert.Equal(commit.GetMessage(), convertedCommit.GetMessage(), "Message mismatch")
+	assert.Equal(commit.Tree(), convertedCommit.Tree(), "Tree mismatch")
+	assert.Equal(commit.Parent(), convertedCommit.Parent(), "Parent mismatch")
+	commitMetdata := commit.MetaData()
+	convertedMetdata := convertedCommit.MetaData()
+	assert.Equal(commitMetdata.Author(), convertedMetdata.Author(), "Author mismatch")
+	assert.Equal(commitMetdata.AuthorTimestamp().Unix(), convertedMetdata.AuthorTimestamp().Unix(), "Author timestamp mismatch")
+	assert.Equal(commitMetdata.Committer(), convertedMetdata.Committer(), "Committer mismatch")
+	assert.Equal(commitMetdata.CommitterTimestamp().Unix(), convertedMetdata.CommitterTimestamp().Unix(), "Committer timestamp mismatch")
+	assert.Equal(commit.Message(), convertedCommit.Message(), "Message mismatch")
 }
 
 // TestTreeCreation tests the commit creation.
@@ -89,15 +89,15 @@ func TestTreeCreation(t *testing.T) {
 	assert.Nil(err, "ConvertObjectToTree should not return an error")
 	assert.NotNil(convertedTree, "Converted commit should not be nil")
 
-	assert.Equal(len(tree.GetEntries()), len(convertedTree.GetEntries()), "Entries count mismatch")
-	for i, entry := range tree.GetEntries() {
-		convertedEntry := convertedTree.GetEntries()[i]
-		assert.Equal(entry.GetOID(), convertedEntry.GetOID(), "OID mismatch")
-		assert.Equal(entry.GetOName(), convertedEntry.GetOName(), "Name mismatch")
-		assert.Equal(entry.GetCodeID(), convertedEntry.GetCodeID(), "CodeID mismatch")
-		assert.Equal(entry.GetCodeType(), convertedEntry.GetCodeType(), "CodeType mismatch")
-		assert.Equal(entry.GetLanguage(), convertedEntry.GetLanguage(), "Language mismatch")
-		assert.Equal(entry.GetLanguageType(), convertedEntry.GetLanguageType(), "LanguageType mismatch")
-		assert.Equal(entry.GetLanguageVersion(), convertedEntry.GetLanguageVersion(), "LanguageVersion mismatch")
+	assert.Equal(len(tree.Entries()), len(convertedTree.Entries()), "Entries count mismatch")
+	for i, entry := range tree.Entries() {
+		convertedEntry := convertedTree.Entries()[i]
+		assert.Equal(entry.OID(), convertedEntry.OID(), "OID mismatch")
+		assert.Equal(entry.OName(), convertedEntry.OName(), "Name mismatch")
+		assert.Equal(entry.CodeID(), convertedEntry.CodeID(), "CodeID mismatch")
+		assert.Equal(entry.CodeType(), convertedEntry.CodeType(), "CodeType mismatch")
+		assert.Equal(entry.Language(), convertedEntry.Language(), "Language mismatch")
+		assert.Equal(entry.LanguageType(), convertedEntry.LanguageType(), "LanguageType mismatch")
+		assert.Equal(entry.LanguageVersion(), convertedEntry.LanguageVersion(), "LanguageVersion mismatch")
 	}
 }

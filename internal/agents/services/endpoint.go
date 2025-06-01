@@ -48,28 +48,28 @@ func newEndpointConfig(hostable services.Hostable, service services.ServiceKind,
 	}, nil
 }
 
-// GetHostable returns the hostable.
-func (c *EndpointConfig) GetHostable() services.Hostable {
+// Hostable returns the hostable.
+func (c *EndpointConfig) Hostable() services.Hostable {
 	return c.hostable
 }
 
-// GetStorageConnector returns the storage connector.
-func (c *EndpointConfig) GetStorageConnector() *storage.StorageConnector {
+// StorageConnector returns the storage connector.
+func (c *EndpointConfig) StorageConnector() *storage.StorageConnector {
 	return c.storageConnector
 }
 
-// GetService returns the service kind.
-func (c *EndpointConfig) GetService() services.ServiceKind {
+// Service returns the service kind.
+func (c *EndpointConfig) Service() services.ServiceKind {
 	return c.service
 }
 
-// GetPort returns the port.
-func (c *EndpointConfig) GetPort() int {
+// Port returns the port.
+func (c *EndpointConfig) Port() int {
 	return c.port
 }
 
-// GetRegistration returns the registration function.
-func (c *EndpointConfig) GetRegistration() func(*grpc.Server, *services.ServiceContext, *services.EndpointContext, *storage.StorageConnector) error {
+// Registration returns the registration function.
+func (c *EndpointConfig) Registration() func(*grpc.Server, *services.ServiceContext, *services.EndpointContext, *storage.StorageConnector) error {
 	return c.registration
 }
 
@@ -92,22 +92,22 @@ func newEndpoint(endpointCfg *EndpointConfig, serviceCtx *services.ServiceContex
 	}, nil
 }
 
-// getLogger returns the logger.
-func (e *Endpoint) getLogger() *zap.Logger {
-	return e.ctx.GetLogger()
+// logger returns the logger.
+func (e *Endpoint) logger() *zap.Logger {
+	return e.ctx.Logger()
 }
 
 // Serve starts the grpcendpoint.
 func (e *Endpoint) Serve(ctx context.Context, serviceCtx *services.ServiceContext) (bool, error) {
-	logger := e.getLogger()
+	logger := e.logger()
 	logger.Debug("Endpoint is starting")
 	grpcServer := grpc.NewServer(
 		withServerUnaryInterceptor(e.ctx),
 	)
 	e.grpcServer = grpcServer
-	port := e.config.GetPort()
-	registration := e.config.GetRegistration()
-	err := registration(grpcServer, serviceCtx, e.ctx, e.config.GetStorageConnector())
+	port := e.config.Port()
+	registration := e.config.Registration()
+	err := registration(grpcServer, serviceCtx, e.ctx, e.config.StorageConnector())
 	if err != nil {
 		return false, err
 	}
@@ -120,14 +120,14 @@ func (e *Endpoint) Serve(ctx context.Context, serviceCtx *services.ServiceContex
 		defer func() {
 			if r := recover(); r != nil {
 				logger.Error("Endpoint generated a panic", zap.Any("panic", r))
-				e.config.GetHostable().Shutdown(context.Background())
+				e.config.Hostable().Shutdown(context.Background())
 			}
 		}()
-		lgr := serviceCtx.GetLogger()
-		lgr.Info(serviceCtx.GetLogMessage(fmt.Sprintf("Service is serving on port: %d", port)))
+		lgr := serviceCtx.Logger()
+		lgr.Info(serviceCtx.LogMessage(fmt.Sprintf("Service is serving on port: %d", port)))
 		if err := grpcServer.Serve(lis); err != nil {
-			lgr.Error(serviceCtx.GetLogMessage(fmt.Sprintf("Service failed to serve on port: %d", port)), zap.Error(err))
-			e.config.GetHostable().Shutdown(context.Background())
+			lgr.Error(serviceCtx.LogMessage(fmt.Sprintf("Service failed to serve on port: %d", port)), zap.Error(err))
+			e.config.Hostable().Shutdown(context.Background())
 		}
 	}()
 	logger.Debug("Endpoint is started")
@@ -136,7 +136,7 @@ func (e *Endpoint) Serve(ctx context.Context, serviceCtx *services.ServiceContex
 
 // GracefulStop stops the grpcendpoint.
 func (e *Endpoint) GracefulStop(ctx context.Context) (bool, error) {
-	logger := e.getLogger()
+	logger := e.logger()
 	logger.Debug("Endpoint is stopping")
 	e.grpcServer.GracefulStop()
 	logger.Debug("Endpoint has stopped")

@@ -49,28 +49,28 @@ func NewRefManager(ctx *common.CliCommandContext, persMgr *persistence.Persisten
 	}, nil
 }
 
-// getRefsDir returns the refs directory.
-func (m *RefManager) getRefsDir() string {
+// refsDir returns the refs directory.
+func (m *RefManager) refsDir() string {
 	return hiddenRefsDir
 }
 
-// getHeadFile returns the head file.
-func (m *RefManager) getHeadFile() string {
+// headFile returns the head file.
+func (m *RefManager) headFile() string {
 	return hiddenHeadFile
 }
 
-// getRefFile returns the ref file.
-func (m *RefManager) getRefFile(ref string) (string, error) {
+// refFile returns the ref file.
+func (m *RefManager) refFile(ref string) (string, error) {
 	refInfo, err := wkscommon.ConvertStringWithLedgerIDToRefInfo(ref)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(hiddenRefsDir, refInfo.GetSourceType(), refInfo.GetRemote(), fmt.Sprintf("%d", refInfo.GetZoneID()), refInfo.GetLedgerID()), nil
+	return filepath.Join(hiddenRefsDir, refInfo.SourceType(), refInfo.Remote(), fmt.Sprintf("%d", refInfo.ZoneID()), refInfo.LedgerID()), nil
 }
 
 // ensureRefFileExists ensures the ref file exists.
 func (m *RefManager) ensureRefFileExists(ref string) error {
-	refFile, err := m.getRefFile(ref)
+	refFile, err := m.refFile(ref)
 	if err != nil {
 		return err
 	}
@@ -107,7 +107,7 @@ func (m *RefManager) saveConfig(name string, override bool, cfg any) error {
 
 // SaveHeadConfig saves the head config file.
 func (m *RefManager) SaveHeadConfig(ref string) error {
-	headFile := m.getHeadFile()
+	headFile := m.headFile()
 	headCfg := headConfig{
 		Reference: headReferenceConfig{
 			Ref: ref,
@@ -123,7 +123,7 @@ func (m *RefManager) SaveHeadConfig(ref string) error {
 // readHeadConfig reads the config file.
 func (m *RefManager) readHeadConfig() (*headConfig, error) {
 	var config headConfig
-	err := m.persMgr.ReadTOMLFile(persistence.PermguardDir, m.getHeadFile(), &config)
+	err := m.persMgr.ReadTOMLFile(persistence.PermguardDir, m.headFile(), &config)
 	return &config, err
 }
 
@@ -138,7 +138,7 @@ func (m *RefManager) SaveRefWithRemoteConfig(ledgerID string, ref, upstreamRef s
 	if err != nil {
 		return err
 	}
-	refPath, err := m.getRefFile(ref)
+	refPath, err := m.refFile(ref)
 	if err != nil {
 		return err
 	}
@@ -158,7 +158,7 @@ func (m *RefManager) SaveRefWithRemoteConfig(ledgerID string, ref, upstreamRef s
 
 // readRefConfig reads the ref configuration.
 func (m *RefManager) readRefConfig(ref string) (*refConfig, error) {
-	refPath, err := m.getRefFile(ref)
+	refPath, err := m.refFile(ref)
 	if err != nil {
 		return nil, err
 	}
@@ -170,8 +170,8 @@ func (m *RefManager) readRefConfig(ref string) (*refConfig, error) {
 	return &config, nil
 }
 
-// GetRefUpstreamRef reads the ref upstream ref.
-func (m *RefManager) GetRefUpstreamRef(ref string) (string, error) {
+// RefUpstreamRef reads the ref upstream ref.
+func (m *RefManager) RefUpstreamRef(ref string) (string, error) {
 	refCfg, err := m.readRefConfig(ref)
 	if err != nil {
 		return "", err
@@ -183,8 +183,8 @@ func (m *RefManager) GetRefUpstreamRef(ref string) (string, error) {
 	return refCfg.Objects.UpstreamRef, nil
 }
 
-// GetRefLedgerID reads the ref ledger id.
-func (m *RefManager) GetRefLedgerID(ref string) (string, error) {
+// RefLedgerID reads the ref ledger id.
+func (m *RefManager) RefLedgerID(ref string) (string, error) {
 	refCfg, err := m.readRefConfig(ref)
 	if err != nil {
 		return "", err
@@ -196,8 +196,8 @@ func (m *RefManager) GetRefLedgerID(ref string) (string, error) {
 	return refCfg.Objects.LedgerID, nil
 }
 
-// GetRefCommit reads the ref commit.
-func (m *RefManager) GetRefCommit(ref string) (string, error) {
+// RefCommit reads the ref commit.
+func (m *RefManager) RefCommit(ref string) (string, error) {
 	refCfg, err := m.readRefConfig(ref)
 	if err != nil {
 		return "", err
@@ -208,8 +208,8 @@ func (m *RefManager) GetRefCommit(ref string) (string, error) {
 	return refCfg.Objects.Commit, nil
 }
 
-// GetCurrentHead gets the current head.
-func (m *RefManager) GetCurrentHead() (*wkscommon.HeadInfo, error) {
+// CurrentHead gets the current head.
+func (m *RefManager) CurrentHead() (*wkscommon.HeadInfo, error) {
 	cfgHead, err := m.readHeadConfig()
 	if err != nil {
 		return nil, err
@@ -217,49 +217,49 @@ func (m *RefManager) GetCurrentHead() (*wkscommon.HeadInfo, error) {
 	return wkscommon.NewHeadInfo(cfgHead.Reference.Ref)
 }
 
-// GetCurrentHeadRef gets the current head ref.
-func (m *RefManager) GetCurrentHeadRef() (string, error) {
-	headInfo, err := m.GetCurrentHead()
+// CurrentHeadRef gets the current head ref.
+func (m *RefManager) CurrentHeadRef() (string, error) {
+	headInfo, err := m.CurrentHead()
 	if err != nil {
 		return "", err
 	}
-	return headInfo.GetRef(), nil
+	return headInfo.Ref(), nil
 }
 
-// GetCurrentHeadLedgerID gets the current head ledger id.
-func (m *RefManager) GetCurrentHeadLedgerID() (string, error) {
-	headInfo, err := m.GetCurrentHead()
+// CurrentHeadLedgerID gets the current head ledger id.
+func (m *RefManager) CurrentHeadLedgerID() (string, error) {
+	headInfo, err := m.CurrentHead()
 	if err != nil {
 		return "", err
 	}
-	return m.GetRefLedgerID(headInfo.GetRef())
+	return m.RefLedgerID(headInfo.Ref())
 }
 
-// GetCurrentHeadCommit gets the current head commit.
-func (m *RefManager) GetCurrentHeadCommit() (string, error) {
-	headInfo, err := m.GetCurrentHead()
+// CurrentHeadCommit gets the current head commit.
+func (m *RefManager) CurrentHeadCommit() (string, error) {
+	headInfo, err := m.CurrentHead()
 	if err != nil {
 		return "", err
 	}
-	return m.GetRefCommit(headInfo.GetRef())
+	return m.RefCommit(headInfo.Ref())
 }
 
-// GetRefInfo gets the ref information.
-func (m *RefManager) GetRefInfo(ref string) (*wkscommon.RefInfo, error) {
+// RefInfo gets the ref information.
+func (m *RefManager) RefInfo(ref string) (*wkscommon.RefInfo, error) {
 	if len(ref) == 0 {
 		return nil, errors.New("cli: invalid ref")
 	}
 	return wkscommon.ConvertStringWithLedgerIDToRefInfo(ref)
 }
 
-// GetCurrentHeadRefInfo gets the current head ref information.
-func (m *RefManager) GetCurrentHeadRefInfo() (*wkscommon.RefInfo, error) {
-	headInfo, err := m.GetCurrentHead()
+// CurrentHeadRefInfo gets the current head ref information.
+func (m *RefManager) CurrentHeadRefInfo() (*wkscommon.RefInfo, error) {
+	headInfo, err := m.CurrentHead()
 	if err != nil {
 		return nil, err
 	}
-	if headInfo == nil || len(headInfo.GetRef()) == 0 {
+	if headInfo == nil || len(headInfo.Ref()) == 0 {
 		return nil, nil
 	}
-	return m.GetRefInfo(headInfo.GetRef())
+	return m.RefInfo(headInfo.Ref())
 }

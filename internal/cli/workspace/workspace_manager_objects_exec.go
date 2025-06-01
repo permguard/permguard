@@ -45,7 +45,7 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 	}
 	defer fileLock.Unlock()
 
-	filteredObjectInfos, err := m.getObjectsInfos(includeStorage, includeCode, filterCommits, filterTrees, filterBlob)
+	filteredObjectInfos, err := m.objectsInfos(includeStorage, includeCode, filterCommits, filterTrees, filterBlob)
 	if err != nil {
 		return fail(nil, err)
 	}
@@ -58,16 +58,16 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 			out(nil, "", "Your workspace objects:\n", nil, true)
 			total, commits, trees, blobs := 0, 0, 0, 0
 			for _, objInfo := range filteredObjectInfos {
-				objID := objInfo.GetOID()
-				objType := objInfo.GetType()
-				objHeader := objInfo.GetHeader()
+				objID := objInfo.OID()
+				objType := objInfo.Type()
+				objHeader := objInfo.Header()
 				if objHeader != nil {
-					codeID := objHeader.GetCodeID()
+					codeID := objHeader.CodeID()
 					out(nil, "", fmt.Sprintf("	- %s %s %s", common.IDText(objID), common.KeywordText(objType), common.NameText(codeID)), nil, true)
 				} else {
 					out(nil, "", fmt.Sprintf("	- %s %s", common.IDText(objID), common.KeywordText(objType)), nil, true)
 				}
-				switch objInfo.GetType() {
+				switch objInfo.Type() {
 				case objects.ObjectTypeCommit:
 					commits = commits + 1
 					if filterCommits {
@@ -106,12 +106,12 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 		objMaps := []map[string]any{}
 		for _, objInfo := range filteredObjectInfos {
 			objMap := map[string]any{}
-			objMap["oid"] = objInfo.GetOID()
-			objMap["otype"] = objInfo.GetType()
-			objMap["osize"] = len(objInfo.GetObject().GetContent())
-			objHeader := objInfo.GetHeader()
+			objMap["oid"] = objInfo.OID()
+			objMap["otype"] = objInfo.Type()
+			objMap["osize"] = len(objInfo.Object().Content())
+			objHeader := objInfo.Header()
 			if objHeader != nil {
-				codeID := objHeader.GetCodeID()
+				codeID := objHeader.CodeID()
 				objMap["oname"] = codeID
 			}
 			objMaps = append(objMaps, objMap)
@@ -125,16 +125,16 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 // execPrintObjectContent prints the object content in human-readable form,
 // optionally converting blob data to a frontend-friendly format.
 func (m *WorkspaceManager) execPrintObjectContent(langPvd *ManifestLanguageProvider, oid string, objInfo objects.ObjectInfo, showFrontendLanguage bool, out common.PrinterOutFunc) error {
-	switch instance := objInfo.GetInstance().(type) {
+	switch instance := objInfo.Instance().(type) {
 	case *objects.Commit:
-		content, err := m.getCommitString(oid, instance)
+		content, err := m.commitString(oid, instance)
 		if err != nil {
 			return err
 		}
 		out(nil, "", content, nil, true)
 
 	case *objects.Tree:
-		content, err := m.getTreeString(oid, instance)
+		content, err := m.treeString(oid, instance)
 		if err != nil {
 			return err
 		}
@@ -144,21 +144,21 @@ func (m *WorkspaceManager) execPrintObjectContent(langPvd *ManifestLanguageProvi
 		instanceBytes := instance
 
 		if showFrontendLanguage {
-			header := objInfo.GetHeader()
+			header := objInfo.Header()
 			if header == nil {
 				return errors.New("cli: object header s nil")
 			}
 
-			absLang, err := langPvd.GetAbstractLanguage(header.GetPartition())
+			absLang, err := langPvd.AbstractLanguage(header.Partition())
 			if err != nil {
 				return err
 			}
 
 			instanceBytes, err = absLang.ConvertBytesToFrontendLanguage(
 				nil,
-				header.GetLanguageID(),
-				header.GetLanguageVersionID(),
-				header.GetLanguageTypeID(),
+				header.LanguageID(),
+				header.LanguageVersionID(),
+				header.LanguageTypeID(),
 				instance,
 			)
 			if err != nil {
@@ -166,14 +166,14 @@ func (m *WorkspaceManager) execPrintObjectContent(langPvd *ManifestLanguageProvi
 			}
 		}
 
-		content, _, err := m.getBlobString(instanceBytes)
+		content, _, err := m.blobString(instanceBytes)
 		if err != nil {
 			return err
 		}
 		out(nil, "", string(content), nil, true)
 
 	default:
-		out(nil, "", string(objInfo.GetObject().GetContent()), nil, true)
+		out(nil, "", string(objInfo.Object().Content()), nil, true)
 	}
 
 	return nil
@@ -185,15 +185,15 @@ func (m *WorkspaceManager) execMapObjectContent(langPvd *ManifestLanguageProvide
 	var contentMap map[string]any
 	var err error
 
-	switch instance := objInfo.GetInstance().(type) {
+	switch instance := objInfo.Instance().(type) {
 	case *objects.Commit:
-		contentMap, err = m.getCommitMap(oid, instance)
+		contentMap, err = m.commitMap(oid, instance)
 		if err != nil {
 			return err
 		}
 
 	case *objects.Tree:
-		contentMap, err = m.getTreeMap(oid, instance)
+		contentMap, err = m.treeMap(oid, instance)
 		if err != nil {
 			return err
 		}
@@ -202,22 +202,22 @@ func (m *WorkspaceManager) execMapObjectContent(langPvd *ManifestLanguageProvide
 		instanceBytes := instance
 
 		if showFrontendLanguage {
-			header := objInfo.GetHeader()
+			header := objInfo.Header()
 			if header == nil {
 				return errors.New("cli: object header s nil")
 			}
 
 			var absLang languages.LanguageAbastraction
-			absLang, err = langPvd.GetAbstractLanguage(header.GetPartition())
+			absLang, err = langPvd.AbstractLanguage(header.Partition())
 			if err != nil {
 				return err
 			}
 
 			instanceBytes, err = absLang.ConvertBytesToFrontendLanguage(
 				nil,
-				header.GetLanguageID(),
-				header.GetLanguageVersionID(),
-				header.GetLanguageTypeID(),
+				header.LanguageID(),
+				header.LanguageVersionID(),
+				header.LanguageTypeID(),
 				instance,
 			)
 			if err != nil {
@@ -225,7 +225,7 @@ func (m *WorkspaceManager) execMapObjectContent(langPvd *ManifestLanguageProvide
 			}
 		}
 
-		contentMap, err = m.getBlobMap(instanceBytes)
+		contentMap, err = m.blobMap(instanceBytes)
 		if err != nil {
 			return err
 		}
@@ -233,7 +233,7 @@ func (m *WorkspaceManager) execMapObjectContent(langPvd *ManifestLanguageProvide
 	default:
 		// Fallback: raw base64-encoded content
 		contentMap = map[string]any{
-			"raw_content": base64.StdEncoding.EncodeToString(objInfo.GetObject().GetContent()),
+			"raw_content": base64.StdEncoding.EncodeToString(objInfo.Object().Content()),
 		}
 	}
 
@@ -265,13 +265,13 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 	defer fileLock.Unlock()
 
 	// Search for the requested object
-	objectInfos, err := m.getObjectsInfos(includeStorage, includeCode, true, true, true)
+	objectInfos, err := m.objectsInfos(includeStorage, includeCode, true, true, true)
 	if err != nil {
 		return fail(nil, err)
 	}
 	var selected *objects.ObjectInfo
 	for _, info := range objectInfos {
-		if info.GetOID() == oid {
+		if info.OID() == oid {
 			selected = &info
 			break
 		}
@@ -280,8 +280,8 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 		return fail(nil, fmt.Errorf("object not found"))
 	}
 
-	obj := selected.GetObject()
-	header := selected.GetHeader()
+	obj := selected.Object()
+	header := selected.Header()
 
 	// Initialize language provider
 	langPvd, err := m.buildManifestLanguageProvider()
@@ -293,17 +293,17 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 	if m.ctx.IsTerminalOutput() {
 		if showContent {
 			if showRaw {
-				out(nil, "", string(obj.GetContent()), nil, true)
+				out(nil, "", string(obj.Content()), nil, true)
 			} else {
 				if err := m.execPrintObjectContent(langPvd, oid, *selected, showFrontendLanguage, out); err != nil {
 					return fail(nil, err)
 				}
 			}
 		} else {
-			out(nil, "", fmt.Sprintf("Your workspace object %s:\n", common.IDText(selected.GetOID())), nil, true)
+			out(nil, "", fmt.Sprintf("Your workspace object %s:\n", common.IDText(selected.OID())), nil, true)
 
 			if showRaw {
-				out(nil, "", string(obj.GetContent()), nil, true)
+				out(nil, "", string(obj.Content()), nil, true)
 			} else {
 				if err := m.execPrintObjectContent(langPvd, oid, *selected, showFrontendLanguage, out); err != nil {
 					return fail(nil, err)
@@ -313,10 +313,10 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 			out(nil, "", "\n", nil, false)
 
 			var sb strings.Builder
-			sb.WriteString("type " + common.KeywordText(selected.GetType()))
-			sb.WriteString(", size " + common.NumberText(len(obj.GetContent())))
+			sb.WriteString("type " + common.KeywordText(selected.Type()))
+			sb.WriteString(", size " + common.NumberText(len(obj.Content())))
 			if header != nil {
-				sb.WriteString(", oname " + common.NameText(header.GetCodeID()))
+				sb.WriteString(", oname " + common.NameText(header.CodeID()))
 			}
 			out(nil, "", sb.String(), nil, true)
 		}
@@ -326,7 +326,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 		objMap := map[string]any{}
 
 		if showRaw {
-			objMap["raw_content"] = base64.StdEncoding.EncodeToString(obj.GetContent())
+			objMap["raw_content"] = base64.StdEncoding.EncodeToString(obj.Content())
 		} else {
 			if err := m.execMapObjectContent(langPvd, oid, *selected, showFrontendLanguage, objMap); err != nil {
 				return fail(nil, err)
@@ -334,11 +334,11 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 		}
 
 		if !showContent {
-			objMap["oid"] = selected.GetOID()
-			objMap["otype"] = selected.GetType()
-			objMap["osize"] = len(obj.GetContent())
+			objMap["oid"] = selected.OID()
+			objMap["otype"] = selected.Type()
+			objMap["osize"] = len(obj.Content())
 			if header != nil {
-				objMap["oname"] = header.GetCodeID()
+				objMap["oname"] = header.CodeID()
 			}
 		}
 
@@ -370,16 +370,16 @@ func (m *WorkspaceManager) ExecHistory(out common.PrinterOutFunc) (map[string]an
 	defer fileLock.Unlock()
 
 	// Read current head context
-	headCtx, err := m.getCurrentHeadContext()
+	headCtx, err := m.currentHeadContext()
 	if err != nil {
 		return fail(nil, err)
 	}
 
 	// Load commit history from head
 	var commitInfos []wkscommon.CommitInfo
-	headCommit := headCtx.GetRemoteCommitID()
+	headCommit := headCtx.RemoteCommitID()
 	if headCommit != objects.ZeroOID {
-		commitInfos, err = m.getHistory(headCommit)
+		commitInfos, err = m.history(headCommit)
 		if err != nil {
 			return fail(nil, err)
 		}
@@ -392,11 +392,11 @@ func (m *WorkspaceManager) ExecHistory(out common.PrinterOutFunc) (map[string]an
 			return output, nil
 		}
 
-		out(nil, "", fmt.Sprintf("Your workspace history %s:\n", common.KeywordText(headCtx.GetLedgerURI())), nil, true)
+		out(nil, "", fmt.Sprintf("Your workspace history %s:\n", common.KeywordText(headCtx.LedgerURI())), nil, true)
 
 		for _, info := range commitInfos {
-			commit := info.GetCommit()
-			commitStr, err := m.getCommitString(info.GetCommitOID(), commit)
+			commit := info.Commit()
+			commitStr, err := m.commitString(info.CommitOID(), commit)
 			if err != nil {
 				return fail(nil, err)
 			}
@@ -410,8 +410,8 @@ func (m *WorkspaceManager) ExecHistory(out common.PrinterOutFunc) (map[string]an
 	} else if m.ctx.IsJSONOutput() {
 		var objMaps []map[string]any
 		for _, info := range commitInfos {
-			commit := info.GetCommit()
-			objMap, err := m.getCommitMap(info.GetCommitOID(), commit)
+			commit := info.Commit()
+			objMap, err := m.commitMap(info.CommitOID(), commit)
 			if err != nil {
 				return fail(nil, err)
 			}

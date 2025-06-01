@@ -67,7 +67,7 @@ type SqliteRepo interface {
 	// UpsertKeyValue creates or updates a key value.
 	UpsertKeyValue(tx *sql.Tx, keyValue *repos.KeyValue) (*repos.KeyValue, error)
 	// DeleteKeyValue deletes a key value.
-	GetKeyValue(db *sqlx.DB, zoneID int64, key string) (*repos.KeyValue, error)
+	KeyValue(db *sqlx.DB, zoneID int64, key string) (*repos.KeyValue, error)
 }
 
 // SqliteExecutor is the interface for executing sqlite commands.
@@ -82,7 +82,7 @@ type SqliteExec struct {
 
 // Connect connects to the sqlite database.
 func (s SqliteExec) Connect(ctx *storage.StorageContext, sqliteConnector db.SQLiteConnector) (*sqlx.DB, error) {
-	logger := ctx.GetLogger()
+	logger := ctx.Logger()
 	db, err := sqliteConnector.Connect(logger, ctx)
 	if err != nil {
 		return nil, repos.WrapSqlite3Error("cannot connect to sqlite", err)
@@ -104,17 +104,17 @@ func NewSQLiteCentralStorage(storageContext *storage.StorageContext, sqliteConne
 	}, nil
 }
 
-// GetZAPCentralStorage returns the ZAP central storage.
-func (s SQLiteCentralStorage) GetZAPCentralStorage() (storage.ZAPCentralStorage, error) {
+// ZAPCentralStorage returns the ZAP central storage.
+func (s SQLiteCentralStorage) ZAPCentralStorage() (storage.ZAPCentralStorage, error) {
 	return newSQLiteZAPCentralStorage(s.ctx, s.sqliteConnector, nil, nil)
 }
 
-// GetPAPCentralStorage returns the PAP central storage.
-func (s SQLiteCentralStorage) GetPAPCentralStorage() (storage.PAPCentralStorage, error) {
+// PAPCentralStorage returns the PAP central storage.
+func (s SQLiteCentralStorage) PAPCentralStorage() (storage.PAPCentralStorage, error) {
 	return newSQLitePAPCentralStorage(s.ctx, s.sqliteConnector, nil, nil)
 }
 
-// GetPDPCentralStorage returns the PDP central storage.
-func (s SQLiteCentralStorage) GetPDPCentralStorage() (storage.PDPCentralStorage, error) {
+// PDPCentralStorage returns the PDP central storage.
+func (s SQLiteCentralStorage) PDPCentralStorage() (storage.PDPCentralStorage, error) {
 	return newSQLitePDPCentralStorage(s.ctx, s.sqliteConnector, nil, nil)
 }

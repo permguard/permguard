@@ -41,7 +41,7 @@ func runECommandForCreateIdentity(deps cli.CliDependenciesProvider, cmd *cobra.C
 		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
-		version, versionMap := ctx.GetClientVersion()
+		version, versionMap := ctx.ClientVersion()
 		if ctx.IsVerbose() {
 			versionMap["version"] = version
 			printer.PrintlnMap(versionMap)
@@ -50,7 +50,7 @@ func runECommandForCreateIdentity(deps cli.CliDependenciesProvider, cmd *cobra.C
 		}
 		return nil
 	} else if ctx.IsTerminalOutput() {
-		version, versionMap := ctx.GetClientVersion()
+		version, versionMap := ctx.ClientVersion()
 		if ctx.IsVerbose() {
 			versionMap["version"] = version
 			printer.PrintlnMap(versionMap)

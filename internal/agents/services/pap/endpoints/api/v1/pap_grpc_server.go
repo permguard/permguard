@@ -183,7 +183,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 		return nil, err
 	}
 	var hostHandler notpstatemachines.HostHandler = func(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-		switch handlerCtx.GetCurrentStateID() {
+		switch handlerCtx.CurrentStateID() {
 		case notpstatemachines.ProcessRequestObjectsStateID:
 			switch statePacket.MessageCode {
 			case notpsmpackets.RequestCurrentObjectsStateMessage:
@@ -256,7 +256,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 				return nil, fmt.Errorf("pap-endpoint: invalid message code %d", statePacket.MessageCode)
 			}
 		default:
-			return nil, fmt.Errorf("pap-endpoint: invalid state %d", handlerCtx.GetCurrentStateID())
+			return nil, fmt.Errorf("pap-endpoint: invalid state %d", handlerCtx.CurrentStateID())
 		}
 	}
 	stateMachine, err := notpstatemachines.NewLeaderStateMachine(hostHandler, transportLayer)

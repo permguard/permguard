@@ -28,7 +28,7 @@ func (m *ObjectManager) SerializeTree(tree *Tree) ([]byte, error) {
 		return nil, fmt.Errorf("objects: tree is nil")
 	}
 	sort.Slice(tree.entries, func(i, j int) bool {
-		return tree.entries[i].GetOID() < tree.entries[j].GetOID()
+		return tree.entries[i].OID() < tree.entries[j].OID()
 	})
 	var sb strings.Builder
 	treeSize := len(tree.entries)

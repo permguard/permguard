@@ -35,8 +35,8 @@ func NewMockSQLiteConnector() *MockSQLiteConnector {
 	return &MockSQLiteConnector{}
 }
 
-// GetStorage returns the storage kind.
-func (m *MockSQLiteConnector) GetStorage() storage.StorageKind {
+// Storage returns the storage kind.
+func (m *MockSQLiteConnector) Storage() storage.StorageKind {
 	args := m.Called()
 	var r0 storage.StorageKind
 	if val, ok := args.Get(0).(storage.StorageKind); ok {

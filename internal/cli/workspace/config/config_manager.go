@@ -46,15 +46,15 @@ func NewConfigManager(ctx *common.CliCommandContext, persMgr *persistence.Persis
 	}, nil
 }
 
-// getConfigFile
-func (m *ConfigManager) getConfigFile() string {
+// configFile
+func (m *ConfigManager) configFile() string {
 	return hiddenConfigFile
 }
 
 // readConfig reads the config file.
 func (m *ConfigManager) readConfig() (*config, error) {
 	var cfg config
-	err := m.persMgr.ReadTOMLFile(persistence.PermguardDir, m.getConfigFile(), &cfg)
+	err := m.persMgr.ReadTOMLFile(persistence.PermguardDir, m.configFile(), &cfg)
 	return &cfg, err
 }
 
@@ -64,7 +64,7 @@ func (m *ConfigManager) saveConfig(override bool, cfg *config) error {
 	if err != nil {
 		return errors.Join(err, errors.New("cli: failed to marshal config"))
 	}
-	fileName := m.getConfigFile()
+	fileName := m.configFile()
 	if override {
 		_, err = m.persMgr.WriteFile(persistence.PermguardDir, fileName, data, 0644, false)
 	} else {
@@ -76,8 +76,8 @@ func (m *ConfigManager) saveConfig(override bool, cfg *config) error {
 	return nil
 }
 
-// GetRemoteInfo gets the remote info.
-func (m *ConfigManager) GetRemoteInfo(remote string) (*wkscommon.RemoteInfo, error) {
+// RemoteInfo gets the remote info.
+func (m *ConfigManager) RemoteInfo(remote string) (*wkscommon.RemoteInfo, error) {
 	remote, err := wkscommon.SanitizeRemote(remote)
 	if err != nil {
 		return nil, err
@@ -93,8 +93,8 @@ func (m *ConfigManager) GetRemoteInfo(remote string) (*wkscommon.RemoteInfo, err
 	return wkscommon.NewRemoteInfo(cfgRemote.Server, cfgRemote.ZAPPort, cfgRemote.PAPPort)
 }
 
-// GetLedgerInfo gets the ref info.
-func (m *ConfigManager) GetLedgerInfo(ledgerURI string) (*wkscommon.RefInfo, error) {
+// LedgerInfo gets the ref info.
+func (m *ConfigManager) LedgerInfo(ledgerURI string) (*wkscommon.RefInfo, error) {
 	cfg, err := m.readConfig()
 	if err != nil {
 		return nil, err

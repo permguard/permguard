@@ -40,7 +40,7 @@ func NewSqliteConnectionMocks(t *testing.T) (db.SQLiteConnector, *sqlx.DB, sqlmo
 		t.Fatal(err)
 	}
 	sqlConnMock := mocks.NewSQLiteConnectionMock()
-	sqlConnMock.On("GetStorage").Return(storage.StorageSQLite)
+	sqlConnMock.On("Storage").Return(storage.StorageSQLite)
 	sqlConnMock.On("Connect", mock.Anything, mock.Anything).Return(sqlxDB, nil)
 	sqlConnMock.On("Close", sqlxDB).Return(nil)
 	return sqlConnMock, sqlxDB, sqlMock

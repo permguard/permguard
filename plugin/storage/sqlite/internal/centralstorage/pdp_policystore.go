@@ -27,8 +27,6 @@ import (
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
-
-
 // authorizationCheckReadBytes reads the key value for the authorization check.
 func authorizationCheckReadKeyValue(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *objects.ObjectManager, zoneID int64, key string) ([]byte, error) {
 	if db == nil {
@@ -37,7 +35,7 @@ func authorizationCheckReadKeyValue(s *SQLiteCentralStoragePDP, db *sqlx.DB, obj
 	if objMng == nil {
 		return nil, errors.New("storage: invalid object manager")
 	}
-	keyValue, err := s.sqlRepo.GetKeyValue(db, zoneID, key)
+	keyValue, err := s.sqlRepo.KeyValue(db, zoneID, key)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +55,7 @@ func authorizationCheckReadBytes(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng
 	if err != nil {
 		return "", nil, err
 	}
-	objectType, instanceBytes, err := objMng.GetInstanceBytesFromBytes(object)
+	objectType, instanceBytes, err := objMng.InstanceBytesFromBytes(object)
 	return objectType, instanceBytes, err
 }
 
@@ -71,7 +69,7 @@ func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng 
 	if err != nil {
 		return nil, err
 	}
-	_, ocontent, err = authorizationCheckReadBytes(s, db, objMng, zoneID, commitObj.GetTree())
+	_, ocontent, err = authorizationCheckReadBytes(s, db, objMng, zoneID, commitObj.Tree())
 	if err != nil {
 		return nil, err
 	}
@@ -109,8 +107,8 @@ func (s SQLiteCentralStoragePDP) LoadPolicyStore(zoneID int64, storeID string) (
 	if err != nil {
 		return nil, errors.Join(err, errors.New("storage: server couldn't read the tree"))
 	}
-	for _, entry := range treeObj.GetEntries() {
-		entryID := entry.GetOID()
+	for _, entry := range treeObj.Entries() {
+		entryID := entry.OID()
 		value, err2 := authorizationCheckReadKeyValue(&s, db, objMng, zoneID, entryID)
 		if err2 != nil {
 			return nil, errors.Join(err2, fmt.Errorf("storage: server couldn't read the key %s", entryID))
@@ -119,15 +117,15 @@ func (s SQLiteCentralStoragePDP) LoadPolicyStore(zoneID int64, storeID string) (
 		if err3 != nil {
 			return nil, errors.Join(err3, errors.New("storage: server couldn't deserialize the object from bytes"))
 		}
-		objInfo, err4 := objMng.GetObjectInfo(obj)
+		objInfo, err4 := objMng.ObjectInfo(obj)
 		if err4 != nil {
 			return nil, errors.Join(err4, errors.New("storage: server couldn't read object info"))
 		}
-		objInfoHeader := objInfo.GetHeader()
-		oid := objInfo.GetOID()
-		if objInfoHeader.GetCodeTypeID() == types.ClassTypeSchemaID {
+		objInfoHeader := objInfo.Header()
+		oid := objInfo.OID()
+		if objInfoHeader.CodeTypeID() == types.ClassTypeSchemaID {
 			authzPolicyStore.AddSchema(oid, objInfo)
-		} else if objInfoHeader.GetCodeTypeID() == types.ClassTypePolicyID {
+		} else if objInfoHeader.CodeTypeID() == types.ClassTypePolicyID {
 			authzPolicyStore.AddPolicy(oid, objInfo)
 		} else {
 			return nil, errors.New("storage: server couldn't process the code type id")

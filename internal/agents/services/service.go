@@ -42,18 +42,18 @@ func newServiceConfig(hostable services.Hostable, storageConnector *storage.Stor
 	}, nil
 }
 
-// GetHostable returns the hostable.
-func (c *ServiceConfig) GetHostable() services.Hostable {
+// Hostable returns the hostable.
+func (c *ServiceConfig) Hostable() services.Hostable {
 	return c.hostable
 }
 
-// GetStorageConnector returns the storage connector.
-func (c *ServiceConfig) GetStorageConnector() *storage.StorageConnector {
+// StorageConnector returns the storage connector.
+func (c *ServiceConfig) StorageConnector() *storage.StorageConnector {
 	return c.storageConnector
 }
 
-// GetServiceable returns the serviceable.
-func (c *ServiceConfig) GetServiceable() services.Serviceable {
+// Serviceable returns the serviceable.
+func (c *ServiceConfig) Serviceable() services.Serviceable {
 	return c.serviceable
 }
 
@@ -66,11 +66,11 @@ type Service struct {
 
 // newService creates a new service.
 func newService(serviceCfg *ServiceConfig, hostContext *services.HostContext) (*Service, error) {
-	svcCfgReader, err := serviceCfg.serviceable.GetServiceConfigReader()
+	svcCfgReader, err := serviceCfg.serviceable.ServiceConfigReader()
 	if err != nil {
 		return nil, errors.Join(err, errors.New("service: cannot get service config reader"))
 	}
-	serviceCtx, err := services.NewServiceContext(hostContext, serviceCfg.serviceable.GetService(), svcCfgReader)
+	serviceCtx, err := services.NewServiceContext(hostContext, serviceCfg.serviceable.Service(), svcCfgReader)
 	if err != nil {
 		return nil, err
 	}
@@ -80,23 +80,23 @@ func newService(serviceCfg *ServiceConfig, hostContext *services.HostContext) (*
 	}, nil
 }
 
-// getLogger returns the logger.
-func (s *Service) getLogger() *zap.Logger {
-	return s.ctx.GetLogger()
+// logger returns the logger.
+func (s *Service) logger() *zap.Logger {
+	return s.ctx.Logger()
 }
 
 // Serve starts the service.
 func (s *Service) Serve(ctx context.Context) (bool, error) {
-	logger := s.getLogger()
+	logger := s.logger()
 	logger.Debug("Service is starting")
-	edpts, err := s.config.serviceable.GetEndpoints()
+	edpts, err := s.config.serviceable.Endpoints()
 	if err != nil {
 		logger.Error("Service cannot retrieve endpoints", zap.Error(err))
 		return false, err
 	}
 	endpoints := make([]*Endpoint, 0, len(edpts))
 	for _, edpt := range edpts {
-		endpointCfg, err := newEndpointConfig(s.config.GetHostable(), edpt.GetService(), s.config.GetStorageConnector(), edpt.GetPort(), edpt.GetRegistration())
+		endpointCfg, err := newEndpointConfig(s.config.Hostable(), edpt.Service(), s.config.StorageConnector(), edpt.Port(), edpt.Registration())
 		if err != nil {
 			logger.Error("Service cannot create endpoint config", zap.Error(err))
 			return false, err
@@ -128,7 +128,7 @@ func (s *Service) Serve(ctx context.Context) (bool, error) {
 
 // GracefulStop stops the service.
 func (s *Service) GracefulStop(ctx context.Context) (bool, error) {
-	logger := s.getLogger()
+	logger := s.logger()
 	logger.Debug("Service is stopping")
 	hasStopped := true
 	for _, edpt := range s.endpoints {

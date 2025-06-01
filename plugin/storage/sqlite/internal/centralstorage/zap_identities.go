@@ -120,7 +120,7 @@ func (s SQLiteCentralStorageZAP) DeleteIdentity(zoneID int64, identityID string)
 
 // FetchIdentities returns all identities.
 func (s SQLiteCentralStorageZAP) FetchIdentities(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]zap.Identity, error) {
-	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
+	if page <= 0 || pageSize <= 0 || pageSize > s.config.DataFetchMaxPageSize() {
 		return nil, fmt.Errorf("invalid client input - page number %d or page size %d is not valid", page, pageSize)
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)

@@ -65,7 +65,7 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 		errMsg := fmt.Sprintf("%s: received nil request", authzen.AuthzErrBadRequestMessage)
 		return pdp.NewAuthorizationCheckErrorResponse(nil, "", authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
 	}
-	cfgReader, err := s.ctx.GetServiceConfigReader()
+	cfgReader, err := s.ctx.ServiceConfigReader()
 	if err != nil {
 		return nil, errors.Join(err, errors.New("pdp-service: failed to get service config reader"))
 	}
@@ -211,7 +211,7 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 			}
 			evaluation := &pdp.EvaluationResponse{
 				RequestID: expandedRequest.RequestID,
-				Decision:  authzResponse.GetDecision(),
+				Decision:  authzResponse.Decision(),
 				Context:   authorizationCheckBuildContextResponse(authzResponse),
 			}
 			authzCheckEvaluations = append(authzCheckEvaluations, *evaluation)
@@ -250,7 +250,7 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 		}
 		authzCheckResp.Decision = allTrue
 	}
-	decisionLog, err := runtime.GetTypedValue[string](cfgReader.GetValue, "decision-log")
+	decisionLog, err := runtime.GetTypedValue[string](cfgReader.Value, "decision-log")
 	if err != nil {
 		return nil, errors.Join(err, errors.New("pdp-service:  failed to get decision logs configuration"))
 	}
@@ -258,14 +258,14 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 		var decisionLogsPath string
 		decisionKind := decisions.DecisionLogKind(decisionLog)
 		if decisionKind == decisions.DecisionLogFile {
-			hostReader, err := s.ctx.GetHostConfigReader()
+			hostReader, err := s.ctx.HostConfigReader()
 			if err != nil {
 				return nil, errors.Join(err, errors.New("pdp-service: failed to get host config reader"))
 			}
-			decisionLogsPath = filepath.Join(hostReader.GetAppData(), "decisions.log")
+			decisionLogsPath = filepath.Join(hostReader.AppData(), "decisions.log")
 		}
 		decisionLogs := s.buildDecisionLogs(expReq, authzCheckResp)
-		logger := s.ctx.GetLogger()
+		logger := s.ctx.Logger()
 		for _, decisionLog := range decisionLogs {
 			decision, _ := json.Marshal(decisionLog)
 			switch decisionKind {
@@ -276,7 +276,7 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 			}
 		}
 	}
-  	return authzCheckResp, nil
+	return authzCheckResp, nil
 }
 
 // buildDecisionLogs builds the decision logs.

@@ -21,18 +21,18 @@ import (
 )
 
 type CliContext interface {
-	// GetViper returns the viper.
-	GetViper() *viper.Viper
+	// Viper returns the viper.
+	Viper() *viper.Viper
 	// GetVerbose returns true if the verbose.
 	GetVerbose() bool
-	// GetOutput returns the output.
-	GetOutput() string
+	// Output returns the output.
+	Output() string
 	// IsTerminalOutput returns true if the output is json.
 	IsTerminalOutput() bool
 	// IsJSONOutput returns true if the output is json.
 	IsJSONOutput() bool
-	// GetZAPTarget returns the zap target.
-	GetZAPTarget() string
-	// GetPAPTarget returns the pap target.
-	GetPAPTarget() string
+	// ZAPTarget returns the zap target.
+	ZAPTarget() string
+	// PAPTarget returns the pap target.
+	PAPTarget() string
 }

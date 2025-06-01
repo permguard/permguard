@@ -47,8 +47,8 @@ type ObjectHeader struct {
 	codeTypeID        uint32
 }
 
-// GetPartition returns the partition of the object.
-func (o *ObjectHeader) GetPartition() string {
+// Partition returns the partition of the object.
+func (o *ObjectHeader) Partition() string {
 	return o.partition
 }
 
@@ -57,28 +57,28 @@ func (o *ObjectHeader) IsNativeLanguage() bool {
 	return o.isNativeLanguage
 }
 
-// GetLanguageID returns the language ID of the object.
-func (o *ObjectHeader) GetLanguageID() uint32 {
+// LanguageID returns the language ID of the object.
+func (o *ObjectHeader) LanguageID() uint32 {
 	return o.languageID
 }
 
-// GetLanguageVersionID returns the language version ID of the object.
-func (o *ObjectHeader) GetLanguageVersionID() uint32 {
+// LanguageVersionID returns the language version ID of the object.
+func (o *ObjectHeader) LanguageVersionID() uint32 {
 	return o.languageVersionID
 }
 
-// GetLanguageTypeID returns the language type ID of the object.
-func (o *ObjectHeader) GetLanguageTypeID() uint32 {
+// LanguageTypeID returns the language type ID of the object.
+func (o *ObjectHeader) LanguageTypeID() uint32 {
 	return o.languageTypeID
 }
 
-// GetCodeID returns the code ID of the object.
-func (o *ObjectHeader) GetCodeID() string {
+// CodeID returns the code ID of the object.
+func (o *ObjectHeader) CodeID() string {
 	return o.codeID
 }
 
-// GetCodeTypeID returns the code type ID of the object.
-func (o *ObjectHeader) GetCodeTypeID() uint32 {
+// CodeTypeID returns the code type ID of the object.
+func (o *ObjectHeader) CodeTypeID() uint32 {
 	return o.codeTypeID
 }
 
@@ -101,13 +101,13 @@ type Object struct {
 	content []byte
 }
 
-// GetOID returns the OID of the object.
-func (o *Object) GetOID() string {
+// OID returns the OID of the object.
+func (o *Object) OID() string {
 	return o.oid
 }
 
-// GetContent returns the content of the object.
-func (o *Object) GetContent() []byte {
+// Content returns the content of the object.
+func (o *Object) Content() []byte {
 	return o.content
 }
 
@@ -131,36 +131,36 @@ type ObjectInfo struct {
 	instance      any
 }
 
-// GetOID returns the OID of the object.
-func (o *ObjectInfo) GetOID() string {
+// OID returns the OID of the object.
+func (o *ObjectInfo) OID() string {
 	if o.object == nil {
 		return ""
 	}
 	return o.object.oid
 }
 
-// GetHeader returns the header of the object.
-func (o *ObjectInfo) GetHeader() *ObjectHeader {
+// Header returns the header of the object.
+func (o *ObjectInfo) Header() *ObjectHeader {
 	return o.header
 }
 
-// GetObject returns the object.
-func (o *ObjectInfo) GetObject() *Object {
+// Object returns the object.
+func (o *ObjectInfo) Object() *Object {
 	return o.object
 }
 
-// GetType returns the type of the object.
-func (o *ObjectInfo) GetType() string {
+// Type returns the type of the object.
+func (o *ObjectInfo) Type() string {
 	return o.otype
 }
 
-// GetInstanceBytes returns the instance bytes of the object.
-func (o *ObjectInfo) GetInstanceBytes() []byte {
+// InstanceBytes returns the instance bytes of the object.
+func (o *ObjectInfo) InstanceBytes() []byte {
 	return o.instanceBytes
 }
 
-// GetInstance returns the instance of the object.
-func (o *ObjectInfo) GetInstance() any {
+// Instance returns the instance of the object.
+func (o *ObjectInfo) Instance() any {
 	return o.instance
 }
 
@@ -190,23 +190,23 @@ type CommitMetaData struct {
 	committerTimestamp time.Time
 }
 
-// GetAuthor returns the author of the commit info.
-func (c *CommitMetaData) GetAuthor() string {
+// Author returns the author of the commit info.
+func (c *CommitMetaData) Author() string {
 	return c.author
 }
 
-// GetAuthorTimestamp returns the author timestamp of the commit info.
-func (c *CommitMetaData) GetAuthorTimestamp() time.Time {
+// AuthorTimestamp returns the author timestamp of the commit info.
+func (c *CommitMetaData) AuthorTimestamp() time.Time {
 	return c.authorTimestamp
 }
 
-// GetCommitter returns the committer of the commit info.
-func (c *CommitMetaData) GetCommitter() string {
+// Committer returns the committer of the commit info.
+func (c *CommitMetaData) Committer() string {
 	return c.committer
 }
 
-// GetCommitterTimestamp returns the committer timestamp of the commit info.
-func (c *CommitMetaData) GetCommitterTimestamp() time.Time {
+// CommitterTimestamp returns the committer timestamp of the commit info.
+func (c *CommitMetaData) CommitterTimestamp() time.Time {
 	return c.committerTimestamp
 }
 
@@ -218,23 +218,23 @@ type Commit struct {
 	message  string
 }
 
-// GetTree returns the tree of the commit.
-func (c *Commit) GetTree() string {
+// Tree returns the tree of the commit.
+func (c *Commit) Tree() string {
 	return c.tree
 }
 
-// GetParent return the parent of the commit.
-func (c *Commit) GetParent() string {
+// Parent return the parent of the commit.
+func (c *Commit) Parent() string {
 	return c.parent
 }
 
-// GetMetaData returns the metadata of the commit.
-func (c *Commit) GetMetaData() CommitMetaData {
+// MetaData returns the metadata of the commit.
+func (c *Commit) MetaData() CommitMetaData {
 	return c.metaData
 }
 
-// GetMessage returns the message of the commit.
-func (c *Commit) GetMessage() string {
+// Message returns the message of the commit.
+func (c *Commit) Message() string {
 	return c.message
 }
 
@@ -317,48 +317,48 @@ func NewTreeEntry(partition, otype, oid, oname, codeID, codeType, langauge, lang
 	}, nil
 }
 
-// GetPartition returns the partition of the tree entry.
-func (t *TreeEntry) GetPartition() string {
+// Partition returns the partition of the tree entry.
+func (t *TreeEntry) Partition() string {
 	return t.partition
 }
 
-// GetType returns the type of the tree entry.
-func (t *TreeEntry) GetType() string {
+// Type returns the type of the tree entry.
+func (t *TreeEntry) Type() string {
 	return t.otype
 }
 
-// GetOID returns the OID of the tree entry.
-func (t *TreeEntry) GetOID() string {
+// OID returns the OID of the tree entry.
+func (t *TreeEntry) OID() string {
 	return t.oid
 }
 
-// GetOName returns the object name of the tree entry.
-func (t *TreeEntry) GetOName() string {
+// OName returns the object name of the tree entry.
+func (t *TreeEntry) OName() string {
 	return t.oname
 }
 
-// GetCodeID returns the code ID of the tree entry.
-func (t *TreeEntry) GetCodeID() string {
+// CodeID returns the code ID of the tree entry.
+func (t *TreeEntry) CodeID() string {
 	return t.codeID
 }
 
-// GetCodeType returns the code name of the tree entry.
-func (t *TreeEntry) GetCodeType() string {
+// CodeType returns the code name of the tree entry.
+func (t *TreeEntry) CodeType() string {
 	return t.codeType
 }
 
-// GetLanguage returns the language of the tree entry.
-func (t *TreeEntry) GetLanguage() string {
+// Language returns the language of the tree entry.
+func (t *TreeEntry) Language() string {
 	return t.langauge
 }
 
-// GetLanguageVersion returns the language version of the tree entry.
-func (t *TreeEntry) GetLanguageVersion() string {
+// LanguageVersion returns the language version of the tree entry.
+func (t *TreeEntry) LanguageVersion() string {
 	return t.langaugeVersion
 }
 
-// GetLanguageType returns the language type of the tree entry.
-func (t *TreeEntry) GetLanguageType() string {
+// LanguageType returns the language type of the tree entry.
+func (t *TreeEntry) LanguageType() string {
 	return t.langaugeType
 }
 
@@ -374,8 +374,8 @@ func NewTree() (*Tree, error) {
 	}, nil
 }
 
-// GetEntries returns the entries of the tree.
-func (t *Tree) GetEntries() []TreeEntry {
+// Entries returns the entries of the tree.
+func (t *Tree) Entries() []TreeEntry {
 	return copier.CopySlice(t.entries)
 }
 
@@ -385,10 +385,10 @@ func (t *Tree) AddEntry(entry *TreeEntry) error {
 		return errors.New("objects: tree entry is nil")
 	}
 	for _, e := range t.entries {
-		if e.GetOName() == entry.GetOName() {
+		if e.OName() == entry.OName() {
 			return errors.New("objects: tree entry already exists")
 		}
-		if e.GetCodeID() == entry.GetCodeID() && e.GetCodeType() == entry.GetCodeType() {
+		if e.CodeID() == entry.CodeID() && e.CodeType() == entry.CodeType() {
 			return errors.New("objects: tree entry already exists")
 		}
 	}

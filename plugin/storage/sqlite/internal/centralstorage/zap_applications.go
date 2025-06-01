@@ -42,7 +42,7 @@ func (s SQLiteCentralStorageZAP) CreateZone(zone *zap.Zone) (*zap.Zone, error) {
 		Name:   zone.Name,
 	}
 	dbOutZone, err := s.sqlRepo.UpsertZone(tx, true, dbInZone)
-	if s.config.GetEnabledDefaultCreation() {
+	if s.config.EnabledDefaultCreation() {
 		if err == nil {
 			tenant := &repo.Tenant{
 				ZoneID: dbOutZone.ZoneID,
@@ -126,7 +126,7 @@ func (s SQLiteCentralStorageZAP) DeleteZone(zoneID int64) (*zap.Zone, error) {
 
 // FetchZones returns all zones.
 func (s SQLiteCentralStorageZAP) FetchZones(page int32, pageSize int32, fields map[string]any) ([]zap.Zone, error) {
-	if page <= 0 || pageSize <= 0 || pageSize > s.config.GetDataFetchMaxPageSize() {
+	if page <= 0 || pageSize <= 0 || pageSize > s.config.DataFetchMaxPageSize() {
 		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize)
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)

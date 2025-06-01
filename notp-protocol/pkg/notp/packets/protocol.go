@@ -21,8 +21,8 @@ type ProtocolPacket struct {
 	Version uint32
 }
 
-// GetType returns the type of the packet.
-func (p *ProtocolPacket) GetType() uint64 {
+// Type returns the type of the packet.
+func (p *ProtocolPacket) Type() uint64 {
 	return CombineUint32toUint64(ProtocolPacketType, 0)
 }
 

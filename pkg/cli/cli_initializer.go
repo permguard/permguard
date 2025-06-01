@@ -34,16 +34,16 @@ type CliDependenciesProvider interface {
 	CreateGrpcPAPClient(zapTarget string) (clients.GrpcPAPClient, error)
 	// CreateGrpcPDPClient creates a new gRPC client for the PDP service.
 	CreateGrpcPDPClient(zapTarget string) (clients.GrpcPDPClient, error)
-	// GetLanguageFactory returns the language factory.
-	GetLanguageFactory() (languages.LanguageFactory, error)
+	// LanguageFactory returns the language factory.
+	LanguageFactory() (languages.LanguageFactory, error)
 }
 
 // CliInitializer is the cli initializer.
 type CliInitializer interface {
-	// GetCliInfo returns the infos of the commands.
-	GetCliInfo() CliInfo
-	//  GetCliCommands returns the commands.
-	GetCliCommands(deps CliDependenciesProvider, v *viper.Viper) ([]*cobra.Command, error)
-	// GetLanguageFactory returns the language factory.
-	GetLanguageFactory() (languages.LanguageFactory, error)
+	// CliInfo returns the infos of the commands.
+	CliInfo() CliInfo
+	//  CliCommands returns the commands.
+	CliCommands(deps CliDependenciesProvider, v *viper.Viper) ([]*cobra.Command, error)
+	// LanguageFactory returns the language factory.
+	LanguageFactory() (languages.LanguageFactory, error)
 }

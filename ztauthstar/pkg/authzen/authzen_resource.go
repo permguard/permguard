@@ -23,17 +23,17 @@ type Resource struct {
 	properties map[string]any
 }
 
-// GetType returns the type of the resource.
-func (r *Resource) GetType() string {
+// Type returns the type of the resource.
+func (r *Resource) Type() string {
 	return r.resType
 }
 
-// GetID returns the ID of the resource.
-func (r *Resource) GetID() string {
+// ID returns the ID of the resource.
+func (r *Resource) ID() string {
 	return r.id
 }
 
-// GetProperties returns the properties of the resource.
-func (r *Resource) GetProperties() map[string]any {
+// Properties returns the properties of the resource.
+func (r *Resource) Properties() map[string]any {
 	return r.properties
 }

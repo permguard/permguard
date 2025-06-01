@@ -17,6 +17,7 @@
 package logs
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -56,34 +57,34 @@ func NewLogsManager(ctx *common.CliCommandContext, persMgr *persistence.Persiste
 	}, nil
 }
 
-// getLogsDir returns the logs directory.
-func (c *LogsManager) getLogsDir() string {
+// logsDir returns the logs directory.
+func (c *LogsManager) logsDir() string {
 	return hiddenLogsDir
 }
 
 // Log an entry
 func (c *LogsManager) Log(refInfo *wkscommon.RefInfo, origin string, target string, action LogAction, actionStatus bool, actionDetail string) (bool, error) {
 	if refInfo == nil {
-		return false, fmt.Errorf("Invalid ref info")
+		return false, errors.New("invalid ref info")
 	}
 	if err := validators.ValidateSHA256("logs", origin); err != nil {
-		return false, fmt.Errorf("Invalid origin sha256")
+		return false, errors.New("invalid origin sha256")
 	}
 	if err := validators.ValidateSHA256("logs", target); err != nil {
-		return false, fmt.Errorf("Invalid target sha256")
+		return false, errors.New("invalid target sha256")
 	}
 	if strings.TrimSpace(string(action)) == "" {
-		return false, fmt.Errorf("Invalid action")
+		return false, errors.New("invalid action")
 	}
 	if strings.TrimSpace(string(actionDetail)) == "" {
-		return false, fmt.Errorf("Invalid action")
+		return false, errors.New("invalid action")
 	}
-	logDir := refInfo.GetLedgerFilePath(false)
+	logDir := refInfo.LedgerFilePath(false)
 	_, err := c.persMgr.CreateDirIfNotExists(persistence.PermguardDir, logDir)
 	if err != nil {
 		return false, err
 	}
-	logFile := filepath.Join(c.getLogsDir(), logDir, refInfo.GetLedgerID())
+	logFile := filepath.Join(c.logsDir(), logDir, refInfo.LedgerID())
 	_, err = c.persMgr.CreateFileIfNotExists(persistence.PermguardDir, logFile)
 	if err != nil {
 		return false, err

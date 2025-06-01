@@ -50,23 +50,23 @@ func NewHostContext(host HostKind, hostable Hostable, logger *zap.Logger, config
 	}, nil
 }
 
-// GetContext returns the context.
-func (h *HostContext) GetContext() context.Context {
+// Context returns the context.
+func (h *HostContext) Context() context.Context {
 	return h.ctx
 }
 
-// GetHost returns the host.
-func (h *HostContext) GetHost() HostKind {
+// Host returns the host.
+func (h *HostContext) Host() HostKind {
 	return h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHostHostkey].(HostKind)
 }
 
-// GetLogger returns the logger.
-func (h *HostContext) GetLogger() *zap.Logger {
+// Logger returns the logger.
+func (h *HostContext) Logger() *zap.Logger {
 	return h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHostLoggerkey].(*zap.Logger)
 }
 
-// GetHostConfigReader returns the host configuration reader.
-func (h *HostContext) GetHostConfigReader() (runtime.HostConfigReader, error) {
+// HostConfigReader returns the host configuration reader.
+func (h *HostContext) HostConfigReader() (runtime.HostConfigReader, error) {
 	return h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHostCfgReader].(runtime.HostConfigReader), nil
 }
 
@@ -75,12 +75,12 @@ func (h *HostContext) Shutdown(ctx context.Context) {
 	h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHostServerkey].(Hostable).Shutdown(ctx)
 }
 
-// GetParentLoggerMessage returns the parent logger message.
-func (h *HostContext) GetParentLoggerMessage() string {
-	return fmt.Sprintf("[%s]", h.GetHost().String())
+// ParentLoggerMessage returns the parent logger message.
+func (h *HostContext) ParentLoggerMessage() string {
+	return fmt.Sprintf("[%s]", h.Host().String())
 }
 
-// GetLogMessage returns a well formatted log message.
-func (h *HostContext) GetLogMessage(message string) string {
-	return fmt.Sprintf("%s: %s", h.GetParentLoggerMessage(), message)
+// LogMessage returns a well formatted log message.
+func (h *HostContext) LogMessage(message string) string {
+	return fmt.Sprintf("%s: %s", h.ParentLoggerMessage(), message)
 }

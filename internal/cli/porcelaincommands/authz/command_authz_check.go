@@ -58,7 +58,7 @@ func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v
 	}
 	var input *os.File
 	if len(args) > 0 {
-		jsonPath := filepath.Join(ctx.GetWorkDir(), args[0])
+		jsonPath := filepath.Join(ctx.WorkDir(), args[0])
 		input, err = os.Open(jsonPath)
 		if err != nil {
 			return handleInputError(ctx, printer, err, "invalid input for the authz check.")
@@ -83,7 +83,7 @@ func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v
 		return handleInputError(ctx, printer, err, "Invalid input for the authz check.")
 	}
 
-	pdpTarget, err := ctx.GetPDPTarget()
+	pdpTarget, err := ctx.PDPTarget()
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to check the authorization request.")

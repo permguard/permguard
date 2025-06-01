@@ -68,34 +68,34 @@ func NewPlansManager(ctx *common.CliCommandContext, persMgr *persistence.Persist
 	}, nil
 }
 
-// getCodeDir returns the code directory.
-func (m *COSPManager) getCodeDir() string {
+// codeDir returns the code directory.
+func (m *COSPManager) codeDir() string {
 	return hiddenCodeDir
 }
 
-// getObjectsDir returns the objs directory.
-func (m *COSPManager) getObjectsDir() string {
+// objectsDir returns the objs directory.
+func (m *COSPManager) objectsDir() string {
 	return hiddenObjectsDir
 }
 
-// getCodeSourceDir returns the code source directory.
-func (m *COSPManager) getCodeSourceDir() string {
-	return filepath.Join(m.getCodeDir(), hiddenSourceCodeDir)
+// codeSourceDir returns the code source directory.
+func (m *COSPManager) codeSourceDir() string {
+	return filepath.Join(m.codeDir(), hiddenSourceCodeDir)
 }
 
-// getCodeSourceObjectsDir returns the code source objs directory.
-func (m *COSPManager) getCodeSourceObjectsDir() string {
-	return filepath.Join(m.getCodeSourceDir(), m.getObjectsDir())
+// codeSourceObjectsDir returns the code source objs directory.
+func (m *COSPManager) codeSourceObjectsDir() string {
+	return filepath.Join(m.codeSourceDir(), m.objectsDir())
 }
 
-// getCodeSourceConfigFile returns the code source config file.
-func (m *COSPManager) getCodeSourceConfigFile() string {
-	return filepath.Join(m.getCodeSourceDir(), hiddenConfigFile)
+// codeSourceConfigFile returns the code source config file.
+func (m *COSPManager) codeSourceConfigFile() string {
+	return filepath.Join(m.codeSourceDir(), hiddenConfigFile)
 }
 
-// getCodeSourceObjectDir returns the code source object directory.
-func (m *COSPManager) getCodeSourceObjectDir(oid string, basePath string) (string, string) {
-	basePath = filepath.Join(basePath, m.getObjectsDir())
+// codeSourceObjectDir returns the code source object directory.
+func (m *COSPManager) codeSourceObjectDir(oid string, basePath string) (string, string) {
+	basePath = filepath.Join(basePath, m.objectsDir())
 	folder := oid[:2]
 	folder = filepath.Join(basePath, folder)
 	name := oid[2:]
@@ -104,12 +104,12 @@ func (m *COSPManager) getCodeSourceObjectDir(oid string, basePath string) (strin
 
 // CleanCodeSource cleans the code source area.
 func (m *COSPManager) CleanCodeSource() (bool, error) {
-	return m.persMgr.DeletePath(persistence.PermguardDir, m.getCodeSourceDir())
+	return m.persMgr.DeletePath(persistence.PermguardDir, m.codeSourceDir())
 }
 
 // SaveCodeSourceObject saves the object in the code source.
 func (m *COSPManager) SaveCodeSourceObject(oid string, content []byte) (bool, error) {
-	folder, name := m.getCodeSourceObjectDir(oid, m.getCodeSourceDir())
+	folder, name := m.codeSourceObjectDir(oid, m.codeSourceDir())
 	path := filepath.Join(folder, name)
 	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, folder)
 	if err != nil {
@@ -120,7 +120,7 @@ func (m *COSPManager) SaveCodeSourceObject(oid string, content []byte) (bool, er
 
 // ReadCodeSourceObject reads the object from the code source.
 func (m *COSPManager) ReadCodeSourceObject(oid string) (*objects.Object, error) {
-	folder, name := m.getCodeSourceObjectDir(oid, m.getCodeSourceDir())
+	folder, name := m.codeSourceObjectDir(oid, m.codeSourceDir())
 	path := filepath.Join(folder, name)
 	data, _, err := m.persMgr.ReadFile(persistence.PermguardDir, path, true)
 	if err != nil {
@@ -153,17 +153,17 @@ func (m *COSPManager) SaveCodeSourceConfig(treeID string) error {
 			TreeID: treeID,
 		},
 	}
-	file := m.getCodeSourceConfigFile()
+	file := m.codeSourceConfigFile()
 	return m.saveConfig(file, true, config)
 }
 
 // SaveCodeSourceCodeMap saves the code map in the code source.
 func (m *COSPManager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
-	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, m.getCodeSourceDir())
+	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, m.codeSourceDir())
 	if err != nil {
 		return errors.Join(err, errors.New("cli: failed to create code plan"))
 	}
-	path := filepath.Join(m.getCodeSourceDir(), hiddenCodeMapFile)
+	path := filepath.Join(m.codeSourceDir(), hiddenCodeMapFile)
 	rowFunc := func(record any) []string {
 		codeFile := record.(CodeFile)
 		return []string{
@@ -191,7 +191,7 @@ func (m *COSPManager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 
 // ReadCodeSourceCodeMap reads the code map from the code source.
 func (m *COSPManager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
-	path := filepath.Join(m.getCodeSourceDir(), hiddenCodeMapFile)
+	path := filepath.Join(m.codeSourceDir(), hiddenCodeMapFile)
 	var codeFiles []CodeFile
 	recordFunc := func(record []string) error {
 		if len(record) < 12 {
@@ -238,13 +238,13 @@ func (m *COSPManager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 
 // SaveCodeSourceCodeState saves the code object state in the code source.
 func (m *COSPManager) SaveCodeSourceCodeState(codeObjects []CodeObjectState) error {
-	path := filepath.Join(m.getCodeSourceDir(), hiddenCodeStateFile)
+	path := filepath.Join(m.codeSourceDir(), hiddenCodeStateFile)
 	return m.saveCodeObjectStates(path, codeObjects)
 }
 
 // ReadCodeSourceCodeState reads the code object state from the code source.
 func (m *COSPManager) ReadCodeSourceCodeState() ([]CodeObjectState, error) {
-	path := filepath.Join(m.getCodeSourceDir(), hiddenCodeStateFile)
+	path := filepath.Join(m.codeSourceDir(), hiddenCodeStateFile)
 	return m.readCodeObjectStates(path)
 }
 
@@ -254,18 +254,18 @@ func (m *COSPManager) BuildCodeSourceCodeStateForTree(tree *objects.Tree) ([]Cod
 		return nil, errors.New("cli: tree is nil")
 	}
 	codeObjectStates := []CodeObjectState{}
-	for _, entry := range tree.GetEntries() {
+	for _, entry := range tree.Entries() {
 		codeObjState := CodeObjectState{
 			CodeObject: CodeObject{
-				Partition:       entry.GetPartition(),
-				OName:           entry.GetOName(),
-				OType:           entry.GetType(),
-				OID:             entry.GetOID(),
-				CodeID:          entry.GetCodeID(),
-				CodeType:        entry.GetCodeType(),
-				Language:        entry.GetLanguage(),
-				LanguageType:    entry.GetLanguageType(),
-				LanguageVersion: entry.GetLanguageVersion(),
+				Partition:       entry.Partition(),
+				OName:           entry.OName(),
+				OType:           entry.Type(),
+				OID:             entry.OID(),
+				CodeID:          entry.CodeID(),
+				CodeType:        entry.CodeType(),
+				Language:        entry.Language(),
+				LanguageType:    entry.LanguageType(),
+				LanguageVersion: entry.LanguageVersion(),
 			},
 			State: "",
 		}
@@ -276,7 +276,7 @@ func (m *COSPManager) BuildCodeSourceCodeStateForTree(tree *objects.Tree) ([]Cod
 
 // SaveRemoteCodePlan saves the code plan for the input remote.
 func (m *COSPManager) SaveRemoteCodePlan(ref string, codeObjects []CodeObjectState) error {
-	path := filepath.Join(m.getCodeDir(), strings.ToLower(ref))
+	path := filepath.Join(m.codeDir(), strings.ToLower(ref))
 	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, path)
 	if err != nil {
 		return errors.Join(err, errors.New("cli: failed to create code plan"))
@@ -287,13 +287,13 @@ func (m *COSPManager) SaveRemoteCodePlan(ref string, codeObjects []CodeObjectSta
 
 // ReadRemoteCodePlan reads the code plan from the input remote.
 func (m *COSPManager) ReadRemoteCodePlan(ref string) ([]CodeObjectState, error) {
-	path := filepath.Join(m.getCodeDir(), strings.ToLower(ref), hiddenCodePlanFile)
+	path := filepath.Join(m.codeDir(), strings.ToLower(ref), hiddenCodePlanFile)
 	return m.readCodeObjectStates(path)
 }
 
 // CleanCode cleans the code.
 func (m *COSPManager) CleanCode(ref string) (bool, error) {
-	path := filepath.Join(m.getCodeDir(), strings.ToLower(ref))
+	path := filepath.Join(m.codeDir(), strings.ToLower(ref))
 	return m.persMgr.DeletePath(persistence.PermguardDir, path)
 }
 
@@ -441,7 +441,7 @@ func (m *COSPManager) CalculateCodeObjectsState(currentObjs []CodeObjectState, r
 
 // SaveObject saves the object in the object store.
 func (m *COSPManager) SaveObject(oid string, content []byte) (bool, error) {
-	folder, name := m.getCodeSourceObjectDir(oid, "")
+	folder, name := m.codeSourceObjectDir(oid, "")
 	path := filepath.Join(folder, name)
 	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, folder)
 	if err != nil {
@@ -452,7 +452,7 @@ func (m *COSPManager) SaveObject(oid string, content []byte) (bool, error) {
 
 // ReadObject reads the object from the objs store.
 func (m *COSPManager) ReadObject(oid string) (*objects.Object, error) {
-	folder, name := m.getCodeSourceObjectDir(oid, "")
+	folder, name := m.codeSourceObjectDir(oid, "")
 	path := filepath.Join(folder, name)
 	data, _, err := m.persMgr.ReadFile(persistence.PermguardDir, path, true)
 	if err != nil {
@@ -462,7 +462,7 @@ func (m *COSPManager) ReadObject(oid string) (*objects.Object, error) {
 }
 
 // GetObjects returns the objs.
-func (m *COSPManager) getObjects(path string, isStore bool) ([]objects.Object, error) {
+func (m *COSPManager) objects(path string, isStore bool) ([]objects.Object, error) {
 	objs := []objects.Object{}
 	dirs, err := m.persMgr.ListDirectories(persistence.PermguardDir, path)
 	if err != nil {
@@ -493,12 +493,12 @@ func (m *COSPManager) getObjects(path string, isStore bool) ([]objects.Object, e
 	return objs, nil
 }
 
-// GetObjects returns the objs.
-func (m *COSPManager) GetObjects(includeStorage, includeCode bool) ([]objects.Object, error) {
+// Objects returns the objs.
+func (m *COSPManager) Objects(includeStorage, includeCode bool) ([]objects.Object, error) {
 	objs := []objects.Object{}
 	if includeCode {
-		if ok, _ := m.persMgr.CheckPathIfExists(persistence.PermguardDir, m.getCodeSourceObjectsDir()); ok {
-			codeObjs, err := m.getObjects(m.getCodeSourceObjectsDir(), false)
+		if ok, _ := m.persMgr.CheckPathIfExists(persistence.PermguardDir, m.codeSourceObjectsDir()); ok {
+			codeObjs, err := m.objects(m.codeSourceObjectsDir(), false)
 			if err != nil {
 				return nil, err
 			}
@@ -506,8 +506,8 @@ func (m *COSPManager) GetObjects(includeStorage, includeCode bool) ([]objects.Ob
 		}
 	}
 	if includeStorage {
-		if ok, _ := m.persMgr.CheckPathIfExists(persistence.PermguardDir, m.getObjectsDir()); ok {
-			storageObjs, err := m.getObjects(m.getObjectsDir(), true)
+		if ok, _ := m.persMgr.CheckPathIfExists(persistence.PermguardDir, m.objectsDir()); ok {
+			storageObjs, err := m.objects(m.objectsDir(), true)
 			if err != nil {
 				return nil, err
 			}
@@ -517,27 +517,27 @@ func (m *COSPManager) GetObjects(includeStorage, includeCode bool) ([]objects.Ob
 	return objs, nil
 }
 
-// GetCommit gets the commit.
-func (m *COSPManager) GetCommit(commitID string) (*objects.Commit, error) {
+// Commit gets the commit.
+func (m *COSPManager) Commit(commitID string) (*objects.Commit, error) {
 	obj, err := m.ReadObject(commitID)
 	if err != nil {
 		return nil, err
 	}
-	objInfo, err := m.objMgr.GetObjectInfo(obj)
+	objInfo, err := m.objMgr.ObjectInfo(obj)
 	if err != nil {
 		return nil, err
 	}
-	if objInfo.GetType() != objects.ObjectTypeCommit {
+	if objInfo.Type() != objects.ObjectTypeCommit {
 		return nil, fmt.Errorf("cli: oid %s is not a valid commit", commitID)
 	}
-	commit := objInfo.GetInstance().(*objects.Commit)
+	commit := objInfo.Instance().(*objects.Commit)
 	return commit, nil
 }
 
-// GetHistory gets the commit history.
-func (m *COSPManager) GetHistory(commitID string) ([]wkscommon.CommitInfo, error) {
+// History gets the commit history.
+func (m *COSPManager) History(commitID string) ([]wkscommon.CommitInfo, error) {
 	var commits []wkscommon.CommitInfo
-	commit, err := m.GetCommit(commitID)
+	commit, err := m.Commit(commitID)
 	if err != nil {
 		return nil, err
 	}
@@ -548,11 +548,11 @@ func (m *COSPManager) GetHistory(commitID string) ([]wkscommon.CommitInfo, error
 			return nil, err
 		}
 		commits = append(commits, *commitInfo)
-		parentID := commit.GetParent()
+		parentID := commit.Parent()
 		if parentID == objects.ZeroOID {
 			break
 		}
-		commit, err = m.GetCommit(parentID)
+		commit, err = m.Commit(parentID)
 		if err != nil {
 			return nil, err
 		}

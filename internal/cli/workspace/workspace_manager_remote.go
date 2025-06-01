@@ -21,33 +21,33 @@ import (
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
-// getCurrentHeadContext gets the current head context.
-func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) {
-	headRef, err := m.rfsMgr.GetCurrentHeadRef()
+// currentHeadContext gets the current head context.
+func (m *WorkspaceManager) currentHeadContext() (*currentHeadContext, error) {
+	headRef, err := m.rfsMgr.CurrentHeadRef()
 	if err != nil {
 		return nil, err
 	}
-	headRefInfo, err := m.rfsMgr.GetCurrentHeadRefInfo()
+	headRefInfo, err := m.rfsMgr.CurrentHeadRefInfo()
 	if err != nil {
 		return nil, err
 	}
-	headRefCommitID, err := m.rfsMgr.GetRefCommit(headRef)
+	headRefCommitID, err := m.rfsMgr.RefCommit(headRef)
 	if err != nil {
 		return nil, err
 	}
-	remoteRef, err := m.rfsMgr.GetRefUpstreamRef(headRef)
+	remoteRef, err := m.rfsMgr.RefUpstreamRef(headRef)
 	if err != nil {
 		return nil, err
 	}
-	remoteRefInfo, err := m.rfsMgr.GetRefInfo(remoteRef)
+	remoteRefInfo, err := m.rfsMgr.RefInfo(remoteRef)
 	if err != nil {
 		return nil, err
 	}
-	remoteRefCommitID, err := m.rfsMgr.GetRefCommit(remoteRef)
+	remoteRefCommitID, err := m.rfsMgr.RefCommit(remoteRef)
 	if err != nil {
 		return nil, err
 	}
-	remoteInfo, err := m.cfgMgr.GetRemoteInfo(remoteRefInfo.GetRemote())
+	remoteInfo, err := m.cfgMgr.RemoteInfo(remoteRefInfo.Remote())
 	if err != nil {
 		return nil, err
 	}
@@ -57,10 +57,10 @@ func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) 
 		remoteRefInfo:  remoteRefInfo,
 		headCommitID:   headRefCommitID,
 		remoteCommitID: remoteRefCommitID,
-		server:         remoteInfo.GetServer(),
-		serverPAPPort:  remoteInfo.GetPAPPort(),
+		server:         remoteInfo.Server(),
+		serverPAPPort:  remoteInfo.PAPPort(),
 	}
-	ledgerID, err := m.rfsMgr.GetRefLedgerID(headRef)
+	ledgerID, err := m.rfsMgr.RefLedgerID(headRef)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) 
 		return nil, err
 	}
 
-	commit, err := m.rfsMgr.GetRefCommit(headCtx.GetRef())
+	commit, err := m.rfsMgr.RefCommit(headCtx.Ref())
 	if err != nil {
 		return nil, err
 	}
@@ -78,9 +78,9 @@ func (m *WorkspaceManager) getCurrentHeadContext() (*currentHeadContext, error) 
 	return headCtx, nil
 }
 
-// GetCurrentHeadCommit gets the current head commit.
-func (m *WorkspaceManager) GetCurrentHeadCommit(ref string) (*objects.Commit, error) {
-	remoteCommitID, err := m.rfsMgr.GetRefCommit(ref)
+// CurrentHeadCommit gets the current head commit.
+func (m *WorkspaceManager) CurrentHeadCommit(ref string) (*objects.Commit, error) {
+	remoteCommitID, err := m.rfsMgr.RefCommit(ref)
 	if err != nil {
 		return nil, err
 	}
@@ -98,16 +98,16 @@ func (m *WorkspaceManager) GetCurrentHeadCommit(ref string) (*objects.Commit, er
 	return remoteCommit, nil
 }
 
-// GetCurrentHeadTree gets the current head tree.
-func (m *WorkspaceManager) GetCurrentHeadTree(ref string) (*objects.Tree, error) {
-	commit, err := m.GetCurrentHeadCommit(ref)
+// CurrentHeadTree gets the current head tree.
+func (m *WorkspaceManager) CurrentHeadTree(ref string) (*objects.Tree, error) {
+	commit, err := m.CurrentHeadCommit(ref)
 	if err != nil {
 		return nil, err
 	}
 	if commit == nil {
 		return nil, nil
 	}
-	treeObj, err := m.cospMgr.ReadObject(commit.GetTree())
+	treeObj, err := m.cospMgr.ReadObject(commit.Tree())
 	if err != nil {
 		return nil, err
 	}

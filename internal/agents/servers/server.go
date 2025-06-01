@@ -54,8 +54,8 @@ func newServer(serverCfg *ServerConfig) (*Server, error) {
 	return srv, nil
 }
 
-// GetHost returns the hsot kind.
-func (s *Server) GetHost() services.HostKind {
+// Host returns the hsot kind.
+func (s *Server) Host() services.HostKind {
 	return s.config.host
 }
 
@@ -64,8 +64,8 @@ func (s *Server) HasDebug() bool {
 	return s.config.debug
 }
 
-// GetLogger returns the logger.
-func (s *Server) GetLogger() *zap.Logger {
+// Logger returns the logger.
+func (s *Server) Logger() *zap.Logger {
 	return s.logger
 }
 
@@ -101,13 +101,13 @@ func (s *Server) Serve(ctx context.Context, onShutdown func()) (bool, error) {
 		return false, nil
 	}
 
-	storageConnector, err := storage.NewStorageConnector(s.config.GetCentralStorageEngine(), s.config.GetStoragesFactories())
+	storageConnector, err := storage.NewStorageConnector(s.config.CentralStorageEngine(), s.config.StoragesFactories())
 	if err != nil {
 		logger.Error("Bootstrapper cannot create the storage connector", zap.Error(err))
 		s.startLock.Unlock()
 		return false, err
 	}
-	hostCfg, err := iservices.NewHostConfig(s.config.GetHost(), s, storageConnector, s.config.GetServices(), s.config.GetServicesFactories(), logger, s.config.GetAppData())
+	hostCfg, err := iservices.NewHostConfig(s.config.Host(), s, storageConnector, s.config.Services(), s.config.ServicesFactories(), logger, s.config.AppData())
 	if err != nil {
 		logger.Error("Bootstrapper cannot create the host config", zap.Error(err))
 		s.startLock.Unlock()

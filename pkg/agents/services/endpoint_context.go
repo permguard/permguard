@@ -40,7 +40,7 @@ type EndpointContext struct {
 
 // NewEndpointContext creates a new endpoint context.
 func NewEndpointContext(serviceContext *ServiceContext, port int) (*EndpointContext, error) {
-	newLogger := serviceContext.GetLogger().With(zap.Int("port", port))
+	newLogger := serviceContext.Logger().With(zap.Int("port", port))
 	data := map[string]any{ctxEndLoggerKey: newLogger, ctxEndpPortKey: port}
 	ctx := context.WithValue(serviceContext.ctx, endpointCtxKey{}, data)
 	return &EndpointContext{
@@ -49,38 +49,38 @@ func NewEndpointContext(serviceContext *ServiceContext, port int) (*EndpointCont
 	}, nil
 }
 
-// GetContext returns the context.
-func (e *EndpointContext) GetContext() context.Context {
+// Context returns the context.
+func (e *EndpointContext) Context() context.Context {
 	return e.ctx
 }
 
-// GetLogger returns the logger.
-func (e *EndpointContext) GetLogger() *zap.Logger {
+// Logger returns the logger.
+func (e *EndpointContext) Logger() *zap.Logger {
 	return e.ctx.Value(endpointCtxKey{}).(map[string]any)[ctxEndLoggerKey].(*zap.Logger)
 }
 
-// GetPort returns
-func (e *EndpointContext) GetPort() int {
+// Port returns
+func (e *EndpointContext) Port() int {
 	return e.ctx.Value(endpointCtxKey{}).(map[string]any)[ctxEndpPortKey].(int)
 }
 
-// GetParentLoggerMessage returns the parent logger message.
-func (e *EndpointContext) GetParentLoggerMessage() string {
-	port := e.GetPort()
-	return fmt.Sprintf("%s[port: %d]", e.parentCtx.GetParentLoggerMessage(), port)
+// ParentLoggerMessage returns the parent logger message.
+func (e *EndpointContext) ParentLoggerMessage() string {
+	port := e.Port()
+	return fmt.Sprintf("%s[port: %d]", e.parentCtx.ParentLoggerMessage(), port)
 }
 
-// GetLogMessage returns a well formatted log message.
-func (e *EndpointContext) GetLogMessage(message string) string {
-	return fmt.Sprintf("%s: %s", e.GetParentLoggerMessage(), message)
+// LogMessage returns a well formatted log message.
+func (e *EndpointContext) LogMessage(message string) string {
+	return fmt.Sprintf("%s: %s", e.ParentLoggerMessage(), message)
 }
 
-// GetHostConfigReader returns the host configuration reader.
-func (e *EndpointContext) GetHostConfigReader() (runtime.HostConfigReader, error) {
-	return e.parentCtx.GetHostConfigReader()
+// HostConfigReader returns the host configuration reader.
+func (e *EndpointContext) HostConfigReader() (runtime.HostConfigReader, error) {
+	return e.parentCtx.HostConfigReader()
 }
 
-// GetServiceConfigReader returns the service configuration reader.
-func (e *EndpointContext) GetServiceConfigReader() (runtime.ServiceConfigReader, error) {
-	return e.parentCtx.GetServiceConfigReader()
+// ServiceConfigReader returns the service configuration reader.
+func (e *EndpointContext) ServiceConfigReader() (runtime.ServiceConfigReader, error) {
+	return e.parentCtx.ServiceConfigReader()
 }

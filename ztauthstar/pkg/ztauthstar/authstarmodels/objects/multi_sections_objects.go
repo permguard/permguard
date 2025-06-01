@@ -37,58 +37,58 @@ type SectionObject struct {
 	err             error
 }
 
-// GetObject returns the object.
-func (s *SectionObject) GetObject() *Object {
+// Object returns the object.
+func (s *SectionObject) Object() *Object {
 	return s.obj
 }
 
-// GetPartition returns the partition.
-func (s *SectionObject) GetPartition() string {
+// Partition returns the partition.
+func (s *SectionObject) Partition() string {
 	return s.partition
 }
 
-// GetObjectType returns the object type.
-func (s *SectionObject) GetObjectType() string {
+// ObjectType returns the object type.
+func (s *SectionObject) ObjectType() string {
 	return s.otype
 }
 
-// GetObjectName returns the object name.
-func (s *SectionObject) GetObjectName() string {
+// ObjectName returns the object name.
+func (s *SectionObject) ObjectName() string {
 	return s.oname
 }
 
-// GetCodeID returns the code ID.
-func (s *SectionObject) GetCodeID() string {
+// CodeID returns the code ID.
+func (s *SectionObject) CodeID() string {
 	return s.codeID
 }
 
-// GetCodeType returns the code type.
-func (s *SectionObject) GetCodeType() string {
+// CodeType returns the code type.
+func (s *SectionObject) CodeType() string {
 	return s.codeType
 }
 
-// GetLanguage returns the language.
-func (s *SectionObject) GetLanguage() string {
+// Language returns the language.
+func (s *SectionObject) Language() string {
 	return s.language
 }
 
-// GetLanguageVersion returns the language version.
-func (s *SectionObject) GetLanguageVersion() string {
+// LanguageVersion returns the language version.
+func (s *SectionObject) LanguageVersion() string {
 	return s.languageVersion
 }
 
-// GetLanguageType returns the language type.
-func (s *SectionObject) GetLanguageType() string {
+// LanguageType returns the language type.
+func (s *SectionObject) LanguageType() string {
 	return s.languageType
 }
 
-// GetNumberOfSection returns the number section.
-func (s *SectionObject) GetNumberOfSection() int {
+// NumberOfSection returns the number section.
+func (s *SectionObject) NumberOfSection() int {
 	return s.numOfSect
 }
 
-// GetError returns the error.
-func (s *SectionObject) GetError() error {
+// Error returns the error.
+func (s *SectionObject) Error() error {
 	return s.err
 }
 
@@ -117,23 +117,23 @@ type MultiSectionsObject struct {
 	err         error
 }
 
-// GetPath returns the path.
-func (m *MultiSectionsObject) GetPath() string {
+// Path returns the path.
+func (m *MultiSectionsObject) Path() string {
 	return m.path
 }
 
-// GetSectionObjects returns the section objects.
-func (m *MultiSectionsObject) GetSectionObjects() []*SectionObject {
+// SectionObjects returns the section objects.
+func (m *MultiSectionsObject) SectionObjects() []*SectionObject {
 	return copier.CopySlice(m.objSections)
 }
 
-// GetNumberOfSections returns the number of sections.
-func (m *MultiSectionsObject) GetNumberOfSections() int {
+// NumberOfSections returns the number of sections.
+func (m *MultiSectionsObject) NumberOfSections() int {
 	return m.numOfSects
 }
 
-// GetError returns the error.
-func (m *MultiSectionsObject) GetError() error {
+// Error returns the error.
+func (m *MultiSectionsObject) Error() error {
 	return m.err
 }
 

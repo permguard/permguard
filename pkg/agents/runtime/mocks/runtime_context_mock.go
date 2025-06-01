@@ -30,8 +30,8 @@ type RuntimeContextMock struct {
 	mock.Mock
 }
 
-// GetLogger returns the logger.
-func (c *RuntimeContextMock) GetLogger() *zap.Logger {
+// Logger returns the logger.
+func (c *RuntimeContextMock) Logger() *zap.Logger {
 	ret := c.Called()
 
 	var r0 *zap.Logger
@@ -43,8 +43,8 @@ func (c *RuntimeContextMock) GetLogger() *zap.Logger {
 	return r0
 }
 
-// GetParentLoggerMessage returns the parent logger message.
-func (c *RuntimeContextMock) GetParentLoggerMessage() string {
+// ParentLoggerMessage returns the parent logger message.
+func (c *RuntimeContextMock) ParentLoggerMessage() string {
 	ret := c.Called()
 
 	var r0 string
@@ -56,8 +56,8 @@ func (c *RuntimeContextMock) GetParentLoggerMessage() string {
 	return r0
 }
 
-// GetContext returns the context.
-func (c *RuntimeContextMock) GetContext() context.Context {
+// Context returns the context.
+func (c *RuntimeContextMock) Context() context.Context {
 	ret := c.Called()
 
 	var r0 context.Context
@@ -69,8 +69,8 @@ func (c *RuntimeContextMock) GetContext() context.Context {
 	return r0
 }
 
-// GetHostConfigReader returns the host configuration reader.
-func (c *RuntimeContextMock) GetHostConfigReader() (runtime.HostConfigReader, error) {
+// HostConfigReader returns the host configuration reader.
+func (c *RuntimeContextMock) HostConfigReader() (runtime.HostConfigReader, error) {
 	ret := c.Called()
 
 	var r0 runtime.HostConfigReader
@@ -82,8 +82,8 @@ func (c *RuntimeContextMock) GetHostConfigReader() (runtime.HostConfigReader, er
 	return r0, ret.Error(1)
 }
 
-// GetServiceConfigReader returns the service configuration reader.
-func (c *RuntimeContextMock) GetServiceConfigReader() (runtime.ServiceConfigReader, error) {
+// ServiceConfigReader returns the service configuration reader.
+func (c *RuntimeContextMock) ServiceConfigReader() (runtime.ServiceConfigReader, error) {
 	ret := c.Called()
 
 	var r0 runtime.ServiceConfigReader
@@ -100,8 +100,8 @@ type mockHostConfig struct {
 	appData string
 }
 
-// GetAppData returns the zone data.
-func (h *mockHostConfig) GetAppData() string {
+// AppData returns the zone data.
+func (h *mockHostConfig) AppData() string {
 	return h.appData
 }
 
@@ -110,8 +110,8 @@ type mockServiceConfig struct {
 	values map[string]any
 }
 
-// GetValue returns the value for the given key.
-func (s *mockServiceConfig) GetValue(key string) (any, error) {
+// Value returns the value for the given key.
+func (s *mockServiceConfig) Value(key string) (any, error) {
 	if v, ok := s.values[key]; ok {
 		return v, nil
 	}
@@ -121,13 +121,13 @@ func (s *mockServiceConfig) GetValue(key string) (any, error) {
 // NewRuntimeContextMock creates a new RuntimeContextMock.
 func NewRuntimeContextMock(hostCfgReader any, svcCfgReader any) *RuntimeContextMock {
 	ctx := &RuntimeContextMock{}
-	ctx.On("GetLogger").Return(zap.NewNop())
-	ctx.On("GetParentLoggerMessage").Return("")
-	ctx.On("GetContext").Return(context.Background())
+	ctx.On("Logger").Return(zap.NewNop())
+	ctx.On("ParentLoggerMessage").Return("")
+	ctx.On("Context").Return(context.Background())
 	if hostCfgReader == nil {
 		hostCfgReader = &mockHostConfig{appData: "."}
 	}
-	ctx.On("GetHostConfigReader").Return(hostCfgReader, nil)
+	ctx.On("HostConfigReader").Return(hostCfgReader, nil)
 	if svcCfgReader == nil {
 		serviceMap := map[string]any{
 			"data-enable-default-creation": true,
@@ -135,6 +135,6 @@ func NewRuntimeContextMock(hostCfgReader any, svcCfgReader any) *RuntimeContextM
 		}
 		svcCfgReader = &mockServiceConfig{values: serviceMap}
 	}
-	ctx.On("GetServiceConfigReader").Return(svcCfgReader, nil)
+	ctx.On("ServiceConfigReader").Return(svcCfgReader, nil)
 	return ctx
 }

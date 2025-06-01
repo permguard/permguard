@@ -63,7 +63,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 			return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
 		}
 		hasMatch, history, err := objMng.BuildCommitHistory(headCommitID, remoteRefPacket.RefPrevCommit, false, func(oid string) (*objects.Object, error) {
-			keyValue, errkey := s.sqlRepo.GetKeyValue(db, zoneID, oid)
+			keyValue, errkey := s.sqlRepo.KeyValue(db, zoneID, oid)
 			if errkey != nil || keyValue == nil || keyValue.Value == nil {
 				return nil, nil
 			}
@@ -83,12 +83,12 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 		HasConflicts: hasConflicts,
 		IsUpToDate:   isUpToDate,
 	}
-	handlerCtx.Set(RemoteCommitIDKey, remoteRefPacket.RefCommit)
+	handlerCtx.SetValue(RemoteCommitIDKey, remoteRefPacket.RefCommit)
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 		Packetables:  []notppackets.Packetable{packet},
 	}
-	handlerCtx.Set(TerminationKey, isUpToDate)
+	handlerCtx.SetValue(TerminationKey, isUpToDate)
 	return handlerReturn, nil
 }
 

@@ -97,32 +97,32 @@ func (c *PDPServiceConfig) InitFromViper(v *viper.Viper) error {
 	return nil
 }
 
-// GetConfigData returns the configuration data.
-func (c *PDPServiceConfig) GetConfigData() map[string]any {
+// ConfigData returns the configuration data.
+func (c *PDPServiceConfig) ConfigData() map[string]any {
 	return copier.CopyMap(c.config)
 }
 
-// GetPort returns the port.
-func (c *PDPServiceConfig) GetPort() int {
+// Port returns the port.
+func (c *PDPServiceConfig) Port() int {
 	return c.config[flagSuffixGrpcPort].(int)
 }
 
-// GetStorageCentralEngine returns the storage central engine.
-func (c *PDPServiceConfig) GetStorageCentralEngine() storage.StorageKind {
+// StorageCentralEngine returns the storage central engine.
+func (c *PDPServiceConfig) StorageCentralEngine() storage.StorageKind {
 	return c.config[flagCentralEngine].(storage.StorageKind)
 }
 
-// GetDataFetchMaxPageSize returns the maximum number of items to fetch per request.
-func (c *PDPServiceConfig) GetDataFetchMaxPageSize() int {
+// DataFetchMaxPageSize returns the maximum number of items to fetch per request.
+func (c *PDPServiceConfig) DataFetchMaxPageSize() int {
 	return c.config[flagDataFetchMaxPageSize].(int)
 }
 
-// GetDecisionLog returns the decision log.
-func (c *PDPServiceConfig) GetDecisionLog() string {
+// DecisionLog returns the decision log.
+func (c *PDPServiceConfig) DecisionLog() string {
 	return c.config[flagSuffixDecisionLog].(string)
 }
 
-// GetService returns the service kind.
-func (c *PDPServiceConfig) GetService() services.ServiceKind {
+// Service returns the service kind.
+func (c *PDPServiceConfig) Service() services.ServiceKind {
 	return c.service
 }

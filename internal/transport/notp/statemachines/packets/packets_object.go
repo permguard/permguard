@@ -30,8 +30,8 @@ type ObjectStatePacket struct {
 	Content []byte
 }
 
-// GetType returns the type of the packet.
-func (p *ObjectStatePacket) GetType() uint64 {
+// Type returns the type of the packet.
+func (p *ObjectStatePacket) Type() uint64 {
 	return notppackets.CombineUint32toUint64(ObjectStatePacketType, 0)
 }
 

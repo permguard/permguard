@@ -43,11 +43,11 @@ func NewCommitInfo(oid string, commit *objects.Commit) (*CommitInfo, error) {
 }
 
 // GetOID returns the OID of the commit.
-func (c *CommitInfo) GetCommitOID() string {
+func (c *CommitInfo) CommitOID() string {
 	return c.oid
 }
 
-// GetCommit returns the commit.
-func (c *CommitInfo) GetCommit() *objects.Commit {
+// Commit returns the commit.
+func (c *CommitInfo) Commit() *objects.Commit {
 	return c.commit
 }
