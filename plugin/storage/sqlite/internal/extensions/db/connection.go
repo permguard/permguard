@@ -63,20 +63,20 @@ func (c *SQLiteConnectionConfig) InitFromViper(v *viper.Viper) error {
 	return nil
 }
 
-// GetStorage returns the storage kind.
-func (c *SQLiteConnectionConfig) GetStorage() storage.StorageKind {
+// Storage returns the storage kind.
+func (c *SQLiteConnectionConfig) Storage() storage.StorageKind {
 	return c.storageKind
 }
 
-// GetDBName returns the database name.
-func (c *SQLiteConnectionConfig) GetDBName() string {
+// DBName returns the database name.
+func (c *SQLiteConnectionConfig) DBName() string {
 	return c.dbName
 }
 
 // SQLiteConnector is the interface for the sqlite connector.
 type SQLiteConnector interface {
-	// GetStorage returns the storage kind.
-	GetStorage() storage.StorageKind
+	// Storage returns the storage kind.
+	Storage() storage.StorageKind
 	// Connect connects to sqlite and return a client.
 	Connect(logger *zap.Logger, ctx *storage.StorageContext) (*sqlx.DB, error)
 	// Disconnect disconnects from sqlite.
@@ -100,9 +100,9 @@ func NewSQLiteConnection(connectionCgf *SQLiteConnectionConfig) (SQLiteConnector
 	}, nil
 }
 
-// GetStorage returns the storage kind.
-func (c *SQLiteConnection) GetStorage() storage.StorageKind {
-	return c.config.GetStorage()
+// Storage returns the storage kind.
+func (c *SQLiteConnection) Storage() storage.StorageKind {
+	return c.config.Storage()
 }
 
 // Connect connects to sqlite and return a client.
@@ -112,12 +112,12 @@ func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *storage.StorageConte
 	if c.db != nil {
 		return c.db, nil
 	}
-	hostCfgReader, err := ctx.GetHostConfigReader()
+	hostCfgReader, err := ctx.HostConfigReader()
 	if err != nil {
 		return nil, errors.Join(err, errors.New("storage: cannot get host config reader"))
 	}
-	filePath := hostCfgReader.GetAppData()
-	dbName := c.config.GetDBName()
+	filePath := hostCfgReader.AppData()
+	dbName := c.config.DBName()
 	if !strings.HasSuffix(dbName, ".db") {
 		dbName += ".db"
 	}

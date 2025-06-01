@@ -40,7 +40,7 @@ func CreateContextAndPrinter(deps cli.CliDependenciesProvider, cmd *cobra.Comman
 	if err != nil {
 		return nil, nil, err
 	}
-	printer, err := deps.CreatePrinter(ctx.IsVerbose(), ctx.GetOutput())
+	printer, err := deps.CreatePrinter(ctx.IsVerbose(), ctx.Output())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -84,8 +84,8 @@ func newCliContext(cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, erro
 	return ctx, nil
 }
 
-// GetClientVersion returns the client version.
-func (c *CliCommandContext) GetClientVersion() (string, map[string]any) {
+// ClientVersion returns the client version.
+func (c *CliCommandContext) ClientVersion() (string, map[string]any) {
 	if Version == "" {
 		Version = "none"
 	}
@@ -103,8 +103,8 @@ func (c *CliCommandContext) GetClientVersion() (string, map[string]any) {
 	return Version, versionMap
 }
 
-// GetViper returns the viper.
-func (c *CliCommandContext) GetViper() *viper.Viper {
+// Viper returns the viper.
+func (c *CliCommandContext) Viper() *viper.Viper {
 	return c.v
 }
 
@@ -113,14 +113,14 @@ func (c *CliCommandContext) IsVerbose() bool {
 	return c.verbose
 }
 
-// GetOutput returns the output.
-func (c *CliCommandContext) GetOutput() string {
+// Output returns the output.
+func (c *CliCommandContext) Output() string {
 	return c.output
 }
 
 // IsTerminalOutput returns true if the output is json.
 func (c *CliCommandContext) IsTerminalOutput() bool {
-	return c.GetOutput() == cli.OutputTerminal
+	return c.Output() == cli.OutputTerminal
 }
 
 // IsNotVerboseTerminalOutput return true if the output is terminal and verbosity is not enabled.
@@ -135,7 +135,7 @@ func (c *CliCommandContext) IsVerboseTerminalOutput() bool {
 
 // IsJSONOutput returns true if the output is json.
 func (c *CliCommandContext) IsJSONOutput() bool {
-	return c.GetOutput() == cli.OutputJSON
+	return c.Output() == cli.OutputJSON
 }
 
 // IsVerboseJSONOutput returns true if the output is json and verbosity is enabled.
@@ -143,13 +143,13 @@ func (c *CliCommandContext) IsVerboseJSONOutput() bool {
 	return c.IsJSONOutput() && c.IsVerbose()
 }
 
-// GetWorkDir returns the work directory.
-func (c *CliCommandContext) GetWorkDir() string {
+// WorkDir returns the work directory.
+func (c *CliCommandContext) WorkDir() string {
 	return c.workDir
 }
 
-// GetZAPTarget returns the zap target.
-func (c *CliCommandContext) GetZAPTarget() (string, error) {
+// ZAPTarget returns the zap target.
+func (c *CliCommandContext) ZAPTarget() (string, error) {
 	target := c.v.Get(options.FlagName(FlagPrefixZAP, FlagSuffixZAPTarget))
 	if target == nil {
 		return "", fmt.Errorf("cli: zap target is not set")
@@ -157,8 +157,8 @@ func (c *CliCommandContext) GetZAPTarget() (string, error) {
 	return target.(string), nil
 }
 
-// GetPAPTarget returns the pap target.
-func (c *CliCommandContext) GetPAPTarget() (string, error) {
+// PAPTarget returns the pap target.
+func (c *CliCommandContext) PAPTarget() (string, error) {
 	target := c.v.Get(options.FlagName(FlagPrefixPAP, FlagSuffixPAPTarget))
 	if target == nil {
 		return "", fmt.Errorf("cli: pap target is not set")
@@ -166,8 +166,8 @@ func (c *CliCommandContext) GetPAPTarget() (string, error) {
 	return target.(string), nil
 }
 
-// GetPDPTarget returns the pdp target.
-func (c *CliCommandContext) GetPDPTarget() (string, error) {
+// PDPTarget returns the pdp target.
+func (c *CliCommandContext) PDPTarget() (string, error) {
 	target := c.v.Get(options.FlagName(FlagPrefixPDP, FlagSuffixPDPTarget))
 	if target == nil {
 		return "", fmt.Errorf("cli: pdp target is not set")

@@ -18,8 +18,8 @@ package storage
 
 // StorageInitializer is the storage initializer.
 type StorageInitializer interface {
-	// GetStorages returns the active storage kinds.
-	GetStorages(centralStorageEngine StorageKind) []StorageKind
-	// GetStoragesFactories returns the list of the required storages factories providers.
-	GetStoragesFactories(centralStorageEngine StorageKind) (map[StorageKind]StorageFactoryProvider, error)
+	// Storages returns the active storage kinds.
+	Storages(centralStorageEngine StorageKind) []StorageKind
+	// StoragesFactories returns the list of the required storages factories providers.
+	StoragesFactories(centralStorageEngine StorageKind) (map[StorageKind]StorageFactoryProvider, error)
 }

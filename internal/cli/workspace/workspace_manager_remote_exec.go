@@ -65,7 +65,7 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 	if ok := m.cfgMgr.CheckLedgerIfExists(ledgerURI); !ok {
 		// Retrieves the remote information
 		var remoteInfo *wkscommon.RemoteInfo
-		remoteInfo, err = m.cfgMgr.GetRemoteInfo(ledgerInfo.GetRemote())
+		remoteInfo, err = m.cfgMgr.RemoteInfo(ledgerInfo.Remote())
 		if err != nil {
 			return fail(nil, err)
 		}
@@ -73,7 +73,7 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 			out(nil, "checkout", "Retrieving remote ledger information.", nil, true)
 		}
 		var srvLedger *pap.Ledger
-		srvLedger, err = m.rmSrvtMgr.GetServerRemoteLedger(remoteInfo, ledgerInfo)
+		srvLedger, err = m.rmSrvtMgr.ServerRemoteLedger(remoteInfo, ledgerInfo)
 		if err != nil {
 			if m.ctx.IsVerboseTerminalOutput() {
 				out(nil, "checkout", "Failed to retrieve remote ledger information.", nil, true)
@@ -87,21 +87,21 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 			out(nil, "checkout", "Remote verified successfully.", nil, true)
 		}
 		// Add the ledger
-		ref := m.rfsMgr.GenerateRef(ledgerInfo.GetRemote(), ledgerInfo.GetZoneID(), srvLedger.LedgerID)
-		output, err = m.cfgMgr.ExecAddLedger(ledgerURI, ref, ledgerInfo.GetRemote(), ledgerInfo.GetLedger(), srvLedger.LedgerID, ledgerInfo.GetZoneID(), nil, out)
+		ref := m.rfsMgr.GenerateRef(ledgerInfo.Remote(), ledgerInfo.ZoneID(), srvLedger.LedgerID)
+		output, err = m.cfgMgr.ExecAddLedger(ledgerURI, ref, ledgerInfo.Remote(), ledgerInfo.Ledger(), srvLedger.LedgerID, ledgerInfo.ZoneID(), nil, out)
 		if err != nil {
 			return fail(output, err)
 		}
 		// Checkout the head
 		remoteCommitID := objects.ZeroOID
 		var remoteRef, headRef string
-		remoteRef, headRef, output, err = m.rfsMgr.ExecCheckoutRefFilesForRemote(ledgerInfo.GetRemote(), ledgerInfo.GetZoneID(), ledgerInfo.GetLedger(), srvLedger.LedgerID, remoteCommitID, output, out)
+		remoteRef, headRef, output, err = m.rfsMgr.ExecCheckoutRefFilesForRemote(ledgerInfo.Remote(), ledgerInfo.ZoneID(), ledgerInfo.Ledger(), srvLedger.LedgerID, remoteCommitID, output, out)
 		if err != nil {
 			return fail(nil, err)
 		}
 		// Read current remote ref info
 		var remoteRefInfo *wkscommon.RefInfo
-		remoteRefInfo, err = m.rfsMgr.GetRefInfo(remoteRef)
+		remoteRefInfo, err = m.rfsMgr.RefInfo(remoteRef)
 		if err != nil {
 			return fail(nil, err)
 		}
@@ -111,7 +111,7 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 		}
 		// Read current head ref info
 		var headRefInfo *wkscommon.RefInfo
-		headRefInfo, err = m.rfsMgr.GetRefInfo(headRef)
+		headRefInfo, err = m.rfsMgr.RefInfo(headRef)
 		if err != nil {
 			return fail(nil, err)
 		}
@@ -121,11 +121,11 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 		}
 	}
 
-	refInfo, err := m.cfgMgr.GetLedgerInfo(ledgerURI)
+	refInfo, err := m.cfgMgr.LedgerInfo(ledgerURI)
 	if err != nil {
 		return fail(nil, err)
 	}
-	remoteRef := wkscommon.GenerateHeadRef(refInfo.GetZoneID(), refInfo.GetLedger())
+	remoteRef := wkscommon.GenerateHeadRef(refInfo.ZoneID(), refInfo.Ledger())
 	_, output, err = m.rfsMgr.ExecCheckoutHead(remoteRef, output, out)
 	if err != nil {
 		return fail(nil, err)
@@ -175,7 +175,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 	// Read current head settings
 	var err error
 	var headCtx *currentHeadContext
-	headCtx, err = m.getCurrentHeadContext()
+	headCtx, err = m.currentHeadContext()
 	if err != nil {
 		return fail(nil, err)
 	}
@@ -195,7 +195,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 	}
 
 	var ctx *notpstatemachines.StateMachineRuntimeContext
-	ctx, err = m.rmSrvtMgr.NOTPPull(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetZoneID(), headCtx.GetLedgerID(), bag, m)
+	ctx, err = m.rmSrvtMgr.NOTPPull(headCtx.Server(), headCtx.ServerPAPPort(), headCtx.ZoneID(), headCtx.LedgerID(), bag, m)
 	if err != nil {
 		return fail(nil, err)
 	}
@@ -225,33 +225,33 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 		if !committed || localCommitID == "" || remoteCommitID == "" {
 			if localCommitID != "" && remoteCommitID != "" {
-				_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
+				_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.LedgerURI())
 				if err != nil {
 					return fail(nil, err)
 				}
 			}
 		}
-		err = m.rfsMgr.SaveRefConfig(remoteRefInfo.GetLedgerID(), remoteRefInfo.GetRef(), remoteCommitID)
+		err = m.rfsMgr.SaveRefConfig(remoteRefInfo.LedgerID(), remoteRefInfo.Ref(), remoteCommitID)
 		if err != nil {
-			_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
+			_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.LedgerURI())
 			if err != nil {
 				return fail(nil, err)
 			}
 			return fail(nil, err)
 		}
-		err = m.rfsMgr.SaveRefWithRemoteConfig(headRefInfo.GetLedgerID(), headRefInfo.GetRef(), remoteRefInfo.GetRef(), remoteCommitID)
+		err = m.rfsMgr.SaveRefWithRemoteConfig(headRefInfo.LedgerID(), headRefInfo.Ref(), remoteRefInfo.Ref(), remoteCommitID)
 		if err != nil {
-			_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.GetLedgerURI())
+			_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.LedgerURI())
 			if err != nil {
 				return fail(nil, err)
 			}
 			return fail(nil, err)
 		}
-		_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, true, remoteRefInfo.GetLedgerURI())
+		_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, true, remoteRefInfo.LedgerURI())
 		if err != nil {
 			return fail(nil, err)
 		}
-		_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, true, remoteRefInfo.GetLedgerURI())
+		_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, true, remoteRefInfo.LedgerURI())
 		if err != nil {
 			return fail(nil, err)
 		}
@@ -271,7 +271,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 			return fail(nil, err)
 		}
 
-		treeObj, err := m.cospMgr.ReadObject(commit.GetTree())
+		treeObj, err := m.cospMgr.ReadObject(commit.Tree())
 		if err != nil {
 			return fail(nil, err)
 		}
@@ -292,20 +292,20 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 		codeEntries := []map[string]any{}
 		schemaBlocks := map[string][]byte{}
 		codeBlocks := map[string][][]byte{}
-		for _, entry := range tree.GetEntries() {
+		for _, entry := range tree.Entries() {
 			codeEntries = append(codeEntries, map[string]any{
-				"partition":         entry.GetPartition(),
-				"oid":               entry.GetOID(),
-				"oname":             entry.GetOName(),
-				"type":              entry.GetType(),
-				"code_id":           entry.GetCodeID(),
-				"code_type":         entry.GetCodeType(),
-				"language":          entry.GetLanguage(),
-				"lanaguage_version": entry.GetLanguageVersion(),
-				"langauge_type":     entry.GetLanguageType(),
+				"partition":         entry.Partition(),
+				"oid":               entry.OID(),
+				"oname":             entry.OName(),
+				"type":              entry.Type(),
+				"code_id":           entry.CodeID(),
+				"code_type":         entry.CodeType(),
+				"language":          entry.Language(),
+				"lanaguage_version": entry.LanguageVersion(),
+				"langauge_type":     entry.LanguageType(),
 			})
-			if _, ok := codeMapIds[entry.GetOID()]; !ok {
-				entryObj, err := m.cospMgr.ReadObject(entry.GetOID())
+			if _, ok := codeMapIds[entry.OID()]; !ok {
+				entryObj, err := m.cospMgr.ReadObject(entry.OID())
 				if err != nil {
 					return fail(nil, err)
 				}
@@ -313,28 +313,28 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 				if err != nil {
 					return fail(nil, err)
 				}
-				objInfo, err := m.objMar.GetObjectInfo(entryObj)
+				objInfo, err := m.objMar.ObjectInfo(entryObj)
 				if err != nil {
 					return nil, err
 				}
-				header := objInfo.GetHeader()
+				header := objInfo.Header()
 				if header == nil {
 					return nil, errors.New("cli: object header is nil")
 				}
 				switch classType {
 				case types.ClassTypeSchemaID:
-					partition := header.GetPartition()
+					partition := header.Partition()
 					if _, ok := schemaBlocks[partition]; !ok {
 						schemaBlocks[partition] = []byte{}
 					}
 					schemaBlocks[partition] = codeBlock
 					continue
 				case types.ClassTypePolicyID:
-					partition := header.GetPartition()
-					langID := header.GetLanguageID()
-					langVersionID := header.GetLanguageVersionID()
-					langTypeID := header.GetLanguageTypeID()
-					absLang, err := langPvd.GetAbstractLanguage(partition)
+					partition := header.Partition()
+					langID := header.LanguageID()
+					langVersionID := header.LanguageVersionID()
+					langTypeID := header.LanguageTypeID()
+					absLang, err := langPvd.AbstractLanguage(partition)
 					if err != nil {
 						return fail(nil, err)
 					}
@@ -353,7 +353,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 		}
 		output["code_entries"] = codeEntries
 		for partition, codeBlockItem := range codeBlocks {
-			absLang, err := langPvd.GetAbstractLanguage(partition)
+			absLang, err := langPvd.AbstractLanguage(partition)
 			if err != nil {
 				return fail(nil, err)
 			}
@@ -370,7 +370,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 			m.persMgr.WriteFile(persistence.WorkspaceDir, fileName, codeBlock, 0644, false)
 		}
 		for partition, schemaBlockItem := range schemaBlocks {
-			absLang, err := langPvd.GetAbstractLanguage(partition)
+			absLang, err := langPvd.AbstractLanguage(partition)
 			if err != nil {
 				return fail(nil, err)
 			}
@@ -378,7 +378,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 			if err != nil {
 				return fail(nil, err)
 			}
-			schemaFileNames := absLang.GetSchemaFileNames()
+			schemaFileNames := absLang.SchemaFileNames()
 			if len(schemaFileNames) < 1 {
 				return fail(nil, errors.New("cli: no schema file names are supported"))
 			}
@@ -396,7 +396,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 			out(nil, logs.LogActionPull, "The pull has been completed successfully.", nil, true)
 		}
 		out(nil, "", "Pull process completed successfully.", nil, true)
-		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote ledger: %s.", common.KeywordText(headCtx.GetLedgerURI())), nil, true)
+		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote ledger: %s.", common.KeywordText(headCtx.LedgerURI())), nil, true)
 	}
 	return output, nil
 }

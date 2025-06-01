@@ -65,8 +65,8 @@ type DataPacketState struct {
 	packetStreamIndex uint64
 }
 
-// GetPacketType returns the type of the data packet.
-func (p *DataPacketState) GetPacketType() uint64 {
+// PacketType returns the type of the data packet.
+func (p *DataPacketState) PacketType() uint64 {
 	return p.packetType
 }
 

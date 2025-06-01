@@ -26,9 +26,9 @@ import (
 // createStatePacket creates a state packet.
 func createStatePacket(runtime *StateMachineRuntimeContext, messageCode uint16, messageValue uint64) (*notpsmpackets.StatePacket, *HandlerContext, error) {
 	handlerCtx := &HandlerContext{
-		flow:           runtime.GetFlowType(),
+		flow:           runtime.FlowType(),
 		bag:            runtime.bag,
-		currentStateID: runtime.GetCurrentStateID(),
+		currentStateID: runtime.CurrentStateID(),
 	}
 	packet := &notpsmpackets.StatePacket{
 		MessageCode:  messageCode,
@@ -117,9 +117,9 @@ func sendTermination(runtime *StateMachineRuntimeContext) error {
 // receiveAndHandleStatePacket receives a state packet and handles it.
 func receiveAndHandleStatePacket(runtime *StateMachineRuntimeContext, expectedMessageCode uint16) (*notpsmpackets.StatePacket, []notppackets.Packetable, bool, error) {
 	handlerCtx := &HandlerContext{
-		flow:           runtime.GetFlowType(),
+		flow:           runtime.FlowType(),
 		bag:            runtime.bag,
-		currentStateID: runtime.GetCurrentStateID(),
+		currentStateID: runtime.CurrentStateID(),
 	}
 	packetsStream, err := runtime.ReceiveStream()
 	if err != nil {

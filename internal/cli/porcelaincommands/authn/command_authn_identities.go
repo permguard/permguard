@@ -53,7 +53,7 @@ func runECommandForUpsertIdentity(deps cli.CliDependenciesProvider, cmd *cobra.C
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	zapTarget, err := ctx.GetZAPTarget()
+	zapTarget, err := ctx.ZAPTarget()
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))

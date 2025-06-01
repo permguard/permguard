@@ -26,7 +26,7 @@ import (
 
 // ExecInitialize initializes the config resources.
 func (m *ConfigManager) ExecInitialize() error {
-	version, _ := m.ctx.GetClientVersion()
+	version, _ := m.ctx.ClientVersion()
 	cfg := config{
 		Core: coreConfig{
 			ClientVersion: version,

@@ -30,57 +30,57 @@ type currentHeadContext struct {
 	serverPAPPort  int
 }
 
-// GetRemote returns the remote.
-func (h *currentHeadContext) GetRemote() string {
-	return h.headRefInfo.GetRemote()
+// Remote returns the remote.
+func (h *currentHeadContext) Remote() string {
+	return h.headRefInfo.Remote()
 }
 
-// GetZoneID returns the zone id.
-func (h *currentHeadContext) GetZoneID() int64 {
-	return h.headRefInfo.GetZoneID()
+// ZoneID returns the zone id.
+func (h *currentHeadContext) ZoneID() int64 {
+	return h.headRefInfo.ZoneID()
 }
 
-// GetLedgerID returns the ledger id.
-func (h *currentHeadContext) GetLedgerID() string {
-	return h.headRefInfo.GetLedgerID()
+// LedgerID returns the ledger id.
+func (h *currentHeadContext) LedgerID() string {
+	return h.headRefInfo.LedgerID()
 }
 
-// GetLedgerURI gets the ledger URI.
-func (h *currentHeadContext) GetLedgerURI() string {
-	return h.headRefInfo.GetLedgerURI()
+// LedgerURI gets the ledger URI.
+func (h *currentHeadContext) LedgerURI() string {
+	return h.headRefInfo.LedgerURI()
 }
 
-// GetRef returns the ref.
-func (h *currentHeadContext) GetRef() string {
-	return h.headRefInfo.GetRef()
+// Ref returns the ref.
+func (h *currentHeadContext) Ref() string {
+	return h.headRefInfo.Ref()
 }
 
-// GetHeadRefInfo returns the head ref information.
-func (h *currentHeadContext) GetHeadRefInfo() *common.RefInfo {
+// HeadRefInfo returns the head ref information.
+func (h *currentHeadContext) HeadRefInfo() *common.RefInfo {
 	return h.headRefInfo
 }
 
 // GetHeadRef returns the head ref information.
-func (h *currentHeadContext) GetRemoteRefInfo() *common.RefInfo {
+func (h *currentHeadContext) RemoteRefInfo() *common.RefInfo {
 	return h.remoteRefInfo
 }
 
 // GetRemoteCommitID returns the head commit id.
-func (h *currentHeadContext) GetHeadCommitID() string {
+func (h *currentHeadContext) HeadCommitID() string {
 	return h.headCommitID
 }
 
-// GetRemoteCommitID returns the remote commit id.
-func (h *currentHeadContext) GetRemoteCommitID() string {
+// RemoteCommitID returns the remote commit id.
+func (h *currentHeadContext) RemoteCommitID() string {
 	return h.remoteCommitID
 }
 
-// GetServer returns the server.
-func (h *currentHeadContext) GetServer() string {
+// Server returns the server.
+func (h *currentHeadContext) Server() string {
 	return h.server
 }
 
-// GetServerPAPPort returns the server PAP port.
-func (h *currentHeadContext) GetServerPAPPort() int {
+// ServerPAPPort returns the server PAP port.
+func (h *currentHeadContext) ServerPAPPort() int {
 	return h.serverPAPPort
 }

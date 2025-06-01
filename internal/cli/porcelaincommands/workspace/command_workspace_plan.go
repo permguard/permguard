@@ -41,7 +41,7 @@ func runECommandForPlanWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Co
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	absLangFact, err := deps.GetLanguageFactory()
+	absLangFact, err := deps.LanguageFactory()
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent

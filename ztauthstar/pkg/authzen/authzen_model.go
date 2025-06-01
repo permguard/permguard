@@ -36,8 +36,8 @@ func (a *AuthorizationModel) SetSubject(subType string, id string, source string
 	return nil
 }
 
-// GetSubject returns the subject of the authorization context.
-func (a *AuthorizationModel) GetSubject() *Subject {
+// Subject returns the subject of the authorization context.
+func (a *AuthorizationModel) Subject() *Subject {
 	return a.subject
 }
 
@@ -51,8 +51,8 @@ func (a *AuthorizationModel) SetResource(resType string, id string, properties m
 	return nil
 }
 
-// GetResource returns the resource of the authorization context.
-func (a *AuthorizationModel) GetResource() *Resource {
+// Resource returns the resource of the authorization context.
+func (a *AuthorizationModel) Resource() *Resource {
 	return a.resource
 }
 
@@ -65,8 +65,8 @@ func (a *AuthorizationModel) SetAction(id string, properties map[string]any) err
 	return nil
 }
 
-// GetAction returns the action of the authorization context.
-func (a *AuthorizationModel) GetAction() *Action {
+// Action returns the action of the authorization context.
+func (a *AuthorizationModel) Action() *Action {
 	return a.action
 }
 
@@ -79,8 +79,8 @@ func (a *AuthorizationModel) SetEntities(schema string, items []map[string]any) 
 	return nil
 }
 
-// GetEntities returns the entities of the authorization context.
-func (a *AuthorizationModel) GetEntities() *Entities {
+// Entities returns the entities of the authorization context.
+func (a *AuthorizationModel) Entities() *Entities {
 	return a.entities
 }
 
@@ -90,7 +90,7 @@ func (a *AuthorizationModel) SetContext(context map[string]any) error {
 	return nil
 }
 
-// GetContext returns the context of the authorization context.
-func (a *AuthorizationModel) GetContext() map[string]any {
+// Context returns the context of the authorization context.
+func (a *AuthorizationModel) Context() map[string]any {
 	return a.context
 }

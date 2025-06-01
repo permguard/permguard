@@ -34,7 +34,7 @@ func (m *WorkspaceManager) ExecPrintContext(output map[string]any, out common.Pr
 	if !m.ctx.IsVerboseTerminalOutput() {
 		return output
 	}
-	context := m.persMgr.GetContext()
+	context := m.persMgr.Context()
 	for key, value := range context {
 		out(nil, "context", fmt.Sprintf("%s '%s'.", key, common.FileText(value)), nil, true)
 	}
@@ -59,7 +59,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out common.P
 	}
 	m.ExecPrintContext(nil, out)
 
-	homeHiddenDir := m.getHomeHiddenDir()
+	homeHiddenDir := m.homeHiddenDir()
 
 	var err error
 	var created bool
@@ -84,7 +84,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out common.P
 		}
 
 		var absLang languages.LanguageAbastraction
-		absLang, err = m.langFct.GetLanguageAbastraction(requirement.GetName(), requirement.GetVersion())
+		absLang, err = m.langFct.LanguageAbastraction(requirement.Name(), requirement.Version())
 		if err != nil {
 			return fail(nil, err)
 		}
@@ -141,13 +141,13 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out common.P
 	}
 	var msg string
 	if firstInit {
-		msg = fmt.Sprintf("Initialized empty permguard ledger in '%s'.", common.FileText(m.getHomeDir()))
+		msg = fmt.Sprintf("Initialized empty permguard ledger in '%s'.", common.FileText(m.homeDir))
 	} else {
-		msg = fmt.Sprintf("Reinitialized existing permguard ledger in '%s'.", common.FileText(m.getHomeDir()))
+		msg = fmt.Sprintf("Reinitialized existing permguard ledger in '%s'.", common.FileText(m.homeDir))
 	}
 	out(nil, "", msg, nil, true)
 	output := map[string]any{}
-	absPath := m.getHomeDir()
+	absPath := m.homeDir
 	if !filepath.IsAbs(absPath) {
 		absPath, _ = filepath.Abs(absPath)
 	}
@@ -223,11 +223,11 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out common.PrinterOut
 	}
 	defer fileLock.Unlock()
 
-	refInfo, err := m.rfsMgr.GetCurrentHeadRefInfo()
+	refInfo, err := m.rfsMgr.CurrentHeadRefInfo()
 	if err != nil {
 		return fail(nil, err)
 	}
-	if refInfo != nil && refInfo.GetRemote() == remote {
+	if refInfo != nil && refInfo.Remote() == remote {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "remote", "Failed to delete remote: it is associated with the current HEAD.", nil, true)
 		}

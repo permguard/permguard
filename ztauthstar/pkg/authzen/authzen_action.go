@@ -22,12 +22,12 @@ type Action struct {
 	properties map[string]any
 }
 
-// GetID returns the ID of the action.
-func (a *Action) GetID() string {
+// ID returns the ID of the action.
+func (a *Action) ID() string {
 	return a.id
 }
 
-// GetProperties returns the properties of the action.
-func (a *Action) GetProperties() map[string]any {
+// Properties returns the properties of the action.
+func (a *Action) Properties() map[string]any {
 	return a.properties
 }

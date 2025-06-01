@@ -30,8 +30,8 @@ type Packet struct {
 	Data []byte
 }
 
-// GetType returns the packet type.
-func (p *Packet) GetType() uint64 {
+// Type returns the packet type.
+func (p *Packet) Type() uint64 {
 	return CombineUint32toUint64(PacketType, 0)
 }
 
@@ -48,7 +48,7 @@ func (p *Packet) Deserialize(data []byte) error {
 
 // Packetable represents a packet that can be serialized and deserialized.
 type Packetable interface {
-	GetType() uint64
+	Type() uint64
 	Serialize() ([]byte, error)
 	Deserialize([]byte) error
 }

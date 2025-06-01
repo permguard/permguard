@@ -175,7 +175,7 @@ func TestPullProtocolExecution(t *testing.T) {
 
 			streamSize := 3
 			followerHandler := func(handlerCtx *HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*HostHandlerReturn, error) {
-				currentStateID := handlerCtx.GetCurrentStateID()
+				currentStateID := handlerCtx.CurrentStateID()
 				followerIDs = append(followerIDs, currentStateID)
 				packet := &notppackets.Packet{
 					Data: []byte("sample data"),
@@ -183,7 +183,7 @@ func TestPullProtocolExecution(t *testing.T) {
 				handlerReturn := &HostHandlerReturn{
 					Packetables: []notppackets.Packetable{packet},
 				}
-				if handlerCtx.GetCurrentStateID() == PublisherDataStreamStateID && handlerCtx.GetFlowType() == PushFlowType {
+				if handlerCtx.CurrentStateID() == PublisherDataStreamStateID && handlerCtx.FlowType() == PushFlowType {
 					if streamSize > 0 {
 						handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.ActiveDataStreamValue)
 						handlerReturn.HasMore = true
@@ -192,7 +192,7 @@ func TestPullProtocolExecution(t *testing.T) {
 						handlerReturn.HasMore = false
 					}
 					streamSize--
-				} else if handlerCtx.GetCurrentStateID() == SubscriberDataStreamStateID && handlerCtx.GetFlowType() == PullFlowType {
+				} else if handlerCtx.CurrentStateID() == SubscriberDataStreamStateID && handlerCtx.FlowType() == PullFlowType {
 					handlerReturn.MessageValue = statePacket.MessageValue
 				} else {
 					handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
@@ -201,14 +201,14 @@ func TestPullProtocolExecution(t *testing.T) {
 			}
 
 			leaderHandler := func(handlerCtx *HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*HostHandlerReturn, error) {
-				currentStateID := handlerCtx.GetCurrentStateID()
+				currentStateID := handlerCtx.CurrentStateID()
 				leaderIDs = append(leaderIDs, currentStateID)
 				handlerReturn := &HostHandlerReturn{
 					Packetables: packets,
 				}
-				if handlerCtx.GetCurrentStateID() == SubscriberDataStreamStateID && handlerCtx.GetFlowType() == PushFlowType {
+				if handlerCtx.CurrentStateID() == SubscriberDataStreamStateID && handlerCtx.FlowType() == PushFlowType {
 					handlerReturn.MessageValue = statePacket.MessageValue
-				} else if handlerCtx.GetCurrentStateID() == PublisherDataStreamStateID && handlerCtx.GetFlowType() == PullFlowType {
+				} else if handlerCtx.CurrentStateID() == PublisherDataStreamStateID && handlerCtx.FlowType() == PullFlowType {
 					if streamSize > 0 {
 						handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.ActiveDataStreamValue)
 						handlerReturn.HasMore = true

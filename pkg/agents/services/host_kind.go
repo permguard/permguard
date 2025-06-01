@@ -67,8 +67,8 @@ func (s HostKind) CanHost(service ServiceKind, hosts []HostKind) bool {
 	return s.String() == service.String()
 }
 
-// GetServices returns the hostable services.
-func (s HostKind) GetServices(hosts []HostKind, services []ServiceKind) []ServiceKind {
+// Services returns the hostable services.
+func (s HostKind) Services(hosts []HostKind, services []ServiceKind) []ServiceKind {
 	if !s.IsValid(hosts) {
 		return []ServiceKind{}
 	}

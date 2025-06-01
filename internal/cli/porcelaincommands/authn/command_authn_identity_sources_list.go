@@ -41,7 +41,7 @@ func runECommandForListIdentitySources(deps cli.CliDependenciesProvider, cmd *co
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	zapTarget, err := ctx.GetZAPTarget()
+	zapTarget, err := ctx.ZAPTarget()
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to list identity sources.")

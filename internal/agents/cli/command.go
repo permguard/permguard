@@ -121,7 +121,7 @@ func runECommand(cmdInfo *services.HostInfo, serverFactoryCfg *iservers.ServerFa
 		os.Exit(1)
 	}
 
-	logger := server.GetLogger()
+	logger := server.Logger()
 	if startup != nil {
 		startup(logger)
 	}
@@ -173,7 +173,7 @@ func Run(serverInitializer servers.ServerInitializer, startup func(*zap.Logger),
 		os.Exit(1)
 	}
 
-	cmdInfo := serverInitializer.GetHostInfo()
+	cmdInfo := serverInitializer.HostInfo()
 
 	command := &cobra.Command{
 		Use:   cmdInfo.Use,

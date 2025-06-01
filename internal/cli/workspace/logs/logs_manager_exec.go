@@ -22,6 +22,6 @@ import (
 
 // ExecInitalize the logs resources.
 func (c *LogsManager) ExecInitalize() error {
-	_, err := c.persMgr.CreateDirIfNotExists(persistence.PermguardDir, c.getLogsDir())
+	_, err := c.persMgr.CreateDirIfNotExists(persistence.PermguardDir, c.logsDir())
 	return err
 }

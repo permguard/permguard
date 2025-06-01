@@ -29,12 +29,12 @@ import (
 	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 )
 
-// getObjectsInfos retrieves and filters object metadata based on object type.
-func (m *WorkspaceManager) getObjectsInfos(includeStorage, includeCode, filterCommits, filterTrees, filterBlob bool) ([]objects.ObjectInfo, error) {
+// objectsInfos retrieves and filters object metadata based on object type.
+func (m *WorkspaceManager) objectsInfos(includeStorage, includeCode, filterCommits, filterTrees, filterBlob bool) ([]objects.ObjectInfo, error) {
 	var filteredObjects []objects.ObjectInfo
 
 	// Fetch all raw objs from the COSP manager
-	objs, err := m.cospMgr.GetObjects(includeStorage, includeCode)
+	objs, err := m.cospMgr.Objects(includeStorage, includeCode)
 	if err != nil {
 		return nil, err
 	}
@@ -50,12 +50,12 @@ func (m *WorkspaceManager) getObjectsInfos(includeStorage, includeCode, filterCo
 
 	// Iterate and filter objs by type
 	for _, object := range objs {
-		objInfo, err := objMgr.GetObjectInfo(&object)
+		objInfo, err := objMgr.ObjectInfo(&object)
 		if err != nil {
 			return nil, err
 		}
 
-		switch objInfo.GetType() {
+		switch objInfo.Type() {
 		case objects.ObjectTypeCommit:
 			if !filterCommits {
 				continue
@@ -76,25 +76,25 @@ func (m *WorkspaceManager) getObjectsInfos(includeStorage, includeCode, filterCo
 	return filteredObjects, nil
 }
 
-// getHistory gets the commit history.
-func (m *WorkspaceManager) getHistory(commit string) ([]wkscommon.CommitInfo, error) {
-	commitHistory, err := m.cospMgr.GetHistory(commit)
+// history gets the commit history.
+func (m *WorkspaceManager) history(commit string) ([]wkscommon.CommitInfo, error) {
+	commitHistory, err := m.cospMgr.History(commit)
 	if err != nil {
 		return nil, err
 	}
 	return commitHistory, nil
 }
 
-// getCommitString gets the commit string.
-func (m *WorkspaceManager) getCommitString(oid string, commit *objects.Commit) (string, error) {
+// commitString gets the commit string.
+func (m *WorkspaceManager) commitString(oid string, commit *objects.Commit) (string, error) {
 	if commit == nil {
 		return "", errors.New("cli: commit is nil")
 	}
 
-	tree := commit.GetTree()
-	metadata := commit.GetMetaData()
-	committerTimestamp := metadata.GetCommitterTimestamp()
-	authorTimestamp := metadata.GetAuthorTimestamp()
+	tree := commit.Tree()
+	metadata := commit.MetaData()
+	committerTimestamp := metadata.CommitterTimestamp()
+	authorTimestamp := metadata.AuthorTimestamp()
 
 	output := fmt.Sprintf(
 		"%s %s:\n"+
@@ -111,28 +111,28 @@ func (m *WorkspaceManager) getCommitString(oid string, commit *objects.Commit) (
 	return output, nil
 }
 
-// getCommitMap gets the commit map.
-func (m *WorkspaceManager) getCommitMap(oid string, commit *objects.Commit) (map[string]any, error) {
+// commitMap gets the commit map.
+func (m *WorkspaceManager) commitMap(oid string, commit *objects.Commit) (map[string]any, error) {
 	if commit == nil {
 		return nil, errors.New("cli: commit is nil")
 	}
 
 	output := make(map[string]any)
 	output["oid"] = oid
-	output["parent"] = commit.GetParent()
-	output["tree"] = commit.GetTree()
-	output["message"] = commit.GetMessage()
+	output["parent"] = commit.Parent()
+	output["tree"] = commit.Tree()
+	output["message"] = commit.Message()
 
-	metdata := commit.GetMetaData()
-	output["author"] = metdata.GetAuthor()
-	output["author_timestamp"] = metdata.GetAuthorTimestamp()
-	output["committer"] = metdata.GetCommitter()
-	output["committer_timestamp"] = metdata.GetCommitterTimestamp()
+	metdata := commit.MetaData()
+	output["author"] = metdata.Author()
+	output["author_timestamp"] = metdata.AuthorTimestamp()
+	output["committer"] = metdata.Committer()
+	output["committer_timestamp"] = metdata.CommitterTimestamp()
 	return output, nil
 }
 
-// getTreeString gets the tree string.
-func (m *WorkspaceManager) getTreeString(oid string, tree *objects.Tree) (string, error) {
+// treeString gets the tree string.
+func (m *WorkspaceManager) treeString(oid string, tree *objects.Tree) (string, error) {
 	if tree == nil {
 		return "", errors.New("cli: tree is nil")
 	}
@@ -141,15 +141,15 @@ func (m *WorkspaceManager) getTreeString(oid string, tree *objects.Tree) (string
 
 	output.WriteString(fmt.Sprintf("%s %s:", common.KeywordText("tree"), common.IDText(oid)))
 
-	entries := tree.GetEntries()
+	entries := tree.Entries()
 	for _, entry := range entries {
-		partition := entry.GetPartition()
-		language := entry.GetLanguage()
-		languageType := entry.GetLanguageType()
-		languageVersion := entry.GetLanguageVersion()
-		oid := entry.GetOID()
-		oname := entry.GetOName()
-		entryType := entry.GetType()
+		partition := entry.Partition()
+		language := entry.Language()
+		languageType := entry.LanguageType()
+		languageVersion := entry.LanguageVersion()
+		oid := entry.OID()
+		oname := entry.OName()
+		entryType := entry.Type()
 		output.WriteString(fmt.Sprintf("\n  - %s %s %s %s %s %s %s", common.IDText(oid), common.KeywordText(entryType), common.NameText(partition),
 			common.NameText(oname), common.LanguageText(language), common.LanguageText(languageVersion), common.LanguageKeywordText(languageType)))
 	}
@@ -157,8 +157,8 @@ func (m *WorkspaceManager) getTreeString(oid string, tree *objects.Tree) (string
 	return output.String(), nil
 }
 
-// getTreeMap gets the tree map.
-func (m *WorkspaceManager) getTreeMap(oid string, tree *objects.Tree) (map[string]any, error) {
+// treeMap gets the tree map.
+func (m *WorkspaceManager) treeMap(oid string, tree *objects.Tree) (map[string]any, error) {
 	if tree == nil {
 		return nil, errors.New("cli: tree is nil")
 	}
@@ -166,17 +166,17 @@ func (m *WorkspaceManager) getTreeMap(oid string, tree *objects.Tree) (map[strin
 	output := make(map[string]any)
 	output["oid"] = oid
 
-	entries := tree.GetEntries()
+	entries := tree.Entries()
 	entriesList := make([]map[string]any, len(entries))
 
 	for i, entry := range entries {
 		entryMap := make(map[string]any)
-		entryMap["oid"] = entry.GetOID()
-		entryMap["oname"] = entry.GetOName()
-		entryMap["type"] = entry.GetType()
-		entryMap["language"] = entry.GetLanguage()
-		entryMap["language_type"] = entry.GetLanguageType()
-		entryMap["language_version"] = entry.GetLanguageVersion()
+		entryMap["oid"] = entry.OID()
+		entryMap["oname"] = entry.OName()
+		entryMap["type"] = entry.Type()
+		entryMap["language"] = entry.Language()
+		entryMap["language_type"] = entry.LanguageType()
+		entryMap["language_version"] = entry.LanguageVersion()
 		entriesList[i] = entryMap
 	}
 
@@ -184,8 +184,8 @@ func (m *WorkspaceManager) getTreeMap(oid string, tree *objects.Tree) (map[strin
 	return output, nil
 }
 
-// getBlobString gets the blob string.
-func (m *WorkspaceManager) getBlobString(blob any) ([]byte, bool, error) {
+// blobString gets the blob string.
+func (m *WorkspaceManager) blobString(blob any) ([]byte, bool, error) {
 	if blob == nil {
 		return nil, false, errors.New("cli: tree is nil")
 	}
@@ -197,7 +197,7 @@ func (m *WorkspaceManager) getBlobString(blob any) ([]byte, bool, error) {
 }
 
 // getBlobString gets the blob map.
-func (m *WorkspaceManager) getBlobMap(blob any) (map[string]any, error) {
+func (m *WorkspaceManager) blobMap(blob any) (map[string]any, error) {
 	if blob == nil {
 		return nil, errors.New("cli: tree is nil")
 	}

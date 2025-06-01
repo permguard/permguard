@@ -63,7 +63,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 			return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
 		}
 		hasMatch, history, err2 := objMng.BuildCommitHistory(remoteRefSPacket.RefPrevCommit, headCommitID, false, func(oid string) (*objects.Object, error) {
-			keyValue, errK := s.sqlRepo.GetKeyValue(db, zoneID, oid)
+			keyValue, errK := s.sqlRepo.KeyValue(db, zoneID, oid)
 			if errK != nil || keyValue == nil || keyValue.Value == nil {
 				return nil, nil
 			}
@@ -94,13 +94,13 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 		HasConflicts:    hasConflicts,
 		IsUpToDate:      isUpToDate,
 	}
-	handlerCtx.Set(LocalCommitIDKey, headCommitID)
-	handlerCtx.Set(RemoteCommitIDKey, remoteRefSPacket.RefCommit)
+	handlerCtx.SetValue(LocalCommitIDKey, headCommitID)
+	handlerCtx.SetValue(RemoteCommitIDKey, remoteRefSPacket.RefCommit)
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 		Packetables:  []notppackets.Packetable{packet},
 	}
-	handlerCtx.Set(TerminationKey, isUpToDate)
+	handlerCtx.SetValue(TerminationKey, isUpToDate)
 	return handlerReturn, nil
 }
 
@@ -142,11 +142,11 @@ func (s SQLiteCentralStoragePAP) OnPullSendNegotiationRequest(handlerCtx *notpst
 			if err != nil {
 				return nil, err
 			}
-			commitIDs = append(commitIDs, obj.GetOID())
+			commitIDs = append(commitIDs, obj.OID())
 		}
 	}
-	handlerCtx.Set(DiffCommitIDsKey, commitIDs)
-	handlerCtx.Set(DiffCommitIDCursorKey, -1)
+	handlerCtx.SetValue(DiffCommitIDsKey, commitIDs)
+	handlerCtx.SetValue(DiffCommitIDCursorKey, -1)
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}
@@ -184,13 +184,13 @@ func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(zoneID int64, com
 		return nil, err
 	}
 	packetCommit := &notpagpackets.ObjectStatePacket{
-		OID:     commitObj.GetOID(),
+		OID:     commitObj.OID(),
 		OType:   objects.ObjectTypeCommit,
-		Content: commitObj.GetContent(),
+		Content: commitObj.Content(),
 	}
 	packetable = append(packetable, packetCommit)
 
-	treeObj, err := s.readObject(db, zoneID, commit.GetTree())
+	treeObj, err := s.readObject(db, zoneID, commit.Tree())
 	if err != nil {
 		return nil, err
 	}
@@ -200,15 +200,15 @@ func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(zoneID int64, com
 	}
 
 	packetTree := &notpagpackets.ObjectStatePacket{
-		OID:     treeObj.GetOID(),
+		OID:     treeObj.OID(),
 		OType:   objects.ObjectTypeTree,
-		Content: treeObj.GetContent(),
+		Content: treeObj.Content(),
 	}
 	packetable = append(packetable, packetTree)
 
-	for _, entry := range tree.GetEntries() {
-		oid := entry.GetOID()
-		oType := entry.GetType()
+	for _, entry := range tree.Entries() {
+		oid := entry.OID()
+		oType := entry.Type()
 		obj, err := s.readObject(db, zoneID, oid)
 		if err != nil {
 			return nil, err
@@ -216,7 +216,7 @@ func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(zoneID int64, com
 		packet := &notpagpackets.ObjectStatePacket{
 			OID:     oid,
 			OType:   oType,
-			Content: obj.GetContent(),
+			Content: obj.Content(),
 		}
 		packetable = append(packetable, packet)
 	}
@@ -235,7 +235,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleExchangeDataStream(handlerCtx *notp
 	commitIDs, _ := getFromHandlerContext[[]string](handlerCtx, DiffCommitIDsKey)
 	commitIDCursor, _ := getFromHandlerContext[int](handlerCtx, DiffCommitIDCursorKey)
 	commitIDCursor = commitIDCursor + 1
-	handlerCtx.Set(DiffCommitIDCursorKey, commitIDCursor)
+	handlerCtx.SetValue(DiffCommitIDCursorKey, commitIDCursor)
 	if commitIDCursor < len(commitIDs) {
 		commitID := commitIDs[commitIDCursor]
 		packetables, err := s.buildPushPacketablesForCommit(zoneID, commitID)

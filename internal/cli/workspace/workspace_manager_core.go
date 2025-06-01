@@ -65,7 +65,7 @@ type WorkspaceManager struct {
 
 // NewInternalManager creates a new internal manager.
 func NewInternalManager(ctx *common.CliCommandContext, langFct languages.LanguageFactory) (*WorkspaceManager, error) {
-	homeDir := ctx.GetWorkDir()
+	homeDir := ctx.WorkDir()
 	objMar, err := objects.NewObjectManager()
 	if err != nil {
 		return nil, err
@@ -108,19 +108,14 @@ func NewInternalManager(ctx *common.CliCommandContext, langFct languages.Languag
 	}, nil
 }
 
-// getHomeHiddenDir returns the home directory.
-func (m *WorkspaceManager) getHomeDir() string {
-	return m.homeDir
-}
-
-// getHomeHiddenDir returns the home hidden directory.
-func (m *WorkspaceManager) getHomeHiddenDir() string {
+// homeHiddenDir returns the home hidden directory.
+func (m *WorkspaceManager) homeHiddenDir() string {
 	return filepath.Join(m.homeDir, hiddenDir)
 }
 
-// getLockFile returns the lock file.
-func (m *WorkspaceManager) getLockFile() string {
-	return filepath.Join(m.getHomeHiddenDir(), hiddenLockFile)
+// lockFile returns the lock file.
+func (m *WorkspaceManager) lockFile() string {
+	return filepath.Join(m.homeHiddenDir(), hiddenLockFile)
 }
 
 // isWorkspaceDir checks if the directory is a workspace directory.
@@ -129,7 +124,7 @@ func (m *WorkspaceManager) isWorkspaceDir() bool {
 	if err != nil {
 		return false
 	}
-	currentDir := m.persMgr.GetPath(persistence.WorkspaceDir, "")
+	currentDir := m.persMgr.Path(persistence.WorkspaceDir, "")
 	currentDir, err = filepath.Abs(currentDir)
 	if err != nil {
 		return false
@@ -143,12 +138,12 @@ func (m *WorkspaceManager) isWorkspaceDir() bool {
 
 // tryLock tries to lock the workspace.
 func (m *WorkspaceManager) tryLock() (*flock.Flock, error) {
-	lockFile := m.getLockFile()
+	lockFile := m.lockFile()
 	m.persMgr.CreateFileIfNotExists(persistence.WorkDir, lockFile)
 	fileLock := flock.New(lockFile)
 	lock, err := fileLock.TryLock()
 	if !lock || err != nil {
-		return nil, errors.Join(err, fmt.Errorf("cli: could not acquire the lock, another process is using it %s", m.getLockFile()))
+		return nil, errors.Join(err, fmt.Errorf("cli: could not acquire the lock, another process is using it %s", m.lockFile()))
 	}
 	return fileLock, nil
 }
@@ -165,7 +160,7 @@ func (m *WorkspaceManager) printFiles(action string, files []string, out common.
 func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out common.PrinterOutFunc) error {
 	out(nil, "", "The current working directory is not a valid Permguard workspace.", nil, true)
 	out(nil, "", "Please initialize the workspace by running the 'init' command.", nil, true)
-	return fmt.Errorf("cli: %s is not a permguard workspace directory", m.getHomeHiddenDir())
+	return fmt.Errorf("cli: %s is not a permguard workspace directory", m.homeHiddenDir())
 }
 
 // hasValidManifestWorkspaceDir checks if the directory is a valid workspace directory.
@@ -188,7 +183,7 @@ func (m *WorkspaceManager) hasValidManifestWorkspaceDir() (*manifests.Manifest, 
 	}
 	for _, runtime := range manifest.Runtimes {
 		lang := runtime.Language
-		absLang, err := m.langFct.GetLanguageAbastraction(lang.Name, lang.Version)
+		absLang, err := m.langFct.LanguageAbastraction(lang.Name, lang.Version)
 		if err != nil {
 			return nil, errors.Join(err, manifestErr)
 		}

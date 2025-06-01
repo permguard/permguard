@@ -25,8 +25,8 @@ import (
 // PosgresStorageInitializer is the storage initializer.
 type PosgresStorageInitializer struct{}
 
-// GetStorageProvisionerInfo returns the infos of the storage provisioner.
-func (s *PosgresStorageInitializer) GetStorageProvisionerInfo() storage.StorageProvisionerInfo {
+// StorageProvisionerInfo returns the infos of the storage provisioner.
+func (s *PosgresStorageInitializer) StorageProvisionerInfo() storage.StorageProvisionerInfo {
 	return storage.StorageProvisionerInfo{
 		Name:  "SQLite Storage Provisioner",
 		Use:   "Provision the SQLite storage",
@@ -34,8 +34,8 @@ func (s *PosgresStorageInitializer) GetStorageProvisionerInfo() storage.StorageP
 	}
 }
 
-// GetStorageProvisioner returns the storage provisioner.
-func (s *PosgresStorageInitializer) GetStorageProvisioner() (storage.StorageProvisioner, error) {
+// StorageProvisioner returns the storage provisioner.
+func (s *PosgresStorageInitializer) StorageProvisioner() (storage.StorageProvisioner, error) {
 	return sqlite.NewSQLiteStorageProvisioner()
 }
 

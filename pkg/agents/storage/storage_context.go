@@ -40,47 +40,47 @@ type StorageContext struct {
 
 // NewStorageContext creates a new storage context.
 func NewStorageContext(runtimeContext runtime.RuntimeContext, storage StorageKind) (*StorageContext, error) {
-	newLogger := runtimeContext.GetLogger().With(zap.String(string("storage"), storage.String()))
+	newLogger := runtimeContext.Logger().With(zap.String(string("storage"), storage.String()))
 	data := map[string]any{ctxStgStorageKey: storage, ctxStgLoggerKey: newLogger}
-	ctx := context.WithValue(runtimeContext.GetContext(), storageCtxKey{}, data)
+	ctx := context.WithValue(runtimeContext.Context(), storageCtxKey{}, data)
 	return &StorageContext{
 		ctx:       ctx,
 		parentCtx: runtimeContext,
 	}, nil
 }
 
-// GetContext returns the context.
-func (s *StorageContext) GetContext() context.Context {
+// Context returns the context.
+func (s *StorageContext) Context() context.Context {
 	return s.ctx
 }
 
-// GetStorage returns the storage.
-func (s *StorageContext) GetStorage() StorageKind {
+// Storage returns the storage.
+func (s *StorageContext) Storage() StorageKind {
 	return s.ctx.Value(storageCtxKey{}).(map[string]any)[ctxStgStorageKey].(StorageKind)
 }
 
-// GetLogger returns the logger.
-func (s *StorageContext) GetLogger() *zap.Logger {
+// Logger returns the logger.
+func (s *StorageContext) Logger() *zap.Logger {
 	return s.ctx.Value(storageCtxKey{}).(map[string]any)[ctxStgLoggerKey].(*zap.Logger)
 }
 
-// GetParentLoggerMessage returns the parent logger message.
-func (s *StorageContext) GetParentLoggerMessage() string {
-	storage := s.GetStorage().String()
-	return fmt.Sprintf("%s[%s]", s.parentCtx.GetParentLoggerMessage(), storage)
+// ParentLoggerMessage returns the parent logger message.
+func (s *StorageContext) ParentLoggerMessage() string {
+	storage := s.Storage().String()
+	return fmt.Sprintf("%s[%s]", s.parentCtx.ParentLoggerMessage(), storage)
 }
 
-// GetLogMessage returns a well formatted log message.
-func (s *StorageContext) GetLogMessage(message string) string {
-	return fmt.Sprintf("%s: %s", s.GetParentLoggerMessage(), message)
+// LogMessage returns a well formatted log message.
+func (s *StorageContext) LogMessage(message string) string {
+	return fmt.Sprintf("%s: %s", s.ParentLoggerMessage(), message)
 }
 
-// GetHostConfigReader returns the host configuration reader.
-func (s *StorageContext) GetHostConfigReader() (runtime.HostConfigReader, error) {
-	return s.parentCtx.GetHostConfigReader()
+// HostConfigReader returns the host configuration reader.
+func (s *StorageContext) HostConfigReader() (runtime.HostConfigReader, error) {
+	return s.parentCtx.HostConfigReader()
 }
 
-// GetServiceConfigReader returns the service configuration reader.
-func (s *StorageContext) GetServiceConfigReader() (runtime.ServiceConfigReader, error) {
-	return s.parentCtx.GetServiceConfigReader()
+// ServiceConfigReader returns the service configuration reader.
+func (s *StorageContext) ServiceConfigReader() (runtime.ServiceConfigReader, error) {
+	return s.parentCtx.ServiceConfigReader()
 }

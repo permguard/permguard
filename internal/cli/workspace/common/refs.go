@@ -84,7 +84,7 @@ func GenerateHeadRef(zoneID int64, ledger string) string {
 
 // convertRefInfoToString converts the ref information to string.
 func ConvertRefInfoToString(refInfo *RefInfo) string {
-	return generateRef(refInfo.IsSourceHead(), refInfo.GetRemote(), refInfo.GetZoneID(), refInfo.GetLedger())
+	return generateRef(refInfo.IsSourceHead(), refInfo.Remote(), refInfo.ZoneID(), refInfo.Ledger())
 }
 
 // RefInfo represents the ref information.
@@ -133,8 +133,8 @@ func BuildRefInfoFromLedgerID(refInfo *RefInfo, ledgerID string) (*RefInfo, erro
 	}, nil
 }
 
-// GetSourceType returns the source type.
-func (i *RefInfo) GetSourceType() string {
+// SourceType returns the source type.
+func (i *RefInfo) SourceType() string {
 	return i.sourceType
 }
 
@@ -143,51 +143,51 @@ func (i *RefInfo) IsSourceHead() bool {
 	return i.sourceType == headPrefix
 }
 
-// GetRemote returns the remote.
-func (i *RefInfo) GetRemote() string {
+// Remote returns the remote.
+func (i *RefInfo) Remote() string {
 	return i.remote
 }
 
-// GetZoneID returns the zone ID.
-func (i *RefInfo) GetZoneID() int64 {
+// ZoneID returns the zone ID.
+func (i *RefInfo) ZoneID() int64 {
 	return i.zoneID
 }
 
-// GetLedgerName returns the ledger name.
-func (i *RefInfo) GetLedgerName() string {
+// LedgerName returns the ledger name.
+func (i *RefInfo) LedgerName() string {
 	return i.ledgerName
 }
 
-// GetLedgerID returns the ledger id.
-func (i *RefInfo) GetLedgerID() string {
+// LedgerID returns the ledger id.
+func (i *RefInfo) LedgerID() string {
 	return i.ledgerID
 }
 
-// GetLedger returns the ledger.
-func (i *RefInfo) GetLedger() string {
+// Ledger returns the ledger.
+func (i *RefInfo) Ledger() string {
 	if len(i.ledgerID) > 0 {
 		return i.ledgerID
 	}
 	return i.ledgerName
 }
 
-// GetRef returns the ref.
-func (i *RefInfo) GetRef() string {
-	return generateRef(i.IsSourceHead(), i.GetRemote(), i.GetZoneID(), i.GetLedger())
+// Ref returns the ref.
+func (i *RefInfo) Ref() string {
+	return generateRef(i.IsSourceHead(), i.Remote(), i.ZoneID(), i.Ledger())
 }
 
-// GetLedgerFilePath returns the ledger file path.
-func (i *RefInfo) GetLedgerFilePath(includeFileName bool) string {
+// LedgerFilePath returns the ledger file path.
+func (i *RefInfo) LedgerFilePath(includeFileName bool) string {
 	path := filepath.Join(refsPrefix, i.sourceType, i.remote, strconv.FormatInt(i.zoneID, 10))
 	if includeFileName {
-		path = filepath.Join(path, i.GetLedger())
+		path = filepath.Join(path, i.Ledger())
 	}
 	return path
 }
 
-// GetLedgerURI returns the ledger uri.
-func (i *RefInfo) GetLedgerURI() string {
-	ledgerURI, err := GetLedgerURI(i.remote, i.zoneID, i.GetLedger())
+// LedgerURI returns the ledger uri.
+func (i *RefInfo) LedgerURI() string {
+	ledgerURI, err := GetLedgerURI(i.remote, i.zoneID, i.Ledger())
 	if err != nil {
 		return ""
 	}

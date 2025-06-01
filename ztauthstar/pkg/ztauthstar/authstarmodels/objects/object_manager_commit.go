@@ -95,12 +95,12 @@ func (m *ObjectManager) buildCommitHistory(fromCommitID string, toCommitID strin
 	}
 	var commit *Commit
 	if commitObj != nil {
-		commitObjInfo, err := m.GetObjectInfo(commitObj)
+		commitObjInfo, err := m.ObjectInfo(commitObj)
 		if err != nil {
 			return false, nil, err
 		}
 		var ok bool
-		commit, ok = commitObjInfo.GetInstance().(*Commit)
+		commit, ok = commitObjInfo.Instance().(*Commit)
 		if !ok {
 			return false, nil, fmt.Errorf("objects: invalid object type")
 		}
@@ -111,11 +111,11 @@ func (m *ObjectManager) buildCommitHistory(fromCommitID string, toCommitID strin
 	if commitObj == nil || commit == nil {
 		return match, history, nil
 	}
-	if commitObj.GetOID() == toCommitID {
+	if commitObj.OID() == toCommitID {
 		match = true
 		return match, history, nil
 	}
-	return m.buildCommitHistory(commit.GetParent(), toCommitID, match, history, objFunc)
+	return m.buildCommitHistory(commit.Parent(), toCommitID, match, history, objFunc)
 }
 
 // BuildCommitHistory builds the commit history.

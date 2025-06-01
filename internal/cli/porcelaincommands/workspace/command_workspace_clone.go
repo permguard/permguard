@@ -83,7 +83,7 @@ func runECommandForCloneWorkspace(args []string, deps cli.CliDependenciesProvide
 		}
 		return common.ErrCommandSilent
 	}
-	langFct, err := deps.GetLanguageFactory()
+	langFct, err := deps.LanguageFactory()
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent

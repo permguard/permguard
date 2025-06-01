@@ -63,7 +63,7 @@ Copyright © 2022 Nitro Agility S.r.l.
 		host:      host,
 		hostInfos: hostInfos,
 		storages:  storages,
-		services:  host.GetServices(hosts, services),
+		services:  host.Services(hosts, services),
 	}, nil
 }
 
@@ -72,18 +72,18 @@ func (c *CommunityServerInitializer) HasCentralStorage() bool {
 	return true
 }
 
-// GetHost returns the service kind set as host.
-func (c *CommunityServerInitializer) GetHost() services.HostKind {
+// Host returns the service kind set as host.
+func (c *CommunityServerInitializer) Host() services.HostKind {
 	return c.host
 }
 
-// GetHostInfo returns the infos of the service kind set as host.
-func (c *CommunityServerInitializer) GetHostInfo() *services.HostInfo {
+// HostInfo returns the infos of the service kind set as host.
+func (c *CommunityServerInitializer) HostInfo() *services.HostInfo {
 	return c.hostInfos[c.host]
 }
 
-// GetStorages returns the active storage kinds.
-func (c *CommunityServerInitializer) GetStorages(centralStorageEngine storage.StorageKind) []storage.StorageKind {
+// Storages returns the active storage kinds.
+func (c *CommunityServerInitializer) Storages(centralStorageEngine storage.StorageKind) []storage.StorageKind {
 	storages := []storage.StorageKind{}
 	for _, storageKind := range c.storages {
 		if storage.StorageNone.Equal(storageKind) {
@@ -96,10 +96,10 @@ func (c *CommunityServerInitializer) GetStorages(centralStorageEngine storage.St
 	return storages
 }
 
-// GetStoragesFactories returns the storage factories providers.
-func (c *CommunityServerInitializer) GetStoragesFactories(centralStorageEngine storage.StorageKind) (map[storage.StorageKind]storage.StorageFactoryProvider, error) {
+// StoragesFactories returns the storage factories providers.
+func (c *CommunityServerInitializer) StoragesFactories(centralStorageEngine storage.StorageKind) (map[storage.StorageKind]storage.StorageFactoryProvider, error) {
 	factories := map[storage.StorageKind]storage.StorageFactoryProvider{}
-	for _, storageKind := range c.GetStorages(centralStorageEngine) {
+	for _, storageKind := range c.Storages(centralStorageEngine) {
 		switch storageKind {
 		case storage.StorageSQLite:
 			fFactCfg := func() (storage.StorageFactoryConfig, error) { return sqlite.NewSQLiteStorageFactoryConfig() }
@@ -117,13 +117,13 @@ func (c *CommunityServerInitializer) GetStoragesFactories(centralStorageEngine s
 	return factories, nil
 }
 
-// GetServices returns the active service kinds.
-func (c *CommunityServerInitializer) GetServices() []services.ServiceKind {
+// Services returns the active service kinds.
+func (c *CommunityServerInitializer) Services() []services.ServiceKind {
 	return copier.CopySlice(c.services)
 }
 
-// GetServicesFactories returns the service factories providers.
-func (c *CommunityServerInitializer) GetServicesFactories() (map[services.ServiceKind]services.ServiceFactoryProvider, error) {
+// ServicesFactories returns the service factories providers.
+func (c *CommunityServerInitializer) ServicesFactories() (map[services.ServiceKind]services.ServiceFactoryProvider, error) {
 	factories := map[services.ServiceKind]services.ServiceFactoryProvider{}
 	for _, serviceKind := range c.services {
 		switch serviceKind {

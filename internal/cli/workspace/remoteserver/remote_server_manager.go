@@ -42,26 +42,26 @@ func NewRemoteServerManager(ctx *common.CliCommandContext) (*RemoteServerManager
 	}, nil
 }
 
-// GetServerRemoteLedger gets the remote ledger from the server.
-func (m *RemoteServerManager) GetServerRemoteLedger(remoteInfo *wkscommon.RemoteInfo, ledgerInfo *wkscommon.LedgerInfo) (*pap.Ledger, error) {
+// ServerRemoteLedger gets the remote ledger from the server.
+func (m *RemoteServerManager) ServerRemoteLedger(remoteInfo *wkscommon.RemoteInfo, ledgerInfo *wkscommon.LedgerInfo) (*pap.Ledger, error) {
 	if remoteInfo == nil {
 		return nil, errors.New("cli: remote info is nil")
 	}
 	if ledgerInfo == nil {
 		return nil, errors.New("cli: ledger info is nil")
 	}
-	zoneerver := fmt.Sprintf("%s:%d", remoteInfo.GetServer(), remoteInfo.GetZAPPort())
+	zoneerver := fmt.Sprintf("%s:%d", remoteInfo.Server(), remoteInfo.ZAPPort())
 	zapClient, err := clients.NewGrpcZAPClient(zoneerver)
 	if err != nil {
 		return nil, err
 	}
-	pppServer := fmt.Sprintf("%s:%d", remoteInfo.GetServer(), remoteInfo.GetPAPPort())
+	pppServer := fmt.Sprintf("%s:%d", remoteInfo.Server(), remoteInfo.PAPPort())
 	papClient, err := clients.NewGrpcPAPClient(pppServer)
 	if err != nil {
 		return nil, err
 	}
-	zoneID := ledgerInfo.GetZoneID()
-	ledger := ledgerInfo.GetLedger()
+	zoneID := ledgerInfo.ZoneID()
+	ledger := ledgerInfo.Ledger()
 	srvZones, err := zapClient.FetchZonesByID(1, 1, zoneID)
 	if err != nil || srvZones == nil || len(srvZones) == 0 {
 		return nil, errors.Join(err, fmt.Errorf("cli: zone %d does not exist", zoneID))
@@ -101,7 +101,7 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, zoneID int64,
 		return nil, err
 	}
 	var hostHandler notpstatemachines.HostHandler = func(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-		switch handlerCtx.GetCurrentStateID() {
+		switch handlerCtx.CurrentStateID() {
 		case notpstatemachines.NotifyObjectsStateID:
 			switch statePacket.MessageCode {
 			case notpsmpackets.NotifyCurrentObjectStatesMessage:
@@ -138,7 +138,7 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, zoneID int64,
 				return nil, fmt.Errorf("cli: invalid message code %d", statePacket.MessageCode)
 			}
 		default:
-			return nil, fmt.Errorf("cli: invalid state %d", handlerCtx.GetCurrentStateID())
+			return nil, fmt.Errorf("cli: invalid state %d", handlerCtx.CurrentStateID())
 		}
 	}
 	return papClient.NOTPStream(hostHandler, zoneID, ledgerID, bag, notpstatemachines.PushFlowType)
@@ -152,7 +152,7 @@ func (m *RemoteServerManager) NOTPPull(server string, papPort int, zoneID int64,
 		return nil, err
 	}
 	var hostHandler notpstatemachines.HostHandler = func(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-		switch handlerCtx.GetCurrentStateID() {
+		switch handlerCtx.CurrentStateID() {
 		case notpstatemachines.RequestObjectsStateID:
 			switch statePacket.MessageCode {
 			case notpsmpackets.RequestCurrentObjectsStateMessage:
@@ -189,7 +189,7 @@ func (m *RemoteServerManager) NOTPPull(server string, papPort int, zoneID int64,
 				return nil, fmt.Errorf("cli: invalid message code %d", statePacket.MessageCode)
 			}
 		default:
-			return nil, fmt.Errorf("cli: invalid state %d", handlerCtx.GetCurrentStateID())
+			return nil, fmt.Errorf("cli: invalid state %d", handlerCtx.CurrentStateID())
 		}
 	}
 	return papClient.NOTPStream(hostHandler, zoneID, ledgerID, bag, notpstatemachines.PullFlowType)

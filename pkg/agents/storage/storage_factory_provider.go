@@ -34,8 +34,8 @@ func NewStorageFactoryProvider(funcSvcFactCfg func() (StorageFactoryConfig, erro
 	}, nil
 }
 
-// GetFactoryConfig returns the factory configuration.
-func (p StorageFactoryProvider) GetFactoryConfig() (StorageFactoryConfig, error) {
+// FactoryConfig returns the factory configuration.
+func (p StorageFactoryProvider) FactoryConfig() (StorageFactoryConfig, error) {
 	return p.config, nil
 }
 
