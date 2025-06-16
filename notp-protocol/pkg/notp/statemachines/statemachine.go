@@ -36,26 +36,26 @@ type HandlerContext struct {
 	bag            map[string]interface{}
 }
 
-// GetFlowType returns the flow type of the handler context.
-func (h *HandlerContext) GetFlowType() FlowType {
+// FlowType returns the flow type of the handler context.
+func (h *HandlerContext) FlowType() FlowType {
 	return h.flow
 }
 
-// GetCurrentStateID returns the current state ID of the handler context.
-func (h *HandlerContext) GetCurrentStateID() uint16 {
+// CurrentStateID returns the current state ID of the handler context.
+func (h *HandlerContext) CurrentStateID() uint16 {
 	return h.currentStateID
 }
 
-// Set stores a key-value pair in the runtime context of the state machine.
-func (h *HandlerContext) Set(key string, value interface{}) {
+// SetValue stores a key-value pair in the runtime context of the state machine.
+func (h *HandlerContext) SetValue(key string, value interface{}) {
 	if h.bag == nil {
 		h.bag = make(map[string]interface{})
 	}
 	h.bag[key] = value
 }
 
-// Get retrieves the value associated with the specified key from the runtime context.
-func (h *HandlerContext) Get(key string) (any, bool) {
+// Value retrieves the value associated with the specified key from the runtime context.
+func (h *HandlerContext) Value(key string) (any, bool) {
 	if h.bag == nil {
 		return nil, false
 	}
@@ -181,26 +181,26 @@ func (t *StateMachineRuntimeContext) IsFinal() bool {
 	return t.isFinal
 }
 
-// GetFlowType returns the flow type of the state machine.
-func (t *StateMachineRuntimeContext) GetFlowType() FlowType {
+// FlowType returns the flow type of the state machine.
+func (t *StateMachineRuntimeContext) FlowType() FlowType {
 	return t.flowType
 }
 
-// GetCurrentStateID returns the current state ID of the state machine.
-func (t *StateMachineRuntimeContext) GetCurrentStateID() uint16 {
+// CurrentStateID returns the current state ID of the state machine.
+func (t *StateMachineRuntimeContext) CurrentStateID() uint16 {
 	return t.currentStateID
 }
 
-// Set stores a key-value pair in the runtime context of the state machine.
-func (t *StateMachineRuntimeContext) Set(key string, value interface{}) {
+// SetValue stores a key-value pair in the runtime context of the state machine.
+func (t *StateMachineRuntimeContext) SetValue(key string, value interface{}) {
 	if t.bag == nil {
 		t.bag = make(map[string]interface{})
 	}
 	t.bag[key] = value
 }
 
-// Get retrieves the value associated with the specified key from the runtime context.
-func (t *StateMachineRuntimeContext) Get(key string) (any, bool) {
+// Value retrieves the value associated with the specified key from the runtime context.
+func (t *StateMachineRuntimeContext) Value(key string) (any, bool) {
 	if t.bag == nil {
 		return nil, false
 	}

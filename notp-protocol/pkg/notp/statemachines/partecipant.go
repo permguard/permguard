@@ -107,7 +107,7 @@ func startFlowState(runtime *StateMachineRuntimeContext) (*StateTransitionInfo, 
 		MessageCode:  notpsmpackets.FlowIDValue,
 		MessageValue: flowID,
 	}
-	runtime.Set(FlowIDKey, flowID)
+	runtime.SetValue(FlowIDKey, flowID)
 	_, terminate, err := createAndHandleAndStreamStatePacketWithValue(runtime, notpsmpackets.StartFlowMessage, uint64(runtime.flowType), []notppackets.Packetable{flowPacket})
 	if terminate {
 		return terminateWithFinal(runtime)
@@ -126,7 +126,7 @@ func startFlowState(runtime *StateMachineRuntimeContext) (*StateTransitionInfo, 
 		return nil, fmt.Errorf("notp: start flow failed to receive ack in action response packet")
 	}
 	var stateID uint16
-	switch runtime.GetFlowType() {
+	switch runtime.FlowType() {
 	case PushFlowType:
 		stateID = NotifyObjectsStateID
 	case PullFlowType:
@@ -158,7 +158,7 @@ func processStartFlowState(runtime *StateMachineRuntimeContext) (*StateTransitio
 	if flowPacket.MessageCode != notpsmpackets.FlowIDValue {
 		return nil, fmt.Errorf("notp: process start flow failed to deserialize flow packet")
 	}
-	runtime.Set(FlowIDKey, flowPacket.MessageValue)
+	runtime.SetValue(FlowIDKey, flowPacket.MessageValue)
 	messageValue := notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
 	_, terminate, err = createAndHandleAndStreamStatePacketWithValue(runtime, notpsmpackets.ActionResponseMessage, messageValue, packetables)
 	if terminate {
@@ -170,7 +170,7 @@ func processStartFlowState(runtime *StateMachineRuntimeContext) (*StateTransitio
 	flowtype := FlowType(statePacket.MessageValue)
 	runtime = runtime.WithFlow(flowtype)
 	var stateID uint16
-	switch runtime.GetFlowType() {
+	switch runtime.FlowType() {
 	case PushFlowType:
 		stateID = ProcessNotifyObjectsStateID
 	case PullFlowType:
@@ -201,7 +201,7 @@ func requestObjectsState(runtime *StateMachineRuntimeContext) (*StateTransitionI
 		return nil, fmt.Errorf("notp: request object failed to receive and handle respond current state packet: %w", err)
 	}
 	var stateID uint16
-	switch runtime.GetFlowType() {
+	switch runtime.FlowType() {
 	case PullFlowType:
 		stateID = SubscriberNegotiationStateID
 	default:
@@ -230,7 +230,7 @@ func processRequestObjectsState(runtime *StateMachineRuntimeContext) (*StateTran
 		return nil, fmt.Errorf("notp: process request failed to create and handle respond current state packet: %w", err)
 	}
 	var stateID uint16
-	switch runtime.GetFlowType() {
+	switch runtime.FlowType() {
 	case PullFlowType:
 		stateID = PublisherNegotiationStateID
 	default:
@@ -259,7 +259,7 @@ func notifyObjectsState(runtime *StateMachineRuntimeContext) (*StateTransitionIn
 		return nil, fmt.Errorf("notp: notify object failed to receive and handle respond current state packet: %w", err)
 	}
 	var stateID uint16
-	switch runtime.GetFlowType() {
+	switch runtime.FlowType() {
 	case PushFlowType:
 		stateID = PublisherNegotiationStateID
 	default:
@@ -288,7 +288,7 @@ func processNotifyObjectsState(runtime *StateMachineRuntimeContext) (*StateTrans
 		return nil, fmt.Errorf("notp: process notify failed to create and handle respond current state packet: %w", err)
 	}
 	var stateID uint16
-	switch runtime.GetFlowType() {
+	switch runtime.FlowType() {
 	case PushFlowType:
 		stateID = SubscriberNegotiationStateID
 	default:

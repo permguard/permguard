@@ -18,32 +18,67 @@ package runtime
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 
 	"go.uber.org/zap"
 )
 
 // RuntimeContext is the interface for the runtime context.
 type RuntimeContext interface {
-	// GetLogger returns the logger.
-	GetLogger() *zap.Logger
-	// GetParentLoggerMessage returns the parent logger message.
-	GetParentLoggerMessage() string
-	// GetHostConfigReader returns the host configuration reader.
-	GetHostConfigReader() (HostConfigReader, error)
-	// GetServiceConfigReader returns the service configuration reader.
-	GetServiceConfigReader() (ServiceConfigReader, error)
-	// GetContext returns the context.
-	GetContext() context.Context
+	// Logger returns the logger.
+	Logger() *zap.Logger
+	// ParentLoggerMessage returns the parent logger message.
+	ParentLoggerMessage() string
+	// HostConfigReader returns the host configuration reader.
+	HostConfigReader() (HostConfigReader, error)
+	// ServiceConfigReader returns the service configuration reader.
+	ServiceConfigReader() (ServiceConfigReader, error)
+	// Context returns the context.
+	Context() context.Context
 }
 
 // HostConfigReader declares the host configuration reader.
 type HostConfigReader interface {
-	// GetAppData returns the zone data.
-	GetAppData() string
+	// AppData returns the zone data.
+	AppData() string
 }
 
 // ServiceConfigReader declares the service configuration reader.
 type ServiceConfigReader interface {
-	// GetValue returns the value for the given key.
-	GetValue(key string) (any, error)
+	// Value returns the value for the given key.
+	Value(key string) (any, error)
+}
+
+// GetTypedValue retrieves a value of type T from any value.
+func GetTypedValue[T any](getFunc func(string) (any, error), key string) (T, error) {
+	value, err := getFunc(key)
+	if err != nil {
+		var zero T
+		return zero, fmt.Errorf("failed to get value for key %q: %w", key, err)
+	}
+
+	if typed, ok := value.(T); ok {
+		return typed, nil
+	}
+
+	var zero T
+	switch any(zero).(type) {
+	case string:
+		switch v := value.(type) {
+		case fmt.Stringer:
+			return any(v.String()).(T), nil
+		case []byte:
+			return any(string(v)).(T), nil
+		case string:
+			return any(v).(T), nil
+		}
+	case int:
+		switch v := value.(type) {
+		case int8, int16, int32, int64, uint8, uint16, uint32, uint64:
+			return any(int(reflect.ValueOf(v).Int())).(T), nil
+		}
+	}
+
+	return zero, fmt.Errorf("type mismatch for key %q: value is %T, expected %T", key, value, zero)
 }

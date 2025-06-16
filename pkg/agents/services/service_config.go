@@ -33,8 +33,8 @@ func NewServiceConfiguration(data map[string]any) (*ServiceConfiguration, error)
 	}, nil
 }
 
-// GetValue returns the value for the given key.
-func (h *ServiceConfiguration) GetValue(key string) (any, error) {
+// Value returns the value for the given key.
+func (h *ServiceConfiguration) Value(key string) (any, error) {
 	value, exists := h.data[key]
 	if !exists {
 		return nil, fmt.Errorf("service: key %s not found in configuration", key)

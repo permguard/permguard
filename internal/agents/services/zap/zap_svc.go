@@ -34,7 +34,7 @@ type ZAPService struct {
 
 // NewZAPService creates a new server  configuration.
 func NewZAPService(zapServiceCfg *ZAPServiceConfig) (*ZAPService, error) {
-	configReader, err := services.NewServiceConfiguration(zapServiceCfg.GetConfigData())
+	configReader, err := services.NewServiceConfiguration(zapServiceCfg.ConfigData())
 	if err != nil {
 		return nil, err
 	}
@@ -44,23 +44,23 @@ func NewZAPService(zapServiceCfg *ZAPServiceConfig) (*ZAPService, error) {
 	}, nil
 }
 
-// GetService returns the service kind.
-func (f *ZAPService) GetService() services.ServiceKind {
-	return f.config.GetService()
+// Service returns the service kind.
+func (f *ZAPService) Service() services.ServiceKind {
+	return f.config.Service()
 }
 
-// GetEndpoints returns the service kind.
-func (f *ZAPService) GetEndpoints() ([]services.EndpointInitializer, error) {
+// Endpoints returns the service kind.
+func (f *ZAPService) Endpoints() ([]services.EndpointInitializer, error) {
 	endpoint, err := services.NewEndpointInitializer(
-		f.config.GetService(),
-		f.config.GetPort(),
+		f.config.Service(),
+		f.config.Port(),
 		func(grpcServer *grpc.Server, srvCtx *services.ServiceContext, endptCtx *services.EndpointContext, storageConnector *storage.StorageConnector) error {
-			storageKind := f.config.GetStorageCentralEngine()
-			centralStorage, err := storageConnector.GetCentralStorage(storageKind, endptCtx)
+			storageKind := f.config.StorageCentralEngine()
+			centralStorage, err := storageConnector.CentralStorage(storageKind, endptCtx)
 			if err != nil {
 				return err
 			}
-			zapCentralStorage, err := centralStorage.GetZAPCentralStorage()
+			zapCentralStorage, err := centralStorage.ZAPCentralStorage()
 			if err != nil {
 				return err
 			}
@@ -83,7 +83,7 @@ func (f *ZAPService) GetEndpoints() ([]services.EndpointInitializer, error) {
 	return endpoints, nil
 }
 
-// GetServiceConfigReader returns the service configuration reader.
-func (f *ZAPService) GetServiceConfigReader() (runtime.ServiceConfigReader, error) {
+// ServiceConfigReader returns the service configuration reader.
+func (f *ZAPService) ServiceConfigReader() (runtime.ServiceConfigReader, error) {
 	return f.configReader, nil
 }

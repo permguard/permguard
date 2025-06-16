@@ -27,8 +27,8 @@ type SamplePacket struct {
 	Text string
 }
 
-// GetType returns the type of the packet.
-func (p *SamplePacket) GetType() uint64 {
+// Type returns the type of the packet.
+func (p *SamplePacket) Type() uint64 {
 	return 0
 }
 
@@ -89,7 +89,7 @@ func TestPacketWriterAndReader(t *testing.T) {
 	data, state, err := reader.ReadNextDataPacket(nil)
 	assert.Nil(err)
 	assert.NotNil(state)
-	assert.Equal(state.packetType, inData1.GetType())
+	assert.Equal(state.packetType, inData1.Type())
 	assert.Equal(state.packetStreamSize, uint64(3))
 	assert.Equal(state.packetStreamIndex, uint64(0))
 
@@ -102,7 +102,7 @@ func TestPacketWriterAndReader(t *testing.T) {
 	// --- Read second data packet ---
 	data, state, err = reader.ReadNextDataPacket(state)
 	assert.Nil(err)
-	assert.Equal(state.packetType, inData2.GetType())
+	assert.Equal(state.packetType, inData2.Type())
 	assert.Equal(state.packetStreamSize, uint64(3))
 	assert.Equal(state.packetStreamIndex, uint64(1))
 
@@ -115,7 +115,7 @@ func TestPacketWriterAndReader(t *testing.T) {
 	// --- Read third data packet ---
 	data, state, err = reader.ReadNextDataPacket(state)
 	assert.Nil(err)
-	assert.Equal(state.packetType, inData2.GetType()) // still same type
+	assert.Equal(state.packetType, inData2.Type()) // still same type
 	assert.Equal(state.packetStreamSize, uint64(3))
 	assert.Equal(state.packetStreamIndex, uint64(2))
 

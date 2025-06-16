@@ -48,22 +48,22 @@ func (m *WorkspaceManager) cleanupLocalArea() (bool, error) {
 // scanSourceCodeFiles scans the source code and schema files across all supported partitions.
 // It returns two lists: the included files and the ignored files.
 func (m *WorkspaceManager) scanSourceCodeFiles(langPvd *ManifestLanguageProvider) ([]cosp.CodeFile, []cosp.CodeFile, error) {
-	partitions := langPvd.GetPartitions()
+	partitions := langPvd.Partitions()
 	if len(partitions) == 0 {
 		return nil, nil, errors.New("cli: no partitions are supported")
 	}
 
 	var scanIncludedFiles, scanIgnoredFiles []cosp.CodeFile
-	workDir := m.ctx.GetWorkDir()
+	workDir := m.ctx.WorkDir()
 
 	for _, partition := range partitions {
-		absLang, err := langPvd.GetAbstractLanguage(partition)
+		absLang, err := langPvd.AbstractLanguage(partition)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		codeFileExts := absLang.GetPolicyFileExtensions()
-		schemaFileNames := absLang.GetSchemaFileNames()
+		codeFileExts := absLang.PolicyFileExtensions()
+		schemaFileNames := absLang.SchemaFileNames()
 
 		ignoredPartitionPaths := []string{}
 		if partition == "/" {
@@ -140,11 +140,11 @@ func (m *WorkspaceManager) scanByKind(partition string, kind string, extensions,
 // blobifyPermSchemaFile processes a PermGuard schema file.
 // It enforces that only one schema file is allowed per workspace.
 func (m *WorkspaceManager) blobifyPermSchemaFile(langPvd *ManifestLanguageProvider, partition, path, wkdir string, mode uint32, blobifiedCodeFiles []cosp.CodeFile, data []byte, file cosp.CodeFile) ([]cosp.CodeFile, error) {
-	absLang, err := langPvd.GetAbstractLanguage(file.Partition)
+	absLang, err := langPvd.AbstractLanguage(file.Partition)
 	if err != nil {
 		return nil, err
 	}
-	lang, err := langPvd.GetLanguage(file.Partition)
+	lang, err := langPvd.Language(file.Partition)
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +163,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(langPvd *ManifestLanguageProvid
 	}
 
 	// Only one section is expected in schema files
-	secObj := multiSecObj.GetSectionObjects()[0]
+	secObj := multiSecObj.SectionObjects()[0]
 	codeFile := m.buildCodeFileFromSection(secObj, file, path, wkdir, mode)
 	return append(blobifiedCodeFiles, codeFile), nil
 }
@@ -172,11 +172,11 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(langPvd *ManifestLanguageProvid
 func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider, partition string, path string, data []byte,
 	file cosp.CodeFile, wkdir string, mode uint32, blobifiedCodeFiles []cosp.CodeFile) ([]cosp.CodeFile, error) {
 
-	absLang, err := langPvd.GetAbstractLanguage(file.Partition)
+	absLang, err := langPvd.AbstractLanguage(file.Partition)
 	if err != nil {
 		return nil, err
 	}
-	lang, err := langPvd.GetLanguage(file.Partition)
+	lang, err := langPvd.Language(file.Partition)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +194,7 @@ func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider
 		return append(blobifiedCodeFiles, codeFile), nil
 	}
 
-	for _, secObj := range multiSecObj.GetSectionObjects() {
+	for _, secObj := range multiSecObj.SectionObjects() {
 		codeFile := m.buildCodeFileFromSection(secObj, file, path, wkdir, mode)
 		blobifiedCodeFiles = append(blobifiedCodeFiles, codeFile)
 	}
@@ -204,28 +204,28 @@ func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider
 // buildCodeFileFromSection builds a CodeFile from a given SectionObject with metadata, errors and OID assignment.
 func (m *WorkspaceManager) buildCodeFileFromSection(secObj *objects.SectionObject, inputFile cosp.CodeFile, path, wkdir string, mode uint32) cosp.CodeFile {
 	codeFile := cosp.CodeFile{
-		Partition:       secObj.GetPartition(),
+		Partition:       secObj.Partition(),
 		Kind:            inputFile.Kind,
 		Path:            strings.TrimPrefix(path, wkdir),
-		Section:         secObj.GetNumberOfSection(),
+		Section:         secObj.NumberOfSection(),
 		Mode:            mode,
-		HasErrors:       secObj.GetError() != nil,
-		OType:           secObj.GetObjectType(),
-		OName:           secObj.GetObjectName(),
-		CodeID:          secObj.GetCodeID(),
-		CodeType:        secObj.GetCodeType(),
-		Language:        secObj.GetLanguage(),
-		LanguageVersion: secObj.GetLanguageVersion(),
-		LanguageType:    secObj.GetLanguageType(),
+		HasErrors:       secObj.Error() != nil,
+		OType:           secObj.ObjectType(),
+		OName:           secObj.ObjectName(),
+		CodeID:          secObj.CodeID(),
+		CodeType:        secObj.CodeType(),
+		Language:        secObj.Language(),
+		LanguageVersion: secObj.LanguageVersion(),
+		LanguageType:    secObj.LanguageType(),
 	}
 
 	if codeFile.HasErrors {
-		err := secObj.GetError()
+		err := secObj.Error()
 		codeFile.Error = err.Error()
 	} else {
-		obj := secObj.GetObject()
-		codeFile.OID = obj.GetOID()
-		m.cospMgr.SaveCodeSourceObject(obj.GetOID(), obj.GetContent())
+		obj := secObj.Object()
+		codeFile.OID = obj.OID()
+		m.cospMgr.SaveCodeSourceObject(obj.OID(), obj.Content())
 	}
 
 	return codeFile
@@ -238,7 +238,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *Mani
 	partitionSchemas := map[string]int{}
 
 	for _, file := range codeFiles {
-		wkdir := m.ctx.GetWorkDir()
+		wkdir := m.ctx.WorkDir()
 		path := file.Path
 
 		// Read file content and mode from the workspace
@@ -288,16 +288,16 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *Mani
 		if schemaCount > 0 {
 			continue
 		}
-		absLang, err := langPvd.GetAbstractLanguage(partition)
+		absLang, err := langPvd.AbstractLanguage(partition)
 		if err != nil {
 			return "", nil, err
 		}
-		schemaFileNames := absLang.GetSchemaFileNames()
+		schemaFileNames := absLang.SchemaFileNames()
 		if len(schemaFileNames) > 0 {
 			schemaFileName := schemaFileNames[0]
 			codeFile := cosp.CodeFile{
 				Partition: partition,
-				Path:      m.persMgr.GetRelativeDir(persistence.WorkspaceDir, schemaFileName),
+				Path:      m.persMgr.RelativeDir(persistence.WorkspaceDir, schemaFileName),
 				Section:   0,
 				Mode:      0,
 				HasErrors: true,
@@ -357,12 +357,12 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *Mani
 	if err != nil {
 		return "", blobifiedCodeFiles, errors.Join(err, errors.New("cli: tree object creation failed"))
 	}
-	if _, err := m.cospMgr.SaveCodeSourceObject(treeObj.GetOID(), treeObj.GetContent()); err != nil {
+	if _, err := m.cospMgr.SaveCodeSourceObject(treeObj.OID(), treeObj.Content()); err != nil {
 		return "", blobifiedCodeFiles, err
 	}
 
 	// Save tree configuration
-	treeID := treeObj.GetOID()
+	treeID := treeObj.OID()
 	if err := m.cospMgr.SaveCodeSourceConfig(treeID); err != nil {
 		return treeID, blobifiedCodeFiles, err
 	}

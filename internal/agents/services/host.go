@@ -52,23 +52,23 @@ func NewHostConfig(host services.HostKind, hostable services.Hostable, storageCo
 	}, nil
 }
 
-// GetHostable returns the hostable.
-func (h *HostConfig) GetHostable() services.Hostable {
+// Hostable returns the hostable.
+func (h *HostConfig) Hostable() services.Hostable {
 	return h.hostable
 }
 
-// GetStorageConnector returns the storage connector.
-func (h *HostConfig) GetStorageConnector() *storage.StorageConnector {
+// StorageConnector returns the storage connector.
+func (h *HostConfig) StorageConnector() *storage.StorageConnector {
 	return h.storageConnector
 }
 
-// GetServicesFactories returns the services factories.
-func (h *HostConfig) GetServicesFactories() map[services.ServiceKind]services.ServiceFactoryProvider {
+// ServicesFactories returns the services factories.
+func (h *HostConfig) ServicesFactories() map[services.ServiceKind]services.ServiceFactoryProvider {
 	return copier.CopyMap(h.servicesFactories)
 }
 
-// GetAppData returns the zone data.
-func (h *HostConfig) GetAppData() string {
+// AppData returns the zone data.
+func (h *HostConfig) AppData() string {
 	return h.appData
 }
 
@@ -81,7 +81,7 @@ type Host struct {
 
 // NewHost creates a new host.
 func NewHost(hostCfg *HostConfig) (*Host, error) {
-	hostCfgReader := services.NewHostConfiguration(hostCfg.GetAppData())
+	hostCfgReader := services.NewHostConfiguration(hostCfg.AppData())
 	hostCtx, err := services.NewHostContext(hostCfg.host, hostCfg.hostable, hostCfg.logger, hostCfgReader)
 	if err != nil {
 		return nil, err
@@ -92,21 +92,21 @@ func NewHost(hostCfg *HostConfig) (*Host, error) {
 	}, nil
 }
 
-// getLogger returns the logger.
-func (h *Host) getLogger() *zap.Logger {
-	return h.ctx.GetLogger()
+// logger returns the logger.
+func (h *Host) logger() *zap.Logger {
+	return h.ctx.Logger()
 }
 
 // buildServicesForServe builds the services for the host.
 func buildServicesForServe(h *Host, factories []services.ServiceFactory, logger *zap.Logger) ([]*Service, bool, bool, error) {
-	services := make([]*Service, len(h.config.GetServicesFactories()))
+	services := make([]*Service, len(h.config.ServicesFactories()))
 	for i, factory := range factories {
 		svcable, err := factory.Create()
 		if err != nil {
 			logger.Error("Error creating the service from the factory", zap.Error(err))
 			return nil, true, false, err
 		}
-		serviceCfg, err := newServiceConfig(h.config.GetHostable(), h.config.GetStorageConnector(), svcable)
+		serviceCfg, err := newServiceConfig(h.config.Hostable(), h.config.StorageConnector(), svcable)
 		if err != nil {
 			logger.Error("Error creating service config", zap.Error(err))
 			return nil, true, false, err
@@ -123,11 +123,11 @@ func buildServicesForServe(h *Host, factories []services.ServiceFactory, logger 
 
 // Serve starts the host.
 func (h *Host) Serve(ctx context.Context) (bool, error) {
-	logger := h.getLogger()
+	logger := h.logger()
 	logger.Debug("Host is starting")
-	factories := make([]services.ServiceFactory, len(h.config.GetServicesFactories()))
+	factories := make([]services.ServiceFactory, len(h.config.ServicesFactories()))
 	count := 0
-	for _, servicesFactory := range h.config.GetServicesFactories() {
+	for _, servicesFactory := range h.config.ServicesFactories() {
 		factory, err := servicesFactory.CreateFactory()
 		if err != nil {
 			logger.Error("Error creating the service factory", zap.Error(err))
@@ -159,7 +159,7 @@ func (h *Host) Serve(ctx context.Context) (bool, error) {
 
 // GracefulStop stops the host.
 func (h *Host) GracefulStop(ctx context.Context) (bool, error) {
-	logger := h.getLogger()
+	logger := h.logger()
 	logger.Debug("Host is stopping")
 	hasStopped := true
 	for _, service := range h.services {

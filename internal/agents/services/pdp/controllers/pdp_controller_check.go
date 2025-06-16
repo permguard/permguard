@@ -19,6 +19,7 @@ package controllers
 import (
 	"github.com/permguard/permguard/common/pkg/extensions/ids"
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
+	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 )
 
 // authorizationCheckExpandAuthorizationCheckWithDefaults expands the authorization check with defaults.
@@ -75,4 +76,37 @@ func authorizationCheckExpandAuthorizationCheckWithDefaults(request *pdp.Authori
 		}
 	}
 	return expReq, nil
+}
+
+// authorizationCheckBuildContextResponse builds the context response for the authorization check.
+func authorizationCheckBuildContextResponse(authzDecision *authzen.AuthorizationDecision) *pdp.ContextResponse {
+	ctxResponse := &pdp.ContextResponse{}
+	ctxResponse.ID = authzDecision.ID()
+
+	adminError := authzDecision.AdminError()
+	if adminError != nil {
+		ctxResponse.ReasonAdmin = &pdp.ReasonResponse{
+			Code:    adminError.Code(),
+			Message: adminError.Message(),
+		}
+	} else if !authzDecision.Decision() {
+		ctxResponse.ReasonAdmin = &pdp.ReasonResponse{
+			Code:    authzen.AuthzErrInternalErrorCode,
+			Message: authzen.AuthzErrInternalErrorMessage,
+		}
+	}
+
+	userError := authzDecision.UserError()
+	if userError != nil {
+		ctxResponse.ReasonUser = &pdp.ReasonResponse{
+			Code:    userError.Code(),
+			Message: userError.Message(),
+		}
+	} else if !authzDecision.Decision() {
+		ctxResponse.ReasonUser = &pdp.ReasonResponse{
+			Code:    authzen.AuthzErrInternalErrorCode,
+			Message: authzen.AuthzErrInternalErrorMessage,
+		}
+	}
+	return ctxResponse
 }

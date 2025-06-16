@@ -28,7 +28,7 @@ func NewHostConfiguration(appData string) *HostConfiguration {
 	}
 }
 
-// GetAppData returns the zone data.
-func (h *HostConfiguration) GetAppData() string {
+// AppData returns the zone data.
+func (h *HostConfiguration) AppData() string {
 	return h.appData
 }

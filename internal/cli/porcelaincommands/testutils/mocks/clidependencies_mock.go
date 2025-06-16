@@ -70,8 +70,8 @@ func (m *CliDependenciesMock) CreateGrpcPDPClient(pdpTarget string) (clients.Grp
 	return r0, args.Error(1)
 }
 
-// GetLanguageFactory returns the language factory.
-func (m *CliDependenciesMock) GetLanguageFactory() (languages.LanguageFactory, error) {
+// LanguageFactory returns the language factory.
+func (m *CliDependenciesMock) LanguageFactory() (languages.LanguageFactory, error) {
 	args := m.Called()
 	var r0 languages.LanguageFactory
 	if val, ok := args.Get(0).(languages.LanguageFactory); ok {

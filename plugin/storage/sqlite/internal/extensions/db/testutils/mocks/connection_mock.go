@@ -30,8 +30,8 @@ type SQLiteConnectionMock struct {
 	mock.Mock
 }
 
-// GetStorage returns the storage kind.
-func (c *SQLiteConnectionMock) GetStorage() storage.StorageKind {
+// Storage returns the storage kind.
+func (c *SQLiteConnectionMock) Storage() storage.StorageKind {
 	ret := c.Called()
 
 	var r0 storage.StorageKind

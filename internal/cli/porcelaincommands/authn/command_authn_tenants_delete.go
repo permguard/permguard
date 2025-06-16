@@ -42,7 +42,7 @@ func runECommandForDeleteTenant(deps cli.CliDependenciesProvider, cmd *cobra.Com
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	zapTarget, err := ctx.GetZAPTarget()
+	zapTarget, err := ctx.ZAPTarget()
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to delete the tenant.")

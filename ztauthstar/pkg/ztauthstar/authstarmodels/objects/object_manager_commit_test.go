@@ -94,10 +94,10 @@ func TestSerializeDeserializeCommitWithOID(t *testing.T) {
 		message: "Initial commit",
 	}
 	obj1, _ := objectManager.CreateCommitObject(commit1)
-	obj1Info, _ := objectManager.GetObjectInfo(obj1)
+	obj1Info, _ := objectManager.ObjectInfo(obj1)
 
 	commit2 := obj1Info.instance.(*Commit)
 	obj2, _ := objectManager.CreateCommitObject(commit2)
 
-	assert.Equal(obj1.GetOID(), obj2.GetOID(), "OID mismatch")
+	assert.Equal(obj1.OID(), obj2.OID(), "OID mismatch")
 }

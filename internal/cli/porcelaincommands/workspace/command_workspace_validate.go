@@ -41,7 +41,7 @@ func runECommandForValidateWorkspace(deps cli.CliDependenciesProvider, cmd *cobr
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	absLangFact, err := deps.GetLanguageFactory()
+	absLangFact, err := deps.LanguageFactory()
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent

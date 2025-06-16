@@ -52,13 +52,13 @@ func Run(provisionerInitializer storage.StorageProvisionerInitializer) {
 		os.Exit(1)
 	}
 
-	storageProvisioner, err := provisionerInitializer.GetStorageProvisioner()
+	storageProvisioner, err := provisionerInitializer.StorageProvisioner()
 	if err != nil {
 		fmt.Printf("Storage provisioner cannot add flags %s\n", err.Error())
 		os.Exit(1)
 	}
 
-	cmdInfo := provisionerInitializer.GetStorageProvisionerInfo()
+	cmdInfo := provisionerInitializer.StorageProvisionerInfo()
 	command := &cobra.Command{
 		Use:   cmdInfo.Use,
 		Short: cmdInfo.Short,

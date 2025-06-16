@@ -34,8 +34,8 @@ type LocalRefStatePacket struct {
 	OpCode uint16
 }
 
-// GetType returns the type of the packet.
-func (p *LocalRefStatePacket) GetType() uint64 {
+// Type returns the type of the packet.
+func (p *LocalRefStatePacket) Type() uint64 {
 	return notppackets.CombineUint32toUint64(LocalRefStatePacketType, 0)
 }
 

@@ -38,17 +38,17 @@ func NewEndpointInitializer(service ServiceKind, port int, registration func(*gr
 	}, nil
 }
 
-// GetService returns the service kind.
-func (d EndpointInitializer) GetService() ServiceKind {
+// Service returns the service kind.
+func (d EndpointInitializer) Service() ServiceKind {
 	return d.service
 }
 
-// GetPort returns the port.
-func (d EndpointInitializer) GetPort() int {
+// Port returns the port.
+func (d EndpointInitializer) Port() int {
 	return d.port
 }
 
-// GetRegistration returns the registration.
-func (d EndpointInitializer) GetRegistration() func(*grpc.Server, *ServiceContext, *EndpointContext, *storage.StorageConnector) error {
+// Registration returns the registration.
+func (d EndpointInitializer) Registration() func(*grpc.Server, *ServiceContext, *EndpointContext, *storage.StorageConnector) error {
 	return d.registration
 }

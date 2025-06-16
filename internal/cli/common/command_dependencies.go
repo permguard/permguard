@@ -50,7 +50,7 @@ func (c *cliDependencies) CreateGrpcPDPClient(zapTarget string) (clients.GrpcPDP
 }
 
 // CreateGrpcPAPClient creates a new gRPC client for the PAP service.
-func (c *cliDependencies) GetLanguageFactory() (languages.LanguageFactory, error) {
+func (c *cliDependencies) LanguageFactory() (languages.LanguageFactory, error) {
 	return c.langFactory, nil
 }
 

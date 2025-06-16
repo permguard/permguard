@@ -71,8 +71,8 @@ type StatePacket struct {
 	ErrorCode    uint16
 }
 
-// GetType returns the packet type.
-func (p *StatePacket) GetType() uint64 {
+// Type returns the packet type.
+func (p *StatePacket) Type() uint64 {
 	return notppackets.CombineUint32toUint64(StatePacketType, 0)
 }
 

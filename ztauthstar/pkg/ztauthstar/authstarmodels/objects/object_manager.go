@@ -89,8 +89,8 @@ func (m *ObjectManager) DeserializeObjectFromBytes(binaryData []byte) (*Object, 
 	return NewObject(binaryData)
 }
 
-// GetInstanceBytesFromBytes gets the instance bytes from bytes.
-func (m *ObjectManager) GetInstanceBytesFromBytes(object *Object) (string, []byte, error) {
+// InstanceBytesFromBytes gets the instance bytes from bytes.
+func (m *ObjectManager) InstanceBytesFromBytes(object *Object) (string, []byte, error) {
 	if object == nil {
 		return "", nil, errors.New("objects: object is nil")
 	}
@@ -118,9 +118,9 @@ func (m *ObjectManager) GetInstanceBytesFromBytes(object *Object) (string, []byt
 	return objectType, content, nil
 }
 
-// GetObjectInfo gets the object info.
-func (m *ObjectManager) GetObjectInfo(object *Object) (*ObjectInfo, error) {
-	objectType, instanceBytes, err := m.GetInstanceBytesFromBytes(object)
+// ObjectInfo gets the object info.
+func (m *ObjectManager) ObjectInfo(object *Object) (*ObjectInfo, error) {
+	objectType, instanceBytes, err := m.InstanceBytesFromBytes(object)
 	if err != nil {
 		return nil, err
 	}

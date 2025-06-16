@@ -26,11 +26,11 @@ import (
 
 // ExecInitalize the ref resources.
 func (m *RefManager) ExecInitalize() error {
-	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, m.getRefsDir())
+	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, m.refsDir())
 	if err != nil {
 		return err
 	}
-	headFile := m.getHeadFile()
+	headFile := m.headFile()
 	_, err = m.persMgr.CreateFileIfNotExists(persistence.PermguardDir, headFile)
 	if err != nil {
 		return err
@@ -73,7 +73,7 @@ func (m *RefManager) ExecCheckoutHead(ref string, output map[string]any, out com
 		}
 		output = out(output, "head", remoteObj, nil, true)
 	}
-	headInfo, err := m.GetCurrentHead()
+	headInfo, err := m.CurrentHead()
 	if err != nil {
 		return nil, output, err
 	}

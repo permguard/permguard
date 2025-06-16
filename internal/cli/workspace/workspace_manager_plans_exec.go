@@ -57,7 +57,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out common.PrinterOut
 	// Read current head settings
 	var err error
 	var headCtx *currentHeadContext
-	headCtx, err = m.getCurrentHeadContext()
+	headCtx, err = m.currentHeadContext()
 	if err != nil {
 		return fail(nil, err)
 	}
@@ -71,30 +71,30 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out common.PrinterOut
 	}
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "plan", fmt.Sprintf("Head successfully set to %s.", common.KeywordText(headCtx.GetRef())), nil, true)
-		out(nil, "plan", fmt.Sprintf("Ledger set to %s.", common.KeywordText(headCtx.GetLedgerURI())), nil, true)
+		out(nil, "plan", fmt.Sprintf("Head successfully set to %s.", common.KeywordText(headCtx.Ref())), nil, true)
+		out(nil, "plan", fmt.Sprintf("Ledger set to %s.", common.KeywordText(headCtx.LedgerURI())), nil, true)
 	} else if m.ctx.IsVerboseJSONOutput() {
 		remoteObj := map[string]any{
-			"ref": headCtx.GetRef(),
+			"ref": headCtx.Ref(),
 		}
 		output = out(output, "head", remoteObj, nil, true)
-		output = out(output, "ledger", headCtx.GetLedgerURI(), nil, true)
+		output = out(output, "ledger", headCtx.LedgerURI(), nil, true)
 	}
 
 	// Executes the planning for the current head
-	out(nil, "", fmt.Sprintf("Initiating the planning process for ledger %s.", common.KeywordText(headCtx.GetLedgerURI())), nil, true)
+	out(nil, "", fmt.Sprintf("Initiating the planning process for ledger %s.", common.KeywordText(headCtx.LedgerURI())), nil, true)
 
 	errPlanningProcessFailed := "Planning process failed."
 
-	if headCtx.GetRemoteCommitID() == objects.ZeroOID {
+	if headCtx.RemoteCommitID() == objects.ZeroOID {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("The ref %s has no commits associated with it.", common.KeywordText(headCtx.GetRef())), nil, true)
+			out(nil, "plan", fmt.Sprintf("The ref %s has no commits associated with it.", common.KeywordText(headCtx.Ref())), nil, true)
 		}
 	}
-	remoteTree, err := m.GetCurrentHeadTree(headCtx.GetRef())
+	remoteTree, err := m.CurrentHeadTree(headCtx.Ref())
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("The ref %s could not read the remote tree.", common.KeywordText(headCtx.GetRef())), nil, true)
+			out(nil, "plan", fmt.Sprintf("The ref %s could not read the remote tree.", common.KeywordText(headCtx.Ref())), nil, true)
 		}
 	}
 	var remoteCodeState []cosp.CodeObjectState
@@ -160,7 +160,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out common.PrinterOut
 		planObjs := append(createdItems, modifiedItems...)
 		planObjs = append(planObjs, unchangedItems...)
 		planObjs = append(planObjs, deletedItems...)
-		refInfo, err := m.rfsMgr.GetCurrentHeadRefInfo()
+		refInfo, err := m.rfsMgr.CurrentHeadRefInfo()
 		if err != nil {
 			if m.ctx.IsVerboseTerminalOutput() {
 				out(nil, "plan", "Failed to retrieve the current head ref info.", nil, true)
@@ -169,11 +169,11 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out common.PrinterOut
 			return fail(output, err)
 		}
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("Remote for the plan is set to: %s.", common.KeywordText(refInfo.GetRemote())), nil, true)
-			out(nil, "plan", fmt.Sprintf("Reference ID for the plan is set to: %s", common.IDText(refInfo.GetRef())), nil, true)
+			out(nil, "plan", fmt.Sprintf("Remote for the plan is set to: %s.", common.KeywordText(refInfo.Remote())), nil, true)
+			out(nil, "plan", fmt.Sprintf("Reference ID for the plan is set to: %s", common.IDText(refInfo.Ref())), nil, true)
 			out(nil, "plan", "Preparing to save the plan.", nil, true)
 		}
-		err = m.cospMgr.SaveRemoteCodePlan(refInfo.GetRef(), planObjs)
+		err = m.cospMgr.SaveRemoteCodePlan(refInfo.Ref(), planObjs)
 		if err != nil {
 			if m.ctx.IsVerboseTerminalOutput() {
 				out(nil, "plan", "Failed to save the plan.", nil, true)
@@ -229,7 +229,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out common.PrinterOu
 	}
 
 	// Read current head settings
-	headCtx, err := m.getCurrentHeadContext()
+	headCtx, err := m.currentHeadContext()
 	if err != nil {
 		return fail(nil, err)
 	}
@@ -241,13 +241,13 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out common.PrinterOu
 	}
 
 	// Executes the apply for the current head
-	out(nil, "", fmt.Sprintf("Initiating the apply process for ledger %s.", common.KeywordText(headCtx.GetLedgerURI())), nil, true)
+	out(nil, "", fmt.Sprintf("Initiating the apply process for ledger %s.", common.KeywordText(headCtx.LedgerURI())), nil, true)
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", "Preparing to read the plan.", nil, true)
 	}
 	errPlanningProcessFailed := "Apply process failed."
-	plan, err := m.cospMgr.ReadRemoteCodePlan(headCtx.GetRef())
+	plan, err := m.cospMgr.ReadRemoteCodePlan(headCtx.Ref())
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "apply", "Failed to read the plan.", nil, true)
@@ -285,9 +285,9 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out common.PrinterOu
 		return fail(output, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "apply", fmt.Sprintf("The tree has been created with id: %s.", common.IDText(treeObj.GetOID())), nil, true)
+		out(nil, "apply", fmt.Sprintf("The tree has been created with id: %s.", common.IDText(treeObj.OID())), nil, true)
 	}
-	commit, commitObj, err := m.buildPlanCommit(treeObj.GetOID(), headCtx.remoteCommitID)
+	commit, commitObj, err := m.buildPlanCommit(treeObj.OID(), headCtx.remoteCommitID)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "apply", "Failed to build the commit.", nil, true)
@@ -296,7 +296,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out common.PrinterOu
 		return fail(output, err)
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "apply", fmt.Sprintf("The commit has been created with id: %s.", common.IDText(commitObj.GetOID())), nil, true)
+		out(nil, "apply", fmt.Sprintf("The commit has been created with id: %s.", common.IDText(commitObj.OID())), nil, true)
 	}
 
 	bag := map[string]any{
@@ -309,12 +309,12 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out common.PrinterOu
 		HeadContextKey:           headCtx,
 	}
 
-	ctx, err := m.rmSrvtMgr.NOTPPush(headCtx.GetServer(), headCtx.GetServerPAPPort(), headCtx.GetZoneID(), headCtx.GetLedgerID(), bag, m)
+	ctx, err := m.rmSrvtMgr.NOTPPush(headCtx.Server(), headCtx.ServerPAPPort(), headCtx.ZoneID(), headCtx.LedgerID(), bag, m)
 	if err != nil {
 		return fail(nil, err)
 	}
 	committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
-	_, err = m.logsMgr.Log(headCtx.headRefInfo, headCtx.remoteCommitID, commitObj.GetOID(), logs.LogActionPush, committed, headCtx.GetLedgerURI())
+	_, err = m.logsMgr.Log(headCtx.headRefInfo, headCtx.remoteCommitID, commitObj.OID(), logs.LogActionPush, committed, headCtx.LedgerURI())
 
 	if err != nil {
 		return fail(nil, err)
@@ -330,7 +330,7 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out common.PrinterOu
 
 	out(nil, "", "Apply process completed successfully.", nil, true)
 	if !internal {
-		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote ledger: %s.", common.KeywordText(headCtx.GetLedgerURI())), nil, true)
+		out(nil, "", fmt.Sprintf("Your workspace is synchronized with the remote ledger: %s.", common.KeywordText(headCtx.LedgerURI())), nil, true)
 	}
 	return output, nil
 }

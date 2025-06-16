@@ -38,8 +38,8 @@ func NewCommunityCliInitializer() (*CommunityCliInitializer, error) {
 	return &CommunityCliInitializer{}, nil
 }
 
-// GetCliInfo returns the infos of the cli.
-func (s *CommunityCliInitializer) GetCliInfo() cli.CliInfo {
+// CliInfo returns the infos of the cli.
+func (s *CommunityCliInitializer) CliInfo() cli.CliInfo {
 	return cli.CliInfo{
 		Name:  "Community Command Line Interface",
 		Use:   "permguard",
@@ -48,8 +48,8 @@ func (s *CommunityCliInitializer) GetCliInfo() cli.CliInfo {
 	}
 }
 
-// GetCliCommands returns commands.
-func (s *CommunityCliInitializer) GetCliCommands(deps cli.CliDependenciesProvider, v *viper.Viper) ([]*cobra.Command, error) {
+// CliCommands returns commands.
+func (s *CommunityCliInitializer) CliCommands(deps cli.CliDependenciesProvider, v *viper.Viper) ([]*cobra.Command, error) {
 	zonesCmd := zones.CreateCommandForZones(deps, v)
 	authnCmd := authn.CreateCommandForAuthN(deps, v)
 	authzCmd := authz.CreateCommandForAuthZ(deps, v)
@@ -63,7 +63,7 @@ func (s *CommunityCliInitializer) GetCliCommands(deps cli.CliDependenciesProvide
 	}, wksCmds...), nil
 }
 
-// GetLanguageFactory returns the language factory.
-func (s *CommunityCliInitializer) GetLanguageFactory() (languages.LanguageFactory, error) {
+// LanguageFactory returns the language factory.
+func (s *CommunityCliInitializer) LanguageFactory() (languages.LanguageFactory, error) {
 	return NewCommunityLanguageFactory()
 }

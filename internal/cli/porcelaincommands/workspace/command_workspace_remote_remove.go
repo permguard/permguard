@@ -50,7 +50,7 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps cli.CliDependencies
 		}
 		return common.ErrCommandSilent
 	}
-	langAbs, err := deps.GetLanguageFactory()
+	langAbs, err := deps.LanguageFactory()
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent

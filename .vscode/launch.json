@@ -26,7 +26,7 @@
       // "args": ["plan", "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-server/cedar/magicfarmacia", "-v", "-o", "json"],
       // "args": ["config", "pap-set-target", "dsafasdf", "-v"],
       "env": {
-        "PERMGUARD_DEBUG": "TRUE"
+        "PERMGUARD_DEBUG": "TRUE",
       }
     },
     {
@@ -42,7 +42,8 @@
         "PERMGUARD_SERVER_APPDATA": "./samples/volume",
         "PERMGUARD_LOG_LEVEL": "DEBUG",
         // "PERMGUARD_SERVER_ZAP_ENABLE_DEFAULT_CREATION": "TRUE",
-        "PERMGUARD_SERVER_ZAP_DATA_FETCH_MAXSIZE": "1000"
+        "PERMGUARD_SERVER_ZAP_DATA_FETCH_MAXSIZE": "1000",
+        "PERMGUARD_SERVER_PDP_DECISION_LOG": "STDOUT"
       }
     }
   ]

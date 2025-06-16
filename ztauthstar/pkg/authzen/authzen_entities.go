@@ -22,12 +22,12 @@ type Entities struct {
 	items  []map[string]any
 }
 
-// GetSchema returns the schema of the entities.
-func (e *Entities) GetSchema() string {
+// Schema returns the schema of the entities.
+func (e *Entities) Schema() string {
 	return e.schema
 }
 
-// GetItems returns the items of the entities.
-func (e *Entities) GetItems() []map[string]any {
+// Items returns the items of the entities.
+func (e *Entities) Items() []map[string]any {
 	return e.items
 }

@@ -55,7 +55,7 @@ func (w *PacketWriter) WriteProtocol(protocol *ProtocolPacket) error {
 	if err != nil {
 		return err
 	}
-	if w.packet.Data, err = writeDataPacket(w.packet.Data, protocol.GetType(), data); err != nil {
+	if w.packet.Data, err = writeDataPacket(w.packet.Data, protocol.Type(), data); err != nil {
 		return err
 	}
 	w.protocolEndIndex = len(w.packet.Data) - 1
@@ -70,7 +70,7 @@ func (w *PacketWriter) AppendDataPacket(packet Packetable) error {
 	if w.protocolEndIndex == -1 || len(w.packet.Data) == 0 {
 		return errors.New("notp: missing protocol packet")
 	}
-	dataType := packet.GetType()
+	dataType := packet.Type()
 	data, err := packet.Serialize()
 	if err != nil {
 		return err

@@ -32,18 +32,18 @@ type LedgerInfo struct {
 	ledger string
 }
 
-// GetRemote returns the remote.
-func (r *LedgerInfo) GetRemote() string {
+// Remote returns the remote.
+func (r *LedgerInfo) Remote() string {
 	return r.remote
 }
 
-// GetZoneID returns the zone id.
-func (r *LedgerInfo) GetZoneID() int64 {
+// ZoneID returns the zone id.
+func (r *LedgerInfo) ZoneID() int64 {
 	return r.zoneID
 }
 
-// GetLedger returns the ledger.
-func (r *LedgerInfo) GetLedger() string {
+// Ledger returns the ledger.
+func (r *LedgerInfo) Ledger() string {
 	return r.ledger
 }
 

@@ -50,7 +50,7 @@ func runECommandForCheckoutWorkspace(args []string, deps cli.CliDependenciesProv
 		}
 		return common.ErrCommandSilent
 	}
-	langFct, err := deps.GetLanguageFactory()
+	langFct, err := deps.LanguageFactory()
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
