@@ -41,7 +41,7 @@ func runECommandForListLedgers(deps cli.CliDependenciesProvider, cmd *cobra.Comm
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	papTarget, err := ctx.GetPAPTarget()
+	papTarget, err := ctx.PAPTarget()
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to list ledgers.")

@@ -35,7 +35,7 @@ func runECommandForZAPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	zapTarget, err := ctx.GetZAPTarget()
+	zapTarget, err := ctx.ZAPTarget()
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to get the zap target.")
@@ -56,7 +56,7 @@ func runECommandForPAPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	papTarget, err := ctx.GetPAPTarget()
+	papTarget, err := ctx.PAPTarget()
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to get the pap target.")
@@ -78,7 +78,7 @@ func runECommandForPDPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	pdpTarget, err := ctx.GetPDPTarget()
+	pdpTarget, err := ctx.PDPTarget()
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to get the pdp target.")

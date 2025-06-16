@@ -51,14 +51,14 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 ---
 
-**\--storage-engine-central**: *data storage engine to be used for central data (default `sqlite`).*
+**\--storage-engine-central**: *data storage engine to be used for central data (default `SQLITE`).*
 
 ---
 
 **Storage Engines**: storage engine options are used to configure the storage engine responsible for data persistence in the services.
 
 <details>
-  <summary>SQLITE</summary>
+  <summary>SQLite</summary>
 
 **\--storage-engine-sqlite-dbname**: *sqlite database name (default **permguard**).*
 
@@ -76,7 +76,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 {{< callout >}} Zone Administration Point. {{< /callout >}}
 
-**\--storage-zap-engine-central**: *data storage engine to be used for the ZAP central data. This overrides the `--storage-engine-central` option. Default: `sqlite`.*
+**\--storage-zap-engine-central**: *data storage engine to be used for the ZAP central data. This overrides the `--storage-engine-central` option. Default: `SQLITE`.*
 
 ---
 
@@ -96,7 +96,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 {{< callout >}} Policy Administration Point. {{< /callout >}}
 
-**\--storage-pap-engine-central**: *data storage engine to be used for the PAP central data. This overrides the `--storage-engine-central` option. Default: `sqlite`.*
+**\--storage-pap-engine-central**: *data storage engine to be used for the PAP central data. This overrides the `--storage-engine-central` option. Default: `SQLITE`.*
 
 ---
 
@@ -112,7 +112,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 {{< callout >}} Policy Information Point. {{< /callout >}}
 
-**\--storage-pip-engine-central**: *data storage engine to be used for the PIP central data. This overrides the `--storage-engine-central` option. Default: `sqlite`.*
+**\--storage-pip-engine-central**: *data storage engine to be used for the PIP central data. This overrides the `--storage-engine-central` option. Default: `SQLITE`.*
 
 ---
 
@@ -128,7 +128,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 
 {{< callout >}} Policy Decision Point. {{< /callout >}}
 
-**\--storage-pdp-engine-central**: *data storage engine to be used for the PDP central data. This overrides the `--storage-engine-central` option. Default: `sqlite`.*
+**\--storage-pdp-engine-central**: *data storage engine to be used for the PDP central data. This overrides the `--storage-engine-central` option. Default: `SQLITE`.*
 
 ---
 
@@ -139,6 +139,19 @@ Regardless of the chosen distribution, the binary accepts the following options:
 **\--server-pdp-grpc-port int**: *port to be used for exposing the pdp grpc services. (default `9094`).*
 
 ---
+
+**\--server-pdp-decision-log**: *specifies where to send decision logs (default `NONE`, options `NONE`, `STDOUT`, `FILE`).*
+
+<details>
+  <summary>Options</summary>
+
+| OPTION   | MEANING                                                                                     |
+|----------|---------------------------------------------------------------------------------------------|
+| `NONE`   | Disables decision logging entirely.                                                         |
+| `STDOUT` | Writes decision logs to standard output, useful for debugging or container environments.    |
+| `FILE`   | Persists decision logs to a file on disk (log file location is configurable separately).    |
+
+</details>
 
 ## Provisioners
 
@@ -168,7 +181,7 @@ Regardless of the chosen distribution, the binary accepts the following options:
 ---
 
 <details>
-  <summary>SQLITE</summary>
+  <summary>SQLite</summary>
 
 **\--storage-engine-sqlite-filepath**: *sqlite database file path (default `.`).*
 

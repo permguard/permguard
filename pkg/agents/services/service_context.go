@@ -41,7 +41,7 @@ type ServiceContext struct {
 
 // NewServiceContext creates a new service context.
 func NewServiceContext(hostContext *HostContext, service ServiceKind, configReader runtime.ServiceConfigReader) (*ServiceContext, error) {
-	newLogger := hostContext.GetLogger().With(zap.String(string("service"), service.String()))
+	newLogger := hostContext.Logger().With(zap.String(string("service"), service.String()))
 	data := map[string]any{ctxSvcServiceKey: service, ctxSvcLoggerKey: newLogger, ctxSvcCfgReader: configReader}
 	ctx := context.WithValue(hostContext.ctx, serviceCtxKey{}, data)
 	return &ServiceContext{
@@ -50,38 +50,38 @@ func NewServiceContext(hostContext *HostContext, service ServiceKind, configRead
 	}, nil
 }
 
-// GetContext returns the context.
-func (s *ServiceContext) GetContext() context.Context {
+// Context returns the context.
+func (s *ServiceContext) Context() context.Context {
 	return s.ctx
 }
 
-// GetService returns the service.
-func (s *ServiceContext) GetService() ServiceKind {
+// Service returns the service.
+func (s *ServiceContext) Service() ServiceKind {
 	return s.ctx.Value(serviceCtxKey{}).(map[string]any)[ctxSvcServiceKey].(ServiceKind)
 }
 
-// GetLogger returns the logger.
-func (s *ServiceContext) GetLogger() *zap.Logger {
+// Logger returns the logger.
+func (s *ServiceContext) Logger() *zap.Logger {
 	return s.ctx.Value(serviceCtxKey{}).(map[string]any)[ctxSvcLoggerKey].(*zap.Logger)
 }
 
-// GetParentLoggerMessage returns the parent logger message.
-func (s *ServiceContext) GetParentLoggerMessage() string {
-	service := s.GetService().String()
-	return fmt.Sprintf("%s[%s]", s.parentCtx.GetParentLoggerMessage(), service)
+// ParentLoggerMessage returns the parent logger message.
+func (s *ServiceContext) ParentLoggerMessage() string {
+	service := s.Service().String()
+	return fmt.Sprintf("%s[%s]", s.parentCtx.ParentLoggerMessage(), service)
 }
 
-// GetLogMessage returns a well formatted log message.
-func (s *ServiceContext) GetLogMessage(message string) string {
-	return fmt.Sprintf("%s: %s", s.GetParentLoggerMessage(), message)
+// LogMessage returns a well formatted log message.
+func (s *ServiceContext) LogMessage(message string) string {
+	return fmt.Sprintf("%s: %s", s.ParentLoggerMessage(), message)
 }
 
-// GetHostConfigReader returns the host configuration reader.
-func (s *ServiceContext) GetHostConfigReader() (runtime.HostConfigReader, error) {
-	return s.parentCtx.GetHostConfigReader()
+// HostConfigReader returns the host configuration reader.
+func (s *ServiceContext) HostConfigReader() (runtime.HostConfigReader, error) {
+	return s.parentCtx.HostConfigReader()
 }
 
-// GetServiceConfigReader returns the service configuration reader.
-func (s *ServiceContext) GetServiceConfigReader() (runtime.ServiceConfigReader, error) {
+// ServiceConfigReader returns the service configuration reader.
+func (s *ServiceContext) ServiceConfigReader() (runtime.ServiceConfigReader, error) {
 	return s.ctx.Value(serviceCtxKey{}).(map[string]any)[ctxSvcCfgReader].(runtime.ServiceConfigReader), nil
 }

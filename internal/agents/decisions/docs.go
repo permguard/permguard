@@ -14,26 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package authzen
-
-// Resource represents the resource.
-type Resource struct {
-	resType    string
-	id         string
-	properties map[string]any
-}
-
-// Type returns the type of the resource.
-func (r *Resource) Type() string {
-	return r.resType
-}
-
-// ID returns the ID of the resource.
-func (r *Resource) ID() string {
-	return r.id
-}
-
-// Properties returns the properties of the resource.
-func (r *Resource) Properties() map[string]any {
-	return r.properties
-}
+// Package decisions implements the decisions.
+package decisions

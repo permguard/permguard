@@ -44,7 +44,7 @@ func NewSQLiteCentralStorageConfig(ctx *storage.StorageContext) (*SQLiteCentralS
 	if ctx == nil {
 		return nil, fmt.Errorf("storage: invalid storage context")
 	}
-	cgfReader, err := ctx.GetServiceConfigReader()
+	cgfReader, err := ctx.ServiceConfigReader()
 	if err != nil {
 		return nil, fmt.Errorf("storage: unable to get service config reader: %w", err)
 	}
@@ -53,9 +53,9 @@ func NewSQLiteCentralStorageConfig(ctx *storage.StorageContext) (*SQLiteCentralS
 	}, nil
 }
 
-// GetDataFetchMaxPageSize returns the maximum number of items to fetch per request.
-func (c *SQLiteCentralStorageConfig) GetDataFetchMaxPageSize() int32 {
-	maxSize, err := c.configReader.GetValue(maxPageSizeKey)
+// DataFetchMaxPageSize returns the maximum number of items to fetch per request.
+func (c *SQLiteCentralStorageConfig) DataFetchMaxPageSize() int32 {
+	maxSize, err := c.configReader.Value(maxPageSizeKey)
 	if err != nil {
 		return 10000
 	}
@@ -65,9 +65,9 @@ func (c *SQLiteCentralStorageConfig) GetDataFetchMaxPageSize() int32 {
 	return maxPageSizeDefault
 }
 
-// GetEnabledDefaultCreation returns the flag to enable the creation of default entities.
-func (c *SQLiteCentralStorageConfig) GetEnabledDefaultCreation() bool {
-	enableDefaultCreation, err := c.configReader.GetValue(enabledDefaultCreationKey)
+// EnabledDefaultCreation returns the flag to enable the creation of default entities.
+func (c *SQLiteCentralStorageConfig) EnabledDefaultCreation() bool {
+	enableDefaultCreation, err := c.configReader.Value(enabledDefaultCreationKey)
 	if err != nil {
 		return false
 	}

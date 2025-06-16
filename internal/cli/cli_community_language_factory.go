@@ -42,8 +42,8 @@ func NewCommunityLanguageFactory() (*CommunityLanguageFactory, error) {
 	return languageFactory, nil
 }
 
-// GetLanguageAbastraction gets the language abstraction for the input language.
-func (c *CommunityLanguageFactory) GetLanguageAbastraction(language, version string) (languages.LanguageAbastraction, error) {
+// LanguageAbastraction gets the language abstraction for the input language.
+func (c *CommunityLanguageFactory) LanguageAbastraction(language, version string) (languages.LanguageAbastraction, error) {
 	langAbs, exists := c.languages[language]
 	if !exists {
 		return nil, fmt.Errorf("cli: invalid language %s with version %s", language, version)

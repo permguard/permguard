@@ -18,8 +18,8 @@ package storage
 
 // StorageProvisionerInitializer is the storage provisioner initializer.
 type StorageProvisionerInitializer interface {
-	// GetStorageProvisionerInfo returns the infos of the storage provisioner.
-	GetStorageProvisionerInfo() StorageProvisionerInfo
-	// GetStorageProvisioner returns the storage provisioner.
-	GetStorageProvisioner() (StorageProvisioner, error)
+	// StorageProvisionerInfo returns the infos of the storage provisioner.
+	StorageProvisionerInfo() StorageProvisionerInfo
+	// StorageProvisioner returns the storage provisioner.
+	StorageProvisioner() (StorageProvisioner, error)
 }

@@ -34,8 +34,8 @@ func NewServiceFactoryProvider(funcSvcFactCfg func() (ServiceFactoryConfig, erro
 	}, nil
 }
 
-// GetFactoryConfig returns the factory configuration.
-func (p ServiceFactoryProvider) GetFactoryConfig() (ServiceFactoryConfig, error) {
+// FactoryConfig returns the factory configuration.
+func (p ServiceFactoryProvider) FactoryConfig() (ServiceFactoryConfig, error) {
 	return p.config, nil
 }
 

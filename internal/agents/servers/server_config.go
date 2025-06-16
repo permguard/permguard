@@ -62,38 +62,38 @@ func newServerConfig(host services.HostKind, centralStorageEngine storage.Storag
 	}, nil
 }
 
-// GetHost returns the host kind.
-func (c *ServerConfig) GetHost() services.HostKind {
+// Host returns the host kind.
+func (c *ServerConfig) Host() services.HostKind {
 	return c.host
 }
 
-// GetCentralStorageEngine returns the central storage engine.
-func (c *ServerConfig) GetCentralStorageEngine() storage.StorageKind {
+// CentralStorageEngine returns the central storage engine.
+func (c *ServerConfig) CentralStorageEngine() storage.StorageKind {
 	return c.centralStorageEngine
 }
 
-// GetStorages returns service kinds.
-func (c *ServerConfig) GetStorages() []storage.StorageKind {
+// Storages returns service kinds.
+func (c *ServerConfig) Storages() []storage.StorageKind {
 	return copier.CopySlice(c.storages)
 }
 
-// GetStoragesFactories returns factories.
-func (c *ServerConfig) GetStoragesFactories() map[storage.StorageKind]storage.StorageFactoryProvider {
+// StoragesFactories returns factories.
+func (c *ServerConfig) StoragesFactories() map[storage.StorageKind]storage.StorageFactoryProvider {
 	return copier.CopyMap(c.storagesFactories)
 }
 
-// GetServices returns service kinds.
-func (c *ServerConfig) GetServices() []services.ServiceKind {
+// Services returns service kinds.
+func (c *ServerConfig) Services() []services.ServiceKind {
 	return copier.CopySlice(c.services)
 }
 
-// GetServicesFactories returns factories.
-func (c *ServerConfig) GetServicesFactories() map[services.ServiceKind]services.ServiceFactoryProvider {
+// ServicesFactories returns factories.
+func (c *ServerConfig) ServicesFactories() map[services.ServiceKind]services.ServiceFactoryProvider {
 	return copier.CopyMap(c.servicesFactories)
 }
 
-// GetAppData returns the zone data.
-func (c *ServerConfig) GetAppData() string {
+// AppData returns the zone data.
+func (c *ServerConfig) AppData() string {
 	return c.appData
 }
 
@@ -105,14 +105,14 @@ func (c *ServerConfig) AddFlags(flagSet *flag.FlagSet) error {
 	}
 	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixAppData), "./", "directory to be used as zone data")
 	for _, fcty := range c.storagesFactories {
-		config, _ := fcty.GetFactoryConfig()
+		config, _ := fcty.FactoryConfig()
 		err = config.AddFlags(flagSet)
 		if err != nil {
 			return err
 		}
 	}
 	for _, fcty := range c.servicesFactories {
-		config, _ := fcty.GetFactoryConfig()
+		config, _ := fcty.FactoryConfig()
 		err = config.AddFlags(flagSet)
 		if err != nil {
 			return err
@@ -134,7 +134,7 @@ func (c *ServerConfig) InitFromViper(v *viper.Viper) error {
 		return errors.New("server: invalid app data directory")
 	}
 	for _, fcty := range c.storagesFactories {
-		config, err := fcty.GetFactoryConfig()
+		config, err := fcty.FactoryConfig()
 		if err != nil {
 			return err
 		}
@@ -144,7 +144,7 @@ func (c *ServerConfig) InitFromViper(v *viper.Viper) error {
 		}
 	}
 	for _, fcty := range c.servicesFactories {
-		config, err := fcty.GetFactoryConfig()
+		config, err := fcty.FactoryConfig()
 		if err != nil {
 			return err
 		}

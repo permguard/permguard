@@ -34,7 +34,7 @@ type PAPService struct {
 
 // NewPAPService creates a new server  configuration.
 func NewPAPService(papServiceCfg *PAPServiceConfig) (*PAPService, error) {
-	configReader, err := services.NewServiceConfiguration(papServiceCfg.GetConfigData())
+	configReader, err := services.NewServiceConfiguration(papServiceCfg.ConfigData())
 	if err != nil {
 		return nil, err
 	}
@@ -44,23 +44,23 @@ func NewPAPService(papServiceCfg *PAPServiceConfig) (*PAPService, error) {
 	}, nil
 }
 
-// GetService returns the service kind.
-func (f *PAPService) GetService() services.ServiceKind {
-	return f.config.GetService()
+// Service returns the service kind.
+func (f *PAPService) Service() services.ServiceKind {
+	return f.config.Service()
 }
 
-// GetEndpoints returns the service kind.
-func (f *PAPService) GetEndpoints() ([]services.EndpointInitializer, error) {
+// Endpoints returns the service kind.
+func (f *PAPService) Endpoints() ([]services.EndpointInitializer, error) {
 	endpoint, err := services.NewEndpointInitializer(
-		f.config.GetService(),
-		f.config.GetPort(),
+		f.config.Service(),
+		f.config.Port(),
 		func(grpcServer *grpc.Server, srvCtx *services.ServiceContext, endptCtx *services.EndpointContext, storageConnector *storage.StorageConnector) error {
-			storageKind := f.config.GetStorageCentralEngine()
-			centralStorage, err := storageConnector.GetCentralStorage(storageKind, endptCtx)
+			storageKind := f.config.StorageCentralEngine()
+			centralStorage, err := storageConnector.CentralStorage(storageKind, endptCtx)
 			if err != nil {
 				return err
 			}
-			papCentralStorage, err := centralStorage.GetPAPCentralStorage()
+			papCentralStorage, err := centralStorage.PAPCentralStorage()
 			if err != nil {
 				return err
 			}
@@ -83,7 +83,7 @@ func (f *PAPService) GetEndpoints() ([]services.EndpointInitializer, error) {
 	return endpoints, nil
 }
 
-// GetServiceConfigReader returns the service configuration reader.
-func (f *PAPService) GetServiceConfigReader() (runtime.ServiceConfigReader, error) {
+// ServiceConfigReader returns the service configuration reader.
+func (f *PAPService) ServiceConfigReader() (runtime.ServiceConfigReader, error) {
 	return f.configReader, nil
 }

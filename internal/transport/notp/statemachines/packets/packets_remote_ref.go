@@ -30,8 +30,8 @@ type RemoteRefStatePacket struct {
 	OpCode uint16
 }
 
-// GetType returns the type of the packet.
-func (p *RemoteRefStatePacket) GetType() uint64 {
+// Type returns the type of the packet.
+func (p *RemoteRefStatePacket) Type() uint64 {
 	return notppackets.CombineUint32toUint64(RemoteRefStatePacketType, 0)
 }
 

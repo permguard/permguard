@@ -50,7 +50,7 @@ type V1PDPServer struct {
 
 // AuthorizationCheck checks the authorization.
 func (s *V1PDPServer) AuthorizationCheck(ctx context.Context, request *AuthorizationCheckRequest) (*AuthorizationCheckResponse, error) {
-	logger := s.ctx.GetLogger()
+	logger := s.ctx.Logger()
 	if request != nil {
 		jsonData, err := json.MarshalIndent(request, "", "  ")
 		if err == nil {

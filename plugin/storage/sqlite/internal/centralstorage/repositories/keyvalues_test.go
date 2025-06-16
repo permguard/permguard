@@ -104,8 +104,8 @@ func TestRepoUpsertKeyValueWithErrors(t *testing.T) {
 	assert.NotNil(err, "error should be not nil")
 }
 
-// TestRepoGetKeyValueWithSuccess tests the retrieval of a key-value pair with success.
-func TestRepoGetKeyValueWithSuccess(t *testing.T) {
+// TestRepoKeyValueWithSuccess tests the retrieval of a key-value pair with success.
+func TestRepoKeyValueWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 	ledger := Repository{}
 
@@ -125,7 +125,7 @@ func TestRepoGetKeyValueWithSuccess(t *testing.T) {
 		WithArgs(keyValue.ZoneID, keyValue.Key).
 		WillReturnRows(sqlRows)
 
-	dbOutKeyValue, err := ledger.GetKeyValue(sqlDB, keyValue.ZoneID, keyValue.Key)
+	dbOutKeyValue, err := ledger.KeyValue(sqlDB, keyValue.ZoneID, keyValue.Key)
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.NotNil(dbOutKeyValue, "key-value should be not nil")
@@ -134,8 +134,8 @@ func TestRepoGetKeyValueWithSuccess(t *testing.T) {
 	assert.Nil(err, "error should be nil")
 }
 
-// TestRepoGetKeyValueWithErrors tests the retrieval of a key-value pair with errors.
-func TestRepoGetKeyValueWithErrors(t *testing.T) {
+// TestRepoKeyValueWithErrors tests the retrieval of a key-value pair with errors.
+func TestRepoKeyValueWithErrors(t *testing.T) {
 	assert := assert.New(t)
 	ledger := Repository{}
 
@@ -148,7 +148,7 @@ func TestRepoGetKeyValueWithErrors(t *testing.T) {
 		WithArgs(zoneID, "non-existent-key").
 		WillReturnError(sql.ErrNoRows)
 
-	dbOutKeyValue, err := ledger.GetKeyValue(sqlDB, zoneID, "non-existent-key")
+	dbOutKeyValue, err := ledger.KeyValue(sqlDB, zoneID, "non-existent-key")
 
 	assert.Nil(sqlDBMock.ExpectationsWereMet(), "there were unfulfilled expectations")
 	assert.Nil(dbOutKeyValue, "key-value should be nil")

@@ -104,7 +104,7 @@ func (p *SQLiteStorageProvisioner) InitFromViper(v *viper.Viper) error {
 // setup sets up the database.
 func (p *SQLiteStorageProvisioner) setup() (*sql.DB, error) {
 	dbDir := p.dbDir
-	dbName := p.config.GetDBName()
+	dbName := p.config.DBName()
 	if !strings.HasSuffix(dbName, ".db") {
 		dbName += ".db"
 	}

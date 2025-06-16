@@ -33,14 +33,14 @@ type ServerFactoryConfig struct {
 
 // NewServerFactoryConfig creates a new server factory configuration.
 func NewServerFactoryConfig(initializer servers.ServerInitializer, centralStorageEngine storage.StorageKind) (*ServerFactoryConfig, error) {
-	host := initializer.GetHost()
-	storages := initializer.GetStorages(centralStorageEngine)
-	storagesFactories, err := initializer.GetStoragesFactories(centralStorageEngine)
+	host := initializer.Host()
+	storages := initializer.Storages(centralStorageEngine)
+	storagesFactories, err := initializer.StoragesFactories(centralStorageEngine)
 	if err != nil {
 		return nil, err
 	}
-	services := initializer.GetServices()
-	servicesFactories, err := initializer.GetServicesFactories()
+	services := initializer.Services()
+	servicesFactories, err := initializer.ServicesFactories()
 	if err != nil {
 		return nil, err
 	}

@@ -92,32 +92,32 @@ func (c *ZAPServiceConfig) InitFromViper(v *viper.Viper) error {
 	return nil
 }
 
-// GetConfigData returns the configuration data.
-func (c *ZAPServiceConfig) GetConfigData() map[string]any {
+// ConfigData returns the configuration data.
+func (c *ZAPServiceConfig) ConfigData() map[string]any {
 	return copier.CopyMap(c.config)
 }
 
-// GetPort returns the port.
-func (c *ZAPServiceConfig) GetPort() int {
+// Port returns the port.
+func (c *ZAPServiceConfig) Port() int {
 	return c.config[flagSuffixGrpcPort].(int)
 }
 
-// GetStorageCentralEngine returns the storage central engine.
-func (c *ZAPServiceConfig) GetStorageCentralEngine() storage.StorageKind {
+// StorageCentralEngine returns the storage central engine.
+func (c *ZAPServiceConfig) StorageCentralEngine() storage.StorageKind {
 	return c.config[flagCentralEngine].(storage.StorageKind)
 }
 
-// GetDataFetchMaxPageSize returns the maximum number of items to fetch per request.
-func (c *ZAPServiceConfig) GetDataFetchMaxPageSize() int {
+// DataFetchMaxPageSize returns the maximum number of items to fetch per request.
+func (c *ZAPServiceConfig) DataFetchMaxPageSize() int {
 	return c.config[flagDataFetchMaxPageSize].(int)
 }
 
-// GetEnabledDefaultCreation return if the default creation is enabled.
-func (c *ZAPServiceConfig) GetEnabledDefaultCreation() bool {
+// EnabledDefaultCreation return if the default creation is enabled.
+func (c *ZAPServiceConfig) EnabledDefaultCreation() bool {
 	return c.config[flagEnableDefaultCreation].(bool)
 }
 
-// GetService returns the service kind.
-func (c *ZAPServiceConfig) GetService() services.ServiceKind {
+// Service returns the service kind.
+func (c *ZAPServiceConfig) Service() services.ServiceKind {
 	return c.serviceKind
 }

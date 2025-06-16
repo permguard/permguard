@@ -33,11 +33,11 @@ func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemac
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-push", "Advertising - Initiating ledger state notification.", true)
 	}
-	handlerCtx.Set(CommittedKey, false)
+	handlerCtx.SetValue(CommittedKey, false)
 	localCommitObj, _ := getFromHandlerContext[*objects.Object](handlerCtx, LocalCodeCommitObjectKey)
 	packet := &notpagpackets.RemoteRefStatePacket{
 		RefPrevCommit: wksCtx.ctx.remoteCommitID,
-		RefCommit:     localCommitObj.GetOID(),
+		RefCommit:     localCommitObj.OID(),
 	}
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: []notppackets.Packetable{packet},
@@ -66,7 +66,7 @@ func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *no
 	if localRefSPacket.HasConflicts {
 		return nil, errors.New("cli: conflicts detected in the remote ledger")
 	}
-	handlerCtx.Set(RemoteCommitIDKey, localRefSPacket.RefCommit)
+	handlerCtx.SetValue(RemoteCommitIDKey, localRefSPacket.RefCommit)
 	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
 	return handlerReturn, nil
 }
@@ -80,7 +80,7 @@ func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatem
 	localCommitObj, _ := getFromHandlerContext[*objects.Object](handlerCtx, LocalCodeCommitObjectKey)
 	remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDKey)
 	commitIDs := []string{}
-	localCommitID := localCommitObj.GetOID()
+	localCommitID := localCommitObj.OID()
 	if localCommitID != remoteCommitID {
 		objMng, err := objects.NewObjectManager()
 		if err != nil {
@@ -101,11 +101,11 @@ func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatem
 			if err != nil {
 				return nil, err
 			}
-			commitIDs = append(commitIDs, obj.GetOID())
+			commitIDs = append(commitIDs, obj.OID())
 		}
 	}
-	handlerCtx.Set(DiffCommitIDsKey, commitIDs)
-	handlerCtx.Set(DiffCommitIDCursorKey, -1)
+	handlerCtx.SetValue(DiffCommitIDsKey, commitIDs)
+	handlerCtx.SetValue(DiffCommitIDCursorKey, -1)
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}
@@ -135,17 +135,17 @@ func (m *WorkspaceManager) buildPushPacketablesForCommit(isCode bool, commitObj 
 		return nil, err
 	}
 	packetCommit := &notpagpackets.ObjectStatePacket{
-		OID:     commitObj.GetOID(),
+		OID:     commitObj.OID(),
 		OType:   objects.ObjectTypeCommit,
-		Content: commitObj.GetContent(),
+		Content: commitObj.Content(),
 	}
 	packetable = append(packetable, packetCommit)
 
 	var treeObj *objects.Object
 	if isCode {
-		treeObj, err = m.cospMgr.ReadCodeSourceObject(commit.GetTree())
+		treeObj, err = m.cospMgr.ReadCodeSourceObject(commit.Tree())
 	} else {
-		treeObj, err = m.cospMgr.ReadObject(commit.GetTree())
+		treeObj, err = m.cospMgr.ReadObject(commit.Tree())
 	}
 	if err != nil {
 		return nil, err
@@ -155,15 +155,15 @@ func (m *WorkspaceManager) buildPushPacketablesForCommit(isCode bool, commitObj 
 		return nil, err
 	}
 	packetTree := &notpagpackets.ObjectStatePacket{
-		OID:     treeObj.GetOID(),
+		OID:     treeObj.OID(),
 		OType:   objects.ObjectTypeTree,
-		Content: treeObj.GetContent(),
+		Content: treeObj.Content(),
 	}
 	packetable = append(packetable, packetTree)
 
-	for _, entry := range tree.GetEntries() {
-		oid := entry.GetOID()
-		oType := entry.GetType()
+	for _, entry := range tree.Entries() {
+		oid := entry.OID()
+		oType := entry.Type()
 		var obj *objects.Object
 		var err error
 		if isCode {
@@ -177,7 +177,7 @@ func (m *WorkspaceManager) buildPushPacketablesForCommit(isCode bool, commitObj 
 		packet := &notpagpackets.ObjectStatePacket{
 			OID:     oid,
 			OType:   oType,
-			Content: obj.GetContent(),
+			Content: obj.Content(),
 		}
 		packetable = append(packetable, packet)
 	}
@@ -232,7 +232,7 @@ func (m *WorkspaceManager) OnPushHandleCommitResponse(handlerCtx *notpstatemachi
 	if err != nil {
 		return nil, err
 	}
-	_, err = m.cospMgr.CleanCode(wksCtx.ctx.GetRef())
+	_, err = m.cospMgr.CleanCode(wksCtx.ctx.Ref())
 	if err != nil {
 		return nil, err
 	}
@@ -241,6 +241,6 @@ func (m *WorkspaceManager) OnPushHandleCommitResponse(handlerCtx *notpstatemachi
 		Packetables:  packets,
 		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 	}
-	handlerCtx.Set(CommittedKey, true)
+	handlerCtx.SetValue(CommittedKey, true)
 	return handlerReturn, nil
 }

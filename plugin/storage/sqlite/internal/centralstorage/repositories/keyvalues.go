@@ -68,8 +68,8 @@ func (r *Repository) UpsertKeyValue(tx *sql.Tx, keyValue *KeyValue) (*KeyValue, 
 	return &dbKeyValue, nil
 }
 
-// GetKeyValue retrieves the value for a given key from the key-value store.
-func (r *Repository) GetKeyValue(db *sqlx.DB, zoneID int64, key string) (*KeyValue, error) {
+// KeyValue retrieves the value for a given key from the key-value store.
+func (r *Repository) KeyValue(db *sqlx.DB, zoneID int64, key string) (*KeyValue, error) {
 	if key == "" {
 		return nil, errors.New("storage: invalid client input - key is missing or empty")
 	}

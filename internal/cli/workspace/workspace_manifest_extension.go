@@ -34,8 +34,8 @@ type ManifestLanguageProvider struct {
 	langInfos map[string]languageInfo
 }
 
-// GetPartitions gets the partitions for the manifest language provider.
-func (p *ManifestLanguageProvider) GetPartitions() []string {
+// Partitions gets the partitions for the manifest language provider.
+func (p *ManifestLanguageProvider) Partitions() []string {
 	partitions := make([]string, 0, len(p.langInfos))
 	for partKey := range p.langInfos {
 		partitions = append(partitions, partKey)
@@ -43,8 +43,8 @@ func (p *ManifestLanguageProvider) GetPartitions() []string {
 	return partitions
 }
 
-// GetLanguage gets the language for the input partition.
-func (p *ManifestLanguageProvider) GetLanguage(partition string) (*manifests.Language, error) {
+// Language gets the language for the input partition.
+func (p *ManifestLanguageProvider) Language(partition string) (*manifests.Language, error) {
 	if p.langInfos == nil {
 		return nil, errors.New("cli: parition doens't exists")
 	}
@@ -55,8 +55,8 @@ func (p *ManifestLanguageProvider) GetLanguage(partition string) (*manifests.Lan
 	return langInfo.lang, nil
 }
 
-// GetAbstractLanguage gets the abstract language for the input partition.
-func (p *ManifestLanguageProvider) GetAbstractLanguage(partition string) (languages.LanguageAbastraction, error) {
+// AbstractLanguage gets the abstract language for the input partition.
+func (p *ManifestLanguageProvider) AbstractLanguage(partition string) (languages.LanguageAbastraction, error) {
 	if p.langInfos == nil {
 		return nil, errors.New("cli: parition doens't exists")
 	}
@@ -87,7 +87,7 @@ func (m *WorkspaceManager) buildManifestLanguageProvider() (*ManifestLanguagePro
 		runtime := manifest.Runtimes[partition.Runtime]
 		if _, ok := mfestLangMgr.langInfos[partition.Runtime]; !ok {
 			lang := runtime.Language
-			absLang, err := m.langFct.GetLanguageAbastraction(lang.Name, lang.Version)
+			absLang, err := m.langFct.LanguageAbastraction(lang.Name, lang.Version)
 			if err != nil {
 				return nil, err
 			}

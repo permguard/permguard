@@ -27,19 +27,19 @@ func ReadObjectContentBytes(obj *Object) (uint32, []byte, error) {
 	if err != nil {
 		return 0, nil, err
 	}
-	objInfo, err := objMng.GetObjectInfo(obj)
+	objInfo, err := objMng.ObjectInfo(obj)
 	if err != nil {
 		return 0, nil, err
 	}
-	objHeader := objInfo.GetHeader()
+	objHeader := objInfo.Header()
 	if !objHeader.IsNativeLanguage() {
 		return 0, nil, errors.New("objects: object is not in native language")
 	}
-	instance, ok := objInfo.GetInstance().([]byte)
+	instance, ok := objInfo.Instance().([]byte)
 	if !ok {
 		return 0, nil, errors.New("objects: invalid object instance")
 	}
-	return objHeader.GetCodeTypeID(), instance, nil
+	return objHeader.CodeTypeID(), instance, nil
 }
 
 // CreateCommitObject creates a commit object.
@@ -57,12 +57,12 @@ func ConvertObjectToCommit(obj *Object) (*Commit, error) {
 	if err != nil {
 		return nil, err
 	}
-	objInfo, err := objMng.GetObjectInfo(obj)
+	objInfo, err := objMng.ObjectInfo(obj)
 	if err != nil {
 		return nil, fmt.Errorf("objects: failed to get the object info %w", err)
 	}
 
-	value, ok := objInfo.GetInstance().(*Commit)
+	value, ok := objInfo.Instance().(*Commit)
 	if !ok {
 		return nil, errors.New("objects: object is not a valid commit")
 	}
@@ -84,12 +84,12 @@ func ConvertObjectToTree(obj *Object) (*Tree, error) {
 	if err != nil {
 		return nil, err
 	}
-	objInfo, err := objMng.GetObjectInfo(obj)
+	objInfo, err := objMng.ObjectInfo(obj)
 	if err != nil {
 		return nil, fmt.Errorf("objects: failed to get the object info %w", err)
 	}
 
-	value, ok := objInfo.GetInstance().(*Tree)
+	value, ok := objInfo.Instance().(*Tree)
 	if !ok {
 		return nil, errors.New("objects: object is not a valid tree")
 	}

@@ -33,13 +33,13 @@ func newRequirement(name, version string) *Requirement {
 	return &Requirement{name: name, version: version}
 }
 
-// GetName gets the name.
-func (r *Requirement) GetName() string {
+// Name gets the name.
+func (r *Requirement) Name() string {
 	return r.name
 }
 
-// GetVersion gets the version.
-func (r *Requirement) GetVersion() string {
+// Version gets the version.
+func (r *Requirement) Version() string {
 	return r.version
 }
 

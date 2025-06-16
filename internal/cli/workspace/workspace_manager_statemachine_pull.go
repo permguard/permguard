@@ -31,7 +31,7 @@ func (m *WorkspaceManager) OnPullSendRequestCurrentState(handlerCtx *notpstatema
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-pull", "Advertising - Initiating request for ledger state.", true)
 	}
-	handlerCtx.Set(CommittedKey, false)
+	handlerCtx.SetValue(CommittedKey, false)
 	packet := &notpagpackets.RemoteRefStatePacket{
 		RefPrevCommit: wksCtx.ctx.remoteCommitID,
 		RefCommit:     wksCtx.ctx.remoteCommitID,
@@ -39,7 +39,7 @@ func (m *WorkspaceManager) OnPullSendRequestCurrentState(handlerCtx *notpstatema
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: []notppackets.Packetable{packet},
 	}
-	handlerCtx.Set(LocalCodeCommitIDKey, wksCtx.ctx.remoteCommitID)
+	handlerCtx.SetValue(LocalCodeCommitIDKey, wksCtx.ctx.remoteCommitID)
 	return handlerReturn, nil
 }
 
@@ -54,7 +54,7 @@ func (m *WorkspaceManager) OnPullHandleRequestCurrentStateResponse(handlerCtx *n
 	if err != nil {
 		return nil, err
 	}
-	handlerCtx.Set(RemoteCommitIDKey, localRefSPacket.RefCommit)
+	handlerCtx.SetValue(RemoteCommitIDKey, localRefSPacket.RefCommit)
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}
@@ -65,9 +65,9 @@ func (m *WorkspaceManager) OnPullHandleRequestCurrentStateResponse(handlerCtx *n
 	if localRefSPacket.HasConflicts {
 		return nil, errors.New("cli: conflicts detected in the remote ledger")
 	}
-	handlerCtx.Set(RemoteCommitIDKey, localRefSPacket.RefCommit)
-	handlerCtx.Set(RemoteCommitsCountKey, localRefSPacket.NumberOfCommits)
-	handlerCtx.Set(LocalCommitsCountKey, uint32(0))
+	handlerCtx.SetValue(RemoteCommitIDKey, localRefSPacket.RefCommit)
+	handlerCtx.SetValue(RemoteCommitsCountKey, localRefSPacket.NumberOfCommits)
+	handlerCtx.SetValue(LocalCommitsCountKey, uint32(0))
 	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
 	return handlerReturn, nil
 }
@@ -117,7 +117,7 @@ func (m *WorkspaceManager) OnPullHandleExchangeDataStream(handlerCtx *notpstatem
 	}
 	commitsCount, _ := getFromHandlerContext[uint32](handlerCtx, LocalCommitsCountKey)
 	commitsCount = commitsCount + 1
-	handlerCtx.Set(LocalCommitsCountKey, commitsCount)
+	handlerCtx.SetValue(LocalCommitsCountKey, commitsCount)
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables:  []notppackets.Packetable{},
 		MessageValue: statePacket.MessageValue,
@@ -135,6 +135,6 @@ func (m *WorkspaceManager) OnPullSendCommit(handlerCtx *notpstatemachines.Handle
 		Packetables:  packets,
 		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
 	}
-	handlerCtx.Set(CommittedKey, true)
+	handlerCtx.SetValue(CommittedKey, true)
 	return handlerReturn, nil
 }

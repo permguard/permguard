@@ -48,7 +48,7 @@ func TestObjectManager(t *testing.T) {
 		assert.NotEmpty(commitObj.content, "Commit content should not be empty")
 
 		// Get object info
-		objectInfo, err := objectManager.GetObjectInfo(commitObj)
+		objectInfo, err := objectManager.ObjectInfo(commitObj)
 		assert.Nil(err)
 		assert.Equal(ObjectTypeCommit, objectInfo.otype, "Expected commit type")
 		assert.NotNil(objectInfo.instance, "Commit instance should not be nil")
@@ -82,7 +82,7 @@ func TestObjectManager(t *testing.T) {
 		assert.NotEmpty(treeObj.content, "Tree content should not be empty")
 
 		// Get object info
-		objectInfo, err := objectManager.GetObjectInfo(treeObj)
+		objectInfo, err := objectManager.ObjectInfo(treeObj)
 		assert.Nil(err)
 		assert.Equal(ObjectTypeTree, objectInfo.otype, "Expected tree type")
 		assert.NotNil(objectInfo.instance, "Tree instance should not be nil")
@@ -110,7 +110,7 @@ func TestObjectManager(t *testing.T) {
 		assert.NotEmpty(blobObj.content, "Blob content should not be empty")
 
 		// Get object info
-		objectInfo, err := objectManager.GetObjectInfo(blobObj)
+		objectInfo, err := objectManager.ObjectInfo(blobObj)
 		assert.Nil(err)
 		assert.Equal(ObjectTypeBlob, objectInfo.otype, "Expected blob type")
 		assert.NotNil(objectInfo.instance, "Blob instance should not be nil")
@@ -124,12 +124,12 @@ func TestObjectManager(t *testing.T) {
 	t.Run("Test invalid object", func(t *testing.T) {
 		assert := assert.New(t)
 		invalidObj := &Object{content: []byte{}}
-		_, err := objectManager.GetObjectInfo(invalidObj)
+		_, err := objectManager.ObjectInfo(invalidObj)
 		assert.NotNil(err, "Expected error for empty object content")
 
 		// Test for incorrect object type
 		invalidObj.content = []byte("xx 12\000some content")
-		_, err = objectManager.GetObjectInfo(invalidObj)
+		_, err = objectManager.ObjectInfo(invalidObj)
 		assert.NotNil(err, "Expected error for wrong object type")
 		assert.Contains(err.Error(), "objects: invalid object format: no NUL separator found", "Expected objects: unsupported object type ")
 	})

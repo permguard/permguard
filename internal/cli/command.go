@@ -54,7 +54,7 @@ func Run(cliInitializer cli.CliInitializer) {
 	if err != nil {
 		os.Exit(1)
 	}
-	langFct, err := cliInitializer.GetLanguageFactory()
+	langFct, err := cliInitializer.LanguageFactory()
 	if err != nil {
 		os.Exit(1)
 	}
@@ -62,11 +62,11 @@ func Run(cliInitializer cli.CliInitializer) {
 	if err != nil {
 		os.Exit(1)
 	}
-	commands, err := cliInitializer.GetCliCommands(depsProvider, v)
+	commands, err := cliInitializer.CliCommands(depsProvider, v)
 	if err != nil {
 		os.Exit(1)
 	}
-	cmdInfo := cliInitializer.GetCliInfo()
+	cmdInfo := cliInitializer.CliInfo()
 	command := &cobra.Command{
 		SilenceErrors: true,
 		SilenceUsage:  true,

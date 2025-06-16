@@ -41,7 +41,7 @@ func runECommandForListIdentities(deps cli.CliDependenciesProvider, cmd *cobra.C
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	zapTarget, err := ctx.GetZAPTarget()
+	zapTarget, err := ctx.ZAPTarget()
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to list identities.")

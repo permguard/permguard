@@ -49,18 +49,18 @@ func NewRemoteInfo(server string, zapPort, papPort int) (*RemoteInfo, error) {
 	}, nil
 }
 
-// GetServer returns the server.
-func (i *RemoteInfo) GetServer() string {
+// Server returns the server.
+func (i *RemoteInfo) Server() string {
 	return i.server
 }
 
-// GetZAPPort returns the zap port.
-func (i *RemoteInfo) GetZAPPort() int {
+// ZAPPort returns the zap port.
+func (i *RemoteInfo) ZAPPort() int {
 	return i.zapPort
 }
 
-// GetPAPPort returns the pap port.
-func (i *RemoteInfo) GetPAPPort() int {
+// PAPPort returns the pap port.
+func (i *RemoteInfo) PAPPort() int {
 	return i.papPort
 }
 

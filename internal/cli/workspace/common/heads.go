@@ -35,12 +35,12 @@ func NewHeadInfo(ref string) (*HeadInfo, error) {
 	}, nil
 }
 
-// GetRef returns the ref.
-func (i *HeadInfo) GetRef() string {
+// Ref returns the ref.
+func (i *HeadInfo) Ref() string {
 	return i.ref
 }
 
-// GetRefInfo returns the ref information.
-func (i *HeadInfo) GetRefInfo() (*RefInfo, error) {
-	return ConvertStringWithLedgerIDToRefInfo(i.GetRef())
+// RefInfo returns the ref information.
+func (i *HeadInfo) RefInfo() (*RefInfo, error) {
+	return ConvertStringWithLedgerIDToRefInfo(i.Ref())
 }

@@ -22,10 +22,10 @@ import (
 
 // Serviceable must be implemented by all services.
 type Serviceable interface {
-	// GetService returns the service kind.
-	GetService() ServiceKind
-	// GetEndpoints returns the service endpoints.
-	GetEndpoints() ([]EndpointInitializer, error)
-	// GetServiceConfigReader returns the service configuration reader.
-	GetServiceConfigReader() (runtime.ServiceConfigReader, error)
+	// Service returns the service kind.
+	Service() ServiceKind
+	// Endpoints returns the service endpoints.
+	Endpoints() ([]EndpointInitializer, error)
+	// ServiceConfigReader returns the service configuration reader.
+	ServiceConfigReader() (runtime.ServiceConfigReader, error)
 }

@@ -44,7 +44,7 @@ const (
 
 // getFromHandlerContext gets the value from the handler context.
 func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key string) (T, bool) {
-	value, ok := ctx.Get(key)
+	value, ok := ctx.Value(key)
 	if !ok {
 		var zero T
 		return zero, false
@@ -76,11 +76,11 @@ func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key str
 
 // GetObjectForType gets the object for the type.
 func GetObjectForType[T any](objMng *objects.ObjectManager, obj *objects.Object) (*T, error) {
-	objInfo, err := objMng.GetObjectInfo(obj)
+	objInfo, err := objMng.ObjectInfo(obj)
 	if err != nil {
 		return nil, err
 	}
-	instance := objInfo.GetInstance()
+	instance := objInfo.Instance()
 	value, ok := instance.(*T)
 	if !ok {
 		return nil, fmt.Errorf("storage: invalid object type")
@@ -90,7 +90,7 @@ func GetObjectForType[T any](objMng *objects.ObjectManager, obj *objects.Object)
 
 // readObject reads the object.
 func (s SQLiteCentralStoragePAP) readObject(db *sqlx.DB, zoneID int64, oid string) (*objects.Object, error) {
-	keyValue, errkey := s.sqlRepo.GetKeyValue(db, zoneID, oid)
+	keyValue, errkey := s.sqlRepo.KeyValue(db, zoneID, oid)
 	if errkey != nil || keyValue == nil || keyValue.Value == nil {
 		return nil, nil
 	}

@@ -28,22 +28,22 @@ type LanguageAbastraction interface {
 	BuildManifest(manifest *manifests.Manifest, template string) (*manifests.Manifest, error)
 	// ValidateManifest validates the manifest.
 	ValidateManifest(manifest *manifests.Manifest) (bool, error)
-	// GetLanguage gets the language name
-	GetLanguage() string
-	// GetLanguageID gets the language id
-	GetLanguageID() uint32
-	// GetFrontendLanguage gets fronted language.
-	GetFrontendLanguage() string
-	// GetFrontendLanguage gets backend language.
-	GetBackendLanguage() string
-	// GetPolicyFileExtensions gets the policy file extensions.
-	GetPolicyFileExtensions() []string
+	// Language gets the language name
+	Language() string
+	// LanguageID gets the language id
+	LanguageID() uint32
+	// FrontendLanguage gets fronted language.
+	FrontendLanguage() string
+	// FrontendLanguage gets backend language.
+	BackendLanguage() string
+	// PolicyFileExtensions gets the policy file extensions.
+	PolicyFileExtensions() []string
 	// CreatePolicyBlobObjects creates multi sections policy blob objects.
 	CreatePolicyBlobObjects(mfestLang *manifests.Language, partition string, path string, data []byte) (*objects.MultiSectionsObject, error)
 	// CreatePolicyContentBytesBody creates a multi policy content bytes.
 	CreatePolicyContentBytes(mfestLang *manifests.Language, blocks [][]byte) ([]byte, string, error)
-	// GetSchemaFileNames gets the schema file names.
-	GetSchemaFileNames() []string
+	// SchemaFileNames gets the schema file names.
+	SchemaFileNames() []string
 	// CreateSchemaBlobObjects creates multi sections schema blob objects.
 	CreateSchemaBlobObjects(mfestLang *manifests.Language, partition string, path string, data []byte) (*objects.MultiSectionsObject, error)
 	// CreateSchemaContentBytes creates a schema content bytes.
