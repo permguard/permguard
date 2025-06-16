@@ -26,7 +26,7 @@ This page provides a collection of `technical video` and `articles` that cover v
 1) ZTAuth*
 
    - [Episode 88: Rethink AuthZ: Immutable, Versionable Auth* Models & Trusted Delegation](https://www.youtube.com/watch?v=k6DZQ_GzWmg)
-   - [ZTAuth*: Zero Trust AuthN/AuthZ and Trusted Models](https://www.youtube.com/watch?v=rRE-LBrk6Dw)
+   - [ZTAuth*: Zero Trust AuthN/AuthZ and Trust Models](https://www.youtube.com/watch?v=rRE-LBrk6Dw)
 
 ## Articles
 
