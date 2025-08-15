@@ -1,6 +1,6 @@
 import docsearch from "@docsearch/js";
 
-var FALLBACK_VERSION = "0.1";
+var FALLBACK_VERSION = "0.0.x";
 
 function getVersion() {
   var versionMatch = window.location.href.toString().match(/\/docs\/([^/]+)/);
@@ -11,8 +11,8 @@ function getVersion() {
 
 docsearch({
   container: "#docsearch",
-  appId: "12ZDGY7DFM",
-  apiKey: "f8906cf9282829730e92917673da2199",
+  appId: "Y97Q3IU6YH",
+  apiKey: "6bbb1f533a692e69f5c66a5e4ee33604",
   indexName: "permguard_index",
   debug: false,
   insights: true,

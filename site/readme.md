@@ -28,13 +28,13 @@ To create a new version (e.g., `0.2`), follow these steps:
 The application will automatically select the latest version from the docsVersions array as the default version of the documentation.
 
 4. **Update the docsearch**
-  Modify the `FALLBACK_VERSION` in the `site\assets\js\docsearch.js` file to point to the new version when performing a search in the documentation.
+   Modify the `FALLBACK_VERSION` in the `site\assets\js\docsearch.js` file to point to the new version when performing a search in the documentation.
 
-  ```toml
-  const FALLBACK_VERSION = "0.2";
-  ```
+```toml
+const FALLBACK_VERSION = "0.2";
+```
 
-  _Note_: You should re-crawl all the pages in the algolia dashboard to take into account the new version pages when performing a search.
+_Note_: You should re-crawl all the pages in the algolia dashboard to take into account the new version pages when performing a search.
 
 # Algolia config
 
@@ -49,14 +49,14 @@ new Crawler({
   rateLimit: 8,
   renderJavaScript: false,
   startUrls: [
-    "https://oss.permguard.com/docs/",
-    "https://oss.permguard.com/blog/",
-    "https://oss.permguard.com/",
+    "https://community.permguard.com/docs/",
+    "https://community.permguard.com/blog/",
+    "https://community.permguard.com/",
   ],
   discoveryPatterns: [
-    "https://oss.permguard.com/docs/**",
-    "https://oss.permguard.com/blog/**",
-    "https://oss.permguard.com/",
+    "https://community.permguard.com/docs/**",
+    "https://community.permguard.com/blog/**",
+    "https://community.permguard.com/",
   ],
   schedule: "at 16:17 on Wednesday",
   maxDepth: 10,
@@ -64,9 +64,9 @@ new Crawler({
     {
       indexName: "permguard_index",
       pathsToMatch: [
-        "https://oss.permguard.com/docs/**",
-        "https://oss.permguard.com/blog/**",
-        "https://oss.permguard.com/",
+        "https://community.permguard.com/docs/**",
+        "https://community.permguard.com/blog/**",
+        "https://community.permguard.com/",
       ],
       recordExtractor: ({ helpers, url }) => {
         const versionMatch = url.toString().match(/\/docs\/([^/]+)/);
@@ -98,7 +98,7 @@ new Crawler({
       },
     },
   ],
-  sitemaps: ["https://oss.permguard.com/sitemap.xml"],
+  sitemaps: ["https://community.permguard.com/sitemap.xml"],
   initialIndexSettings: {
     permguard_index: {
       advancedSyntax: true,
