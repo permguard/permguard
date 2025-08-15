@@ -3,13 +3,12 @@
 <section class="section hero px-xl-4 px-xxl-0">
   <div class="row align-items-center">
     <div
-      class="col-16 col-lg-10 col-xl-7 col-xxl-8 hero__col d-flex flex-column align-items-start"
+      class="col-16 z-10 col-lg-10 col-xl-7 col-xxl-8 hero__col d-flex flex-column align-items-start"
     >
-      <h1 class="hero__title">
-        Permguard Community.
-      </h1>
+      <h1 class="hero__title">Permguard Community.</h1>
       <p class="hero__description">
-        Access the full power of Permguard Community under the Apache 2.0 license, no restrictions, no hidden costs.
+        Access the full power of Permguard Community under the Apache 2.0
+        license, no restrictions, no hidden costs.
       </p>
       {{ $currentPage := . -}} {{ $versions := site.Params.doks.docsVersions }}
       {{ $currentVersion := index $versions (sub (len $versions) 1) }}
@@ -29,18 +28,45 @@
         >
       </div>
     </div>
-    <div class="col-16 col-lg-6 col-xl-9 col-xxl-8 hero__img-wrapper-box">
-      <div class="d-none d-sm-flex hero__img-wrapper">
-        <img class="hero__image" src="/images/home/hero_community.svg" alt="Permguard" />
-      </div>
-
-      <div class="d-block d-sm-none hero__img-wrapper">
+    <div class="col-16 col-lg-6 z-0 col-xl-9 col-xxl-8 hero__img-wrapper-box">
+      <div
+        class="position-relative z-0 mt-n5 align-self-lg-end d-lg-block mx-sm-auto mx-lg-0 wrapper"
+      >
+        <!-- Desktop -->
         <img
-          class="hero__image"
-          src="/images/home/hero_community_mobile.svg"
-          alt="Permguard"
+          class="position-absolute d-none d-lg-block topology"
+          src="/images/home/topology.svg"
+          alt="topology"
+        />
+        <img
+          class="position-absolute d-none d-lg-block blur-fuchsia"
+          src="/images/home/blur-fuchsia.svg"
+          alt=""
+        />
+        <img
+          class="position-absolute d-none d-lg-block banner-illustration"
+          src="/images/home/banner_illustration.png"
+          alt=""
         />
 
+        <!-- Mobile (min-width: 520px) -->
+        <img
+          class="d-none d-sm-block d-lg-none topology-mobile"
+          src="/images/home/topology-mobile.svg"
+          alt=""
+        />
+        <img
+          class="position-absolute d-block d-lg-none banner-illustration-mobile"
+          src="/images/home/banner_illustration_mobile.png"
+          alt=""
+        />
+
+        <!-- Mobile (less than 520px) -->
+        <img
+          class="position-absolute z-0 d-block d-sm-none topology-mobile-small"
+          src="/images/home/topology-mobile-small.svg"
+          alt=""
+        />
       </div>
     </div>
   </div>
