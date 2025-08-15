@@ -95,21 +95,3 @@ signedMessage = permguard.sign(jwt.sub, message)
 publish(signedMessage)
 ```
 
-{{< callout context="note" icon="info-circle" >}}
-This section provides a **high-level explanation** of the core patterns with minimal technical details. It is designed to give you a foundational understanding of the concepts.
-
-For a deeper dive into how these patterns operate within a **Zero Trust context**, including autonomous and disconnected environments, refer to the following articles:
-
-- [**ZTAuth\*: A Paradigm Shift in AuthN, AuthZ, and Trusted Delegations**](https://medium.com/ztauth/ztauth-a-paradigm-shift-in-authn-authz-and-trusted-delegations-029801de8b0b)
-
-- [**Resources, Actions and Applications in the Context of Autonomous and Disconnected Challenges**](https://medium.com/ztauth/resources-actions-andapplications-in-the-context-of-autonomous-and-disconnected-challenges-b261d37cb28a)
-
-- [**Unlocking Zero Trust Delegation through Permissions and Policies**](https://medium.com/ztauth/unlocking-zero-trust-delegation-through-permissions-and-policies-f2952f56f79b)
-
-- [**Introducing the ZTAuth\* Architecture**](https://medium.com/ztauth/introducing-the-ztauth-architecture-8d220ba008d1)
-
-- [**Introducing the Identity Actor Model and Renaming Architecture Components for Better Clarity**](https://medium.com/ztauth/introducing-the-identity-actor-model-and-renaming-architecture-components-for-better-clarity-f854191f6cb9)
-
-- [**Identity Actor Model Specification**](https://github.com/ztauthstar/ztauthstar-specs/blob/main/identity-actor-mode-spec/01/identity_actor_model_spec_01.md)
-
-{{< /callout >}}
