@@ -35,7 +35,7 @@ Examples:
   # initialize a new working directory
   permguard init
 
-  Find more information at: https://www.permguard.com/docs/0.0.x/command-line/how-to-use/
+  Find more information at: https://oss.permguard.com/docs/0.0.x/command-line/how-to-use/
 
 Usage:
   permguard init [flags]

@@ -35,7 +35,7 @@ Examples:
   # clone a remote ledger to the local permguard workspace
   permguard clone localhost/273165098782/magicfarmacia
 
-  Find more information at: https://www.permguard.com/docs/0.0.x/command-line/how-to-use/
+  Find more information at: https://oss.permguard.com/docs/0.0.x/command-line/how-to-use/
 
 Usage:
   permguard clone localhost[flags]
