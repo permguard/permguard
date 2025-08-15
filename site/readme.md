@@ -49,14 +49,14 @@ new Crawler({
   rateLimit: 8,
   renderJavaScript: false,
   startUrls: [
-    "https://oss.permguard.com/docs/",
-    "https://oss.permguard.com/blog/",
-    "https://oss.permguard.com/",
+    "https://community.permguard.com/docs/",
+    "https://community.permguard.com/blog/",
+    "https://community.permguard.com/",
   ],
   discoveryPatterns: [
-    "https://oss.permguard.com/docs/**",
-    "https://oss.permguard.com/blog/**",
-    "https://oss.permguard.com/",
+    "https://community.permguard.com/docs/**",
+    "https://community.permguard.com/blog/**",
+    "https://community.permguard.com/",
   ],
   schedule: "at 16:17 on Wednesday",
   maxDepth: 10,
@@ -64,9 +64,9 @@ new Crawler({
     {
       indexName: "permguard_index",
       pathsToMatch: [
-        "https://oss.permguard.com/docs/**",
-        "https://oss.permguard.com/blog/**",
-        "https://oss.permguard.com/",
+        "https://community.permguard.com/docs/**",
+        "https://community.permguard.com/blog/**",
+        "https://community.permguard.com/",
       ],
       recordExtractor: ({ helpers, url }) => {
         const versionMatch = url.toString().match(/\/docs\/([^/]+)/);
@@ -98,7 +98,7 @@ new Crawler({
       },
     },
   ],
-  sitemaps: ["https://oss.permguard.com/sitemap.xml"],
+  sitemaps: ["https://community.permguard.com/sitemap.xml"],
   initialIndexSettings: {
     permguard_index: {
       advancedSyntax: true,

@@ -39,7 +39,7 @@ The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility 
 
 Permguard is an Open Source Multi-Zone, Multi-Tenant, ZTAuth* Provider.
 
-  Find more information at: https://oss.permguard.com/versions/0.0.x/command-line/how-to-use/
+  Find more information at: https://community.permguard.com/versions/0.0.x/command-line/how-to-use/
 
 Usage:
   permguard [flags]

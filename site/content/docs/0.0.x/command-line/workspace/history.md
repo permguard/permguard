@@ -35,7 +35,7 @@ Examples:
   # show the history
   permguard history
 
-  Find more information at: https://oss.permguard.com/docs/0.0.x/command-line/how-to-use/
+  Find more information at: https://community.permguard.com/docs/0.0.x/command-line/how-to-use/
 
 Usage:
   permguard history [flags]

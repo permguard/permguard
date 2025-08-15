@@ -9,6 +9,6 @@ draft: false
 seo:
   title: "Permguard" # custom title (optional)
   description: "" # custom description (recommended)
-  canonical: "https://oss.permguard.com/" # custom canonical URL (optional)
+  canonical: "https://community.permguard.com/" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
