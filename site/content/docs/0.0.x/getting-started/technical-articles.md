@@ -38,9 +38,6 @@ This page provides a collection of `technical video` and `articles` that cover v
 
 2) ZTAuth*
 
-   - [ZTAuth\*: A Paradigm Shift in AuthN, AuthZ, and Trusted Delegations](https://medium.com/ztauth/ztauth-a-paradigm-shift-in-authn-authz-and-trusted-delegations-029801de8b0b)
-   - [Resources, Actions and Applications in the Context of Autonomous and Disconnected Challenges](https://medium.com/ztauth/resources-actions-andapplications-in-the-context-of-autonomous-and-disconnected-challenges-b261d37cb28a)
-   - [Unlocking Zero Trust Delegation through Permissions and Policies](https://medium.com/ztauth/unlocking-zero-trust-delegation-through-permissions-and-policies-f2952f56f79b)
-   - [Introducing the ZTAuth\* Architecture](https://medium.com/ztauth/introducing-the-ztauth-architecture-8d220ba008d1)
-   - [Introducing the Identity Actor Model and Renaming Architecture Components for Better Clarity](https://medium.com/ztauth/introducing-the-identity-actor-model-and-renaming-architecture-components-for-better-clarity-f854191f6cb9)
-   - [Identity Actor Model Specification](https://github.com/ztauthstar/ztauthstar-specs/blob/main/identity-actor-mode-spec/01/identity_actor_model_spec_01.md)
+   - [ZTAuth* Spec](https://spec.ztauthstar.com/)
+   - [Zero Trust AuthZ Flow for AI Agents](https://medium.com/@nicola-gallo/zero-trust-authz-flow-for-agentic-ai-agents-d8ae35d2a517)
+   - [In the age of Agentic AI, trust comes first. Tokens come later.](https://medium.com/@nicola-gallo/in-the-age-of-agentic-ai-trust-comes-first-tokens-come-later-fb4bbd41800e)
