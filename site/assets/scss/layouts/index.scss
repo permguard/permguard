@@ -63,3 +63,14 @@ body {
     overflow-x: hidden;
   }
 }
+
+.footer-legal-text {
+  color: #c1c3c8;
+  font-size: 12px;
+
+  &__link {
+    color: #c1c3c8 !important;
+    font-weight: normal;
+    text-decoration: none !important;
+  }
+}
