@@ -32,7 +32,7 @@
     font-weight: 500;
     margin-bottom: 32px;
     letter-spacing: 2.3px;
-    max-width: 598px;
+    max-width: 350px;
   }
 
   &__description {
@@ -208,5 +208,88 @@
 @media (max-width: 767px) {
   .cookieconsent-banner {
     padding-top: 3rem;
+  }
+}
+
+.topology {
+  right: -110px;
+  top: 125px;
+}
+
+.banner-illustration {
+  right: 90px;
+  top: 160px;
+}
+
+.banner-illustration-mobile {
+  right: 50px;
+  top: 160px;
+}
+
+.topology-mobile-small {
+  width: auto;
+  right: 0;
+  top: 15px;
+  height: 480px;
+  transform: translateX(20px);
+  position: absolute !important;
+}
+
+.blur-fuchsia {
+  right: 0px;
+  top: 60px;
+}
+
+.topology-mobile {
+  margin-top: 40px;
+  height: 550px;
+  width: auto;
+}
+
+.z-0 {
+  z-index: -1 !important;
+}
+
+.mt-n5 {
+  margin-top: -3rem; /* Bootstrap's mt-n5 is approximately -3rem */
+}
+
+.wrapper {
+  width: 100%;
+}
+
+@media (min-width: 576px) and (max-width: 991.98px) {
+  .align-self-end {
+    margin-right: auto;
+    margin-left: auto;
+    right: -40px;
+  }
+
+  .position-absolute.d-block.d-lg-none[style*="left: 45px"] {
+    left: 45px !important;
+    top: 125px !important;
+  }
+
+  .banner-illustration-mobile {
+    left: 45px;
+    top: 203px;
+  }
+
+  .wrapper {
+    width: auto;
+  }
+}
+
+@media (min-width: 992px) {
+  .wrapper {
+    width: auto;
+  }
+
+  .position-relative {
+    position: absolute !important;
+    right: 0;
+    top: 0;
+    height: 100%;
+    width: 100%;
   }
 }
