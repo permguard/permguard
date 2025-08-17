@@ -21,8 +21,7 @@ Learn:
 - [Permguard Docs](https://community.permguard.com/)
 - [ZTAuth*: Zero Trust AuthN/AuthZ Models and Trusted Delegations](https://spec.ztauthstar.com/)
 
-**Permguard** is an Open Source ZTAuth* Provider for cloud-native, edge, and multi-tenant apps, decoupled from application code and leveraging `Policy-as-Code` for centralized, scalable permission management.
-
+**Permguard** rethinks Authorization Beyond the Token. From Static Claims to Runtime Trust: Secure, Auditable Decisions for Humans and Workloads. Boost SIEM & SOC with Decision Insights.
 As a `Permguard administrator`, you can create multiple zones and manage multiple ledgers within each zone.
 
 Simply define your schema's `resources` within your repository and create customized access control policies. Resources are organized into schema namespaces.
