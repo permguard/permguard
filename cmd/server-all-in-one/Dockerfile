@@ -52,9 +52,15 @@ ENV PERMGUARD_DEBUG="FALSE"
 ENV PERMGUARD_LOG_LEVEL="INFO"
 ENV PERMGUARD_SERVER_APPDATA="/opt/permguard/volume"
 
+ADD https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.18/grpc_health_probe-linux-amd64 /bin/grpc_health_probe
+RUN chmod +x /bin/grpc_health_probe
+
 EXPOSE 9091
 EXPOSE 9092
 EXPOSE 9094
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD /bin/grpc_health_probe -addr=localhost:9091 || exit 1
 
 VOLUME ["/opt/permguard/volume"]
 
