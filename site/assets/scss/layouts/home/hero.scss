@@ -2,6 +2,14 @@
   padding-top: 105px;
   padding-bottom: 120px;
 
+  &__col {
+    z-index: 200;
+  }
+
+  &__col-img {
+    z-index: 0;
+  }
+
   &__title {
     font-size: 56px !important;
     color: transparent !important;
