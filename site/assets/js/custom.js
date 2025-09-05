@@ -170,4 +170,21 @@ function addCopyToClipboardCedar() {
   });
 }
 
+function addRotationToClipboard() {
+  const dropdownButton = document.getElementById("doks-versions");
+
+  if (dropdownButton) {
+    const dropdownArrow = dropdownButton.querySelector(".dropdown-arrow");
+
+    dropdownButton.addEventListener("show.bs.dropdown", function () {
+      dropdownArrow.classList.add("rotate");
+    });
+
+    dropdownButton.addEventListener("hide.bs.dropdown", function () {
+      dropdownArrow.classList.remove("rotate");
+    });
+  }
+}
+
+addRotationToClipboard();
 addCopyToClipboardCedar();
