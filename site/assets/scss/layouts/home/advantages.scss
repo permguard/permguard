@@ -1,0 +1,130 @@
+.advantages {
+  padding-top: 10px;
+  padding-bottom: 20px;
+
+  &__title {
+    font-size: 18px;
+    font-style: normal;
+    font-weight: 500;
+    background: linear-gradient(178deg, #f05c80 -26.55%, #cc34df 98.09%);
+    background-clip: text;
+    text-transform: uppercase;
+    color: transparent !important;
+    text-align: center;
+    letter-spacing: 1.08px;
+  }
+
+  &__subtitle {
+    font-size: 56px !important;
+    color: transparent !important;
+    background: linear-gradient(180deg, #fff 0%, #999 100%);
+    background-clip: text;
+    line-height: 1.2;
+    font-weight: 500;
+    margin-bottom: 40px;
+    margin-top: 20px;
+    letter-spacing: 2.3px;
+    text-align: center;
+    padding: 0 8px;
+  }
+
+  &_wrapper {
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #1e1f23;
+    backdrop-filter: blur(12px);
+    padding: 64px;
+    padding-bottom: 42px;
+    display: flex;
+    flex-wrap: wrap;
+    row-gap: 46px;
+    column-gap: 83px;
+    justify-content: center;
+  }
+}
+
+.advantage {
+  width: calc(50% - 64px);
+
+  &__image-wrapper {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: linear-gradient(178deg, #f05c80 -26.38%, #cc34df 98.09%);
+    box-shadow: 0 16px 24px 0 rgba(204, 52, 223, 0.16);
+    backdrop-filter: blur(32px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  &__title {
+    font-size: 32px;
+    font-weight: 500;
+    line-height: 120%;
+    background: linear-gradient(180deg, #fff 0%, #999 100%);
+    background-clip: text;
+    color: transparent !important;
+    margin-top: 24px;
+  }
+
+  &__description {
+    color: rgba(255, 255, 255, 0.5) !important;
+    font-size: 18px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 140%;
+    letter-spacing: -0.18px;
+  }
+}
+
+@media (max-width: 1199px) {
+  .advantages {
+    &__subtitle {
+      font-size: 46px !important;
+    }
+  }
+}
+
+@media (max-width: 767px) {
+  .advantages {
+    &_wrapper {
+      gap: 32px;
+      padding: 32px;
+    }
+  }
+
+  .advantage {
+    width: 100%;
+  }
+}
+
+@media (max-width: 575px) {
+  .advantages {
+    padding-top: 60px;
+    padding-bottom: 0;
+    margin-bottom: -70px;
+
+    &__subtitle {
+      font-size: 24px !important;
+      letter-spacing: normal;
+      line-height: 140%;
+    }
+
+    &_wrapper {
+      padding: 24px;
+    }
+  }
+
+  .advantage {
+    &__title {
+      font-size: 24px;
+      margin-top: 24px;
+    }
+
+    &__description {
+      font-size: 16px;
+      margin-bottom: 0;
+    }
+  }
+}
