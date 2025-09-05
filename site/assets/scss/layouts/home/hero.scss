@@ -1,18 +1,3 @@
-.responsive-iframe {
-  position: relative;
-  width: 100%;
-  padding-bottom: 56.25%; /* Aspect ratio: 16:9 */
-  height: 0;
-}
-
-.responsive-iframe iframe {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-}
-
 .hero {
   padding-top: 105px;
   padding-bottom: 120px;
@@ -50,22 +35,6 @@
     margin-bottom: 32px;
     letter-spacing: 0.39px;
     max-width: 598px;
-  }
-
-  &__logo {
-    width: 100px;
-  }
-
-  &__img-wrapper {
-    position: absolute;
-    top: -41px;
-    right: -134px;
-  }
-
-  &__image-shield {
-    position: absolute;
-    bottom: 0;
-    left: 415px;
   }
 
   &__btn {
@@ -113,20 +82,6 @@
     &__description {
       max-width: 420px;
     }
-
-    &__image {
-      height: 600px;
-    }
-
-    &__image-shield {
-      height: 202px;
-      left: 323px;
-    }
-
-    &__img-wrapper {
-      top: -24px;
-      right: -124px;
-    }
   }
 }
 
@@ -142,34 +97,9 @@
       max-width: 100%;
     }
 
-    &__img-wrapper {
-      position: relative;
-      right: 0;
-      margin: 0 auto;
-      margin-top: -45px;
-      margin-right: -133px;
-    }
-
     &__illustration {
       margin: 60px auto 0 auto;
       transform: scale(1.8);
-    }
-  }
-}
-
-@media (max-width: 767px) {
-  .hero {
-    &__image {
-      height: auto;
-    }
-
-    &__img-wrapper {
-      margin-top: 26px;
-    }
-
-    &__image-shield {
-      left: 50%;
-      height: 30%;
     }
   }
 }
@@ -204,38 +134,10 @@
       width: 100%;
     }
 
-    &__img-wrapper {
-      position: absolute;
-      margin-right: 0;
-      margin-top: 6px;
-      right: -75px;
-    }
-
-    &__image-shield {
-      bottom: 10px;
-      width: 141px;
-      height: 141px;
-      left: 48%;
-    }
-
-    &__image {
-      max-width: calc(100vw + 25px) !important;
-    }
-
     &__illustration {
       margin: 52px 0 0 0;
     }
   }
-}
-
-.banner-illustration {
-  right: 90px;
-  top: 160px;
-}
-
-.banner-illustration-mobile {
-  right: 50px;
-  top: 160px;
 }
 
 .blur-fuchsia {
@@ -265,11 +167,6 @@
   .position-absolute.d-block.d-lg-none[style*="left: 45px"] {
     left: 45px !important;
     top: 125px !important;
-  }
-
-  .banner-illustration-mobile {
-    left: 45px;
-    top: 203px;
   }
 
   .wrapper {
