@@ -44,7 +44,7 @@ func (s *CommunityCliInitializer) CliInfo() cli.CliInfo {
 		Name:  "Community Command Line Interface",
 		Use:   "permguard",
 		Short: "The official Permguard© Cli",
-		Long:  common.BuildCliLongTemplate("Permguard is an Open Source Multi-Zone, Multi-Tenant, ZTAuth* Provider."),
+		Long:  common.BuildCliLongTemplate("Rethinking Authorization Beyond the Token."),
 	}
 }
 

@@ -20,7 +20,7 @@ seo:
 ---
 **Permguard** is a modern, open-source authorization provider designed to follow **Zero Trust** principles.
 
-It uses the **Zero Trust Auth*** ([ZTAuth*](https://github.com/ztauthstar)) architecture to ensure that every access request is continuously verified, regardless of application boundaries or context.
+It implements the [Zero Trust Auth\* (ZTAuth\*)](https://github.com/ztauthstar) protocol to ensure that every access request is continuously verified, regardless of application boundaries or execution context.
 
 The main idea is to ensure that trust is never assumed but always validated at the application boundary. Integrating **Permguard** to handle incoming requests ensures that every request is verified before access is granted.
 
@@ -48,10 +48,9 @@ These policies are centrally managed, allowing organizations to enforce consiste
 </div>
 
 It follows a `Bring Your Own Identity (BYOI)` approach, meaning it integrates with your existing authentication system instead of replacing it.
-You can configure identity sources to sync identities from your current `identity provider`, ensuring that all permissions are managed consistently and centrally, regardless of where you use **Permguard**.
 
 {{< callout context="note" icon="info-circle" >}}
-The main goal of **Permguard** is to provide a strong authorization system with built-in administrative tools. It connects to identity sources through ingestion APIs, but these must be integrated with custom solutions. This keeps **Permguard** flexible and easy to manage without unnecessary complexity.
+The main goal of **Permguard** is to provide a strong authorization system with built-in administrative tools.
 {{< /callout >}}
 
 The solution is `language-agnostic`, supporting multiple policy languages, starting with [Cedar Policy Language](https://www.cedarpolicy.com/en).
@@ -61,12 +60,11 @@ Developers can choose their preferred language from the supported options while 
   <img alt="Permguard" src="/images/diagrams/d18.webp"/>
 </div>
 
-A `schema` in **Permguard** defines `Namespaces`, `Resources`, and `Actions`, ensuring consistency.
 Each language is integrated with a lightweight abstraction layer, providing flexibility while reserving only a few keywords.
 
 {{< callout context="note" icon="info-circle" >}}
 To enforce access control, the application can use an **SDK** or directly integrate with the native **APIs**.
-{{< /callout >}}
+{{< /callout >}}Integration with Your Own Identity Provider#
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d19.webp"/>

@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 **Permguard** supports `multi-zone` architecture, allowing the creation of multiple **zones**.
-Each zone is fully isolated, with its own tenants, identities, ledgers, manifests, schemas, policies, and permissions.
+Each zone is fully isolated, with its own ledgers, manifests, schemas, policies, and permissions.
 
 {{< callout context="caution" icon="alert-triangle" >}}
 It is recommended to use a separate zone for each environment, such as development, staging, and production.

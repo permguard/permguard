@@ -1,6 +1,6 @@
 # Hugo
 title = "permguard"
-description = "Permguard is an Open Source Multi-Zone, Multi-Tenant, ZTAuth* Provider."
+description = "Rethinking Authorization Beyond the Token."
 images = ["cover.png"]
 
 # mainSections

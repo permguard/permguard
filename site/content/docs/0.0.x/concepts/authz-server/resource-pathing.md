@@ -26,7 +26,7 @@ In **Permguard**, an **AuthZ Server** is a logical server composed of multiple n
 - **Policy Information Point (PIP)**
 - **Policy Decision Point (PDP)**
 
-This **AuthZ Server** manages various elements such as **users, actors, tenants, and ledgers**.
+This **AuthZ Server** manages various elements such as **ledgers**.
 Due to the complexity of these resources, a **structured pathing mechanism** is essential for efficient management and access control.
 
 {{< callout context="note" icon="info-circle" >}}
@@ -40,24 +40,6 @@ To reference a specific **zone** in an **AuthZ Server**, use the following **URI
  protocol    host       zone
 ┌───┴────┐┌───┴───┐ ┌────┴─────┐
 permguard@localhost/273165098782
-```
-
-## Identity Source and Identity Pathing
-
-To reference a specific **identity source** in an **AuthZ Server**, use the following **URI format**:
-
-```text
- protocol    host       zone            identity-source
-┌───┴────┐┌───┴───┐ ┌────┴─────┐            ┌──┴───┐
-permguard@localhost/273165098782/identities/keycloak
-```
-
-A user identity can be referenced using the following URI format:
-
-```text
- protocol    host       zone            identity-source       user
-┌───┴────┐┌───┴───┐ ┌────┴─────┐            ┌──┴───┐       ┌───┴────┐
-permguard@localhost/273165098782/identities/keycloak/users/john.smith
 ```
 
 ## Ledger Pathing

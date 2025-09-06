@@ -75,38 +75,6 @@ Displayed result.
 809257ed202e40cab7e958218eecad20: magicfarmacia
 ```
 
-## Configure Users, Actors and Tenants
-
-The next step is to configure the users and actors. First of all, it is necessary to create the identity source.
-
-```text
-permguard authn identitysources create --name keycloak --zone-id 895741663247
-```
-
-This is the expected output.
-
-```text
-28e618209040479b8d1a6c581608ec84: keycloak
-```
-
-Then, it is necessary to create the identities. It is important to note that the `identitysourceid` is required for the identities creation and it is returned by the previous command.
-
-```text
-permguard authn identities create --name amy.smith@acmecorp.com --kind user --identitysource-id 28e618209040479b8d1a6c581608ec84 --zone-id 895741663247
-permguard authn identities create --name platform-admin --kind role-actor --identitysource-id 28e618209040479b8d1a6c581608ec84 --zone-id 895741663247
-permguard authn tenants create --name matera-branch --zone-id 895741663247
-permguard authn tenants create --name pisa-branch --zone-id 895741663247
-```
-
-Resulting output.
-
-```text
-d2ab01ac2ffa46b4b1c427f99be5a30b: amy.smith@acmecorp.com
-6d3aca93330641bfa080abd652bdc184: platform-admin
-75b0225d216848fc8f109ddec037f763: matera-branch
-2119ed02dbc2474aaacfd848319ec566: pisa-branch
-```
-
 ## Set Up the Workspace
 
 In this step, you need set up the workspace and check out the policy store.
