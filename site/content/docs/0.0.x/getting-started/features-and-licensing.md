@@ -33,7 +33,7 @@ These resources may be updated over time to reflect changes or improvements, esp
 ## Key Goals of Permguard
 
 - **Open Source First**: Licensed under **Apache-2.0**, fostering community collaboration and innovation in access control and policy management.
-- **Zero Trust Compliance**: Implements **Zero Trust Auth** ([ZTAuth*](https://medium.com/ztauth)) with versionable and composable **Auth*** models. These models can be replicated in **proximity nodes**, overcoming connectivity limitations and ensuring consistent policy enforcement.
+- **Zero Trust Compliance**: Implements **Zero Trust Auth** ([ZTAuth*](https://spec.ztauthstar.com/)) with versionable and composable **Auth*** models. These models can be replicated in **proximity nodes**, overcoming connectivity limitations and ensuring consistent policy enforcement.
 - **Structured Authorization Framework**: Provides a clear and organized layer for defining authorization and authentication models, following best practices for modern identity and access management.
 - **Scalability and Flexibility**: Designed for multi-zone and multi-tenant environments, making access control efficient and adaptable.
 - **Multi-Policy Execution**: Executes policies in different languages, ensuring flexibility and interoperability across various systems.

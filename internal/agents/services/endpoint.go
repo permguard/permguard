@@ -23,6 +23,8 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
@@ -106,11 +108,17 @@ func (e *Endpoint) Serve(ctx context.Context, serviceCtx *services.ServiceContex
 	)
 	e.grpcServer = grpcServer
 	port := e.config.Port()
+
 	registration := e.config.Registration()
 	err := registration(grpcServer, serviceCtx, e.ctx, e.config.StorageConnector())
 	if err != nil {
 		return false, err
 	}
+
+	hs := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcServer, hs)
+	hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		logger.Error("Endpoint cannot listen on port", zap.Error(err))

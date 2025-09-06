@@ -28,7 +28,7 @@ The **Permguard Essential Terminology** section explains key terms and concepts 
 
 - **ZTAuth\***:
   **ZTAuth\*** applies **Zero Trust** principles at the application layer. It provides a scalable framework for managing authorization and authentication models, focusing on replicability, versioning, and adaptability in partially connected environments like proximity nodes.
-  [Learn more about ZTAuth*](https://medium.com/ztauth).
+  [Learn more about ZTAuth*](https://spec.ztauthstar.com/).
 
 - **Application Boundaries**:
   Application boundaries define the logical scope of an application, including its access control and data management.
