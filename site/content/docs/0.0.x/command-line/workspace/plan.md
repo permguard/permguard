@@ -35,7 +35,7 @@ Examples:
   # generate a plan of changes to apply to the remote ledger based on the differences between the local and remote states
   permguard plan
 
-  Find more information at: https://www.permguard.com/docs/0.0.x/command-line/how-to-use/
+  Find more information at: https://community.permguard.com/docs/0.0.x/command-line/how-to-use/
 
 Usage:
   permguard plan [flags]

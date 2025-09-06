@@ -35,7 +35,7 @@ Examples:
   # apply the plan to the remote ledger
   permguard apply
 
-  Find more information at: https://www.permguard.com/docs/0.0.x/command-line/how-to-use/
+  Find more information at: https://community.permguard.com/docs/0.0.x/command-line/how-to-use/
 
 Usage:
   permguard apply [flags]
