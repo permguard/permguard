@@ -28,12 +28,7 @@ This communication occurs through the `AuthZ Client`, a component that provides 
 A standard authorization request is composed of the following key elements:
 
 ```typescript
-import {
-  PrincipalBuilder,
-  AZAtomicRequestBuilder,
-  withEndpoint,
-  AZClient,
-} from "permguard";
+import { withEndpoint, AZClient } from "@permguard/permguard";
 
 // Create a new Permguard client
 const azClient = new AZClient(withEndpoint("localhost", 9094));
@@ -70,14 +65,14 @@ if (decision) {
 An `atomic authorization` request can be performed using the `AuthZ Client` by creating a new client instance and invoking the `Check` method.
 
 ```typescript
-// Create a new Permguard client
 import {
   PrincipalBuilder,
   AZAtomicRequestBuilder,
   withEndpoint,
   AZClient,
-} from "permguard";
+} from "@permguard/permguard";
 
+// Create a new Permguard client
 const azClient = new AZClient(withEndpoint("localhost", 9094));
 
 // Create the Principal
@@ -154,14 +149,19 @@ This type of request is designed for scenarios requiring greater control over th
 {{< /callout >}}
 
 ```typescript
-// Create a new Permguard client
 import {
   PrincipalBuilder,
-  AZAtomicRequestBuilder,
   withEndpoint,
   AZClient,
-} from "permguard";
+  SubjectBuilder,
+  ResourceBuilder,
+  ActionBuilder,
+  ContextBuilder,
+  EvaluationBuilder,
+  AZRequestBuilder,
+} from "@permguard/permguard";
 
+// Create a new Permguard client
 const azClient = new AZClient(withEndpoint("localhost", 9094));
 
 // Create a new subject
