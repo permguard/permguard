@@ -28,6 +28,13 @@ This communication occurs through the `AuthZ Client`, a component that provides 
 A standard authorization request is composed of the following key elements:
 
 ```typescript
+import {
+  PrincipalBuilder,
+  AZAtomicRequestBuilder,
+  withEndpoint,
+  AZClient,
+} from "permguard";
+
 // Create a new Permguard client
 const azClient = new AZClient(withEndpoint("localhost", 9094));
 
@@ -51,9 +58,7 @@ if (decision) {
         );
       }
       if (evaluation.Context?.ReasonUser) {
-        console.log(
-          `-> Reason User: ${evaluation.Context.ReasonUser.Message}`
-        );
+        console.log(`-> Reason User: ${evaluation.Context.ReasonUser.Message}`);
       }
     }
   }
@@ -66,6 +71,13 @@ An `atomic authorization` request can be performed using the `AuthZ Client` by c
 
 ```typescript
 // Create a new Permguard client
+import {
+  PrincipalBuilder,
+  AZAtomicRequestBuilder,
+  withEndpoint,
+  AZClient,
+} from "permguard";
+
 const azClient = new AZClient(withEndpoint("localhost", 9094));
 
 // Create the Principal
@@ -126,9 +138,7 @@ if (decision) {
         );
       }
       if (evaluation.Context?.ReasonUser) {
-        console.log(
-          `-> Reason User: ${evaluation.Context.ReasonUser.Message}`
-        );
+        console.log(`-> Reason User: ${evaluation.Context.ReasonUser.Message}`);
       }
     }
   }
@@ -145,6 +155,13 @@ This type of request is designed for scenarios requiring greater control over th
 
 ```typescript
 // Create a new Permguard client
+import {
+  PrincipalBuilder,
+  AZAtomicRequestBuilder,
+  withEndpoint,
+  AZClient,
+} from "permguard";
+
 const azClient = new AZClient(withEndpoint("localhost", 9094));
 
 // Create a new subject
@@ -161,9 +178,7 @@ const resource = new ResourceBuilder("MagicFarmacia::Platform::Subscription")
   .build();
 
 // Create actions
-const actionView = new ActionBuilder(
-  "MagicFarmacia::Platform::Action::create"
-)
+const actionView = new ActionBuilder("MagicFarmacia::Platform::Action::create")
   .withProperty("isEnabled", true)
   .build();
 
@@ -185,11 +200,7 @@ const evaluationView = new EvaluationBuilder(subject, resource, actionView)
   .withContext(context)
   .build();
 
-const evaluationCreate = new EvaluationBuilder(
-  subject,
-  resource,
-  actionCreate
-)
+const evaluationCreate = new EvaluationBuilder(subject, resource, actionCreate)
   .withRequestID("7890")
   .withContext(context)
   .build();
@@ -242,9 +253,7 @@ if (decision) {
         );
       }
       if (evaluation.Context?.ReasonUser) {
-        console.log(
-          `-> Reason User: ${evaluation.Context.ReasonUser.Message}`
-        );
+        console.log(`-> Reason User: ${evaluation.Context.ReasonUser.Message}`);
       }
     }
   }
