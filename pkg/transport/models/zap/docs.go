@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package models implements the agent ZAP (Policy Decision Point) models.
+// Package zap implements the agent ZAP (Policy Decision Point) models.
 package zap

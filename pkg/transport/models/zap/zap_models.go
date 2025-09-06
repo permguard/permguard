@@ -23,17 +23,6 @@ import (
 const (
 	FieldZoneZoneID                     = "zone_id"
 	FieldZoneName                       = "name"
-	FieldTenantZoneID                   = "zone_id"
-	FieldTenantTenantID                 = "tenant_id"
-	FieldTenantName                     = "name"
-	FieldIdentitySourceZoneID           = "zone_id"
-	FieldIdentitySourceName             = "name"
-	FieldIdentitySourceIdentitySourceID = "identity_source_id"
-	FieldIdentityZoneID                 = "zone_id"
-	FieldIdentityIdentitySourceID       = "identity_source_id"
-	FieldIdentityIdentityID             = "identity_id"
-	FieldIdentityName                   = "name"
-	FieldIdentityKind                   = "kind"
 )
 
 // Zone is the zone.
@@ -42,33 +31,4 @@ type Zone struct {
 	CreatedAt time.Time `json:"created_at" validate:"required"`
 	UpdatedAt time.Time `json:"updated_at" validate:"required"`
 	Name      string    `json:"name" validate:"required,name"`
-}
-
-// Tenant is the tenant.
-type Tenant struct {
-	TenantID  string    `json:"tenant_id" validate:"required,isuuid"`
-	CreatedAt time.Time `json:"created_at" validate:"required"`
-	UpdatedAt time.Time `json:"updated_at" validate:"required"`
-	ZoneID    int64     `json:"zone_id" validate:"required,gt=0"`
-	Name      string    `json:"name"`
-}
-
-// IdentitySource represent and identity source
-type IdentitySource struct {
-	IdentitySourceID string    `json:"identity_source_id" validate:"required,isuuid"`
-	CreatedAt        time.Time `json:"created_at" validate:"required"`
-	UpdatedAt        time.Time `json:"updated_at" validate:"required"`
-	ZoneID           int64     `json:"zone_id" validate:"required,gt=0"`
-	Name             string    `json:"name" validate:"required"`
-}
-
-// Identity is the entity representing the user or actor
-type Identity struct {
-	IdentityID       string    `json:"identity_id" validate:"required,isuuid"`
-	CreatedAt        time.Time `json:"created_at" validate:"required"`
-	UpdatedAt        time.Time `json:"updated_at" validate:"required"`
-	ZoneID           int64     `json:"zone_id" validate:"required,gt=0"`
-	IdentitySourceID string    `json:"identity_source_id" validate:"required,isuuid"`
-	Kind             string    `json:"identity_type" validate:"required,oneof='user' 'actor'"`
-	Name             string    `json:"name" validate:"required"`
 }

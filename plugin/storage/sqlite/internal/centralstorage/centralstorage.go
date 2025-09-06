@@ -34,27 +34,6 @@ type SqliteRepo interface {
 	// FetchZone fetches a zone.
 	FetchZones(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]repos.Zone, error)
 
-	// UpsertIdentitySource creates or updates an identity source.
-	UpsertIdentitySource(tx *sql.Tx, isCreate bool, identitySource *repos.IdentitySource) (*repos.IdentitySource, error)
-	// DeleteIdentitySource deletes an identity source.
-	DeleteIdentitySource(tx *sql.Tx, zoneID int64, identitySourceID string) (*repos.IdentitySource, error)
-	// FetchIdentitySources fetches identity sources.
-	FetchIdentitySources(db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]repos.IdentitySource, error)
-
-	// UpsertIdentity creates or updates an identity.
-	UpsertIdentity(tx *sql.Tx, isCreate bool, identity *repos.Identity) (*repos.Identity, error)
-	// DeleteIdentity deletes an identity.
-	DeleteIdentity(tx *sql.Tx, zoneID int64, identityID string) (*repos.Identity, error)
-	// FetchIdentities fetches identities.
-	FetchIdentities(db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]repos.Identity, error)
-
-	// UpsertTenant creates or updates an tenant.
-	UpsertTenant(tx *sql.Tx, isCreate bool, tenant *repos.Tenant) (*repos.Tenant, error)
-	// DeleteTenant deletes an tenant.
-	DeleteTenant(tx *sql.Tx, zoneID int64, tenantID string) (*repos.Tenant, error)
-	// FetchTenant fetches an tenant.
-	FetchTenants(db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]repos.Tenant, error)
-
 	// UpsertLedger creates or updates a ledger.
 	UpsertLedger(tx *sql.Tx, isCreate bool, ledger *repos.Ledger) (*repos.Ledger, error)
 	// DeleteLedger deletes a ledger.

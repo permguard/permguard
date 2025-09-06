@@ -28,14 +28,14 @@ import (
 	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
-// TestCreateIdentityWithErrors tests the CreateIdentity function with errors.
-func TestCreateIdentityWithErrors(t *testing.T) {
+// TestCreateZoneWithErrors tests the CreateZone function with errors.
+func TestCreateZoneWithErrors(t *testing.T) {
 	assert := assert.New(t)
 
-	{ // Test with nil identity
+	{ // Test with nil zone
 		storage, _, _, _, _, _, _ := createSQLiteZAPCentralStorageWithMocks()
-		identities, err := storage.CreateIdentity(nil)
-		assert.Nil(identities, "identities should be nil")
+		zones, err := storage.CreateZone(nil)
+		assert.Nil(zones, "zones should be nil")
 		assert.NotNil(err, "error should not be nil")
 	}
 
@@ -58,21 +58,26 @@ func TestCreateIdentityWithErrors(t *testing.T) {
 		case "ROLLBACK-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			mockSQLRepo.On("UpsertIdentity", mock.Anything, true, mock.Anything).Return(nil, errors.New(testcase))
+			mockSQLRepo.On("UpsertZone", mock.Anything, true, mock.Anything).Return(nil, errors.New(testcase))
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			mockSQLRepo.On("UpsertIdentity", mock.Anything, true, mock.Anything).Return(nil, nil)
+			zone := &repos.Zone{
+				ZoneID:    232956849236,
+				Name:      "rent-a-car1",
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			}
+			mockSQLRepo.On("UpsertZone", mock.Anything, true, mock.Anything).Return(zone, nil)
+			mockSQLRepo.On("UpsertLedger", mock.Anything, true, mock.Anything).Return(nil, nil)
 			mockSQLDB.ExpectCommit().WillReturnError(errors.New(testcase))
 		default:
 			assert.FailNow("Unknown testcase")
 		}
 
-		inIdentity := &zap.Identity{
-			Kind: "user",
-		}
-		outIdentities, err := storage.CreateIdentity(inIdentity)
-		assert.Nil(outIdentities, "identities should be nil")
+		inZone := &zap.Zone{}
+		outZones, err := storage.CreateZone(inZone)
+		assert.Nil(outZones, "zones should be nil")
 		assert.Error(err)
 		if multi, ok := err.(interface{ Unwrap() []error }); ok {
 			errs := multi.Unwrap()
@@ -82,47 +87,43 @@ func TestCreateIdentityWithErrors(t *testing.T) {
 	}
 }
 
-// TestCreateIdentityWithSuccess tests the CreateIdentity function with success.
-func TestCreateIdentityWithSuccess(t *testing.T) {
+// TestCreateZoneWithSuccess tests the CreateZone function with success.
+func TestCreateZoneWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutIdentity := &repos.Identity{
-		IdentityID:       repos.GenerateUUID(),
-		ZoneID:           581616507495,
-		IdentitySourceID: repos.GenerateUUID(),
-		Kind:             1,
-		Name:             "nicola.gallo",
-		CreatedAt:        time.Now(),
-		UpdatedAt:        time.Now(),
+	dbOutZone := &repos.Zone{
+		ZoneID:    232956849236,
+		Name:      "rent-a-car1",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLDB.ExpectBegin()
-	mockSQLRepo.On("UpsertIdentity", mock.Anything, true, mock.Anything).Return(dbOutIdentity, nil)
+	mockSQLRepo.On("UpsertZone", mock.Anything, true, mock.Anything).Return(dbOutZone, nil)
+	mockSQLRepo.On("UpsertLedger", mock.Anything, true, mock.Anything).Return(nil, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inIdentity := &zap.Identity{
-		Kind: "user",
-	}
-	outIdentities, err := storage.CreateIdentity(inIdentity)
+	inZone := &zap.Zone{}
+	outZones, err := storage.CreateZone(inZone)
 	assert.Nil(err, "error should be nil")
-	assert.NotNil(outIdentities, "identities should not be nil")
-	assert.Equal(dbOutIdentity.IdentityID, outIdentities.IdentityID, "identity id should be equal")
-	assert.Equal(dbOutIdentity.Name, outIdentities.Name, "identity name should be equal")
-	assert.Equal(dbOutIdentity.CreatedAt, outIdentities.CreatedAt, "created at should be equal")
-	assert.Equal(dbOutIdentity.UpdatedAt, outIdentities.UpdatedAt, "updated at should be equal")
+	assert.NotNil(outZones, "zones should not be nil")
+	assert.Equal(dbOutZone.ZoneID, outZones.ZoneID, "zone id should be equal")
+	assert.Equal(dbOutZone.Name, outZones.Name, "zone name should be equal")
+	assert.Equal(dbOutZone.CreatedAt, outZones.CreatedAt, "created at should be equal")
+	assert.Equal(dbOutZone.UpdatedAt, outZones.UpdatedAt, "updated at should be equal")
 }
 
-// TestUpdateIdentityWithErrors tests the UpdateIdentity function with errors.
-func TestUpdateIdentityWithErrors(t *testing.T) {
+// TestUpdateZoneWithErrors tests the UpdateZone function with errors.
+func TestUpdateZoneWithErrors(t *testing.T) {
 	assert := assert.New(t)
 
-	{ // Test with nil identity
+	{ // Test with nil zone
 		storage, _, _, _, _, _, _ := createSQLiteZAPCentralStorageWithMocks()
-		identities, err := storage.UpdateIdentity(nil)
-		assert.Nil(identities, "identities should be nil")
+		zones, err := storage.UpdateZone(nil)
+		assert.Nil(zones, "zones should be nil")
 		assert.NotNil(err, "error should not be nil")
 	}
 
@@ -145,21 +146,26 @@ func TestUpdateIdentityWithErrors(t *testing.T) {
 		case "ROLLBACK-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			mockSQLRepo.On("UpsertIdentity", mock.Anything, false, mock.Anything).Return(nil, errors.New(testcase))
+			mockSQLRepo.On("UpsertZone", mock.Anything, false, mock.Anything).Return(nil, errors.New(testcase))
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			mockSQLRepo.On("UpsertIdentity", mock.Anything, false, mock.Anything).Return(nil, nil)
+			zone := &repos.Zone{
+				ZoneID:    232956849236,
+				Name:      "rent-a-car1",
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			}
+			mockSQLRepo.On("UpsertZone", mock.Anything, false, mock.Anything).Return(zone, nil)
+			mockSQLRepo.On("UpsertLedger", mock.Anything, true, mock.Anything).Return(nil, nil)
 			mockSQLDB.ExpectCommit().WillReturnError(errors.New(testcase))
 		default:
 			assert.FailNow("Unknown testcase")
 		}
 
-		inIdentity := &zap.Identity{
-			Kind: "user",
-		}
-		outIdentities, err := storage.UpdateIdentity(inIdentity)
-		assert.Nil(outIdentities, "identities should be nil")
+		inZone := &zap.Zone{}
+		outZones, err := storage.UpdateZone(inZone)
+		assert.Nil(outZones, "zones should be nil")
 		assert.Error(err)
 		if multi, ok := err.(interface{ Unwrap() []error }); ok {
 			errs := multi.Unwrap()
@@ -169,41 +175,36 @@ func TestUpdateIdentityWithErrors(t *testing.T) {
 	}
 }
 
-// TestUpdateIdentityWithSuccess tests the UpdateIdentity function with success.
-func TestUpdateIdentityWithSuccess(t *testing.T) {
+// TestUpdateZoneWithSuccess tests the UpdateZone function with success.
+func TestUpdateZoneWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutIdentity := &repos.Identity{
-		IdentityID:       repos.GenerateUUID(),
-		ZoneID:           581616507495,
-		IdentitySourceID: repos.GenerateUUID(),
-		Kind:             1,
-		Name:             "nicola.gallo",
-		CreatedAt:        time.Now(),
-		UpdatedAt:        time.Now(),
+	dbOutZone := &repos.Zone{
+		ZoneID:    232956849236,
+		Name:      "rent-a-car1",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLDB.ExpectBegin()
-	mockSQLRepo.On("UpsertIdentity", mock.Anything, false, mock.Anything).Return(dbOutIdentity, nil)
+	mockSQLRepo.On("UpsertZone", mock.Anything, false, mock.Anything).Return(dbOutZone, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inIdentity := &zap.Identity{
-		Kind: "user",
-	}
-	outIdentities, err := storage.UpdateIdentity(inIdentity)
+	inZone := &zap.Zone{}
+	outZones, err := storage.UpdateZone(inZone)
 	assert.Nil(err, "error should be nil")
-	assert.NotNil(outIdentities, "identities should not be nil")
-	assert.Equal(dbOutIdentity.IdentityID, outIdentities.IdentityID, "identity id should be equal")
-	assert.Equal(dbOutIdentity.Name, outIdentities.Name, "identity name should be equal")
-	assert.Equal(dbOutIdentity.CreatedAt, outIdentities.CreatedAt, "created at should be equal")
-	assert.Equal(dbOutIdentity.UpdatedAt, outIdentities.UpdatedAt, "updated at should be equal")
+	assert.NotNil(outZones, "zones should not be nil")
+	assert.Equal(dbOutZone.ZoneID, outZones.ZoneID, "zone id should be equal")
+	assert.Equal(dbOutZone.Name, outZones.Name, "zone name should be equal")
+	assert.Equal(dbOutZone.CreatedAt, outZones.CreatedAt, "created at should be equal")
+	assert.Equal(dbOutZone.UpdatedAt, outZones.UpdatedAt, "updated at should be equal")
 }
 
-// TestDeleteIdentityWithErrors tests the DeleteIdentity function with errors.
-func TestDeleteIdentityWithErrors(t *testing.T) {
+// TestDeleteZoneWithErrors tests the DeleteZone function with errors.
+func TestDeleteZoneWithErrors(t *testing.T) {
 	assert := assert.New(t)
 
 	tests := map[string]struct {
@@ -225,19 +226,19 @@ func TestDeleteIdentityWithErrors(t *testing.T) {
 		case "ROLLBACK-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			mockSQLRepo.On("DeleteIdentity", mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New(testcase))
+			mockSQLRepo.On("DeleteZone", mock.Anything, mock.Anything).Return(nil, errors.New(testcase))
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			mockSQLRepo.On("DeleteIdentity", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
+			mockSQLRepo.On("DeleteZone", mock.Anything, mock.Anything).Return(nil, nil)
 			mockSQLDB.ExpectCommit().WillReturnError(errors.New(testcase))
 		default:
 			assert.FailNow("Unknown testcase")
 		}
 
-		inIdentityID := repos.GenerateUUID()
-		outIdentities, err := storage.DeleteIdentity(repos.GenerateZoneID(), inIdentityID)
-		assert.Nil(outIdentities, "identities should be nil")
+		inZoneID := int64(232956849236)
+		outZones, err := storage.DeleteZone(inZoneID)
+		assert.Nil(outZones, "zones should be nil")
 		assert.Error(err)
 		if multi, ok := err.(interface{ Unwrap() []error }); ok {
 			errs := multi.Unwrap()
@@ -247,129 +248,120 @@ func TestDeleteIdentityWithErrors(t *testing.T) {
 	}
 }
 
-// TestDeleteIdentityWithSuccess tests the DeleteIdentity function with success.
-func TestDeleteIdentityWithSuccess(t *testing.T) {
+// TestDeleteZoneWithSuccess tests the DeleteZone function with success.
+func TestDeleteZoneWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutIdentity := &repos.Identity{
-		IdentityID:       repos.GenerateUUID(),
-		ZoneID:           581616507495,
-		IdentitySourceID: repos.GenerateUUID(),
-		Kind:             1,
-		Name:             "nicola.gallo",
-		CreatedAt:        time.Now(),
-		UpdatedAt:        time.Now(),
+	dbOutZone := &repos.Zone{
+		ZoneID:    232956849236,
+		Name:      "rent-a-car1",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLDB.ExpectBegin()
-	mockSQLRepo.On("DeleteIdentity", mock.Anything, mock.Anything, mock.Anything).Return(dbOutIdentity, nil)
+	mockSQLRepo.On("DeleteZone", mock.Anything, mock.Anything).Return(dbOutZone, nil)
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
-	inIdentityID := repos.GenerateUUID()
-	outIdentities, err := storage.DeleteIdentity(repos.GenerateZoneID(), inIdentityID)
+	inZoneID := int64(232956849236)
+	outZones, err := storage.DeleteZone(inZoneID)
 	assert.Nil(err, "error should be nil")
-	assert.NotNil(outIdentities, "identities should not be nil")
-	assert.Equal(dbOutIdentity.IdentityID, outIdentities.IdentityID, "identity id should be equal")
-	assert.Equal(dbOutIdentity.Name, outIdentities.Name, "identity name should be equal")
-	assert.Equal(dbOutIdentity.CreatedAt, outIdentities.CreatedAt, "created at should be equal")
-	assert.Equal(dbOutIdentity.UpdatedAt, outIdentities.UpdatedAt, "updated at should be equal")
+	assert.NotNil(outZones, "zones should not be nil")
+	assert.Equal(dbOutZone.ZoneID, outZones.ZoneID, "zone id should be equal")
+	assert.Equal(dbOutZone.Name, outZones.Name, "zone name should be equal")
+	assert.Equal(dbOutZone.CreatedAt, outZones.CreatedAt, "created at should be equal")
+	assert.Equal(dbOutZone.UpdatedAt, outZones.UpdatedAt, "updated at should be equal")
 }
 
-// TestFetchIdentityWithErrors tests the FetchIdentity function with errors.
-func TestFetchIdentityWithErrors(t *testing.T) {
+// TestFetchZoneWithErrors tests the FetchZone function with errors.
+func TestFetchZoneWithErrors(t *testing.T) {
 	assert := assert.New(t)
 
 	{ // Test with invalid page
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, _, _ := createSQLiteZAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(nil, errors.New("operation error"))
-		outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, nil)
-		assert.Nil(outIdentities, "identities should be nil")
+		outZones, err := storage.FetchZones(1, 100, nil)
+		assert.Nil(outZones, "zones should be nil")
 		assert.NotNil(err, "error should not be nil")
 	}
 
 	{ // Test with invalid page
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outIdentities, err := storage.FetchIdentities(0, 100, 232956849236, nil)
-		assert.Nil(outIdentities, "identities should be nil")
+		outZones, err := storage.FetchZones(0, 100, nil)
+		assert.Nil(outZones, "zones should be nil")
 		assert.NotNil(err, "error should not be nil")
 	}
 
 	{ // Test with invalid page size
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outIdentities, err := storage.FetchIdentities(1, 0, 232956849236, nil)
-		assert.Nil(outIdentities, "identities should be nil")
+		outZones, err := storage.FetchZones(1, 0, nil)
+		assert.Nil(outZones, "zones should be nil")
 		assert.NotNil(err, "error should not be nil")
 	}
 
-	{ // Test with invalid identity id
+	{ // Test with invalid zone id
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]any{zap.FieldIdentityIdentityID: 232956849236})
-		assert.Nil(outIdentities, "identities should be nil")
+		outZones, err := storage.FetchZones(1, 100, map[string]any{zap.FieldZoneZoneID: "not valid"})
+		assert.Nil(outZones, "zones should be nil")
 		assert.NotNil(err, "error should not be nil")
 	}
 
-	{ // Test with invalid identity name
+	{ // Test with invalid zone name
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]any{zap.FieldIdentityName: 2})
-		assert.Nil(outIdentities, "identities should be nil")
+		outZones, err := storage.FetchZones(1, 100, map[string]any{zap.FieldZoneName: 2})
+		assert.Nil(outZones, "zones should be nil")
 		assert.NotNil(err, "error should not be nil")
 	}
 
-	{ // Test with server error
+	{ // Test with invalid zone name
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		mockSQLRepo.On("FetchIdentities", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("operation error"))
-		outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, nil)
-		assert.Nil(outIdentities, "identities should be nil")
+		mockSQLRepo.On("FetchZones", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("operation error"))
+		outZones, err := storage.FetchZones(1, 100, nil)
+		assert.Nil(outZones, "zones should be nil")
 		assert.NotNil(err, "error should not be nil")
 	}
 }
 
-// TestFetchIdentityWithSuccess tests the FetchIdentity function with success.
-func TestFetchIdentityWithSuccess(t *testing.T) {
+// TestFetchZoneWithSuccess tests the DeleteZone function with success.
+func TestFetchZoneWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutIdentities := []repos.Identity{
+	dbOutZones := []repos.Zone{
 		{
-			IdentityID:       repos.GenerateUUID(),
-			ZoneID:           232956849236,
-			IdentitySourceID: repos.GenerateUUID(),
-			Kind:             1,
-			Name:             "nicola.gallo",
-			CreatedAt:        time.Now(),
-			UpdatedAt:        time.Now(),
+			ZoneID:    232956849236,
+			Name:      "rent-a-car1",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		},
 		{
-			IdentityID:       repos.GenerateUUID(),
-			ZoneID:           232956849236,
-			IdentitySourceID: repos.GenerateUUID(),
-			Kind:             1,
-			Name:             "francesco.gallo",
-			CreatedAt:        time.Now(),
-			UpdatedAt:        time.Now(),
+			ZoneID:    506074038324,
+			Name:      "rent-a-car2",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		},
 	}
 
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-	mockSQLRepo.On("FetchIdentities", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutIdentities, nil)
+	mockSQLRepo.On("FetchZones", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutZones, nil)
 
-	outIdentities, err := storage.FetchIdentities(1, 100, 232956849236, map[string]any{zap.FieldIdentityIdentityID: repos.GenerateUUID(), zap.FieldIdentityName: "rent-a-car2"})
+	outZones, err := storage.FetchZones(1, 100, map[string]any{zap.FieldZoneZoneID: int64(506074038324), zap.FieldZoneName: "rent-a-car2"})
 	assert.Nil(err, "error should be nil")
-	assert.NotNil(outIdentities, "identities should not be nil")
-	assert.Equal(len(outIdentities), len(dbOutIdentities), "identities and dbIdentities should have the same length")
-	for i, outIdentity := range outIdentities {
-		assert.Equal(dbOutIdentities[i].IdentityID, outIdentity.IdentityID, "identity id should be equal")
-		assert.Equal(dbOutIdentities[i].Name, outIdentity.Name, "identity name should be equal")
-		assert.Equal(dbOutIdentities[i].CreatedAt, outIdentity.CreatedAt, "created at should be equal")
-		assert.Equal(dbOutIdentities[i].UpdatedAt, outIdentity.UpdatedAt, "updated at should be equal")
+	assert.NotNil(outZones, "zones should not be nil")
+	assert.Equal(len(dbOutZones), len(outZones), "zones  and dbZones should have the same length")
+	for i, outZone := range outZones {
+		assert.Equal(dbOutZones[i].ZoneID, outZone.ZoneID, "zone id should be equal")
+		assert.Equal(dbOutZones[i].Name, outZone.Name, "zone name should be equal")
+		assert.Equal(dbOutZones[i].CreatedAt, outZone.CreatedAt, "created at should be equal")
+		assert.Equal(dbOutZones[i].UpdatedAt, outZone.UpdatedAt, "updated at should be equal")
 	}
 }

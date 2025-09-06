@@ -35,22 +35,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	V1ZAPService_CreateZone_FullMethodName           = "/zoneadministrationpoint.V1ZAPService/CreateZone"
-	V1ZAPService_UpdateZone_FullMethodName           = "/zoneadministrationpoint.V1ZAPService/UpdateZone"
-	V1ZAPService_DeleteZone_FullMethodName           = "/zoneadministrationpoint.V1ZAPService/DeleteZone"
-	V1ZAPService_FetchZones_FullMethodName           = "/zoneadministrationpoint.V1ZAPService/FetchZones"
-	V1ZAPService_CreateIdentitySource_FullMethodName = "/zoneadministrationpoint.V1ZAPService/CreateIdentitySource"
-	V1ZAPService_UpdateIdentitySource_FullMethodName = "/zoneadministrationpoint.V1ZAPService/UpdateIdentitySource"
-	V1ZAPService_DeleteIdentitySource_FullMethodName = "/zoneadministrationpoint.V1ZAPService/DeleteIdentitySource"
-	V1ZAPService_FetchIdentitySources_FullMethodName = "/zoneadministrationpoint.V1ZAPService/FetchIdentitySources"
-	V1ZAPService_CreateIdentity_FullMethodName       = "/zoneadministrationpoint.V1ZAPService/CreateIdentity"
-	V1ZAPService_UpdateIdentity_FullMethodName       = "/zoneadministrationpoint.V1ZAPService/UpdateIdentity"
-	V1ZAPService_DeleteIdentity_FullMethodName       = "/zoneadministrationpoint.V1ZAPService/DeleteIdentity"
-	V1ZAPService_FetchIdentities_FullMethodName      = "/zoneadministrationpoint.V1ZAPService/FetchIdentities"
-	V1ZAPService_CreateTenant_FullMethodName         = "/zoneadministrationpoint.V1ZAPService/CreateTenant"
-	V1ZAPService_UpdateTenant_FullMethodName         = "/zoneadministrationpoint.V1ZAPService/UpdateTenant"
-	V1ZAPService_DeleteTenant_FullMethodName         = "/zoneadministrationpoint.V1ZAPService/DeleteTenant"
-	V1ZAPService_FetchTenants_FullMethodName         = "/zoneadministrationpoint.V1ZAPService/FetchTenants"
+	V1ZAPService_CreateZone_FullMethodName = "/zoneadministrationpoint.V1ZAPService/CreateZone"
+	V1ZAPService_UpdateZone_FullMethodName = "/zoneadministrationpoint.V1ZAPService/UpdateZone"
+	V1ZAPService_DeleteZone_FullMethodName = "/zoneadministrationpoint.V1ZAPService/DeleteZone"
+	V1ZAPService_FetchZones_FullMethodName = "/zoneadministrationpoint.V1ZAPService/FetchZones"
 )
 
 // V1ZAPServiceClient is the client API for V1ZAPService service.
@@ -67,30 +55,6 @@ type V1ZAPServiceClient interface {
 	DeleteZone(ctx context.Context, in *ZoneDeleteRequest, opts ...grpc.CallOption) (*ZoneResponse, error)
 	// Fetch Zones.
 	FetchZones(ctx context.Context, in *ZoneFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ZoneResponse], error)
-	// Create an identity source.
-	CreateIdentitySource(ctx context.Context, in *IdentitySourceCreateRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error)
-	// Update an identity source.
-	UpdateIdentitySource(ctx context.Context, in *IdentitySourceUpdateRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error)
-	// Delete an identity source.
-	DeleteIdentitySource(ctx context.Context, in *IdentitySourceDeleteRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error)
-	// Fetch identity sources.
-	FetchIdentitySources(ctx context.Context, in *IdentitySourceFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IdentitySourceResponse], error)
-	// Create an identity.
-	CreateIdentity(ctx context.Context, in *IdentityCreateRequest, opts ...grpc.CallOption) (*IdentityResponse, error)
-	// Update an identity.
-	UpdateIdentity(ctx context.Context, in *IdentityUpdateRequest, opts ...grpc.CallOption) (*IdentityResponse, error)
-	// Delete an identity.
-	DeleteIdentity(ctx context.Context, in *IdentityDeleteRequest, opts ...grpc.CallOption) (*IdentityResponse, error)
-	// Fetch Identities.
-	FetchIdentities(ctx context.Context, in *IdentityFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IdentityResponse], error)
-	// Create an tenant.
-	CreateTenant(ctx context.Context, in *TenantCreateRequest, opts ...grpc.CallOption) (*TenantResponse, error)
-	// Update an tenant.
-	UpdateTenant(ctx context.Context, in *TenantUpdateRequest, opts ...grpc.CallOption) (*TenantResponse, error)
-	// Delete an tenant.
-	DeleteTenant(ctx context.Context, in *TenantDeleteRequest, opts ...grpc.CallOption) (*TenantResponse, error)
-	// Fetch Tenants.
-	FetchTenants(ctx context.Context, in *TenantFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TenantResponse], error)
 }
 
 type v1ZAPServiceClient struct {
@@ -150,153 +114,6 @@ func (c *v1ZAPServiceClient) FetchZones(ctx context.Context, in *ZoneFetchReques
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type V1ZAPService_FetchZonesClient = grpc.ServerStreamingClient[ZoneResponse]
 
-func (c *v1ZAPServiceClient) CreateIdentitySource(ctx context.Context, in *IdentitySourceCreateRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(IdentitySourceResponse)
-	err := c.cc.Invoke(ctx, V1ZAPService_CreateIdentitySource_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *v1ZAPServiceClient) UpdateIdentitySource(ctx context.Context, in *IdentitySourceUpdateRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(IdentitySourceResponse)
-	err := c.cc.Invoke(ctx, V1ZAPService_UpdateIdentitySource_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *v1ZAPServiceClient) DeleteIdentitySource(ctx context.Context, in *IdentitySourceDeleteRequest, opts ...grpc.CallOption) (*IdentitySourceResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(IdentitySourceResponse)
-	err := c.cc.Invoke(ctx, V1ZAPService_DeleteIdentitySource_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *v1ZAPServiceClient) FetchIdentitySources(ctx context.Context, in *IdentitySourceFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IdentitySourceResponse], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &V1ZAPService_ServiceDesc.Streams[1], V1ZAPService_FetchIdentitySources_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[IdentitySourceFetchRequest, IdentitySourceResponse]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type V1ZAPService_FetchIdentitySourcesClient = grpc.ServerStreamingClient[IdentitySourceResponse]
-
-func (c *v1ZAPServiceClient) CreateIdentity(ctx context.Context, in *IdentityCreateRequest, opts ...grpc.CallOption) (*IdentityResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(IdentityResponse)
-	err := c.cc.Invoke(ctx, V1ZAPService_CreateIdentity_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *v1ZAPServiceClient) UpdateIdentity(ctx context.Context, in *IdentityUpdateRequest, opts ...grpc.CallOption) (*IdentityResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(IdentityResponse)
-	err := c.cc.Invoke(ctx, V1ZAPService_UpdateIdentity_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *v1ZAPServiceClient) DeleteIdentity(ctx context.Context, in *IdentityDeleteRequest, opts ...grpc.CallOption) (*IdentityResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(IdentityResponse)
-	err := c.cc.Invoke(ctx, V1ZAPService_DeleteIdentity_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *v1ZAPServiceClient) FetchIdentities(ctx context.Context, in *IdentityFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IdentityResponse], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &V1ZAPService_ServiceDesc.Streams[2], V1ZAPService_FetchIdentities_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[IdentityFetchRequest, IdentityResponse]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type V1ZAPService_FetchIdentitiesClient = grpc.ServerStreamingClient[IdentityResponse]
-
-func (c *v1ZAPServiceClient) CreateTenant(ctx context.Context, in *TenantCreateRequest, opts ...grpc.CallOption) (*TenantResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(TenantResponse)
-	err := c.cc.Invoke(ctx, V1ZAPService_CreateTenant_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *v1ZAPServiceClient) UpdateTenant(ctx context.Context, in *TenantUpdateRequest, opts ...grpc.CallOption) (*TenantResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(TenantResponse)
-	err := c.cc.Invoke(ctx, V1ZAPService_UpdateTenant_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *v1ZAPServiceClient) DeleteTenant(ctx context.Context, in *TenantDeleteRequest, opts ...grpc.CallOption) (*TenantResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(TenantResponse)
-	err := c.cc.Invoke(ctx, V1ZAPService_DeleteTenant_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *v1ZAPServiceClient) FetchTenants(ctx context.Context, in *TenantFetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TenantResponse], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &V1ZAPService_ServiceDesc.Streams[3], V1ZAPService_FetchTenants_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[TenantFetchRequest, TenantResponse]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type V1ZAPService_FetchTenantsClient = grpc.ServerStreamingClient[TenantResponse]
-
 // V1ZAPServiceServer is the server API for V1ZAPService service.
 // All implementations must embed UnimplementedV1ZAPServiceServer
 // for forward compatibility.
@@ -311,30 +128,6 @@ type V1ZAPServiceServer interface {
 	DeleteZone(context.Context, *ZoneDeleteRequest) (*ZoneResponse, error)
 	// Fetch Zones.
 	FetchZones(*ZoneFetchRequest, grpc.ServerStreamingServer[ZoneResponse]) error
-	// Create an identity source.
-	CreateIdentitySource(context.Context, *IdentitySourceCreateRequest) (*IdentitySourceResponse, error)
-	// Update an identity source.
-	UpdateIdentitySource(context.Context, *IdentitySourceUpdateRequest) (*IdentitySourceResponse, error)
-	// Delete an identity source.
-	DeleteIdentitySource(context.Context, *IdentitySourceDeleteRequest) (*IdentitySourceResponse, error)
-	// Fetch identity sources.
-	FetchIdentitySources(*IdentitySourceFetchRequest, grpc.ServerStreamingServer[IdentitySourceResponse]) error
-	// Create an identity.
-	CreateIdentity(context.Context, *IdentityCreateRequest) (*IdentityResponse, error)
-	// Update an identity.
-	UpdateIdentity(context.Context, *IdentityUpdateRequest) (*IdentityResponse, error)
-	// Delete an identity.
-	DeleteIdentity(context.Context, *IdentityDeleteRequest) (*IdentityResponse, error)
-	// Fetch Identities.
-	FetchIdentities(*IdentityFetchRequest, grpc.ServerStreamingServer[IdentityResponse]) error
-	// Create an tenant.
-	CreateTenant(context.Context, *TenantCreateRequest) (*TenantResponse, error)
-	// Update an tenant.
-	UpdateTenant(context.Context, *TenantUpdateRequest) (*TenantResponse, error)
-	// Delete an tenant.
-	DeleteTenant(context.Context, *TenantDeleteRequest) (*TenantResponse, error)
-	// Fetch Tenants.
-	FetchTenants(*TenantFetchRequest, grpc.ServerStreamingServer[TenantResponse]) error
 	mustEmbedUnimplementedV1ZAPServiceServer()
 }
 
@@ -356,42 +149,6 @@ func (UnimplementedV1ZAPServiceServer) DeleteZone(context.Context, *ZoneDeleteRe
 }
 func (UnimplementedV1ZAPServiceServer) FetchZones(*ZoneFetchRequest, grpc.ServerStreamingServer[ZoneResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method FetchZones not implemented")
-}
-func (UnimplementedV1ZAPServiceServer) CreateIdentitySource(context.Context, *IdentitySourceCreateRequest) (*IdentitySourceResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CreateIdentitySource not implemented")
-}
-func (UnimplementedV1ZAPServiceServer) UpdateIdentitySource(context.Context, *IdentitySourceUpdateRequest) (*IdentitySourceResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdateIdentitySource not implemented")
-}
-func (UnimplementedV1ZAPServiceServer) DeleteIdentitySource(context.Context, *IdentitySourceDeleteRequest) (*IdentitySourceResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DeleteIdentitySource not implemented")
-}
-func (UnimplementedV1ZAPServiceServer) FetchIdentitySources(*IdentitySourceFetchRequest, grpc.ServerStreamingServer[IdentitySourceResponse]) error {
-	return status.Errorf(codes.Unimplemented, "method FetchIdentitySources not implemented")
-}
-func (UnimplementedV1ZAPServiceServer) CreateIdentity(context.Context, *IdentityCreateRequest) (*IdentityResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CreateIdentity not implemented")
-}
-func (UnimplementedV1ZAPServiceServer) UpdateIdentity(context.Context, *IdentityUpdateRequest) (*IdentityResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdateIdentity not implemented")
-}
-func (UnimplementedV1ZAPServiceServer) DeleteIdentity(context.Context, *IdentityDeleteRequest) (*IdentityResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DeleteIdentity not implemented")
-}
-func (UnimplementedV1ZAPServiceServer) FetchIdentities(*IdentityFetchRequest, grpc.ServerStreamingServer[IdentityResponse]) error {
-	return status.Errorf(codes.Unimplemented, "method FetchIdentities not implemented")
-}
-func (UnimplementedV1ZAPServiceServer) CreateTenant(context.Context, *TenantCreateRequest) (*TenantResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CreateTenant not implemented")
-}
-func (UnimplementedV1ZAPServiceServer) UpdateTenant(context.Context, *TenantUpdateRequest) (*TenantResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdateTenant not implemented")
-}
-func (UnimplementedV1ZAPServiceServer) DeleteTenant(context.Context, *TenantDeleteRequest) (*TenantResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DeleteTenant not implemented")
-}
-func (UnimplementedV1ZAPServiceServer) FetchTenants(*TenantFetchRequest, grpc.ServerStreamingServer[TenantResponse]) error {
-	return status.Errorf(codes.Unimplemented, "method FetchTenants not implemented")
 }
 func (UnimplementedV1ZAPServiceServer) mustEmbedUnimplementedV1ZAPServiceServer() {}
 func (UnimplementedV1ZAPServiceServer) testEmbeddedByValue()                      {}
@@ -479,201 +236,6 @@ func _V1ZAPService_FetchZones_Handler(srv interface{}, stream grpc.ServerStream)
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type V1ZAPService_FetchZonesServer = grpc.ServerStreamingServer[ZoneResponse]
 
-func _V1ZAPService_CreateIdentitySource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(IdentitySourceCreateRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(V1ZAPServiceServer).CreateIdentitySource(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: V1ZAPService_CreateIdentitySource_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1ZAPServiceServer).CreateIdentitySource(ctx, req.(*IdentitySourceCreateRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _V1ZAPService_UpdateIdentitySource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(IdentitySourceUpdateRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(V1ZAPServiceServer).UpdateIdentitySource(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: V1ZAPService_UpdateIdentitySource_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1ZAPServiceServer).UpdateIdentitySource(ctx, req.(*IdentitySourceUpdateRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _V1ZAPService_DeleteIdentitySource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(IdentitySourceDeleteRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(V1ZAPServiceServer).DeleteIdentitySource(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: V1ZAPService_DeleteIdentitySource_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1ZAPServiceServer).DeleteIdentitySource(ctx, req.(*IdentitySourceDeleteRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _V1ZAPService_FetchIdentitySources_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(IdentitySourceFetchRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(V1ZAPServiceServer).FetchIdentitySources(m, &grpc.GenericServerStream[IdentitySourceFetchRequest, IdentitySourceResponse]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type V1ZAPService_FetchIdentitySourcesServer = grpc.ServerStreamingServer[IdentitySourceResponse]
-
-func _V1ZAPService_CreateIdentity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(IdentityCreateRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(V1ZAPServiceServer).CreateIdentity(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: V1ZAPService_CreateIdentity_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1ZAPServiceServer).CreateIdentity(ctx, req.(*IdentityCreateRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _V1ZAPService_UpdateIdentity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(IdentityUpdateRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(V1ZAPServiceServer).UpdateIdentity(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: V1ZAPService_UpdateIdentity_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1ZAPServiceServer).UpdateIdentity(ctx, req.(*IdentityUpdateRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _V1ZAPService_DeleteIdentity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(IdentityDeleteRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(V1ZAPServiceServer).DeleteIdentity(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: V1ZAPService_DeleteIdentity_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1ZAPServiceServer).DeleteIdentity(ctx, req.(*IdentityDeleteRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _V1ZAPService_FetchIdentities_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(IdentityFetchRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(V1ZAPServiceServer).FetchIdentities(m, &grpc.GenericServerStream[IdentityFetchRequest, IdentityResponse]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type V1ZAPService_FetchIdentitiesServer = grpc.ServerStreamingServer[IdentityResponse]
-
-func _V1ZAPService_CreateTenant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(TenantCreateRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(V1ZAPServiceServer).CreateTenant(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: V1ZAPService_CreateTenant_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1ZAPServiceServer).CreateTenant(ctx, req.(*TenantCreateRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _V1ZAPService_UpdateTenant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(TenantUpdateRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(V1ZAPServiceServer).UpdateTenant(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: V1ZAPService_UpdateTenant_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1ZAPServiceServer).UpdateTenant(ctx, req.(*TenantUpdateRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _V1ZAPService_DeleteTenant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(TenantDeleteRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(V1ZAPServiceServer).DeleteTenant(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: V1ZAPService_DeleteTenant_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(V1ZAPServiceServer).DeleteTenant(ctx, req.(*TenantDeleteRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _V1ZAPService_FetchTenants_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(TenantFetchRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(V1ZAPServiceServer).FetchTenants(m, &grpc.GenericServerStream[TenantFetchRequest, TenantResponse]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type V1ZAPService_FetchTenantsServer = grpc.ServerStreamingServer[TenantResponse]
-
 // V1ZAPService_ServiceDesc is the grpc.ServiceDesc for V1ZAPService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -693,62 +255,11 @@ var V1ZAPService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "DeleteZone",
 			Handler:    _V1ZAPService_DeleteZone_Handler,
 		},
-		{
-			MethodName: "CreateIdentitySource",
-			Handler:    _V1ZAPService_CreateIdentitySource_Handler,
-		},
-		{
-			MethodName: "UpdateIdentitySource",
-			Handler:    _V1ZAPService_UpdateIdentitySource_Handler,
-		},
-		{
-			MethodName: "DeleteIdentitySource",
-			Handler:    _V1ZAPService_DeleteIdentitySource_Handler,
-		},
-		{
-			MethodName: "CreateIdentity",
-			Handler:    _V1ZAPService_CreateIdentity_Handler,
-		},
-		{
-			MethodName: "UpdateIdentity",
-			Handler:    _V1ZAPService_UpdateIdentity_Handler,
-		},
-		{
-			MethodName: "DeleteIdentity",
-			Handler:    _V1ZAPService_DeleteIdentity_Handler,
-		},
-		{
-			MethodName: "CreateTenant",
-			Handler:    _V1ZAPService_CreateTenant_Handler,
-		},
-		{
-			MethodName: "UpdateTenant",
-			Handler:    _V1ZAPService_UpdateTenant_Handler,
-		},
-		{
-			MethodName: "DeleteTenant",
-			Handler:    _V1ZAPService_DeleteTenant_Handler,
-		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "FetchZones",
 			Handler:       _V1ZAPService_FetchZones_Handler,
-			ServerStreams: true,
-		},
-		{
-			StreamName:    "FetchIdentitySources",
-			Handler:       _V1ZAPService_FetchIdentitySources_Handler,
-			ServerStreams: true,
-		},
-		{
-			StreamName:    "FetchIdentities",
-			Handler:       _V1ZAPService_FetchIdentities_Handler,
-			ServerStreams: true,
-		},
-		{
-			StreamName:    "FetchTenants",
-			Handler:       _V1ZAPService_FetchTenants_Handler,
 			ServerStreams: true,
 		},
 	},
