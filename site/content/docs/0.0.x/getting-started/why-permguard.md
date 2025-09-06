@@ -56,9 +56,9 @@ Just as authentication has evolved with dedicated identity providers and standar
   <img alt="Permguard" src="/images/diagrams/d11.webp"/>
 </div>
 
-**Permguard** follows the **Bring Your Own Identity (BYOI)** approach, allowing integration with existing identity providers. It supports open-source solutions like **Keycloak** as well as commercial platforms. This flexibility lets organizations keep their preferred authentication systems while using **Permguard** for advanced authorization management.
+**Permguard** follows the **Bring Your Own Identity (BYOI)** approach, allowing integration with existing identity providers.
 
-With **APIs** or **CLI tools**, organizations can import identity data, such as users or groups, from their chosen provider into **Permguard**. Importantly, identity provider interactions are not built into **Permguard** itself. This keeps **Permguard** vendor-agnostic, focusing only on authorization.
+This flexibility lets organizations keep their preferred authentication systems while using **Permguard** for advanced authorization management.
 
 ## What Permguard Brings to the Table
 

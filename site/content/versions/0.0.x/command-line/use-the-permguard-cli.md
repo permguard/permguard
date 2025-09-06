@@ -22,7 +22,7 @@ The **Permguard CLI** provides a robust toolset for interacting with Permguard s
 
 The CLI is designed for two primary scenarios.
 
-- In the context of **Permguard Server Administration**: it enables the management of `zones`, `identity sources`, `identities`, `tenants`, and `ledgers` directly on the remote server. This allows administrators to maintain and configure the system efficiently.
+- In the context of **Permguard Server Administration**: it enables the management of `zones` and `ledgers` directly on the remote server. This allows administrators to maintain and configure the system efficiently.
 - For developers, the CLI supports a complete **Policy-as-Code Workspace**. It facilitates the local development of configuration artifacts such as `schemas`, `namespaces`, `resources`, `policies`, and `permissions`, integrating the essential toolchain required for the development lifecycle. These locally created artifacts can then be seamlessly applied to the remote server, ensuring a consistent and scalable approach to policy deployment across environments.
 
 To view a list of commands available in the current Permguard version, users can run the **permguard** command without any additional arguments.
@@ -37,7 +37,7 @@ To view a list of commands available in the current Permguard version, users can
 
 The official Permguard Command Line Interface - Copyright © 2022 Nitro Agility S.r.l.
 
-Permguard is an Open Source Multi-Zone, Multi-Tenant, ZTAuth* Provider.
+Rethinking Authorization Beyond the Token.
 
   Find more information at: https://community.permguard.com/versions/0.0.x/command-line/how-to-use/
 
@@ -48,7 +48,6 @@ Usage:
 Available Commands:
   apply       Apply the plan to the remote ledger
   zone        Manage zones on the remote server
-  authn       Manage tenants and identities on the remote server
   authz       Manage ledgers on the remote server
   checkout    Check out the contents of a remote ledger to the local permguard workspace
   clone       Clone a remote ledger to the local permguard workspace

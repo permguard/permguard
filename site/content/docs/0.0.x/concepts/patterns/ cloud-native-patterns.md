@@ -60,15 +60,6 @@ With this approach the previous drawbacks are mitigated:
 - **Synchronization Challenges**: This problem is fixed as permissions are up to date.
 - **Code Duplication**: This problem is fixed as the application does not need to implement any logic to evaluate the permissions, as the policies evaluation is delegated to **Permguard**.
 
-```python {title="app.py"}
-has_permissions = permguard.check(jwt, "magicfarmacia", "inventory", "read")
-
-if has_permissions:
-    print("Actor can read inventory")
-else:
-    print("Actor cannot read inventory")
-```
-
 ## Use Case: Asynchronous Operations and Revoked Permissions
 
 In the context of asynchronous operations, there is no guarantee about when the operations will be executed. This can result in a scenario where permissions are revoked after the operation has already been initiated.
@@ -89,9 +80,3 @@ Storing tokens in events can pose security risks, and there's also a high likeli
 </div>
 
 It is possible to publish a signed event and subsequently validate the event and finally perform permission checks with **Permguard**.
-
-```python {title="app.py"}
-signedMessage = permguard.sign(jwt.sub, message)
-publish(signedMessage)
-```
-

@@ -1,8 +1,8 @@
 ---
 title: "Welcome to Permguard"
 slug: "Welcome to Permguard"
-description: "Permguard is an Open Source Multi-Zone, Multi-Tenant, ZTAuth* Provider."
-summary: "Permguard is an Open Source Multi-Zone, Multi-Tenant, ZTAuth* Provider."
+description: "Rethinking Authorization Beyond the Token."
+summary: "Rethinking Authorization Beyond the Token."
 date: 2024-12-16T01:15:00+01:00
 lastmod: 2024-12-16T01:15:00+01:00
 draft: false
