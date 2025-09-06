@@ -37,59 +37,6 @@ func LogZoneEntry(zone *Zone) string {
 	return fmt.Sprintf("zone id: %d, name: %s", zone.ZoneID, zone.Name)
 }
 
-// IdentitySource is the model for the identity_source table.
-type IdentitySource struct {
-	IdentitySourceID string    `db:"identity_source_id"`
-	CreatedAt        time.Time `db:"created_at"`
-	UpdatedAt        time.Time `db:"updated_at"`
-	ZoneID           int64     `db:"zone_id"`
-	Name             string    `db:"name"`
-}
-
-// LogIdentitySourceEntry  returns a string representation of the identity source.
-func LogIdentitySourceEntry(identitySource *IdentitySource) string {
-	if identitySource == nil {
-		return "identity source is nil"
-	}
-	return fmt.Sprintf("identity source id: %s, zone id: %d, name: %s", identitySource.IdentitySourceID, identitySource.ZoneID, identitySource.Name)
-}
-
-// Identity is the model for the identity table.
-type Identity struct {
-	IdentityID       string    `db:"identity_id"`
-	CreatedAt        time.Time `db:"created_at"`
-	UpdatedAt        time.Time `db:"updated_at"`
-	ZoneID           int64     `db:"zone_id"`
-	IdentitySourceID string    `db:"identity_source_id"`
-	Kind             int16     `db:"kind"`
-	Name             string    `db:"name"`
-}
-
-// LogIdentityEntry returns a string representation of the identity.
-func LogIdentityEntry(identity *Identity) string {
-	if identity == nil {
-		return "identity is nil"
-	}
-	return fmt.Sprintf("identity id: %s, identity source id %s, zone id: %d, name: %s", identity.IdentityID, identity.IdentitySourceID, identity.ZoneID, identity.Name)
-}
-
-// Tenant is the model for the tenant table.
-type Tenant struct {
-	TenantID  string    `db:"tenant_id"`
-	CreatedAt time.Time `db:"created_at"`
-	UpdatedAt time.Time `db:"updated_at"`
-	ZoneID    int64     `db:"zone_id"`
-	Name      string    `db:"name"`
-}
-
-// LogTenantEntry returns a string representation of the tenant.
-func LogTenantEntry(tenant *Tenant) string {
-	if tenant == nil {
-		return "tenant is nil"
-	}
-	return fmt.Sprintf("tenant id: %s, zone id: %d, name: %s", tenant.TenantID, tenant.ZoneID, tenant.Name)
-}
-
 // Ledger is the model for the schema table.
 type Ledger struct {
 	LedgerID  string    `db:"ledger_id"`
@@ -104,7 +51,7 @@ type Ledger struct {
 // LogLedgerEntry returns a string representation of the ledger.
 func LogLedgerEntry(ledger *Ledger) string {
 	if ledger == nil {
-		return "tenant is nil"
+		return "ledger is nil"
 	}
 	return fmt.Sprintf("ledger id: %s, zone id: %d, name: %s", ledger.LedgerID, ledger.ZoneID, ledger.Name)
 }

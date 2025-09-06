@@ -57,7 +57,7 @@ func (c *ZAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(options.FlagName(flagServerZAPPrefix, flagSuffixGrpcPort), 9091, "port to be used for exposing the zap grpc services")
 	flagSet.String(options.FlagName(flagStorageZAPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage-engine-central option")
 	flagSet.Int(options.FlagName(flagServerZAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
-	flagSet.Bool(options.FlagName(flagServerZAPPrefix, flagEnableDefaultCreation), false, "the creation of default entities (e.g., tenants, identity sources) during data creation")
+	flagSet.Bool(options.FlagName(flagServerZAPPrefix, flagEnableDefaultCreation), false, "the creation of default entities during data creation")
 	return nil
 }
 

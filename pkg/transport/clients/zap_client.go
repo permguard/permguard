@@ -36,46 +36,4 @@ type GrpcZAPClient interface {
 	FetchZonesByName(page int32, pageSize int32, name string) ([]zap.Zone, error)
 	// FetchZonesBy fetches zones by.
 	FetchZonesBy(page int32, pageSize int32, zoneID int64, name string) ([]zap.Zone, error)
-	// CreateIdentity creates a new identity.
-	CreateIdentity(zoneID int64, identitySourceID string, kind string, name string) (*zap.Identity, error)
-	// UpdateIdentity updates an identity.
-	UpdateIdentity(identity *zap.Identity) (*zap.Identity, error)
-	// DeleteIdentity deletes an identity.
-	DeleteIdentity(zoneID int64, identityID string) (*zap.Identity, error)
-	// FetchIdentities returns all identities.
-	FetchIdentities(page int32, pageSize int32, zoneID int64) ([]zap.Identity, error)
-	// FetchIdentitiesByID returns all identities filtering by identity id.
-	FetchIdentitiesByID(page int32, pageSize int32, zoneID int64, identityID string) ([]zap.Identity, error)
-	// FetchIdentitiesByEmail returns all identities filtering by name.
-	FetchIdentitiesByEmail(page int32, pageSize int32, zoneID int64, name string) ([]zap.Identity, error)
-	// FetchIdentitiesBy returns all identities filtering by all criteria.
-	FetchIdentitiesBy(page int32, pageSize int32, zoneID int64, identitySourceID string, identityID string, kind string, name string) ([]zap.Identity, error)
-	// CreateIdentitySource creates a new identity source.
-	CreateIdentitySource(zoneID int64, name string) (*zap.IdentitySource, error)
-	// UpdateIdentitySource updates an identity source.
-	UpdateIdentitySource(identitySource *zap.IdentitySource) (*zap.IdentitySource, error)
-	// DeleteIdentitySource deletes an identity source.
-	DeleteIdentitySource(zoneID int64, identitySourceID string) (*zap.IdentitySource, error)
-	// FetchIdentitySources returns all identity sources.
-	FetchIdentitySources(page int32, pageSize int32, zoneID int64) ([]zap.IdentitySource, error)
-	// FetchIdentitySourcesByID returns all identity sources filtering by identity source id.
-	FetchIdentitySourcesByID(page int32, pageSize int32, zoneID int64, identitySourceID string) ([]zap.IdentitySource, error)
-	// FetchIdentitySourcesByName returns all identity sources filtering by name.
-	FetchIdentitySourcesByName(page int32, pageSize int32, zoneID int64, name string) ([]zap.IdentitySource, error)
-	// FetchIdentitySourcesBy returns all identity sources filtering by identity source id and name.
-	FetchIdentitySourcesBy(page int32, pageSize int32, zoneID int64, identitySourceID string, name string) ([]zap.IdentitySource, error)
-	// CreateTenant creates a tenant.
-	CreateTenant(zoneID int64, name string) (*zap.Tenant, error)
-	// UpdateTenant updates a tenant.
-	UpdateTenant(tenant *zap.Tenant) (*zap.Tenant, error)
-	// DeleteTenant deletes a tenant.
-	DeleteTenant(zoneID int64, tenantID string) (*zap.Tenant, error)
-	// FetchTenants returns all tenants.
-	FetchTenants(page int32, pageSize int32, zoneID int64) ([]zap.Tenant, error)
-	// FetchTenantsByID returns all tenants filtering by tenant id.
-	FetchTenantsByID(page int32, pageSize int32, zoneID int64, tenantID string) ([]zap.Tenant, error)
-	// FetchTenantsByName returns all tenants filtering by name.
-	FetchTenantsByName(page int32, pageSize int32, zoneID int64, name string) ([]zap.Tenant, error)
-	// FetchTenantsBy returns all tenants filtering by tenant id and name.
-	FetchTenantsBy(page int32, pageSize int32, zoneID int64, tenantID string, name string) ([]zap.Tenant, error)
 }

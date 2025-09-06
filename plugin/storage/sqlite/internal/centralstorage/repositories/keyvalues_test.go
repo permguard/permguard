@@ -20,7 +20,7 @@ func registerKeyValueForUpsertMocking() (*KeyValue, string, *sqlmock.Rows) {
 		Key:    "test-key",
 		Value:  []byte("test-value"),
 	}
-	var sql string = `INSERT INTO key_values \(zone_id, kv_key, kv_value\) VALUES \(\?, \?, \?\) ON CONFLICT\(zone_id, kv_key\) DO UPDATE SET kv_value = excluded.kv_value`
+	var sql = `INSERT INTO key_values \(zone_id, kv_key, kv_value\) VALUES \(\?, \?, \?\) ON CONFLICT\(zone_id, kv_key\) DO UPDATE SET kv_value = excluded.kv_value`
 	sqlRows := sqlmock.NewRows([]string{"zone_id", "kv_key", "kv_value"}).
 		AddRow(keyValue.ZoneID, keyValue.Key, keyValue.Value)
 	return keyValue, sql, sqlRows

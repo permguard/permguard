@@ -44,20 +44,6 @@ func (s SQLiteCentralStorageZAP) CreateZone(zone *zap.Zone) (*zap.Zone, error) {
 	dbOutZone, err := s.sqlRepo.UpsertZone(tx, true, dbInZone)
 	if s.config.EnabledDefaultCreation() {
 		if err == nil {
-			tenant := &repo.Tenant{
-				ZoneID: dbOutZone.ZoneID,
-				Name:   TenantDefaultName,
-			}
-			_, err = s.sqlRepo.UpsertTenant(tx, true, tenant)
-		}
-		if err == nil {
-			identitySource := &repo.IdentitySource{
-				ZoneID: dbOutZone.ZoneID,
-				Name:   IdentitySourceDefaultName,
-			}
-			_, err = s.sqlRepo.UpsertIdentitySource(tx, true, identitySource)
-		}
-		if err == nil {
 			ledger := &repo.Ledger{
 				ZoneID: dbOutZone.ZoneID,
 				Name:   LedgerDefaultName,

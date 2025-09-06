@@ -30,31 +30,4 @@ type ZAPCentralStorage interface {
 	DeleteZone(zoneID int64) (*zap.Zone, error)
 	// FetchZones returns all zones filtering by search criteria.
 	FetchZones(page int32, pageSize int32, fields map[string]any) ([]zap.Zone, error)
-
-	// CreateIdentitySource creates a new identity source.
-	CreateIdentitySource(identitySource *zap.IdentitySource) (*zap.IdentitySource, error)
-	// UpdateIdentitySource updates an identity source.
-	UpdateIdentitySource(identitySource *zap.IdentitySource) (*zap.IdentitySource, error)
-	// DeleteIdentitySource deletes an identity source.
-	DeleteIdentitySource(zoneID int64, identitySourceID string) (*zap.IdentitySource, error)
-	// FetchIdentitySources gets all identity sources.
-	FetchIdentitySources(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]zap.IdentitySource, error)
-
-	// CreateIdentity creates a new identity.
-	CreateIdentity(identity *zap.Identity) (*zap.Identity, error)
-	// UpdateIdentity updates an identity.
-	UpdateIdentity(identity *zap.Identity) (*zap.Identity, error)
-	// DeleteIdentity deletes an identity.
-	DeleteIdentity(zoneID int64, identityID string) (*zap.Identity, error)
-	// FetchIdentities gets all identities.
-	FetchIdentities(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]zap.Identity, error)
-
-	// CreateTenant creates a new tenant.
-	CreateTenant(tenant *zap.Tenant) (*zap.Tenant, error)
-	// UpdateTenant updates a tenant.
-	UpdateTenant(tenant *zap.Tenant) (*zap.Tenant, error)
-	// DeleteTenant deletes a tenant.
-	DeleteTenant(zoneID int64, tenantID string) (*zap.Tenant, error)
-	// FetchTenants gets all tenants.
-	FetchTenants(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]zap.Tenant, error)
 }

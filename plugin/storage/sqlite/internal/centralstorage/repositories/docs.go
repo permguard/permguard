@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// package repositories provides the ledger implementation.
+// Package repositories provides the ledger implementation.
 package repositories

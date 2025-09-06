@@ -21,7 +21,6 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/internal/cli/porcelaincommands/authn"
 	"github.com/permguard/permguard/internal/cli/porcelaincommands/authz"
 	"github.com/permguard/permguard/internal/cli/porcelaincommands/configs"
 	"github.com/permguard/permguard/internal/cli/porcelaincommands/workspace"
@@ -51,13 +50,11 @@ func (s *CommunityCliInitializer) CliInfo() cli.CliInfo {
 // CliCommands returns commands.
 func (s *CommunityCliInitializer) CliCommands(deps cli.CliDependenciesProvider, v *viper.Viper) ([]*cobra.Command, error) {
 	zonesCmd := zones.CreateCommandForZones(deps, v)
-	authnCmd := authn.CreateCommandForAuthN(deps, v)
 	authzCmd := authz.CreateCommandForAuthZ(deps, v)
 	configCmd := configs.CreateCommandForConfig(deps, v)
 	wksCmds := workspace.CreateCommandsForWorkspace(deps, v)
 	return append([]*cobra.Command{
 		zonesCmd,
-		authnCmd,
 		authzCmd,
 		configCmd,
 	}, wksCmds...), nil
