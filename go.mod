@@ -4,7 +4,7 @@ go 1.24.4
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
-	github.com/cedar-policy/cedar-go v1.1.0
+	github.com/cedar-policy/cedar-go v1.2.6
 	github.com/fatih/color v1.18.0
 	github.com/gofrs/flock v0.12.1
 	github.com/google/uuid v1.6.0
