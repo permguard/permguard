@@ -1,4 +1,4 @@
-.header {
+header {
   // overflow-x: hidden;
   position: relative;
 
@@ -30,14 +30,12 @@
   }
 }
 
-.header {
-  &__img {
-    height: 36px;
-  }
+.header__img {
+  height: 36px;
 }
 
-.forced-dark .header {
-  &--blur {
+.forced-dark {
+  .header--blur {
     &::before {
       background-color: rgba($color: #d2d2d2, $alpha: 0.95) !important;
     }
@@ -45,7 +43,7 @@
 }
 
 @media (max-width: 575px) {
-  .header {
+  header {
     padding: 18px 2px 18px 8px;
   }
 }
@@ -102,6 +100,12 @@
 .icon-size {
   height: 24px;
   width: 24px;
+}
+
+.icon-size--bigger {
+  height: 30px;
+  width: 30px;
+  margin-left: -5px;
 }
 
 .icon-small-size {
