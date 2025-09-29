@@ -128,3 +128,29 @@
     }
   }
 }
+
+.forced-dark {
+  .advantages {
+    &__title {
+      color: #e629ff !important;
+    }
+
+    &__subtitle {
+      color: #ffffff !important;
+    }
+
+    &_wrapper {
+      background-color: #cecece !important;
+    }
+  }
+
+  .advantage {
+    &__title {
+      color: #ffffff !important;
+    }
+
+    &__image-wrapper {
+      background: #ff06ff !important;
+    }
+  }
+}

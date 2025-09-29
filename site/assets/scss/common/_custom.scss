@@ -54,6 +54,12 @@ body {
 
 .forced-dark {
   background-image: url("/images/bg-samsung.svg") !important;
+
+  code,
+  pre,
+  .card {
+    background-color: #cecece !important;
+  }
 }
 
 .text-small {
