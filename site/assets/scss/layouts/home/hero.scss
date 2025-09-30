@@ -203,3 +203,32 @@
     width: 100%;
   }
 }
+
+.forced-dark {
+  .hero {
+    &__title {
+      color: #fff !important;
+
+      &__community {
+        background: #ff06ff !important;
+      }
+    }
+
+    &__btn {
+      background-color: #ff06ff !important;
+
+      &:hover {
+        background-color: lighen(#ff06ff, 25%);
+        color: darken(#fff, 25%) !important;
+      }
+
+      &--secondary {
+        background-color: #ffffff !important;
+
+        &:hover {
+          background-color: lighen(#ffffff, 25%);
+        }
+      }
+    }
+  }
+}
