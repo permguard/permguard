@@ -6,7 +6,7 @@
   padding-top: 80px !important;
 }
 
-header {
+.app-header {
   // overflow-x: hidden;
   position: fixed !important;
   top: 0 !important;
@@ -54,7 +54,7 @@ header {
 }
 
 @media (max-width: 575px) {
-  header {
+  .app-header {
     padding: 18px 2px 18px 8px;
   }
 }
