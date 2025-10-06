@@ -1,6 +1,17 @@
-header {
+.content {
+  padding-top: 80px !important;
+}
+
+.docs {
+  padding-top: 80px !important;
+}
+
+.app-header {
   // overflow-x: hidden;
-  position: relative;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
 
   padding-top: 17px !important;
   padding-bottom: 17px !important;
@@ -14,7 +25,7 @@ header {
     right: 0;
     left: 50%;
     transform: translateX(-50%);
-    backdrop-filter: blur(4px);
+    backdrop-filter: blur(8px);
     background-color: rgba(255, 255, 255, 0.02) !important;
     width: 100vw;
 
@@ -43,7 +54,7 @@ header {
 }
 
 @media (max-width: 575px) {
-  header {
+  .app-header {
     padding: 18px 2px 18px 8px;
   }
 }
