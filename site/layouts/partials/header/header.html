@@ -193,7 +193,7 @@
         </div>
     {{ end -}}
 
-       
+
         <!-- Color mode toggler -->
         {{ if and (eq site.Params.doks.colorMode "auto") site.Params.doks.colorModeToggler -}}
         <button id="buttonColorMode" class="btn btn-link mx-auto nav-link p-0 ms-lg-2 me-lg-1" type="button" aria-label="Toggle theme">
@@ -212,7 +212,7 @@
 {{ if .Site.Menus.social -}}
 <ul id="socialMenu" class="nav mx-auto flex-row gap-3 order-lg-4 mt-auto mt-lg-0 order-3 order-lg-0">
   {{ range (sort .Site.Menus.social "Weight" "asc") -}}
-    
+
       {{ if eq .Name "Docs" -}}
         {{ if not (in site.Params.doks.sectionNav $.Section) -}}
         <li class="nav-item"><a class="nav-link social-link" href="{{ .URL | relURL }}">{{ .Pre | safeHTML }}<small class="ms-2 visually-hidden">{{ .Name | safeHTML }}</small></a></li>
@@ -247,11 +247,11 @@
  {{ if eq site.Params.doks.docsVersioning true -}}
  <div class="dropdown mt-1 order-lg-0 mb-auto mb-lg-0">
    <!-- Selector Trigger -->
-   <button 
+   <button
      class="btn btn-link text-dark d-flex align-items-center py-0 ms-2 mt-2 m-lg-0 px-lg-3 text-sm fw-medium transition-colors no-underline"
-     id="doks-versions" 
-     data-bs-toggle="dropdown" 
-     aria-expanded="false" 
+     id="doks-versions"
+     data-bs-toggle="dropdown"
+     aria-expanded="false"
      aria-label="Toggle version menu"
    >
      {{ $currentPage := . -}}
@@ -268,12 +268,12 @@
          Latest
        </span>
      {{ end }}
-     <svg 
-       class="dropdown-arrow ms-2" 
-       width="16" 
-       height="16" 
-       fill="none" 
-       stroke="currentColor" 
+     <svg
+       class="dropdown-arrow ms-2"
+       width="16"
+       height="16"
+       fill="none"
+       stroke="currentColor"
        viewBox="0 0 24 24"
      >
        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -282,8 +282,8 @@
    <ul class="dropdown-menu dropdown-menu-lg-end me-lg-2 shadow rounded border-0 bg-dark" aria-labelledby="doks-versions">
      {{ range $version := site.Params.doks.docsVersions }}
        <li>
-         <a 
-           href="/docs/{{ $version }}/getting-started/permguard-paradigm/"
+         <a
+           href="/docs/{{ $version }}/getting-started/overview/"
            class="dropdown-item d-flex justify-content-between align-items-center px-3 py-2 text-sm
                   {{ if eq $version $currentVersion }}
                     bg-purple-600 text-white fw-medium
@@ -293,12 +293,12 @@
          >
            <span class="fw-normal dropdown-option-text">{{ $version }}</span>
            {{ if eq $version $currentVersion }}
-             <svg 
-               class="text-white" 
-               width="20" 
-               height="20" 
-               fill="none" 
-               stroke="currentColor" 
+             <svg
+               class="text-white"
+               width="20"
+               height="20"
+               fill="none"
+               stroke="currentColor"
                viewBox="0 0 24 24"
              >
                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
