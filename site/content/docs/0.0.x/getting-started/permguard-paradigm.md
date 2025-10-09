@@ -18,7 +18,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-**Permguard** is a modern, open-source authorization provider designed to follow **Zero Trust** principles.
+**Permguard** is a modern, open-source authorization server designed to follow **Zero Trust** principles.
 
 It implements the [Zero Trust Auth\* (ZTAuth\*)](https://spec.ztauthstar.com) protocol to ensure that every access request is continuously verified, regardless of application boundaries or execution context.
 
