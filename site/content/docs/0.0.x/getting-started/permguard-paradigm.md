@@ -1,6 +1,6 @@
 ---
-title: "Permguard Paradigm"
-slug: "Permguard Paradigm"
+title: "Permguard Solution"
+slug: "Permguard Solution"
 description: ""
 summary: ""
 date: 2023-08-20T17:14:43+01:00
@@ -62,13 +62,15 @@ Developers can choose their preferred language from the supported options while 
 
 Each language is integrated with a lightweight abstraction layer, providing flexibility while reserving only a few keywords.
 
-{{< callout context="note" icon="info-circle" >}}
 To enforce access control, the application can use an **SDK** or directly integrate with the native **APIs**.
-{{< /callout >}}Integration with Your Own Identity Provider#
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d19.webp"/>
 </div>
+
+{{< callout context="note" icon="info-circle" >}}
+There are SDKs available for multiple programming languages, including **Go**, **Java**, **Node.js**, and **Python**. More SDKs are being developed to support additional languages.
+{{< /callout >}}
 
 This approach allows precise control over who or what can access resources while keeping the system flexible and easy to use.
 
