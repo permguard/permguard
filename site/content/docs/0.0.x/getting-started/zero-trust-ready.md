@@ -1,6 +1,6 @@
 ---
-title: "Zero Trust Ready"
-slug: "Zero Trust Ready"
+title: "Zero Trust Alignment"
+slug: "Zero Trust Alignment"
 description: ""
 summary: ""
 date: 2023-08-15T14:47:57+01:00
@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-**Permguard** is designed to comply with **Zero Trust** principles, leveraging the **ZTAuth*** protocol to provide secure, scalable, and reliable authorization for modern, distributed environments.
+**Permguard** is designed to align with **Zero Trust** principles, leveraging the **ZTAuth*** protocol to provide secure, scalable, and reliable authorization for modern, distributed environments.
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/ztauth.webp"/>
