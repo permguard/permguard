@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "permguard-paradigm-24b9ae1383440efb49528d1ecc48ab03"
+    identifier: "overview-24b9ae1383440efb49528d1ecc48ab03"
 weight: 1001
 toc: true
 seo:
