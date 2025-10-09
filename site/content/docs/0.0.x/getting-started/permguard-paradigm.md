@@ -1,6 +1,6 @@
 ---
-title: "Permguard Community"
-slug: "Permguard Community"
+title: "Overview"
+slug: "Overview"
 description: ""
 summary: ""
 date: 2023-08-20T17:14:43+01:00
