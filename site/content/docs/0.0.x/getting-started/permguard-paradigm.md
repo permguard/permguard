@@ -20,7 +20,7 @@ seo:
 ---
 **Permguard** is a modern, open-source authorization provider designed to follow **Zero Trust** principles.
 
-It implements the [Zero Trust Auth\* (ZTAuth\*)](https://github.com/ztauthstar) protocol to ensure that every access request is continuously verified, regardless of application boundaries or execution context.
+It implements the [Zero Trust Auth\* (ZTAuth\*)](https://spec.ztauthstar.com) protocol to ensure that every access request is continuously verified, regardless of application boundaries or execution context.
 
 The main idea is to ensure that trust is never assumed but always validated at the application boundary. Integrating **Permguard** to handle incoming requests ensures that every request is verified before access is granted.
 
