@@ -14,7 +14,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 # Build Stage
-FROM golang:1.24.4-alpine AS builder
+FROM golang:1.25.1-alpine AS builder
 
 ARG VERSION
 ARG BUILD_TIME
