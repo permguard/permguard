@@ -29,9 +29,9 @@ seo:
   Authentication acts as a gatekeeper, allowing only verified entities to access protected systems.
 
 {{< callout context="note" icon="info-circle" >}}
-**Identity Management**: **Permguard** follows the **Bring Your Own Identity (BYOI)** model for `AuthN`, integrating with external identity sources for seamless and secure management.
+**Identity Management**: **Permguard** follows the **Bring Your Own Identity (BYOI)** model for `AuthN`.
 {{< /callout >}}
 
 - **`Authorization`** determines what actions an authenticated user or device can perform. It defines permissions for users, devices, or systems, controlling access to specific resources or operations. Authorization can be **role-based** or **policy-based**, assigning different permission levels based on identity or attributes.
 
-Organizations use strong authorization solutions to enforce access controls, ensuring that resources are only accessed by those with the right permissions. These systems rely on authentication to verify identity before making real-time access decisions. While separate, **authentication and authorization must work together**—authorization has no value without verified authentication.
+Organizations use strong authorization solutions to enforce access controls, ensuring that resources are only accessed by those with the right permissions. These systems rely on authentication to verify identity before making real-time access decisions. While separate, **authentication and authorization must work together**, authorization has no value without verified authentication.

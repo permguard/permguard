@@ -21,14 +21,6 @@ seo:
 **Permguard** supports `multi-zone` architecture, allowing the creation of multiple **zones**.
 Each zone is fully isolated, with its own ledgers, manifests, schemas, policies, and permissions.
 
-{{< callout context="caution" icon="alert-triangle" >}}
-It is recommended to use a separate zone for each environment, such as development, staging, and production.
-This best practice helps reduce security risks.
-{{< /callout >}}
-
-It is important to note that **Permguard** does not include an authentication layer.
-The adopter is responsible for implementing or integrating authentication at the zone level.
-
 {{< callout context="note" icon="info-circle" >}}
 In the [MagicFarmacia sample](/docs/0.0.x/getting-started/hands-on-example/) the `demo-zone` zone is created.
 {{< /callout >}}
