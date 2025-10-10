@@ -18,15 +18,13 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-**Permguard** is a modern, open-source authorization server designed to follow **Zero Trust** principles.
-
-It implements the [Zero Trust Auth\* (ZTAuth\*)](https://spec.ztauthstar.com) protocol to ensure that every access request is continuously verified, regardless of application boundaries or execution context.
+**Permguard** is a modern, open-source authorization server built to align with **Zero Trust** principles.
 
 The main idea is to ensure that trust is never assumed but always validated at the application boundary. Integrating **Permguard** to handle incoming requests ensures that every request is verified before access is granted.
 
 This applies not only to APIs but also to any type of incoming request, including async messages, WebSocket connections, and more.
 
-Each incoming request generates an authorization request that is evaluated by the **Permguard AuthZ Server**. The server responds with a decision to either allow or deny the request.
+Each incoming request generates an authorization request that is evaluated by the **Permguard AuthZ Server**. The server responds with a decision to either permit or deny the request.
 
 <div style="text-align: center">
   <img alt="Permguard Policies" src="/images/diagrams/d1.webp"/>
@@ -35,7 +33,7 @@ Each incoming request generates an authorization request that is evaluated by th
 
 Designed for `cloud-native`, `edge`, and `multi-tenant` environments, **Permguard** can be used in any context, including IoT, AI agents, and more. It allows you to update authorization policies without modifying your application code, saving time and effort.
 
-These policies are centrally managed, allowing organizations to enforce consistent security rules across multiple applications without changing each service individually. This ensures compliance with corporate governance by providing a single point of control for defining, updating, and auditing authorization policies in real time.
+These policies are centrally managed, allowing organizations to enforce consistent security policies across multiple applications without changing each service individually. This ensures compliance with corporate governance by providing a single point of control for defining, updating, and auditing authorization policies in real time.
 
 {{< callout context="tip" icon="rocket" >}}
 **Permguard** is powerful yet easy to use. Its advanced architecture ensures security and flexibility, while integration remains simple—whether for a basic app or a complex enterprise system. Just run the server, define your policy, and integrate it seamlessly.
@@ -74,7 +72,7 @@ There are SDKs available for multiple programming languages, including **Go**, *
 
 This approach allows precise control over who or what can access resources while keeping the system flexible and easy to use.
 
-- `Who`: *Identities (Users and Actors)*
+- `Who`: *Identities (Users and Workloads)*
 - `Can Access`: *Permissions granted by attaching policies*
 - `Resources`: *Resources targeted by permissions*
 

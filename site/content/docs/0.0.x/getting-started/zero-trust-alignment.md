@@ -44,7 +44,7 @@ seo:
 
 ---
 
-## How Permguard Implements ZTAuth\*
+## How Permguard Implements Zero Trust
 
 **Permguard** adopts the **ZTAuth*** architecture to bring **Zero Trust** principles into authorization. To understand how this works, let's compare it to network security:
 
@@ -55,7 +55,7 @@ seo:
   <img alt="Permguard" src="/images/diagrams/d15.webp"/>
 </div><br/>
 
-Looking at the diagram, it is possible to notice the difference between **ZTAuth*** and **Zero Trust Network Access (ZTNA)**.
+**ZTAuth*** and **Zero Trust Network Access (ZTNA)** are not the same:
 
 - **ZTNA** secures network boundaries, controlling access at the network level.
 - **ZTAuth*** protects applications, enforcing detailed access control and ensuring consistent security across all actions and resources.
@@ -64,7 +64,7 @@ Looking at the diagram, it is possible to notice the difference between **ZTAuth
 **Asynchronous by Design**: Built to match real-world scenarios, not hide them — reliable where synchronous methods fall short.
 {{< /callout >}}
 
-The **ZTAuth*** architecture includes administrative services such as:
+The **Permguard** architecture includes administrative services such as:
 
 - **Zone Administration Point (ZAP)**: Manages zones and related configurations.
 - **Policy Administration Point (PAP)**: Defines and manages policies.
@@ -76,7 +76,7 @@ The **ZTAuth*** architecture includes administrative services such as:
   <img alt="Permguard Policies" src="/images/diagrams/d5.webp"/>
 </div>
 
-However, **ZTAuth\*** introduces a key difference: it defines **Auth*** models that can be transferred to `Proximity` nodes.
+**ZTAuth\*** introduces a key difference: it defines **Auth*** models that can be transferred to `Proximity` nodes.
 These models are incrementally synchronized to zone nodes as **git-like commit-based snapshots**.
 
 <div style="text-align: center">
