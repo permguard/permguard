@@ -20,8 +20,6 @@ seo:
 ---
 **Permguard Community** is an open-source project licensed under the **Apache-2.0 license**. It is designed to be a flexible and powerful **authorization server**, supporting policies written in different languages.
 
-Additionally, it includes a structured approach to defining **schemas** and **models** for both **authorization (AuthZ)** and **authentication (AuthN)**, ensuring consistency and best practices.
-
 For more details on legal terms and licenses, visit [Legal & Licenses](/docs/0.0.x/legal-licenses/third-party-technologies).
 
 {{< callout context="caution" icon="alert-triangle" >}}
@@ -32,14 +30,8 @@ These resources may be updated over time to reflect changes or improvements, esp
 
 ## Key Goals of Permguard
 
-- **Open Source First**: Licensed under **Apache-2.0**, fostering community collaboration and innovation in access control and policy management.
-- **Zero Trust Compliance**: Implements **Zero Trust Auth** ([ZTAuth*](https://spec.ztauthstar.com/)) with versionable and composable **Auth*** models. These models can be replicated in **proximity nodes**, overcoming connectivity limitations and ensuring consistent policy enforcement.
-- **Structured Authorization Framework**: Provides a clear and organized layer for defining authorization and authentication models, following best practices for modern identity and access management.
-- **Scalability and Flexibility**: Designed for multi-zone and multi-tenant environments, making access control efficient and adaptable.
-- **Multi-Policy Execution**: Executes policies in different languages, ensuring flexibility and interoperability across various systems.
+**Permguard** aims to redefine authorization by combining flexibility with a structured approach to schema and model design. It provides organizations with the tools to implement secure, scalable, and efficient access control systems.
 
 <div style="text-align: center">
   <img alt="Permguard Policies" src="/images/diagrams/d21.webp"/>
 </div><br/>
-
-**Permguard** aims to redefine authorization by combining flexibility with a structured approach to schema and model design. It provides organizations with the tools to implement secure, scalable, and efficient access control systems.
