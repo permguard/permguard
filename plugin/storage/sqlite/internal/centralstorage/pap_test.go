@@ -37,7 +37,7 @@ func createSQLitePAPCentralStorageWithMocks() (*SQLiteCentralStoragePAP, *storag
 	mockSQLExec := cssmocks.NewMockSqliteExecutor()
 	storage, _ := newSQLitePAPCentralStorage(mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec)
 	sqlDB, sqlMock, _ := sqlmock.New()
-	sqlxDB := sqlx.NewDb(sqlDB, "sqlite3")
+	sqlxDB := sqlx.NewDb(sqlDB, "sqlite")
 	return storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlxDB, sqlMock
 }
 

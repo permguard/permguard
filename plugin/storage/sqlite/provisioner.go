@@ -23,10 +23,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	_ "modernc.org/sqlite"
 
 	"github.com/permguard/permguard/pkg/cli/options"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
@@ -109,7 +109,7 @@ func (p *SQLiteStorageProvisioner) setup() (*sql.DB, error) {
 		dbName += ".db"
 	}
 	dbPath := filepath.Join(dbDir, dbName)
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ func (p *SQLiteStorageProvisioner) setup() (*sql.DB, error) {
 
 	goose.SetLogger(azidb.NewGooseLogger(p.logger))
 	goose.SetBaseFS(embedMigrations)
-	if err := goose.SetDialect("sqlite3"); err != nil {
+	if err := goose.SetDialect("sqlite"); err != nil {
 		return nil, err
 	}
 	return db, nil

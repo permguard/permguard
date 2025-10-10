@@ -54,7 +54,7 @@ func TestSqliteExecutor(t *testing.T) {
 		mockConnector := testutilsmocks.NewMockSQLiteConnector()
 
 		sqlDB, _, _ := sqlmock.New()
-		sqlxDB := sqlx.NewDb(sqlDB, "sqlite3")
+		sqlxDB := sqlx.NewDb(sqlDB, "sqlite")
 
 		sqliteExec := &SqliteExec{}
 

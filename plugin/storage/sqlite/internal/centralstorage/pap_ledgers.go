@@ -35,11 +35,11 @@ func (s SQLiteCentralStoragePAP) CreateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, repos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, repos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
 	if ledger.Kind == "" {
 		ledger.Kind = repos.LedgerTypePolicy
@@ -59,7 +59,7 @@ func (s SQLiteCentralStoragePAP) CreateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, repos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, repos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
 	}
 	return mapLedgerToAgentLedger(dbOutLedger)
 }
@@ -71,11 +71,11 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, repos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, repos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
 	if ledger.Kind == "" {
 		ledger.Kind = repos.LedgerTypePolicy
@@ -96,7 +96,7 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, repos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, repos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
 	}
 	return mapLedgerToAgentLedger(dbOutLedger)
 }
@@ -105,11 +105,11 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 func (s SQLiteCentralStoragePAP) DeleteLedger(zoneID int64, ledgerID string) (*pap.Ledger, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, repos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, repos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
 	dbOutLedger, err := s.sqlRepo.DeleteLedger(tx, zoneID, ledgerID)
 	if err != nil {
@@ -117,7 +117,7 @@ func (s SQLiteCentralStoragePAP) DeleteLedger(zoneID int64, ledgerID string) (*p
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, repos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, repos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
 	}
 	return mapLedgerToAgentLedger(dbOutLedger)
 }

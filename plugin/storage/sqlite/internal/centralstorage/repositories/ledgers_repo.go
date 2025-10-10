@@ -23,7 +23,7 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 
 	"github.com/permguard/permguard/pkg/core/validators"
 )
@@ -95,8 +95,8 @@ func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*L
 		if isCreate {
 			action = "create"
 		}
-		params := map[string]string{WrapSqlite3ParamForeignKey: "zone id"}
-		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to %s ledger - operation '%s-ledger' encountered an issue (%s)", action, action, LogLedgerEntry(ledger)), err, params)
+		params := map[string]string{WrapSqliteParamForeignKey: "zone id"}
+		return nil, WrapSqliteErrorWithParams(fmt.Sprintf("failed to %s ledger - operation '%s-ledger' encountered an issue (%s)", action, action, LogLedgerEntry(ledger)), err, params)
 	}
 
 	var dbLedger Ledger
@@ -110,7 +110,7 @@ func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*L
 		&dbLedger.Ref,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve ledger - operation 'retrieve-created-ledger' encountered an issue (%s)", LogLedgerEntry(ledger)), err)
+		return nil, WrapSqliteError(fmt.Sprintf("failed to retrieve ledger - operation 'retrieve-created-ledger' encountered an issue (%s)", LogLedgerEntry(ledger)), err)
 	}
 	return &dbLedger, nil
 }
@@ -136,7 +136,7 @@ func (r *Repository) UpdateLedgerRef(tx *sql.Tx, zoneID int64, ledgerID, current
 		if err == sql.ErrNoRows {
 			return errors.Join(err, fmt.Errorf("storage: ledger not found (zone_id: %d, ledger_id: %s)", zoneID, ledgerID))
 		}
-		return WrapSqlite3Error("failed to retrieve current ref for ledger", err)
+		return WrapSqliteError("failed to retrieve current ref for ledger", err)
 	}
 
 	if dbCurrentRef != currentRef {
@@ -145,12 +145,12 @@ func (r *Repository) UpdateLedgerRef(tx *sql.Tx, zoneID int64, ledgerID, current
 
 	result, err := tx.Exec("UPDATE ledgers SET ref = ? WHERE zone_id = ? AND ledger_id = ?", newRef, zoneID, ledgerID)
 	if err != nil {
-		return WrapSqlite3Error("failed to update ledger ref", err)
+		return WrapSqliteError("failed to update ledger ref", err)
 	}
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return WrapSqlite3Error("failed to get rows affected for update ref", err)
+		return WrapSqliteError("failed to get rows affected for update ref", err)
 	}
 	if rows != 1 {
 		return fmt.Errorf("update failed, no rows affected (zone_id: %d, ledger_id: %s)", zoneID, ledgerID)
@@ -178,15 +178,15 @@ func (r *Repository) DeleteLedger(tx *sql.Tx, zoneID int64, ledgerID string) (*L
 		&dbLedger.Ref,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("invalid client input - ledger id is not valid (id: %s)", ledgerID), err)
+		return nil, WrapSqliteError(fmt.Sprintf("invalid client input - ledger id is not valid (id: %s)", ledgerID), err)
 	}
 	res, err := tx.Exec("DELETE FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID)
 	if err != nil || res == nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete ledger - operation 'delete-ledger' encountered an issue (id: %s)", ledgerID), err)
+		return nil, WrapSqliteError(fmt.Sprintf("failed to delete ledger - operation 'delete-ledger' encountered an issue (id: %s)", ledgerID), err)
 	}
 	rows, err := res.RowsAffected()
 	if err != nil || rows != 1 {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to delete ledger - operation 'delete-ledger' could not find the ledger (id: %s)", ledgerID), err)
+		return nil, WrapSqliteError(fmt.Sprintf("failed to delete ledger - operation 'delete-ledger' could not find the ledger (id: %s)", ledgerID), err)
 	}
 	return &dbLedger, nil
 }
@@ -242,7 +242,7 @@ func (r *Repository) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, zoneI
 
 	err := db.Select(&dbLedgers, baseQuery, args...)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve ledgers - operation 'retrieve-ledgers' encountered an issue with parameters %v", args), err)
+		return nil, WrapSqliteError(fmt.Sprintf("failed to retrieve ledgers - operation 'retrieve-ledgers' encountered an issue with parameters %v", args), err)
 	}
 
 	return dbLedgers, nil

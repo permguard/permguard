@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 
 	"github.com/permguard/permguard/pkg/core/validators"
 )
@@ -79,7 +79,7 @@ func (r *Repository) UpsertZone(tx *sql.Tx, isCreate bool, zone *Zone) (*Zone, e
 		&dbZone.Name,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("storage: failed to retrieve zone - operation 'retrieve-created-zone' encountered an issue (%s)", LogZoneEntry(zone)), err)
+		return nil, WrapSqliteError(fmt.Sprintf("storage: failed to retrieve zone - operation 'retrieve-created-zone' encountered an issue (%s)", LogZoneEntry(zone)), err)
 	}
 	return &dbZone, nil
 }
@@ -155,7 +155,7 @@ func (r *Repository) FetchZones(db *sqlx.DB, page int32, pageSize int32, filterI
 
 	err := db.Select(&dbZones, baseQuery, args...)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve zones - operation 'retrieve-zones' encountered an issue with parameters %v", args), err)
+		return nil, WrapSqliteError(fmt.Sprintf("failed to retrieve zones - operation 'retrieve-zones' encountered an issue with parameters %v", args), err)
 	}
 
 	return dbZones, nil

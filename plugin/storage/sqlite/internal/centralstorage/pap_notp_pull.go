@@ -60,7 +60,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 		}
 		db, err1 := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 		if err1 != nil {
-			return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
+			return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 		}
 		hasMatch, history, err2 := objMng.BuildCommitHistory(remoteRefSPacket.RefPrevCommit, headCommitID, false, func(oid string) (*objects.Object, error) {
 			keyValue, errK := s.sqlRepo.KeyValue(db, zoneID, oid)
@@ -70,7 +70,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 			return objects.NewObject(keyValue.Value)
 		})
 		if err2 != nil {
-			return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
+			return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 		}
 		hasConflicts = hasMatch && len(history) > 1
 		if headCommitID == objects.ZeroOID && remoteRefSPacket.RefPrevCommit != objects.ZeroOID {
@@ -80,7 +80,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
 	_, commits, err := objMng.BuildCommitHistory(headCommitID, remoteRefSPacket.RefCommit, true, func(oid string) (*objects.Object, error) {
 		return s.readObject(db, zoneID, oid)
@@ -129,7 +129,7 @@ func (s SQLiteCentralStoragePAP) OnPullSendNegotiationRequest(handlerCtx *notpst
 		}
 		db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 		if err != nil {
-			return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
+			return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 		}
 		_, history, err := objMng.BuildCommitHistory(localCommitID, remoteCommitID, true, func(oid string) (*objects.Object, error) {
 			return s.readObject(db, zoneID, oid)
@@ -171,7 +171,7 @@ func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(zoneID int64, com
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
 	packetable := []notppackets.Packetable{}
 

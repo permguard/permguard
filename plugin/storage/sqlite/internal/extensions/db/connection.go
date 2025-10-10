@@ -24,7 +24,7 @@ import (
 	"sync"
 
 	"github.com/jmoiron/sqlx"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -122,7 +122,7 @@ func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *storage.StorageConte
 		dbName += ".db"
 	}
 	dbPath := filepath.Join(filePath, dbName)
-	db, err := sqlx.Connect("sqlite3", dbPath)
+	db, err := sqlx.Connect("sqlite", dbPath)
 	if err != nil {
 		return nil, errors.Join(err, errors.New("stroage: cannot connect to sqlite"))
 	}
