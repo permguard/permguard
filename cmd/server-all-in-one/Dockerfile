@@ -13,35 +13,19 @@
 # limitations under the License.
 #
 # SPDX-License-Identifier: Apache-2.0
-# Build Stage
-FROM golang:1.25.1-alpine AS builder
-
-ARG VERSION
-ARG BUILD_TIME
-ARG GIT_COMMIT
-
-ENV VERSION=$VERSION
-ENV BUILD_TIME=$BUILD_TIME
-ENV GIT_COMMIT=$GIT_COMMIT
-
-RUN apk add --no-cache make gcc musl-dev
-WORKDIR /opt/build
-COPY . .
-RUN go mod download
-
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64
-RUN make build-all-in-one
-
-# Final Stage
+# syntax=docker/dockerfile:1
 FROM alpine:latest
+
+ARG BINARY=server-all-in-one
+ARG DB_FILE=permguard.db
+ARG TARGETARCH
 
 RUN mkdir -p /opt/permguard
 RUN rm -rf /opt/permguard/volume && mkdir -p /opt/permguard/volume
 
 WORKDIR /opt/permguard
-COPY --from=builder /opt/build/dist/server-all-in-one .
-COPY --from=builder /opt/build/dist/permguard.db /opt/permguard/permguard.db
+COPY linux/${TARGETARCH}/server-all-in-one /opt/permguard/server-all-in-one
+COPY ${DB_FILE} /opt/permguard/permguard.db
 
 RUN echo '#!/bin/sh' > /opt/permguard/startup.sh \
     && echo 'cp /opt/permguard/permguard.db /opt/permguard/volume/' >> /opt/permguard/startup.sh \
@@ -52,7 +36,7 @@ ENV PERMGUARD_DEBUG="FALSE"
 ENV PERMGUARD_LOG_LEVEL="INFO"
 ENV PERMGUARD_SERVER_APPDATA="/opt/permguard/volume"
 
-ADD https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.18/grpc_health_probe-linux-amd64 /bin/grpc_health_probe
+ADD https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.18/grpc_health_probe-linux-${TARGETARCH} /bin/grpc_health_probe
 RUN chmod +x /bin/grpc_health_probe
 
 EXPOSE 9091
