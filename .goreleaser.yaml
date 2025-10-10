@@ -24,10 +24,37 @@ builds:
       - -X {{ .Env.PROJECT_PATH }}/internal/cli/common.BuildTime={{ .Timestamp }}
       - -X {{ .Env.PROJECT_PATH }}/internal/cli/common.GitCommit={{ .Commit }}
 
-  - id: server_all_in_one
+
+  - id: permguard_all_in_one_linux
     dir: "./cmd/server-all-in-one"
     binary: "server-all-in-one"
-    goos: [linux, windows, darwin]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.Version={{ .Version }}
+      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.BuildTime={{ .Timestamp }}
+      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.GitCommit={{ .Commit }}
+
+  - id: permguard_all_in_one_windows
+    dir: "./cmd/server-all-in-one"
+    binary: "server-all-in-one"
+    goos: [windows]
+    goarch: [amd64, arm64]
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.Version={{ .Version }}
+      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.BuildTime={{ .Timestamp }}
+      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.GitCommit={{ .Commit }}
+
+  - id: permguard_all_in_one_darwin
+    dir: "./cmd/server-all-in-one"
+    binary: "server-all-in-one"
+    goos: [darwin]
     goarch: [amd64, arm64]
     env:
       - CGO_ENABLED=0
@@ -40,12 +67,15 @@ builds:
 archives:
   - formats: [tar.gz]
     name_template: >-
-      {{ .ProjectName }}_{{ .Binary }}_
-      {{- title .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64
-      {{- else if eq .Arch "386" }}i386
-      {{- else }}{{ .Arch }}{{ end }}
-      {{- if .Arm }}v{{ .Arm }}{{ end }}
+      {{ .ProjectName }}_{{ .Binary }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+  - formats: [tar.gz]
+    id: permguard_all_in_one
+    ids: ["permguard_all_in_one_linux", "permguard_all_in_one_windows", "permguard_all_in_one_darwin"]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Binary }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
       - goos: windows
         formats: [zip]
