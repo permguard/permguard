@@ -27,5 +27,5 @@ In the [MagicFarmacia sample](/docs/0.0.x/getting-started/hands-on-example/) pol
 
 ## Policy
 
-A **Policy** defines what is allowed or denied within an authorization model.
+A **Policy** defines what is permitted or denied within an authorization model.
 It sets rules for actions on resources, ensuring secure and controlled access.
