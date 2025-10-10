@@ -60,7 +60,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 		}
 		db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 		if err != nil {
-			return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
+			return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 		}
 		hasMatch, history, err := objMng.BuildCommitHistory(headCommitID, remoteRefPacket.RefPrevCommit, false, func(oid string) (*objects.Object, error) {
 			keyValue, errkey := s.sqlRepo.KeyValue(db, zoneID, oid)
@@ -128,11 +128,11 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, repos.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, repos.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, repos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
 	for _, packet := range packets {
 		objStatePacket := &notpagpackets.ObjectStatePacket{}
@@ -161,10 +161,10 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 		err = s.sqlRepo.UpdateLedgerRef(tx, ledger.ZoneID, ledger.LedgerID, ledger.Ref, remoteCommitID)
 		if err != nil {
 			tx.Rollback()
-			return nil, repos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+			return nil, repos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
 		}
 		if err := tx.Commit(); err != nil {
-			return nil, repos.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+			return nil, repos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
 		}
 	}
 	handlerReturn := &notpstatemachines.HostHandlerReturn{

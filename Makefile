@@ -35,7 +35,7 @@ init-dependency:
 	go get -u github.com/pressly/goose/v3
 	go get -u gorm.io/gorm
 	go get -u gorm.io/driver/sqlite
-	go get -u github.com/mattn/go-sqlite3
+	go get -u modernc.org/sqlite
 	go get -u moul.io/zapgorm2
 	go get -u github.com/pelletier/go-toml
 	go get -u github.com/gofrs/flock

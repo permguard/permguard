@@ -22,7 +22,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 
 	"github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 	"github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db/testutils"

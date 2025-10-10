@@ -19,51 +19,18 @@ package repositories
 import (
 	"errors"
 	"fmt"
-
-	"github.com/mattn/go-sqlite3"
+	//"modernc.org/sqlite"
 )
 
 const (
-	WrapSqlite3ParamForeignKey = "foreign-key"
+	WrapSqliteParamForeignKey = "foreign-key"
 )
 
-// WrapSqlite3Error wraps a sqlite3 error.
-func WrapSqlite3Error(msg string, err error) error {
-	return WrapSqlite3ErrorWithParams(msg, err, nil)
+// WrapSqliteError wraps a sqlite error.
+func WrapSqliteError(msg string, err error) error {
+	return WrapSqliteErrorWithParams(msg, err, nil)
 }
 
-// readErroMapParam reads a parameter from a map.
-func readErroMapParam(key string, params map[string]string) string {
-	if params == nil {
-		return ""
-	}
-	if value, ok := params[key]; ok {
-		return value
-	}
-	return ""
-}
-
-func WrapSqlite3ErrorWithParams(msg string, err error, params map[string]string) error {
-	sqliteErr, ok := err.(sqlite3.Error)
-	if !ok {
-		return errors.Join(err, fmt.Errorf("(%s)", msg))
-	}
-	switch sqliteErr.Code {
-	case sqlite3.ErrConstraint:
-		if errors.As(err, &sqliteErr) {
-			if sqliteErr.ExtendedCode == sqlite3.ErrConstraintForeignKey {
-				foreignKey := readErroMapParam(WrapSqlite3ParamForeignKey, params)
-				if foreignKey != "" {
-					return errors.Join(err, fmt.Errorf("storage: %s validation failed: the provided zone id does not exist - %s", foreignKey, msg))
-				}
-				return errors.Join(err, fmt.Errorf("foreign key constraint failed - %s", msg))
-			}
-			return errors.Join(err, fmt.Errorf("unique constraint failed - %s", msg))
-		}
-		return errors.Join(err, fmt.Errorf("constraint failed - %s", msg))
-	case sqlite3.ErrNotFound:
-		return errors.Join(err, fmt.Errorf("record not found - %s", msg))
-	default:
-		return errors.Join(err, fmt.Errorf("generic error (%s)", msg))
-	}
+func WrapSqliteErrorWithParams(msg string, err error, params map[string]string) error {
+	return errors.Join(err, fmt.Errorf("generic error (%s)", msg))
 }

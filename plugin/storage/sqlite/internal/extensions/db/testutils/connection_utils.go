@@ -34,7 +34,7 @@ func NewSqliteConnectionMocks(t *testing.T) (db.SQLiteConnector, *sqlx.DB, sqlmo
 	if err != nil {
 		t.Fatal(err)
 	}
-	sqlxDB := sqlx.NewDb(sqlDB, "sqlite3")
+	sqlxDB := sqlx.NewDb(sqlDB, "sqlite")
 
 	if err != nil {
 		t.Fatal(err)

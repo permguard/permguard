@@ -22,7 +22,7 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // UpsertKeyValue creates or updates a key-value pair.
@@ -52,8 +52,8 @@ func (r *Repository) UpsertKeyValue(tx *sql.Tx, keyValue *KeyValue) (*KeyValue, 
 	)
 
 	if err != nil || result == nil {
-		params := map[string]string{WrapSqlite3ParamForeignKey: "key"}
-		return nil, WrapSqlite3ErrorWithParams(fmt.Sprintf("failed to upsert key-value pair - operation 'upsert-key-value' encountered an issue (key: %s)", key), err, params)
+		params := map[string]string{WrapSqliteParamForeignKey: "key"}
+		return nil, WrapSqliteErrorWithParams(fmt.Sprintf("failed to upsert key-value pair - operation 'upsert-key-value' encountered an issue (key: %s)", key), err, params)
 	}
 
 	var dbKeyValue KeyValue
@@ -63,7 +63,7 @@ func (r *Repository) UpsertKeyValue(tx *sql.Tx, keyValue *KeyValue) (*KeyValue, 
 		&dbKeyValue.Value,
 	)
 	if err != nil {
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve key-value pair - operation 'retrieve-upserted-key-value' encountered an issue (key: %s)", key), err)
+		return nil, WrapSqliteError(fmt.Sprintf("failed to retrieve key-value pair - operation 'retrieve-upserted-key-value' encountered an issue (key: %s)", key), err)
 	}
 	return &dbKeyValue, nil
 }
@@ -84,7 +84,7 @@ func (r *Repository) KeyValue(db *sqlx.DB, zoneID int64, key string) (*KeyValue,
 		if err == sql.ErrNoRows {
 			return nil, errors.Join(err, fmt.Errorf("no value found for key (%s)", key))
 		}
-		return nil, WrapSqlite3Error(fmt.Sprintf("failed to retrieve key-value pair - operation 'retrieve-key-value' encountered an issue (key: %s)", key), err)
+		return nil, WrapSqliteError(fmt.Sprintf("failed to retrieve key-value pair - operation 'retrieve-key-value' encountered an issue (key: %s)", key), err)
 	}
 
 	return &dbKeyValue, nil

@@ -31,11 +31,11 @@ func (s SQLiteCentralStorageZAP) CreateZone(zone *zap.Zone) (*zap.Zone, error) {
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, repo.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repo.WrapSqliteError(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, repo.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, repo.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
 	dbInZone := &repo.Zone{
 		ZoneID: zone.ZoneID,
@@ -56,7 +56,7 @@ func (s SQLiteCentralStorageZAP) CreateZone(zone *zap.Zone) (*zap.Zone, error) {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, repo.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, repo.WrapSqliteError(errorMessageCannotCommitTransaction, err)
 	}
 	return mapZoneToAgentZone(dbOutZone)
 }
@@ -68,11 +68,11 @@ func (s SQLiteCentralStorageZAP) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, repo.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repo.WrapSqliteError(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, repo.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, repo.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
 	dbInZone := &repo.Zone{
 		ZoneID: zone.ZoneID,
@@ -84,7 +84,7 @@ func (s SQLiteCentralStorageZAP) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, repo.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, repo.WrapSqliteError(errorMessageCannotCommitTransaction, err)
 	}
 	return mapZoneToAgentZone(dbOutzone)
 }
@@ -93,11 +93,11 @@ func (s SQLiteCentralStorageZAP) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
 func (s SQLiteCentralStorageZAP) DeleteZone(zoneID int64) (*zap.Zone, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, repo.WrapSqlite3Error(errorMessageCannotConnect, err)
+		return nil, repo.WrapSqliteError(errorMessageCannotConnect, err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
-		return nil, repo.WrapSqlite3Error(errorMessageCannotBeginTransaction, err)
+		return nil, repo.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
 	dbOutzone, err := s.sqlRepo.DeleteZone(tx, zoneID)
 	if err != nil {
@@ -105,7 +105,7 @@ func (s SQLiteCentralStorageZAP) DeleteZone(zoneID int64) (*zap.Zone, error) {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, repo.WrapSqlite3Error(errorMessageCannotCommitTransaction, err)
+		return nil, repo.WrapSqliteError(errorMessageCannotCommitTransaction, err)
 	}
 	return mapZoneToAgentZone(dbOutzone)
 }

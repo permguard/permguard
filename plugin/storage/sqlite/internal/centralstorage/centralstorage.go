@@ -64,7 +64,7 @@ func (s SqliteExec) Connect(ctx *storage.StorageContext, sqliteConnector db.SQLi
 	logger := ctx.Logger()
 	db, err := sqliteConnector.Connect(logger, ctx)
 	if err != nil {
-		return nil, repos.WrapSqlite3Error("cannot connect to sqlite", err)
+		return nil, repos.WrapSqliteError("cannot connect to sqlite", err)
 	}
 	return db, nil
 }
