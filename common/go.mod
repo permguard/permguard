@@ -1,6 +1,6 @@
 module github.com/permguard/permguard/common
 
-go 1.24.4
+go 1.25.1
 
 require (
 	github.com/go-playground/validator/v10 v10.24.0
