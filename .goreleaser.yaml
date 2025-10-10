@@ -80,6 +80,63 @@ archives:
       - goos: windows
         formats: [zip]
 
+
+dockers:
+  # amd64
+  - id: aio_amd64
+    use: buildx
+    ids: [permguard_all_in_one_linux]                       # collega il build sopra
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - permguard/all-in-one:{{ .Version }}-amd64
+    dockerfile: ./cmd/server-all-in-one/Dockerfile # è nella sua cartella
+    skip_push: false
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title=permguard-all-in-one"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.source={{ .Env.PROJECT_PATH }}"
+    # se il Dockerfile usa ARG per il binario:
+    # - "--build-arg=BINARY={{ .Binary }}"
+
+  # arm64
+  - id: aio_arm64
+    use: buildx
+    ids: [permguard_all_in_one_linux]
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - permguard/all-in-one:{{ .Version }}-arm64
+    dockerfile: ./cmd/server-all-in-one/Dockerfile
+    skip_push: false
+    build_flag_templates:
+      - "--platform=linux/arm64/v8"
+      - "--label=org.opencontainers.image.title=permguard-all-in-one"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.source={{ .Env.PROJECT_PATH }}"
+    # - "--build-arg=BINARY={{ .Binary }}"
+
+docker_manifests:
+  - name_template: permguard/all-in-one:{{ .Version }}
+    image_templates:
+      - permguard/all-in-one:{{ .Version }}-amd64
+      - permguard/all-in-one:{{ .Version }}-arm64
+  - name_template: permguard/all-in-one:latest
+    image_templates:
+      - permguard/all-in-one:{{ .Version }}-amd64
+      - permguard/all-in-one:{{ .Version }}-arm64
+  - name_template: permguard/all-in-one:{{ .Major }}
+    image_templates:
+      - permguard/all-in-one:{{ .Version }}-amd64
+      - permguard/all-in-one:{{ .Version }}-arm64
+  - name_template: permguard/all-in-one:{{ .Major }}.{{ .Minor }}
+    image_templates:
+      - permguard/all-in-one:{{ .Version }}-amd64
+      - permguard/all-in-one:{{ .Version }}-arm64
+
 changelog:
   sort: asc
   filters:
