@@ -21,7 +21,6 @@ seo:
 **Permguard** provides a **Command Line Interface (CLI)** for managing authentication metadata (**AuthN**)
 and authorization metadata and configurations (**AuthZ**) for **Zones**.
 
-- **AuthN administration** is handled through the CLI.
 - **AuthZ administration** is managed via both the CLI and the **Policy Language**.
 
 The authorization process follows a **code-first approach**.
