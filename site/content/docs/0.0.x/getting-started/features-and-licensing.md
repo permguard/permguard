@@ -26,11 +26,17 @@ For more details on legal terms and licenses, visit [Legal & Licenses](/docs/0.0
 When reviewing licenses, always check that you are referencing the correct version of the documentation, related websites, or other **Permguard** materials.
 
 These resources may be updated over time to reflect changes or improvements, especially for third-party technologies beyond our control. Ensuring you have the right version helps keep the information aligned with the specific software or materials you are using.
+
+⚠️ **License Notice:**
+The **Community Edition** and **Enterprise Edition** of Permguard are released under **different license terms**.
+Always verify which edition applies before using or redistributing Permguard components.
 {{</callout >}}
 
 ## Key Goals of Permguard
 
-**Permguard** aims to redefine authorization by combining flexibility with a structured approach to schema and model design. It provides organizations with the tools to implement secure, scalable, and efficient access control systems.
+**Permguard** aims to redefine authorization by introducing a **Zero Trust–first approach**, built on the principles of being **Transferable and Verifiable**, **Versionable and Immutable**, and **Resilient to Disconnection**.
+
+This foundation enables secure, scalable, and resilient authorization across distributed environments.
 
 <div style="text-align: center">
   <img alt="Permguard Policies" src="/images/diagrams/d21.webp"/>
