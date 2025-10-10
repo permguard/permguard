@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "resource-pathing-aac9fddccc2c417cbc1393e16518d34b"
-weight: 2305
+weight: 2405
 toc: true
 seo:
   title: "" # custom title (optional)

@@ -34,7 +34,7 @@ Always verify which edition applies before using or redistributing Permguard com
 
 ## Key Goals of Permguard
 
-**Permguard** aims to redefine authorization by introducing a **Zero Trust–first approach**, built on the principles of being **Transferable and Verifiable**, **Versionable and Immutable**, and **Resilient to Disconnection**.
+**Permguard** aims to redefine authorization by introducing a **Zero Trust–first approach**, built on the principles of policies being **Transferable and Verifiable**, **Versionable and Immutable**, and **Resilient to Disconnection**.
 
 This foundation enables secure, scalable, and resilient authorization across distributed environments.
 
