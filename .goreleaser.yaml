@@ -4,6 +4,9 @@ version: 2
 
 env:
   - PROJECT_PATH=github.com/permguard/permguard
+  - ORG=permguard
+  - REPO=permguard
+  - LICENSE=Apache-2.0
 
 before:
   hooks:
@@ -117,4 +120,33 @@ changelog:
 release:
   footer: >-
     ---
-    Released by [GoReleaser](https://github.com/goreleaser/goreleaser).
+    Released by the Permguard Team using [GoReleaser](https://github.com/goreleaser/goreleaser).
+
+brews:
+  - name: permguard
+
+    repository:
+      owner: "{{ .Env.ORG }}"
+      name: homebrew-tap
+      token: "{{ .Env.GITHUB_TOKEN }}"
+
+    url_template: "https://github.com/permguard/permguard/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+
+    download_strategy: CurlDownloadStrategy
+
+    commit_author:
+      name: Permguard Team
+      email: opensource@permguard.com
+
+    homepage: "https://community.permguard.com/"
+
+    description: "Permguard CLI"
+
+    license: "Apache-2.0"
+
+    skip_upload: false
+
+    test: |
+      system "#{bin}/permguard version"
+    install: |
+      bin.install "permguard"
