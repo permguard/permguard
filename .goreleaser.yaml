@@ -139,33 +139,36 @@ nfpms:
     ids:
       - permguard_cli
 
-brews:
+# brews:
+#   - name: cli
+#     ids: ["permguard_cli"]
+#     repository:
+#       owner: "{{ .Env.ORG }}"
+#       name: homebrew-tap
+#       token: "{{ .Env.GITHUB_TOKEN }}"
+#     url_template: "https://github.com/permguard/permguard/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+#     download_strategy: CurlDownloadStrategy
+#     commit_author:
+#       name: Permguard Team
+#       email: opensource@permguard.com
+#     homepage: "https://community.permguard.com/"
+#     description: "Permguard CLI"
+#     license: "Apache-2.0"
+#     skip_upload: false
+#     test: |
+#       system "#{bin}/permguard version"
+#     install: |
+#       bin.install "permguard"
+
+homebrew_casks:
   - name: cli
-
     ids: ["permguard_cli"]
-
     repository:
       owner: "{{ .Env.ORG }}"
       name: homebrew-tap
       token: "{{ .Env.GITHUB_TOKEN }}"
-
-    url_template: "https://github.com/permguard/permguard/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
-
-    download_strategy: CurlDownloadStrategy
-
-    commit_author:
-      name: Permguard Team
-      email: opensource@permguard.com
-
     homepage: "https://community.permguard.com/"
-
     description: "Permguard CLI"
-
     license: "Apache-2.0"
-
-    skip_upload: false
-
-    test: |
-      system "#{bin}/permguard version"
-    install: |
-      bin.install "permguard"
+    url:
+      verified: github.com/permguard/permguard/releases/download
