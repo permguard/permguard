@@ -169,7 +169,11 @@ homebrew_casks:
       token: "{{ .Env.GITHUB_TOKEN }}"
     homepage: "https://community.permguard.com/"
     description: "Permguard CLI"
+    commit_author:
+      name: Permguard Team
+      email: opensource@permguard.com
     license: "Apache-2.0"
     url:
-      verified: github.com/permguard/permguard/releases/download
+      template: "https://github.com/permguard/permguard/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+      verified: "github.com/permguard/permguard/"
     skip_upload: false
