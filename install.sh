@@ -6,7 +6,7 @@ set -euf
 #   -b  install dir (default: ./bin)
 #   -d  debug logs
 #   -x  shell trace
-#   tag optional Git tag (e.g. v0.0.10). If omitted, uses latest.
+#   tag optional Git tag (e.g. v0.0.11 or 0.0.11). If omitted, uses latest.
 
 OWNER="permguard"
 REPO="permguard"
@@ -57,10 +57,10 @@ http_download() {
 }
 
 sha256() {
-  if have shasum;   then shasum -a 256 "$1" | awk '{print $1}'; return; fi
-  if have sha256sum;then sha256sum     "$1" | awk '{print $1}'; return; fi
-  if have gsha256sum; then gsha256sum  "$1" | awk '{print $1}'; return; fi
-  if have openssl;  then openssl dgst -sha256 "$1" | awk '{print $2}'; return; fi
+  if have shasum;      then shasum -a 256 "$1" | awk '{print $1}'; return; fi
+  if have sha256sum;   then sha256sum     "$1" | awk '{print $1}'; return; fi
+  if have gsha256sum;  then gsha256sum    "$1" | awk '{print $1}'; return; fi
+  if have openssl;     then openssl dgst -sha256 "$1" | awk '{print $2}'; return; fi
   die "no SHA-256 tool found (shasum/sha256sum/openssl)"
 }
 
@@ -121,17 +121,15 @@ archPretty() {
 # ----- release tag -----
 if [ -z "$REQUESTED_TAG" ]; then
   log "resolving latest release tag…"
-  latest_json="$(http_get "https://github.com/${OWNER}/${REPO}/releases/latest" || true)"
-  # GitHub returns a HTML/JSON hybrid; use API-like header to get JSON if possible:
-  if [ -z "$latest_json" ]; then
-    latest_json="$( http_get "https://github.com/${OWNER}/${REPO}/releases/latest" )"
-  fi
-  # fallback to API redirect JSON (Accept:application/json)
   latest_json="$(curl -fsSL -H "Accept: application/json" "https://github.com/${OWNER}/${REPO}/releases/latest" 2>/dev/null || true)"
   TAG="$(printf '%s' "$latest_json" | tr -s '\n' ' ' | sed -n 's/.*"tag_name":"\([^"]*\)".*/\1/p')"
   [ -n "${TAG:-}" ] || die "cannot determine latest tag"
 else
-  TAG="$REQUESTED_TAG"
+  case "$REQUESTED_TAG" in
+    -*) die "invalid tag '$REQUESTED_TAG' (for local scripts DO NOT use -- before args)";;
+    v*) TAG="$REQUESTED_TAG" ;;
+    *)  TAG="v$REQUESTED_TAG" ;;
+  esac
 fi
 VER_NO_V="${TAG#v}"
 log "using tag: $TAG"
@@ -142,40 +140,37 @@ BASE="https://github.com/${OWNER}/${REPO}/releases/download/${TAG}"
 EXT="tar.gz"
 [ "$OS" = "windows" ] && EXT="zip"
 
-# candidate asset names (both current TitleCase pattern and all-lowercase)
-C1="${PROJECT}_cli_$(osTitle)_$(archPretty).${EXT}"
-C2="${PROJECT}_cli_${OS}_${ARCH}"
+# ---- robust asset selection: try download candidates in order ----
+C1="${PROJECT}_cli_$(osTitle)_$(archPretty).${EXT}"   # es: permguard_cli_Linux_arm64.tar.gz
+# lowercase variant (linux/darwin/windows + arch); map amd64->x86_64, 386->i386
 case "$ARCH" in
-  amd64) C2="${C2/_amd64/_x86_64}" ;;  # your artifacts use x86_64
-  386)   C2="${C2/_386/_i386}" ;;
+  amd64) C2="${PROJECT}_cli_${OS}_x86_64.${EXT}" ;;
+  386)   C2="${PROJECT}_cli_${OS}_i386.${EXT}" ;;
+  *)     C2="${PROJECT}_cli_${OS}_${ARCH}.${EXT}" ;;
 esac
-C2="${C2}.${EXT}"
-
-ASSET=""
-for cand in "$C1" "$C2"; do
-  # HEAD check (cheap existence test)
-  if have curl; then
-    code="$(curl -sIL -o /dev/null -w '%{http_code}' "${BASE}/${cand}" || true)"
-  else
-    code="$(wget --spider -q "${BASE}/${cand}" >/dev/null 2>&1; echo $?)"
-    [ "$code" = "0" ] && code=200
-  fi
-  dbg "probe ${cand} -> ${code}"
-  [ "${code}" = "200" ] && { ASSET="$cand"; break; }
-done
-[ -n "$ASSET" ] || die "no matching asset found for ${OS}/${ARCH}"
-
-# checksum filename (matches your releases: permguard_<version>_checksums.txt)
-CHECKSUM="${PROJECT}_${VER_NO_V}_checksums.txt"
 
 tmp="$(mktempdir)"
 trap 'rm -rf "$tmp"' EXIT INT HUP TERM
 
-ARCHIVE="${tmp}/${ASSET}"
-SUMFILE="${tmp}/${CHECKSUM}"
+ASSET=""
+ARCHIVE=""
+for cand in "$C1" "$C2"; do
+  try="${tmp}/${cand}"
+  if http_download "$try" "${BASE}/${cand}"; then
+    ASSET="$cand"
+    ARCHIVE="$try"
+    dbg "download ok with candidate: $cand"
+    break
+  else
+    dbg "candidate failed: $cand"
+    rm -f "$try" || true
+  fi
+done
+[ -n "$ASSET" ] || die "no matching asset found for ${OS}/${ARCH}"
 
-log "downloading: ${ASSET}"
-http_download "$ARCHIVE" "${BASE}/${ASSET}"
+# checksum filename (matches releases: permguard_<version>_checksums.txt)
+CHECKSUM="${PROJECT}_${VER_NO_V}_checksums.txt"
+SUMFILE="${tmp}/${CHECKSUM}"
 
 log "downloading checksums: ${CHECKSUM}"
 http_download "$SUMFILE" "${BASE}/${CHECKSUM}"
