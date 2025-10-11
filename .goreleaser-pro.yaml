@@ -147,6 +147,9 @@ homebrew_casks:
       owner: "{{ .Env.ORG }}"
       name: homebrew-tap
       token: "{{ .Env.GITHUB_TOKEN }}"
+    alternative_names:
+      - myproject@{{ .Version }}
+      - myproject@{{ .Major }}
     homepage: "https://community.permguard.com/"
     description: "Permguard CLI"
     commit_author:
