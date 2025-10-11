@@ -2,7 +2,7 @@
 set -euf
 
 # Minimal, portable installer for permguard CLI
-# Usage: ./install-permguard.sh [-b bindir] [-d] [-x] [tag]
+# Usage: ./install.sh [-b bindir] [-d] [-x] [tag]
 #   -b  install dir (default: ./bin)
 #   -d  debug logs
 #   -x  shell trace
@@ -35,24 +35,40 @@ REQUESTED_TAG="${1:-}"
 have() { command -v "$1" >/dev/null 2>&1; }
 die() { log "ERROR: $*"; exit 1; }
 
+http_backend() {
+  # FORCE: WGET=1 per forzare wget; CURL=1 per forzare curl
+  if [ "${WGET:-}" = "1" ] && have wget; then echo wget && return; fi
+  if [ "${CURL:-}" = "1" ] && have curl; then echo curl && return; fi
+  if have curl; then echo curl && return; fi
+  if have wget; then echo wget && return; fi
+  echo none
+}
+
 http_get() {
   # stdout <- body
-  if have curl; then
-    curl -fsSL "$1"
-  elif have wget; then
-    wget -q -O - "$1"
+  b="$(http_backend)"; [ "$b" = none ] && die "need curl or wget"
+  if [ "$b" = curl ]; then
+    # Se curl-snap fallisce, prova wget
+    curl -fsSL "$1" || { have wget && wget -q -O - "$1"; }
   else
-    die "need curl or wget"
+    wget -q -O - "$1" || { have curl && curl -fsSL "$1"; }
   fi
 }
 
 http_download() {
   # $1 dest, $2 url
   dbg "GET $2 -> $1"
-  if have curl; then
-    curl -fsSL -o "$1" "$2"
+  b="$(http_backend)"; [ "$b" = none ] && die "need curl or wget"
+  if [ "$b" = curl ]; then
+    curl -fsSL -o "$1" "$2" || {
+      dbg "curl failed, trying wget…"
+      have wget && wget -q -O "$1" "$2" || return 1
+    }
   else
-    wget -q -O "$1" "$2"
+    wget -q -O "$1" "$2" || {
+      dbg "wget failed, trying curl…"
+      have curl && curl -fsSL -o "$1" "$2" || return 1
+    }
   fi
 }
 
@@ -74,8 +90,11 @@ verify_sha256() {
 }
 
 mktempdir() {
-  if have mktemp; then mktemp -d 2>/dev/null || mktemp -d -t permguard; else
-    d="./.permguard-tmp.$$"; mkdir -p "$d"; echo "$d"
+  if have mktemp; then
+    mktemp -d 2>/dev/null || mktemp -d -t permguard
+  else
+    d="./permguard-tmp.$$"   # non nascosta (evita problemi con curl snap)
+    mkdir -p "$d"; echo "$d"
   fi
 }
 
@@ -122,6 +141,7 @@ archPretty() {
 if [ -z "$REQUESTED_TAG" ]; then
   log "resolving latest release tag…"
   latest_json="$(curl -fsSL -H "Accept: application/json" "https://github.com/${OWNER}/${REPO}/releases/latest" 2>/dev/null || true)"
+  [ -n "$latest_json" ] || latest_json="$(http_get "https://github.com/${OWNER}/${REPO}/releases/latest")"
   TAG="$(printf '%s' "$latest_json" | tr -s '\n' ' ' | sed -n 's/.*"tag_name":"\([^"]*\)".*/\1/p')"
   [ -n "${TAG:-}" ] || die "cannot determine latest tag"
 else
@@ -142,7 +162,7 @@ EXT="tar.gz"
 
 # ---- robust asset selection: try download candidates in order ----
 C1="${PROJECT}_cli_$(osTitle)_$(archPretty).${EXT}"   # es: permguard_cli_Linux_arm64.tar.gz
-# lowercase variant (linux/darwin/windows + arch); map amd64->x86_64, 386->i386
+# lowercase variant; map amd64->x86_64, 386->i386
 case "$ARCH" in
   amd64) C2="${PROJECT}_cli_${OS}_x86_64.${EXT}" ;;
   386)   C2="${PROJECT}_cli_${OS}_i386.${EXT}" ;;
@@ -187,10 +207,10 @@ case "$ASSET" in
   *) die "unknown archive format: $ASSET" ;;
 esac
 
-# find the binary (supports archives that contain it at root)
+# find the binary
 binname="$BINARY"
 [ "$OS" = "windows" ] && binname="${binname}.exe"
-found="$( (cd "$extract_dir" && find . -type f -name "$binname" -maxdepth 2 | head -n1) || true )"
+found="$( (cd "$extract_dir" && find . -type f -name "$binname" | head -n1) || true )"
 [ -n "$found" ] || die "cannot find ${binname} inside archive"
 
 # install
