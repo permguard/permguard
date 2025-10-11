@@ -162,6 +162,7 @@ nfpms:
 
 homebrew_casks:
   - name: cli
+    binary: permguard
     ids: ["permguard_cli"]
     repository:
       owner: "{{ .Env.ORG }}"
