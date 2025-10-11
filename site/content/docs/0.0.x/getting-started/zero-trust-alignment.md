@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "zero-trust-ready-8c89ddc8339f83444fc4b97264bd5c45"
-weight: 1003
+weight: 1006
 toc: true
 seo:
   title: "" # custom title (optional)
