@@ -172,3 +172,4 @@ homebrew_casks:
     license: "Apache-2.0"
     url:
       verified: github.com/permguard/permguard/releases/download
+    skip_upload: false
