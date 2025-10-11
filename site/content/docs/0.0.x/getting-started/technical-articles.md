@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "technical-articles-e9a385eb037b4bd5ad158b0244c70062"
-weight: 1007
+weight: 1005
 toc: true
 seo:
   title: "" # custom title (optional)

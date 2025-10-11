@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "install-and-bootstrap-25c10db057194ae3b83531088638a3fc"
-weight: 1004
+weight: 1002
 toc: true
 seo:
   title: "" # custom title (optional)
