@@ -129,7 +129,7 @@ brews:
 
     repository:
       owner: "{{ .Env.ORG }}"
-      name: homebrew-tap
+      name: homebrew-cli
       token: "{{ .Env.GITHUB_TOKEN }}"
 
     url_template: "https://github.com/permguard/permguard/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
