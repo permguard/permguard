@@ -125,6 +125,8 @@ release:
 brews:
   - name: permguard
 
+    ids: ["permguard_cli"]
+
     repository:
       owner: "{{ .Env.ORG }}"
       name: homebrew-tap
