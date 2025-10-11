@@ -122,6 +122,22 @@ release:
     ---
     Released by the Permguard Team using [GoReleaser](https://github.com/goreleaser/goreleaser).
 
+
+nfpms:
+  - vendor: Permguard
+    homepage: https://www.permguard.com
+    maintainer: Permguard Team <opensource@permguard.com>
+    description: Permguard CLI
+    section: golang
+    license: Apache 2.0
+    formats:
+      - deb
+      - rpm
+      - apk
+    file_name_template: '{{.ProjectName}}_{{.Os}}_{{.Arch}}'
+    builds:
+      - permguard_cli
+
 brews:
   - name: cli
 
