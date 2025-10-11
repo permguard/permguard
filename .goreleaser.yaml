@@ -72,7 +72,7 @@ archives:
     id: permguard_cli
     ids: ["permguard_cli"]
     name_template: >-
-      {{ .ProjectName }}_{{ .Binary }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
+      {{ .ProjectName }}_cli_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
       - goos: windows
         formats: [zip]
@@ -134,8 +134,8 @@ nfpms:
       - deb
       - rpm
       - apk
-    file_name_template: '{{.ProjectName}}_{{.Os}}_{{.Arch}}'
-    builds:
+    file_name_template: 'permguard_cli'
+    ids:
       - permguard_cli
 
 brews:
