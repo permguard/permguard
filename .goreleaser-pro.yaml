@@ -115,9 +115,9 @@ changelog:
       - "^test:"
 
 release:
-  extra_files:
-    - glob: "dist/checksums.txt.pem"
-    - glob: "dist/checksums.txt.sig"
+  # extra_files:
+  #   - glob: "dist/checksums.txt.pem"
+  #   - glob: "dist/checksums.txt.sig"
   footer: >-
     ---
     Released by the Permguard Team using [GoReleaser](https://github.com/goreleaser/goreleaser).
