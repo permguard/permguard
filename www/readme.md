@@ -28,7 +28,7 @@ To create a new version (e.g., `0.2`), follow these steps:
 The application will automatically select the latest version from the docsVersions array as the default version of the documentation.
 
 4. **Update the docsearch**
-   Modify the `FALLBACK_VERSION` in the `site\assets\js\docsearch.js` file to point to the new version when performing a search in the documentation.
+   Modify the `FALLBACK_VERSION` in the `www\assets\js\docsearch.js` file to point to the new version when performing a search in the documentation.
 
 ```toml
 const FALLBACK_VERSION = "0.2";
@@ -98,7 +98,7 @@ new Crawler({
       },
     },
   ],
-  sitemaps: ["https://community.permguard.com/sitemap.xml"],
+  wwwmaps: ["https://community.permguard.com/wwwmap.xml"],
   initialIndexSettings: {
     permguard_index: {
       advancedSyntax: true,
