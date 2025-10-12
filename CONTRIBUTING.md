@@ -1,73 +1,74 @@
-# Contributing to Permguard
+# Contributing
 
-Thank you sincerely for considering contributing to the Permguard project. We highly value the input and engagement of our community members.
+By contributing to this project, you agree to follow our [code of conduct](https://github.com/permguard/.github/blob/main/CODE_OF_CONDUCT.md).
 
-Please make sure to review our set guidelines detailed in the [conduct protocol](CODE_OF_CONDUCT.md) that governs interactions within this project's sphere.
+## Set up your machine
 
-Moreover, familiarize yourself with the guidelines listed below to increase the chances of your submissions getting approved.
+`permguard` is written in [Go](https://go.dev/).
 
-> Please note that we are currently following an internal roadmap and are not accepting feature contributions from the community at the moment. However, this policy will change soon. In the meantime, we welcome bug fixes and documentation improvements.
+Prerequisites:
 
-Thank you once again for your interest and support.
-To get any help or get help:
+- [Task](https://taskfile.dev/installation)
+- [Go 1.25+](https://go.dev/doc/install)
 
-- Email us at [opensource@permguard.com](mailto:opensource@permguard.com)
+Some development or test workflows may rely on external tools. If these tools are not installed locally, the related tests will be skipped automatically:
 
-## Contribution Steps
+- [cosign](https://github.com/sigstore/cosign)
+- [Docker](https://www.docker.com/)
+- [GPG](https://gnupg.org)
+- [Syft](https://github.com/anchore/syft)
 
-To contribute to the project, follow the steps below:
+## Building
 
-- Fork this repository.
-- Clone the repository you forked.
-- Create a branch with specified name. It's better to relate it with your issue title.
-- Make necessary changes and commit those changes. Make sure to test your changes.
-- Push changes to your branch.
-- Submit your changes for review.
+Clone `permguard` anywhere:
 
-## Committing changes
-
-Please help us to keep our commit messages clean and informative. Here the applied form of commit message:
-
-```bash
-<type>(optional scope): <description>
+```sh
+git clone git@github.com:permguard/permguard.git
 ```
 
-Examples:
+`cd` into the directory and install the dependencies:
 
 ```bash
-  feat: add new feature
-  fix: correct minor typos
-  docs: update README.md
-  style: remove trailing spaces
-  refactor: refactor code
-  test: add test cases
+task mod
 ```
 
-Types:
+You should then be able to build the binaries:
 
-- `feat:` new feature
-- `fix:` bug fix
-- `refactor:` refactoring production code
-- `test:` adding tests, refactoring test; no production code change
-- `docs:` documentation
-- `style:` formatting, missing semi colons, etc; no code change
-- `build:` code change that affects the build system or external dependencies
-- `chore:` updating build tasks, package manager configs, etc; no production code change
-- `perf:` code change that improves performance
-- `security:` code change that improves security
-- `breaking:` code change that breaks existing functionality
-- `ci:` updating CI build tasks, etc; no production code change
-- `release:` code change for release
+```bash
+task build
+```
 
-## Submitting pull requests
+## Testing your changes
 
-Once you wish to get started contributing to the code base, please refer to our [development guide](DEVELOPMENT.md) for a how-to.
+Create a new branch for your changes and build the project incrementally as you work:
 
-> Please note we accept pull requests from forks only.
+```sh
+task build
+```
 
-Before creating a pull request, please ensure that your changes are tested and that the documentation is updated accordingly.
+Once you’re satisfied with the results, run the full validation pipeline:
 
-### Pull request reccomendations
+```sh
+task ci
+```
+
+Before committing, ensure the codebase is properly formatted and consistent with the project’s style guidelines:
+
+```sh
+task fmt
+```
+
+## Creating a commit
+
+Commit messages should be clear and consistent.
+To maintain a common standard, we follow the Conventional Commits specification.
+You can find the full documentation on [their website](https://www.conventionalcommits.org).
+
+## Submitting a pull request
+
+Push your branch to your `permguard` fork and open a pull request against the main branch.
+
+Below are a few recommendations:
 
 - Before submitting a pull request, please raise an issue to discuss the changes you wish to make. This will help us understand the context of your changes and provide feedback.
 - Make sure sure each source file include the appropriate license header.
