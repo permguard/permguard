@@ -67,6 +67,28 @@ builds:
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.BuildTime={{ .Timestamp }}
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.GitCommit={{ .Commit }}
 
+checksum:
+  name_template: "checksums.txt"
+
+source:
+  enabled: true
+
+sboms:
+  - artifacts: archive
+  - id: source
+    artifacts: source
+
+# signs:
+#   - cmd: cosign
+#     args:
+#       - sign-blob
+#       - "--output-certificate=${certificate}"
+#       - "--output-signature=${signature}"
+#       - "${artifact}"
+#       - "--yes" # needed on cosign 2.0.0+
+#     artifacts: checksum
+#     output: true
+
 archives:
   - formats: [tar.gz]
     id: permguard_cli
@@ -85,31 +107,6 @@ archives:
       - goos: windows
         formats: [zip]
 
-# dockers_v2:
-#   - id: permguard_all_in_one
-#     dockerfile: ./cmd/server-all-in-one/Dockerfile
-#     ids:
-#       - permguard_all_in_one_linux
-#     images:
-#       - permguard/all-in-one
-#     tags:
-#       - "{{ .Version }}"
-#       - "latest"
-#       - "{{ .Major }}"
-#       - "{{ .Major }}.{{ .Minor }}"
-#     platforms:
-#       - linux/amd64
-#       - linux/arm64
-#     extra_files:
-#       - samples/volume/permguard.db
-#     build_args:
-#       DB_FILE: samples/volume/permguard.db
-#     labels:
-#       org.opencontainers.image.title: "permguard-all-in-one"
-#       org.opencontainers.image.version: "{{ .Version }}"
-#       org.opencontainers.image.revision: "{{ .FullCommit }}"
-#       org.opencontainers.image.source: "{{ .Env.PROJECT_PATH }}"
-
 changelog:
   sort: asc
   filters:
@@ -118,10 +115,12 @@ changelog:
       - "^test:"
 
 release:
+  extra_files:
+    - glob: "dist/checksums.txt.pem"
+    - glob: "dist/checksums.txt.sig"
   footer: >-
     ---
     Released by the Permguard Team using [GoReleaser](https://github.com/goreleaser/goreleaser).
-
 
 nfpms:
   - vendor: Permguard
@@ -160,3 +159,28 @@ homebrew_casks:
       template: "https://github.com/permguard/permguard/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
       verified: "github.com/permguard/permguard/"
     skip_upload: false
+
+# dockers_v2:
+#   - id: permguard_all_in_one
+#     dockerfile: ./cmd/server-all-in-one/Dockerfile
+#     ids:
+#       - permguard_all_in_one_linux
+#     images:
+#       - permguard/all-in-one
+#     tags:
+#       - "{{ .Version }}"
+#       - "latest"
+#       - "{{ .Major }}"
+#       - "{{ .Major }}.{{ .Minor }}"
+#     platforms:
+#       - linux/amd64
+#       - linux/arm64
+#     extra_files:
+#       - samples/volume/permguard.db
+#     build_args:
+#       DB_FILE: samples/volume/permguard.db
+#     labels:
+#       org.opencontainers.image.title: "permguard-all-in-one"
+#       org.opencontainers.image.version: "{{ .Version }}"
+#       org.opencontainers.image.revision: "{{ .FullCommit }}"
+#       org.opencontainers.image.source: "{{ .Env.PROJECT_PATH }}"
