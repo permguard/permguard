@@ -14,6 +14,7 @@ Prerequisites:
 Some development or test workflows may rely on external tools.
 If these tools are not installed locally, the related tests will be skipped automatically:
 
+- [addlicense](https://github.com/google/addlicense)
 - [cosign](https://github.com/sigstore/cosign)
 - [Docker](https://www.docker.com/)
 - [GPG](https://gnupg.org)
