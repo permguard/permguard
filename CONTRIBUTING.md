@@ -12,7 +12,6 @@ Prerequisites:
 - [Go 1.25+](https://go.dev/doc/install)
 
 Some development or test workflows may rely on external tools.
-
 If these tools are not installed locally, the related tests will be skipped automatically:
 
 - [cosign](https://github.com/sigstore/cosign)
