@@ -14,8 +14,8 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-# Sample workflow for building and deploying a Hugo site to GitHub Pages
-name: Deploy site to pages
+# Sample workflow for building and deploying a Hugo www to GitHub Pages
+name: Deploy www to pages
 
 on:
   # Runs on pushes targeting the default branch
@@ -70,18 +70,18 @@ jobs:
         id: pages
         uses: actions/configure-pages@v4
       - name: Install Node.js dependencies
-        run: "node -v && npm -v && cd site && npm i"
+        run: "node -v && npm -v && cd www && npm i"
       - name: Build with Hugo
         env:
           # For maximum backward compatibility with Hugo modules
           HUGO_ENVIRONMENT: development #production
           HUGO_ENV: development #production
         run: |
-          cd site && npm run build
+          cd www && npm run build
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./site/public
+          path: ./www/public
 
   # Deployment job
   deploy:
