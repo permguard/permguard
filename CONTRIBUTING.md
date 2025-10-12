@@ -89,10 +89,26 @@ Below are a few recommendations:
 ## Development Platform Notes
 
 Permguard is primarily developed and tested on macOS (Darwin) environments.
-While Go’s cross-platform support allows the project to build and run on other operating systems such as Linux and Windows, most of our local development run on macOS.
+While Go’s cross-platform support allows the project to build and run on other operating systems such as Linux and Windows, most of our local development runs on macOS.
 
 If you experience any platform-specific issues, differences in behavior, or build failures on other systems, your feedback is highly appreciated.
 You can either:
 
-- pen a pull request with fixes or suggestions, or
+- Open a pull request with fixes or suggestions, or
 - Contact us directly at 📧 **<opensource@permguard.com>**
+
+## Legal and Licensing Compliance
+
+All contributions to **Permguard** must fully comply must fully comply with the project’s Apache 2.0 License, our EULA, and any applicable third-party terms.
+By submitting a contribution, you confirm that you have the right to do so and that your submission does not violate any intellectual property or contractual obligations.
+
+If your contribution introduces third-party technologies, external dependencies, or materials under a different license:
+
+- Provide clear attribution and include a reference to the corresponding license.
+- Add a short note in your pull request description under a “Third-Party Notice” section.
+- Ensure the license terms of any added dependency are compatible with the Apache 2.0 License.
+- If you’re unsure about the licensing implications or compliance requirements, please contact us before submitting the PR.
+
+📧 For any legal or licensing concerns, reach out to 📧 **<opensource@permguard.com>**
+
+⚖️ Note: Contributions that introduce incompatible or unverified third-party materials may be declined to protect the integrity and legal safety of the project.
