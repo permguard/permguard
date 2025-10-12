@@ -1,9 +1,12 @@
 # NOTICE
 
-The trademark "Permguard" and its associated logo(s), as contained in this repository, are the exclusive intellectual property of Nitro Agility Srl.
+The **"Permguard"** name and its associated logo(s) are trademarks and intellectual property of **Nitro Agility S.r.l.**
 
-All rights reserved. Unauthorized use, reproduction, or distribution of the "Permguard" trademark and its associated logo(s) is strictly prohibited.
+All rights are reserved.
+Unauthorized or misleading use of the "Permguard" name or logo — including imitation, false affiliation, or representation suggesting endorsement by Nitro Agility — is strictly prohibited.
 
-For inquiries regarding the use of the "Permguard" trademark and its associated logo(s), please contact Nitro Agility S.r.l. at <opensource@nitroagility.com>.
+You may reference "Permguard" in articles, comparisons, integrations, or documentation, **provided such use is fair, accurate, and does not imply sponsorship or endorsement**.
 
-Copyright © 2024 Nitro Agility S.r.l. All Rights Reserved.
+For trademark or branding inquiries, please contact **<opensource@nitroagility.com>**.
+
+© 2024 **Nitro Agility S.r.l.** All Rights Reserved.
