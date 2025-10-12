@@ -86,7 +86,7 @@ Below are a few recommendations:
 - Do not add third-party content in-line without attribution. Use links where possible.
 - Make sure the development guidance is followed.
 
-## Platform Notes
+## Development Platform Notes
 
 Permguard is primarily developed and tested on macOS (Darwin) environments.
 While Go’s cross-platform support allows the project to build and run on other operating systems such as Linux and Windows, most of our local development run on macOS.
