@@ -18,8 +18,19 @@ version: '3'
 
 tasks:
   # Code and Docs
-  license:
-    cmd: addlicense  -c "Nitro Agility S.r.l." -s .
+  license:add:
+    desc: Add license to .go, .sh, .yml, .yaml, and Makefile files
+    cmds:
+      - |
+        find . -type f \( -name '*.go' -o -name '*.sh' -o -iname 'makefile' -o -name '*.yml' -o -name '*.yaml' \) \
+          ! -path '*/vendor/*' ! -path '*/.git/*' ! -path '*/node_modules/*' \
+          -exec addlicense -c "Nitro Agility S.r.l." {} +
+  license:dry:
+    desc: Preview files that would receive the license header
+    cmds:
+      - |
+        find . -type f \( -name '*.go' -o -name '*.sh' -o -iname 'makefile' -o -name '*.yml' -o -name '*.yaml' \) \
+          ! -path '*/vendor/*' ! -path '*/.git/*' ! -path '*/node_modules/*' -print
   fmt:
     cmds:
       - find . -name "*.go" -exec go fmt {} \;
@@ -74,17 +85,6 @@ tasks:
     cmds:
       - make build
     silent: false
-  hot:
-    cmds:
-      - air --build.cmd "go build -o dist/host ./cmd/server-all-in-one/main.go" --build.bin "./dist/host"
-  test:
-    cmds:
-      - make coverage
-    silent: true
-  e2e:
-    cmds:
-      - make teste2e
-    silent: true
   # Local
   install: export VERSION=$(git describe --tags --match 'v*' --abbrev=0 | cut -c2-) && export BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S') && export GIT_COMMIT=$(git rev-parse --short HEAD) && make build-cli && cp ./dist/permguard ~/.apps/bin/permguard
   docker:
@@ -122,40 +122,3 @@ tasks:
     cmds:
       - go run cmd/server-pdp/main.go {{.CLI_ARGS}}
     silent: false
-  goreleaser:test:pkg:
-    desc: Test a package
-    cmds:
-      - docker run --platform linux/{{.Platform}} --rm --workdir /tmp -v $PWD/dist:/tmp {{.Image}} sh -c '{{.Cmd}} && goreleaser --version'
-  oreleaser:test:apk:
-    desc: Tests apk packages
-    vars:
-      apk: "apk add --allow-untrusted -U"
-    cmds:
-      - task: goreleaser:test:pkg
-        vars:
-          Platform: "386"
-          Image: alpine
-          Cmd: "{{.apk}} goreleaser*_x86.apk"
-      - task: goreleaser:test:pkg
-        vars:
-          Platform: "amd64"
-          Image: alpine
-          Cmd: "{{.apk}} goreleaser*_x86_64.apk"
-      - task: goreleaser:test:pkg
-        vars:
-          Platform: "arm64"
-          Image: alpine
-          Cmd: "{{.apk}} goreleaser*_aarch64.apk"
-      - task: goreleaser:test:pkg
-        vars:
-          Platform: "arm/7"
-          Image: alpine
-          Cmd: "{{.apk}} goreleaser*_armv7.apk"
-  build-windows-amd64:
-    platforms: [windows/amd64, darwin]
-    cmds:
-      - echo 'Running command on Windows (amd64)'
-    preconditions:
-      - test -f .env
-      - sh: '[ 1 = 0 ]'
-        msg: "One doesn't equal Zero, Halting"
