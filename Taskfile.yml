@@ -97,9 +97,6 @@ tasks:
   down:
     cmds:
       - go run ./cmd/provisioner-db-sqlite/main.go --down  --dbdir ./samples/volume --debug
-  up-magicfarmacia:
-    cmds:
-      - sh ./samples/domains/magicfarmacia/magicfarmacia.sh
   # Servers
   cli:
     cmds:
@@ -125,3 +122,40 @@ tasks:
     cmds:
       - go run cmd/server-pdp/main.go {{.CLI_ARGS}}
     silent: false
+  goreleaser:test:pkg:
+    desc: Test a package
+    cmds:
+      - docker run --platform linux/{{.Platform}} --rm --workdir /tmp -v $PWD/dist:/tmp {{.Image}} sh -c '{{.Cmd}} && goreleaser --version'
+  oreleaser:test:apk:
+    desc: Tests apk packages
+    vars:
+      apk: "apk add --allow-untrusted -U"
+    cmds:
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: "386"
+          Image: alpine
+          Cmd: "{{.apk}} goreleaser*_x86.apk"
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: "amd64"
+          Image: alpine
+          Cmd: "{{.apk}} goreleaser*_x86_64.apk"
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: "arm64"
+          Image: alpine
+          Cmd: "{{.apk}} goreleaser*_aarch64.apk"
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: "arm/7"
+          Image: alpine
+          Cmd: "{{.apk}} goreleaser*_armv7.apk"
+  build-windows-amd64:
+    platforms: [windows/amd64, darwin]
+    cmds:
+      - echo 'Running command on Windows (amd64)'
+    preconditions:
+      - test -f .env
+      - sh: '[ 1 = 0 ]'
+        msg: "One doesn't equal Zero, Halting"
