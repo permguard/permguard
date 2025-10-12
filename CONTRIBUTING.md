@@ -4,7 +4,7 @@ By contributing to this project, you agree to follow our [code of conduct](https
 
 ## Set up your machine
 
-`permguard` is written in [Go](https://go.dev/).
+`Permguard` is written in [Go](https://go.dev/).
 
 Prerequisites:
 
