@@ -85,3 +85,14 @@ Below are a few recommendations:
 - Code cannot be reverted if you by mistake commit any sensitive information, so please make sure to not commit any sensitive information.
 - Do not add third-party content in-line without attribution. Use links where possible.
 - Make sure the development guidance is followed.
+
+## Platform Notes
+
+Permguard is primarily developed and tested on macOS (Darwin) environments.
+While Go’s cross-platform support allows the project to build and run on other operating systems such as Linux and Windows, most of our local development run on macOS.
+
+If you experience any platform-specific issues, differences in behavior, or build failures on other systems, your feedback is highly appreciated.
+You can either:
+
+- pen a pull request with fixes or suggestions, or
+- Contact us directly at 📧 **<opensource@permguard.com>**
