@@ -1,5 +1,5 @@
 # .github/workflows/release.yml
-name: permguard-release
+name: Permguard Release
 
 on:
   pull_request:
