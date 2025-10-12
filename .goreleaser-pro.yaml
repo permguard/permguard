@@ -78,16 +78,16 @@ sboms:
   - id: source
     artifacts: source
 
-# signs:
-#   - cmd: cosign
-#     args:
-#       - sign-blob
-#       - "--output-certificate=${certificate}"
-#       - "--output-signature=${signature}"
-#       - "${artifact}"
-#       - "--yes" # needed on cosign 2.0.0+
-#     artifacts: checksum
-#     output: true
+signs:
+  - cmd: cosign
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes" # needed on cosign 2.0.0+
+    artifacts: checksum
+    output: true
 
 archives:
   - formats: [tar.gz]
