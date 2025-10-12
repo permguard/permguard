@@ -1,5 +1,5 @@
 # .github/workflows/release.yml
-name: goreleaser
+name: permguard-release
 
 on:
   pull_request:
