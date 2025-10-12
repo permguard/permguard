@@ -1,77 +1,11 @@
 # .goreleaser.yaml
 
 version: 2
+pro: true
 
-env:
-  - PROJECT_PATH=github.com/permguard/permguard
-  - ORG=permguard
-  - REPO=permguard
-  - LICENSE=Apache-2.0
-
-before:
-  hooks:
-    - go mod tidy
-    - go generate ./...
-
-builds:
-  - id: permguard_cli
-    dir: "./cmd/cli"
-    binary: "permguard"
-    goos: [linux, windows, darwin]
-    goarch: [amd64, arm64]
-    env:
-      - CGO_ENABLED=0
-    ldflags:
-      - -s -w
-      - -X {{ .Env.PROJECT_PATH }}/internal/cli/common.Version={{ .Version }}
-      - -X {{ .Env.PROJECT_PATH }}/internal/cli/common.BuildTime={{ .Timestamp }}
-      - -X {{ .Env.PROJECT_PATH }}/internal/cli/common.GitCommit={{ .Commit }}
-
-
-  - id: permguard_all_in_one_linux
-    dir: "./cmd/server-all-in-one"
-    binary: "server-all-in-one"
-    goos: [linux]
-    goarch: [amd64, arm64]
-    env:
-      - CGO_ENABLED=0
-    ldflags:
-      - -s -w
-      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.Version={{ .Version }}
-      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.BuildTime={{ .Timestamp }}
-      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.GitCommit={{ .Commit }}
-
-  - id: permguard_all_in_one_windows
-    dir: "./cmd/server-all-in-one"
-    binary: "server-all-in-one"
-    goos: [windows]
-    goarch: [amd64, arm64]
-    env:
-      - CGO_ENABLED=0
-    ldflags:
-      - -s -w
-      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.Version={{ .Version }}
-      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.BuildTime={{ .Timestamp }}
-      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.GitCommit={{ .Commit }}
-
-  - id: permguard_all_in_one_darwin
-    dir: "./cmd/server-all-in-one"
-    binary: "server-all-in-one"
-    goos: [darwin]
-    goarch: [amd64, arm64]
-    env:
-      - CGO_ENABLED=0
-    ldflags:
-      - -s -w
-      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.Version={{ .Version }}
-      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.BuildTime={{ .Timestamp }}
-      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.GitCommit={{ .Commit }}
-
-checksum:
-  name_template: "checksums.txt"
-
-source:
-  enabled: true
+includes:
+  - from_file:
+      path: ./.goreleaser.yaml
 
 sboms:
   - artifacts: archive
@@ -80,6 +14,7 @@ sboms:
 
 signs:
   - cmd: cosign
+    certificate: "${artifact}.pem"
     args:
       - sign-blob
       - "--output-certificate=${certificate}"
@@ -88,55 +23,6 @@ signs:
       - "--yes" # needed on cosign 2.0.0+
     artifacts: checksum
     output: true
-
-archives:
-  - formats: [tar.gz]
-    id: permguard_cli
-    ids: ["permguard_cli"]
-    name_template: >-
-      {{ .ProjectName }}_cli_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
-    format_overrides:
-      - goos: windows
-        formats: [zip]
-  - formats: [tar.gz]
-    id: permguard_all_in_one
-    ids: ["permguard_all_in_one_linux", "permguard_all_in_one_windows", "permguard_all_in_one_darwin"]
-    name_template: >-
-      {{ .ProjectName }}_{{ .Binary }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
-    format_overrides:
-      - goos: windows
-        formats: [zip]
-
-changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-
-release:
-  # extra_files:
-  #   - glob: "dist/checksums.txt.pem"
-  #   - glob: "dist/checksums.txt.sig"
-  footer: >-
-    ---
-    Released by the Permguard Team using [GoReleaser](https://github.com/goreleaser/goreleaser).
-
-nfpms:
-  - vendor: Permguard
-    homepage: https://www.permguard.com
-    maintainer: Permguard Team <opensource@permguard.com>
-    description: Permguard CLI
-    section: golang
-    license: Apache 2.0
-    formats:
-      - deb
-      - rpm
-      - apk
-    file_name_template: '{{ .ProjectName }}_cli_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}'
-
-    ids:
-      - permguard_cli
 
 homebrew_casks:
   - name: cli
@@ -159,28 +45,3 @@ homebrew_casks:
       template: "https://github.com/permguard/permguard/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
       verified: "github.com/permguard/permguard/"
     skip_upload: false
-
-# dockers_v2:
-#   - id: permguard_all_in_one
-#     dockerfile: ./cmd/server-all-in-one/Dockerfile
-#     ids:
-#       - permguard_all_in_one_linux
-#     images:
-#       - permguard/all-in-one
-#     tags:
-#       - "{{ .Version }}"
-#       - "latest"
-#       - "{{ .Major }}"
-#       - "{{ .Major }}.{{ .Minor }}"
-#     platforms:
-#       - linux/amd64
-#       - linux/arm64
-#     extra_files:
-#       - samples/volume/permguard.db
-#     build_args:
-#       DB_FILE: samples/volume/permguard.db
-#     labels:
-#       org.opencontainers.image.title: "permguard-all-in-one"
-#       org.opencontainers.image.version: "{{ .Version }}"
-#       org.opencontainers.image.revision: "{{ .FullCommit }}"
-#       org.opencontainers.image.source: "{{ .Env.PROJECT_PATH }}"
