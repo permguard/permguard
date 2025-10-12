@@ -19,7 +19,19 @@ seo:
   noindex: false # false (default) or true
 ---
 
-This example shows how `MagicFarmacia`, a SaaS pharmacy platform with multiple branches in different cities, uses `Permguard` for authorization and access control in a `multi-tenant` environment.
+This example shows how **MagicFarmacia**, a pharmacy management platform with multiple branches across different cities, might use **Permguard** to manage **authorization and access control** in a **multi-tenant, multi-domain** environment.
+
+Each domain (patients, prescriptions, inventory, etc.) maintains its own **ledger**, ensuring isolation per branch, full traceability, and secure access decisions.
+
+| **Domain** | **Ledger** | **What it tracks** |
+|----------------|---------------|------------------------|
+| **Branch Management** | `branch-management-ledger` | Registration and configuration of pharmacy branches |
+| **Patients** | `patient-event-ledger` | Patient data, profile updates, and consent changes |
+| **Prescriptions** | `prescription-event-ledger` | Prescription creation and dispensing records |
+| **Inventory** | `inventory-transaction-ledger` | Stock movements and restock triggers |
+| **Orders** | `order-event-ledger` | Order lifecycle and refund operations |
+| **Appointments** | `appointment-ledger` | Bookings and schedule changes |
+| **Notifications** | `notification-ledger` | Sent messages and delivery results |
 
 ## Check out the Playground
 
