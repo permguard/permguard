@@ -9,7 +9,7 @@
 [![X (formerly Twitter) Follow](https://img.shields.io/twitter/follow/permguard)](https://x.com/intent/follow?original_referer=https%3A%2F%2Fdeveloper.x.com%2F&ref_src=twsrc%5Etfw%7Ctwcamp%5Ebuttonembed%7Ctwterm%5Efollow%7Ctwgr%5ETwitterDev&screen_name=Permguard)
 
 [![Documentation](https://img.shields.io/website?label=Docs&url=https%3A%2F%2Fcommunity.permguard.com%2F)](https://community.permguard.com/)
-[![Releases](https://github.com/permguard/permguard/actions/workflows/release.ym/badge.svg)](https://github.com/permguard/permguard/actions/workflows/release.yml)
+[![Releases](https://github.com/permguard/permguard/actions/workflows/release.yml/badge.svg)](https://github.com/permguard/permguard/actions/workflows/release.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/permguard/permguard)](https://goreportcard.com/report/github.com/permguard/permguard)
 
 [![Watch the video on YouTube](https://raw.githubusercontent.com/permguard/permguard-assets/refs/heads/main/video/permguard-thumbnail-preview.png)](https://youtu.be/cH_boKCpLQ8?si=i1fWFHT5kxQQJoYN)
