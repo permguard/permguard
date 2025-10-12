@@ -28,7 +28,7 @@ tasks:
       - make protoc
   docs:
     cmds:
-      - cd site && npm i && npm run dev
+      - cd www && npm i && npm run dev
   # Git Flow
   push-docs:
     desc: git push for documentation

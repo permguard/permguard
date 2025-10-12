@@ -4,11 +4,11 @@ This section describes how to bump the version number of the Permguard project.
 
 ## Permguard
 
-Navigate to `./site/content/docs/` and copy the latest version directory to create a new version directory. For example, to create version `v0.1.0`, copy the `v0.0.0` directory and rename it to `v0.1.0`.
+Navigate to `./www/content/docs/` and copy the latest version directory to create a new version directory. For example, to create version `v0.1.0`, copy the `v0.0.0` directory and rename it to `v0.1.0`.
 
 Find and replace all the occurence of `docs/0.0.x` with `docs/0.1.x` in the new version directory as well as in the go files.
 
-Review the READEM.md file into the site directory.
+Review the READEM.md file into the www directory.
 
 ## Permguard*
 
