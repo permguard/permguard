@@ -184,17 +184,17 @@ func (cp *CliPrinterTerminal) Print(message string) {
 	cp.PrintMap(map[string]any{"": message})
 }
 
-// Print prints the output.
+// PrintMap prints the output.
 func (cp *CliPrinterTerminal) PrintMap(output map[string]any) {
 	cp.print(output, false)
 }
 
-// Print prints the output.
+// Println prints the output.
 func (cp *CliPrinterTerminal) Println(message string) {
 	cp.PrintlnMap(map[string]any{"": message})
 }
 
-// Println prints the output.
+// PrintlnMap prints the output.
 func (cp *CliPrinterTerminal) PrintlnMap(output map[string]any) {
 	cp.print(output, true)
 }
