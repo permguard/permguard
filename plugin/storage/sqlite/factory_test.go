@@ -57,5 +57,4 @@ func TestSQLiteStorageFactory(t *testing.T) {
 	centralPAPStorage, err := centralstorage.PAPCentralStorage()
 	assert.NotNil(centralPAPStorage, "central ZAP storage should not be nil")
 	assert.Nil(err, "error should be nil")
-
 }

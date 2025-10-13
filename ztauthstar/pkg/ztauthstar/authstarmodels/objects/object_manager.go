@@ -30,8 +30,7 @@ const (
 )
 
 // ObjectManager is the manager for policies.
-type ObjectManager struct {
-}
+type ObjectManager struct{}
 
 // NewObjectManager creates a new ObjectManager.
 func NewObjectManager() (*ObjectManager, error) {

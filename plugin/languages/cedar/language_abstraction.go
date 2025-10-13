@@ -206,7 +206,7 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(mfestLang *manifest
 	langVersion := cedarlang.LanguageSyntaxVersion
 	langVersionID := cedarlang.LanguageSyntaxVersionID
 
-	//TODO: Implement schema validation
+	// TODO: Implement schema validation
 
 	multiSecObj, err := objects.NewMultiSectionsObject(path, 1, nil)
 	if err != nil {

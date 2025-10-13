@@ -88,7 +88,6 @@ func (s *V1ZAPServer) FetchZones(zoneRequest *ZoneFetchRequest, stream grpc.Serv
 	}
 	if zoneRequest.Name != nil {
 		fields[zap.FieldZoneName] = *zoneRequest.Name
-
 	}
 	page := int32(0)
 	if zoneRequest.Page != nil {

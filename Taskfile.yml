@@ -17,30 +17,165 @@
 version: '3'
 
 tasks:
-  # Code and Docs
-  license:add:
+  # Local environment setup
+
+  sourc:deps:install:
+    desc: Install/update source dependencies
+    cmds:
+      - go get -u golang.org/x/crypto
+      - go get -u golang.org/x/net
+      - go get -u github.com/davecgh/go-spew
+      - go get -u github.com/xeipuuv/gojsonschema
+      - go get -u go.uber.org/zap
+      - go get -u github.com/go-playground/validator/v10
+      - go get -u google.golang.org/grpc
+      - go get -u github.com/spf13/cobra
+      - go get -u github.com/spf13/viper
+      - go get -u github.com/stretchr/testify
+      - go get -u github.com/fatih/color
+      - go get -u get gopkg.in/yaml.v2
+      - go get -u github.com/DATA-DOG/go-sqlmock
+      - go get -u github.com/pressly/goose/v3
+      - go get -u gorm.io/gorm
+      - go get -u gorm.io/driver/sqlite
+      - go get -u modernc.org/sqlite
+      - go get -u moul.io/zapgorm2
+      - go get -u github.com/pelletier/go-toml
+      - go get -u github.com/gofrs/flock
+      - go get -u github.com/permguard/permguard/common
+      - go get -u github.com/permguard/permguard/ztauthstar
+      - go get -u github.com/cedar-policy/cedar-go
+
+  local:clean:
+    desc: Clean local environment
+    cmds:
+      - rm -rf dist/
+      - rm -rf tmp/
+      - rm -f coverage.out
+      - rm -f result.json
+
+  local:mod:
+    desc: Initialize and tidy Go modules
+    cmds:
+      - go mod download
+      - go mod tidy
+
+  local:tools:macos:
+    desc: Install local development tools
+    platforms: [darwin]
+    cmds:
+      - brew install protobuf
+      - go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+      - go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+      - go install github.com/google/addlicense@latest
+      - brew update
+      - brew install cosign
+      - brew install gpg
+      - brew install syft
+      - brew install golangci-lint
+      - brew install staticcheck
+      - brew install gofumpt
+
+  local:up:
+    cmds:
+      - go run ./cmd/provisioner-db-sqlite/main.go --up --dbdir ./samples/volume --debug
+
+  local:down:
+    cmds:
+      - go run ./cmd/provisioner-db-sqlite/main.go --down  --dbdir ./samples/volume --debug
+
+  local:docker:
+    - docker build -t permguard-all-in-one:latest -f ./cmd/server-all-in-one/Dockerfile .
+    - docker run --rm -it -v ./samples/volume:/opt/permguard/volume -p 9092:9092 -p 9091:9091 -p 9094:9094 -e PERMGUARD_DEBUG="TRUE" permguard-all-in-one:latest
+
+  local:
+    desc: Setup the local environment
+    cmds:
+      - task: local:tools:macos
+      - task: local:mod
+      - task: local:up
+
+  # Source code quality
+  source:fmt:
+    desc: Format the source code.
+    cmds:
+      - gofumpt -w -l .
+
+  source:lint:
+    desc: Lint the source code.
+    cmds:
+      - go vet ./...
+      - gofmt -s -w **/**.go
+      - golangci-lint run --config ./.golangci.yaml ./... --enable staticcheck
+
+  source:codegen:license:add:
     desc: Add license to .go, .sh, .yml, .yaml, and Makefile files
     cmds:
       - |
         find . -type f \( -name '*.go' -o -name '*.sh' -o -iname 'makefile' -o -name '*.yml' -o -name '*.yaml' \) \
           ! -path '*/vendor/*' ! -path '*/.git/*' ! -path '*/node_modules/*' \
           -exec addlicense -c "Nitro Agility S.r.l." {} +
-  license:dry:
+
+  source:codegen:license:dry:
     desc: Preview files that would receive the license header
     cmds:
       - |
         find . -type f \( -name '*.go' -o -name '*.sh' -o -iname 'makefile' -o -name '*.yml' -o -name '*.yaml' \) \
           ! -path '*/vendor/*' ! -path '*/.git/*' ! -path '*/node_modules/*' -print
-  fmt:
+
+  source:codegen:proto:
+    desc: Generate gRPC code from protobuf definitions
     cmds:
-      - find . -name "*.go" -exec go fmt {} \;
-  proto:
+      - protoc internal/agents/services/zap/endpoints/api/v1/*.proto --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative --proto_path=.
+      - protoc internal/agents/services/pap/endpoints/api/v1/*.proto --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative --proto_path=.
+      - protoc internal/agents/services/pdp/endpoints/api/v1/*.proto --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative --proto_path=.
+
+  # Tests
+
+  test:unit:
+    desc: Run unit tests
     cmds:
-      - make protoc
+      - go test ./...
+
+  test:e2e:
+    desc: Run end-to-end tests
+    cmds:
+      - export E2E="TRUE" && GOFLAGS="-count=1" go test ./e2e/...
+
+  test:coverage:
+    desc: Run tests with coverage
+    cmds:
+      - go test -coverprofile=coverage.out ./...
+      - go tool cover -func=coverage.out
+      - go tool cover -html=coverage.out
+      - rm coverage.out
+
+  test:coverage-plugin:
+    desc: Run plugin tests with coverage
+    cmds:
+    - go test -coverprofile=coverage.out ./plugin/...
+    - go tool cover -func=coverage.out
+    - go tool cover -html=coverage.out
+    - rm coverage.out
+
+  test:converage-%:
+    desc: Run tests with coverage for a specific package
+    cmds:
+      - go test -coverprofile=coverage.out ./...
+
+  test:converage-json:
+    desc: Run tests with coverage and output in JSON format
+    cmds:
+        - go test -json -coverprofile=coverage.out ./... > result.json
+
+  # Documentation
+
   docs:
     cmds:
       - cd www && npm i && npm run dev
+
   # Git Flow
+
   push-docs:
     desc: git push for documentation
     cmd: 'git add -A && git commit -m "docs: {{.CLI_ARGS}}" && git push || echo DONE'
@@ -80,23 +215,7 @@ tasks:
   push-release:
     desc: git push for code change for release
     cmd: 'git add -A && git commit -m "release: {{.CLI_ARGS}}" && git push || echo DONE'
-  # Build and Run
-  build:
-    cmds:
-      - make build
-    silent: false
-  # Local
-  install: export VERSION=$(git describe --tags --match 'v*' --abbrev=0 | cut -c2-) && export BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S') && export GIT_COMMIT=$(git rev-parse --short HEAD) && make build-cli && cp ./dist/permguard ~/.apps/bin/permguard
-  docker:
-    - docker build -t permguard-all-in-one:latest -f ./cmd/server-all-in-one/Dockerfile .
-    - docker run --rm -it -v ./samples/volume:/opt/permguard/volume -p 9092:9092 -p 9091:9091 -p 9094:9094 -e PERMGUARD_DEBUG="TRUE" permguard-all-in-one:latest
-  # Up and Down tasks
-  up:
-    cmds:
-      - go run ./cmd/provisioner-db-sqlite/main.go --up --dbdir ./samples/volume --debug
-  down:
-    cmds:
-      - go run ./cmd/provisioner-db-sqlite/main.go --down  --dbdir ./samples/volume --debug
+
   # Servers
   cli:
     cmds:

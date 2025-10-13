@@ -110,7 +110,6 @@ func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			printer.Error(errors.Join(err, errors.New("storage: failed to check the authorization request")))
-
 		}
 		return common.ErrCommandSilent
 	}
@@ -158,7 +157,7 @@ func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v
 			}
 		}
 	} else if ctx.IsJSONOutput() {
-		var output = map[string]any{}
+		output := map[string]any{}
 		output["authorization_check"] = authzResp
 		printer.PrintlnMap(output)
 	}

@@ -29,7 +29,7 @@ func TestCheckPathIfExists(t *testing.T) {
 	assert := assert.New(t)
 
 	folderName := filepath.Join(".tmp", uuid.NewString())
-	err := os.MkdirAll(folderName, 0755)
+	err := os.MkdirAll(folderName, 0o755)
 	assert.Nil(err)
 
 	existingFile := filepath.Join(folderName, "existing_file.txt")
@@ -59,7 +59,7 @@ func TestCreateFileIfNotExists(t *testing.T) {
 	assert := assert.New(t)
 
 	folderName := filepath.Join(".tmp", uuid.NewString())
-	err := os.MkdirAll(folderName, 0755)
+	err := os.MkdirAll(folderName, 0o755)
 	assert.Nil(err)
 
 	fileName := filepath.Join(folderName, "new_file.txt")
@@ -103,19 +103,19 @@ func TestWriteFileIfNotExists(t *testing.T) {
 	assert := assert.New(t)
 
 	folderName := filepath.Join(".tmp", uuid.NewString())
-	err := os.MkdirAll(folderName, 0755)
+	err := os.MkdirAll(folderName, 0o755)
 	assert.Nil(err)
 
 	fileName := filepath.Join(folderName, "new_file.txt")
 	data := []byte("Hello, World!")
 
 	// Test writing a new file
-	written, err := WriteFileIfNotExists(fileName, data, 0644, false)
+	written, err := WriteFileIfNotExists(fileName, data, 0o644, false)
 	assert.Nil(err)
 	assert.True(written)
 
 	// Test with existing file
-	written, err = WriteFileIfNotExists(fileName, data, 0644, false)
+	written, err = WriteFileIfNotExists(fileName, data, 0o644, false)
 	assert.Nil(err)
 	assert.False(written)
 
@@ -128,7 +128,7 @@ func TestAppendToFile(t *testing.T) {
 	assert := assert.New(t)
 
 	folderName := filepath.Join(".tmp", uuid.NewString())
-	err := os.MkdirAll(folderName, 0755)
+	err := os.MkdirAll(folderName, 0o755)
 	assert.Nil(err)
 
 	fileName := filepath.Join(folderName, "append_file.txt")
@@ -153,7 +153,7 @@ func TestReadTOMLFile(t *testing.T) {
 	assert := assert.New(t)
 
 	folderName := filepath.Join(".tmp", uuid.NewString())
-	err := os.MkdirAll(folderName, 0755)
+	err := os.MkdirAll(folderName, 0o755)
 	assert.Nil(err)
 
 	fileName := filepath.Join(folderName, "config.toml")
@@ -163,7 +163,7 @@ age = 30
 `)
 
 	// Write the TOML file
-	_, err = WriteFile(fileName, data, 0644, false)
+	_, err = WriteFile(fileName, data, 0o644, false)
 	assert.Nil(err)
 
 	// Define a structure to read the TOML data

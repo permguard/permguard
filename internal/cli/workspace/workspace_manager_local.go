@@ -170,8 +170,8 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(langPvd *ManifestLanguageProvid
 
 // blobifyLanguageFile processes a PermGuard policy file containing multiple logical sections.
 func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider, partition string, path string, data []byte,
-	file cosp.CodeFile, wkdir string, mode uint32, blobifiedCodeFiles []cosp.CodeFile) ([]cosp.CodeFile, error) {
-
+	file cosp.CodeFile, wkdir string, mode uint32, blobifiedCodeFiles []cosp.CodeFile,
+) ([]cosp.CodeFile, error) {
 	absLang, err := langPvd.AbstractLanguage(file.Partition)
 	if err != nil {
 		return nil, err

@@ -30,7 +30,6 @@ func (p *ProtocolPacket) Type() uint64 {
 func (p *ProtocolPacket) Serialize() ([]byte, error) {
 	data := SerializeUint32(nil, p.Version, PacketNullByte)
 	return data, nil
-
 }
 
 // Deserialize deserializes the packet.

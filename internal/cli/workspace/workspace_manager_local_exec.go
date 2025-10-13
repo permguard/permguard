@@ -240,7 +240,6 @@ func (m *WorkspaceManager) execInternalValidate(internal bool, out common.Printe
 	if !internal {
 		if len(invalidCodeFiles) == 1 {
 			out(nil, "", "Your workspace has on error in the following file:\n", nil, true)
-
 		} else {
 			out(nil, "", "Your workspace has errors in the following files:\n", nil, true)
 		}

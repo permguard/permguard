@@ -69,7 +69,7 @@ func CreateDirIfNotExists(name string) (bool, error) {
 	if _, err := os.Stat(name); err == nil {
 		return false, nil
 	} else if os.IsNotExist(err) {
-		err := os.MkdirAll(name, 0755)
+		err := os.MkdirAll(name, 0o755)
 		if err != nil {
 			return false, errors.New("core: failed to create directory")
 		}
@@ -101,7 +101,7 @@ func CreateFileIfNotExists(name string) (bool, error) {
 		return false, nil
 	} else if os.IsNotExist(err) {
 		dir := filepath.Dir(name)
-		err = os.MkdirAll(dir, 0755)
+		err = os.MkdirAll(dir, 0o755)
 		if err != nil {
 			return false, errors.New("core: failed to create directory")
 		}
@@ -165,7 +165,7 @@ func AppendToFile(name string, data []byte, compressed bool) (bool, error) {
 		return false, errors.New("core: failed to read file")
 	}
 	newData := append(existingData, data...)
-	return WriteFile(name, newData, 0644, compressed)
+	return WriteFile(name, newData, 0o644, compressed)
 }
 
 // ReadFile reads a file.

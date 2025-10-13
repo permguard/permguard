@@ -315,7 +315,6 @@ func (m *WorkspaceManager) execInternalApply(internal bool, out common.PrinterOu
 	}
 	committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 	_, err = m.logsMgr.Log(headCtx.headRefInfo, headCtx.remoteCommitID, commitObj.OID(), logs.LogActionPush, committed, headCtx.LedgerURI())
-
 	if err != nil {
 		return fail(nil, err)
 	}

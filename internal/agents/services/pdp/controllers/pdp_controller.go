@@ -197,7 +197,7 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 				authzCtx.SetEntities(entities.Schema, entities.Items)
 			}
 			contextID := expandedRequest.ContextID
-			//TODO: Fix manifest refactoring
+			// TODO: Fix manifest refactoring
 			authzResponse, err2 := cedarLanguageAbs.AuthorizationCheck(nil, contextID, authzPolicyStore, &authzCtx)
 			if err2 != nil {
 				evaluation := pdp.NewEvaluationErrorResponse(expandedRequest.RequestID, authzen.AuthzErrInternalErrorCode, err2.Error(), authzen.AuthzErrInternalErrorMessage)
