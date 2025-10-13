@@ -74,4 +74,4 @@ Write-Host '  Move-Item .\bin\permguard.exe "C:\Program Files\permguard\permguar
 Write-Host '  setx PATH "$($env:PATH);C:\Program Files\permguard"'
 Write-Host ""
 Write-Host "Then verify with:" -ForegroundColor Yellow
-Write-Host '  permguard --version'
+Write-Host '  permguard version'
