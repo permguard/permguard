@@ -65,7 +65,6 @@ func TestSqliteExecutor(t *testing.T) {
 		assert.Equal(sqlxDB, db, "db should be equal")
 		assert.Nil(err, "error should not be nil")
 	}
-
 }
 
 // TestNewSQLiteCentralStorage tests the new sqlite central storage.
@@ -88,5 +87,4 @@ func TestNewSQLiteCentralStorage(t *testing.T) {
 		assert.NotNil(papcentralstorage)
 		assert.Nil(err)
 	}
-
 }

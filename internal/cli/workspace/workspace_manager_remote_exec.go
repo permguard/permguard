@@ -367,7 +367,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 			}
 			fileBase := strings.TrimPrefix(partition, "/")
 			fileName = path.Join(fileBase, fileName)
-			m.persMgr.WriteFile(persistence.WorkspaceDir, fileName, codeBlock, 0644, false)
+			m.persMgr.WriteFile(persistence.WorkspaceDir, fileName, codeBlock, 0o644, false)
 		}
 		for partition, schemaBlockItem := range schemaBlocks {
 			absLang, err := langPvd.AbstractLanguage(partition)
@@ -385,7 +385,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 			schemaFileName := schemaFileNames[0]
 			fileBase := strings.TrimPrefix(partition, "/")
 			schemaFileName = path.Join(fileBase, schemaFileName)
-			m.persMgr.WriteFile(persistence.WorkspaceDir, schemaFileName, schemaBlock, 0644, false)
+			m.persMgr.WriteFile(persistence.WorkspaceDir, schemaFileName, schemaBlock, 0o644, false)
 		}
 	}
 

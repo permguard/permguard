@@ -66,9 +66,9 @@ func (m *ConfigManager) saveConfig(override bool, cfg *config) error {
 	}
 	fileName := m.configFile()
 	if override {
-		_, err = m.persMgr.WriteFile(persistence.PermguardDir, fileName, data, 0644, false)
+		_, err = m.persMgr.WriteFile(persistence.PermguardDir, fileName, data, 0o644, false)
 	} else {
-		_, err = m.persMgr.WriteFileIfNotExists(persistence.PermguardDir, fileName, data, 0644, false)
+		_, err = m.persMgr.WriteFileIfNotExists(persistence.PermguardDir, fileName, data, 0o644, false)
 	}
 	if err != nil {
 		return errors.Join(err, fmt.Errorf("cli: failed to write config file %s", fileName))

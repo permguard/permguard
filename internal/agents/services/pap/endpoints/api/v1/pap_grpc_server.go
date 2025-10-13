@@ -275,7 +275,6 @@ func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, Pa
 	zoneID, ok := md[notptransportsm.ZoneIDKey]
 	if !ok || len(zoneID) == 0 {
 		return errors.New("pap-endpoint: notp stream missing zone id")
-
 	}
 	respositoryID, ok := md[notptransportsm.LedgerIDKey]
 	if !ok || len(respositoryID) == 0 {

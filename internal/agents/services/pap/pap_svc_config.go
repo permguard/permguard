@@ -74,7 +74,6 @@ func (c *PAPServiceConfig) InitFromViper(v *viper.Viper) error {
 	storageCEng, err := storage.NewStorageKindFromString(centralStorageEngine)
 	if err != nil {
 		return errors.Join(err, errors.New("pap-service: invalid central sotrage engine"))
-
 	}
 	c.config[flagCentralEngine] = storageCEng
 	// retrieve the data fetch max page size

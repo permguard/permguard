@@ -23,8 +23,7 @@ import (
 )
 
 // Repository is the central storage repository.
-type Repository struct {
-}
+type Repository struct{}
 
 // GenerateUUID generates a UUID.
 func GenerateUUID() string {

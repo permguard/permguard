@@ -105,7 +105,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out common.P
 			return fail(nil, err)
 		}
 
-		_, err = m.persMgr.WriteFileIfNotExists(persistence.WorkspaceDir, manifests.ManifestFileName, manifestData, 0644, false)
+		_, err = m.persMgr.WriteFileIfNotExists(persistence.WorkspaceDir, manifests.ManifestFileName, manifestData, 0o644, false)
 		if err != nil {
 			return fail(nil, err)
 		}

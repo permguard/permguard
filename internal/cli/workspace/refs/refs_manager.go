@@ -95,9 +95,9 @@ func (m *RefManager) saveConfig(name string, override bool, cfg any) error {
 		return errors.Join(err, errors.New("cli: failed to marshal config"))
 	}
 	if override {
-		_, err = m.persMgr.WriteFile(persistence.PermguardDir, name, data, 0644, false)
+		_, err = m.persMgr.WriteFile(persistence.PermguardDir, name, data, 0o644, false)
 	} else {
-		_, err = m.persMgr.WriteFileIfNotExists(persistence.PermguardDir, name, data, 0644, false)
+		_, err = m.persMgr.WriteFileIfNotExists(persistence.PermguardDir, name, data, 0o644, false)
 	}
 	if err != nil {
 		return errors.Join(err, fmt.Errorf("cli: failed to write config file %s", name))
@@ -178,7 +178,6 @@ func (m *RefManager) RefUpstreamRef(ref string) (string, error) {
 	}
 	if refCfg == nil {
 		return "", errors.Join(err, errors.New("cli: invalid ref config file"))
-
 	}
 	return refCfg.Objects.UpstreamRef, nil
 }
@@ -191,7 +190,6 @@ func (m *RefManager) RefLedgerID(ref string) (string, error) {
 	}
 	if refCfg == nil {
 		return "", errors.Join(err, errors.New("cli: invalid ref config file"))
-
 	}
 	return refCfg.Objects.LedgerID, nil
 }

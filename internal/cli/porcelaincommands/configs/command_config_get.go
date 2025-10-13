@@ -63,7 +63,6 @@ func runECommandForPAPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			printer.Error(errors.Join(err, errors.New("cli: failed to get the pap target")))
-
 		}
 		return common.ErrCommandSilent
 	}

@@ -19,10 +19,9 @@ package logs
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
-
-	"path/filepath"
 
 	"github.com/permguard/permguard/internal/cli/common"
 	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"

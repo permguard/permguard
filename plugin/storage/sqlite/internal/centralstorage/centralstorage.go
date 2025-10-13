@@ -56,8 +56,7 @@ type SqliteExecutor interface {
 }
 
 // SqliteExec implements the SqliteExecutor interface.
-type SqliteExec struct {
-}
+type SqliteExec struct{}
 
 // Connect connects to the sqlite database.
 func (s SqliteExec) Connect(ctx *storage.StorageContext, sqliteConnector db.SQLiteConnector) (*sqlx.DB, error) {

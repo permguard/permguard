@@ -115,7 +115,7 @@ func (m *COSPManager) SaveCodeSourceObject(oid string, content []byte) (bool, er
 	if err != nil {
 		return false, errors.Join(err, fmt.Errorf("cli: failed to save object %s", oid))
 	}
-	return m.persMgr.WriteFile(persistence.PermguardDir, path, content, 0644, true)
+	return m.persMgr.WriteFile(persistence.PermguardDir, path, content, 0o644, true)
 }
 
 // ReadCodeSourceObject reads the object from the code source.
@@ -136,9 +136,9 @@ func (m *COSPManager) saveConfig(name string, override bool, cfg any) error {
 		return errors.Join(err, errors.New("cli: failed to marshal config"))
 	}
 	if override {
-		_, err = m.persMgr.WriteFile(persistence.PermguardDir, name, data, 0644, false)
+		_, err = m.persMgr.WriteFile(persistence.PermguardDir, name, data, 0o644, false)
 	} else {
-		_, err = m.persMgr.WriteFileIfNotExists(persistence.PermguardDir, name, data, 0644, false)
+		_, err = m.persMgr.WriteFileIfNotExists(persistence.PermguardDir, name, data, 0o644, false)
 	}
 	if err != nil {
 		return fmt.Errorf("cli: failed to write config file %s", name)
@@ -447,7 +447,7 @@ func (m *COSPManager) SaveObject(oid string, content []byte) (bool, error) {
 	if err != nil {
 		return false, errors.Join(err, fmt.Errorf("cli: failed to save object %s", oid))
 	}
-	return m.persMgr.WriteFile(persistence.PermguardDir, path, content, 0644, true)
+	return m.persMgr.WriteFile(persistence.PermguardDir, path, content, 0o644, true)
 }
 
 // ReadObject reads the object from the objs store.
