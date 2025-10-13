@@ -151,7 +151,7 @@ tasks:
     desc: Add license to .go, .sh, .yml, .yaml, and Makefile files
     cmds:
       - |
-        find . -type f \( -name '*.go' -o -name '*.sh' -o -iname 'makefile' -o -name '*.yml' -o -name '*.yaml' \) \
+        find . -type f \( -name '*.go' -o -name '*.sh' -o -name '*.ps1' -o -iname 'makefile' -o -name '*.yml' -o -name '*.yaml' \) \
           ! -path '*/vendor/*' ! -path '*/.git/*' ! -path '*/node_modules/*' \
           -exec addlicense -c "Nitro Agility S.r.l." {} +
 
