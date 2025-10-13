@@ -99,6 +99,40 @@ tasks:
       - task: local:mod
       - task: local:up
 
+  local:alpine:
+    desc: Run Alpine interactively with Go preinstalled
+    interactive: true
+    vars:
+      GO_VERSION: "1.25.1"
+      TASK_VERSION: "3.38.0"
+    cmds:
+      - |
+        docker run --rm -it \
+          -v "$(pwd)":/work \
+          -w /work \
+          -e TERM="$TERM" \
+          alpine:3.20 sh -lc '
+            set -e
+            echo "🔹 Updating Alpine and installing dependencies..."
+            apk update >/dev/null
+            apk add --no-cache curl tar bash git >/dev/null
+
+            echo "🔹 Installing Go {{.GO_VERSION}}..."
+            curl -fsSL https://go.dev/dl/go{{.GO_VERSION}}.linux-amd64.tar.gz -o /tmp/go.tgz
+            tar -C /usr/local -xzf /tmp/go.tgz
+            export PATH=$PATH:/usr/local/go/bin
+
+            echo "🔹 Installing Task {{.TASK_VERSION}}..."
+            curl -fsSL "https://github.com/go-task/task/releases/download/v{{.TASK_VERSION}}/task_linux_amd64.tar.gz" -o /tmp/task.tgz
+            tar -C /usr/local/bin -xzf /tmp/task.tgz task
+            chmod +x /usr/local/bin/task
+
+            echo "✅ Go version: $(go version)"
+            echo "✅ Task version: $(task --version)"
+            echo "💡 You are now inside Alpine with Go and Task ready."
+            exec bash
+          '
+
   # Source code quality
 
   source:fmt:
