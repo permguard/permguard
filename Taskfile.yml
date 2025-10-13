@@ -17,6 +17,7 @@
 version: '3'
 
 tasks:
+
   # Local environment setup
 
   sourc:deps:install:
