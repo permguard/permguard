@@ -203,7 +203,7 @@ done
 
 # checksum filename (matches releases: checksums.txt)
 CHECKSUM="checksums.txt"
-SUMFILE="${tmp}/${CHECKSUM}"
+SUMFILE="${tmp}/${CHdECKSUM}"
 
 log "downloading checksums: ${CHECKSUM}"
 http_download "$SUMFILE" "${BASE}/${CHECKSUM}"
