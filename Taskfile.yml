@@ -181,6 +181,56 @@ tasks:
     cmds:
         - go test -json -coverprofile=coverage.out ./... > result.json
 
+  # Run the projects
+
+  cli:
+    desc: Start CLI server
+    cmds:
+      - go run cmd/cli/main.go {{.CLI_ARGS}}
+    silent: false
+
+  server-allinone:
+    desc: Start all-in-one server
+    cmds:
+      - go run cmd/server-all-in-one/main.go {{.CLI_ARGS}}
+    silent: false
+
+  server-zap:
+    desc: Start Zap server
+    cmds:
+      - go run cmd/server-zap/main.go {{.CLI_ARGS}}
+    silent: false
+
+  server-pap:
+    desc: Start PAP server
+    cmds:
+      - go run cmd/server-pap/main.go {{.CLI_ARGS}}
+    silent: false
+
+  server-pip:
+    desc: Start PIP server
+    cmds:
+      - go run cmd/server-pip/main.go {{.CLI_ARGS}}
+    silent: false
+
+  server-pdp:
+    desc: Start PDP server
+    cmds:
+      - go run cmd/server-pdp/main.go {{.CLI_ARGS}}
+    silent: false
+
+  # ci
+
+  ci:build:
+    desc: Run the CI build
+    cmds:
+      -  goreleaser release --snapshot --clean --config .goreleaser.yaml
+
+  ci:
+    desc: Run the CI
+    cmds:
+      - task: ci:build
+
   # Documentation
 
   docs:
@@ -241,41 +291,3 @@ tasks:
   push-release:
     desc: Git push for code change for release
     cmd: 'git add -A && git commit -m "release: {{.CLI_ARGS}}" && git push || echo DONE'
-
-  # Servers
-
-  cli:
-    desc: Start CLI server
-    cmds:
-      - go run cmd/cli/main.go {{.CLI_ARGS}}
-    silent: false
-
-  server-allinone:
-    desc: Start all-in-one server
-    cmds:
-      - go run cmd/server-all-in-one/main.go {{.CLI_ARGS}}
-    silent: false
-
-  server-zap:
-    desc: Start Zap server
-    cmds:
-      - go run cmd/server-zap/main.go {{.CLI_ARGS}}
-    silent: false
-
-  server-pap:
-    desc: Start PAP server
-    cmds:
-      - go run cmd/server-pap/main.go {{.CLI_ARGS}}
-    silent: false
-
-  server-pip:
-    desc: Start PIP server
-    cmds:
-      - go run cmd/server-pip/main.go {{.CLI_ARGS}}
-    silent: false
-
-  server-pdp:
-    desc: Start PDP server
-    cmds:
-      - go run cmd/server-pdp/main.go {{.CLI_ARGS}}
-    silent: false
