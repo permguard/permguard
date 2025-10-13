@@ -39,7 +39,7 @@ sudo dpkg -i permguard.deb
 The installation may be verified using the following command:
 
 ```shell [bash]
-permguard --version
+permguard version
 ```
 
 To uninstall the package, use:
@@ -62,7 +62,7 @@ sudo rpm -i permguard.rpm
 The installation may be verified using the following command:
 
 ```shell [bash]
-permguard --version
+permguard version
 ```
 
 To uninstall the package, use:
@@ -86,7 +86,7 @@ sudo apk add --allow-untrusted permguard.apk
 The installation may be verified using the following command:
 
 ```shell [bash]
-permguard --version
+permguard version
 ```
 
 To uninstall the package, use:
@@ -124,7 +124,7 @@ chmod +x /usr/local/bin/permguard
 The installation can be verified with:
 
 ```shell [bash]
-permguard --version
+permguard version
 ```
 
 ### Windows
@@ -144,7 +144,7 @@ if (-not (Test-Path "C:\Program Files\permguard")) { New-Item -ItemType Director
 The installation can be verified with:
 
 ```shell [bash]
-permguard --version
+permguard version
 ```
 
 ## Setup completions
