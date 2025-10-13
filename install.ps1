@@ -15,8 +15,7 @@
 #>
 
 param(
-  [string]$Version,
-  [string]$BinDir = "$env:ProgramFiles\permguard"
+  [string]$Version
 )
 
 $ErrorActionPreference = "Stop"
@@ -44,7 +43,6 @@ $zipUrl = "$base/$asset"
 $sumUrl = "$base/checksums.txt"
 
 $tmp = New-Item -ItemType Directory -Path ([System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "permguard-" + [guid]::NewGuid().ToString())) -Force
-
 $zipFile = Join-Path $tmp.FullName $asset
 $sumFile = Join-Path $tmp.FullName "checksums.txt"
 
@@ -64,24 +62,16 @@ if ($actualHash -ne $expectedHash) {
   throw "Checksum mismatch for $asset (expected $expectedHash, got $actualHash)"
 }
 
-$extractDir = Join-Path $tmp.FullName "x"
+Write-Host "[permguard-install] Extracting to .\bin..." -ForegroundColor Cyan
+$extractDir = ".\bin"
+New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
 Expand-Archive -Path $zipFile -DestinationPath $extractDir -Force | Out-Null
 
-$exe = Get-ChildItem -Path $extractDir -Recurse -Filter "permguard.exe" | Select-Object -First 1
-if (-not $exe) { throw "Cannot find permguard.exe inside archive" }
-
-New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
-Copy-Item -Path $exe.FullName -Destination (Join-Path $BinDir "permguard.exe") -Force
-Write-Host "[permguard-install] Installed: $BinDir\permguard.exe" -ForegroundColor Green
-
-$pathUser = [Environment]::GetEnvironmentVariable("Path","User")
-if (-not $pathUser) { $pathUser = "" }
-if ($pathUser.Split(';') -notcontains $BinDir) {
-  $newPath = ($pathUser.TrimEnd(';') + ";" + $BinDir).TrimStart(';')
-  [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-  Write-Host "[permguard-install] PATH updated. Open a new terminal to use 'permguard' directly." -ForegroundColor Yellow
-} else {
-  Write-Host "[permguard-install] PATH already contains $BinDir" -ForegroundColor DarkGray
-}
-
-Write-Host "[permguard-install] Done. Try: permguard --version" -ForegroundColor Green
+Write-Host "[permguard-install] Done. Binary available in .\bin\" -ForegroundColor Green
+Write-Host ""
+Write-Host "Next steps:" -ForegroundColor Yellow
+Write-Host '  Move-Item .\bin\permguard.exe "C:\Program Files\permguard\permguard.exe"'
+Write-Host '  setx PATH "$($env:PATH);C:\Program Files\permguard"'
+Write-Host ""
+Write-Host "Then verify with:" -ForegroundColor Yellow
+Write-Host '  permguard --version'
