@@ -30,36 +30,20 @@ Clone `permguard` anywhere:
 git clone git@github.com:permguard/permguard.git
 ```
 
-`cd` into the directory and install the dependencies:
+`cd` into the directory and setup your environment:
 
 ```bash
-task mod
-```
-
-You should then be able to build the binaries:
-
-```bash
-task build
+task local
 ```
 
 ## Testing your changes
 
-Create a new branch for your changes and build the project incrementally as you work:
-
-```sh
-task build
-```
-
-Once you’re satisfied with the results, run the full validation pipeline:
-
-```sh
-task ci
-```
+Create a new branch for your changes and make your modifications.
 
 Before committing, ensure the codebase is properly formatted and consistent with the project’s style guidelines:
 
 ```sh
-task fmt
+task source:precommit
 ```
 
 ## Creating a commit

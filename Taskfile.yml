@@ -100,6 +100,7 @@ tasks:
       - task: local:up
 
   # Source code quality
+
   source:fmt:
     desc: Format the source code.
     cmds:
@@ -133,6 +134,14 @@ tasks:
       - protoc internal/agents/services/zap/endpoints/api/v1/*.proto --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative --proto_path=.
       - protoc internal/agents/services/pap/endpoints/api/v1/*.proto --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative --proto_path=.
       - protoc internal/agents/services/pdp/endpoints/api/v1/*.proto --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative --proto_path=.
+
+  source:precommit:
+    desc: Run all pre-commit tasks
+    cmds:
+      - task: source:fmt
+      - task: source:lint
+      - task: source:codegen:license:add
+      - task: source:codegen:proto
 
   # Tests
 
