@@ -94,9 +94,8 @@ linters:
         - name: unused-parameter
         - name: var-declaration
         - name: var-naming
-        # we are not providing an API anyway... maybe someday...
-        # - name: exported
-        # - name: package-comments
+        - name: exported
+        - name: package-comments
     staticcheck:
       checks:
         - all
