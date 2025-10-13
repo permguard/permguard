@@ -201,8 +201,8 @@ for cand in "$C1" "$C2"; do
 done
 [ -n "$ASSET" ] || die "no matching asset found for ${OS}/${ARCH}"
 
-# checksum filename (matches releases: permguard_<version>_checksums.txt)
-CHECKSUM="${PROJECT}_${VER_NO_V}_checksums.txt"
+# checksum filename (matches releases: checksums.txt)
+CHECKSUM="checksums.txt"
 SUMFILE="${tmp}/${CHECKSUM}"
 
 log "downloading checksums: ${CHECKSUM}"
