@@ -77,16 +77,20 @@ tasks:
       - brew install gofumpt
 
   local:up:
+    desc: Start local environment
     cmds:
       - go run ./cmd/provisioner-db-sqlite/main.go --up --dbdir ./samples/volume --debug
 
   local:down:
+    desc: Stop local environment
     cmds:
       - go run ./cmd/provisioner-db-sqlite/main.go --down  --dbdir ./samples/volume --debug
 
   local:docker:
-    - docker build -t permguard-all-in-one:latest -f ./cmd/server-all-in-one/Dockerfile .
-    - docker run --rm -it -v ./samples/volume:/opt/permguard/volume -p 9092:9092 -p 9091:9091 -p 9094:9094 -e PERMGUARD_DEBUG="TRUE" permguard-all-in-one:latest
+    desc: Start local environment using Docker
+    cmds:
+      - docker build -t permguard-all-in-one:latest -f ./cmd/server-all-in-one/Dockerfile .
+      - docker run --rm -it -v ./samples/volume:/opt/permguard/volume -p 9092:9092 -p 9091:9091 -p 9094:9094 -e PERMGUARD_DEBUG="TRUE" permguard-all-in-one:latest
 
   local:
     desc: Setup the local environment
@@ -177,67 +181,91 @@ tasks:
   # Git Flow
 
   push-docs:
-    desc: git push for documentation
+    desc: Git push for documentation
     cmd: 'git add -A && git commit -m "docs: {{.CLI_ARGS}}" && git push || echo DONE'
+
   push-style:
-    desc: git push for formatting, missing semi colons, etc; no code change
+    desc: Git push for formatting, missing semi colons, etc; no code change
     cmd: 'git add -A && git commit -m "style: {{.CLI_ARGS}}" && git push || echo DONE'
+
   push-refactor:
-    desc: git push for refactoring production code
+    desc: Git push for refactoring production code
     cmd: 'git add -A && git commit -m "refactor: {{.CLI_ARGS}}" && git push || echo DONE'
+
   push-fix:
-    desc: git push for bug fix
+    desc: Git push for bug fix
     cmd: 'git add -A && git commit -m "fix: {{.CLI_ARGS}}" && git push || echo DONE'
+
   push-feat:
-    desc: git push for new feature
+    desc: Git push for new feature
     cmd: 'git add -A && git commit -m "feat: {{.CLI_ARGS}}" && git push || echo DONE'
+
   push-breaking:
-    desc: git push for code change that breaks existing functionality
+    desc: Git push for code change that breaks existing functionality
     cmd: 'git add -A && git commit -m "breaking: {{.CLI_ARGS}}" && git push || echo DONE'
+
   push-test:
-    desc: git push for adding tests, refactoring test; no production code change
+    desc: Git push for adding tests, refactoring test; no production code change
     cmd: 'git add -A && git commit -m "test: {{.CLI_ARGS}}" && git push || echo DONE'
+
   push-build:
-    desc: git push for code change that affects the build system or external dependencies
+    desc: Git push for code change that affects the build system or external dependencies
     cmd: 'git add -A && git commit -m "build: {{.CLI_ARGS}}" && git push || echo DONE'
+
   push-chore:
-    desc: git push for updating build tasks, package manager configs, etc; no production code change
+    desc: Git push for updating build tasks, package manager configs, etc; no production code change
     cmd: 'git add -A && git commit -m "chore: {{.CLI_ARGS}}" && git push || echo DONE'
+
   push-perf:
-    desc: git push for code change that improves performance
+    desc: Git push for code change that improves performance
     cmd: 'git add -A && git commit -m "perf: {{.CLI_ARGS}}" && git push || echo DONE'
+
   push-security:
-    desc: git push for code change that improves security
+    desc: Git push for code change that improves security
     cmd: 'git add -A && git commit -m "security: {{.CLI_ARGS}}" && git push || echo DONE'
+
   push-ci:
-    desc: git push for updating CI build tasks, etc; no production code change
+    desc: Git push for updating CI build tasks, etc; no production code change
     cmd: 'git add -A && git commit -m "ci: {{.CLI_ARGS}}" && git push || echo DONE'
+
   push-release:
-    desc: git push for code change for release
+    desc: Git push for code change for release
     cmd: 'git add -A && git commit -m "release: {{.CLI_ARGS}}" && git push || echo DONE'
 
   # Servers
+
   cli:
+    desc: Start CLI server
     cmds:
       - go run cmd/cli/main.go {{.CLI_ARGS}}
     silent: false
+
   server-allinone:
+    desc: Start all-in-one server
     cmds:
       - go run cmd/server-all-in-one/main.go {{.CLI_ARGS}}
     silent: false
+
   server-zap:
+    desc: Start Zap server
     cmds:
       - go run cmd/server-zap/main.go {{.CLI_ARGS}}
     silent: false
+
   server-pap:
+    desc: Start PAP server
     cmds:
       - go run cmd/server-pap/main.go {{.CLI_ARGS}}
     silent: false
+
   server-pip:
+    desc: Start PIP server
     cmds:
       - go run cmd/server-pip/main.go {{.CLI_ARGS}}
     silent: false
+
   server-pdp:
+    desc: Start PDP server
     cmds:
       - go run cmd/server-pdp/main.go {{.CLI_ARGS}}
     silent: false
