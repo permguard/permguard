@@ -31,7 +31,11 @@ Official package managers maintained by the Permguard team and updated with ever
 
 ## Get The Binary
 
-Download the latest release binary and install it manually.
+Download the latest release binary and install the the os path.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/permguard/permguard/refs/heads/main/install.sh | sh -s
+```
 
 ## Official Package Formats
 
