@@ -68,8 +68,7 @@ Invoke-WebRequest -Uri https://raw.githubusercontent.com/permguard/permguard/ref
 If the binary was downloaded manually, it should be moved to a folder included in the PATH:
 
 ```powershell [powershell]
-Move-Item .\bin\permguard.exe "C:\Program Files\permguard\permguard.exe"
-setx PATH "$($env:PATH);C:\Program Files\permguard"
+if (-not (Test-Path "C:\Program Files\permguard")) { New-Item -ItemType Directory -Path "C:\Program Files\permguard" | Out-Null }; Move-Item .\bin\permguard.exe "C:\Program Files\permguard\permguard.exe" -Force; if ($env:PATH -notlike "*C:\Program Files\permguard*") { setx PATH "$($env:PATH);C:\Program Files\permguard" }
 ```
 
 The installation can be verified with:
