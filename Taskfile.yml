@@ -175,6 +175,7 @@ tasks:
   # Documentation
 
   docs:
+    desc: Start documentation server
     cmds:
       - cd www && npm i && npm run dev
 
