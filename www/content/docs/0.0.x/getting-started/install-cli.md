@@ -25,7 +25,9 @@ Permguard offers multiple installation options. Review the methods below to choo
 
 Official package managers maintained by the Permguard team and updated with every release.
 
-### deb <img alt="Ubuntu" src="https://img.shields.io/badge/Ubuntu-E95420?logo=ubuntu&logoColor=white" height="20"> <img alt="Debian" src="https://img.shields.io/badge/Debian-A81D33?logo=debian&logoColor=white" height="20"> <img alt="Linux Mint" src="https://img.shields.io/badge/Linux_Mint-87CF3E?logo=linuxmint&logoColor=fff" height="20"> <img alt="Pop!_OS" src="https://img.shields.io/badge/Pop!_OS-48B9C7?logo=popos&logoColor=fff" height="20"> <img alt="Elementary OS" src="https://img.shields.io/badge/Elementary_OS-64BAFF?logo=elementary&logoColor=fff" height="20">  {#deb}
+### deb {#deb}
+
+<img alt="Ubuntu" src="https://img.shields.io/badge/Ubuntu-E95420?logo=ubuntu&logoColor=white" height="20"> <img alt="Debian" src="https://img.shields.io/badge/Debian-A81D33?logo=debian&logoColor=white" height="20"> <img alt="Linux Mint" src="https://img.shields.io/badge/Linux_Mint-87CF3E?logo=linuxmint&logoColor=fff" height="20"> <img alt="Pop!_OS" src="https://img.shields.io/badge/Pop!_OS-48B9C7?logo=popos&logoColor=fff" height="20"> <img alt="Elementary OS" src="https://img.shields.io/badge/Elementary_OS-64BAFF?logo=elementary&logoColor=fff" height="20">
 
 The following example demonstrates how to install `permguard` using the `deb` package format on Debian-based systems:
 
@@ -48,9 +50,11 @@ To uninstall the package, use:
 sudo dpkg -r permguard
 ```
 
-### rpm <img alt="Fedora" src="https://img.shields.io/badge/Fedora-51A2DA?logo=fedora&logoColor=fff" height="20"> <img alt="CentOS" src="https://img.shields.io/badge/CentOS-002260?logo=centos&logoColor=F0F0F0" height="20"> <img alt="Red Hat Enterprise Linux" src="https://img.shields.io/badge/Red_Hat-EE0000?logo=redhat&logoColor=white" height="20"> <img alt="Rocky Linux" src="https://img.shields.io/badge/Rocky_Linux-10B981?logo=rockylinux&logoColor=fff" height="20"> <img alt="AlmaLinux" src="https://img.shields.io/badge/AlmaLinux-0F4C81?logo=almalinux&logoColor=fff" height="20"> <img alt="openSUSE" src="https://img.shields.io/badge/openSUSE-73BA25?logo=opensuse&logoColor=fff" height="20"> {#rpm}
+### rpm {#rpm}
 
-The following example demonstrates how to install `permguard` using the `deb` package format on Debian-based systems:
+<img alt="Fedora" src="https://img.shields.io/badge/Fedora-51A2DA?logo=fedora&logoColor=fff" height="20"> <img alt="CentOS" src="https://img.shields.io/badge/CentOS-002260?logo=centos&logoColor=F0F0F0" height="20"> <img alt="Red Hat Enterprise Linux" src="https://img.shields.io/badge/Red_Hat-EE0000?logo=redhat&logoColor=white" height="20"> <img alt="Rocky Linux" src="https://img.shields.io/badge/Rocky_Linux-10B981?logo=rockylinux&logoColor=fff" height="20"> <img alt="AlmaLinux" src="https://img.shields.io/badge/AlmaLinux-0F4C81?logo=almalinux&logoColor=fff" height="20"> <img alt="openSUSE" src="https://img.shields.io/badge/openSUSE-73BA25?logo=opensuse&logoColor=fff" height="20">
+
+The following example demonstrates how to install `permguard` using the `rpm` package format on RPM-based systems:
 
 ```bash
 # Download and install the package
@@ -71,10 +75,11 @@ To uninstall the package, use:
 sudo rpm -e permguard
 ```
 
-### apk <img alt="Alpine Linux" src="https://img.shields.io/badge/Alpine_Linux-0D597F?logo=alpinelinux&logoColor=white" height="20">
- {#apk}
+### apk {#apk}
 
-The following example demonstrates how to install `permguard` using the `deb` package format on Debian-based systems:
+<img alt="Alpine Linux" src="https://img.shields.io/badge/Alpine_Linux-0D597F?logo=alpinelinux&logoColor=white" height="20">
+
+The following example demonstrates how to install `permguard` using the `apk` package format on Alpine Linux:
 
 ```bash
 # Download and install the package
@@ -95,7 +100,9 @@ To uninstall the package, use:
 sudo apk del permguard
 ```
 
-### Homebrew <img alt="macOS" src="https://img.shields.io/badge/MacOS-000000?logo=apple&logoColor=F0F0F0" height="20"> <img alt="Linux" src="https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black" height="20"> {#homebrew}
+### Homebrew {#homebrew}
+
+<img alt="macOS" src="https://img.shields.io/badge/MacOS-000000?logo=apple&logoColor=F0F0F0" height="20"> <img alt="Linux" src="https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black" height="20">
 
 Using [Homebrew](https://brew.sh/), users can install Permguard on macOS and Linux with the following command:
 
