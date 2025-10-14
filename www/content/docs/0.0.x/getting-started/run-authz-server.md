@@ -34,7 +34,7 @@ docker run --rm -it \
 
 Configuration parameters can be injected via environment variables, allowing full control over runtime behavior without modifying the container image.
 
-The complete list of configurable parameters is documented in the [CLI Configuration Options](/docs/0.0.x/devops/authz-server/configuration-options/).
+The complete list of configurable parameters is documented in the [Authz Server Configuration Options](/docs/0.0.x/devops/authz-server/configuration-options/).
 
 Example with debugging enabled:
 
