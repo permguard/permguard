@@ -40,7 +40,7 @@ sudo dpkg -i permguard.deb
 
 The installation may be verified using the following command:
 
-```shell [bash]
+```bash
 permguard version
 ```
 
@@ -65,7 +65,7 @@ sudo rpm -i permguard.rpm
 
 The installation may be verified using the following command:
 
-```shell [bash]
+```bash
 permguard version
 ```
 
@@ -90,7 +90,7 @@ sudo apk add --allow-untrusted permguard.apk
 
 The installation may be verified using the following command:
 
-```shell [bash]
+```bash
 permguard version
 ```
 
@@ -106,7 +106,7 @@ sudo apk del permguard
 
 Using [Homebrew](https://brew.sh/), users can install Permguard on macOS and Linux with the following command:
 
-```shell [bash]
+```bash
 brew update
 brew install permguard/tap/cli
 ```
@@ -123,14 +123,14 @@ curl -fsSL https://raw.githubusercontent.com/permguard/permguard/refs/heads/main
 
 The binary should then be moved into the system path:
 
-```shell [bash]
+```bash
 sudo mv ./bin/permguard /usr/local/bin/
 chmod +x /usr/local/bin/permguard
 ```
 
 The installation can be verified with:
 
-```shell [bash]
+```bash
 permguard version
 ```
 
@@ -150,7 +150,7 @@ if (-not (Test-Path "C:\Program Files\permguard")) { New-Item -ItemType Director
 
 The installation can be verified with:
 
-```shell [bash]
+```bash
 permguard version
 ```
 
@@ -158,7 +158,7 @@ permguard version
 
 Command-line completions can be generated for Bash, Zsh, Fish, or PowerShell to enhance the CLI experience.
 
-```shell [bash]
+```bash
 # ~/.bashrc
 permguard completion bash >> ~/.bash_completion
 ```

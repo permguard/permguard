@@ -89,9 +89,40 @@ tasks:
 
   local:docker:
     desc: Start local environment using Docker
+    vars:
+      VERSION:
+        sh: |
+          D="$(git describe --tags --long --dirty --always)"
+          TAG="${D%%-*}"                 # v0.0.11
+          BASE="${TAG#v}"               # 0.0.11
+          # distanza dal tag (numero di commit)
+          DIST="${D#*-}" ; DIST="${DIST%%-*}"
+          # short sha a 8
+          SHA="$(git rev-parse --short=8 HEAD)"
+          # dirty?
+          case "$D" in
+            *-dirty) DIRTY=1 ;;
+            *)       DIRTY=0 ;;
+          esac
+          if [ "$DIST" != "0" ] || [ "$DIRTY" = "1" ]; then
+            echo "${BASE}-SNAPSHOT-${SHA}"
+          else
+            echo "${BASE}"
+          fi
+      LOCAL_ARCH:
+        sh: |
+          case "$(uname -m)" in
+            x86_64)          echo "amd64" ;;
+            aarch64|arm64)   echo "arm64" ;;
+            *) echo "unsupported-arch"; exit 1 ;;
+          esac
     cmds:
-      - docker build -t permguard-all-in-one:latest -f ./cmd/server-all-in-one/Dockerfile .
-      - docker run --rm -it -v ./samples/volume:/opt/permguard/volume -p 9092:9092 -p 9091:9091 -p 9094:9094 -e PERMGUARD_DEBUG="TRUE" permguard-all-in-one:latest
+      - >
+        docker run --rm -it
+        -v ./samples/volume:/opt/permguard/volume
+        -p 9092:9092 -p 9091:9091 -p 9094:9094
+        -e PERMGUARD_DEBUG="TRUE"
+        permguard/all-in-one:{{.VERSION}}-{{.LOCAL_ARCH}}
 
   local:
     desc: Setup the local environment
@@ -268,6 +299,12 @@ tasks:
     deps: [ci:build:pre]
     cmds:
       -  goreleaser release --snapshot --clean --config .goreleaser.yaml
+
+  ci:build-pro:
+    desc: Run the CI build
+    deps: [ci:build:pre]
+    cmds:
+      -  goreleaser release --snapshot --clean --config .goreleaser-pro.yaml
 
   ci:
     desc: Run the CI

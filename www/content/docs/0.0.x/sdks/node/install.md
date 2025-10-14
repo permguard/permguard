@@ -21,6 +21,6 @@ seo:
 
 In your application install the Node SDK by running the following command:
 
-```shell
+```bash
 npm install @permguard/permguard
 ```
