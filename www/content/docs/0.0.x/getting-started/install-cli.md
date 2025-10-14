@@ -50,7 +50,7 @@ To uninstall the package, use:
 sudo dpkg -r permguard
 ```
 
-### rpm {#rpm}
+### rpm
 
 <img alt="Fedora" src="https://img.shields.io/badge/Fedora-51A2DA?logo=fedora&logoColor=fff" height="20"> <img alt="CentOS" src="https://img.shields.io/badge/CentOS-002260?logo=centos&logoColor=F0F0F0" height="20"> <img alt="Red Hat Enterprise Linux" src="https://img.shields.io/badge/Red_Hat-EE0000?logo=redhat&logoColor=white" height="20"> <img alt="Rocky Linux" src="https://img.shields.io/badge/Rocky_Linux-10B981?logo=rockylinux&logoColor=fff" height="20"> <img alt="AlmaLinux" src="https://img.shields.io/badge/AlmaLinux-0F4C81?logo=almalinux&logoColor=fff" height="20"> <img alt="openSUSE" src="https://img.shields.io/badge/openSUSE-73BA25?logo=opensuse&logoColor=fff" height="20">
 
@@ -75,7 +75,7 @@ To uninstall the package, use:
 sudo rpm -e permguard
 ```
 
-### apk {#apk}
+### apk
 
 <img alt="Alpine Linux" src="https://img.shields.io/badge/Alpine_Linux-0D597F?logo=alpinelinux&logoColor=white" height="20"><br>
 
@@ -100,7 +100,7 @@ To uninstall the package, use:
 sudo apk del permguard
 ```
 
-### Homebrew {#homebrew}
+### Homebrew
 
 <img alt="macOS" src="https://img.shields.io/badge/MacOS-000000?logo=apple&logoColor=F0F0F0" height="20"> <img alt="Linux" src="https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black" height="20">
 
