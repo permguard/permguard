@@ -45,9 +45,9 @@ builds:
       - -X {{ .Env.PROJECT_PATH }}/internal/cli/common.GitCommit={{ .Commit }}
 
 
-  - id: permguard_all_in_one_linux
+  - id: permguard_server_all_in_one_linux
     dir: "./cmd/server-all-in-one"
-    binary: "server-all-in-one"
+    binary: "server_all_in_one"
     goos: [linux]
     goarch: [amd64, arm64]
     env:
@@ -58,9 +58,9 @@ builds:
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.BuildTime={{ .Timestamp }}
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.GitCommit={{ .Commit }}
 
-  - id: permguard_all_in_one_windows
+  - id: permguard_server_all_in_one_windows
     dir: "./cmd/server-all-in-one"
-    binary: "server-all-in-one"
+    binary: "server_all_in_one"
     goos: [windows]
     goarch: [amd64, arm64]
     env:
@@ -71,9 +71,9 @@ builds:
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.BuildTime={{ .Timestamp }}
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.GitCommit={{ .Commit }}
 
-  - id: permguard_all_in_one_darwin
+  - id: permguard_server_all_in_one_darwin
     dir: "./cmd/server-all-in-one"
-    binary: "server-all-in-one"
+    binary: "server_all_in_one"
     goos: [darwin]
     goarch: [amd64, arm64]
     env:
@@ -100,8 +100,8 @@ archives:
       - goos: windows
         formats: [zip]
   - formats: [tar.gz]
-    id: permguard_all_in_one
-    ids: ["permguard_all_in_one_linux", "permguard_all_in_one_windows", "permguard_all_in_one_darwin"]
+    id: permguard_server_all_in_one
+    ids: ["permguard_server_all_in_one_linux", "permguard_server_all_in_one_windows", "permguard_server_all_in_one_darwin"]
     name_template: >-
       {{ .ProjectName }}_{{ .Binary }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
@@ -140,10 +140,10 @@ nfpms:
       - permguard_cli
 
 # dockers_v2:
-#   - id: permguard_all_in_one
+#   - id: permguard_server_all_in_one
 #     dockerfile: ./cmd/server-all-in-one/Dockerfile
 #     ids:
-#       - permguard_all_in_one_linux
+#       - permguard_server_all_in_one_linux
 #     images:
 #       - permguard/all-in-one
 #     tags:
@@ -159,7 +159,7 @@ nfpms:
 #     build_args:
 #       DB_FILE: samples/volume/permguard.db
 #     labels:
-#       org.opencontainers.image.title: "permguard-all-in-one"
+#       org.opencontainers.image.title: "permguard-server-all-in-one"
 #       org.opencontainers.image.version: "{{ .Version }}"
 #       org.opencontainers.image.revision: "{{ .FullCommit }}"
 #       org.opencontainers.image.source: "{{ .Env.PROJECT_PATH }}"
