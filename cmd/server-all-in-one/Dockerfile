@@ -20,8 +20,8 @@ ARG BINARY=server-all-in-one
 ARG DB_FILE=permguard.db
 ARG TARGETARCH
 
-RUN mkdir -p /opt/permguard
-RUN rm -rf /opt/permguard/volume && mkdir -p /opt/permguard/volume
+RUN mkdir -p /opt/permguard && \
+    rm -rf /opt/permguard/volume && mkdir -p /opt/permguard/volume
 
 WORKDIR /opt/permguard
 COPY ${BINARY} /opt/permguard/server-all-in-one
@@ -39,13 +39,10 @@ ENV PERMGUARD_SERVER_APPDATA="/opt/permguard/volume"
 ADD https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.18/grpc_health_probe-linux-${TARGETARCH} /bin/grpc_health_probe
 RUN chmod +x /bin/grpc_health_probe
 
-EXPOSE 9091
-EXPOSE 9092
-EXPOSE 9094
+EXPOSE 9091 9092 9094
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD /bin/grpc_health_probe -addr=localhost:9091 || exit 1
 
 VOLUME ["/opt/permguard/volume"]
-
 ENTRYPOINT ["/opt/permguard/startup.sh"]
