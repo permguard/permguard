@@ -38,17 +38,8 @@
   }
 }
 
-body {
-  max-width: 1440px;
-  margin: 0 auto;
-  position: relative;
-  overflow-x: hidden;
-}
-
-@media (max-width: 1440px) {
-  html {
-    overflow-x: hidden;
-  }
+body.home {
+  contain: paint;
 }
 
 .footer-legal-text {
