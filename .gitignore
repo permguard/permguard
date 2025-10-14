@@ -229,3 +229,4 @@ config
 ## End of Permguard
 # Added by goreleaser init:
 dist/
+tmp/

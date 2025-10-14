@@ -256,8 +256,16 @@ tasks:
 
   # ci
 
+  ci:build:pre:
+    desc: Pre-build for the CI
+    cmds:
+      - rm -rf ./tmp/
+      - mkdir -p ./tmp/
+      - go run ./cmd/provisioner-db-sqlite/main.go --up --dbdir ./tmp --debug
+
   ci:build:
     desc: Run the CI build
+    deps: [ci:build:pre]
     cmds:
       -  goreleaser release --snapshot --clean --config .goreleaser.yaml
 
