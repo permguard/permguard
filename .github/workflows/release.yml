@@ -42,14 +42,14 @@ jobs:
           go-version: stable
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
-      - uses: sigstore/cosign-installer@v3.10.0 # installs cosign
-      - uses: anchore/sbom-action/download-syft@v0.20.6 # installs syft
-      # - uses: docker/login-action@v3 # login to ghcr
-      #   with:
-      #     registry: ghcr.io
-      #     username: ${{ github.repository_owner }}
-      #     password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: goreleaser/goreleaser-action@v6 # run goreleaser
+      - uses: sigstore/cosign-installer@v3.10.0
+      - uses: anchore/sbom-action/download-syft@v0.20.6
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.DOCKERHUB_USERNAME}}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+      - uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser-pro
           version: "latest"
@@ -57,12 +57,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
-      # - uses: actions/attest-build-provenance@v3
-      #   with:
-      #     subject-checksums: ./dist/checksums.txt
-      # - uses: actions/attest-build-provenance@v3
-      #   with:
-      #     subject-checksums: ./dist/digests.txt
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-      #     GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+
