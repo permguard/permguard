@@ -16,7 +16,7 @@
 # syntax=docker/dockerfile:1
 FROM alpine:latest
 
-ARG BINARY=server-all-in-one
+ARG BINARY_NAME=server-all-in-one
 ARG DB_FILE=permguard.db
 ARG TARGETARCH
 
@@ -24,8 +24,8 @@ RUN mkdir -p /opt/permguard && \
     rm -rf /opt/permguard/volume && mkdir -p /opt/permguard/volume
 
 WORKDIR /opt/permguard
-COPY ${BINARY} /opt/permguard/server-all-in-one
-COPY ${DB_FILE} /opt/permguard/permguard.db
+COPY linux/${TARGETARCH}/${BINARY_NAME} /opt/permguard/server-all-in-one
+COPY ./${DB_FILE} /opt/permguard/permguard.db
 
 RUN echo '#!/bin/sh' > /opt/permguard/startup.sh \
     && echo 'cp /opt/permguard/permguard.db /opt/permguard/volume/' >> /opt/permguard/startup.sh \

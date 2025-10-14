@@ -21,7 +21,7 @@ seo:
 
 To run the AuthZ server, you just need to run the Docker container.
 
-```shell
+```bash
 docker pull permguard/all-in-one:latest
 docker run --rm -it -p 9091:9091 -p 9092:9092 -p 9094:9094 permguard/all-in-one:latest
 ```

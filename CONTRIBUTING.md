@@ -26,7 +26,7 @@ If these tools are not installed locally, the related tests will be skipped auto
 
 Clone `permguard` anywhere:
 
-```sh
+```bash
 git clone git@github.com:permguard/permguard.git
 ```
 
@@ -36,13 +36,28 @@ git clone git@github.com:permguard/permguard.git
 task local
 ```
 
+## Building and Running the local environment with Docker
+
+First, build the project artifacts (binaries and Docker images) and create the local database:
+
+```bash
+task build:ci
+task local:docker
+```
+
+Then, run the local environment using Docker. The task automatically detects your system architecture (amd64 or arm64) and starts the correct image:
+
+```bash
+task local:docker
+```
+
 ## Testing your changes
 
 Create a new branch for your changes and make your modifications.
 
 Before committing, ensure the codebase is properly formatted and consistent with the project’s style guidelines:
 
-```sh
+```bash
 task source:precommit
 ```
 

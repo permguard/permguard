@@ -21,6 +21,6 @@ seo:
 
 In your application install the Go SDK by running the following command:
 
-```shell
+```bash
 go get -u github.com/permguard/sdk-go
 ```
