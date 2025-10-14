@@ -73,6 +73,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
 
+      - name: Install Task
+        uses: go-task/setup-task@v1
+
+      - name: Run pre-build Task
+        run: task ci:build:pre
+
       - name: GoReleaser (release on tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: goreleaser/goreleaser-action@v6
