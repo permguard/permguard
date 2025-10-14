@@ -33,6 +33,10 @@ Each domain (patients, prescriptions, inventory, etc.) maintains its own **ledge
 | **Appointments** | `appointment-ledger` | Bookings and schedule changes |
 | **Notifications** | `notification-ledger` | Sent messages and delivery results |
 
+{{< callout context="note" icon="info-circle" >}}
+Before to start make sure che [CLI is installed](/docs/0.0.x/getting-started/get-the-cli/)  and the [AuthZ server is running](/docs/0.0.x/getting-started/run-the-authz-server/).
+{{< /callout >}}
+
 ## Check out the Playground
 
 The first step is to check out the `MagicFarmacia` playground.
@@ -42,19 +46,6 @@ This example demonstrates Permguard in action and allows testing of its features
 ```text
 git clone git@github.com:permguard/playground-server.git
 cd playground-server/cedar/magicfarmacia/
-```
-
-## Start up the AuthZ Server
-
-The first operative step is to start the AuthZ server.
-
-{{< callout context="note" icon="info-circle" >}}
-Plese refer to the [Install & Bootstrap](/docs/0.0.x/getting-started/install-bootstrap/) section for more information about the installation process.
-{{< /callout >}}
-
-```text
-docker pull permguard/all-in-one:latest
-docker run --rm -it -p 9091:9091 -p 9092:9092 -p 9094:9094 permguard/all-in-one:latest
 ```
 
 ## Create the Zone and Policy Store
