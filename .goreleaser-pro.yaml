@@ -61,3 +61,31 @@ homebrew_casks:
       template: "https://github.com/permguard/permguard/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
       verified: "github.com/permguard/permguard/"
     skip_upload: false
+
+dockers_v2:
+  - id: permguard_server_all_in_one
+    use: buildx
+    dockerfile: ./cmd/server-all-in-one/Dockerfile
+    ids:
+      - permguard_server_all_in_one_linux
+    images:
+      - permguard/all-in-one
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+      - "{{ .Major }}"
+      - "{{ .Major }}.{{ .Minor }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    extra_files:
+      - tmp/permguard.db
+    build_flag_templates:
+      - "--build-arg=BINARY={{ .ArtifactName }}"
+      - "--build-arg=DB_FILE=tmp/permguard.db"
+      - "--build-arg=TARGETARCH={{ .Arch }}"
+    labels:
+      org.opencontainers.image.title: "permguard-server-all-in-one"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "{{ .Env.PROJECT_PATH }}"
