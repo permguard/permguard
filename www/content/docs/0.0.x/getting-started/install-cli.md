@@ -77,7 +77,7 @@ sudo rpm -e permguard
 
 ### apk {#apk}
 
-<img alt="Alpine Linux" src="https://img.shields.io/badge/Alpine_Linux-0D597F?logo=alpinelinux&logoColor=white" height="20">
+<img alt="Alpine Linux" src="https://img.shields.io/badge/Alpine_Linux-0D597F?logo=alpinelinux&logoColor=white" height="20"><br>
 
 The following example demonstrates how to install `permguard` using the `apk` package format on Alpine Linux:
 
