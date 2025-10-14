@@ -287,10 +287,18 @@ tasks:
 
   # ci
 
+  ci:build:clean:
+    desc: Clean the CI build
+    cmds:
+      - rm -rf ./dist/
+      - rm -rf ./tmp/
+      - rm -f coverage.out
+      - rm -f result.json
+
   ci:build:pre:
     desc: Pre-build for the CI
+    deps: [ci:build:clean]
     cmds:
-      - rm -rf ./tmp/
       - mkdir -p ./tmp/
       - go run ./cmd/provisioner-db-sqlite/main.go --up --dbdir ./tmp --debug
 
@@ -310,6 +318,18 @@ tasks:
     desc: Run the CI
     cmds:
       - task: ci:build
+
+  # Docker Hub
+
+  dh:all-in-one:
+    desc: Start all-in-one server using Docker Hub image
+    cmds:
+      - >
+        docker run --rm -it
+        -v ./samples/volume:/opt/permguard/volume
+        -p 9092:9092 -p 9091:9091 -p 9094:9094
+        -e PERMGUARD_DEBUG="TRUE"
+        permguard/all-in-one:latest
 
   # Documentation
 
