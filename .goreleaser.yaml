@@ -149,7 +149,6 @@ dockers_v2:
     tags:
       - "{{ .Version }}"
       - "latest"
-      - "{{ .Major }}"
       - "{{ .Major }}.{{ .Minor }}"
     platforms:
       - linux/amd64
