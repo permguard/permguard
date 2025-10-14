@@ -139,27 +139,27 @@ nfpms:
     ids:
       - permguard_cli
 
-# dockers_v2:
-#   - id: permguard_server_all_in_one
-#     dockerfile: ./cmd/server-all-in-one/Dockerfile
-#     ids:
-#       - permguard_server_all_in_one_linux
-#     images:
-#       - permguard/all-in-one
-#     tags:
-#       - "{{ .Version }}"
-#       - "latest"
-#       - "{{ .Major }}"
-#       - "{{ .Major }}.{{ .Minor }}"
-#     platforms:
-#       - linux/amd64
-#       - linux/arm64
-#     extra_files:
-#       - samples/volume/permguard.db
-#     build_args:
-#       DB_FILE: samples/volume/permguard.db
-#     labels:
-#       org.opencontainers.image.title: "permguard-server-all-in-one"
-#       org.opencontainers.image.version: "{{ .Version }}"
-#       org.opencontainers.image.revision: "{{ .FullCommit }}"
-#       org.opencontainers.image.source: "{{ .Env.PROJECT_PATH }}"
+dockers_v2:
+  - id: permguard_server_all_in_one
+    dockerfile: ./cmd/server-all-in-one/Dockerfile
+    ids:
+      - permguard_server_all_in_one_linux
+    images:
+      - permguard/all-in-one
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+      - "{{ .Major }}"
+      - "{{ .Major }}.{{ .Minor }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    extra_files:
+      - tmp/permguard.db
+    build_args:
+      DB_FILE: tmp/permguard.db
+    labels:
+      org.opencontainers.image.title: "permguard-server-all-in-one"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "{{ .Env.PROJECT_PATH }}"

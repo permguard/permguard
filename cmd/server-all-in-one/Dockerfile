@@ -24,7 +24,7 @@ RUN mkdir -p /opt/permguard
 RUN rm -rf /opt/permguard/volume && mkdir -p /opt/permguard/volume
 
 WORKDIR /opt/permguard
-COPY linux/${TARGETARCH}/server-all-in-one /opt/permguard/server-all-in-one
+COPY ${BINARY} /opt/permguard/server-all-in-one
 COPY ${DB_FILE} /opt/permguard/permguard.db
 
 RUN echo '#!/bin/sh' > /opt/permguard/startup.sh \
