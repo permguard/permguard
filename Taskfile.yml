@@ -220,9 +220,12 @@ tasks:
         read VERSION
         echo "Enter tag message/description:"
         read MESSAGE
-        git pull origin $(git rev-parse --abbrev-ref HEAD)
+        if git rev-parse "${VERSION}" >/dev/null 2>&1; then
+          echo "Tag ${VERSION} already exists. Deleting local and remote..."
+          git tag -d "${VERSION}" >/dev/null 2>&1 || true
+          git push --delete origin "${VERSION}" >/dev/null 2>&1 || true
+        fi
         git tag -a "${VERSION}" -m "${MESSAGE}"
-        git show "${VERSION}" --no-pager
         git push origin "${VERSION}"
         echo "Tag ${VERSION} pushed successfully."
 
