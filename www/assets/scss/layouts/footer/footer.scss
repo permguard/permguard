@@ -7,6 +7,11 @@
     margin-top: 85px;
   }
 
+  &__logo {
+    width: auto;
+    height: 44px;
+  }
+
   &__row {
     padding: 0 calc(var(--bs-gutter-x) * 0.25);
   }
