@@ -20,33 +20,6 @@ tasks:
 
   # Local environment setup
 
-  sourc:deps:install:
-    desc: Install/update source dependencies
-    cmds:
-      - go get -u golang.org/x/crypto
-      - go get -u golang.org/x/net
-      - go get -u github.com/davecgh/go-spew
-      - go get -u github.com/xeipuuv/gojsonschema
-      - go get -u go.uber.org/zap
-      - go get -u github.com/go-playground/validator/v10
-      - go get -u google.golang.org/grpc
-      - go get -u github.com/spf13/cobra
-      - go get -u github.com/spf13/viper
-      - go get -u github.com/stretchr/testify
-      - go get -u github.com/fatih/color
-      - go get -u get gopkg.in/yaml.v2
-      - go get -u github.com/DATA-DOG/go-sqlmock
-      - go get -u github.com/pressly/goose/v3
-      - go get -u gorm.io/gorm
-      - go get -u gorm.io/driver/sqlite
-      - go get -u modernc.org/sqlite
-      - go get -u moul.io/zapgorm2
-      - go get -u github.com/pelletier/go-toml
-      - go get -u github.com/gofrs/flock
-      - go get -u github.com/permguard/permguard/common
-      - go get -u github.com/permguard/permguard/ztauthstar
-      - go get -u github.com/cedar-policy/cedar-go
-
   local:clean:
     desc: Clean local environment
     cmds:
@@ -167,6 +140,33 @@ tasks:
 
   # Source code quality
 
+  source:deps:install:
+    desc: Install/update source dependencies
+    cmds:
+      - go get -u golang.org/x/crypto
+      - go get -u golang.org/x/net
+      - go get -u github.com/davecgh/go-spew
+      - go get -u github.com/xeipuuv/gojsonschema
+      - go get -u go.uber.org/zap
+      - go get -u github.com/go-playground/validator/v10
+      - go get -u google.golang.org/grpc
+      - go get -u github.com/spf13/cobra
+      - go get -u github.com/spf13/viper
+      - go get -u github.com/stretchr/testify
+      - go get -u github.com/fatih/color
+      - go get -u get gopkg.in/yaml.v2
+      - go get -u github.com/DATA-DOG/go-sqlmock
+      - go get -u github.com/pressly/goose/v3
+      - go get -u gorm.io/gorm
+      - go get -u gorm.io/driver/sqlite
+      - go get -u modernc.org/sqlite
+      - go get -u moul.io/zapgorm2
+      - go get -u github.com/pelletier/go-toml
+      - go get -u github.com/gofrs/flock
+      - go get -u github.com/permguard/permguard/common
+      - go get -u github.com/permguard/permguard/ztauthstar
+      - go get -u github.com/cedar-policy/cedar-go
+
   source:fmt:
     desc: Format the source code.
     cmds:
@@ -208,6 +208,23 @@ tasks:
       - task: source:lint
       - task: source:codegen:license:add
       - task: source:codegen:proto
+
+  source:tag:push:
+    desc: Create and push a git tag interactively
+    silent: true
+    interactive: true
+    cmds:
+      - |
+        echo ""
+        echo "Enter release version (e.g., v0.0.13):"
+        read VERSION
+        echo "Enter tag message/description:"
+        read MESSAGE
+        git pull origin $(git rev-parse --abbrev-ref HEAD)
+        git tag -a "${VERSION}" -m "${MESSAGE}"
+        git show "${VERSION}" --no-pager
+        git push origin "${VERSION}"
+        echo "Tag ${VERSION} pushed successfully."
 
   # Tests
 
