@@ -39,7 +39,10 @@
 }
 
 body.home {
-  contain: paint;
+  max-width: 1440px;
+  margin: 0 auto;
+  position: relative;
+  overflow-x: hidden;
 }
 
 .footer-legal-text {
