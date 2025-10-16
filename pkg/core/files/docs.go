@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package crypto implements files functions.
+// Package files implements files functions.
 package files
