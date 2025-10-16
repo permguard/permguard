@@ -147,6 +147,26 @@
         </div>
       </div>
 
+      <!-- Social menu -->
+      {{ if .Site.Menus.social -}}
+      <ul class="nav mr-auto flex-row gap-4 mt-4">
+        {{ range (sort .Site.Menus.social "Weight" "asc") -}} {{ if eq .Name
+        "Docs" -}} {{ if not (in site.Params.doks.sectionNav $.Section) -}} {{
+        end -}} {{ else -}}
+        <li class="nav-item m-0">
+          <a
+            target="_blank"
+            class="nav-link social-link px-0"
+            href="{{ .URL | relURL }}"
+            >{{ .Pre | safeHTML }}<small class="ms-2 visually-hidden"
+              >{{ .Name | safeHTML }}</small
+            ></a
+          >
+        </li>
+        {{ end -}} {{ end -}}
+      </ul>
+      {{ end -}}
+
       <div class="mt-4 footer-legal-text small">
         <p>&copy; 2025 All rights reserved</p>
       </div>
