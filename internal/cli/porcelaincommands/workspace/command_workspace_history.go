@@ -29,11 +29,6 @@ import (
 	"github.com/permguard/permguard/pkg/cli"
 )
 
-const (
-	// commandNameForWorkspacesHistory is the command name for workspaces history.
-	commandNameForWorkspacesHistory = "workspaces-history"
-)
-
 // runECommandForHistoryWorkspace run the command for listing history in the workspace.
 func runECommandForHistoryWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)

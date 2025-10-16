@@ -29,11 +29,6 @@ import (
 	"github.com/permguard/permguard/pkg/cli"
 )
 
-const (
-	// commandNameForWorkspacesApply is the command name for workspaces apply.
-	commandNameForWorkspacesApply = "workspaces-apply"
-)
-
 // runECommandForApplyWorkspace runs the command for creating an workspace.
 func runECommandForApplyWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)

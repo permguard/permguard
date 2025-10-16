@@ -54,7 +54,7 @@ func (c *SQLiteConnectionMock) Connect(logger *zap.Logger, ctx *storage.StorageC
 		r0 = ret.Get(0).(*sqlx.DB)
 	}
 
-	var r1 error = nil
+	var r1 error
 	if rf, ok := ret.Get(1).(func(*zap.Logger, *storage.StorageContext) error); ok {
 		r1 = rf(logger, ctx)
 	} else {

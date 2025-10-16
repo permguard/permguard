@@ -37,7 +37,7 @@ func (m *ObjectManager) SerializeTree(tree *Tree) ([]byte, error) {
 		if partition == "" {
 			partition = "/"
 		}
-		sb.WriteString(fmt.Sprintf("%s %s %s %s %s %s %s %s %s", entry.otype, partition, entry.oid, entry.oname, entry.codeID, entry.codeType, entry.langauge, entry.langaugeVersion, entry.langaugeType))
+		sb.WriteString(fmt.Sprintf("%s %s %s %s %s %s %s %s %s", entry.otype, partition, entry.oid, entry.oname, entry.codeID, entry.codeType, entry.language, entry.languageVersion, entry.languageType))
 		if i != treeSize-1 {
 			sb.WriteString("\n")
 		}
@@ -65,9 +65,9 @@ func (m *ObjectManager) DeserializeTree(data []byte) (*Tree, error) {
 			oname:           parts[3],
 			codeID:          parts[4],
 			codeType:        parts[5],
-			langauge:        parts[6],
-			langaugeVersion: parts[7],
-			langaugeType:    parts[8],
+			language:        parts[6],
+			languageVersion: parts[7],
+			languageType:    parts[8],
 		}
 		tree.entries = append(tree.entries, entry)
 	}

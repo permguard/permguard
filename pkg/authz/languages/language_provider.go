@@ -14,7 +14,6 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package languages for languages.
 package languages
 
 // LanguageFactory is the interface for the language factory.

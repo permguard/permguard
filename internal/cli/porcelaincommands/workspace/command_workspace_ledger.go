@@ -29,11 +29,6 @@ import (
 	"github.com/permguard/permguard/pkg/cli"
 )
 
-const (
-	// commandNameForWorkspacesLedger is the command name for a workspace ledger.
-	commandNameForWorkspacesLedger = "workspaces-ledger"
-)
-
 // runECommandForLedgerWorkspace runs the command for the local ledger.
 func runECommandForLedgerWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)

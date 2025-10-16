@@ -32,12 +32,12 @@ func TestRemoteRefStatePacket(t *testing.T) {
 	packet.RefCommit = "952dd2f1-1ba2-44b5-92d0-1b6fb8d6f3c0"
 
 	data, err := packet.Serialize()
-	assert.Nil(err)
+	assert.NoError(err)
 
 	newPacket := &RemoteRefStatePacket{}
 	err = newPacket.Deserialize(data)
 
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(packet.RefPrevCommit, newPacket.RefPrevCommit)
 	assert.Equal(packet.RefCommit, newPacket.RefCommit)
 	assert.Equal(packet.OpCode, newPacket.OpCode)

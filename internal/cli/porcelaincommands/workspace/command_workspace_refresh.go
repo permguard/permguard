@@ -29,11 +29,6 @@ import (
 	"github.com/permguard/permguard/pkg/cli"
 )
 
-const (
-	// commandNameForWorkspacesRefresh is the command name for workspaces refresh.
-	commandNameForWorkspacesRefresh = "workspaces-refresh"
-)
-
 // runECommandForRefreshWorkspace runs the command for creating an workspace.
 func runECommandForRefreshWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)

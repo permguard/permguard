@@ -44,7 +44,7 @@ func TestSerializeDeserializeCommit(t *testing.T) {
 
 	// Serialize the commit
 	serialized, err := objectManager.SerializeCommit(commit)
-	assert.Nil(err)
+	assert.NoError(err)
 	expectedSerialized := `tree 4ad3bb52786751f4b6f9839953fe3dcc2278c66648f0d0193f98088b7e4d0c1d
 parent a294ba66f45afd23f8bda3892728601bb509989a80dbb54d7b513dacb8099d76
 author 2021-08-11T20:00:00+02:00 Nicola Gallo
@@ -54,7 +54,7 @@ Initial commit`
 
 	// Deserialize the commit
 	deserializedCommit, err := objectManager.DeserializeCommit(serialized)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.NotNil(deserializedCommit)
 
 	// Check if the deserialized commit matches the original commit

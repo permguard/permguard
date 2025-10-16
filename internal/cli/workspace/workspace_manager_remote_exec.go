@@ -302,7 +302,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 				"code_type":         entry.CodeType(),
 				"language":          entry.Language(),
 				"lanaguage_version": entry.LanguageVersion(),
-				"langauge_type":     entry.LanguageType(),
+				"language_type":     entry.LanguageType(),
 			})
 			if _, ok := codeMapIds[entry.OID()]; !ok {
 				entryObj, err := m.cospMgr.ReadObject(entry.OID())

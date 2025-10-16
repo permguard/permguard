@@ -29,14 +29,14 @@ func TestSerializeDeserializeTree(t *testing.T) {
 	assert := assert.New(t)
 	tree := &Tree{
 		entries: []TreeEntry{
-			{otype: "blob", oid: "515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634d3def5fe", partition: "/", oname: "name1", codeID: "code1", codeType: "codeType1", langauge: "cedar", langaugeVersion: "*", langaugeType: "policy"},
-			{otype: "blob", oid: "2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca12d9d6170", partition: "/", oname: "name2", codeID: "code2", codeType: "codeType2", langauge: "cedar", langaugeVersion: "*", langaugeType: "policy"},
-			{otype: "tree", oid: "fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851", partition: "/", oname: "name3", codeID: "code3", codeType: "codeType3", langauge: "cedar", langaugeVersion: "*", langaugeType: "policy"},
+			{otype: "blob", oid: "515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634d3def5fe", partition: "/", oname: "name1", codeID: "code1", codeType: "codeType1", language: "cedar", languageVersion: "*", languageType: "policy"},
+			{otype: "blob", oid: "2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca12d9d6170", partition: "/", oname: "name2", codeID: "code2", codeType: "codeType2", language: "cedar", languageVersion: "*", languageType: "policy"},
+			{otype: "tree", oid: "fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851", partition: "/", oname: "name3", codeID: "code3", codeType: "codeType3", language: "cedar", languageVersion: "*", languageType: "policy"},
 		},
 	}
 	objectManager, _ := NewObjectManager()
 	serialized, err := objectManager.SerializeTree(tree)
-	assert.Nil(err)
+	assert.NoError(err)
 	expectedSerialized := `blob / 2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca12d9d6170 name2 code2 codeType2 cedar * policy
 blob / 515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634d3def5fe name1 code1 codeType1 cedar * policy
 tree / fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851 name3 code3 codeType3 cedar * policy`
@@ -46,7 +46,7 @@ tree / fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851 name3 co
 	for i := range expectedLines {
 		assert.Equal(expectedLines[i], serializedLines[i], fmt.Sprintf("Mismatch on line %d", i+1))
 	}
-	assert.Nil(err)
+	assert.NoError(err)
 }
 
 // TestSerializeTreeWithErrors tests the serialization of Tree objects with errors.

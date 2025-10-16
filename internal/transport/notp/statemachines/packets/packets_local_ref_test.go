@@ -34,12 +34,12 @@ func TestLocalRefStatePacket(t *testing.T) {
 	packet.OpCode = 0x15
 
 	data, err := packet.Serialize()
-	assert.Nil(err)
+	assert.NoError(err)
 
 	newPacket := &LocalRefStatePacket{}
 	err = newPacket.Deserialize(data)
 
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(packet.RefCommit, newPacket.RefCommit)
 	assert.Equal(packet.HasConflicts, newPacket.HasConflicts)
 	assert.Equal(packet.IsUpToDate, newPacket.IsUpToDate)

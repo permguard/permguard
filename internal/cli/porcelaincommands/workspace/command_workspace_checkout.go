@@ -29,11 +29,6 @@ import (
 	"github.com/permguard/permguard/pkg/cli"
 )
 
-const (
-	// commandNameForWorkspacesCheckout is the command name for workspaces checkout.
-	commandNameForWorkspacesCheckout = "workspaces-checkout"
-)
-
 // runECommandForCheckoutWorkspace runs the command for creating an workspace.
 func runECommandForCheckoutWorkspace(args []string, deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)

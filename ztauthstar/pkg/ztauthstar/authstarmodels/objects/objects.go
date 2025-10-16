@@ -278,13 +278,13 @@ type TreeEntry struct {
 	oname           string
 	codeID          string
 	codeType        string
-	langauge        string
-	langaugeVersion string
-	langaugeType    string
+	language        string
+	languageVersion string
+	languageType    string
 }
 
 // NewTreeEntry creates a new tree entry.
-func NewTreeEntry(partition, otype, oid, oname, codeID, codeType, langauge, langaugeVersion, langaugeType string) (*TreeEntry, error) {
+func NewTreeEntry(partition, otype, oid, oname, codeID, codeType, language, languageVersion, languageType string) (*TreeEntry, error) {
 	if strings.TrimSpace(partition) == "" {
 		return nil, errors.New("objects: object type is empty")
 	} else if strings.TrimSpace(otype) == "" {
@@ -297,11 +297,11 @@ func NewTreeEntry(partition, otype, oid, oname, codeID, codeType, langauge, lang
 		return nil, errors.New("objects: code id is empty")
 	} else if strings.TrimSpace(codeType) == "" {
 		return nil, errors.New("objects: code name is empty")
-	} else if strings.TrimSpace(langauge) == "" {
+	} else if strings.TrimSpace(language) == "" {
 		return nil, errors.New("objects: language is empty")
-	} else if strings.TrimSpace(langaugeVersion) == "" {
+	} else if strings.TrimSpace(languageVersion) == "" {
 		return nil, errors.New("objects: language version is empty")
-	} else if strings.TrimSpace(langaugeType) == "" {
+	} else if strings.TrimSpace(languageType) == "" {
 		return nil, errors.New("objects: language type is empty")
 	}
 	return &TreeEntry{
@@ -311,9 +311,9 @@ func NewTreeEntry(partition, otype, oid, oname, codeID, codeType, langauge, lang
 		oname:           oname,
 		codeID:          codeID,
 		codeType:        codeType,
-		langauge:        langauge,
-		langaugeVersion: langaugeVersion,
-		langaugeType:    langaugeType,
+		language:        language,
+		languageVersion: languageVersion,
+		languageType:    languageType,
 	}, nil
 }
 
@@ -349,17 +349,17 @@ func (t *TreeEntry) CodeType() string {
 
 // Language returns the language of the tree entry.
 func (t *TreeEntry) Language() string {
-	return t.langauge
+	return t.language
 }
 
 // LanguageVersion returns the language version of the tree entry.
 func (t *TreeEntry) LanguageVersion() string {
-	return t.langaugeVersion
+	return t.languageVersion
 }
 
 // LanguageType returns the language type of the tree entry.
 func (t *TreeEntry) LanguageType() string {
-	return t.langaugeType
+	return t.languageType
 }
 
 // Tree represents a tree object.

@@ -29,11 +29,6 @@ import (
 	"github.com/permguard/permguard/pkg/cli"
 )
 
-const (
-	// commandNameForWorkspacesPull is the command name for workspaces pull.
-	commandNameForWorkspacesPull = "workspaces-pull"
-)
-
 // runECommandForPullWorkspace runs the command for creating an workspace.
 func runECommandForPullWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
