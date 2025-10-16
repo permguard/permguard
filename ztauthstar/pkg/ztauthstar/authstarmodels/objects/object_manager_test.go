@@ -43,13 +43,13 @@ func TestObjectManager(t *testing.T) {
 
 		// Create commit object
 		commitObj, err := objectManager.CreateCommitObject(commit)
-		assert.Nil(err)
+		assert.NoError(err)
 		assert.NotEmpty(commitObj.oid, "OID should not be empty")
 		assert.NotEmpty(commitObj.content, "Commit content should not be empty")
 
 		// Get object info
 		objectInfo, err := objectManager.ObjectInfo(commitObj)
-		assert.Nil(err)
+		assert.NoError(err)
 		assert.Equal(ObjectTypeCommit, objectInfo.otype, "Expected commit type")
 		assert.NotNil(objectInfo.instance, "Commit instance should not be nil")
 
@@ -69,21 +69,21 @@ func TestObjectManager(t *testing.T) {
 		assert := assert.New(t)
 		tree := &Tree{
 			entries: []TreeEntry{
-				{otype: "blob", oid: "6eb715b073c6b28e03715129e03a0d52c8e21b73", partition: "/", oname: "name1", codeID: "code1", codeType: "codeType1", langauge: "cedar", langaugeVersion: "*", langaugeType: "policy"},
-				{otype: "blob", oid: "a7fdb22705a5e6145b6a8b1fa947825c5e97a51c", partition: "/", oname: "name2", codeID: "code2", codeType: "codeType2", langauge: "cedar", langaugeVersion: "*", langaugeType: "policy"},
-				{otype: "tree", oid: "a7fdb33705a5e6145b6a8b1fa947825c5e97a51c", oname: "name3", codeID: "code3", codeType: "codeType3", langauge: "cedar", langaugeVersion: "*", langaugeType: "policy"},
+				{otype: "blob", oid: "6eb715b073c6b28e03715129e03a0d52c8e21b73", partition: "/", oname: "name1", codeID: "code1", codeType: "codeType1", language: "cedar", languageVersion: "*", languageType: "policy"},
+				{otype: "blob", oid: "a7fdb22705a5e6145b6a8b1fa947825c5e97a51c", partition: "/", oname: "name2", codeID: "code2", codeType: "codeType2", language: "cedar", languageVersion: "*", languageType: "policy"},
+				{otype: "tree", oid: "a7fdb33705a5e6145b6a8b1fa947825c5e97a51c", oname: "name3", codeID: "code3", codeType: "codeType3", language: "cedar", languageVersion: "*", languageType: "policy"},
 			},
 		}
 
 		// Create tree object
 		treeObj, err := objectManager.CreateTreeObject(tree)
-		assert.Nil(err)
+		assert.NoError(err)
 		assert.NotEmpty(treeObj.oid, "OID should not be empty")
 		assert.NotEmpty(treeObj.content, "Tree content should not be empty")
 
 		// Get object info
 		objectInfo, err := objectManager.ObjectInfo(treeObj)
-		assert.Nil(err)
+		assert.NoError(err)
 		assert.Equal(ObjectTypeTree, objectInfo.otype, "Expected tree type")
 		assert.NotNil(objectInfo.instance, "Tree instance should not be nil")
 
@@ -105,13 +105,13 @@ func TestObjectManager(t *testing.T) {
 		// Create blob object
 		header, _ := NewObjectHeader("/", true, 1, 1, 1, "my-custom-id", 1)
 		blobObj, err := objectManager.CreateBlobObject(header, blobData)
-		assert.Nil(err)
+		assert.NoError(err)
 		assert.NotEmpty(blobObj.oid, "OID should not be empty")
 		assert.NotEmpty(blobObj.content, "Blob content should not be empty")
 
 		// Get object info
 		objectInfo, err := objectManager.ObjectInfo(blobObj)
-		assert.Nil(err)
+		assert.NoError(err)
 		assert.Equal(ObjectTypeBlob, objectInfo.otype, "Expected blob type")
 		assert.NotNil(objectInfo.instance, "Blob instance should not be nil")
 

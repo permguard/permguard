@@ -32,12 +32,12 @@ func TestObjectStatePacket(t *testing.T) {
 	packet.Content = []byte("mycontent")
 
 	data, err := packet.Serialize()
-	assert.Nil(err)
+	assert.NoError(err)
 
 	newPacket := &ObjectStatePacket{}
 	err = newPacket.Deserialize(data)
 
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(packet.OID, newPacket.OID)
 	assert.Equal(packet.OType, newPacket.OType)
 	assert.Equal(packet.Content, newPacket.Content)

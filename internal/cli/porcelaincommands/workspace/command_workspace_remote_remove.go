@@ -29,11 +29,6 @@ import (
 	"github.com/permguard/permguard/pkg/cli"
 )
 
-const (
-	// commandNameForWorkspacesRemoteRemove is the command name for workspaces remoteremove.
-	commandNameForWorkspacesRemoteRemove = "workspaces-remote.remove"
-)
-
 // runECommandForRemoteRemoveWorkspace runs the command for creating an workspace.
 func runECommandForRemoteRemoveWorkspace(args []string, deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)

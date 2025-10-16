@@ -29,12 +29,12 @@ func TestProtocolPacket(t *testing.T) {
 	inPacket := &ProtocolPacket{}
 	inPacket.Version = 10
 	data, err := inPacket.Serialize()
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.NotNil(data)
 
 	outPacket := &ProtocolPacket{}
 	err = outPacket.Deserialize(data)
-	assert.Nil(err)
+	assert.NoError(err)
 
 	assert.Equal(inPacket.Version, outPacket.Version)
 }

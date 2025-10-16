@@ -31,7 +31,7 @@ func TestIsSimpleName(t *testing.T) {
 
 	// Test 1: Valid simple name
 	err := validate.Var("abc123", "simplename")
-	assert.Nil(err)
+	assert.NoError(err)
 
 	// Test 2: Invalid simple name (contains uppercase letters)
 	err = validate.Var("Abc123", "simplename")
@@ -50,7 +50,7 @@ func TestIsName(t *testing.T) {
 
 	// Test 1: Valid name
 	err := validate.Var("abc-123.name", "name")
-	assert.Nil(err)
+	assert.NoError(err)
 
 	// Test 2: Invalid name (starts with uppercase)
 	err = validate.Var("Abc-123.name", "name")
@@ -69,7 +69,7 @@ func TestIsWildcardName(t *testing.T) {
 
 	// Test 1: Valid wildcard name
 	err := validate.Var("abc-123.*name", "wildcardname")
-	assert.Nil(err)
+	assert.NoError(err)
 
 	// Test 2: Invalid wildcard name (starts with non-allowed character)
 	err = validate.Var("-abc123", "wildcardname")
@@ -77,7 +77,7 @@ func TestIsWildcardName(t *testing.T) {
 
 	// Test 3: Valid wildcard name with asterisk
 	err = validate.Var("*abc-123", "wildcardname")
-	assert.Nil(err)
+	assert.NoError(err)
 }
 
 func TestIsUUID(t *testing.T) {
@@ -88,7 +88,7 @@ func TestIsUUID(t *testing.T) {
 
 	// Test 1: Valid UUID
 	err := validate.Var("550e8400-e29b-41d4-a716-446655440000", "isuuid")
-	assert.Nil(err)
+	assert.NoError(err)
 
 	// Test 2: Invalid UUID
 	err = validate.Var("not-a-uuid", "isuuid")
@@ -114,7 +114,7 @@ func TestValidateInstance(t *testing.T) {
 	}
 	valid, err := ValidateInstance(&instance)
 	assert.True(valid)
-	assert.Nil(err)
+	assert.NoError(err)
 
 	// Test 2: Invalid instance (invalid UUID)
 	instance.UUID = "invalid-uuid"

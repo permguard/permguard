@@ -72,7 +72,7 @@ func TestCopy(t *testing.T) {
 	to := Person{}
 
 	err := Copy(&to, &from)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(from, to)
 
 	// Modify the original struct and verify the copied struct is not affected

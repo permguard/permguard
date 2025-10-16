@@ -28,11 +28,6 @@ import (
 	"github.com/permguard/permguard/pkg/cli"
 )
 
-const (
-	// commandNameForIdentitiesCreate is the command name for identities create.
-	commandNameForIdentitiesCreate = "identities-create"
-)
-
 // runECommandForCreateIdentity runs the command for creating an identity.
 func runECommandForCreateIdentity(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
