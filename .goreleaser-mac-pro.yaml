@@ -20,7 +20,7 @@ pro: true
 
 includes:
   - from_file:
-      path: ./.goreleaser.yaml
+      path: ./.goreleaser-mac.yaml
 
 # sboms:
   - artifacts: archive
