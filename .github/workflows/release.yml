@@ -69,6 +69,9 @@ jobs:
       - uses: sigstore/cosign-installer@v3.10.0
       - uses: anchore/sbom-action/download-syft@v0.20.6
 
+      - shell: bash
+        run: |
+          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
       - uses: actions/cache@v4
         if: matrix.os == 'ubuntu-latest'
         with:
@@ -112,6 +115,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - shell: bash
+        run: |
+          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
       - uses: actions/cache@v4
         if: matrix.os == 'ubuntu-latest'
