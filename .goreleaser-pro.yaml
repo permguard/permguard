@@ -18,9 +18,8 @@ version: 2
 
 pro: true
 
-release:
-  partial:
-    by: target
+partial:
+  by: target
 
 includes:
   - from_file:
