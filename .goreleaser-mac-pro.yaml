@@ -18,6 +18,9 @@ version: 2
 
 pro: true
 
+partial:
+  by: target
+
 includes:
   - from_file:
       path: ./.goreleaser-mac.yaml
