@@ -28,7 +28,7 @@ before:
     - go generate ./...
 
 builds:
-  - id: permguard_cli
+  - id: permguard_cli_mac
     dir: "./cmd/cli"
     binary: "permguard"
     goos: [darwin]
@@ -62,12 +62,12 @@ source:
 
 archives:
   - formats: [tar.gz]
-    id: permguard_cli
-    ids: ["permguard_cli"]
+    id: permguard_cli_mac
+    ids: ["permguard_cli_mac"]
     name_template: >-
       {{ .ProjectName }}_cli_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
   - formats: [tar.gz]
-    id: permguard_server_all_in_one
+    id: permguard_server_all_in_one_darwin
     ids: ["permguard_server_all_in_one_darwin"]
     name_template: >-
       {{ .ProjectName }}_{{ .Binary }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}

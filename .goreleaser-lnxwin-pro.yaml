@@ -23,23 +23,5 @@ partial:
 
 includes:
   - from_file:
-      path: ./.goreleaser-lnxwin-pro.yaml
-  - from_file:
-      path: ./.goreleaser-mac-pro.yaml
+      path: ./.goreleaser-lnxwin.yaml
 
-sboms:
-  - artifacts: archive
-  - id: source
-    artifacts: source
-
-# signs:
-#   - cmd: cosign
-#     certificate: "${artifact}.pem"
-#     args:
-#       - sign-blob
-#       - "--output-certificate=${certificate}"
-#       - "--output-signature=${signature}"
-#       - "${artifact}"
-#       - "--yes"
-#     artifacts: checksum
-#     output: true
