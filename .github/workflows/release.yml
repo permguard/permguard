@@ -32,7 +32,7 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest] #, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     env:
       DOCKER_CLI_EXPERIMENTAL: "enabled"
@@ -95,7 +95,7 @@ jobs:
         with:
           distribution: goreleaser-pro
           version: latest
-          args: release --clean --split --config ./.goreleaser-lnxwin.yaml ${{ env.flags }}
+          args: release --clean --split --config ./.goreleaser-pro.yaml ${{ env.flags }}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
