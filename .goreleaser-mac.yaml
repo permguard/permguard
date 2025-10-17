@@ -36,12 +36,14 @@ builds:
     binary: "permguard"
     goos: [darwin]
     goarch: [amd64, arm64]
-    goamd64: [v1]
+    goamd64: [v3]
     targets:
       - linux_amd64_v1
       - linux_arm64
       - windows_amd64_v1
       - windows_arm64
+    ignore:
+      - goarch: 386
     env:
       - CGO_ENABLED=0
     ldflags:
@@ -55,12 +57,14 @@ builds:
     binary: "server_all_in_one"
     goos: [darwin]
     goarch: [amd64, arm64]
-    goamd64: [v1]
+    goamd64: [v3]
     targets:
       - linux_amd64_v1
       - linux_arm64
       - windows_amd64_v1
       - windows_arm64
+    ignore:
+      - goarch: 386
     env:
       - CGO_ENABLED=0
     ldflags:
