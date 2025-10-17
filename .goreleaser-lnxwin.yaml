@@ -18,6 +18,16 @@ version: 2
 
 pro: true
 
+partial:
+  # By what you want to build the partial things.
+  #
+  # Valid options are `target` and `goos`:
+  # - `target`: `GOOS` + `GOARCH`.
+  # - `goos`: `GOOS` only
+  #
+  # Default: `goos`.
+  by: target
+
 env:
   - PROJECT_PATH=github.com/permguard/permguard
   - ORG=permguard
