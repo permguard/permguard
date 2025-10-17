@@ -16,8 +16,7 @@
 
 version: 2
 
-partial:
-  by: target
+pro: true
 
 env:
   - PROJECT_PATH=github.com/permguard/permguard
