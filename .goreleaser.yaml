@@ -14,145 +14,137 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-name: Permguard Release
+version: 2
 
-on:
-  push:
-    tags: ["*"]
-  pull_request:
 
-permissions:
-  contents: write
-  id-token: write
-  packages: write
-  attestations: write
+env:
+  - PROJECT_PATH=github.com/permguard/permguard
+  - ORG=permguard
+  - REPO=permguard
+  - LICENSE=Apache-2.0
 
-jobs:
-  # --- Build for Linux, Windows, and Docker ---
-  build_linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version: stable
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: sigstore/cosign-installer@v3.10.0
-      - uses: anchore/sbom-action/download-syft@v0.20.6
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
 
-      - name: Log in to Docker Hub
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+builds:
+  - id: permguard_cli
+    dir: "./cmd/cli"
+    binary: "permguard"
+    goos: [linux, windows]
+    goarch: [amd64, arm64]
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X {{ .Env.PROJECT_PATH }}/internal/cli/common.Version={{ .Version }}
+      - -X {{ .Env.PROJECT_PATH }}/internal/cli/common.BuildTime={{ .Timestamp }}
+      - -X {{ .Env.PROJECT_PATH }}/internal/cli/common.GitCommit={{ .Commit }}
 
-      - name: Log in to GHCR
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: GoReleaser (snapshot PR - linux)
-        if: github.event_name == 'pull_request'
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser-pro
-          version: latest
-          args: release --clean --snapshot \
-            --config .goreleaser.yaml \
-            --config .goreleaser-pro.yaml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+  - id: permguard_server_all_in_one_linux
+    dir: "./cmd/server-all-in-one"
+    binary: "server_all_in_one"
+    goos: [linux]
+    goarch: [amd64, arm64]
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.Version={{ .Version }}
+      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.BuildTime={{ .Timestamp }}
+      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.GitCommit={{ .Commit }}
 
-      - name: GoReleaser (split linux+windows+docker)
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser-pro
-          version: latest
-          args: release --clean --split \
-            --config .goreleaser.yaml \
-            --config .goreleaser-pro.yaml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
-          DOCKER_BUILDKIT: "1"
+  - id: permguard_server_all_in_one_windows
+    dir: "./cmd/server-all-in-one"
+    binary: "server_all_in_one"
+    goos: [windows]
+    goarch: [amd64, arm64]
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.Version={{ .Version }}
+      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.BuildTime={{ .Timestamp }}
+      - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.GitCommit={{ .Commit }}
 
-  # --- Build for macOS (sign & notarize) ---
-  build_macos:
-    runs-on: macos-latest
-    needs: [build_linux]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version: stable
+checksum:
+  name_template: "checksums.txt"
 
-      - name: GoReleaser (snapshot PR - mac)
-        if: github.event_name == 'pull_request'
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser-pro
-          version: latest
-          args: release --clean --snapshot \
-            --config .goreleaser-mac.yaml \
-            --config .goreleaser-mac-pro.yaml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
-          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
-          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
-          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
-          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
-          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+source:
+  enabled: true
 
-      - name: GoReleaser (split macOS notarize)
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser-pro
-          version: latest
-          args: release --clean --split \
-            --config .goreleaser-mac.yaml \
-            --config .goreleaser-mac-pro.yaml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
-          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
-          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
-          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
-          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
-          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+archives:
+  - formats: [tar.gz]
+    id: permguard_cli
+    ids: ["permguard_cli"]
+    name_template: >-
+      {{ .ProjectName }}_cli_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+  - formats: [tar.gz]
+    id: permguard_server_all_in_one
+    ids: ["permguard_server_all_in_one_linux", "permguard_server_all_in_one_windows"]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Binary }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
 
-  # --- Merge and publish a single unified release ---
-  publish:
-    runs-on: ubuntu-latest
-    needs: [build_linux, build_macos]
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
 
-      - name: GoReleaser (merge + publish)
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser-pro
-          version: latest
-          args: publish --merge \
-            --config .goreleaser.yaml \
-            --config .goreleaser-pro.yaml \
-            --config .goreleaser-mac.yaml \
-            --config .goreleaser-mac-pro.yaml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+release:
+  # extra_files:
+  #   - glob: "dist/checksums.txt.pem"
+  #   - glob: "dist/checksums.txt.sig"
+  footer: >-
+    ---
+    Released by the Permguard Team using [GoReleaser](https://github.com/goreleaser/goreleaser).
+
+nfpms:
+  - vendor: Permguard
+    homepage: https://www.permguard.com
+    maintainer: Permguard Team <opensource@permguard.com>
+    description: Permguard CLI
+    section: golang
+    license: Apache 2.0
+    formats:
+      - deb
+      - rpm
+      - apk
+    file_name_template: '{{ .ProjectName }}_cli_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}'
+
+    ids:
+      - permguard_cli
+
+dockers_v2:
+  - id: permguard_server_all_in_one
+    dockerfile: ./cmd/server-all-in-one/Dockerfile
+    ids:
+      - permguard_server_all_in_one_linux
+    images:
+      - permguard/all-in-one
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+      - "{{ .Major }}.{{ .Minor }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    extra_files:
+      - tmp/permguard.db
+    build_args:
+      BINARY_NAME: server_all_in_one
+      DB_FILE: tmp/permguard.db
+    labels:
+      org.opencontainers.image.title: "permguard-server-all-in-one"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "{{ .Env.PROJECT_PATH }}"
