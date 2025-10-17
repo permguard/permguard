@@ -141,11 +141,7 @@ jobs:
         with:
           distribution: goreleaser-pro
           version: latest
-          args: publish --merge \
-            --config .goreleaser.yaml \
-            --config .goreleaser-pro.yaml \
-            --config .goreleaser-mac.yaml \
-            --config .goreleaser-mac-pro.yaml
+          args: publish --merge --config .goreleaser-pro.yaml --config .goreleaser-mac-pro.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
