@@ -1,3 +1,4 @@
+
 # Copyright 2025 Nitro Agility S.r.l.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,22 +15,37 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+# .goreleaser.yaml
+
 version: 2
-
 pro: true
-
-partial:
-  by: target
 
 includes:
   - from_file:
-      path: ./.goreleaser-mac.yaml
+      path: ./.goreleaser.yaml
+
+sboms:
+  - artifacts: archive
+  - id: source
+    artifacts: source
+
+signs:
+  - cmd: cosign
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
 
 notarize:
   macos:
     - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
       ids:
-        - permguard_cli_mac
+        - permguard_cli
       sign:
         certificate: "{{.Env.MACOS_SIGN_P12}}"
         password: "{{.Env.MACOS_SIGN_PASSWORD}}"
@@ -44,7 +60,7 @@ notarize:
 homebrew_casks:
   - name: cli
     binary: permguard
-    ids: ["permguard_cli_mac"]
+    ids: ["permguard_cli"]
     repository:
       owner: "{{ .Env.ORG }}"
       name: homebrew-tap
