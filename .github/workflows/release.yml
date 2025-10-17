@@ -115,10 +115,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: stable
-      - name: Install Task
-        uses: go-task/setup-task@v1
-      - name: Run pre-build Task
-        run: task ci:build:pre
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Log in to Docker Hub
