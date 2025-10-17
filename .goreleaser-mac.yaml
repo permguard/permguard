@@ -36,6 +36,7 @@ builds:
     binary: "permguard"
     goos: [darwin]
     goarch: [amd64, arm64]
+    goamd64: [v1]
     env:
       - CGO_ENABLED=0
     ldflags:
@@ -49,6 +50,7 @@ builds:
     binary: "server_all_in_one"
     goos: [darwin]
     goarch: [amd64, arm64]
+    goamd64: [v1]
     env:
       - CGO_ENABLED=0
     ldflags:

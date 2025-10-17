@@ -51,6 +51,7 @@ builds:
     binary: "server_all_in_one"
     goos: [linux]
     goarch: [amd64, arm64]
+    goamd64: [v1]
     env:
       - CGO_ENABLED=0
     ldflags:
