@@ -16,7 +16,6 @@
 
 version: 2
 
-
 env:
   - PROJECT_PATH=github.com/permguard/permguard
   - ORG=permguard
