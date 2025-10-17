@@ -25,28 +25,11 @@ includes:
   - from_file:
       path: ./.goreleaser-mac.yaml
 
-sboms:
-  - artifacts: archive
-  - id: source
-    artifacts: source
-
-signs:
-  - cmd: cosign
-    certificate: "${artifact}.pem"
-    args:
-      - sign-blob
-      - "--output-certificate=${certificate}"
-      - "--output-signature=${signature}"
-      - "${artifact}"
-      - "--yes"
-    artifacts: checksum
-    output: true
-
 notarize:
   macos:
     - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
       ids:
-        - permguard_cli
+        - permguard_cli_mac
       sign:
         certificate: "{{.Env.MACOS_SIGN_P12}}"
         password: "{{.Env.MACOS_SIGN_PASSWORD}}"
@@ -61,7 +44,7 @@ notarize:
 homebrew_casks:
   - name: cli
     binary: permguard
-    ids: ["permguard_cli"]
+    ids: ["permguard_cli_mac"]
     repository:
       owner: "{{ .Env.ORG }}"
       name: homebrew-tap
