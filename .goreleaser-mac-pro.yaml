@@ -22,7 +22,7 @@ includes:
   - from_file:
       path: ./.goreleaser-mac.yaml
 
-# sboms:
+sboms:
   - artifacts: archive
   - id: source
     artifacts: source
