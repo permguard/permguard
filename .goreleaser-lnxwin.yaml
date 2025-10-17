@@ -34,6 +34,7 @@ builds:
   - id: permguard_cli
     dir: "./cmd/cli"
     binary: "permguard"
+    goos: [linux, windows]
     goarch: [amd64, arm64]
     targets:
       - linux_arm64
