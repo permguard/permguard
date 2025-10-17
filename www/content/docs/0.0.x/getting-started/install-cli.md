@@ -34,7 +34,7 @@ The following example demonstrates how to install `permguard` using the `deb` pa
 ```bash
 # Download and install the package
 # Make sure to adjust the VERSION variable to the desired release version
-VERSION="v0.0.11"; ARCH=$( [ "$(uname -m)" = "aarch64" ] && echo "arm64" || echo "x86_64" ); curl -fsSL -o permguard.deb "https://github.com/permguard/permguard/releases/download/${VERSION}/permguard_cli_Linux_${ARCH}.deb"
+VERSION="v0.0.18"; ARCH=$( [ "$(uname -m)" = "aarch64" ] && echo "arm64" || echo "x86_64" ); curl -fsSL -o permguard.deb "https://github.com/permguard/permguard/releases/download/${VERSION}/permguard_cli_Linux_${ARCH}.deb"
 sudo dpkg -i permguard.deb
 ```
 
@@ -59,7 +59,7 @@ The following example demonstrates how to install `permguard` using the `rpm` pa
 ```bash
 # Download and install the package
 # Make sure to adjust the VERSION variable to the desired release version
-VERSION="v0.0.11"; ARCH=$( [ "$(uname -m)" = "aarch64" ] && echo "arm64" || echo "x86_64" ); curl -fsSL -o permguard.rpm "https://github.com/permguard/permguard/releases/download/${VERSION}/permguard_cli_Linux_${ARCH}.rpm"
+VERSION="v0.0.18"; ARCH=$( [ "$(uname -m)" = "aarch64" ] && echo "arm64" || echo "x86_64" ); curl -fsSL -o permguard.rpm "https://github.com/permguard/permguard/releases/download/${VERSION}/permguard_cli_Linux_${ARCH}.rpm"
 sudo rpm -i permguard.rpm
 ```
 
@@ -84,7 +84,7 @@ The following example demonstrates how to install `permguard` using the `apk` pa
 ```bash
 # Download and install the package
 # Make sure to adjust the VERSION variable to the desired release version
-VERSION="v0.0.11"; ARCH=$( [ "$(uname -m)" = "aarch64" ] && echo "arm64" || echo "x86_64" ); curl -fsSL -o permguard.apk "https://github.com/permguard/permguard/releases/download/${VERSION}/permguard_cli_Linux_${ARCH}.apk"
+VERSION="v0.0.18"; ARCH=$( [ "$(uname -m)" = "aarch64" ] && echo "arm64" || echo "x86_64" ); curl -fsSL -o permguard.apk "https://github.com/permguard/permguard/releases/download/${VERSION}/permguard_cli_Linux_${ARCH}.apk"
 sudo apk add --allow-untrusted permguard.apk
 ```
 
@@ -189,7 +189,7 @@ It is recommended to download binaries exclusively from this source to ensure th
 
 ```bash
 # Set the version you want to verify
-VERSION=v0.0.11
+VERSION=v0.0.18
 
 # Download the checksums file for the selected version
 wget https://github.com/permguard/permguard/releases/download/${VERSION}/checksums.txt

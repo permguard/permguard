@@ -19,7 +19,7 @@ set -euf
 #   -b  install dir (default: ./bin)
 #   -d  debug logs
 #   -x  shell trace
-#   tag optional Git tag (e.g. v0.0.11 or 0.0.11). If omitted, uses latest.
+#   tag optional Git tag (e.g. v0.0.18 or 0.0.18). If omitted, uses latest.
 
 OWNER="permguard"
 REPO="permguard"

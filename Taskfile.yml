@@ -66,8 +66,8 @@ tasks:
       VERSION:
         sh: |
           D="$(git describe --tags --long --dirty --always)"
-          TAG="${D%%-*}"                 # v0.0.11
-          BASE="${TAG#v}"               # 0.0.11
+          TAG="${D%%-*}"                 # v0.0.18
+          BASE="${TAG#v}"               # 0.0.18
           # distanza dal tag (numero di commit)
           DIST="${D#*-}" ; DIST="${DIST%%-*}"
           # short sha a 8
