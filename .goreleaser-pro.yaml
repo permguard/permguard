@@ -36,7 +36,7 @@ signs:
       - "--output-certificate=${certificate}"
       - "--output-signature=${signature}"
       - "${artifact}"
-      - "--yes" # needed on cosign 2.0.0+
+      - "--yes"
     artifacts: checksum
     output: true
 
