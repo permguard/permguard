@@ -29,11 +29,19 @@ permissions:
   attestations: write
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Task
+        uses: go-task/setup-task@v1
+      - name: Run pre-build Task
+        run: task ci:build:pre
   build:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    needs: [prepare]
     env:
       DOCKER_CLI_EXPERIMENTAL: "enabled"
       flags: ""
@@ -64,12 +72,6 @@ jobs:
 
       - uses: sigstore/cosign-installer@v3.10.0
       - uses: anchore/sbom-action/download-syft@v0.20.6
-
-      - name: Install Task
-        uses: go-task/setup-task@v1
-
-      - name: Run pre-build Task
-        run: task ci:build:pre
 
       - name: GoReleaser (split linux+windows+docker)
         uses: goreleaser/goreleaser-action@v6
