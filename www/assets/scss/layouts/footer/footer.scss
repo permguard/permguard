@@ -12,6 +12,10 @@
     height: 44px;
   }
 
+  &__email {
+    margin-top: 24px;
+  }
+
   &__row {
     padding: 0 calc(var(--bs-gutter-x) * 0.25);
   }
