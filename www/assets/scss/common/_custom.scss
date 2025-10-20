@@ -58,6 +58,11 @@ body {
   opacity: 0.7;
   font-style: italic;
   letter-spacing: 0.5px !important;
+  font-weight: normal;
+
+  @media (max-width: 575px) {
+    margin-bottom: 0;
+  }
 }
 
 .forced-dark {
