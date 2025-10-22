@@ -216,6 +216,8 @@
       {{ if eq .Name "Docs" -}}
         {{ if not (in site.Params.doks.sectionNav $.Section) -}}
         <li class="nav-item"><a class="nav-link social-link" href="{{ .URL | relURL }}">{{ .Pre | safeHTML }}<small class="ms-2 visually-hidden">{{ .Name | safeHTML }}</small></a></li>
+        {{ else -}}
+        <li class="nav-item"><a class="nav-link social-link" href="/">{{ .Pre | safeHTML }}<small class="ms-2 visually-hidden">{{ .Name | safeHTML }}</small></a></li>
         {{ end -}}
       {{ else -}}
       <li class="nav-item"><a target="_blank" class="nav-link social-link" href="{{ .URL | relURL }}">{{ .Pre | safeHTML }}<small class="ms-2 visually-hidden">{{ .Name | safeHTML }}</small></a></li>
