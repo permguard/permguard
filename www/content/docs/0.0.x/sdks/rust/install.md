@@ -22,5 +22,5 @@ seo:
 In your application install the Go SDK by running the following command:
 
 ```bash
-cargo add permguard-sdk
+cargo add permguard
 ```
