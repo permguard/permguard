@@ -18,63 +18,86 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-**Permguard** is a modern, open-source authorization server built to align with **Zero Trust** principles.
+Permguard is a distributed authorization platform built around Zero Trust principles.
 
-The main idea is to ensure that trust is never assumed but always validated at the application boundary. Integrating **Permguard** to handle incoming requests ensures that every request is verified before access is granted.
+The idea is simple: the application boundary must be protected by a security model where trust is never assumed.
+Every incoming request must be validated *before* the application processes it.
 
-This applies not only to APIs but also to any type of incoming request, including async messages, WebSocket connections, and more.
+This applies to synchronous APIs, asynchronous messages, event streams, WebSocket frames, and any other form of inbound interaction.
 
-Each incoming request generates an authorization request that is evaluated by the **Permguard AuthZ Server**. The server responds with a decision to either permit or deny the request.
+The authorization call can be triggered either:
+
+- by the **application** itself, or
+- by the **network layer** — for example a service mesh, sidecar proxy, gateway, or edge component.
+
+In both cases, the same security model applies: the request (API call, message, event, etc.) is evaluated *before* the action is executed.
+
+Each request carries at least two identities:
+
+- **Self identity** — the identity of the workload executing the action
+- **Peer identity** — the identity of the caller (human, machine, or AI agent)
+
+Additional **attestations** can also be included, such as tokens, signed claims, workload proofs, or any other cryptographic evidence contributing to the trust context.
+
+The Permguard data plane receives the full incoming request context (identities, attestations, network metadata, and application attributes) and uses it to build the authorization context.
+As part of a distributed enforcement model, the data plane evaluates this context locally using policies and configuration obtained from the Permguard AuthZ Server (control plane).
+The Permguard AuthZ Server is responsible for managing and distributing policies, not for making per-request online decisions.
+The data plane then enforces the resulting permit/deny decision at the workload boundary before the action is executed.
+
+This provides a consistent and decentralized security model for both API interactions and asynchronous workflows, regardless of whether enforcement happens in the application or inside the service mesh.
 
 <div style="text-align: center">
   <img alt="Permguard Policies" src="/images/diagrams/d1.webp"/>
 </div>
 </br>
 
-Designed for `cloud-native`, `edge`, and `multi-tenant` environments, **Permguard** can be used in any context, including IoT, AI agents, and more. It allows you to update authorization policies without modifying your application code, saving time and effort.
+Designed for `cloud-native`, `edge`, and `multi-tenant` environments, **Permguard** can be used in any context — including IoT devices, AI agents, and distributed workloads.
+It lets you update authorization policies without changing application code, reducing operational overhead.
 
-These policies are centrally managed, allowing organizations to enforce consistent security policies across multiple applications without changing each service individually. This ensures compliance with corporate governance by providing a single point of control for defining, updating, and auditing authorization policies in real time.
+Policies are centrally managed in the control plane, while enforcement is distributed.
+This allows organizations to apply consistent authorization logic across all services without modifying each one individually, ensuring strong governance with a single point for defining, updating, and auditing policies in real time.
 
 {{< callout context="tip" icon="rocket" >}}
-**Permguard** is powerful yet easy to use. Its advanced architecture ensures security and flexibility, while integration remains simple—whether for a basic app or a complex enterprise system. Just run the server, define your policy, and integrate it seamlessly.
+**Permguard** provides strong security with a simple integration model. Its architecture offers flexibility and robustness, whether you’re securing a small application or a large distributed system. Run the control plane, define your policies, and integrate the data plane where you need enforcement — the workflow stays straightforward in every environment.
 {{< /callout >}}
 
-**Permguard** can be deployed anywhere: `public or private clouds`, `managed infrastructure`, `Kubernetes`, `serverless` systems, or even in `partially connected` environments where stable connectivity is limited. It is also a great fit for `edge nodes` and `IoT` ecosystems, providing secure and consistent permission management across different environments.
+**Permguard** can be deployed in any environment: `public or private clouds`, `managed infrastructure`, `Kubernetes`, `serverless` platforms, or even in `partially connected` scenarios where stable connectivity is not guaranteed.
+It also fits naturally on `edge nodes` and within `IoT` ecosystems, providing consistent and secure authorization across heterogeneous environments.
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d13.webp"/>
 </div>
 
-It follows a `Bring Your Own Identity (BYOI)` approach, meaning it integrates with your existing authentication system instead of replacing it.
+It follows a `Bring Your Own Identity (BYOI)` model, meaning Permguard is **identity-agnostic** on the authentication side:
+it consumes whatever identity your system already provides — human, machine, workload, or AI agent — without requiring you to replace or restructure your existing AuthN setup.
 
 {{< callout context="note" icon="info-circle" >}}
-The main goal of **Permguard** is to provide a strong authorization system with built-in administrative tools.
+The main goal of **Permguard** is to provide a strong authorization system with built-in tools for trust management and governance.
 {{< /callout >}}
 
-The solution is `language-agnostic`, supporting multiple policy languages, starting with [Cedar Policy Language](https://www.cedarpolicy.com/en).
-Developers can choose their preferred language from the supported options while ensuring that all federated **Permguard** servers work smoothly together, even if they use different languages internally.
+The platform is `language-agnostic`, supporting multiple policy languages, starting with [Cedar Policy Language](https://www.cedarpolicy.com/en).
+This is essential because policy languages evolve quickly, and teams often prefer different DSLs aligned with their trust and governance models.
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d18.webp"/>
 </div>
 
-Each language is integrated with a lightweight abstraction layer, providing flexibility while reserving only a few keywords.
+Each policy language is supported through a lightweight abstraction layer that keeps the core model stable while reserving only a minimal set of common keywords.
 
-To enforce access control, the application can use an **SDK** or directly integrate with the native **APIs**.
-
+To enforce access control, applications can use the **SDK** or integrate directly with Permguard’s native **APIs**, depending on their architecture and deployment model.
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d19.webp"/>
 </div>
 
 {{< callout context="note" icon="info-circle" >}}
-There are SDKs available for multiple programming languages, including **Go**, **Java**, **Node.js**, and **Python**. More SDKs are being developed to support additional languages.
+SDKs are available for multiple programming languages, including **Go**, **Rust**, **Java**, **Node.js**, and **Python**, with more under development.
 {{< /callout >}}
 
-This approach allows precise control over who or what can access resources while keeping the system flexible and easy to use.
+This model gives precise control over **who or what** can access **which resources**, while keeping the system flexible and easy to integrate.
 
-- `Who`: *Identities (Users and Workloads)*
-- `Can Access`: *Permissions granted by attaching policies*
-- `Resources`: *Resources targeted by permissions*
+- `Who`: *Identities — both users and workloads*
+- `Can Access`: *Permissions defined through attached policies*
+- `Resources`: *The targets of those permissions*
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d14.webp"/>
