@@ -18,7 +18,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-**Permguard Community** is an open-source project licensed under the **Apache-2.0 license**. It is designed to be a flexible and powerful **authorization server**, supporting policies written in different languages.
+**Permguard Community** is an open-source project licensed under the **Apache-2.0 license**. It is designed to be a flexible and powerful **authorization platform**, supporting policies written in different languages.
 
 For more details on legal terms and licenses, visit [Legal & Licenses](/docs/0.0.x/legal-licenses/third-party-technologies).
 

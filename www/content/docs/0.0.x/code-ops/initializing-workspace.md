@@ -18,14 +18,8 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-**Permguard** provides a **Command Line Interface (CLI)** for managing authentication metadata (**AuthN**)
-and authorization metadata and configurations (**AuthZ**) for **Zones**.
-
-- **AuthZ administration** is managed via both the CLI and the **Policy Language**.
-
-The authorization process follows a **code-first approach**.
-When working with **Schemas and Policies**, the CLI must be executed from a **Permguard workspace**
-that contains configuration files written in **Cedar**.
+To start working with **Permguard**, you first need to create your own **workspace**.
+The workspace is where you keep your schemas, policies, and trust configuration, and these are applied to a Permguard **ledger**.
 
 ## Creating a Permguard Workspace
 
