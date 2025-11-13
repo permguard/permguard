@@ -72,7 +72,7 @@ It follows a `Bring Your Own Identity (BYOI)` model, meaning Permguard is **iden
 it consumes whatever identity your system already provides — human, machine, workload, or AI agent — without requiring you to replace or restructure your existing AuthN setup.
 
 {{< callout context="note" icon="info-circle" >}}
-The main goal of **Permguard** is to provide a strong authorization system with built-in tools for trust management and governance.
+The main goal of **Permguard** is to provide a strong authorization platform with built-in tools for trust management and governance.
 {{< /callout >}}
 
 The platform is `language-agnostic`, supporting multiple policy languages, starting with [Cedar Policy Language](https://www.cedarpolicy.com/en).

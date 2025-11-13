@@ -19,7 +19,12 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The AuthZ Server can be deployed as a self-contained Docker container, providing an isolated and reproducible runtime environment.
+The AuthZ Server acts as the **control plane** for Permguard: it manages policies, trust configuration, and governance rules.
+By default, the server also includes an embedded **data plane**, allowing it to evaluate and enforce authorization decisions on its own.
+This makes the container self-contained and ideal for development, testing, or simple deployments.
+
+In production environments, however, enforcement should be **distributed**.
+Dedicated data plane instances can be deployed close to workloads—inside applications, sidecar proxies, gateways, or edge nodes—so authorization decisions are enforced at the appropriate boundary with low latency and high resilience.
 
 To start the server using the latest container image:
 
