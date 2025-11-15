@@ -25,31 +25,43 @@ Every incoming request must be validated *before* the application processes it.
 
 This applies to synchronous APIs, asynchronous messages, event streams, WebSocket frames, and any other form of inbound interaction.
 
+Beyond the input boundary, Permguard also enables the governance of **in-code authorization policies**, executed at multiple points within the application:
+
+- before calling a domain service
+- before executing a sensitive command
+- before accessing or mutating data
+
+<div style="text-align: center">
+  <img alt="Permguard Policies" src="/images/diagrams/d1.webp"/>
+</div>
+</br>
+
+The same policy model is reused across all these layers, so that authorization is:
+
+- **governed in intent** — rules are governed at the intent source and collaboratively reviewed and versioned
+- **decentralized in enforcement** — many enforcement points close to where decisions actually matter
+- **auditable and explainable** across the entire call path
+
 The authorization call can be triggered either:
 
-- by the **application** itself, or
-- by the **network layer** — for example a service mesh, sidecar proxy, gateway, or edge component.
+- by the **network layer** — for example a service mesh, sidecar proxy, gateway, or edge component, or
+- by the **application** itself.
 
 In both cases, the same security model applies: the request (API call, message, event, etc.) is evaluated *before* the action is executed.
 
 Each request carries at least two identities:
 
 - **Self identity** — the identity of the workload executing the action
-- **Peer identity** — the identity of the caller (human, machine, or AI agent)
+- **Peer identity** — the identity of the caller (user or another workload)
 
 Additional **attestations** can also be included, such as tokens, signed claims, workload proofs, or any other cryptographic evidence contributing to the trust context.
 
-The Permguard data plane receives the full incoming request context (identities, attestations, network metadata, and application attributes) and uses it to build the authorization context.
-As part of a distributed enforcement model, the data plane evaluates this context locally using policies and configuration obtained from the Permguard AuthZ Server (control plane).
-The Permguard AuthZ Server is responsible for managing and distributing policies, not for making per-request online decisions.
-The data plane then enforces the resulting permit/deny decision at the workload boundary before the action is executed.
+The Permguard `data plane` receives the full incoming request context (identities, attestations, network metadata, and application attributes) and uses it to build the authorization context.
+As part of a distributed enforcement model, the `data plane` evaluates this context locally using policies and configuration obtained from the `control plane`.
 
-This provides a consistent and decentralized security model for both API interactions and asynchronous workflows, regardless of whether enforcement happens in the application or inside the service mesh.
+The `control plane` is responsible for managing and distributing policies, whilst the `data plane` enforces the resulting permit/deny decision at the workload boundary before the action is executed.
 
-<div style="text-align: center">
-  <img alt="Permguard Policies" src="/images/diagrams/d1.webp"/>
-</div>
-</br>
+This provides a consistent, decentralized security model for both API interactions and asynchronous workflows, regardless of whether enforcement occurs within the application or inside the service mesh.
 
 Designed for `cloud-native`, `edge`, and `multi-tenant` environments, **Permguard** can be used in any context — including IoT devices, AI agents, and distributed workloads.
 It lets you update authorization policies without changing application code, reducing operational overhead.
@@ -69,7 +81,7 @@ It also fits naturally on `edge nodes` and within `IoT` ecosystems, providing co
 </div>
 
 It follows a `Bring Your Own Identity (BYOI)` model, meaning Permguard is **identity-agnostic** on the authentication side:
-it consumes whatever identity your system already provides — human, machine, workload, or AI agent — without requiring you to replace or restructure your existing AuthN setup.
+it consumes whatever identity your system already provides — users and workloads — without requiring you to replace your existing AuthN layer.
 
 {{< callout context="note" icon="info-circle" >}}
 The main goal of **Permguard** is to provide a strong authorization platform with built-in tools for trust management and governance.
@@ -90,7 +102,7 @@ To enforce access control, applications can use the **SDK** or integrate directl
 </div>
 
 {{< callout context="note" icon="info-circle" >}}
-SDKs are available for multiple programming languages, including **Go**, **Rust**, **Java**, **Node.js**, and **Python**, with more under development.
+SDKs are available for multiple programming languages, including **Go**, **Rust**, **Java**, **NetCore**, **Node.js**, and **Python**, with more under development.
 {{< /callout >}}
 
 This model gives precise control over **who or what** can access **which resources**, while keeping the system flexible and easy to integrate.
