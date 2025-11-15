@@ -49,7 +49,7 @@ By dividing the environment into **small, isolated zones**—each with its own *
 
 ## How Permguard Implements Zero Trust
 
-**Permguard** adopts the [**ZTAuth\***](https://spec.ztauthstar.com/openprotocolspec/) architecture to bring **Zero Trust** principles into authorization. To understand how this works, let's compare it to network security:
+**Permguard** adopts the [**ZTAuth\***](https://spec.ztauthstar.com/openprotocolspec/) specification. To understand how this works, let's compare it to network security:
 
 - **ZTNA (Zero Trust Network Access)**: Secures identity-based access to networks by enforcing least privilege at the network boundary.
 - **ZTAuth\*** (Zero Trust Auth*): A Zero Trust compliant protocol for secure, identity-based access at the application edge. It supports eventual consistency and resilient synchronization across network disruptions. Built with a delegation-first model, it is ideal for systems that require secure and auditable delegation.
