@@ -56,7 +56,8 @@ By dividing the environment into **small, isolated zones**—each with its own *
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d15.webp"/>
-</div><br/>
+</div>
+<br/>
 
 **ZTAuth\*** and **Zero Trust Network Access (ZTNA)** are not the same:
 
@@ -110,8 +111,16 @@ This model is composed of five layers that work together to produce verifiable, 
 - **Policy Decision Point (PDP)** — the logic that evaluates context and policies to compute a permit/deny decision.
 - **Trust Governance** — the control plane that defines, distributes, and audits policies and trust relationships.
 
+<br/>
+<div style="text-align: center">
+  <img alt="Permguard" src="/images/diagrams/ztauthstart-architecture.png"/>
+</div>
+<br/>
+
 Together, these layers create a unified authorization model where every decision is **context-aware**, **cryptographically verifiable**, and **aligned with organizational intent**, enabling consistent Zero Trust enforcement across both synchronous and asynchronous boundaries.
 
----
+For additional details and in-depth semantics, you can refer to the full [**ZTAuth\* specification**](https://spec.ztauthstar.com/openprotocolspec/).
 
+{{< callout context="tip" icon="rocket" >}}
 With **Permguard** and **ZTAuth\***, authorization is no longer just an extra step—it becomes a core part of modern security.
+{{< /callout >}}
