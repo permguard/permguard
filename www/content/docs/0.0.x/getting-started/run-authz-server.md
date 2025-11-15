@@ -19,7 +19,8 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The AuthZ Server acts as the **control plane** for Permguard: it manages policies, trust configuration, and governance rules.
+The **AuthZ Server** acts as the **control plane** for Permguard: it manages policies, trust configuration, and governance rules.
+
 By default, the server also includes an embedded **data plane**, allowing it to evaluate and enforce authorization decisions on its own.
 This makes the container self-contained and ideal for development, testing, or simple deployments.
 
@@ -37,9 +38,9 @@ docker run --rm -it \
   permguard/all-in-one:latest
 ```
 
-Configuration parameters can be injected via environment variables, allowing full control over runtime behavior without modifying the container image.
+When running Permguard from its Docker image, configuration parameters are supplied through environment variables, allowing runtime behavior to be customized without modifying the image itself.
 
-The complete list of configurable parameters is documented in the [Authz Server Configuration Options](/docs/0.0.x/devops/authz-server/configuration-options/).
+The full list of available configuration parameters is documented in the [Authz Server Configuration Options](/docs/0.0.x/devops/authz-server/configuration-options/).
 
 Example with debugging enabled:
 
@@ -55,7 +56,7 @@ docker run --rm -it \
 
 When `PERMGUARD_DEBUG` is set to `TRUE`, the AuthZ server operates in debug mode, providing verbose logging and diagnostic output suitable for development and troubleshooting scenarios.
 
-It is also possible to access the local SQLite database used by the AuthZ Server by mounting a host directory into the container.
+It is also possible to access the local SQLite database used by the `AuthZ Server` by mounting a host directory into the container.
 
 This allows direct inspection or interaction with the database files from the host system.
 
