@@ -76,10 +76,6 @@ The **Permguard** architecture includes administrative services such as:
 - **Policy Decision Point (PDP)**: Evaluates policies and makes decisions.
 - **Policy Enforcement Point (PEP)**: Enforces the decisions made by the PDP.
 
-<div style="text-align: center">
-  <img alt="Permguard Policies" src="/images/diagrams/d5.webp"/>
-</div>
-
 **ZTAuth\*** introduces a key difference: it defines **Auth*** models that can be transferred to `Proximity data planes`.
 These models are incrementally synchronized to zone nodes as **git-like commit-based snapshots**.
 
