@@ -1,6 +1,6 @@
 ---
-title: "Run the `AuthZServer`"
-slug: "Run the `AuthZServer`"
+title: "Run the AuthZServer"
+slug: "Run the AuthZServer"
 description: ""
 summary: ""
 date: 2023-08-15T14:47:57+01:00
