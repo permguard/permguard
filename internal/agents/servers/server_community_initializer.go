@@ -39,18 +39,18 @@ type CommunityServerInitializer struct {
 
 // NewCommunityServerInitializer creates a new community server initializer.
 func NewCommunityServerInitializer(host services.HostKind) (servers.ServerInitializer, error) {
-	template := `The official Permguard Server
+	template := `The official Permguard AuthZServer
 Copyright © 2022 Nitro Agility S.r.l.
 
 %s
 
   Find more information at: https://community.permguard.com/docs/0.0.x/devops/authz-server/configuration-options/`
 	hostInfos := map[services.HostKind]*services.HostInfo{
-		services.HostAllInOne: {Name: "AllInOne", Use: "all-in-one", Short: "The official Permguard Server - Start all services", Long: fmt.Sprintf(template, "Using this option all services are started.")},
-		services.HostZAP:      {Name: "ZAP (Zone Administration Point)", Use: "pdp", Short: "The official Permguard Server - Start the ZAP service", Long: fmt.Sprintf(template, "Using this option the Zone Administration Point (ZAP) service is started.")},
-		services.HostPAP:      {Name: "PAP (Policy Administration Point)", Use: "pap", Short: "The official Permguard Server - Start the PAP service", Long: fmt.Sprintf(template, "Using this option the Policy Administration Point (PAP) service is started.")},
-		services.HostPIP:      {Name: "PIP (Policy Information Point)", Use: "pip", Short: "The official Permguard Server - Start the PIP service", Long: fmt.Sprintf(template, "Using this option the Policy Information Point (PIP) service is started.")},
-		services.HostPDP:      {Name: "PDP (Policy Decision Point)", Use: "pdp", Short: "The official Permguard Server - Start the PDP service", Long: fmt.Sprintf(template, "Using this option the Policy Decision Point (PDP) service is started.")},
+		services.HostAllInOne: {Name: "AllInOne", Use: "all-in-one", Short: "The official Permguard AuthZServer - Start all services", Long: fmt.Sprintf(template, "Using this option all services are started.")},
+		services.HostZAP:      {Name: "ZAP (Zone Administration Point)", Use: "pdp", Short: "The official Permguard AuthZServer - Start the ZAP service", Long: fmt.Sprintf(template, "Using this option the Zone Administration Point (ZAP) service is started.")},
+		services.HostPAP:      {Name: "PAP (Policy Administration Point)", Use: "pap", Short: "The official Permguard AuthZServer - Start the PAP service", Long: fmt.Sprintf(template, "Using this option the Policy Administration Point (PAP) service is started.")},
+		services.HostPIP:      {Name: "PIP (Policy Information Point)", Use: "pip", Short: "The official Permguard AuthZServer - Start the PIP service", Long: fmt.Sprintf(template, "Using this option the Policy Information Point (PIP) service is started.")},
+		services.HostPDP:      {Name: "PDP (Policy Decision Point)", Use: "pdp", Short: "The official Permguard AuthZServer - Start the PDP service", Long: fmt.Sprintf(template, "Using this option the Policy Decision Point (PDP) service is started.")},
 	}
 	hosts := []services.HostKind{services.HostAllInOne, services.HostZAP, services.HostPAP, services.HostPIP, services.HostPDP}
 	storages := []storage.StorageKind{storage.StorageSQLite}
