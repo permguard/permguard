@@ -22,7 +22,7 @@ In **Permguard**, enforcement is handled by the **Policy Enforcement Point (PEP)
 Its role is to verify whether an `identity` has permission to perform specific `actions` on `resources` within a given `namespace`.
 
 {{< callout context="note" icon="info-circle" >}}
-In the [ZTMedFlow sample](/docs/0.0.x/getting-started/hands-on-example/), the application enforces different types of permission checks.
+In the [PharmaAuthZFlow sample](/docs/0.0.x/getting-started/hands-on-example/), the application enforces different types of permission checks.
 {{< /callout >}}
 
 ## Enforcement
@@ -47,7 +47,7 @@ To enforce access control, the **PEP** queries the **Policy Decision Point (PDP)
       "items": [
         {
           "uid": {
-            "type": "ZTMedFlow::Platform::Subscription",
+            "type": "PharmaAuthZFlow::Platform::Subscription",
             "id": "e3a786fd07e24bfa95ba4341d3695ae8"
           },
           "attrs": {
@@ -67,7 +67,7 @@ To enforce access control, the **PEP** queries the **Policy Decision Point (PDP)
     }
   },
   "resource": {
-    "type": "ZTMedFlow::Platform::Subscription",
+    "type": "PharmaAuthZFlow::Platform::Subscription",
     "id": "e3a786fd07e24bfa95ba4341d3695ae8",
     "properties": {}
   },
@@ -77,13 +77,13 @@ To enforce access control, the **PEP** queries the **Policy Decision Point (PDP)
   "evaluations": [
     {
       "action": {
-        "name": "ZTMedFlow::Platform::Action::create",
+        "name": "PharmaAuthZFlow::Platform::Action::create",
         "properties": {}
       }
     },
     {
       "action": {
-        "name": "ZTMedFlow::Platform::Action::delete",
+        "name": "PharmaAuthZFlow::Platform::Action::delete",
         "properties": {}
       }
     }

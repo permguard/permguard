@@ -23,7 +23,7 @@ In **Permguard**, multiple zones can be created, and each zone can have multiple
 This provides a structured way to manage `authz` models which include **manifests, schemas, policies, and permissions**.
 
 {{< callout context="note" icon="info-circle" >}}
-In the [ZTMedFlow sample](/docs/0.0.x/getting-started/hands-on-example/), the `ztmedflow` ledger is one of the example ledgers created in the sample.
+In the [PharmaAuthZFlow sample](/docs/0.0.x/getting-started/hands-on-example/), the `pharmaauthzflow` ledger is one of the example ledgers created in the sample.
 {{< /callout >}}
 
 ## Policy Ledger
@@ -32,6 +32,6 @@ A **Policy Ledger** is a logical structure used to organize `authz models`.
 
 ```json
 {
-  "name": "ztmedflow",
+  "name": "pharmaauthzflow",
 }
 ```

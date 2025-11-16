@@ -22,7 +22,7 @@ seo:
 In **Permguard**, multiple ledgers can be created, and each ledger can have multiple **policies**.
 
 {{< callout context="note" icon="info-circle" >}}
-In the [ZTMedFlow sample](/docs/0.0.x/getting-started/hands-on-example/) policies such as **`platform-manager`** are created.
+In the [PharmaAuthZFlow sample](/docs/0.0.x/getting-started/hands-on-example/) policies such as **`platform-manager`** are created.
 {{< /callout >}}
 
 ## Policy
