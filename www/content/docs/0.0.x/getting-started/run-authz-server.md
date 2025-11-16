@@ -19,12 +19,12 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The **`AuthZServer`** can operate as both the `control plane` and the `data plane` for `Permguard`.
+The **`AuthZServer`** can operate as both the `control-plane` and the `data-plane` for `Permguard`.
 
-In its simplest form, it runs in an `all-in-one` configuration, where a single instance acts as both the `control plane` and the `data plane`:
+In its simplest form, it runs in an `all-in-one` configuration, where a single instance acts as both the `control-plane` and the `data-plane`:
 
-- When acting as the `control plane`, the `AuthZServer` manages policies, trust configuration, and governance rules, providing a unified interface for defining and distributing authorization intent, or
-- When acting as the `data plane`, it evaluates incoming authorization requests and enforces the resulting decisions.
+- When acting as the `control-plane`, the `AuthZServer` manages policies, trust configuration, and governance rules, providing a unified interface for defining and distributing authorization intent, or
+- When acting as the `data-plane`, it evaluates incoming authorization requests and enforces the resulting decisions.
 
 The default container image runs in `all-in-one` mode, making it ideal for development, testing, or simple environments.
 

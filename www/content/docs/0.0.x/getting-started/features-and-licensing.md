@@ -32,11 +32,15 @@ The **Community Edition** and **Enterprise Edition** of Permguard are released u
 Always verify which edition applies before using or redistributing Permguard components.
 {{</callout >}}
 
-## Key Goals of Permguard
+## Design Principles and Objectives
 
-**Permguard** aims to redefine authorization by introducing a **Zero Trust–first approach**, built on the principles of policies being **Transferable and Verifiable**, **Versionable and Immutable**, and **Resilient to Disconnection**.
+`Permguard` aims not only to modernize authorization, but to provide an `AuthZServer` that enables a standardized trust protocol built on Zero Trust principles and on the act-on-behalf-of model.  
 
-This foundation enables secure, scalable, and resilient authorization across distributed environments.
+The system is language-agnostic: policies and trust logic are not tied to any specific programming language, allowing each component to use the language that best expresses its domain while remaining fully interoperable.
+
+Its design is grounded in policies that are `Transferable and Verifiable`, `Versionable and Immutable`, and `Resilient to Disconnection`.
+
+This foundation enables secure, scalable, and resilient trust and authorization across distributed environments.
 
 <div style="text-align: center">
   <img alt="Permguard Policies" src="/images/diagrams/d21.webp"/>
