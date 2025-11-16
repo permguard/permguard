@@ -19,6 +19,8 @@ seo:
   noindex: false # false (default) or true
 ---
 
+## Control-Plane and Data-Plane
+
 **Permguard** is deployed as an `AuthZServer`, which is composed of several internal components.
 These components are grouped into two main roles: the `control-plane` and the `data-plane`.
 
