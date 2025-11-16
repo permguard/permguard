@@ -22,7 +22,7 @@ In **Permguard**, enforcement is handled by the **Policy Enforcement Point (PEP)
 Its role is to verify whether an `identity` has permission to perform specific `actions` on `resources` within a given `namespace`.
 
 {{< callout context="note" icon="info-circle" >}}
-In the [MagicFarmacia sample](/docs/0.0.x/getting-started/hands-on-example/) the application enforces a permission check to determine whether the `platform-admin` actor can `view` a subscription.
+In the [MagicFarmacia sample](/docs/0.0.x/getting-started/hands-on-example/), the application enforces different types of permission checks.
 {{< /callout >}}
 
 ## Enforcement

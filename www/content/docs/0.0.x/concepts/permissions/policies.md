@@ -27,5 +27,8 @@ In the [MagicFarmacia sample](/docs/0.0.x/getting-started/hands-on-example/) pol
 
 ## Policy
 
-A **Policy** defines what is permitted or denied within an authorization model.
-It sets rules for actions on resources, ensuring secure and controlled access.
+A `policy` defines how permissions and denials are expressed within a trust model, describing which actions are allowed or rejected under specific conditions.
+
+{{< callout context="note" icon="info-circle" >}}
+**Policies** are not tied to a single `policy language`: different languages or representations can be used as long as they produce consistent and verifiable authorization outcomes.
+{{< /callout >}}
