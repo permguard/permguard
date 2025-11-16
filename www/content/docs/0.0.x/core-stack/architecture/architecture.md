@@ -39,6 +39,11 @@ The `Policy Information Point (PIP)` is the service responsible for providing ad
 
 ## Policy Decision Point (PDP)
 
-The `Policy Decision Point (PDP)` is the service responsible for evaluating policies and making decisions based on them. It can be deployed as either a `remote service` or a `proximity service`.
+The `Policy Decision Point (PDP)` is the component responsible for evaluating policies and producing authorization decisions.  
+It can operate either as a `remote data-plane` or as a `proximity data-plane`:
 
-The key difference lies in the fact that the `remote service` returns consistent decisions to the caller but may experience high latency or interruption and unavailability because of network partitioning. In contrast, `proximity service`s are deployed in proximity to the caller, providing low latency as they operate on an eventual consistent basis. This ensures faster decision returns as they synchronize policies. It's important to note that this service can be out of sync, especially in the event of network partitioning.
+- A `remote data-plane` returns fully consistent decisions, but its availability and latency depend on network connectivity.  
+Network partitions, congestion, or outages can introduce delays or make the PDP temporarily unreachable, or
+- A `proximity data-plane`, instead, is deployed close to the caller and operates in an eventually consistent model.  
+It provides faster and more resilient decisions because it evaluates policies locally, synchronizing updates asynchronously.  
+This also means that, during network partitions, a proximity PDP may operate with slightly outdated policies until connectivity is restored.
