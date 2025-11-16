@@ -21,7 +21,7 @@ seo:
 
 The application, acting as a Policy Enforcement Point (PEP), enforces policies defined by the Policy Ok Point (PDP). The Permguard Python SDK facilitates communication with the Permguard PDP.
 
-This communication occurs through the `AuthZ Client`, a component that provides a straightforward interface for interacting with the Permguard `AuthZ Server`.
+This communication occurs through the `AuthZ Client`, a component that provides a straightforward interface for interacting with the Permguard `AuthZServer`.
 
 ## The Basic Structure of an Authorization Request
 
