@@ -69,7 +69,7 @@ The `Subject` is mapped to the internal `Permguard`  subject structure for the `
 | TYPE       | CEDAR TYPE                      |
 |------------|---------------------------------|
 | USER       | Permguard::IAM::User            |
-| ROLE-ACTOR | Permguard::IAM::RoleActor       |
+| ROLE-ACTOR | Permguard::IAM::User       |
 | TWIN-ACTOR | Permguard::IAM::TwinActor       |
 
 The `CEDAR TYPE` must be used in the `Cedar` policy.
@@ -77,7 +77,7 @@ The `CEDAR TYPE` must be used in the `Cedar` policy.
 ```cedar
 @id("platform-auditor")
 permit(
-  principal == Permguard::IAM::RoleActor::"platform-auditor"
+  principal == Permguard::IAM::User::"platform-auditor"
 );
 ```
 

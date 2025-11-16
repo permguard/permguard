@@ -28,7 +28,7 @@ Simply define your schema's `resources` within your repository and create custom
 
 **Permguard** allows to specify who or what can access resources by the means of fine-grained permissions:
 
-- `Who`: *Identities (Users and Actors) authenticated in the application*
+- `Who`: *Identities (Users and Workloads) authenticated in the application*
 - `Can Access`: *Permissions granted by attaching policies*
 - `Resources`: *Resources targeted by permissions*
 

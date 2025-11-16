@@ -72,7 +72,7 @@ func createPermguardSubjectKind(kind string) (string, error) {
 	case pdp.PermguardUser:
 		kind = "Permguard::IAM::User"
 	case pdp.PermguardRoleActor:
-		kind = "Permguard::IAM::RoleActor"
+		kind = "Permguard::IAM::User"
 	case pdp.PermguardTwinActor:
 		kind = "Permguard::IAM::TwinActor"
 	}
