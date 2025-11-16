@@ -18,11 +18,11 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-**Permguard** consists of multiple services that make up the **AuthZServer**. These services can be deployed as a single `all-in-one` instance or separately.
+The `AuthZServer` binary can be run in different distributions, each providing its own configuration profile.
 
-For production environments, using the `all-in-one` distribution is not recommended. A distributed deployment is preferred as it allows each service to scale independently, improving both flexibility and performance.
-
-Each server provides a set of CLI options to configure startup parameters, runtime behaviors, and integrations, ensuring flexibility for diverse use cases.
+{{< callout context="note" icon="info-circle" >}}
+Services can be configured using either environment variables or [CLI options](/docs/0.0.x/devops/authz-server/configuration-options/). Each CLI option has a corresponding environment variable named `PERMGUARD_<OPTION_NAME>`. For example, the `--debug` option maps to the `PERMGUARD_DEBUG` environment variable.
+{{< /callout >}}
 
 ## Servers
 

@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The **Manifest** is used to define the ZTAuth* models.
+The **Manifest** is used to define the `AuthZ` trust models.
 
 Below is an example of an `AuthZ Manifest`:
 

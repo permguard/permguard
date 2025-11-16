@@ -18,14 +18,13 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-**Permguard** can be installed in any environment, allowing multiple instances of the **Permguard server** to be deployed.
+A recommended **Permguard** best practice is to run a **dedicated Permguard server** for each environment, such as:
 
-A recommended best practice is to set up a **dedicated Permguard server** for each environment, such as:
 - **Development**
 - **Staging**
 - **Production**
 
-This separation ensures **secure and isolated** permission management for each stage of the deployment pipeline.
+This separation ensures a secure and isolated trust model aligned with the specific needs of each environment.
 
 ## Managing Multiple Servers
 
