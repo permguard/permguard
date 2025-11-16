@@ -41,9 +41,9 @@ docker run --rm -it \
   permguard/all-in-one:latest
 ```
 
-When running `Permguard` from its `Docker image`, configuration parameters are supplied through environment variables, allowing runtime behavior to be customized without modifying the image itself.
+When running `Permguard` from its `Docker image`, configuration options are supplied through environment variables, allowing runtime behavior to be customized without modifying the image itself.
 
-The full list of available configuration parameters is documented in the [AuthZServer Configuration Options](/docs/0.0.x/devops/authz-server/configuration-options/).
+The full list of available configuration options is documented in the [AuthZServer Profiles](/docs/0.0.x/devops/authz-server/authzserver-profiles/).
 
 Example with debugging enabled:
 
