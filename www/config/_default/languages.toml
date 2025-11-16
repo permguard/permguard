@@ -17,7 +17,7 @@
     homePolicyTitle = 'Policies'
     homePolicyBody = 'Configure <code>Policies</code> to define what can be permitted or forbidden.'
     homePermissionsTitle = "Permissions"
-    homePermissionsBody = "Configure <code>Permissions</code> on policies and assign them to identities (users and actors)."
+    homePermissionsBody = "Configure <code>Permissions</code> on policies and assign them to identities (users and workloads)."
     homeEnforceTitle = 'Enforce'
     homeEnforceBody = 'Enforce the permissions in the application using available SDKs.'
     docsIntroduction = 'Get Started'

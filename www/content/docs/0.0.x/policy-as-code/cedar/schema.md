@@ -66,7 +66,7 @@ Below is a sample schema:
           "appliesTo": {
             "principalTypes": [
               "Permguard::IAM::User",
-              "Permguard::IAM::Actor"
+              "Permguard::IAM::User"
             ],
             "resourceTypes": [
               "Account",
@@ -78,7 +78,7 @@ Below is a sample schema:
           "appliesTo": {
             "principalTypes": [
               "Permguard::IAM::User",
-              "Permguard::IAM::Actor"
+              "Permguard::IAM::User"
             ],
             "resourceTypes": [
               "Account",
@@ -90,7 +90,7 @@ Below is a sample schema:
           "appliesTo": {
             "principalTypes": [
               "Permguard::IAM::User",
-              "Permguard::IAM::Actor"
+              "Permguard::IAM::User"
             ],
             "resourceTypes": [
               "Account",
@@ -102,7 +102,7 @@ Below is a sample schema:
           "appliesTo": {
             "principalTypes": [
               "Permguard::IAM::User",
-              "Permguard::IAM::Actor"
+              "Permguard::IAM::User"
             ],
             "resourceTypes": [
               "Account",
