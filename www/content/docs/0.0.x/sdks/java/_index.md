@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "java-df549e9b26a14c41ab268b8f9de4f802"
-weight: 9400
+weight: 9500
 toc: true
 seo:
   title: "" # custom title (optional)

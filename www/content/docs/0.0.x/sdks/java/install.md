@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "install-java-sdk-4eda6d25f5154415b489829fd19c0a03"
-weight: 9401
+weight: 9501
 toc: true
 seo:
   title: "" # custom title (optional)

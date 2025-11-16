@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "install-node-sdk-5ec4e462d0b5498b97e67fbd22e106de"
-weight: 9301
+weight: 9401
 toc: true
 seo:
   title: "" # custom title (optional)

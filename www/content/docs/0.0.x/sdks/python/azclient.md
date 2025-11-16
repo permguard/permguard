@@ -1,6 +1,6 @@
 ---
-title: "AuthZ Client"
-slug: "AuthZ Client"
+title: "AuthZClient"
+slug: "AuthZClient"
 description: ""
 summary: ""
 date: 2024-02-18T17:14:43+01:00
@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "azclient-python-sdk-99dc98091354476794598ed5e732b7d8"
-weight: 9202
+weight: 9302
 toc: true
 seo:
   title: "" # custom title (optional)
@@ -21,7 +21,7 @@ seo:
 
 The application, acting as a Policy Enforcement Point (PEP), enforces policies defined by the Policy Ok Point (PDP). The Permguard Python SDK facilitates communication with the Permguard PDP.
 
-This communication occurs through the `AuthZ Client`, a component that provides a straightforward interface for interacting with the Permguard `AuthZServer`.
+This communication occurs through the `AuthZClient`, a component that provides a straightforward interface for interacting with the Permguard `AuthZServer`.
 
 ## The Basic Structure of an Authorization Request
 
@@ -65,7 +65,7 @@ else:
 
 ## Perform an Atomic Authorization Request
 
-An `atomic authorization` request can be performed using the `AuthZ Client` by creating a new client instance and invoking the `Check` method.
+An `atomic authorization` request can be performed using the `AuthZClient` by creating a new client instance and invoking the `Check` method.
 
 ```python
 az_client = AZClient(with_endpoint("localhost", 9094))
@@ -128,7 +128,7 @@ else:
 
 ## Perform a Composed Authorization Request
 
-To perform a composed authorization request using the `AuthZ Client`, you need to create a new client and call the `Check` method.
+To perform a composed authorization request using the `AuthZClient`, you need to create a new client and call the `Check` method.
 
 {{< callout context="note" icon="info-circle" >}}
 This type of request is designed for scenarios requiring greater control over the authorization request creation, as well as cases where multiple evaluations must be executed within a single request.

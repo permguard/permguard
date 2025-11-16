@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "netcore-90005180bee2415cbe394533f32f65da"
-weight: 9500
+weight: 9600
 toc: true
 seo:
   title: "" # custom title (optional)
