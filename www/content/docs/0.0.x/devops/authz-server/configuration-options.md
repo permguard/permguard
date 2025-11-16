@@ -18,7 +18,7 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-**Permguard** consists of multiple services that make up the **AuthZ Server**. These services can be deployed as a single `all-in-one` instance or separately.
+**Permguard** consists of multiple services that make up the **AuthZServer**. These services can be deployed as a single `all-in-one` instance or separately.
 
 For production environments, using the `all-in-one` distribution is not recommended. A distributed deployment is preferred as it allows each service to scale independently, improving both flexibility and performance.
 

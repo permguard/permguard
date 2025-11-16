@@ -40,7 +40,7 @@ The same policy model is reused across all these layers, so that authorization i
 
 - **governed in intent** — rules are governed at the intent source and collaboratively reviewed and versioned
 - **decentralized in enforcement** — many enforcement points close to where decisions actually matter
-- **auditable and explainable** across the entire call path
+- **auditable and explainable** across the entire call path.
 
 The authorization call can be triggered either:
 
@@ -52,9 +52,11 @@ In both cases, the same security model applies: the request (API call, message, 
 Each request carries at least two identities:
 
 - **Self identity** — the identity of the workload executing the action
-- **Peer identity** — the identity of the caller (user or another workload)
+- **Peer identity** — the identity of the caller (user or another workload).
 
 Additional **attestations** can also be included, such as tokens, signed claims, workload proofs, or any other cryptographic evidence contributing to the trust context.
+
+---
 
 The Permguard `data plane` receives the full incoming request context (identities, attestations, network metadata, and application attributes) and uses it to build the authorization context.
 As part of a distributed enforcement model, the `data plane` evaluates this context locally using policies and configuration obtained from the `control plane`.
@@ -66,15 +68,26 @@ This provides a consistent, decentralized security model for both API interactio
 Designed for `cloud-native`, `edge`, and `multi-tenant` environments, **Permguard** can be used in any context — including IoT devices, AI agents, and distributed workloads.
 It lets you update authorization policies without changing application code, reducing operational overhead.
 
-Policies are centrally managed in the control plane, while enforcement is distributed.
-This allows organizations to apply consistent authorization logic across all services without modifying each one individually, ensuring strong governance with a single point for defining, updating, and auditing policies in real time.
+---
+
+Policies are managed through a unified `control-plane` interface, but this does not imply a centralized trust model.
+
+The system is currently implemented with a single, centralized access point for policies, but this is purely for operational simplicity. The architecture is already designed to support decentralized consensus behind that interface, so centralization today does not limit future decentralized deployments.
+
+Enforcement remains distributed across all services, while the control plane provides a consistent view for defining, updating, and auditing policies without binding the system to centralized trust assumptions.
 
 {{< callout context="tip" icon="rocket" >}}
 **Permguard** provides strong security with a simple integration model. Its architecture offers flexibility and robustness, whether you’re securing a small application or a large distributed system. Run the control plane, define your policies, and integrate the data plane where you need enforcement — the workflow stays straightforward in every environment.
 {{< /callout >}}
 
-**Permguard** can be deployed in any environment: `public or private clouds`, `managed infrastructure`, `Kubernetes`, `serverless` platforms, or even in `partially connected` scenarios where stable connectivity is not guaranteed.
-It also fits naturally on `edge nodes` and within `IoT` ecosystems, providing consistent and secure authorization across heterogeneous environments.
+**Permguard** can be deployed in any environment: `public clouds`, `private clouds`, `managed infrastructure`, `Kubernetes`, `serverless` platforms, or even in `partially connected` scenarios where stable connectivity is not guaranteed.
+It also fits naturally on `edge` nodes and within `IoT` ecosystems, providing consistent and secure authorization across heterogeneous environments.
+
+The control plane must remain reachable at the network level so that policies can be accessed, updated, and audited from a unified interface.
+However, this does not mean it must be physically centralized. The architecture is designed so that the control plane can also run on `edge` components or distributed infrastructure, as long as it provides a coherent view of policy governance.
+
+Data planes, instead, can be deployed anywhere — close to workloads, inside applications, at the `edge`, across cloud regions, or in `disconnected` environments.
+This separation ensures that enforcement is fully distributed, while the control plane offers a single place to manage intent without restricting the system to centralized trust assumptions.
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d13.webp"/>

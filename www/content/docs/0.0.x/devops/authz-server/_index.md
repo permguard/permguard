@@ -1,6 +1,6 @@
 ---
-title: "AuthZ Server"
-slug: "AuthZ Server"
+title: "AuthZServer"
+slug: "AuthZServer"
 description: ""
 summary: ""
 date: 2023-08-21T22:48:53+01:00

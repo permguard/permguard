@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-Permguard offers multiple installation options. Review the methods below to choose the one that best fits your environment.
+**Permguard CLI** can be installed in different ways. Review the options below to choose the method that best fits your environment.
 
 ## Official Package Managers
 

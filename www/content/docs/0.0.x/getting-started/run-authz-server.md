@@ -1,6 +1,6 @@
 ---
-title: "Run the AuthZ Server"
-slug: "Run the AuthZ Server"
+title: "Run the `AuthZServer`"
+slug: "Run the `AuthZServer`"
 description: ""
 summary: ""
 date: 2023-08-15T14:47:57+01:00
@@ -19,13 +19,16 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The **AuthZ Server** acts as the **control plane** for Permguard: it manages policies, trust configuration, and governance rules.
+The **`AuthZServer`** can operate as both the `control plane` and the `data plane` for `Permguard`.
 
-By default, the server also includes an embedded **data plane**, allowing it to evaluate and enforce authorization decisions on its own.
-This makes the container self-contained and ideal for development, testing, or simple deployments.
+In its simplest form, it runs in an `all-in-one` configuration, where a single instance acts as both the `control plane` and the `data plane`:
 
-In production environments, however, enforcement should be **distributed**.
-Dedicated data plane instances can be deployed close to workloads—inside applications, sidecar proxies, gateways, or edge nodes—so authorization decisions are enforced at the appropriate boundary with low latency and high resilience.
+- When acting as the `control plane`, the `AuthZServer` manages policies, trust configuration, and governance rules, providing a unified interface for defining and distributing authorization intent, or
+- When acting as the `data plane`, it evaluates incoming authorization requests and enforces the resulting decisions.
+
+The default container image runs in `all-in-one` mode, making it ideal for development, testing, or simple environments.
+
+In production, enforcement can be distributed, with dedicated data-plane instances deployed near workloads—inside applications, `sidecars`, `gateways`, or `edge` components.
 
 To start the server using the latest container image:
 
@@ -38,9 +41,9 @@ docker run --rm -it \
   permguard/all-in-one:latest
 ```
 
-When running Permguard from its Docker image, configuration parameters are supplied through environment variables, allowing runtime behavior to be customized without modifying the image itself.
+When running `Permguard` from its `Docker image`, configuration parameters are supplied through environment variables, allowing runtime behavior to be customized without modifying the image itself.
 
-The full list of available configuration parameters is documented in the [Authz Server Configuration Options](/docs/0.0.x/devops/authz-server/configuration-options/).
+The full list of available configuration parameters is documented in the [AuthZServer Configuration Options](/docs/0.0.x/devops/authz-server/configuration-options/).
 
 Example with debugging enabled:
 
@@ -54,9 +57,9 @@ docker run --rm -it \
   permguard/all-in-one:latest
 ```
 
-When `PERMGUARD_DEBUG` is set to `TRUE`, the AuthZ server operates in debug mode, providing verbose logging and diagnostic output suitable for development and troubleshooting scenarios.
+When `PERMGUARD_DEBUG` is set to `TRUE`, the `AuthZServer` operates in debug mode, providing verbose logging and diagnostic output suitable for development and troubleshooting scenarios.
 
-It is also possible to access the local SQLite database used by the `AuthZ Server` by mounting a host directory into the container.
+It is also possible to access the local SQLite database used by the `AuthZServer` by mounting a host directory into the container.
 
 This allows direct inspection or interaction with the database files from the host system.
 
