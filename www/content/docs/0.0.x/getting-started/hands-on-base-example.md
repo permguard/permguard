@@ -1,6 +1,6 @@
 ---
-title: "Hands-on Example"
-slug: "Hands-on Example"
+title: "Hands-on Base Example"
+slug: "Hands-on Base Example"
 description: ""
 summary: ""
 date: 2023-08-15T14:47:57+01:00
@@ -9,7 +9,7 @@ draft: false
 menu:
   docs:
     parent: ""
-    identifier: "hands-on-example-8c89ddc8339f83444fc4b97264bd5c45"
+    identifier: "hands-on-base-example-8c89ddc8339f83444fc4b97264bd5c45"
 weight: 1004
 toc: true
 seo:
@@ -19,28 +19,32 @@ seo:
   noindex: false # false (default) or true
 ---
 
-## PharmaAuthZFlow example
+## PharmaAuthZFlow Example
 
-The **PharmaAuthZFlow** example demonstrates how `Permguard` can be used to enforce authorization across multiple domains of a real application.
+The **PharmaAuthZFlow** example demonstrates how `Permguard` enforces authorization across the distinct trust boundaries of a pharmacy ecosystem.
 
-It shows how `users`, `workloads`, `roles`, and `resources` interact within a Zero Trust authorization model.
+It illustrates how `users`, `workloads`, `roles`, and `resources` interact within a Zero Trust authorization model.
 
-The example is intentionally simplified to focus on the core concepts.
-We highlight **three main domains**:
+The example is intentionally simplified to focus on core authorization concepts.
+We highlight **three main domains**, each modeled as a separate Permguard `zone`:
 
-- **Platform Administration Domain**
-  Manages the pharmacy franchise: branches, teams, roles, and administrative operations.
+### **Platform-Administration Domain**
+Manages the pharmacy franchise: branches, teams, roles, and administrative operations.
 
-- **Pharmacy Management Domain**
-  Focuses on operational workflows inside the pharmacy: organization, inventory, logistics, and infrastructure.
+### **Operations-Management Domain**
+Handles operational workflows: medication orders, fulfillment, stock levels, inventory management, and logistics.
 
-- **Patient Services Domain**
-  Covers clinical and dispensing workflows: patients, prescriptions, medication orders, fulfillment, appointments, and notifications.
+### **Patient-Services Domain**
+Covers clinical workflows: patients, prescriptions, medication requests, dispensing, appointments, and notifications.
 
-Each domain is treated as a separate bounded context — effectively a dedicated segment representing its own trusted boundary.
-In real enterprise scenarios, domains would typically be further micro-segmented, but for this example we keep the model simple.
+Each domain represents a dedicated bounded context (and trust boundary).
+In real environments, these could be further micro-segmented, but for this example, the model is kept simple.
 
-Each of these domains has its own `zone` and `ledger` for managing policies.
+Each domain has its own Permguard `zone` and `root` ledger to manage its policies.
+
+{{< callout context="note" icon="info-circle" >}}
+Before going ahead, make sure the [CLI is installed](/docs/0.0.x/getting-started/get-the-cli/) and the [AuthZServer is running](/docs/0.0.x/getting-started/run-the-authzserver/).
+{{< /callout >}}
 
 ## Creating the Zones and Ledgers
 
@@ -71,62 +75,72 @@ cb275322b8ae4b6f8f540d7601dee8ed: root
 e3de2d340e47406d90fd89d2b4a36974: root
 ```
 
-Each domain (patients, prescriptions, inventory, etc.) maintains its own **ledger**, ensuring isolation per branch, full traceability, and secure access decisions.
+## Use Cases, Roles, and Architectural Components
 
-| **Domain** | **Ledger** | **What it tracks** |
-|----------------|---------------|------------------------|
-| **Branch Management** | `branch-management-ledger` | Registration and configuration of pharmacy branches |
-| **Patients** | `patient-event-ledger` | Patient data, profile updates, and consent changes |
-| **Prescriptions** | `prescription-event-ledger` | Prescription creation and dispensing records |
-| **Inventory** | `inventory-transaction-ledger` | Stock movements and restock triggers |
-| **Orders** | `order-event-ledger` | Order lifecycle and refund operations |
-| **Appointments** | `appointment-ledger` | Bookings and schedule changes |
-| **Notifications** | `notification-ledger` | Sent messages and delivery results |
+In this example, we implement **two main use cases**:
 
-{{< callout context="note" icon="info-circle" >}}
-Before to start make sure che [CLI is installed](/docs/0.0.x/getting-started/get-the-cli/)  and the [AuthZServer is running](/docs/0.0.x/getting-started/run-the-authzserver/).
-{{< /callout >}}
+1. **Branch Management**
+2. **Prescription and Medication Order Flow**
 
-## Check out the Playground
+Each use case spans multiple roles, services, and trusted zones within the PharmaAuthZFlow architecture.
 
-The first step is to check out the `PharmaAuthZFlow` playground.
+<div style="text-align: center">
+  <img alt="Permguard" src="/images/diagrams/pharmaazflow-components.png"/>
+</div>
 
-This example demonstrates Permguard in action and allows testing of its features.
+---
 
-```text
-git clone git@github.com:permguard/playground-server.git
-cd playground-server/cedar/pharmaauthzflow/
-```
+### 1. Branch Management
 
-## Create the Zone and Policy Store
+This use case covers the administrative workflow of creating and managing pharmacy branches, teams, and roles.
 
-The next step is to initialize the workspace then create a zone and the policy store.
+#### Description
 
-{{< callout context="note" icon="info-circle" >}}
-Plese refer to the [Command Line](/docs/0.0.x/command-line/how-to-use/) section for more information about the available commands.
-{{< /callout >}}
+- A **Platform Admin** creates a new branch.
+- The admin assigns a **Branch Owner** to that branch.
+- The **Branch Owner** configures the local team and assigns roles such as *pharmacist* or *inventory-operator*.
 
-```text
-permguard zones create --name platform-admin-zone
-```
+#### Roles
 
-Here’s what you’ll see.
+| Role             | Description                                    |
+|------------------|------------------------------------------------|
+| `platform-admin` | Manages global franchise-level operations       |
+| `branch-owner`   | Manages branch-level team and role assignments  |
 
-```text
-895741663247: platform-admin-zone
-```
+#### Services & Zones
 
-It is important to note that the `zoneid` is required for the ledger creation and it is returned by the previous command.
+| Zone                           | Service             | Purpose                                  |
+|--------------------------------|---------------------|------------------------------------------|
+| `platform-administration-zone` | `platform-service`  | Branch creation, user/role assignment    |
 
-```text
-permguard authz ledgers create --name pharmaauthzflow --zone-id 895741663247
-```
+---
 
-Displayed result.
+### 2. Prescription & Medication Order Flow
 
-```text
-809257ed202e40cab7e958218eecad20: pharmaauthzflow
-```
+This use case covers the clinical workflow from prescription creation to medication ordering and stock verification.
+
+#### Description
+
+- A **Patient** submits a prescription request.
+- A **Pharmacist** validates the request.
+- The **Pharmacist** triggers an order through the *Orders Service*.
+- The **Inventory Operator** checks stock via the *Inventory Service* and orders medication if needed.
+
+#### Roles
+
+| Role                 | Description                                      |
+|----------------------|--------------------------------------------------|
+| `patient`            | Requests prescriptions                            |
+| `pharmacist`         | Validates prescriptions and places medication orders |
+| `inventory-operator` | Verifies stock and handles inventory ordering    |
+
+#### Services & Zones
+
+| Zone                        | Service                | Purpose                                     |
+|-----------------------------|------------------------|---------------------------------------------|
+| `patient-services-zone`     | `prescriptions-service`| Handles prescription submissions             |
+| `operations-management-zone`| `orders-service`       | Orders medications from suppliers            |
+| `operations-management-zone`| `inventory-service`    | Checks and updates medication inventory      |
 
 ## Set Up the Workspace
 
