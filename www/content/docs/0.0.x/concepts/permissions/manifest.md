@@ -22,7 +22,7 @@ seo:
 A **Permguard** ledger must be associated with a manifest.
 
 {{< callout context="note" icon="info-circle" >}}
-Those manifest files are created automatically when a new workspace is initialized.
+The manifest file is created automatically when a new workspace is initialized.
 {{< /callout >}}
 
 This **manifest**  is a mandatory element to define the following:

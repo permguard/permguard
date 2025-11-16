@@ -18,11 +18,12 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-**Permguard** supports `multi-zone` architecture, allowing the creation of multiple **zones**.
-Each zone is fully isolated, with its own ledgers, manifests, schemas, policies, and permissions.
+**Permguard** supports a `multi-zone` architecture, enabling the creation of multiple **zones**.  
+
+Each `zone` segments a distinct `trust model` and maintains its own ledgers, manifests, schemas, policies, and permissions.
 
 {{< callout context="note" icon="info-circle" >}}
-In the [MagicFarmacia sample](/docs/0.0.x/getting-started/hands-on-example/) the `demo-zone` zone is created.
+In the [MagicFarmacia sample](/docs/0.0.x/getting-started/hands-on-example/), the `demo-zone` is created as one of the example segments.
 {{< /callout >}}
 
 Each zone is uniquely identified by a `name`.
