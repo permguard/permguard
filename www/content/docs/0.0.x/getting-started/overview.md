@@ -152,7 +152,7 @@ Can be deployed anywhere — inside applications, gateways, edge devices, remote
 
 ---
 
-## Integrating With Permguard
+## Integrating with Permguard
 
 Applications can enforce access control using:
 
