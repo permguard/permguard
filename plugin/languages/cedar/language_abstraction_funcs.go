@@ -70,9 +70,9 @@ func createPermguardSubjectKind(kind string) (string, error) {
 	kind = strings.ToUpper(kind)
 	switch kind {
 	case pdp.PermguardUser:
-		kind = "Permguard::IAM::User"
+		kind = "Permguard::Identity::User"
 	case pdp.PermguardWorkload:
-		kind = "Permguard::IAM::User"
+		kind = "Permguard::Identity::Workload"
 	}
 	return kind, nil
 }

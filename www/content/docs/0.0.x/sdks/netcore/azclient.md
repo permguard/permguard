@@ -137,7 +137,7 @@ try
         // Entities
         .WithEntitiesMap("cedar", entities)
         // Subject
-        .WithSubjectKind("workload")
+        .WithSubjectType("workload")
         .WithSubjectSource("keycloak")
         .WithSubjectProperty("isSuperUser", true)
         // Resource

@@ -78,7 +78,7 @@ An `atomic authorization` request can be performed using the `AuthZClient` by cr
 
     let principal = PrincipalBuilder::new("amy.smith@acmecorp.com")
         .with_source("keycloak")
-        .with_kind("user")
+        .with_type("user")
         .build();
 
     let entity = {
@@ -145,13 +145,13 @@ This type of request is designed for scenarios requiring greater control over th
     // Create the Principal
     let principal = PrincipalBuilder::new("amy.smith@acmecorp.com")
         .with_source("keycloak")
-        .with_kind("user")
+        .with_type("user")
         .build();
 
     // Create a new subject
     let subject = SubjectBuilder::new("platform-creator")
         .with_source("keycloak")
-        .with_kind("workload")
+        .with_type("workload")
         .with_property("isSuperUser", serde_json::json!(true))
         .build();
 

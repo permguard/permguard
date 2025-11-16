@@ -66,17 +66,18 @@ The `Entities` object is a `set of attributes` that represent policy's entities.
 
 The `Subject` is mapped to the internal `Permguard`  subject structure for the `Cedar` policy.
 
-| TYPE       | CEDAR TYPE                      |
-|------------|---------------------------------|
-| USER       | Permguard::IAM::User            |
-| WORKLOAD   | Permguard::IAM::Workload        |
+| TYPE       | CEDAR TYPE                           |
+|------------|--------------------------------------|
+| USER       | Permguard::Identity::User            |
+| WORKLOAD   | Permguard::Identity::Workload        |
+| ATTRIBUTE  | Permguard::Identity::Attribute        |
 
 The `CEDAR TYPE` must be used in the `Cedar` policy.
 
 ```cedar
 @id("platform-auditor")
 permit(
-  principal == Permguard::IAM::User::"platform-auditor"
+  principal == Permguard::Identity::Attribute::"role/platform-auditor"
 );
 ```
 
