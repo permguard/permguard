@@ -40,7 +40,7 @@ The `Entities` object is a `set of attributes` that represent policy's entities.
       "items": [
         {
           "uid": {
-            "type": "MagicFarmacia::Platform::Subscription",
+            "type": "ZTMedFlow::Platform::Subscription",
             "id": "e3a786fd07e24bfa95ba4341d3695ae8"
           },
           "attrs": {
@@ -88,7 +88,7 @@ The `Resource` has to satisfy the `Cedar` resource structure.
 ```cedar
 @id("platform-auditor")
 permit(
-  resource is MagicFarmacia::Platform::Subscription
+  resource is ZTMedFlow::Platform::Subscription
 );
 ```
 
@@ -99,6 +99,6 @@ The `Action` has to satisfy the `Cedar` action structure.
 ```cedar
 @id("platform-auditor")
 permit(
-  action == MagicFarmacia::Platform::Action::"view",
+  action == ZTMedFlow::Platform::Action::"view",
 );
 ```

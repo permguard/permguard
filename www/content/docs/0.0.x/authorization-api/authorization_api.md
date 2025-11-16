@@ -92,7 +92,7 @@ Here is an example of an **authorization request** and its response exchanged be
       "items": [
         {
           "uid": {
-            "type": "MagicFarmacia::Platform::BranchInfo",
+            "type": "ZTMedFlow::Platform::BranchInfo",
             "id": "subscription"
           },
           "attrs": {
@@ -113,14 +113,14 @@ Here is an example of an **authorization request** and its response exchanged be
     }
   },
   "resource": {
-    "type": "MagicFarmacia::Platform::Subscription",
+    "type": "ZTMedFlow::Platform::Subscription",
     "id": "e3a786fd07e24bfa95ba4341d3695ae8",
     "properties": {
       "isEnabled": true
     }
   },
   "action": {
-    "name": "MagicFarmacia::Platform::Action::create",
+    "name": "ZTMedFlow::Platform::Action::create",
     "properties": {
       "isEnabled": true
     }

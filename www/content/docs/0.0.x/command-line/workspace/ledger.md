@@ -63,7 +63,7 @@ output:
 ```bash
 Your workspace configured ledgers:
 
-  - *origin/273165098782/magicfarmacia
+  - *origin/273165098782/ztmedflow
 
 ```
 

@@ -19,7 +19,7 @@ seo:
   noindex: false # false (default) or true
 ---
 
-This example shows how **MagicFarmacia**, a pharmacy management platform with multiple branches across different cities, might use **Permguard** to manage **authorization and access control** in a **multi-tenant, multi-domain** environment.
+This example shows how **ZTMedFlow**, a pharmacy management platform with multiple branches across different cities, might use **Permguard** to manage **authorization and access control** in a **multi-tenant, multi-domain** environment.
 
 Each domain (patients, prescriptions, inventory, etc.) maintains its own **ledger**, ensuring isolation per branch, full traceability, and secure access decisions.
 
@@ -39,13 +39,13 @@ Before to start make sure che [CLI is installed](/docs/0.0.x/getting-started/get
 
 ## Check out the Playground
 
-The first step is to check out the `MagicFarmacia` playground.
+The first step is to check out the `ZTMedFlow` playground.
 
 This example demonstrates Permguard in action and allows testing of its features.
 
 ```text
 git clone git@github.com:permguard/playground-server.git
-cd playground-server/cedar/magicfarmacia/
+cd playground-server/cedar/ztmedflow/
 ```
 
 ## Create the Zone and Policy Store
@@ -69,13 +69,13 @@ Here’s what you’ll see.
 It is important to note that the `zoneid` is required for the ledger creation and it is returned by the previous command.
 
 ```text
-permguard authz ledgers create --name magicfarmacia --zone-id 895741663247
+permguard authz ledgers create --name ztmedflow --zone-id 895741663247
 ```
 
 Displayed result.
 
 ```text
-809257ed202e40cab7e958218eecad20: magicfarmacia
+809257ed202e40cab7e958218eecad20: ztmedflow
 ```
 
 ## Set Up the Workspace
@@ -89,17 +89,17 @@ A workspace represents a local working space. Plese refer to the [CodeOps Worksp
 ```text
 permguard init --authz-language cedar
 permguard remote add origin localhost
-permguard checkout origin/895741663247/magicfarmacia
+permguard checkout origin/895741663247/ztmedflow
 ```
 
 Captured output.
 
 ```text
 permguard remote add origin localhost
-permguard checkout origin/895741663247/magicfarmacia
+permguard checkout origin/895741663247/ztmedflow
 Initialized empty permguard ledger in '.'.
 Remote origin has been added.
-Ledger magicfarmacia has been added.
+Ledger ztmedflow has been added.
 The local workspace is already fully up to date with the remote ledger.
 ```
 
@@ -168,7 +168,7 @@ Below a sample json for the authorization check.
       "items": [
         {
           "uid": {
-            "type": "MagicFarmacia::Platform::BranchInfo",
+            "type": "ZTMedFlow::Platform::BranchInfo",
             "id": "subscription"
           },
           "attrs": {
@@ -189,14 +189,14 @@ Below a sample json for the authorization check.
     }
   },
   "resource": {
-    "type": "MagicFarmacia::Platform::Subscription",
+    "type": "ZTMedFlow::Platform::Subscription",
     "id": "e3a786fd07e24bfa95ba4341d3695ae8",
     "properties": {
       "isEnabled": true
     }
   },
   "action": {
-    "name": "MagicFarmacia::Platform::Action::create",
+    "name": "ZTMedFlow::Platform::Action::create",
     "properties": {
       "isEnabled": true
     }
@@ -233,7 +233,7 @@ Here’s what gets returned.
 
 ## Next Steps
 
-This example demonstrates how to set up the `MagicFarmacia` playground and perform an authorization check.
+This example demonstrates how to set up the `ZTMedFlow` playground and perform an authorization check.
 
 To better understand Permguard, it is worth exploring the Policy Store, which is implemented as a Ledger. The Ledger uses a Git-like object storage system.
 
@@ -275,7 +275,7 @@ Displayed output.
 ```text
 Your workspace object 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1:
 
-{"annotations":{"id":"platform-creator"},"effect":"permit","principal":{"op":"==","entity":{"type":"Permguard::Identity::User","id":"platform-creator"}},"action":{"op":"==","entity":{"type":"MagicFarmacia::Platform::Action","id":"create"}},"resource":{"op":"is","entity_type":"MagicFarmacia::Platform::Subscription"},"conditions":[{"kind":"when","body":{"\u0026\u0026":{"left":{"\u0026\u0026":{"left":{"==":{"left":{".":{"left":{"Var":"context"},"attr":"isSubscriptionActive"}},"right":{"Value":true}}},"right":{"==":{"left":{".":{"left":{"Var":"action"},"attr":"isEnabled"}},"right":{"Value":true}}}}},"right":{"==":{"left":{".":{"left":{"Var":"resource"},"attr":"isEnabled"}},"right":{"Value":true}}}}}},{"kind":"unless","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"isSuperUser"}},"right":{"Value":false}}}}]}
+{"annotations":{"id":"platform-creator"},"effect":"permit","principal":{"op":"==","entity":{"type":"Permguard::Identity::User","id":"platform-creator"}},"action":{"op":"==","entity":{"type":"ZTMedFlow::Platform::Action","id":"create"}},"resource":{"op":"is","entity_type":"ZTMedFlow::Platform::Subscription"},"conditions":[{"kind":"when","body":{"\u0026\u0026":{"left":{"\u0026\u0026":{"left":{"==":{"left":{".":{"left":{"Var":"context"},"attr":"isSubscriptionActive"}},"right":{"Value":true}}},"right":{"==":{"left":{".":{"left":{"Var":"action"},"attr":"isEnabled"}},"right":{"Value":true}}}}},"right":{"==":{"left":{".":{"left":{"Var":"resource"},"attr":"isEnabled"}},"right":{"Value":true}}}}}},{"kind":"unless","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"isSuperUser"}},"right":{"Value":false}}}}]}
 
 type blob, size 881, oname platform-creator
 ```
@@ -294,8 +294,8 @@ Your workspace object 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c5
 @id("platform-creator")
 permit (
     principal == Permguard::Identity::Attribute::"role/platform-creator",
-    action == MagicFarmacia::Platform::Action::"create",
-    resource is MagicFarmacia::Platform::Subscription
+    action == ZTMedFlow::Platform::Action::"create",
+    resource is ZTMedFlow::Platform::Subscription
 )
 when { context.isSubscriptionActive == true && action.isEnabled == true && resource.isEnabled == true }
 unless { principal.isSuperUser == false };
