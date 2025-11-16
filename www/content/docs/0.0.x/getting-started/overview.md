@@ -23,7 +23,7 @@ seo:
 
 **Permguard** is a distributed authorization platform built around Zero Trust principles.
 
-At its core, Permguard defines **who or what** can access **which resources** using a unified policy model:
+At its core, Permguard defines **who** or **what** can access **which resources** using a unified policy model:
 
 - **Who** — identities (users and workloads)
 - **Can Access** — permissions defined through policies
@@ -32,8 +32,6 @@ At its core, Permguard defines **who or what** can access **which resources** us
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d14.webp"/>
 </div>
-
----
 
 ## What Permguard Enforces
 
@@ -59,8 +57,6 @@ The same policy model is applied across all enforcement layers, ensuring authori
 - **decentralized in enforcement** — decisions occur close to where actions happen
 - **auditable and explainable** — full end-to-end visibility across the authorization path
 
----
-
 ## Centralized Interface, Decentralized Architecture
 
 Policies are accessed through a unified control-plane interface, but this does **not** imply a centralized trust model.
@@ -74,8 +70,6 @@ Enforcement remains distributed, while the control-plane provides a coherent pla
 **Permguard** offers strong Zero Trust security with a simple integration path — define authorization intent once and enforce it everywhere.
 {{< /callout >}}
 
----
-
 ## Bring Your Own Identity (BYOI)
 
 Permguard is **identity-agnostic** on the authentication side.
@@ -88,8 +82,6 @@ It follows a `Bring Your Own Identity (BYOI)` approach:
 {{< callout context="note" icon="info-circle" >}}
 The main goal of **Permguard** is to provide strong authorization with built-in trust governance, not authentication.
 {{< /callout >}}
-
----
 
 ## Where Authorization Runs
 
@@ -110,12 +102,16 @@ Each incoming request carries at least two identities:
 
 Additional **attestations** may also be included, such as tokens, workload proofs, or signed claims.
 
+---
+
 The **data-plane** receives the full request context (identities, attestations, network metadata, application attributes) and evaluates it locally using policies obtained from the **control-plane**.
 
 - The **control-plane** manages and distributes policies
 - The **data-plane** enforces permit/deny decisions at the workload boundary
 
 This creates a consistent and decentralized Zero Trust model for both synchronous and asynchronous workflows.
+
+---
 
 Designed for `cloud-native`, `edge`, and `multi-tenant` environments, Permguard enables updating policies without changing application code.
 
