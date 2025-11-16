@@ -19,31 +19,50 @@ seo:
   noindex: false # false (default) or true
 ---
 
-**Permguard** consists of several services, which can be deployed either on a single instance using the `all-in-one` distribution, or individually using separate distributions for each service."
+**Permguard** is deployed as an `AuthZServer`, which is composed of several internal components.
+These components are grouped into two main roles: the `control-plane` and the `data-plane`.
+
+The server can run all components together in a single instance using the `all-in-one` distribution, or each component can be deployed separately using dedicated distributions.
+
+The `control-plane` is composed of:
+
+- **Zone Administration Point (ZAP)**
+- **Policy Administration Point (PAP)**
+- **Policy Information Point (PIP)**
+
+The `data-plane` consists of:
+
+- **Policy Decision Point (PDP)**
 
 <div style="text-align: center">
-  <img alt="Permguard Policies" src="/images/diagrams/d6.webp"/>
+  <img alt="Permguard Components" src="/images/diagrams/permguard-components.png"/>
 </div>
 
 ## Zone Administration Point (ZAP)
 
-The `Zone Administration Point (ZAP)` serves as the central repository for managing zone information and configurations. Furthermore, it provides an administration API.
+The `Zone Administration Point (ZAP)` serves as the central repository for managing zone information and configurations.
+It also exposes an administration API.
 
 ## Policy Administration Point (PAP)
 
-The `Policy Administration Point (PAP)`  serves as the central repository for managing the zone policies. Furthermore, it provides an administration API.
+The `Policy Administration Point (PAP)` is responsible for storing and managing zone policies.
+It provides an administration API for creating, updating, and validating policies.
 
 ## Policy Information Point (PIP)
 
-The `Policy Information Point (PIP)` is the service responsible for providing additional information to the `Policy Decision Point (PDP)` to make informed decisions.
+The `Policy Information Point (PIP)` supplies additional information required by the `Policy Decision Point (PDP)` to compute decisions.
+It acts as an information provider in the authorization pipeline.
 
 ## Policy Decision Point (PDP)
 
-The `Policy Decision Point (PDP)` is the component responsible for evaluating policies and producing authorization decisions.  
-It can operate either as a `remote data-plane` or as a `proximity data-plane`:
+The `Policy Decision Point (PDP)` evaluates policies and produces authorization decisions.
+It can operate in two modes:
 
-- A `remote data-plane` returns fully consistent decisions, but its availability and latency depend on network connectivity.  
-Network partitions, congestion, or outages can introduce delays or make the PDP temporarily unreachable, or
-- A `proximity data-plane`, instead, is deployed close to the caller and operates in an eventually consistent model.  
-It provides faster and more resilient decisions because it evaluates policies locally, synchronizing updates asynchronously.  
-This also means that, during network partitions, a proximity PDP may operate with slightly outdated policies until connectivity is restored.
+- **Remote data-plane**:
+  Provides fully consistent decisions, but performance and availability depend on network connectivity.
+  Network congestion, latency, or partitions can slow down responses or make the PDP temporarily unreachable.
+
+- **Proximity data-plane**:
+  Deployed close to the caller and operates under an eventually consistent model.
+  It provides low-latency, resilient decisions by evaluating policies locally and synchronizing updates asynchronously.
+  During network partitions, a proximity PDP may temporarily operate with slightly outdated policies until synchronization resumes.
