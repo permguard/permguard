@@ -47,7 +47,7 @@ azClient := permguard.NewAZClient(
 )
 
 req := azreq.NewAZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494d3175a",
-    "amy.smith@acmecorp.com", "MagicFarmacia::Platform::Subscription", "MagicFarmacia::Platform::Action::create").
+    "amy.smith@acmecorp.com", "ZTMedFlow::Platform::Subscription", "ZTMedFlow::Platform::Action::create").
     WithResourceID("e3a786fd07e24bfa95ba4341d3695ae8").
     Build()
 
@@ -92,8 +92,8 @@ az_client = AZClient(with_endpoint("localhost", 9094))
 
 req = (
     AZAtomicRequestBuilder(895741663247,"809257ed202e40cab7e958218eecad20",
-        "platform-creator", "MagicFarmacia::Platform::Subscription",
-        "MagicFarmacia::Platform::Action::create",
+        "platform-creator", "ZTMedFlow::Platform::Subscription",
+        "ZTMedFlow::Platform::Action::create",
     )
     .with_resource_id("e3a786fd07e24bfa95ba4341d3695ae8")
     .build()
@@ -153,8 +153,8 @@ const azClient = new AZClient(withEndpoint("localhost", 9094));
 
 const req = new AZAtomicRequestBuilder(
   583438038653, "46706cb00ea248d6841cfe2c9f02205b",
-  "platform-creator", "MagicFarmacia::Platform::Subscription",
-  "MagicFarmacia::Platform::Action::create"
+  "platform-creator", "ZTMedFlow::Platform::Subscription",
+  "ZTMedFlow::Platform::Action::create"
 ).withResourceID("e3a786fd07e24bfa95ba4341d3695ae8").build();
 
 const { decision } = await azClient.check(req);
@@ -215,8 +215,8 @@ var config = new AzConfig().WithEndpoint(new AzEndpoint("http", 9094, "localhost
 var client = new AzClient(config);
 
 var request = new AzAtomicRequestBuilder(285374414806, "f81aec177f8a44a48b7ceee45e05507f",
-        "platform-creator", "MagicFarmacia::Platform::Subscription",
-        "MagicFarmacia::Platform::Action::create")
+        "platform-creator", "ZTMedFlow::Platform::Subscription",
+        "ZTMedFlow::Platform::Action::create")
     .WithResourceId("e3a786fd07e24bfa95ba4341d3695ae8").Build();
 
 var response = client.CheckAuth(request);
@@ -281,8 +281,8 @@ AZConfig config = new AZConfig("localhost", 9094, true);
 AZClient client = new AZClient(config);
 
 AZRequest request = new AZAtomicRequestBuilder(611159836099L, "f81aec177f8a44a48b7ceee45e05507f",,
-        "amy.smith@acmecorp.com", "MagicFarmacia::Platform::Subscription",
-        "MagicFarmacia::Platform::Action::create"
+        "amy.smith@acmecorp.com", "ZTMedFlow::Platform::Subscription",
+        "ZTMedFlow::Platform::Action::create"
 ).withResourceId("e3a786fd07e24bfa95ba4341d3695ae8").build();
 
 AZResponse response = client.check(request);

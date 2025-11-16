@@ -34,7 +34,7 @@ Below is a sample schema:
 
 ```yaml
 {
-    "MagicFarmacia::Platform": {
+    "ZTMedFlow::Platform": {
       "entityTypes": {
         "Branch": {
           "shape": {

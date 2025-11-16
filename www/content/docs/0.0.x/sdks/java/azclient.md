@@ -90,7 +90,7 @@ try {
 
     Entities entities = new Entities("cedar", List.of(
             Map.of(
-                    "uid", Map.of("type", "MagicFarmacia::Platform::BranchInfo", "id", "subscription"),
+                    "uid", Map.of("type", "ZTMedFlow::Platform::BranchInfo", "id", "subscription"),
                     "attrs", Map.of("active", true),
                     "parents", List.of()
             )
@@ -101,8 +101,8 @@ try {
             zoneId,
             policyStoreId,
            "platform-creator",  // Subject id from JSON
-            "MagicFarmacia::Platform::Subscription",  // Resource type from JSON
-            "MagicFarmacia::Platform::Action::create"  // Action name from JSON
+            "ZTMedFlow::Platform::Subscription",  // Resource type from JSON
+            "ZTMedFlow::Platform::Action::create"  // Action name from JSON
     )
             .withRequestId(requestId)
             .withPrincipal(principal)
@@ -174,10 +174,10 @@ try {
     String SUBJECT_ID = "platform-creator";
     String SUBJECT_SOURCE = "keycloak";
     String REQUEST_ID = "abc1";
-    String RESOURCE_TYPE = "MagicFarmacia::Platform::Subscription";
+    String RESOURCE_TYPE = "ZTMedFlow::Platform::Subscription";
     String RESOURCE_ID = "e3a786fd07e24bfa95ba4341d3695ae8";
-    String ACTION_CREATE = "MagicFarmacia::Platform::Action::create";
-    String ACTION_VIEW = "MagicFarmacia::Platform::Action::view";
+    String ACTION_CREATE = "ZTMedFlow::Platform::Action::create";
+    String ACTION_VIEW = "ZTMedFlow::Platform::Action::view";
 
     // Create Principal
     Principal principal = new PrincipalBuilder(PRINCIPAL_ID)
@@ -235,7 +235,7 @@ try {
     // Create Entities
     Entities entities = new Entities("cedar", List.of(
             Map.of(
-                    "uid", Map.of("type", "MagicFarmacia::Platform::BranchInfo", "id", "subscription"),
+                    "uid", Map.of("type", "ZTMedFlow::Platform::BranchInfo", "id", "subscription"),
                     "attrs", Map.of("active", true),
                     "parents", List.of()
             )

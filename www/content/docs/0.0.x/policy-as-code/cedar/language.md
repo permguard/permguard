@@ -41,8 +41,8 @@ Here is an example of cedar policy.
 @id("platform-creator")
 permit(
   principal == Permguard::Identity::Attribute::"role/platform-creator",
-  action == MagicFarmacia::Platform::Action::"create",
-  resource is MagicFarmacia::Platform::Subscription
+  action == ZTMedFlow::Platform::Action::"create",
+  resource is ZTMedFlow::Platform::Subscription
 )
 when {
   context.isSubscriptionActive == true

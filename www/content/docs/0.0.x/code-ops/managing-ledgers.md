@@ -31,7 +31,7 @@ This ledger will serve as the **target** for provisioning and deploying updates.
 To check out a ledger, use the **`checkout`** command:
 
 ```bash
- permguard checkout origin/273165098782/magicfarmacia
+ permguard checkout origin/273165098782/ztmedflow
 ```
 
 In this command, the first parameter is the **remote**, followed by the **zone ID**, and finally the **ledger identifier**. The format used is `<remote>/<zone-id>/<ledger-name>`.

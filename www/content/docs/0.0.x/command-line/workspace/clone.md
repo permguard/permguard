@@ -33,7 +33,7 @@ This command clones a remote ledger to the local permguard workspace.
 
 Examples:
   # clone a remote ledger to the local permguard workspace
-  permguard clone localhost/273165098782/magicfarmacia
+  permguard clone localhost/273165098782/ztmedflow
 
   Find more information at: https://community.permguard.com/docs/0.0.x/command-line/how-to-use/
 
@@ -60,15 +60,15 @@ The output from your current version of Permguard may differ from the example pr
 The `permguard clone` command allows you to clone a remote ledger locally.
 
 ```bash
-permguard clone localhost/273165098782/magicfarmacia
+permguard clone localhost/273165098782/ztmedflow
 ```
 
 output:
 
 ```bash
-Initialized empty permguard ledger in 'magicfarmacia'.
+Initialized empty permguard ledger in 'ztmedflow'.
 Remote origin has been added.
-Ledger magicfarmacia has been added.
+Ledger ztmedflow has been added.
 ```
 
 <details>
@@ -77,7 +77,7 @@ Ledger magicfarmacia has been added.
   </summary>
 
 ```bash
-permguard clone localhost/273165098782/magicfarmacia --output json
+permguard clone localhost/273165098782/ztmedflow --output json
 ```
 
 output:

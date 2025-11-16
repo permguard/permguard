@@ -52,13 +52,13 @@ The output from your current version of Permguard may differ from the example pr
 The `permguard zones create` command allows to create a zone for the input name.
 
 ```bash
-permguard zones create --name magicfarmacia-dev
+permguard zones create --name ztmedflow-dev
 ```
 
 output:
 
 ```bash
- 273165098782: magicfarmacia-dev
+ 273165098782: ztmedflow-dev
 ```
 
 <details>
@@ -67,7 +67,7 @@ output:
   </summary>
 
 ```bash
-permguard zones create --name magicfarmacia-dev --output json
+permguard zones create --name ztmedflow-dev --output json
 ```
 
 output:
@@ -79,7 +79,7 @@ output:
       "zone_id": 273165098782,
       "created_at": "2024-08-25T14:07:59.634Z",
       "updated_at": "2024-08-25T14:07:59.634Z",
-      "name": "magicfarmacia-dev"
+      "name": "ztmedflow-dev"
     }
   ]
 }
@@ -98,9 +98,9 @@ permguard zones list
 output:
 
 ```bash
-273165098782: magicfarmacia-dev
-534434453770: magicfarmacia-uat
-627303999986: magicfarmacia-prod
+273165098782: ztmedflow-dev
+534434453770: ztmedflow-uat
+627303999986: ztmedflow-prod
 ```
 
 <details>
@@ -121,19 +121,19 @@ output:
       "zone_id": 273165098782,
       "created_at": "2024-08-25T14:07:07.04Z",
       "updated_at": "2024-08-25T14:07:07.04Z",
-      "name": "magicfarmacia-dev"
+      "name": "ztmedflow-dev"
     },
     {
       "zone_id": 534434453770,
       "created_at": "2024-08-25T14:07:59.634Z",
       "updated_at": "2024-08-25T14:07:59.634Z",
-      "name": "magicfarmacia-uat"
+      "name": "ztmedflow-uat"
     },
     {
       "zone_id": 627303999986,
       "created_at": "2024-08-25T14:08:58.619Z",
       "updated_at": "2024-08-25T14:08:58.619Z",
-      "name": "magicfarmacia-prod"
+      "name": "ztmedflow-prod"
     }
   ]
 }
