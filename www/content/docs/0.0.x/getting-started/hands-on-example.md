@@ -19,7 +19,57 @@ seo:
   noindex: false # false (default) or true
 ---
 
-This example shows how **PharmaAuthZFlow**, a pharmacy management platform with multiple branches across different cities, might use **Permguard** to manage **authorization and access control** in a **multi-tenant, multi-domain** environment.
+## PharmaAuthZFlow example
+
+The **PharmaAuthZFlow** example demonstrates how `Permguard` can be used to enforce authorization across multiple domains of a real application.
+
+It shows how `users`, `workloads`, `roles`, and `resources` interact within a Zero Trust authorization model.
+
+The example is intentionally simplified to focus on the core concepts.
+We highlight **three main domains**:
+
+- **Platform Administration Domain**
+  Manages the pharmacy franchise: branches, teams, roles, and administrative operations.
+
+- **Pharmacy Management Domain**
+  Focuses on operational workflows inside the pharmacy: organization, inventory, logistics, and infrastructure.
+
+- **Patient Services Domain**
+  Covers clinical and dispensing workflows: patients, prescriptions, medication orders, fulfillment, appointments, and notifications.
+
+Each domain is treated as a separate bounded context — effectively a dedicated segment representing its own trusted boundary.
+In real enterprise scenarios, domains would typically be further micro-segmented, but for this example we keep the model simple.
+
+Each of these domains has its own `zone` and `ledger` for managing policies.
+
+## Creating the Zones and Ledgers
+
+The first step is to **segment the trust boundaries** using `Permguard zones`, and then create a dedicated `ledger` for each zone.
+
+<div style="text-align: center">
+  <img alt="Permguard" src="/images/diagrams/pharmaazflow-segments.png"/>
+</div>
+
+{{< callout context="note" icon="info-circle" >}}
+The recommended Permguard convention is to name the main ledger of a zone `root`, representing the primary policy store for that zone.
+{{< /callout >}}
+
+Let's create the zones and, for each of them, the `root` ledger
+
+```sh
+❯ permguard zones create --name platform-admin-zone
+357522591679: platform-admin-zone
+❯ permguard authz ledgers create --name root --zone-id 357522591679
+68b7b20034694bd38dd8c1a0254570e0: root
+❯ permguard zones create --name pharmacy-management-zone
+731502230848: pharmacy-management-zone
+❯ permguard authz ledgers create --name root --zone-id 731502230848
+cb275322b8ae4b6f8f540d7601dee8ed: root
+❯ permguard zones create --name patient-services-zone
+312332567208: patient-services-zone
+❯ permguard authz ledgers create --name root --zone-id 312332567208
+e3de2d340e47406d90fd89d2b4a36974: root
+```
 
 Each domain (patients, prescriptions, inventory, etc.) maintains its own **ledger**, ensuring isolation per branch, full traceability, and secure access decisions.
 
@@ -57,13 +107,13 @@ Plese refer to the [Command Line](/docs/0.0.x/command-line/how-to-use/) section 
 {{< /callout >}}
 
 ```text
-permguard zones create --name demozone
+permguard zones create --name platform-admin-zone
 ```
 
 Here’s what you’ll see.
 
 ```text
-895741663247: demozone
+895741663247: platform-admin-zone
 ```
 
 It is important to note that the `zoneid` is required for the ledger creation and it is returned by the previous command.
