@@ -1,6 +1,6 @@
 ---
-title: "Overview"
-slug: "Overview"
+title: "Intro to Permguard"
+slug: "Intro to Permguard"
 description: ""
 summary: ""
 date: 2023-08-20T17:14:43+01:00

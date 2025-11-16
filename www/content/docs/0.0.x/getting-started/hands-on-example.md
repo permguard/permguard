@@ -34,7 +34,7 @@ Each domain (patients, prescriptions, inventory, etc.) maintains its own **ledge
 | **Notifications** | `notification-ledger` | Sent messages and delivery results |
 
 {{< callout context="note" icon="info-circle" >}}
-Before to start make sure che [CLI is installed](/docs/0.0.x/getting-started/get-the-cli/)  and the [AuthZServer is running](/docs/0.0.x/getting-started/run-the-authz-server/).
+Before to start make sure che [CLI is installed](/docs/0.0.x/getting-started/get-the-cli/)  and the [AuthZServer is running](/docs/0.0.x/getting-started/run-the-authzserver/).
 {{< /callout >}}
 
 ## Check out the Playground
