@@ -26,7 +26,6 @@ This page provides a collection of `technical videos` and `articles` that cover 
 1) ZTAuth*
 
    - [Episode 88: Rethink AuthZ: Immutable, Versionable Auth* Models & Trusted Delegation](https://www.youtube.com/watch?v=k6DZQ_GzWmg)
-   - [ZTAuth*: Zero Trust AuthZ and Trust Models](https://www.youtube.com/watch?v=rRE-LBrk6Dw)
    - [A Trust Model for Ambient Mesh, microsegmentation, and async flows](https://www.ngallo.it/blog/2025-11-08/trust-model-for-ambient-mesh/)
 
 ## Articles
