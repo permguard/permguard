@@ -1,6 +1,6 @@
 ---
-title: "Authorization Api"
-slug: "Authorization Api"
+title: "AuthZApi"
+slug: "AuthZApi"
 description: ""
 summary: ""
 date: 2025-02-14T00:34:10+01:00
@@ -19,9 +19,9 @@ seo:
   noindex: false # false (default) or true
 ---
 
-This section specifies the **Cedar** `Authorization API Model` override.
+This section specifies the **Cedar** `AuthZApi Model` override.
 
-> If no specific override is provided, the generic `Authorization API Model` specification applies.
+> If no specific override is provided, the generic `AuthZApi Model` specification applies.
 
 {{< callout context="caution" icon="alert-triangle" >}}
 Properties must conform to the JSON structure defined for the <a href="https://docs.cedarpolicy.com/auth/entities-syntax.html#attrs" target="_blank" rel="noopener noreferrer">entities attributes object</a>,

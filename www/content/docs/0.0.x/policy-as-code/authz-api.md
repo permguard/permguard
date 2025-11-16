@@ -1,6 +1,6 @@
 ---
-title: "Authorization Api"
-slug: "Authorization Api"
+title: "AuthZApi"
+slug: "AuthZApi"
 description: ""
 summary: ""
 date: 2025-02-14T00:34:10+01:00
@@ -19,15 +19,15 @@ seo:
   noindex: false # false (default) or true
 ---
 
-The **AuthZ Api Model** defines the `payload` of the `Authorization Api` and how it relates to the `Policy-as-Code`.
+The **AuthZ Api Model** defines the `payload` of the `AuthZApi` and how it relates to the `Policy-as-Code`.
 
-An `Authorization Api payload` is composed of the `authorization model` and other inputs, such as `subject`, `resource`, and `action`.
+An `AuthZApi payload` is composed of the `authorization model` and other inputs, such as `subject`, `resource`, and `action`.
 
 ## Zone
 
 The `zone` is required to build the authorization model.
 
-This is provided as an input to the Authorization Api.
+This is provided as an input to the AuthZApi.
 
 ```json
 {
@@ -46,7 +46,7 @@ This is provided as an input to the Authorization Api.
 
 The `policy store` is required to load policies, schemas, and other related data necessary to build the authorization model.
 
-This is provided as an input to the Authorization Api.
+This is provided as an input to the AuthZApi.
 
 ```json
 {
