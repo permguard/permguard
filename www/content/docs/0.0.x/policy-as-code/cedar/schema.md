@@ -65,8 +65,9 @@ Below is a sample schema:
         "create": {
           "appliesTo": {
             "principalTypes": [
-              "Permguard::IAM::User",
-              "Permguard::IAM::User"
+              "Permguard::Identity::User",
+              "Permguard::Identity::Workload",
+              "Permguard::Identity::Attribute"
             ],
             "resourceTypes": [
               "Account",
@@ -77,8 +78,9 @@ Below is a sample schema:
         "update": {
           "appliesTo": {
             "principalTypes": [
-              "Permguard::IAM::User",
-              "Permguard::IAM::User"
+              "Permguard::Identity::User",
+              "Permguard::Identity::Workload",
+              "Permguard::Identity::Attribute"
             ],
             "resourceTypes": [
               "Account",
@@ -89,8 +91,9 @@ Below is a sample schema:
         "delete": {
           "appliesTo": {
             "principalTypes": [
-              "Permguard::IAM::User",
-              "Permguard::IAM::User"
+              "Permguard::Identity::User",
+              "Permguard::Identity::Workload",
+              "Permguard::Identity::Attribute"
             ],
             "resourceTypes": [
               "Account",
@@ -101,8 +104,9 @@ Below is a sample schema:
         "view": {
           "appliesTo": {
             "principalTypes": [
-              "Permguard::IAM::User",
-              "Permguard::IAM::User"
+              "Permguard::Identity::User",
+              "Permguard::Identity::Workload",
+              "Permguard::Identity::Attribute"
             ],
             "resourceTypes": [
               "Account",

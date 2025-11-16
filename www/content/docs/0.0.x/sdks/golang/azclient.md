@@ -83,7 +83,7 @@ req := azreq.NewAZAtomicRequestBuilder(273165098782, "fd1ac44e4afa4fc4beec622494
   // Entities
   WithEntitiesItems(azreq.CedarEntityKind, entities).
   // Subject
-  WithSubjectKind(azreq.UserType).
+  WithSubjectType(azreq.UserType).
   WithSubjectSource("keycloack").
   WithSubjectProperty("isSuperUser", true).
   // Resource
@@ -132,7 +132,7 @@ azClient := permguard.NewAZClient(
 
 // Create a new subject
 subject := azreq.NewSubjectBuilder("amy.smith@acmecorp.com").
-  WithKind(azreq.UserType).
+  WithType(azreq.UserType).
   WithSource("keycloack").
   WithProperty("isSuperUser", true).
   Build()

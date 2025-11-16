@@ -275,7 +275,7 @@ Displayed output.
 ```text
 Your workspace object 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1:
 
-{"annotations":{"id":"platform-creator"},"effect":"permit","principal":{"op":"==","entity":{"type":"Permguard::IAM::User","id":"platform-creator"}},"action":{"op":"==","entity":{"type":"MagicFarmacia::Platform::Action","id":"create"}},"resource":{"op":"is","entity_type":"MagicFarmacia::Platform::Subscription"},"conditions":[{"kind":"when","body":{"\u0026\u0026":{"left":{"\u0026\u0026":{"left":{"==":{"left":{".":{"left":{"Var":"context"},"attr":"isSubscriptionActive"}},"right":{"Value":true}}},"right":{"==":{"left":{".":{"left":{"Var":"action"},"attr":"isEnabled"}},"right":{"Value":true}}}}},"right":{"==":{"left":{".":{"left":{"Var":"resource"},"attr":"isEnabled"}},"right":{"Value":true}}}}}},{"kind":"unless","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"isSuperUser"}},"right":{"Value":false}}}}]}
+{"annotations":{"id":"platform-creator"},"effect":"permit","principal":{"op":"==","entity":{"type":"Permguard::Identity::User","id":"platform-creator"}},"action":{"op":"==","entity":{"type":"MagicFarmacia::Platform::Action","id":"create"}},"resource":{"op":"is","entity_type":"MagicFarmacia::Platform::Subscription"},"conditions":[{"kind":"when","body":{"\u0026\u0026":{"left":{"\u0026\u0026":{"left":{"==":{"left":{".":{"left":{"Var":"context"},"attr":"isSubscriptionActive"}},"right":{"Value":true}}},"right":{"==":{"left":{".":{"left":{"Var":"action"},"attr":"isEnabled"}},"right":{"Value":true}}}}},"right":{"==":{"left":{".":{"left":{"Var":"resource"},"attr":"isEnabled"}},"right":{"Value":true}}}}}},{"kind":"unless","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"isSuperUser"}},"right":{"Value":false}}}}]}
 
 type blob, size 881, oname platform-creator
 ```
@@ -293,7 +293,7 @@ Your workspace object 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c5
 
 @id("platform-creator")
 permit (
-    principal == Permguard::IAM::User::"platform-creator",
+    principal == Permguard::Identity::Attribute::"role/platform-creator",
     action == MagicFarmacia::Platform::Action::"create",
     resource is MagicFarmacia::Platform::Subscription
 )

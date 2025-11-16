@@ -40,7 +40,7 @@ Here is an example of cedar policy.
 ```cedar  {title="pharmacy.cedar"}
 @id("platform-creator")
 permit(
-  principal == Permguard::IAM::User::"platform-creator",
+  principal == Permguard::Identity::Attribute::"role/platform-creator",
   action == MagicFarmacia::Platform::Action::"create",
   resource is MagicFarmacia::Platform::Subscription
 )
