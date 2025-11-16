@@ -1,6 +1,6 @@
 ---
-title: "AuthZ Manifest"
-slug: "AuthZ Manifest"
+title: "AuthZManifest"
+slug: "AuthZManifest"
 description: ""
 summary: ""
 date: 2025-02-14T00:34:10+01:00

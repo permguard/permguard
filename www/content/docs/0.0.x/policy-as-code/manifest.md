@@ -1,6 +1,6 @@
 ---
-title: "AuthZ Manifest"
-slug: "AuthZ Manifest"
+title: "AuthZManifest"
+slug: "AuthZManifest"
 description: ""
 summary: ""
 date: 2025-02-14T00:34:10+01:00
@@ -21,7 +21,7 @@ seo:
 
 The **Manifest** is used to define the `AuthZ` trust models.
 
-Below is an example of an `AuthZ Manifest`:
+Below is an example of an `AuthZManifest`:
 
 ```json
 {

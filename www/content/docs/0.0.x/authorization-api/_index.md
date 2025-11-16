@@ -1,6 +1,6 @@
 ---
-title: "Authorization Api"
-slug: "Authorization Api"
+title: "AuthZApi"
+slug: "AuthZApi"
 description: ""
 summary: ""
 date: 2023-08-21T22:49:19+01:00
