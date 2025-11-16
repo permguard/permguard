@@ -33,6 +33,8 @@ seo:
 
 ## Three Core Principles of Zero Trust
 
+There are three fundamental principles that underpin the Zero Trust security model:
+
 1. **Never Trust, Always Verify**
    Every access request, no matter its origin or previous validation, must be verified before access is granted. This ensures that trust is never assumed but continuously validated.
 
