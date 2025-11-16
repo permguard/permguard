@@ -60,7 +60,7 @@ This is provided as an input to the Authorization Api.
 }
 ```
 
-The `Permguard` decision engine loads the policy storage based on the input Type and ID.
+The `Permguard` decision engine loads the policy storage based on the input Kind and ID.
 
 ---
 **authorization_model/policy_store/type**: *the policy store type defines the storage mechanism used for policies (default `LEDGER`, options `LEDGER`).*

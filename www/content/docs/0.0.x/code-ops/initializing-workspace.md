@@ -23,17 +23,16 @@ The workspace is where you keep your schemas, policies, and trust configuration,
 
 ## Creating a Permguard Workspace
 
-There are three ways to create a **Permguard workspace** and associate it with a **Permguard ledger**:
+There are two ways to create a **Permguard workspace** and associate it with a **Permguard ledger**:
 
 1. **Initialize a new ledger** in a Permguard workspace.
 2. **Clone an existing ledger** into a Permguard workspace.
-3. **Fork an existing ledger** into a working directory.
 
 ## Workspace Structure
 
 A **Permguard workspace** contains the following files:
 
-- **Policy files** written in the `Cedar` language.
+- **Policy files** written in the `policy` language.
 - A hidden **`.permguard`** directory, used by Permguard to store metadata and intermediate files.
   - This directory is **automatically managed** by Permguard and **should not be modified manually**.
   - It should be added to `.gitignore` to prevent it from being committed to version control.

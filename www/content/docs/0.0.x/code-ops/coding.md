@@ -46,7 +46,7 @@ The `validate` command checks the configurations in the working directory for sy
 
 ## Pull
 
-The `pull` command fetches the state from the remote Permguard server and stores it locally and finally build a remote state.
+The `pull` command fetches the state from the `control-plane` and stores it locally and finally build a remote state.
 
 ```bash
  permguard pull
