@@ -61,7 +61,7 @@ By dividing the environment into **small, isolated zones**—each with its own *
 
 **ZTAuth\*** and **Zero Trust Network Access (ZTNA)** are not the same:
 
-- **ZTNA** secures network boundaries, controlling access at the network level.
+- **ZTNA** secures network boundaries, controlling access at the network level
 - **ZTAuth\*** protects applications, enforcing detailed access control and ensuring consistent security across all actions and resources.
 
 {{< callout context="tip" icon="rocket" >}}
@@ -70,13 +70,13 @@ By dividing the environment into **small, isolated zones**—each with its own *
 
 The **Permguard** architecture includes administrative services such as:
 
-- **Zone Administration Point (ZAP)**: Manages zones and related configurations.
-- **Policy Administration Point (PAP)**: Defines and manages policies.
-- **Policy Information Point (PIP)**: Provides data needed for authorization decisions.
-- **Policy Decision Point (PDP)**: Evaluates policies and makes decisions.
+- **Zone Administration Point (ZAP)**: Manages zones and related configurations
+- **Policy Administration Point (PAP)**: Defines and manages policies
+- **Policy Information Point (PIP)**: Provides data needed for authorization decisions
+- **Policy Decision Point (PDP)**: Evaluates policies and makes decisions
 - **Policy Enforcement Point (PEP)**: Enforces the decisions made by the PDP.
 
-**ZTAuth\*** introduces a key difference: it defines **Auth*** models that can be transferred to `Proximity data planes`.
+**ZTAuth\*** introduces a key difference: it defines **Auth*** models that can be transferred to `data-planes`.
 These models are incrementally synchronized to zone nodes as **git-like commit-based snapshots**.
 
 <div style="text-align: center">
@@ -85,8 +85,8 @@ These models are incrementally synchronized to zone nodes as **git-like commit-b
 
 To function properly, these models must have the following characteristics:
 
-- **Transferable and Verifiable:** Works seamlessly across systems and environments, with verifiable origins certified by the `AuthZServer`.
-- **Versionable and Immutable:** Ensures integrity, auditability, and backward compatibility for secure and reliable operations.
+- **Transferable and Verifiable:** Works seamlessly across systems and environments, with verifiable origins certified by the `control-plane`.
+- **Versionable and Immutable:** Guarantees integrity, auditability, and compatibility with the corresponding model version for secure and reliable operations.
 - **Resilient to Disconnection:** Supports eventual consistency, allowing continued functionality in partially connected or offline environments.
 
 ---
@@ -102,10 +102,10 @@ The **ZTAuth\*** architectural model defines how trust is established, transport
 This model is composed of five layers that work together to produce verifiable, Zero Trust–aligned authorization decisions:
 
 - **Trusted Input** — the initial cryptographic material (credentials, tokens, attestations) that identifies who or what is requesting an action.
-- **Trusted Channel** — the secure transport that ensures confidentiality, integrity, and authenticated communication between components.
+- **Trusted Channel** — the communication layer between components. When the channel provides security guarantees such as confidentiality, integrity, and authentication, it is considered `trusted`; otherwise, it operates as an `untrusted` channel.
 - **Autonomous Component** — the workload executing the action, enforcing decisions close to where they matter.
-- **Policy Decision Point (PDP)** — the logic that evaluates context and policies to compute a permit/deny decision.
-- **Trust Governance** — the control plane that defines, distributes, and audits policies and trust relationships.
+- **Policy Decision Point (PDP)** — the data-plane component that evaluates context and policies to compute a permit or deny decision.
+- **Trust Governance** — the control-plane that defines, distributes, and audits policies and trust relationships.
 
 <br/>
 <div style="text-align: center">
