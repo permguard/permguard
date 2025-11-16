@@ -18,47 +18,47 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-
 ## PharmaAuthZFlow Example
 
 The **PharmaAuthZFlow** example demonstrates how `Permguard` enforces authorization across the distinct trust boundaries of a pharmacy ecosystem.
 
-It illustrates how `users`, `workloads`, `roles`, and `resources` interact within a Zero Trust authorization model.
+It shows how `users`, `workloads`, and `roles` interact within a Zero Trust authorization model.
 
-The example is intentionally simplified to focus on core authorization concepts.
-We highlight **three main domains**, each modeled as a separate Permguard `zone`:
+The example is intentionally simplified to highlight core authorization concepts across **three main domains**:
 
-### **Platform-Administration Domain**
-Manages the pharmacy franchise: branches, teams, roles, and administrative operations.
+- **Platform-Administration Domain**
+  Manages the pharmacy franchise: branches, teams, roles, and administrative operations.
 
-### **Operations-Management Domain**
-Handles operational workflows: medication orders, fulfillment, stock levels, inventory management, and logistics.
+- **Operations-Management Domain**
+  Handles operational workflows: medication orders, fulfillment, stock levels, inventory and logistics.
 
-### **Patient-Services Domain**
-Covers clinical workflows: patients, prescriptions, medication requests, dispensing, appointments, and notifications.
+- **Patient-Services Domain**
+  Covers clinical workflows: patients, prescriptions, medication requests, dispensing, appointments, and notifications.
 
-Each domain represents a dedicated bounded context (and trust boundary).
-In real environments, these could be further micro-segmented, but for this example, the model is kept simple.
+Each domain represents its own bounded context (trusted boundary).
+In real-world environments, these domains would likely be further segmented, but here we keep the model intentionally simple.
 
-Each domain has its own Permguard `zone` and `root` ledger to manage its policies.
+Therefore, each domain requires its own Permguard `zone` and a `root` ledger for managing policies.
 
 {{< callout context="note" icon="info-circle" >}}
-Before going ahead, make sure the [CLI is installed](/docs/0.0.x/getting-started/get-the-cli/) and the [AuthZServer is running](/docs/0.0.x/getting-started/run-the-authzserver/).
+Before proceeding, ensure the [CLI is installed](/docs/0.0.x/getting-started/get-the-cli/) and the [AuthZServer is running](/docs/0.0.x/getting-started/run-the-authzserver/).
 {{< /callout >}}
+
+---
 
 ## Creating the Zones and Ledgers
 
-The first step is to **segment the trust boundaries** using `Permguard zones`, and then create a dedicated `ledger` for each zone.
+The first step is to **segment the trust boundaries** using `Permguard zones`, and create a dedicated `ledger` for each one.
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/pharmaazflow-segments.png"/>
 </div>
 
 {{< callout context="note" icon="info-circle" >}}
-The recommended Permguard convention is to name the main ledger of a zone `root`, representing the primary policy store for that zone.
+Permguard conventionally names the main ledger of a zone `root`, representing the primary policy store of that zone.
 {{< /callout >}}
 
-Let's create the zones and, for each of them, the `root` ledger
+Let's create the zones and their `root` ledgers:
 
 ```sh
 ❯ permguard zones create --name platform-admin-zone
