@@ -21,13 +21,17 @@ seo:
 
 ## What is Permguard?
 
-**Permguard** is a distributed authorization platform built around Zero Trust principles.
+**Permguard** is a distributed authorization platform designed to implement a modern **authorization protocol** based on `Zero Trust` principles.
 
-At its core, Permguard defines **who** or **what** can access **which resources** using a unified policy model:
+Its core purpose is to define **who** is allowed to perform **which actions** on **which resources**, producing clear and verifiable authorization decisions.
 
-- **Who** — identities (users and workloads)
-- **Can Access** — permissions defined through policies
-- **Which Resources** — the targets of those permissions
+Permguard models authorization through a unified policy framework:
+
+- **Who** — identities such as users or workloads
+- **Can Access** — permissions granted through policies
+- **Which Resources** — the protected resources or operations
+
+This model provides a consistent and extensible foundation for enforcing fine-grained access control across distributed systems.
 
 <div style="text-align: center">
   <img alt="Permguard" src="/images/diagrams/d14.webp"/>
@@ -57,14 +61,14 @@ The same policy model is applied across all enforcement layers, ensuring authori
 - **decentralized in enforcement** — decisions occur close to where actions happen
 - **auditable and explainable** — full end-to-end visibility across the authorization path
 
-## Centralized Interface, Decentralized Architecture
+## Centralized Interface, Evolving Toward Decentralized Consensus
 
 Policies are accessed through a unified control-plane interface, but this does **not** imply a centralized trust model.
 
-- The current implementation uses a single access endpoint for simplicity
-- The architecture already supports **decentralized consensus** behind that interface
+- The current implementation runs through a single, centralized access point for operational simplicity.
+- However, the underlying architecture and algorithms are already designed to be extended with **decentralized consensus** behind that interface.
 
-Enforcement remains distributed, while the control-plane provides a coherent place to define, review, update, and audit policies.
+Enforcement remains fully distributed, while the control-plane provides a consistent place to define, review, update, and audit policies — even as the system evolves toward decentralized trust models.
 
 {{< callout context="tip" icon="rocket" >}}
 **Permguard** offers strong Zero Trust security with a simple integration path — define authorization intent once and enforce it everywhere.
