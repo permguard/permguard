@@ -44,7 +44,7 @@ func createCommandForZoneCreate(deps cli.CliDependenciesProvider, v *viper.Viper
 
 Examples:
   # create a zone and output the result in json format
-  permguard zones create --name ztmedflow-dev --output json`),
+  permguard zones create --name pharmaauthzflow-dev --output json`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForCreateZone(deps, cmd, v)
 		},

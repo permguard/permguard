@@ -23,7 +23,7 @@ seo:
 Each `zone` segments a distinct `trust model` and maintains its own ledgers, manifests, schemas, policies, and permissions.
 
 {{< callout context="note" icon="info-circle" >}}
-In the [ZTMedFlow sample](/docs/0.0.x/getting-started/hands-on-example/), the `demo-zone` is created as one of the example segments.
+In the [PharmaAuthZFlow sample](/docs/0.0.x/getting-started/hands-on-example/), the `demo-zone` is created as one of the example segments.
 {{< /callout >}}
 
 Each zone is uniquely identified by a `name`.
@@ -31,6 +31,6 @@ Each zone is uniquely identified by a `name`.
 ```json
 {
   "zone_id": 273165098782,
-  "name": "ztmedflow-dev"
+  "name": "pharmaauthzflow-dev"
 }
 ```

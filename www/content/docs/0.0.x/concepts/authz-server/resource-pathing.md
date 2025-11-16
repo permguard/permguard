@@ -49,7 +49,7 @@ To reference a specific ledger in an **AuthZServer**, use the following URI form
 ```text
  protocol    host       zone                 ledger
 ┌───┴────┐┌───┴───┐ ┌────┴─────┐         ┌─────┴─────┐
-permguard@localhost/273165098782/ledgers/ztmedflow
+permguard@localhost/273165098782/ledgers/pharmaauthzflow
 ```
 
 A policy can be referenced using the following URI format:
@@ -57,5 +57,5 @@ A policy can be referenced using the following URI format:
 ```text
  protocol    host       zone                 ledger                                 version                           partition    policy
 ┌───┴────┐┌───┴───┐ ┌────┴─────┐         ┌─────┴─────┐ ┌───────────────────────────────┴──────────────────────────────┐ ┌─┴─┐┌───────┴────────┐
-permguard@localhost/273165098782/ledgers/ztmedflow/722164f552f2c8e582d4ef79270c7ec94b3633e8172af6ea53ffe1fdf64d66de/root/assign-role-branch
+permguard@localhost/273165098782/ledgers/pharmaauthzflow/722164f552f2c8e582d4ef79270c7ec94b3633e8172af6ea53ffe1fdf64d66de/root/assign-role-branch
 ```
