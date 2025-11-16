@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "install-rust-sdk-6a2336ea96984e2b85619e00dc2efb2a"
-weight: 9101
+weight: 9201
 toc: true
 seo:
   title: "" # custom title (optional)

@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "install-python-sdk-0c56493eae634d88b5f81da2b7fad368"
-weight: 9201
+weight: 9301
 toc: true
 seo:
   title: "" # custom title (optional)

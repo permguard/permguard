@@ -10,7 +10,7 @@ menu:
   docs:
     parent: ""
     identifier: "rust-524f9842a432298916a20b768566da"
-weight: 9100
+weight: 9200
 toc: true
 seo:
   title: "" # custom title (optional)
