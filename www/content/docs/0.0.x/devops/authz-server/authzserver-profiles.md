@@ -1,6 +1,6 @@
 ---
-title: "Configuration Options"
-slug: "Configuration Options"
+title: "AuthZServer Profiles"
+slug: "AuthZServer Profiles"
 description: ""
 summary: ""
 date: 2023-08-15T21:01:37+01:00
