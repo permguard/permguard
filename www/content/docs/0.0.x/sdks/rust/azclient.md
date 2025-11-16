@@ -104,7 +104,7 @@ An `atomic authorization` request can be performed using the `AuthZClient` by cr
         .with_request_id("31243")
         .with_principal(principal)
         .with_subject_property("isSuperUser", Value::from(true))
-        .with_subject_kind("role-actor")
+        .with_subject_kind("workload")
         .with_subject_source("keycloak")
         .with_resource_id("e3a786fd07e24bfa95ba4341d3695ae8")
         .with_resource_property("isEnabled", json!(true))
@@ -151,7 +151,7 @@ This type of request is designed for scenarios requiring greater control over th
     // Create a new subject
     let subject = SubjectBuilder::new("platform-creator")
         .with_source("keycloak")
-        .with_kind("role-actor")
+        .with_kind("workload")
         .with_property("isSuperUser", serde_json::json!(true))
         .build();
 

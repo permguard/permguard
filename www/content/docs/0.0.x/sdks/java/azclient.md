@@ -100,7 +100,7 @@ try {
     AZRequest request = new AZAtomicRequestBuilder(
             zoneId,
             policyStoreId,
-           "platform-creator",  // Subject id from JSON  
+           "platform-creator",  // Subject id from JSON
             "MagicFarmacia::Platform::Subscription",  // Resource type from JSON
             "MagicFarmacia::Platform::Action::create"  // Action name from JSON
     )
@@ -170,7 +170,7 @@ try {
     String PRINCIPAL_TYPE = "user";
     String PRINCIPAL_ID = "amy.smith@acmecorp.com";
     String PRINCIPAL_SOURCE = "keycloak";
-    String SUBJECT_TYPE = "role-actor";
+    String SUBJECT_TYPE = "workload";
     String SUBJECT_ID = "platform-creator";
     String SUBJECT_SOURCE = "keycloak";
     String REQUEST_ID = "abc1";

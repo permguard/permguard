@@ -181,7 +181,7 @@ Below a sample json for the authorization check.
   },
   "request_id": "abc1",
   "subject": {
-    "type": "role-actor",
+    "type": "workload",
     "id": "platform-creator",
     "source": "keycloak",
     "properties": {

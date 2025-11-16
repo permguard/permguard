@@ -21,10 +21,9 @@ import (
 )
 
 const (
-	Permguard          = "PERMGUARD"
-	PermguardUser      = "USER"
-	PermguardRoleActor = "ROLE-ACTOR"
-	PermguardTwinActor = "TWIN-ACTOR"
+	Permguard         = "PERMGUARD"
+	PermguardUser     = "USER"
+	PermguardWorkload = "WORKLOAD"
 )
 
 // IsValidKey checks if the key is valid.
@@ -47,7 +46,7 @@ func IsValidProperties(properties map[string]any) bool {
 func IsValidIdentiyType(identityType string) bool {
 	identityType = strings.ToUpper(identityType)
 	switch identityType {
-	case PermguardUser, PermguardRoleActor, PermguardTwinActor:
+	case PermguardUser, PermguardWorkload:
 		return true
 	}
 	return false

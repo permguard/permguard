@@ -137,7 +137,7 @@ try
         // Entities
         .WithEntitiesMap("cedar", entities)
         // Subject
-        .WithSubjectKind("role-actor")
+        .WithSubjectKind("workload")
         .WithSubjectSource("keycloak")
         .WithSubjectProperty("isSuperUser", true)
         // Resource
@@ -221,7 +221,7 @@ try
     // Create a new subject
     var subject = new SubjectBuilder("platform-creator")
         .WithSource("keycloak")
-        .WithKind("role-actor")
+        .WithKind("workload")
         .WithProperty("isSuperUser", true)
         .Build();
 
