@@ -18,11 +18,11 @@ seo:
   canonical: "" # custom canonical URL (optional)
   noindex: false # false (default) or true
 ---
-The **Permguard CLI** provides a robust toolset for interacting with Permguard servers.
+The **Permguard CLI** provides a robust toolset for interacting with AuthZServers.
 
 The CLI is designed for two primary scenarios.
 
-- In the context of **Permguard Server Administration**: it enables the management of `zones` and `ledgers` directly on the remote server. This allows administrators to maintain and configure the system efficiently.
+- In the context of **AuthZServer Administration**: it enables the management of `zones` and `ledgers` directly on the remote server. This allows administrators to maintain and configure the system efficiently.
 - For developers, the CLI supports a complete **Policy-as-Code Workspace**. It facilitates the local development of configuration artifacts such as `schemas`, `namespaces`, `resources`, `policies`, and `permissions`, integrating the essential toolchain required for the development lifecycle. These locally created artifacts can then be seamlessly applied to the remote server, ensuring a consistent and scalable approach to policy deployment across environments.
 
 To view a list of commands available in the current Permguard version, users can run the **permguard** command without any additional arguments.
