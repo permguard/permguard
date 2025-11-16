@@ -121,10 +121,11 @@ This use case covers the clinical workflow from prescription creation to medicat
 
 #### Description
 
-- A **Patient** submits a prescription request.
-- A **Pharmacist** validates the request.
-- The **Pharmacist** triggers an order through the *Orders Service*.
-- The **Inventory Operator** checks stock via the *Inventory Service* and orders medication if needed.
+- A **Patient** submits a prescription request through the *Prescriptions Service*.
+- A **Pharmacist** reviews and validates the prescription.
+- Once validated, the *Prescriptions Service* triggers a medication order by calling the *Orders Service*.
+- The *Orders Service* checks availability by querying the *Inventory Service* and locks the item.
+- The **Inventory Operator**, through the *Inventory Service*, verifies stock levels and, if necessary, places a replenishment order.
 
 #### Roles
 
