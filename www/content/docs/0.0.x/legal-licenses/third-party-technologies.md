@@ -20,27 +20,6 @@ seo:
 ---
 This page provides an overview of the technologies and languages used or referenced in our project. For each, we outline their source, licensing terms, and relevant disclaimers to ensure full transparency.
 
----
-
-{{< callout context="caution" icon="alert-triangle" >}}
-This page does **not** replace or supersede the official licenses or legal notices of any third-party technology mentioned here.  
-Users should always review the original licenses, documentation, and legal terms of each referenced technology to ensure accurate and complete understanding.
-{{< /callout >}}
-
-{{< callout context="caution" icon="alert-triangle" >}}
-Unless explicitly stated otherwise (e.g. **"Permguard Enterprise"**), any mention of **Permguard** across this site (community.permguard.com), its documentation, or the official GitHub project refers exclusively to the **Permguard Community Edition** — the open-source version of the project.
-
-This distinction is important when interpreting features, capabilities, licensing terms, and support models. Any references to enterprise-only functionality will be clearly identified as such.
-{{< /callout >}}
-
-{{< callout context="caution" icon="alert-triangle" >}}
-When reviewing licenses, please ensure you are referencing the appropriate version of the documentation, related websites, or other materials for Permguard. Over time, these resources may be updated to reflect changes or improvements, particularly for third-party technologies outside our control. Verifying the correct version ensures that the information aligns with the specific software or materials you are using.
-
-If any part of this page contains content that references trademarks, technologies, or intellectual property of third parties, please note that **Permguard Project**, **Nitro Agility**, and all contributors are not affiliated with, endorsed, or sponsored by such entities, unless explicitly stated otherwise. For any doubts or corrections, please contact us at [opensource@nitroagility.com](mailto:opensource@nitroagility.com), and we will promptly address potential inaccuracies.
-{{< /callout >}}
-
----
-
 ## General Disclaimer
 
 Unless explicitly stated otherwise, **Permguard Project** is not affiliated with, endorsed, or sponsored by any company, organization, or product mentioned on this site. The same disclaimer applies to its creator, **Nitro Agility**, and all contributors to the project. Any references to third-party technologies, languages, or trademarks are made solely for informational purposes and in compliance with applicable licenses.
@@ -91,3 +70,24 @@ While we strive to include accurate disclaimers for every technology and product
 - **Permguard Project**, its creator **Nitro Agility**, and all contributors disclaim any liability for misunderstandings, omissions, or misinterpretations related to third-party affiliations.
 
 If you believe there are errors, omissions, or unclear references in this documentation, please contact us at **opensource@nitroagility.com**, and we will review and correct any inaccuracies promptly.
+
+---
+
+{{< callout context="caution" icon="alert-triangle" >}}
+This page does **not** replace or supersede the official licenses or legal notices of any third-party technology mentioned here.
+Users should always review the original licenses, documentation, and legal terms of each referenced technology to ensure accurate and complete understanding.
+{{< /callout >}}
+
+{{< callout context="caution" icon="alert-triangle" >}}
+Unless explicitly stated otherwise (e.g. **"Permguard Enterprise"**), any mention of **Permguard** across this site (community.permguard.com), its documentation, or the official GitHub project refers exclusively to the **Permguard Community Edition** — the open-source version of the project.
+
+This distinction is important when interpreting features, capabilities, licensing terms, and support models. Any references to enterprise-only functionality will be clearly identified as such.
+{{< /callout >}}
+
+{{< callout context="caution" icon="alert-triangle" >}}
+When reviewing licenses, please ensure you are referencing the appropriate version of the documentation, related websites, or other materials for Permguard. Over time, these resources may be updated to reflect changes or improvements, particularly for third-party technologies outside our control. Verifying the correct version ensures that the information aligns with the specific software or materials you are using.
+
+If any part of this page contains content that references trademarks, technologies, or intellectual property of third parties, please note that **Permguard Project**, **Nitro Agility**, and all contributors are not affiliated with, endorsed, or sponsored by such entities, unless explicitly stated otherwise. For any doubts or corrections, please contact us at [opensource@nitroagility.com](mailto:opensource@nitroagility.com), and we will promptly address potential inaccuracies.
+{{< /callout >}}
+
+---
