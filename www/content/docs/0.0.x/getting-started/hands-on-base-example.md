@@ -60,7 +60,18 @@ Permguard conventionally names the main ledger of a zone `root`, representing th
 
 Let's create the zones and their `root` ledgers:
 
-```sh
+```text
+permguard zones create --name platform-admin-zone
+permguard authz ledgers create --name root --zone-id 357522591679
+permguard zones create --name pharmacy-management-zone
+permguard authz ledgers create --name root --zone-id 731502230848
+permguard zones create --name patient-services-zone
+permguard authz ledgers create --name root --zone-id 312332567208
+```
+
+Captured output.
+
+```text
 ❯ permguard zones create --name platform-admin-zone
 357522591679: platform-admin-zone
 ❯ permguard authz ledgers create --name root --zone-id 357522591679
@@ -90,6 +101,14 @@ Each use case spans multiple roles, services, and trusted zones within the Pharm
 
 ---
 
+{{< callout context="caution" icon="info-circle" >}}
+Although this example uses explicit roles (e.g. `platform-admin`, `branch-owner`, `pharmacist`) for clarity, **Permguard is not limited to role-based access control (RBAC)**.
+
+In real-world deployments it is possible to model rich authorization using **ABAC**. PharmaAuthZFlow is therefore a **didactic example**, not a limitation of what Permguard can express or enforce.
+{{< /callout >}}
+
+---
+
 ### 1. Branch Management
 
 This use case covers the administrative workflow of creating and managing pharmacy branches, teams, and roles.
@@ -97,7 +116,7 @@ This use case covers the administrative workflow of creating and managing pharma
 #### Description
 
 - A **Platform Admin** creates a new branch.
-- The admin assigns a **Branch Owner** to that branch.
+- The **Platform Admin** assigns a **Branch Owner** to that branch.
 - The **Branch Owner** configures the local team and assigns roles such as *pharmacist* or *inventory-operator*.
 
 #### Roles
@@ -143,24 +162,57 @@ This use case covers the clinical workflow from prescription creation to medicat
 | `operations-management-zone`| `orders-service`       | Orders medications from suppliers            |
 | `operations-management-zone`| `inventory-service`    | Checks and updates medication inventory      |
 
-## Set Up the Workspace
+## Workspace Setup & Policy apply for the Platform Administration Zone
 
-In this step, you need set up the workspace and check out the policy store.
+In this step, the workspace is set up.
 
 {{< callout context="note" icon="info-circle" >}}
 A workspace represents a local working space. Plese refer to the [CodeOps Workspace](/docs/0.0.x/code-ops/initializing-the-workspace/) section for more information about the workspace.
 {{< /callout >}}
 
 ```text
+mkdir -p ./platform-administration-zone && cd ./platform-administration-zone
 permguard init --authz-language cedar
 permguard remote add origin localhost
-permguard checkout origin/895741663247/pharmaauthzflow
+permguard checkout origin/312332567208/root
 ```
 
 Captured output.
 
 ```text
 permguard remote add origin localhost
+permguard checkout origin/895741663247/pharmaauthzflow
+Initialized empty permguard ledger in '.'.
+Remote origin has been added.
+Ledger pharmaauthzflow has been added.
+The local workspace is already fully up to date with the remote ledger.
+```
+
+Next, policies need to be created and applied to the `root` ledger of the `platform-administration-zone`.
+The very first step is to checkout the correct zone and ledger.
+
+```sh
+cat << EOD > platform-policies.cedar
+@id("platform-administration")
+permit(
+  principal == Permguard::Identity::Attribute::"role/platform-admin",
+  action in [ PharmaAuthZFlow::Platform::Action::"view", PharmaAuthZFlow::Platform::Action::"create",
+    PharmaAuthZFlow::Platform::Action::"update", PharmaAuthZFlow::Platform::Action::"delete"],
+  resource is PharmaAuthZFlow::Platform::Subscription
+);
+
+@id("branch-administration")
+permit(
+  principal == Permguard::Identity::Attribute::"role/branch-owner",
+  action == PharmaAuthZFlow::Platform::Action::"assign-role",
+  resource is PharmaAuthZFlow::Platform::Subscription
+);
+EOD
+```
+
+Captured output.
+
+```text
 permguard checkout origin/895741663247/pharmaauthzflow
 Initialized empty permguard ledger in '.'.
 Remote origin has been added.
