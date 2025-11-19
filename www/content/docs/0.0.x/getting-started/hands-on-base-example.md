@@ -328,15 +328,18 @@ permguard objects --all
 Output shown below.
 
 ```text
-❯ permguard objects --all
 Your workspace objects:
 
-	- 174cfcdf230d433b471839dd2e89776b3babd2eca67b8c11c842013c9ca08ff8 tree
-	- 1fa8f770b18e483f662fb3692e6b7bdb54c64a1d071b73c7971a18aa6737bcb1 blob platform-administration
-	- 3a49c93fb8795d844d5c86d1441157b90eb94b07f5cab84ee6380861be043eab commit
-	- bbf799626c4be6f2089d188847f28848844ef655df393607a1f568dcff52e653 blob branch-administration
+        - 174cfcdf230d433b471839dd2e89776b3babd2eca67b8c11c842013c9ca08ff8 tree
+        - 1fa8f770b18e483f662fb3692e6b7bdb54c64a1d071b73c7971a18aa6737bcb1 blob platform-administration
+        - 3a49c93fb8795d844d5c86d1441157b90eb94b07f5cab84ee6380861be043eab commit
+        - 417e4d33217b7a27dc175c4942ac84c9c8df77b780cce99114dc28b8c46f2092 blob branch-team-management
+        - 713beded4cac07310cde2e1d65a5364cccd4fb24a7cbfd2cdcc1f64e40da07af tree
+        - bbf799626c4be6f2089d188847f28848844ef655df393607a1f568dcff52e653 blob branch-administration
+        - e7767c3b7087e0a1f6d6daec7d14708a9007583708d41afc950e5ea33b91b428 commit
+        - ef296a36b9fbb2186a38585b3fe8e1bd56337b64b8543fb5aaacbaf9f431b295 blob branch-administration
 
-total 4, commit 1, tree 1, blob 2
+total 8, commit 2, tree 2, blob 4
 ```
 
 The following example shows how to display the content of the `branch-administration` object.
@@ -349,6 +352,7 @@ Displayed output.
 
 ```text
 ❯ permguard objects cat bbf799626c4be6f2089d188847f28848844ef655df393607a1f568dcff52e653
+
 Your workspace object bbf799626c4be6f2089d188847f28848844ef655df393607a1f568dcff52e653:
 
 {"annotations":{"id":"branch-administration"},"effect":"permit","principal":{"op":"==","entity":{"type":"Permguard::Identity::Attribute","id":"role/branch-owner"}},"action":{"op":"==","entity":{"type":"PharmaAuthZFlow::Platform::Action","id":"assign-role"}},"resource":{"op":"is","entity_type":"PharmaAuthZFlow::Platform::Subscription"}}
@@ -366,6 +370,7 @@ Here’s the result.
 
 ```text
 ❯ permguard objects cat bbf799626c4be6f2089d188847f28848844ef655df393607a1f568dcff52e653 --frontend
+
 Your workspace object bbf799626c4be6f2089d188847f28848844ef655df393607a1f568dcff52e653:
 
 @id("branch-administration")
