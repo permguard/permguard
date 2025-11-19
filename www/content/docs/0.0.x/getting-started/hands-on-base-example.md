@@ -261,8 +261,8 @@ cat << EOD > authz-request.json
     },
     "principal": {
       "type": "workload",
-      "id": "spiffe://cluster.local/ns/application/sa/client",
-      "source": "ambient-mesh"
+      "id": "spiffe://edge.example.com/workload/64ad91fec7b0403eaf5d37e56c14ba42",
+      "source": "spire"
     }
   },
   "request_id": "1f12378d138e4c75b70d7cfa32345d39",
