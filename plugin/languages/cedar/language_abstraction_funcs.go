@@ -73,6 +73,10 @@ func createPermguardSubjectKind(kind string) (string, error) {
 		kind = "Permguard::Identity::User"
 	case pdp.PermguardWorkload:
 		kind = "Permguard::Identity::Workload"
+	case pdp.PermguardAttribute:
+		kind = "Permguard::Identity::Attribute"
+	default:
+		return "", fmt.Errorf("cedar: invalid subject kind: %s", kind)
 	}
 	return kind, nil
 }

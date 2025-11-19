@@ -37,7 +37,7 @@ A **Permguard workspace** contains the following files:
   - This directory is **automatically managed** by Permguard and **should not be modified manually**.
   - It should be added to `.gitignore` to prevent it from being committed to version control.
 
-## Initialize a New Ledger
+## Initialize a new Ledger
 
 When starting a new project, the first step is to **create a zone**.
 
