@@ -21,7 +21,7 @@ seo:
 The `AuthZServer` binary can be run in different distributions, each providing its own configuration profile.
 
 {{< callout context="note" icon="info-circle" >}}
-Services can be configured using either environment variables or [CLI options](/docs/0.0.x/devops/authz-server/configuration-options/). Each CLI option has a corresponding environment variable named `PERMGUARD_<OPTION_NAME>`. For example, the `--debug` option maps to the `PERMGUARD_DEBUG` environment variable.
+Services can be configured using either environment variables or [configuration options](/docs/0.0.x/devops/authz-server/configuration-options/). Each CLI option has a corresponding environment variable named `PERMGUARD_<OPTION_NAME>`. For example, the `--debug` option maps to the `PERMGUARD_DEBUG` environment variable.
 {{< /callout >}}
 
 ## Servers

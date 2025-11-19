@@ -19,10 +19,10 @@ seo:
   noindex: false # false (default) or true
 ---
 
-**Permguard** is composed of several internal components that together form the **AuthZServer**.  
+**Permguard** is composed of several internal components that together form the **AuthZServer**.
 
 The `AuthZServer` can run in an `all-in-one` configuration, where all components operate within a single instance, or it can be deployed in a distributed setup where each instance takes on a specific role such as `control-plane`, `data-plane`, or both.
 
 {{< callout context="note" icon="info-circle" >}}
-Services can be configured using either environment variables or [CLI options](/docs/0.0.x/devops/authz-server/configuration-options/). Each CLI option has a corresponding environment variable named `PERMGUARD_<OPTION_NAME>`. For example, the `--debug` option maps to the `PERMGUARD_DEBUG` environment variable.
+Services can be configured using either environment variables or [configuration options](/docs/0.0.x/devops/authz-server/configuration-options/). Each CLI option has a corresponding environment variable named `PERMGUARD_<OPTION_NAME>`. For example, the `--debug` option maps to the `PERMGUARD_DEBUG` environment variable.
 {{< /callout >}}
