@@ -193,19 +193,19 @@ The very first step is to checkout the correct zone and ledger.
 
 ```sh
 cat << EOD > platform-policies.cedar
-@id("platform-administration")
+@id("branch-administration")
 permit(
   principal == Permguard::Identity::Attribute::"role/platform-admin",
   action in [ PharmaAuthZFlow::Platform::Action::"view", PharmaAuthZFlow::Platform::Action::"create",
     PharmaAuthZFlow::Platform::Action::"update", PharmaAuthZFlow::Platform::Action::"delete"],
-  resource is PharmaAuthZFlow::Platform::Subscription
+  resource is PharmaAuthZFlow::Platform::Branch
 );
 
-@id("branch-administration")
+@id("branch-team-management")
 permit(
   principal == Permguard::Identity::Attribute::"role/branch-owner",
   action == PharmaAuthZFlow::Platform::Action::"assign-role",
-  resource is PharmaAuthZFlow::Platform::Subscription
+  resource is PharmaAuthZFlow::Platform::Branch
 );
 EOD
 ```
@@ -220,132 +220,74 @@ Ledger pharmaauthzflow has been added.
 The local workspace is already fully up to date with the remote ledger.
 ```
 
-## Apply the Policies
-
-At this stage, since the playground already includes some sample policies, it is necessary to apply the changes.
-
-{{< callout context="note" icon="info-circle" >}}
-A workspace represents a local working space. Plese refer to the [CodeOps Coding](/docs/0.0.x/code-ops/coding/) section for more information about the workspace.
-{{< /callout >}}
+At this stage it is time to apply changes to the `root` ledger of the `platform-administration-zone`.
 
 ```text
 permguard apply
 ```
 
-If everything is set up correctly, you should see the following output.
+Captured output.
 
 ```text
-Initiating the planning process for ledger head/895741663247/809257ed202e40cab7e958218eecad20.
+❯ permguard apply
+Initiating the planning process for ledger head/312332567208/e3de2d340e47406d90fd89d2b4a36974.
 Planning process completed successfully.
 The following changes have been identified and are ready to be applied:
 
-  + 2e3d2306e5cae1146396a9c9bf5b1c03c80ede9057d7796f3189a569de4ca113 platform-administrator
-  + 3da1ed56372b54f7c6e33b14f21ae3d53db06fe8701b65599c541cbbdf119fde platform-manager
-  + b8c072aee9679efdbe86175b51c7305e88e7011e9e8f6f52186ab182b8d0cfa9 platform-auditor
-  + f5918d66683fa021e104c8d66d6a9cef4a7a33a3a1d90b5c21043e3d5ece9aec platform-viewer
-  + 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1 platform-creator
-  + 0bc0aaefc5c96f1ca318c01fef32863273b83c2820ca7f3baf2ddafd73e6ce32 schema
+	+ / 1fa8f770b18e483f662fb3692e6b7bdb54c64a1d071b73c7971a18aa6737bcb1 platform-administration
+	+ / bbf799626c4be6f2089d188847f28848844ef655df393607a1f568dcff52e653 branch-administration
 
-unchanged 0, created 6, modified 0, deleted 0
+unchanged 0, created 2, modified 0, deleted 0
 
-Initiating the apply process for ledger head/895741663247/809257ed202e40cab7e958218eecad20.
+Initiating the apply process for ledger head/312332567208/e3de2d340e47406d90fd89d2b4a36974.
 Apply process completed successfully.
-Your workspace is synchronized with the remote ledger: head/895741663247/809257ed202e40cab7e958218eecad20.
+Your workspace is synchronized with the remote ledger: head/312332567208/e3de2d340e47406d90fd89d2b4a36974.
 ```
 
-## Perform the Authorization Check
-
-The final step is to perform the authorization check.
+Policies have now been applied and it is time to perform an authorization check.
 
 {{< callout context="note" icon="info-circle" >}}
 Plese refer to the [Command Line](/docs/0.0.x/command-line/authz/check/) section for more information about the available commands.
 {{< /callout >}}
 
-```text
-permguard authz check ./requests/ok_onlyone1.json -o json
-```
-
-Below a sample json for the authorization check.
-
-```json
+```sh
+cat << EOD > authz-request.json
 {
   "authorization_model": {
-    "zone_id": 895741663247,
+    "zone_id": 357522591679,
     "policy_store": {
       "kind": "ledger",
-      "id": "809257ed202e40cab7e958218eecad20"
+      "id": "68b7b20034694bd38dd8c1a0254570e0"
     },
     "principal": {
-      "type": "user",
-      "id": "amy.smith@acmecorp.com",
-      "source": "keycloak"
-    },
-    "entities": {
-      "schema": "cedar",
-      "items": [
-        {
-          "uid": {
-            "type": "PharmaAuthZFlow::Platform::BranchInfo",
-            "id": "subscription"
-          },
-          "attrs": {
-            "active": true
-          },
-          "parents": []
-        }
-      ]
+      "type": "workload",
+      "id": "spiffe://cluster.local/ns/application/sa/client",
+      "source": "ambient-mesh"
     }
   },
-  "request_id": "abc1",
+  "request_id": "1f12378d138e4c75b70d7cfa32345d39",
   "subject": {
-    "type": "workload",
-    "id": "platform-creator",
-    "source": "keycloak",
-    "properties": {
-      "isSuperUser": true
-    }
+    "type": "attribute",
+    "id": "role/branch-owner"
   },
   "resource": {
-    "type": "PharmaAuthZFlow::Platform::Subscription",
-    "id": "e3a786fd07e24bfa95ba4341d3695ae8",
-    "properties": {
-      "isEnabled": true
-    }
+    "type": "PharmaAuthZFlow::Platform::Branch",
+    "id": "fb008a600df04b21841c4fb5ad27ddf7"
   },
   "action": {
-    "name": "PharmaAuthZFlow::Platform::Action::create",
-    "properties": {
-      "isEnabled": true
-    }
-  },
-  "context": {
-    "time": "2025-01-23T16:17:46+00:00",
-    "isSubscriptionActive": true
+    "name": "PharmaAuthZFlow::Platform::Action::assign-role"
   }
 }
+EOD
+```
+
+```text
+permguard authz check ./authz-request.json -o json
 ```
 
 Here’s what gets returned.
 
 ```json
-{
-  "authorization_check": {
-    "request_id": "abc1",
-    "decision": true,
-    "context": {
-      "id": "94acbe8e1f224c6aa7a2e6353ed76869"
-    },
-    "evaluations": [
-      {
-        "request_id": "abc1",
-        "decision": true,
-        "context": {
-          "id": "94acbe8e1f224c6aa7a2e6353ed76869"
-        }
-      }
-    ]
-  }
-}
 ```
 
 ## Next Steps
@@ -367,57 +309,54 @@ permguard objects --all
 Output shown below.
 
 ```text
+❯ permguard objects --all
 Your workspace objects:
 
-  - 0bc0aaefc5c96f1ca318c01fef32863273b83c2820ca7f3baf2ddafd73e6ce32 blob schema
-  - 2e3d2306e5cae1146396a9c9bf5b1c03c80ede9057d7796f3189a569de4ca113 blob platform-administrator
-  - 3da1ed56372b54f7c6e33b14f21ae3d53db06fe8701b65599c541cbbdf119fde blob platform-manager
-  - 6a30289b571b09ba52d32b63ff92b745abc8bc8e816f0d585f5a133ee314f652 commit
-  - 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1 blob platform-creator
-  - b8c072aee9679efdbe86175b51c7305e88e7011e9e8f6f52186ab182b8d0cfa9 blob platform-auditor
-  - f5918d66683fa021e104c8d66d6a9cef4a7a33a3a1d90b5c21043e3d5ece9aec blob platform-viewer
-  - fb16aa66413ae45275e2063bcbdf6267be4689200b74c04ff8f2ad0f4b03127c tree
+	- 174cfcdf230d433b471839dd2e89776b3babd2eca67b8c11c842013c9ca08ff8 tree
+	- 1fa8f770b18e483f662fb3692e6b7bdb54c64a1d071b73c7971a18aa6737bcb1 blob platform-administration
+	- 3a49c93fb8795d844d5c86d1441157b90eb94b07f5cab84ee6380861be043eab commit
+	- bbf799626c4be6f2089d188847f28848844ef655df393607a1f568dcff52e653 blob branch-administration
 
-total 8, commit 1, tree 1, blob 6
+total 4, commit 1, tree 1, blob 2
 ```
 
-The following example shows how to display the content of the `platform-creator` object.
+The following example shows how to display the content of the `branch-administration` object.
 
 ```text
-permguard objects cat 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1
+permguard objects cat bbf799626c4be6f2089d188847f28848844ef655df393607a1f568dcff52e653
 ```
 
 Displayed output.
 
 ```text
-Your workspace object 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1:
+❯ permguard objects cat bbf799626c4be6f2089d188847f28848844ef655df393607a1f568dcff52e653
+Your workspace object bbf799626c4be6f2089d188847f28848844ef655df393607a1f568dcff52e653:
 
-{"annotations":{"id":"platform-creator"},"effect":"permit","principal":{"op":"==","entity":{"type":"Permguard::Identity::User","id":"platform-creator"}},"action":{"op":"==","entity":{"type":"PharmaAuthZFlow::Platform::Action","id":"create"}},"resource":{"op":"is","entity_type":"PharmaAuthZFlow::Platform::Subscription"},"conditions":[{"kind":"when","body":{"\u0026\u0026":{"left":{"\u0026\u0026":{"left":{"==":{"left":{".":{"left":{"Var":"context"},"attr":"isSubscriptionActive"}},"right":{"Value":true}}},"right":{"==":{"left":{".":{"left":{"Var":"action"},"attr":"isEnabled"}},"right":{"Value":true}}}}},"right":{"==":{"left":{".":{"left":{"Var":"resource"},"attr":"isEnabled"}},"right":{"Value":true}}}}}},{"kind":"unless","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"isSuperUser"}},"right":{"Value":false}}}}]}
+{"annotations":{"id":"branch-administration"},"effect":"permit","principal":{"op":"==","entity":{"type":"Permguard::Identity::Attribute","id":"role/branch-owner"}},"action":{"op":"==","entity":{"type":"PharmaAuthZFlow::Platform::Action","id":"assign-role"}},"resource":{"op":"is","entity_type":"PharmaAuthZFlow::Platform::Subscription"}}
 
-type blob, size 881, oname platform-creator
+type blob, size 397, oname branch-administration
 ```
 
 It is also possible to specify the `frontend` option to display the object in a more readable format.
 
 ```text
-permguard objects cat 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1 --frontend
+permguard objects cat bbf799626c4be6f2089d188847f28848844ef655df393607a1f568dcff52e653 --frontend
 ```
 
 Here’s the result.
 
 ```text
-Your workspace object 7fae1224aa4174473d445bb93255c592e66af184fee82956d5ef96a3c55192a1:
+❯ permguard objects cat bbf799626c4be6f2089d188847f28848844ef655df393607a1f568dcff52e653 --frontend
+Your workspace object bbf799626c4be6f2089d188847f28848844ef655df393607a1f568dcff52e653:
 
-@id("platform-creator")
+@id("branch-administration")
 permit (
-    principal == Permguard::Identity::Attribute::"role/platform-creator",
-    action == PharmaAuthZFlow::Platform::Action::"create",
+    principal == Permguard::Identity::Attribute::"role/branch-owner",
+    action == PharmaAuthZFlow::Platform::Action::"assign-role",
     resource is PharmaAuthZFlow::Platform::Subscription
-)
-when { context.isSubscriptionActive == true && action.isEnabled == true && resource.isEnabled == true }
-unless { principal.isSuperUser == false };
+);
 
-type blob, size 881, oname platform-creator
+type blob, size 397, oname branch-administration
 ```
 
 It is recommended to explore the [Policy as Code](/docs/0.0.x/policy-as-code/policy-languages/) section to learn more about the policy store and the policy language.
