@@ -26,6 +26,14 @@ These components are grouped into two main roles: the `control-plane` and the `d
 
 The server can run all components together in a single instance using the `all-in-one` distribution, or each component can be deployed separately using dedicated distributions.
 
+---
+
+<div style="text-align: center">
+  <img alt="Permguard Components" src="/images/diagrams/permguard-components.png"/>
+</div>
+
+---
+
 The `control-plane` is composed of:
 
 - **Zone Administration Point (ZAP)**
@@ -35,10 +43,6 @@ The `control-plane` is composed of:
 The `data-plane` consists of:
 
 - **Policy Decision Point (PDP)**
-
-<div style="text-align: center">
-  <img alt="Permguard Components" src="/images/diagrams/permguard-components.png"/>
-</div>
 
 ## Zone Administration Point (ZAP)
 
