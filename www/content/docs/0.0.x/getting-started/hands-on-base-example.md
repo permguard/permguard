@@ -62,28 +62,28 @@ Let's create the zones and their `root` ledgers:
 
 ```text
 permguard zones create --name platform-admin-zone
-permguard authz ledgers create --name root --zone-id 357522591679
+permguard authz ledgers create --name root --zone-id 836576733282
 permguard zones create --name pharmacy-management-zone
-permguard authz ledgers create --name root --zone-id 731502230848
+permguard authz ledgers create --name root --zone-id 121820121075
 permguard zones create --name patient-services-zone
-permguard authz ledgers create --name root --zone-id 312332567208
+permguard authz ledgers create --name root --zone-id 927579003246
 ```
 
 Captured output.
 
 ```text
 ❯ permguard zones create --name platform-admin-zone
-357522591679: platform-admin-zone
-❯ permguard authz ledgers create --name root --zone-id 357522591679
-68b7b20034694bd38dd8c1a0254570e0: root
+836576733282: platform-admin-zone
+❯ permguard authz ledgers create --name root --zone-id 836576733282
+9c08015ca0fe46e9b0b54179cbd22bf3: root
 ❯ permguard zones create --name pharmacy-management-zone
-731502230848: pharmacy-management-zone
-❯ permguard authz ledgers create --name root --zone-id 731502230848
-cb275322b8ae4b6f8f540d7601dee8ed: root
+121820121075: pharmacy-management-zone
+❯ permguard authz ledgers create --name root --zone-id 121820121075
+a0d10339102c4690a8c13a01ac60cd74: root
 ❯ permguard zones create --name patient-services-zone
-312332567208: patient-services-zone
-❯ permguard authz ledgers create --name root --zone-id 312332567208
-e3de2d340e47406d90fd89d2b4a36974: root
+927579003246: patient-services-zone
+❯ permguard authz ledgers create --name root --zone-id 927579003246
+b811788cde40438d90f062b9d5a7fd2c: root
 ```
 
 ## Use Cases, Roles, and Architectural Components
@@ -174,14 +174,14 @@ A workspace represents a local working space. Plese refer to the [CodeOps Worksp
 mkdir -p ./platform-administration-zone && cd ./platform-administration-zone
 permguard init --authz-language cedar
 permguard remote add origin localhost
-permguard checkout origin/312332567208/root
+permguard checkout origin/836576733282/root
 ```
 
 Captured output.
 
 ```text
 permguard remote add origin localhost
-permguard checkout origin/895741663247/pharmaauthzflow
+permguard checkout origin/836576733282/pharmaauthzflow
 Initialized empty permguard ledger in '.'.
 Remote origin has been added.
 Ledger pharmaauthzflow has been added.
@@ -213,7 +213,7 @@ EOD
 Captured output.
 
 ```text
-permguard checkout origin/895741663247/pharmaauthzflow
+permguard checkout origin/836576733282/pharmaauthzflow
 Initialized empty permguard ledger in '.'.
 Remote origin has been added.
 Ledger pharmaauthzflow has been added.
@@ -230,18 +230,18 @@ Captured output.
 
 ```text
 ❯ permguard apply
-Initiating the planning process for ledger head/312332567208/e3de2d340e47406d90fd89d2b4a36974.
+Initiating the planning process for ledger head/836576733282/9c08015ca0fe46e9b0b54179cbd22bf3.
 Planning process completed successfully.
 The following changes have been identified and are ready to be applied:
 
-	+ / 1fa8f770b18e483f662fb3692e6b7bdb54c64a1d071b73c7971a18aa6737bcb1 platform-administration
-	+ / bbf799626c4be6f2089d188847f28848844ef655df393607a1f568dcff52e653 branch-administration
+        + / ef296a36b9fbb2186a38585b3fe8e1bd56337b64b8543fb5aaacbaf9f431b295 branch-administration
+        + / 417e4d33217b7a27dc175c4942ac84c9c8df77b780cce99114dc28b8c46f2092 branch-team-management
 
 unchanged 0, created 2, modified 0, deleted 0
 
-Initiating the apply process for ledger head/312332567208/e3de2d340e47406d90fd89d2b4a36974.
+Initiating the apply process for ledger head/836576733282/9c08015ca0fe46e9b0b54179cbd22bf3.
 Apply process completed successfully.
-Your workspace is synchronized with the remote ledger: head/312332567208/e3de2d340e47406d90fd89d2b4a36974.
+Your workspace is synchronized with the remote ledger: head/836576733282/9c08015ca0fe46e9b0b54179cbd22bf3.
 ```
 
 Policies have now been applied and it is time to perform an authorization check.
@@ -254,10 +254,10 @@ Plese refer to the [Command Line](/docs/0.0.x/command-line/authz/check/) section
 cat << EOD > authz-request.json
 {
   "authorization_model": {
-    "zone_id": 357522591679,
+    "zone_id": 836576733282,
     "policy_store": {
       "kind": "ledger",
-      "id": "68b7b20034694bd38dd8c1a0254570e0"
+      "id": "9c08015ca0fe46e9b0b54179cbd22bf3"
     },
     "principal": {
       "type": "workload",
@@ -288,6 +288,25 @@ permguard authz check ./authz-request.json -o json
 Here’s what gets returned.
 
 ```json
+❯ permguard authz check ./authz-request.json -o json  | jq
+{
+  "authorization_check": {
+    "request_id": "1f12378d138e4c75b70d7cfa32345d39",
+    "decision": true,
+    "context": {
+      "id": "c93bee3ea953415394523737043c065d"
+    },
+    "evaluations": [
+      {
+        "request_id": "1f12378d138e4c75b70d7cfa32345d39",
+        "decision": true,
+        "context": {
+          "id": "c93bee3ea953415394523737043c065d"
+        }
+      }
+    ]
+  }
+}
 ```
 
 ## Next Steps
