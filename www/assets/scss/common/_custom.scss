@@ -41,6 +41,10 @@ body {
   contain: paint;
 }
 
+body.docs {
+  contain: none !important;
+}
+
 .footer {
   @media (max-height: 100vh) {
     margin-top: auto;
