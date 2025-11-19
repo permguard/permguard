@@ -26,7 +26,7 @@ A recommended **Permguard** best practice is to run a **dedicated AuthZServer** 
 
 This separation ensures a secure and isolated trust model aligned with the specific needs of each environment.
 
-## Managing Multiple Servers
+## Managing multiple AuthZServers
 
 When handling multiple **AuthZServers** and provisioning configurations, it is crucial to correctly configure **remote connections**.
 This setup enables smooth communication and coordination between different **Permguard instances**.
