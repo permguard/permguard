@@ -145,7 +145,27 @@ Invoke-WebRequest -Uri https://raw.githubusercontent.com/permguard/permguard/ref
 If the binary was downloaded manually, it should be moved to a folder included in the PATH:
 
 ```powershell [powershell]
-if (-not (Test-Path "C:\Program Files\permguard")) { New-Item -ItemType Directory -Path "C:\Program Files\permguard" | Out-Null }; Move-Item .\bin\permguard.exe "C:\Program Files\permguard\permguard.exe" -Force; if ($env:PATH -notlike "*C:\Program Files\permguard*") { setx PATH "$($env:PATH);C:\Program Files\permguard" }
+$targetDir = "C:\Program Files\permguard"
+
+$basePath  = (Get-Location).Path
+$exeSource = Join-Path $basePath "bin\permguard.exe"
+$exeDest   = Join-Path $targetDir "permguard.exe"
+
+if (-not (Test-Path $targetDir)) {
+    New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+}
+
+if (-not (Test-Path $exeSource)) {
+    Write-Error "ERRORE: File $exeSource non trovato."
+    exit 1
+}
+
+Copy-Item $exeSource $exeDest -Force
+
+if ($env:PATH.Split(';') -notcontains $targetDir) {
+    setx PATH "$($env:PATH);$targetDir" | Out-Null
+    Write-Host "Percorso aggiunto al PATH. Riavvia la console per attivarlo."
+}
 ```
 
 The installation can be verified with:
