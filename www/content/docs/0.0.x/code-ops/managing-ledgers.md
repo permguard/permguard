@@ -26,7 +26,6 @@ When making changes, it is important to **specify the remote** where these chang
 ## Checking out a Ledger
 
 To ensure that changes are provisioned correctly, you must first **check out** the appropriate **ledger**.
-This ledger will serve as the **target** for provisioning and deploying updates.
 
 To check out a ledger, use the **`checkout`** command:
 
