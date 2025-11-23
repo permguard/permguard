@@ -80,20 +80,20 @@ func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng 
 func (s SQLiteCentralStoragePDP) LoadPolicyStore(zoneID int64, storeID string) (*authzen.PolicyStore, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, errors.Join(err, errors.New("storage: server couldn't connect to the database"))
+		return nil, errors.Join(errors.New("storage: server couldn't connect to the database"), err)
 	}
 
 	dbLedgers, err := s.sqlRepo.FetchLedgers(db, 1, 2, zoneID, &storeID, nil)
 	if err != nil {
-		return nil, errors.Join(err, errors.New("storage: bad request for either zone id or policy store id"))
+		return nil, errors.Join(errors.New("storage: bad request for either zone id or policy store id"), err)
 	}
 	if len(dbLedgers) != 1 {
-		return nil, errors.Join(err, errors.New("storage: bad request for either zone id or policy store id"))
+		return nil, errors.Join(errors.New("storage: bad request for either zone id or policy store id"), err)
 	}
 	ledger := dbLedgers[0]
 	ledgerRef := ledger.Ref
 	if ledgerRef == objects.ZeroOID {
-		return nil, errors.Join(err, errors.New("storage: server couldn't validate the ledger reference"))
+		return nil, errors.Join(errors.New("storage: server couldn't validate the ledger reference"), err)
 	}
 
 	authzPolicyStore := &authzen.PolicyStore{}
@@ -101,25 +101,25 @@ func (s SQLiteCentralStoragePDP) LoadPolicyStore(zoneID int64, storeID string) (
 
 	objMng, err := objects.NewObjectManager()
 	if err != nil {
-		return nil, errors.Join(err, errors.New("storage: server couldn't create the object manager"))
+		return nil, errors.Join(errors.New("storage: server couldn't create the object manager"), err)
 	}
 	treeObj, err := authorizationCheckReadTree(&s, db, objMng, zoneID, ledgerRef)
 	if err != nil {
-		return nil, errors.Join(err, errors.New("storage: server couldn't read the tree"))
+		return nil, errors.Join(errors.New("storage: server couldn't read the tree"), err)
 	}
 	for _, entry := range treeObj.Entries() {
 		entryID := entry.OID()
 		value, err2 := authorizationCheckReadKeyValue(&s, db, objMng, zoneID, entryID)
 		if err2 != nil {
-			return nil, errors.Join(err2, fmt.Errorf("storage: server couldn't read the key %s", entryID))
+			return nil, errors.Join(fmt.Errorf("storage: server couldn't read the key %s", entryID), err2)
 		}
 		obj, err3 := objMng.DeserializeObjectFromBytes(value)
 		if err3 != nil {
-			return nil, errors.Join(err3, errors.New("storage: server couldn't deserialize the object from bytes"))
+			return nil, errors.Join(errors.New("storage: server couldn't deserialize the object from bytes"), err3)
 		}
 		objInfo, err4 := objMng.ObjectInfo(obj)
 		if err4 != nil {
-			return nil, errors.Join(err4, errors.New("storage: server couldn't read object info"))
+			return nil, errors.Join(errors.New("storage: server couldn't read object info"), err4)
 		}
 		objInfoHeader := objInfo.Header()
 		oid := objInfo.OID()

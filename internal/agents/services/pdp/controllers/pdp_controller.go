@@ -67,7 +67,7 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 	}
 	cfgReader, err := s.ctx.ServiceConfigReader()
 	if err != nil {
-		return nil, errors.Join(err, errors.New("pdp-service: failed to get service config reader"))
+		return nil, errors.Join(errors.New("pdp-service: failed to get service config reader"), err)
 	}
 	requestID := request.RequestID
 	if request.AuthorizationModel == nil {
@@ -252,7 +252,7 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 	}
 	decisionLog, err := runtime.GetTypedValue[string](cfgReader.Value, "decision-log")
 	if err != nil {
-		return nil, errors.Join(err, errors.New("pdp-service:  failed to get decision logs configuration"))
+		return nil, errors.Join(errors.New("pdp-service:  failed to get decision logs configuration"), err)
 	}
 	if decisions.ShouldLogDecision(decisionLog) {
 		var decisionLogsPath string
@@ -260,7 +260,7 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 		if decisionKind == decisions.DecisionLogFile {
 			hostReader, err := s.ctx.HostConfigReader()
 			if err != nil {
-				return nil, errors.Join(err, errors.New("pdp-service: failed to get host config reader"))
+				return nil, errors.Join(errors.New("pdp-service: failed to get host config reader"), err)
 			}
 			decisionLogsPath = filepath.Join(hostReader.AppData(), "decisions.log")
 		}

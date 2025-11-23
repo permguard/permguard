@@ -114,7 +114,7 @@ func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *storage.StorageConte
 	}
 	hostCfgReader, err := ctx.HostConfigReader()
 	if err != nil {
-		return nil, errors.Join(err, errors.New("storage: cannot get host config reader"))
+		return nil, errors.Join(errors.New("storage: cannot get host config reader"), err)
 	}
 	filePath := hostCfgReader.AppData()
 	dbName := c.config.DBName()
@@ -124,7 +124,7 @@ func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *storage.StorageConte
 	dbPath := filepath.Join(filePath, dbName)
 	db, err := sqlx.Connect("sqlite", dbPath)
 	if err != nil {
-		return nil, errors.Join(err, errors.New("stroage: cannot connect to sqlite"))
+		return nil, errors.Join(errors.New("storage: cannot connect to sqlite"), err)
 	}
 	db.Exec("PRAGMA foreign_keys = ON;")
 	c.db = db
@@ -140,7 +140,7 @@ func (c *SQLiteConnection) Disconnect(logger *zap.Logger, ctx *storage.StorageCo
 	}
 	err := c.db.Close()
 	if err != nil {
-		return errors.Join(err, errors.New("storage: cannot disconnect from sqlite"))
+		return errors.Join(errors.New("storage: cannot disconnect from sqlite"), err)
 	}
 	c.db = nil
 	return nil

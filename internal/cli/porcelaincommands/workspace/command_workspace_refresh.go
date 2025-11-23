@@ -52,7 +52,7 @@ func runECommandForRefreshWorkspace(deps cli.CliDependenciesProvider, cmd *cobra
 			printer.Println("Failed execute the refresh.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to execute the refresh")))
+			printer.Error(errors.Join(errors.New("cli: failed to execute the refresh"), err))
 		}
 		return common.ErrCommandSilent
 	}

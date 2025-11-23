@@ -52,7 +52,7 @@ func runECommandForPullWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Co
 			printer.Println("Failed execute the pull.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to execute the pull")))
+			printer.Error(errors.Join(errors.New("cli: failed to execute the pull"), err))
 		}
 		return common.ErrCommandSilent
 	}

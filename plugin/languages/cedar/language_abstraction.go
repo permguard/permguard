@@ -42,7 +42,7 @@ type CedarLanguageAbstraction struct {
 func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
 	objMng, err := objects.NewObjectManager()
 	if err != nil {
-		return nil, errors.Join(err, errors.New("cedar: failed to create the object manager"))
+		return nil, errors.Join(errors.New("cedar: failed to create the object manager"), err)
 	}
 	return &CedarLanguageAbstraction{
 		objMng: objMng,
@@ -158,7 +158,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(mfestLang *manifest
 
 		objInfo, err := abs.objMng.ObjectInfo(obj)
 		if err != nil {
-			return nil, errors.Join(err, errors.New("cedar: failed to get the object info"))
+			return nil, errors.Join(errors.New("cedar: failed to get the object info"), err)
 		}
 
 		multiSecObj.AddSectionObjectWithParams(obj, partition, objInfo.Type(), objName, codeID, codeType, lang, langVersion, langPolicyType, i)
@@ -210,7 +210,7 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(mfestLang *manifest
 
 	multiSecObj, err := objects.NewMultiSectionsObject(path, 1, nil)
 	if err != nil {
-		return nil, errors.Join(err, errors.New("cedar: failed to create the multi section object"))
+		return nil, errors.Join(errors.New("cedar: failed to create the multi section object"), err)
 	}
 	header, err := objects.NewObjectHeader(partition, true, langID, langVersionID, langSchemaTypeID, codeID, codeTypeID)
 	if err != nil {
@@ -226,7 +226,7 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(mfestLang *manifest
 
 	objInfo, err := abs.objMng.ObjectInfo(obj)
 	if err != nil {
-		return nil, errors.Join(err, errors.New("cedar: failed to get the object info"))
+		return nil, errors.Join(errors.New("cedar: failed to get the object info"), err)
 	}
 
 	multiSecObj.AddSectionObjectWithParams(obj, partition, objInfo.Type(), objName, codeID, codeType, lang, langVersion, langSchemaType, 0)
@@ -255,7 +255,7 @@ func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(mfestLang *m
 		var cedarPolicy cedar.Policy
 		err := cedarPolicy.UnmarshalJSON(content)
 		if err != nil {
-			return nil, errors.Join(err, errors.New("cedar: invalid policy syntax"))
+			return nil, errors.Join(errors.New("cedar: invalid policy syntax"), err)
 		}
 		frontendContent = cedarPolicy.MarshalCedar()
 	case cedarlang.LanguageSchemaTypeID:
@@ -275,7 +275,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 		policyBytes := objInfo.Instance().([]byte)
 		var policy cedar.Policy
 		if err := policy.UnmarshalJSON(policyBytes); err != nil {
-			return nil, errors.Join(err, errors.New("cedar: policy could not be unmarshalled"))
+			return nil, errors.Join(errors.New("cedar: policy could not be unmarshalled"), err)
 		}
 		codeID := objInfo.Header().CodeID()
 		ps.Add(cedar.PolicyID(codeID), &policy)
@@ -292,11 +292,11 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 	var pmgSubjectKind string
 	pmgSubjectKind, err = createPermguardSubjectKind(subjectKind)
 	if err != nil {
-		return nil, errors.Join(err, errors.New("cedar: bad request for the subject type"))
+		return nil, errors.Join(errors.New("cedar: bad request for the subject type"), err)
 	}
 	subjectProperties, err := createEntityAttribJSON(pmgSubjectKind, subjectID, subject.Properties())
 	if err != nil {
-		return nil, errors.Join(err, errors.New("cedar: bad request for the subject properties"))
+		return nil, errors.Join(errors.New("cedar: bad request for the subject properties"), err)
 	}
 
 	// Extract the resource from the authorization context.
@@ -331,7 +331,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 	}
 	actionProperties, err := createEntityAttribJSON(actionType, actionID, action.Properties())
 	if err != nil {
-		return nil, errors.Join(err, errors.New("cedar: bad request for the action properties"))
+		return nil, errors.Join(errors.New("cedar: bad request for the action properties"), err)
 	}
 
 	// Extract the context from the authorization context.
@@ -339,10 +339,10 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 	contextRecord := cedar.NewRecord(context)
 	jsonContext, err := json.Marshal(authzCtx.Context())
 	if err != nil {
-		return nil, errors.Join(err, errors.New("cedar: bad request for the context"))
+		return nil, errors.Join(errors.New("cedar: bad request for the context"), err)
 	}
 	if err = contextRecord.UnmarshalJSON(jsonContext); err != nil {
-		return nil, errors.Join(err, errors.New("cedar: bad request for the context"))
+		return nil, errors.Join(errors.New("cedar: bad request for the context"), err)
 	}
 	hasIllegalKey := false
 	contextRecord.Iterate(func(key cedar.String, val cedar.Value) bool {
@@ -364,17 +364,17 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 	if authzEntities != nil {
 		authzEntitiesItems := authzEntities.Items()
 		if _, err = verifyUIDTypeFromEntityMap(authzEntitiesItems); err != nil {
-			return nil, errors.Join(err, errors.New("cedar: bad request for the entities"))
+			return nil, errors.Join(errors.New("cedar: bad request for the entities"), err)
 		}
 		authzEntitiesItems = append(authzEntitiesItems, subjectProperties)
 		authzEntitiesItems = append(authzEntitiesItems, actionProperties)
 		authzEntitiesItems = append(authzEntitiesItems, resourceProperties)
 		jsonEntities, err2 := json.Marshal(authzEntitiesItems)
 		if err2 != nil {
-			return nil, errors.Join(err, errors.New("cedar: bad request for the entities"))
+			return nil, errors.Join(errors.New("cedar: bad request for the entities"), err2)
 		}
 		if err = json.Unmarshal(jsonEntities, &entities); err != nil {
-			return nil, errors.Join(err, errors.New("cedar: bad request for the entities"))
+			return nil, errors.Join(errors.New("cedar: bad request for the entities"), err)
 		}
 	}
 
@@ -394,7 +394,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 	// Take the decision.
 	authzDecision, err := authzen.NewAuthorizationDecision(contextID, bool(ok), adminError, userError)
 	if err != nil {
-		return nil, errors.Join(err, errors.New("cedar: failed to create the authorization decision"))
+		return nil, errors.Join(errors.New("cedar: failed to create the authorization decision"), err)
 	}
 	return authzDecision, nil
 }

@@ -41,7 +41,7 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps cli.CliDependencies
 			printer.Println("Failed to remove the remote.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to remove the remote")))
+			printer.Error(errors.Join(errors.New("cli: failed to remove the remote"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -62,7 +62,7 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps cli.CliDependencies
 			printer.Println("Failed to remove the remote.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to remove the remote")))
+			printer.Error(errors.Join(errors.New("cli: failed to remove the remote"), err))
 		}
 		return common.ErrCommandSilent
 	}

@@ -82,7 +82,7 @@ func (r *Repository) KeyValue(db *sqlx.DB, zoneID int64, key string) (*KeyValue,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, errors.Join(err, fmt.Errorf("no value found for key (%s)", key))
+			return nil, errors.Join(fmt.Errorf("no value found for key (%s)", key), err)
 		}
 		return nil, WrapSqliteError(fmt.Sprintf("failed to retrieve key-value pair - operation 'retrieve-key-value' encountered an issue (key: %s)", key), err)
 	}

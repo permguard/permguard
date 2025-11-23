@@ -42,7 +42,7 @@ func runECommandReset(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *v
 			printer.Println("Failed to reset the cli config file.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to reset the cli config file")))
+			printer.Error(errors.Join(errors.New("cli: failed to reset the cli config file"), err))
 		}
 		return common.ErrCommandSilent
 	}

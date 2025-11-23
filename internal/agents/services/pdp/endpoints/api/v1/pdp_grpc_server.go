@@ -61,7 +61,7 @@ func (s *V1PDPServer) AuthorizationCheck(ctx context.Context, request *Authoriza
 	}
 	req, err := MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request)
 	if req == nil {
-		return nil, errors.Join(err, errors.New("pdp-endpoint: request cannot be nil"))
+		return nil, errors.Join(errors.New("pdp-endpoint: request cannot be nil"), err)
 	}
 	authzResponse, err := s.service.AuthorizationCheck(req)
 	if err != nil {

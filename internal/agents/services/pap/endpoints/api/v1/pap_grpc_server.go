@@ -290,7 +290,7 @@ func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, Pa
 	bag[notptransportsm.LedgerIDKey] = respositoryID[0]
 	_, err = stateMachine.Run(bag, notpstatemachines.UnknownFlowType)
 	if err != nil {
-		return errors.Join(err, errors.New("pap-endpoint: notp stream unhandled err"))
+		return errors.Join(errors.New("pap-endpoint: notp stream unhandled err"), err)
 	}
 	return nil
 }

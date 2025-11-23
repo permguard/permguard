@@ -46,7 +46,7 @@ func (s SQLiteCentralStoragePAP) CreateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 	}
 	kind, err := repos.ConvertLedgerKindToID(ledger.Kind)
 	if err != nil {
-		return nil, errors.Join(err, fmt.Errorf("storage: invalid client input - ledger kind %s is not valid", ledger.Kind))
+		return nil, errors.Join(fmt.Errorf("storage: invalid client input - ledger kind %s is not valid", ledger.Kind), err)
 	}
 	dbInLedger := &repos.Ledger{
 		ZoneID: ledger.ZoneID,
@@ -82,7 +82,7 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 	}
 	kind, err := repos.ConvertLedgerKindToID(ledger.Kind)
 	if err != nil {
-		return nil, errors.Join(err, fmt.Errorf("storage: invalid client input - ledger kind %s is not valid", ledger.Kind))
+		return nil, errors.Join(fmt.Errorf("storage: invalid client input - ledger kind %s is not valid", ledger.Kind), err)
 	}
 	dbInLedger := &repos.Ledger{
 		LedgerID: ledger.LedgerID,

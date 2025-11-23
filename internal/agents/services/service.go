@@ -68,7 +68,7 @@ type Service struct {
 func newService(serviceCfg *ServiceConfig, hostContext *services.HostContext) (*Service, error) {
 	svcCfgReader, err := serviceCfg.serviceable.ServiceConfigReader()
 	if err != nil {
-		return nil, errors.Join(err, errors.New("service: cannot get service config reader"))
+		return nil, errors.Join(errors.New("service: cannot get service config reader"), err)
 	}
 	serviceCtx, err := services.NewServiceContext(hostContext, serviceCfg.serviceable.Service(), svcCfgReader)
 	if err != nil {

@@ -70,7 +70,7 @@ func runECommandForInitWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Co
 	output, err := wksMgr.ExecInitWorkspace(initParams, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to initialize the workspace")))
+			printer.Error(errors.Join(errors.New("cli: failed to initialize the workspace"), err))
 		}
 		return common.ErrCommandSilent
 	}

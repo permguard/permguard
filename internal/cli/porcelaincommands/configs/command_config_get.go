@@ -41,7 +41,7 @@ func runECommandForZAPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 			printer.Println("Failed to get the zap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to get the zap target")))
+			printer.Error(errors.Join(errors.New("cli: failed to get the zap target"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -62,7 +62,7 @@ func runECommandForPAPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 			printer.Println("Failed to get the pap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to get the pap target")))
+			printer.Error(errors.Join(errors.New("cli: failed to get the pap target"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -83,7 +83,7 @@ func runECommandForPDPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 			printer.Println("Failed to get the pdp target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to get the pdp target")))
+			printer.Error(errors.Join(errors.New("cli: failed to get the pdp target"), err))
 		}
 		return common.ErrCommandSilent
 	}

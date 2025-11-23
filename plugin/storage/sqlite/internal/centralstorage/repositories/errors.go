@@ -32,5 +32,5 @@ func WrapSqliteError(msg string, err error) error {
 }
 
 func WrapSqliteErrorWithParams(msg string, err error, params map[string]string) error {
-	return errors.Join(err, fmt.Errorf("generic error (%s)", msg))
+	return errors.Join(fmt.Errorf("generic error (%s)", msg), err)
 }

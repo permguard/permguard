@@ -35,7 +35,7 @@ func (m *WorkspaceManager) buildPlanTree(plan []cosp.CodeObjectState) (*objects.
 	var tree *objects.Tree
 	tree, err = objects.NewTree()
 	if err != nil {
-		return nil, nil, errors.Join(err, errors.New("cli: tree cannot be created"))
+		return nil, nil, errors.Join(errors.New("cli: tree cannot be created"), err)
 	}
 	for _, planItem := range plan {
 		if planItem.State == cosp.CodeObjectStateDelete {
@@ -44,16 +44,16 @@ func (m *WorkspaceManager) buildPlanTree(plan []cosp.CodeObjectState) (*objects.
 		var treeItem *objects.TreeEntry
 		treeItem, err = objects.NewTreeEntry(planItem.Partition, planItem.OType, planItem.OID, planItem.OName, planItem.CodeID, planItem.CodeType, planItem.Language, planItem.LanguageVersion, planItem.LanguageType)
 		if err != nil {
-			return nil, nil, errors.Join(err, errors.New("cli: tree item cannot be created"))
+			return nil, nil, errors.Join(errors.New("cli: tree item cannot be created"), err)
 		}
 		if err = tree.AddEntry(treeItem); err != nil {
-			return nil, nil, errors.Join(err, errors.New("cli: tree item cannot be added to the tree because of errors in the code files"))
+			return nil, nil, errors.Join(errors.New("cli: tree item cannot be added to the tree because of errors in the code files"), err)
 		}
 	}
 	var treeObj *objects.Object
 	treeObj, err = objects.CreateTreeObject(tree)
 	if err != nil {
-		return nil, nil, errors.Join(err, errors.New("cli: tree object cannot be created"))
+		return nil, nil, errors.Join(errors.New("cli: tree object cannot be created"), err)
 	}
 	return tree, treeObj, nil
 }
@@ -62,11 +62,11 @@ func (m *WorkspaceManager) buildPlanTree(plan []cosp.CodeObjectState) (*objects.
 func (m *WorkspaceManager) buildPlanCommit(tree string, parentCommitID string) (*objects.Commit, *objects.Object, error) {
 	commit, err := objects.NewCommit(tree, parentCommitID, "", time.Now(), "", time.Now(), "cli commit")
 	if err != nil {
-		return nil, nil, errors.Join(err, errors.New("cli: commit cannot be created"))
+		return nil, nil, errors.Join(errors.New("cli: commit cannot be created"), err)
 	}
 	commitObj, err := objects.CreateCommitObject(commit)
 	if err != nil {
-		return nil, nil, errors.Join(err, errors.New("cli: commit object cannot be created"))
+		return nil, nil, errors.Join(errors.New("cli: commit object cannot be created"), err)
 	}
 	return commit, commitObj, nil
 }

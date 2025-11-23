@@ -92,7 +92,7 @@ func (m *RefManager) GenerateRef(remote string, zoneID int64, ledgerID string) s
 func (m *RefManager) saveConfig(name string, override bool, cfg any) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
-		return errors.Join(err, errors.New("cli: failed to marshal config"))
+		return errors.Join(errors.New("cli: failed to marshal config"), err)
 	}
 	if override {
 		_, err = m.persMgr.WriteFile(persistence.PermguardDir, name, data, 0o644, false)
@@ -100,7 +100,7 @@ func (m *RefManager) saveConfig(name string, override bool, cfg any) error {
 		_, err = m.persMgr.WriteFileIfNotExists(persistence.PermguardDir, name, data, 0o644, false)
 	}
 	if err != nil {
-		return errors.Join(err, fmt.Errorf("cli: failed to write config file %s", name))
+		return errors.Join(fmt.Errorf("cli: failed to write config file %s", name), err)
 	}
 	return nil
 }
@@ -177,7 +177,7 @@ func (m *RefManager) RefUpstreamRef(ref string) (string, error) {
 		return "", err
 	}
 	if refCfg == nil {
-		return "", errors.Join(err, errors.New("cli: invalid ref config file"))
+		return "", errors.Join(errors.New("cli: invalid ref config file"), err)
 	}
 	return refCfg.Objects.UpstreamRef, nil
 }
@@ -189,7 +189,7 @@ func (m *RefManager) RefLedgerID(ref string) (string, error) {
 		return "", err
 	}
 	if refCfg == nil {
-		return "", errors.Join(err, errors.New("cli: invalid ref config file"))
+		return "", errors.Join(errors.New("cli: invalid ref config file"), err)
 	}
 	return refCfg.Objects.LedgerID, nil
 }
@@ -201,7 +201,7 @@ func (m *RefManager) RefCommit(ref string) (string, error) {
 		return "", err
 	}
 	if refCfg == nil {
-		return "", errors.Join(err, errors.New("cli: invalid ref config file"))
+		return "", errors.Join(errors.New("cli: invalid ref config file"), err)
 	}
 	return refCfg.Objects.Commit, nil
 }

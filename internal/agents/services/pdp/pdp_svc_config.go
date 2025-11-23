@@ -76,7 +76,7 @@ func (c *PDPServiceConfig) InitFromViper(v *viper.Viper) error {
 	centralStorageEngine := v.GetString(flagName)
 	storageCEng, err := storage.NewStorageKindFromString(centralStorageEngine)
 	if err != nil {
-		return errors.Join(err, errors.New("pdp-service: invalid central storage engine"))
+		return errors.Join(errors.New("pdp-service: invalid central storage engine"), err)
 	}
 	c.config[flagCentralEngine] = storageCEng
 	// retrieve the data fetch max page size
@@ -91,7 +91,7 @@ func (c *PDPServiceConfig) InitFromViper(v *viper.Viper) error {
 	decisionLog := v.GetString(flagName)
 	decisionLogType, err := decisions.NewDecisionLogKindFromString(decisionLog)
 	if err != nil {
-		return errors.Join(err, errors.New("pdp-service: invalid decision log"))
+		return errors.Join(errors.New("pdp-service: invalid decision log"), err)
 	}
 	c.config[flagSuffixDecisionLog] = decisionLogType
 	return nil

@@ -52,7 +52,7 @@ func runECommandForRemoteAddWorkspace(args []string, deps cli.CliDependenciesPro
 			printer.Println("Failed to add the remote.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to add the remote")))
+			printer.Error(errors.Join(errors.New("cli: failed to add the remote"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -76,7 +76,7 @@ func runECommandForRemoteAddWorkspace(args []string, deps cli.CliDependenciesPro
 			printer.Println("Failed to add the remote.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to add the remote")))
+			printer.Error(errors.Join(errors.New("cli: failed to add the remote"), err))
 		}
 		return common.ErrCommandSilent
 	}

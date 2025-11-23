@@ -52,7 +52,7 @@ func runECommandForPlanWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Co
 			printer.Println("Failed execute the plan.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to execute the plan")))
+			printer.Error(errors.Join(errors.New("cli: failed to execute the plan"), err))
 		}
 		return common.ErrCommandSilent
 	}

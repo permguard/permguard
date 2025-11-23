@@ -49,7 +49,7 @@ func runECommandForValidateWorkspace(deps cli.CliDependenciesProvider, cmd *cobr
 	output, err := wksMgr.ExecValidate(outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to validate the workspace")))
+			printer.Error(errors.Join(errors.New("cli: failed to validate the workspace"), err))
 		}
 		return common.ErrCommandSilent
 	}
