@@ -48,7 +48,7 @@ func runECommandForDeleteZone(deps cli.CliDependenciesProvider, cmd *cobra.Comma
 			printer.Println("Failed to delete the zone.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to delete the zone")))
+			printer.Error(errors.Join(errors.New("cli: failed to delete the zone"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -58,7 +58,7 @@ func runECommandForDeleteZone(deps cli.CliDependenciesProvider, cmd *cobra.Comma
 			printer.Println("Failed to delete the zone.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to delete the zone")))
+			printer.Error(errors.Join(errors.New("cli: failed to delete the zone"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -69,7 +69,7 @@ func runECommandForDeleteZone(deps cli.CliDependenciesProvider, cmd *cobra.Comma
 			printer.Println("Failed to delete the zone.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to delete the zone")))
+			printer.Error(errors.Join(errors.New("cli: failed to delete the zone"), err))
 		}
 		return common.ErrCommandSilent
 	}

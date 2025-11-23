@@ -48,7 +48,7 @@ func runECommandForDeleteLedger(deps cli.CliDependenciesProvider, cmd *cobra.Com
 			printer.Println("Failed to delete the ledger.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to delete the ledger")))
+			printer.Error(errors.Join(fmt.Errorf("cli: failed to delete the ledger"), err))
 		}
 	}
 	client, err := deps.CreateGrpcPAPClient(papTarget)
@@ -57,7 +57,7 @@ func runECommandForDeleteLedger(deps cli.CliDependenciesProvider, cmd *cobra.Com
 			printer.Println("Failed to delete the ledger.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to delete the ledger")))
+			printer.Error(errors.Join(fmt.Errorf("cli: failed to delete the ledger"), err))
 		}
 	}
 	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
@@ -68,7 +68,7 @@ func runECommandForDeleteLedger(deps cli.CliDependenciesProvider, cmd *cobra.Com
 			printer.Println("Failed to delete the ledger.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to delete the ledger")))
+			printer.Error(errors.Join(fmt.Errorf("cli: failed to delete the ledger"), err))
 		}
 		return common.ErrCommandSilent
 	}

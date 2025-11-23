@@ -49,7 +49,7 @@ func runECommandForHistoryWorkspace(deps cli.CliDependenciesProvider, cmd *cobra
 	output, err := wksMgr.ExecHistory(outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to show history")))
+			printer.Error(errors.Join(errors.New("cli: failed to show history"), err))
 		}
 		return common.ErrCommandSilent
 	}

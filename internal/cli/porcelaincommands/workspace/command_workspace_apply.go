@@ -52,7 +52,7 @@ func runECommandForApplyWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.C
 			printer.Println("Failed to apply workspace changes.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to apply workspace changes")))
+			printer.Error(errors.Join(errors.New("cli: failed to apply workspace changes"), err))
 		}
 		return common.ErrCommandSilent
 	}

@@ -52,7 +52,7 @@ func runECommandForRemoteWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.
 			printer.Println("Failed to list remotes.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to list remote")))
+			printer.Error(errors.Join(errors.New("cli: failed to list remote"), err))
 		}
 		return common.ErrCommandSilent
 	}

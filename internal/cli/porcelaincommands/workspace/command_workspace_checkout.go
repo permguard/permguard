@@ -41,7 +41,7 @@ func runECommandForCheckoutWorkspace(args []string, deps cli.CliDependenciesProv
 			printer.Println("Failed to checkout the workspace.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to checkout the workspace")))
+			printer.Error(errors.Join(errors.New("cli: failed to checkout the workspace"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -62,7 +62,7 @@ func runECommandForCheckoutWorkspace(args []string, deps cli.CliDependenciesProv
 			printer.Println("Failed to checkout the workspace.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to checkout the workspace")))
+			printer.Error(errors.Join(errors.New("cli: failed to checkout the workspace"), err))
 		}
 		return common.ErrCommandSilent
 	}

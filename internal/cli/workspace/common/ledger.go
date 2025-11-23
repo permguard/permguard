@@ -76,18 +76,18 @@ func GetLedgerInfoFromURI(ledgerURI string) (*LedgerInfo, error) {
 
 	remoteName, err := SanitizeRemote(items[0])
 	if err != nil {
-		return nil, errors.Join(err, fmt.Errorf("cli: invalid remote %s", remoteName))
+		return nil, errors.Join(fmt.Errorf("cli: invalid remote %s", remoteName), err)
 	}
 	result.remote = remoteName
 
 	zoneIDStr := items[1]
 	zoneID, err := strconv.ParseInt(zoneIDStr, 10, 64)
 	if err != nil {
-		return nil, errors.Join(err, fmt.Errorf("cli: invalid zone id %s", zoneIDStr))
+		return nil, errors.Join(fmt.Errorf("cli: invalid zone id %s", zoneIDStr), err)
 	}
 	err = validators.ValidateCodeID("ledger", zoneID)
 	if err != nil {
-		return nil, errors.Join(err, fmt.Errorf("cli: invalid zone id %s", zoneIDStr))
+		return nil, errors.Join(fmt.Errorf("cli: invalid zone id %s", zoneIDStr), err)
 	}
 	result.zoneID = zoneID
 

@@ -75,7 +75,7 @@ func (c *ZAPServiceConfig) InitFromViper(v *viper.Viper) error {
 	centralStorageEngine := v.GetString(flagName)
 	storageCEng, err := storage.NewStorageKindFromString(centralStorageEngine)
 	if err != nil {
-		return errors.Join(err, errors.New("zap-service: invalid central storage engine"))
+		return errors.Join(errors.New("zap-service: invalid central storage engine"), err)
 	}
 	c.config[flagCentralEngine] = storageCEng
 	// retrieve the data fetch max page size

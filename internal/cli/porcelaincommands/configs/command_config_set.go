@@ -33,7 +33,7 @@ import (
 // viperWriteEndpoint writes the setting to the viper configuration.
 func viperWriteEndpoint(v *viper.Viper, key string, value string) error {
 	if !validators.IsValidHostnamePort(value) {
-		return fmt.Errorf("invalid hostname port")
+		return fmt.Errorf("invalid hostname:port")
 	}
 	valueMap := map[string]interface{}{
 		key: value,
@@ -53,7 +53,7 @@ func runECommandForZAPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 			printer.Println("Failed to set the zap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to set the zap target")))
+			printer.Error(errors.Join(errors.New("cli: failed to set the zap target"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -63,7 +63,7 @@ func runECommandForZAPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 			printer.Println("Failed to set the zap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to set the zap target")))
+			printer.Error(errors.Join(errors.New("cli: failed to set the zap target"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -82,7 +82,7 @@ func runECommandForPAPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 			printer.Println("Failed to set the pap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to set the pap target")))
+			printer.Error(errors.Join(errors.New("cli: failed to set the pap target"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -92,7 +92,7 @@ func runECommandForPAPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 			printer.Println("Failed to set the pap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to set the pap target")))
+			printer.Error(errors.Join(errors.New("cli: failed to set the pap target"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -111,7 +111,7 @@ func runECommandForPDPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 			printer.Println("Failed to set the zap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to set the pdp target")))
+			printer.Error(errors.Join(errors.New("cli: failed to set the pdp target"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -121,7 +121,7 @@ func runECommandForPDPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 			printer.Println("Failed to set the zap target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to set the pdp target")))
+			printer.Error(errors.Join(errors.New("cli: failed to set the pdp target"), err))
 		}
 		return common.ErrCommandSilent
 	}

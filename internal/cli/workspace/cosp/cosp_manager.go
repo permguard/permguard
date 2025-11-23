@@ -113,7 +113,7 @@ func (m *COSPManager) SaveCodeSourceObject(oid string, content []byte) (bool, er
 	path := filepath.Join(folder, name)
 	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, folder)
 	if err != nil {
-		return false, errors.Join(err, fmt.Errorf("cli: failed to save object %s", oid))
+		return false, errors.Join(fmt.Errorf("cli: failed to save object %s", oid), err)
 	}
 	return m.persMgr.WriteFile(persistence.PermguardDir, path, content, 0o644, true)
 }
@@ -133,7 +133,7 @@ func (m *COSPManager) ReadCodeSourceObject(oid string) (*objects.Object, error) 
 func (m *COSPManager) saveConfig(name string, override bool, cfg any) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
-		return errors.Join(err, errors.New("cli: failed to marshal config"))
+		return errors.Join(errors.New("cli: failed to marshal config"), err)
 	}
 	if override {
 		_, err = m.persMgr.WriteFile(persistence.PermguardDir, name, data, 0o644, false)
@@ -161,7 +161,7 @@ func (m *COSPManager) SaveCodeSourceConfig(treeID string) error {
 func (m *COSPManager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, m.codeSourceDir())
 	if err != nil {
-		return errors.Join(err, errors.New("cli: failed to create code plan"))
+		return errors.Join(errors.New("cli: failed to create code plan"), err)
 	}
 	path := filepath.Join(m.codeSourceDir(), hiddenCodeMapFile)
 	rowFunc := func(record any) []string {
@@ -184,7 +184,7 @@ func (m *COSPManager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 	}
 	err = m.persMgr.WriteCSVStream(persistence.PermguardDir, path, nil, codeFiles, rowFunc, true)
 	if err != nil {
-		return errors.Join(err, errors.New("cli: failed to write code map"))
+		return errors.Join(errors.New("cli: failed to write code map"), err)
 	}
 	return nil
 }
@@ -230,7 +230,7 @@ func (m *COSPManager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 	}
 	err := m.persMgr.ReadCSVStream(persistence.PermguardDir, path, nil, recordFunc, true)
 	if err != nil {
-		return nil, errors.Join(err, errors.New("cli: failed to read code map"))
+		return nil, errors.Join(errors.New("cli: failed to read code map"), err)
 	}
 
 	return codeFiles, nil
@@ -279,7 +279,7 @@ func (m *COSPManager) SaveRemoteCodePlan(ref string, codeObjects []CodeObjectSta
 	path := filepath.Join(m.codeDir(), strings.ToLower(ref))
 	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, path)
 	if err != nil {
-		return errors.Join(err, errors.New("cli: failed to create code plan"))
+		return errors.Join(errors.New("cli: failed to create code plan"), err)
 	}
 	path = filepath.Join(path, hiddenCodePlanFile)
 	return m.saveCodeObjectStates(path, codeObjects)
@@ -354,7 +354,7 @@ func (m *COSPManager) saveCodeObjectStates(path string, codeObjects []CodeObject
 	}
 	err := m.persMgr.WriteCSVStream(persistence.PermguardDir, path, nil, codeObjects, rowFunc, true)
 	if err != nil {
-		return errors.Join(err, errors.New("cli: failed to write code object state"))
+		return errors.Join(errors.New("cli: failed to write code object state"), err)
 	}
 	return nil
 }
@@ -385,7 +385,7 @@ func (m *COSPManager) readCodeObjectStates(path string) ([]CodeObjectState, erro
 	}
 	err := m.persMgr.ReadCSVStream(persistence.PermguardDir, path, nil, recordFunc, true)
 	if err != nil {
-		return nil, errors.Join(err, errors.New("cli: failed to read code state"))
+		return nil, errors.Join(errors.New("cli: failed to read code state"), err)
 	}
 	return codeObjects, nil
 }
@@ -445,7 +445,7 @@ func (m *COSPManager) SaveObject(oid string, content []byte) (bool, error) {
 	path := filepath.Join(folder, name)
 	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, folder)
 	if err != nil {
-		return false, errors.Join(err, fmt.Errorf("cli: failed to save object %s", oid))
+		return false, errors.Join(fmt.Errorf("cli: failed to save object %s", oid), err)
 	}
 	return m.persMgr.WriteFile(persistence.PermguardDir, path, content, 0o644, true)
 }

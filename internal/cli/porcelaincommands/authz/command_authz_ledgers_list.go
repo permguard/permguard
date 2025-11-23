@@ -47,7 +47,7 @@ func runECommandForListLedgers(deps cli.CliDependenciesProvider, cmd *cobra.Comm
 			printer.Println("Failed to list ledgers.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to list ledgers")))
+			printer.Error(errors.Join(fmt.Errorf("cli: failed to list ledgers"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -57,7 +57,7 @@ func runECommandForListLedgers(deps cli.CliDependenciesProvider, cmd *cobra.Comm
 			printer.Println("Failed to list ledgers.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to list ledgers")))
+			printer.Error(errors.Join(fmt.Errorf("cli: failed to list ledgers"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -73,7 +73,7 @@ func runECommandForListLedgers(deps cli.CliDependenciesProvider, cmd *cobra.Comm
 			printer.Println("Failed to list ledgers.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to list ledgers")))
+			printer.Error(errors.Join(fmt.Errorf("cli: failed to list ledgers"), err))
 		}
 		return common.ErrCommandSilent
 	}

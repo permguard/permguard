@@ -74,7 +74,7 @@ func runECommandForObjectsCatWorkspace(deps cli.CliDependenciesProvider, cmd *co
 			printer.Println("Failed to cat the object.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to cat the object")))
+			printer.Error(errors.Join(errors.New("cli: failed to cat the object"), err))
 		}
 		return common.ErrCommandSilent
 	}

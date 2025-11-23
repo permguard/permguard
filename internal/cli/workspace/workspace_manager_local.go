@@ -113,7 +113,7 @@ func (m *WorkspaceManager) scanByKind(partition string, kind string, extensions,
 	for _, absPath := range includedPaths {
 		relPath, err := filepath.Rel(workDir, absPath)
 		if err != nil {
-			return nil, nil, errors.Join(err, fmt.Errorf("cli: failed to compute relative path for included file %q", absPath))
+			return nil, nil, errors.Join(fmt.Errorf("cli: failed to compute relative path for included file %q", absPath), err)
 		}
 		includedFiles = append(includedFiles, cosp.CodeFile{
 			Partition: partition,
@@ -125,7 +125,7 @@ func (m *WorkspaceManager) scanByKind(partition string, kind string, extensions,
 	for _, absPath := range ignoredPaths {
 		relPath, err := filepath.Rel(workDir, absPath)
 		if err != nil {
-			return nil, nil, errors.Join(err, fmt.Errorf("cli: failed to compute relative path for ignored file %q", absPath))
+			return nil, nil, errors.Join(fmt.Errorf("cli: failed to compute relative path for ignored file %q", absPath), err)
 		}
 		ignoredFiles = append(ignoredFiles, cosp.CodeFile{
 			Partition: partition,
@@ -338,16 +338,16 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *Mani
 	var tree *objects.Tree
 	tree, err = objects.NewTree()
 	if err != nil {
-		return "", blobifiedCodeFiles, errors.Join(err, errors.New("cli: tree object cannot be created"))
+		return "", blobifiedCodeFiles, errors.Join(errors.New("cli: tree object cannot be created"), err)
 	}
 	for _, obj := range codeObsState {
 		var entry *objects.TreeEntry
 		entry, err = objects.NewTreeEntry(obj.Partition, obj.OType, obj.OID, obj.OName, obj.CodeID, obj.CodeType, obj.Language, obj.LanguageVersion, obj.LanguageType)
 		if err != nil {
-			return "", nil, errors.Join(err, errors.New("cli: tree item cannot be created"))
+			return "", nil, errors.Join(errors.New("cli: tree item cannot be created"), err)
 		}
 		if err = tree.AddEntry(entry); err != nil {
-			return "", blobifiedCodeFiles, errors.Join(err, errors.New("cli: tree item cannot be added due to file errors"))
+			return "", blobifiedCodeFiles, errors.Join(errors.New("cli: tree item cannot be added due to file errors"), err)
 		}
 	}
 
@@ -355,7 +355,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *Mani
 	var treeObj *objects.Object
 	treeObj, err = objects.CreateTreeObject(tree)
 	if err != nil {
-		return "", blobifiedCodeFiles, errors.Join(err, errors.New("cli: tree object creation failed"))
+		return "", blobifiedCodeFiles, errors.Join(errors.New("cli: tree object creation failed"), err)
 	}
 	if _, err := m.cospMgr.SaveCodeSourceObject(treeObj.OID(), treeObj.Content()); err != nil {
 		return "", blobifiedCodeFiles, err

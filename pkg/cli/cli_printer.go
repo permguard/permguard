@@ -115,6 +115,16 @@ func NewCliPrinterTerminal(verbose bool, output string) (*CliPrinterTerminal, er
 
 // printJSON prints the output as json.
 func (cp *CliPrinterTerminal) printJSON(output map[string]any) {
+	if output == nil {
+		output = make(map[string]any)
+	}
+	errInputObj := output["error"]
+	if errInputObj != nil {
+		errInputMsg, _ := errInputObj.(string)
+		lines := strings.Split(strings.ReplaceAll(errInputMsg, "\r\n", "\n"), "\n")
+		output["error"] = lines[0]
+		output["causes"] = lines[1:]
+	}
 	jsonData, err := marshalWithSnakeCase(output)
 	if err != nil {
 		return
@@ -172,7 +182,15 @@ func (cp *CliPrinterTerminal) printTerminal(output map[string]any, isError bool,
 	sort.Strings(keys)
 	for _, k := range keys {
 		if isError {
-			color.Red("%s: %s\n", k, output[k])
+			errMsg := output[k].(string)
+			lines := strings.Split(strings.ReplaceAll(errMsg, "\r\n", "\n"), "\n")
+			if len(lines) == 0 {
+				continue
+			}
+			color.Red("%s: %s\n", k, strings.TrimPrefix(lines[0], "cli: "))
+			for _, line := range lines[1:] {
+				color.Red("  - %s\n", line)
+			}
 		} else {
 			cp.printValue(k, output[k], newLine)
 		}

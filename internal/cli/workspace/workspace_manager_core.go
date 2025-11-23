@@ -143,7 +143,7 @@ func (m *WorkspaceManager) tryLock() (*flock.Flock, error) {
 	fileLock := flock.New(lockFile)
 	lock, err := fileLock.TryLock()
 	if !lock || err != nil {
-		return nil, errors.Join(err, fmt.Errorf("cli: could not acquire the lock, another process is using it %s", m.lockFile()))
+		return nil, errors.Join(fmt.Errorf("cli: could not acquire the lock, another process is using it %s", m.lockFile()), err)
 	}
 	return fileLock, nil
 }
@@ -167,32 +167,32 @@ func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out common.PrinterOutFunc
 func (m *WorkspaceManager) hasValidManifestWorkspaceDir() (*manifests.Manifest, error) {
 	manifestData, _, err := m.persMgr.ReadFile(persistence.WorkspaceDir, manifests.ManifestFileName, false)
 	if err != nil {
-		return nil, errors.Join(err, errors.New("cli: could not read the manifest file in the workspace directory"))
+		return nil, errors.Join(errors.New("cli: could not read the manifest file in the workspace directory"), err)
 	}
 	manifest, err := manifests.ConvertBytesToManifest(manifestData)
 	manifestErr := errors.New("cli: invalid manifest in the workspace directory")
 	if err != nil {
-		return nil, errors.Join(err, manifestErr)
+		return nil, errors.Join(manifestErr, err)
 	}
 	ok, err := manifests.ValidateManifest(manifest)
 	if err != nil {
-		return nil, errors.Join(err, manifestErr)
+		return nil, errors.Join(manifestErr, err	)
 	}
 	if !ok {
-		return nil, errors.Join(err, manifestErr)
+		return nil, errors.Join(manifestErr, err)
 	}
 	for _, runtime := range manifest.Runtimes {
 		lang := runtime.Language
 		absLang, err := m.langFct.LanguageAbastraction(lang.Name, lang.Version)
 		if err != nil {
-			return nil, errors.Join(err, manifestErr)
+			return nil, errors.Join(manifestErr, err)
 		}
 		ok, err = absLang.ValidateManifest(manifest)
 		if err != nil {
-			return nil, errors.Join(err, manifestErr)
+			return nil, errors.Join(manifestErr, err)
 		}
 		if !ok {
-			return nil, errors.Join(err, manifestErr)
+			return nil, errors.Join(manifestErr, err)
 		}
 	}
 	return manifest, nil

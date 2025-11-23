@@ -52,7 +52,7 @@ func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v
 			printer.Println("Failed to check the authorization request.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, fmt.Errorf("cli: %s", message)))
+			printer.Error(errors.Join(fmt.Errorf("cli: %s", message), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -89,7 +89,7 @@ func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v
 			printer.Println("Failed to check the authorization request.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("storage: failed to check the authorization request")))
+			printer.Error(errors.Join(fmt.Errorf("cli: storage: failed to check the authorization request"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -99,7 +99,7 @@ func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v
 			printer.Println("Failed to check the authorization request.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("storage: failed to check the authorization request")))
+			printer.Error(errors.Join(fmt.Errorf("cli: storage: failed to check the authorization request"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -109,7 +109,7 @@ func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v
 			printer.Println("Failed to check the authorization request.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("storage: failed to check the authorization request")))
+			printer.Error(errors.Join(fmt.Errorf("cli: storage: failed to check the authorization request"), err))
 		}
 		return common.ErrCommandSilent
 	}

@@ -79,7 +79,7 @@ func runECommandForCloneWorkspace(args []string, deps cli.CliDependenciesProvide
 			printer.Println("Failed to clone the workspace.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to clone the workspace")))
+			printer.Error(errors.Join(errors.New("cli: failed to clone the workspace"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -101,7 +101,7 @@ func runECommandForCloneWorkspace(args []string, deps cli.CliDependenciesProvide
 			printer.Println("Failed to clone the workspace.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to clone the workspace")))
+			printer.Error(errors.Join(errors.New("cli: failed to clone the workspace"), err))
 		}
 		return common.ErrCommandSilent
 	}

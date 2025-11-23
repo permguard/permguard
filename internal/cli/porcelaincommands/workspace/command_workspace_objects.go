@@ -88,7 +88,7 @@ func runECommandForObjectsWorkspace(deps cli.CliDependenciesProvider, cmd *cobra
 			printer.Println("Failed to list objects.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to list objects")))
+			printer.Error(errors.Join(errors.New("cli: failed to list objects"), err))
 		}
 		return common.ErrCommandSilent
 	}

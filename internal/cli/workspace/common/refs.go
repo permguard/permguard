@@ -50,7 +50,7 @@ func ConvertStringWithLedgerIDToRefInfo(ref string) (*RefInfo, error) {
 	remote := refObs[2]
 	zoneID, err := strconv.ParseInt(refObs[3], 10, 64)
 	if err != nil {
-		return nil, errors.Join(err, errors.New("cli: failed to parse zone ID"))
+		return nil, errors.Join(errors.New("cli: failed to parse zone ID"), err)
 	}
 	ledger := refObs[4]
 	return &RefInfo{

@@ -64,11 +64,11 @@ func (m *RemoteServerManager) ServerRemoteLedger(remoteInfo *wkscommon.RemoteInf
 	ledger := ledgerInfo.Ledger()
 	srvZones, err := zapClient.FetchZonesByID(1, 1, zoneID)
 	if err != nil || srvZones == nil || len(srvZones) == 0 {
-		return nil, errors.Join(err, fmt.Errorf("cli: zone %d does not exist", zoneID))
+		return nil, errors.Join(fmt.Errorf("cli: zone %d does not exist", zoneID), err)
 	}
 	srvLedger, err := papClient.FetchLedgersByName(1, 1, zoneID, ledger)
 	if err != nil || srvLedger == nil || len(srvLedger) == 0 {
-		return nil, errors.Join(err, fmt.Errorf("cli: ledger %s does not exist", ledger))
+		return nil, errors.Join(fmt.Errorf("cli: ledger %s does not exist", ledger), err)
 	}
 	if srvLedger[0].Name != ledger {
 		return nil, fmt.Errorf("cli: ledger %s not found", ledger)

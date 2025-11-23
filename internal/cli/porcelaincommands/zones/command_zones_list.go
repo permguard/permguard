@@ -47,7 +47,7 @@ func runECommandForListZones(deps cli.CliDependenciesProvider, cmd *cobra.Comman
 			printer.Println("Failed to list zones.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to list zones")))
+			printer.Error(errors.Join(errors.New("cli: failed to list zones"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -57,7 +57,7 @@ func runECommandForListZones(deps cli.CliDependenciesProvider, cmd *cobra.Comman
 			printer.Println("Failed to list zones.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to list zones")))
+			printer.Error(errors.Join(errors.New("cli: failed to list zones"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -73,7 +73,7 @@ func runECommandForListZones(deps cli.CliDependenciesProvider, cmd *cobra.Comman
 			printer.Println("Failed to list zones.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(err, errors.New("cli: failed to list zones")))
+			printer.Error(errors.Join(errors.New("cli: failed to list zones"), err))
 		}
 		return common.ErrCommandSilent
 	}
