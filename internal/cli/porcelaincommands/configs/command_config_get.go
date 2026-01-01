@@ -28,7 +28,7 @@ import (
 	"github.com/permguard/permguard/pkg/cli"
 )
 
-// runECommandForZAPGet runs the command for getting the zap gRPC target.
+// runECommandForZAPGet runs the command for getting the zap endpoint.
 func runECommandForZAPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
@@ -49,7 +49,7 @@ func runECommandForZAPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 	return nil
 }
 
-// runECommandForPAPGet runs the command for getting the pap gRPC target.
+// runECommandForPAPGet runs the command for getting the pap endpoint.
 func runECommandForPAPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
@@ -70,7 +70,7 @@ func runECommandForPAPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 	return nil
 }
 
-// runECommandForPDPGet runs the command for getting the pdp gRPC target.
+// runECommandForPDPGet runs the command for getting the pdp endpoint.
 func runECommandForPDPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
@@ -94,9 +94,9 @@ func runECommandForPDPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 // CreateCommandForConfig for managing config.
 func createCommandForConfigZAPGet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "zap-get-target",
-		Short: "Get the zap grpc target",
-		Long:  common.BuildCliLongTemplate(`This command gets the zap grpc target.`),
+		Use:   "zap-endpoint",
+		Short: "Get the zap endpoint",
+		Long:  common.BuildCliLongTemplate(`This command gets the zap endpoint.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForZAPGet(deps, cmd, v)
 		},
@@ -107,9 +107,9 @@ func createCommandForConfigZAPGet(deps cli.CliDependenciesProvider, v *viper.Vip
 // CreateCommandForConfig for managing config.
 func createCommandForConfigPAPGet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "pap-get-target",
-		Short: "Get the pap grpc target",
-		Long:  common.BuildCliLongTemplate(`This command gets the pap grpc target.`),
+		Use:   "pap-endpoint",
+		Short: "Get the pap endpoint",
+		Long:  common.BuildCliLongTemplate(`This command gets the pap endpoint.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForPAPGet(deps, cmd, v)
 		},
@@ -120,12 +120,27 @@ func createCommandForConfigPAPGet(deps cli.CliDependenciesProvider, v *viper.Vip
 // CreateCommandForConfig for managing config.
 func createCommandForConfigPDPGet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "pdp-get-target",
-		Short: "Get the pdp grpc target",
-		Long:  common.BuildCliLongTemplate(`This command gets the pdp grpc target.`),
+		Use:   "pdp-endpoint",
+		Short: "Get the pdp endpoint",
+		Long:  common.BuildCliLongTemplate(`This command gets the pdp endpoint.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForPDPGet(deps, cmd, v)
 		},
 	}
+	return command
+}
+
+func createCommandForConfigGet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+	command := &cobra.Command{
+		Use:   "get",
+		Short: "Get configuration items",
+		Long:  common.BuildCliLongTemplate(`This command gets configuration items.`),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
+	}
+	command.AddCommand(createCommandForConfigZAPGet(deps, v))
+	command.AddCommand(createCommandForConfigPAPGet(deps, v))
+	command.AddCommand(createCommandForConfigPDPGet(deps, v))
 	return command
 }

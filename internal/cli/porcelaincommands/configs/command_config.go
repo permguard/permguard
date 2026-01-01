@@ -38,11 +38,7 @@ func CreateCommandForConfig(deps cli.CliDependenciesProvider, v *viper.Viper) *c
 		RunE:  runECommandForConfig,
 	}
 	command.AddCommand(createCommandForConfigReset(deps, v))
-	command.AddCommand(createCommandForConfigZAPGet(deps, v))
-	command.AddCommand(createCommandForConfigZAPSet(deps, v))
-	command.AddCommand(createCommandForConfigPAPGet(deps, v))
-	command.AddCommand(createCommandForConfigPAPSet(deps, v))
-	command.AddCommand(createCommandForConfigPDPGet(deps, v))
-	command.AddCommand(createCommandForConfigPDPSet(deps, v))
+	command.AddCommand(createCommandForConfigGet(deps, v))
+	command.AddCommand(createCommandForConfigSet(deps, v))
 	return command
 }
