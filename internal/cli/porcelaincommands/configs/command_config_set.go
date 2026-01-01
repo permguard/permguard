@@ -41,7 +41,7 @@ func viperWriteEndpoint(v *viper.Viper, key string, value string) error {
 	return options.OverrideViperFromConfig(v, valueMap)
 }
 
-// runECommandForZAPSet runs the command for setting the zap gRPC target.
+// runECommandForZAPSet runs the command for setting the zap endpoint.
 func runECommandForZAPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
@@ -70,7 +70,7 @@ func runECommandForZAPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 	return nil
 }
 
-// runECommandForPAPSet runs the command for setting the pap gRPC target.
+// runECommandForPAPSet runs the command for setting the pap endpoint.
 func runECommandForPAPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
@@ -99,7 +99,7 @@ func runECommandForPAPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 	return nil
 }
 
-// runECommandForPDPSet runs the command for setting the pdp gRPC target.
+// runECommandForPDPSet runs the command for setting the pdp endpoint.
 func runECommandForPDPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
@@ -131,13 +131,13 @@ func runECommandForPDPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 // CreateCommandForConfig for managing config.
 func createCommandForConfigZAPSet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "zap-set-target",
-		Short: "Set the zap grpc target",
-		Long: common.BuildCliLongTemplate(`This command sets the zap grpc target.
+		Use:   "zap-endpoint",
+		Short: "Set the zap endpoint",
+		Long: common.BuildCliLongTemplate(`This command sets the zap endpoint.
 
 Examples:
-# set the zap gRPC target to localhost:9091
-permguard config zap-set-target localhost:9091
+# set the zap endpoint to localhost:9091
+permguard config zap-endpoint localhost:9091
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForZAPSet(deps, cmd, v, args)
@@ -149,13 +149,13 @@ permguard config zap-set-target localhost:9091
 // CreateCommandForConfig for managing config.
 func createCommandForConfigPAPSet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "pap-set-target",
-		Short: "Set the pap grpc target",
-		Long: common.BuildCliLongTemplate(`This command sets the pap grpc target.
+		Use:   "pap-endpoint",
+		Short: "Set the pap endpoint",
+		Long: common.BuildCliLongTemplate(`This command sets the pap endpoint.
 
 Examples:
-# set the pap gRPC target to localhost:9092
-permguard config pap-set-target localhost:9092
+# set the pap endpoint to localhost:9092
+permguard config pap-endpoint localhost:9092
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForPAPSet(deps, cmd, v, args)
@@ -167,17 +167,32 @@ permguard config pap-set-target localhost:9092
 // CreateCommandForConfig for managing config.
 func createCommandForConfigPDPSet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "pdp-set-target",
-		Short: "Set the pdp grpc target",
-		Long: common.BuildCliLongTemplate(`This command sets the pdp grpc target.
+		Use:   "pdp-endpoint",
+		Short: "Set the pdp endpoint",
+		Long: common.BuildCliLongTemplate(`This command sets the pdp endpoint.
 
 Examples:
-# set the pdp gRPC target to localhost:9094
-permguard config pdp-set-target localhost:9094
+# set the pdp endpoint to localhost:9094
+permguard config pdp-endpoint localhost:9094
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForPDPSet(deps, cmd, v, args)
 		},
 	}
+	return command
+}
+
+func createCommandForConfigSet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+	command := &cobra.Command{
+		Use:   "set",
+		Short: "Set configuration items",
+		Long:  common.BuildCliLongTemplate(`This command sets configuration items.`),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
+	}
+	command.AddCommand(createCommandForConfigZAPSet(deps, v))
+	command.AddCommand(createCommandForConfigPAPSet(deps, v))
+	command.AddCommand(createCommandForConfigPDPSet(deps, v))
 	return command
 }
