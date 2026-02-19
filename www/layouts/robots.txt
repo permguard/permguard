@@ -1,4 +1,0 @@
-User-Agent: *
-Allow: /
-
-Sitemap: https://community.permguard.com/sitemap.xml
