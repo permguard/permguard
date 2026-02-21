@@ -43,7 +43,7 @@ func (s *CommunityCliInitializer) CliInfo() cli.CliInfo {
 		Name:  "Community Command Line Interface",
 		Use:   "permguard",
 		Short: "The official Permguard© Cli",
-		Long:  common.BuildCliLongTemplate("Rethinking Authorization Beyond the Token."),
+		Long:  common.BuildCliLongTemplate("Govern Authority. From Policies to Continuity."),
 	}
 }
 
