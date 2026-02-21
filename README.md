@@ -18,11 +18,12 @@
 
 Learn:
 
-- [Permguard Docs](https://community.permguard.com/)
-- [ZTAuth*: Zero Trust AuthN/AuthZ Models and Trusted Delegations](https://spec.ztauthstar.com/)
+- [Permguard Docs](https://docs.permguard.com/)
+
+> **Govern Authority. From Policies to Continuity.**
 
 **Permguard** is the authorization engine for both worlds: enforce policies on today's systems, enforce continuity on tomorrow's. One engine for governance, AI agents, and distributed execution.
-As a `Permguard administrator`, you can create multiple zones and manage multiple ledgers within each zone.
+This repository contains markdown files for the **Permguard** project.
 
 Simply define your schema's `resources` within your repository and create customized access control policies. Resources are organized into schema namespaces.
 
