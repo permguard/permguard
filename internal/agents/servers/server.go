@@ -18,7 +18,6 @@ package servers
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"sync"
@@ -150,7 +149,6 @@ func (s *Server) Serve(ctx context.Context, onShutdown func()) (bool, error) {
 		stop()
 		s.startLock.Unlock()
 	}
-	fmt.Print(host)
 	return hasStarted, nil
 }
 

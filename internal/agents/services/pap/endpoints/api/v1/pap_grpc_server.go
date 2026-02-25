@@ -276,8 +276,8 @@ func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, Pa
 	if !ok || len(zoneID) == 0 {
 		return errors.New("pap-endpoint: notp stream missing zone id")
 	}
-	respositoryID, ok := md[notptransportsm.LedgerIDKey]
-	if !ok || len(respositoryID) == 0 {
+	repositoryID, ok := md[notptransportsm.LedgerIDKey]
+	if !ok || len(repositoryID) == 0 {
 		return errors.New("pap-endpoint: notp stream missing ledger id")
 	}
 
@@ -287,7 +287,7 @@ func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, Pa
 	}
 	bag := map[string]any{}
 	bag[notptransportsm.ZoneIDKey] = zoneID[0]
-	bag[notptransportsm.LedgerIDKey] = respositoryID[0]
+	bag[notptransportsm.LedgerIDKey] = repositoryID[0]
 	_, err = stateMachine.Run(bag, notpstatemachines.UnknownFlowType)
 	if err != nil {
 		return errors.Join(errors.New("pap-endpoint: notp stream unhandled err"), err)

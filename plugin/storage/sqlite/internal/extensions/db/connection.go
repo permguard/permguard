@@ -126,7 +126,10 @@ func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *storage.StorageConte
 	if err != nil {
 		return nil, errors.Join(errors.New("storage: cannot connect to sqlite"), err)
 	}
-	db.Exec("PRAGMA foreign_keys = ON;")
+	if _, err := db.Exec("PRAGMA foreign_keys = ON;"); err != nil {
+		db.Close()
+		return nil, errors.Join(errors.New("storage: cannot enable foreign keys on sqlite"), err)
+	}
 	c.db = db
 	return c.db, nil
 }

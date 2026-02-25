@@ -17,12 +17,13 @@
 package repositories
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/binary"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"strings"
-	"time"
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
@@ -34,10 +35,14 @@ import (
 func GenerateZoneID() int64 {
 	const base = 100000000000
 	const maxRange = 900000000000
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	randomNumber := r.Int63n(maxRange)
-	zoneID := base + randomNumber
-	return zoneID
+	n, err := rand.Int(rand.Reader, big.NewInt(maxRange))
+	if err != nil {
+		// Fallback is acceptable here since this is for ID uniqueness not security tokens
+		var buf [8]byte
+		rand.Read(buf[:])
+		return base + int64(binary.BigEndian.Uint64(buf[:])%uint64(maxRange))
+	}
+	return base + n.Int64()
 }
 
 // UpsertZone creates or updates a zone.
@@ -125,7 +130,7 @@ func (r *Repository) FetchZones(db *sqlx.DB, page int32, pageSize int32, filterI
 	if filterID != nil {
 		zoneID := *filterID
 		if err := validators.ValidateCodeID("zone", zoneID); err != nil {
-			return nil, errors.Join(fmt.Errorf("stroage: invalid client input - zone id is not valid (id: %d)", zoneID), err)
+			return nil, errors.Join(fmt.Errorf("storage: invalid client input - zone id is not valid (id: %d)", zoneID), err)
 		}
 		conditions = append(conditions, "zone_id = ?")
 		args = append(args, zoneID)

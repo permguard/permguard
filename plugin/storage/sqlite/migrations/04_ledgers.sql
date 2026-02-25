@@ -69,7 +69,7 @@ BEGIN
     INSERT INTO change_streams (change_entity, change_type, change_entity_id, zone_id, payload)
 		VALUES ('LEDGER', 'DELETE', OLD.ledger_id, OLD.zone_id,
 				'{"ledger_id": "' || OLD.ledger_id || '", "created_at": "' || OLD.created_at ||
-				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name || OLD.name || '", "kind": "' || OLD.kind ||
+				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name || '", "kind": "' || OLD.kind ||
 				'", "zone_id": ' || OLD.zone_id || ', "ref": "' || OLD.ref || '"}');
 END;
 -- +goose StatementEnd

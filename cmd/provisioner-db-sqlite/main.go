@@ -22,11 +22,11 @@ import (
 	"github.com/permguard/permguard/plugin/storage/sqlite"
 )
 
-// PosgresStorageInitializer is the storage initializer.
-type PosgresStorageInitializer struct{}
+// SQLiteStorageInitializer is the storage initializer.
+type SQLiteStorageInitializer struct{}
 
 // StorageProvisionerInfo returns the infos of the storage provisioner.
-func (s *PosgresStorageInitializer) StorageProvisionerInfo() storage.StorageProvisionerInfo {
+func (s *SQLiteStorageInitializer) StorageProvisionerInfo() storage.StorageProvisionerInfo {
 	return storage.StorageProvisionerInfo{
 		Name:  "SQLite Storage Provisioner",
 		Use:   "Provision the SQLite storage",
@@ -35,11 +35,11 @@ func (s *PosgresStorageInitializer) StorageProvisionerInfo() storage.StorageProv
 }
 
 // StorageProvisioner returns the storage provisioner.
-func (s *PosgresStorageInitializer) StorageProvisioner() (storage.StorageProvisioner, error) {
+func (s *SQLiteStorageInitializer) StorageProvisioner() (storage.StorageProvisioner, error) {
 	return sqlite.NewSQLiteStorageProvisioner()
 }
 
 func main() {
 	// Run the provisioner.
-	cli.Run(&PosgresStorageInitializer{})
+	cli.Run(&SQLiteStorageInitializer{})
 }
