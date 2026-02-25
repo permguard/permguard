@@ -45,7 +45,7 @@ FOR EACH ROW
 BEGIN
     UPDATE zones SET updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW') WHERE zone_id = OLD.zone_id;
     INSERT INTO change_streams (change_entity, change_type, change_entity_id, zone_id, payload)
-		VALUES ('ZONE', 'INSERT', NEW.zone_id, NEW.zone_id,
+		VALUES ('ZONE', 'UPDATE', NEW.zone_id, NEW.zone_id,
 				'{"zone_id": ' || NEW.zone_id || ', "created_at": "' || NEW.created_at ||
 				'", "updated_at": "' || NEW.updated_at || '", "name": "' || NEW.name || '"}');
 END;
@@ -60,7 +60,7 @@ BEGIN
     INSERT INTO change_streams (change_entity, change_type, change_entity_id, zone_id, payload)
 		VALUES ('ZONE', 'DELETE', OLD.zone_id, OLD.zone_id,
 				'{"zone_id": ' || OLD.zone_id || ', "created_at": "' || OLD.created_at ||
-				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name || '""}');
+				'", "updated_at": "' || OLD.updated_at || '", "name": "' || OLD.name || '"}');
 END;
 -- +goose StatementEnd
 

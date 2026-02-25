@@ -177,12 +177,18 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 		authzModel := expReq.AuthorizationModel
 		authzPolicyStore, err2 := s.storage.LoadPolicyStore(authzModel.ZoneID, authzModel.PolicyStore.ID)
 		if err2 != nil {
-			errMsg := fmt.Sprintf("%s: authorization check has failed %s", authzen.AuthzErrInternalErrorMessage, err2.Error())
+			if logger := s.ctx.Logger(); logger != nil {
+				logger.Error("authorization check has failed", zap.Error(err2))
+			}
+			errMsg := fmt.Sprintf("%s: authorization check has failed", authzen.AuthzErrInternalErrorMessage)
 			return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
 		}
 		cedarLanguageAbs, err2 := cedar.NewCedarLanguageAbstraction()
 		if err2 != nil {
-			errMsg := fmt.Sprintf("%s: authorization check has failed %s", authzen.AuthzErrInternalErrorMessage, err2.Error())
+			if logger := s.ctx.Logger(); logger != nil {
+				logger.Error("authorization check has failed", zap.Error(err2))
+			}
+			errMsg := fmt.Sprintf("%s: authorization check has failed", authzen.AuthzErrInternalErrorMessage)
 			return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
 		}
 		authzCheckEvaluations = []pdp.EvaluationResponse{}

@@ -34,7 +34,7 @@ func withServerUnaryInterceptor(serviceCtx *services.EndpointContext) grpc.Serve
 		logger := serviceCtx.Logger()
 		defer func() {
 			if err := recover(); err != nil {
-				logger.Error(serviceCtx.LogMessage(fmt.Sprintf("Request generted a panic: %v stacktrace:%s", err, debug.Stack())))
+				logger.Error(serviceCtx.LogMessage(fmt.Sprintf("Request generated a panic: %v stacktrace:%s", err, debug.Stack())))
 			}
 		}()
 		start := time.Now()
