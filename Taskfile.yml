@@ -108,7 +108,7 @@ tasks:
     desc: Run Alpine interactively with Go preinstalled
     interactive: true
     vars:
-      GO_VERSION: "1.25.1"
+      GO_VERSION: "1.26.0"
       TASK_VERSION: "3.38.0"
     cmds:
       - |
