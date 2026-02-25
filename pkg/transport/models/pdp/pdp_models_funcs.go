@@ -21,15 +21,15 @@ import (
 )
 
 const (
-	Permguard         	= "PERMGUARD"
-	PermguardUser     	= "USER"
-	PermguardWorkload 	= "WORKLOAD"
-	PermguardAttribute 	= "ATTRIBUTE"
+	Permguard          = "PERMGUARD"
+	PermguardUser      = "USER"
+	PermguardWorkload  = "WORKLOAD"
+	PermguardAttribute = "ATTRIBUTE"
 )
 
 // IsValidKey checks if the key is valid.
 func IsValidKey(key string) bool {
-	key = strings.ToUpper(strings.Replace(key, " ", "", -1))
+	key = strings.ToUpper(strings.ReplaceAll(key, " ", ""))
 	return key != Permguard
 }
 

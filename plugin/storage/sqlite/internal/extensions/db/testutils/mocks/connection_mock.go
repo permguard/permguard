@@ -57,10 +57,8 @@ func (c *SQLiteConnectionMock) Connect(logger *zap.Logger, ctx *storage.StorageC
 	var r1 error
 	if rf, ok := ret.Get(1).(func(*zap.Logger, *storage.StorageContext) error); ok {
 		r1 = rf(logger, ctx)
-	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(error)
-		}
+	} else if ret.Get(1) != nil {
+		r1 = ret.Get(1).(error)
 	}
 	return r0, r1
 }
@@ -72,10 +70,8 @@ func (c *SQLiteConnectionMock) Disconnect(logger *zap.Logger, ctx *storage.Stora
 	var r0 error = nil
 	if rf, ok := ret.Get(0).(func(*zap.Logger, *storage.StorageContext) error); ok {
 		r0 = rf(logger, ctx)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(error)
-		}
+	} else if ret.Get(0) != nil {
+		r0 = ret.Get(0).(error)
 	}
 	return r0
 }

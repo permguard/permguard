@@ -30,6 +30,7 @@ import (
 
 // BaseCommandTest tests the command.
 func BaseCommandTest(t *testing.T, cmdFunc func(cli.CliDependenciesProvider, *viper.Viper) *cobra.Command, args []string, hasError bool, outputs []string) {
+	t.Helper()
 	assert := assert.New(t)
 	v := viper.New()
 

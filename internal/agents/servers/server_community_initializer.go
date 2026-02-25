@@ -100,8 +100,7 @@ func (c *CommunityServerInitializer) Storages(centralStorageEngine storage.Stora
 func (c *CommunityServerInitializer) StoragesFactories(centralStorageEngine storage.StorageKind) (map[storage.StorageKind]storage.StorageFactoryProvider, error) {
 	factories := map[storage.StorageKind]storage.StorageFactoryProvider{}
 	for _, storageKind := range c.Storages(centralStorageEngine) {
-		switch storageKind {
-		case storage.StorageSQLite:
+		if storageKind == storage.StorageSQLite {
 			fFactCfg := func() (storage.StorageFactoryConfig, error) { return sqlite.NewSQLiteStorageFactoryConfig() }
 			fFact := func(config storage.StorageFactoryConfig) (storage.StorageFactory, error) {
 				return sqlite.NewSQLiteStorageFactory(config.(*sqlite.SQLiteStorageFactoryConfig))

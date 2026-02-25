@@ -30,7 +30,7 @@ import (
 func FlagName(flags ...string) string {
 	sanitizedFlags := make([]string, len(flags))
 	for i, flag := range flags {
-		sanitizedFlags[i] = strings.ReplaceAll(flag, ".", "-", )
+		sanitizedFlags[i] = strings.ReplaceAll(flag, ".", "-")
 	}
 	return strings.Join(sanitizedFlags, "-")
 }

@@ -116,7 +116,7 @@ func (m *WorkspaceManager) OnPullHandleExchangeDataStream(handlerCtx *notpstatem
 		}
 	}
 	commitsCount, _ := getFromHandlerContext[uint32](handlerCtx, LocalCommitsCountKey)
-	commitsCount = commitsCount + 1
+	commitsCount++
 	handlerCtx.SetValue(LocalCommitsCountKey, commitsCount)
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables:  []notppackets.Packetable{},

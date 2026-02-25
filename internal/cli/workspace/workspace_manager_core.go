@@ -176,7 +176,7 @@ func (m *WorkspaceManager) hasValidManifestWorkspaceDir() (*manifests.Manifest, 
 	}
 	ok, err := manifests.ValidateManifest(manifest)
 	if err != nil {
-		return nil, errors.Join(manifestErr, err	)
+		return nil, errors.Join(manifestErr, err)
 	}
 	if !ok {
 		return nil, errors.Join(manifestErr, err)

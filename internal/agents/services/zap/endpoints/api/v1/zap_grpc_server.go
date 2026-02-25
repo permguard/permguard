@@ -39,10 +39,10 @@ type ZAPService interface {
 }
 
 // NewV1ZAPServer creates a new ZAP server.
-func NewV1ZAPServer(endpointCtx *services.EndpointContext, Service ZAPService) (*V1ZAPServer, error) {
+func NewV1ZAPServer(endpointCtx *services.EndpointContext, service ZAPService) (*V1ZAPServer, error) {
 	return &V1ZAPServer{
 		ctx:     endpointCtx,
-		service: Service,
+		service: service,
 	}, nil
 }
 
@@ -91,11 +91,11 @@ func (s *V1ZAPServer) FetchZones(zoneRequest *ZoneFetchRequest, stream grpc.Serv
 	}
 	page := int32(0)
 	if zoneRequest.Page != nil {
-		page = int32(*zoneRequest.Page)
+		page = *zoneRequest.Page
 	}
 	pageSize := int32(0)
 	if zoneRequest.PageSize != nil {
-		pageSize = int32(*zoneRequest.PageSize)
+		pageSize = *zoneRequest.PageSize
 	}
 	zones, err := s.service.FetchZones(page, pageSize, fields)
 	if err != nil {

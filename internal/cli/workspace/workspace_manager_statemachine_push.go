@@ -195,7 +195,7 @@ func (m *WorkspaceManager) OnPushExchangeDataStream(handlerCtx *notpstatemachine
 	}
 	commitIDs, _ := getFromHandlerContext[[]string](handlerCtx, DiffCommitIDsKey)
 	commitIDCursor, _ := getFromHandlerContext[int](handlerCtx, DiffCommitIDCursorKey)
-	commitIDCursor = commitIDCursor + 1
+	commitIDCursor++
 	if commitIDCursor < len(commitIDs) {
 		commitID := commitIDs[commitIDCursor]
 		commitObj, err := m.cospMgr.ReadObject(commitID)

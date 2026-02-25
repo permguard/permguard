@@ -34,10 +34,10 @@ type PDPService interface {
 }
 
 // NewV1PDPServer creates a new PDP server.
-func NewV1PDPServer(endpointCtx *services.EndpointContext, Service PDPService) (*V1PDPServer, error) {
+func NewV1PDPServer(endpointCtx *services.EndpointContext, service PDPService) (*V1PDPServer, error) {
 	return &V1PDPServer{
 		ctx:     endpointCtx,
-		service: Service,
+		service: service,
 	}, nil
 }
 
