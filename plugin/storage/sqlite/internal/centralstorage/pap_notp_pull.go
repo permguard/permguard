@@ -234,7 +234,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleExchangeDataStream(handlerCtx *notp
 	}
 	commitIDs, _ := getFromHandlerContext[[]string](handlerCtx, DiffCommitIDsKey)
 	commitIDCursor, _ := getFromHandlerContext[int](handlerCtx, DiffCommitIDCursorKey)
-	commitIDCursor = commitIDCursor + 1
+	commitIDCursor++
 	handlerCtx.SetValue(DiffCommitIDCursorKey, commitIDCursor)
 	if commitIDCursor < len(commitIDs) {
 		commitID := commitIDs[commitIDCursor]

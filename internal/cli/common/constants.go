@@ -70,7 +70,7 @@ var CliLongTemplateFooter = `%s
 // BuildCliLongTemplate builds the long template for the cli.
 func BuildCliLongTemplate(content string) string {
 	template := fmt.Sprintf(CliLongTemplateHead, asciiArt)
-	if len(content) >= 0 {
+	if len(content) > 0 {
 		template = fmt.Sprintf(CliLongTemplateBody, template, content)
 	}
 	template = fmt.Sprintf(CliLongTemplateFooter, template)

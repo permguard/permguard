@@ -212,16 +212,17 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 	remoteCommitCount, _ := getFromRuntimeContext[uint32](ctx, RemoteCommitsCountKey)
 	output["remote_commits_count"] = remoteCommitCount
 
-	if localCommitID == remoteCommitID {
+	switch {
+	case localCommitID == remoteCommitID:
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", "The local workspace is already fully up to date with the remote ledger.", nil, true)
 		}
-	} else if localCommitsCount != remoteCommitCount {
+	case localCommitsCount != remoteCommitCount:
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", "Not all commits were successfully pulled. Please retry the operation.", nil, true)
 		}
 		return fail(nil, errors.New("cli: not all commits were successfully pulled"))
-	} else {
+	default:
 		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 		if !committed || localCommitID == "" || remoteCommitID == "" {
 			if localCommitID != "" && remoteCommitID != "" {

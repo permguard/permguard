@@ -96,24 +96,23 @@ func GenerateUniqueFile(prefix string, extension string) (string, error) {
 
 // CreateFileIfNotExists creates a file if it does not exist.
 func CreateFileIfNotExists(name string) (bool, error) {
-	var err error
-	if _, err = os.Stat(name); err == nil {
+	_, err := os.Stat(name)
+	switch {
+	case err == nil:
 		return false, nil
-	} else if os.IsNotExist(err) {
-		dir := filepath.Dir(name)
-		err = os.MkdirAll(dir, 0o755)
+	case os.IsNotExist(err):
+		err = os.MkdirAll(filepath.Dir(name), 0o755)
 		if err != nil {
 			return false, errors.New("core: failed to create directory")
 		}
-		var file *os.File
-		file, err = os.Create(name)
+		file, err := os.Create(name)
 		if err != nil {
 			return false, errors.New("core: failed to create file")
 		}
 		defer file.Close()
-	} else if os.IsExist(err) {
+	case os.IsExist(err):
 		return false, nil
-	} else {
+	default:
 		return false, errors.New("core: failed to stat file")
 	}
 	return true, nil
@@ -121,13 +120,15 @@ func CreateFileIfNotExists(name string) (bool, error) {
 
 // WriteFileIfNotExists writes a file if it does not exist.
 func WriteFileIfNotExists(name string, data []byte, perm os.FileMode, compressed bool) (bool, error) {
-	if _, err := os.Stat(name); err == nil {
+	_, err := os.Stat(name)
+	switch {
+	case err == nil:
 		return false, nil
-	} else if os.IsExist(err) {
+	case os.IsExist(err):
 		return false, nil
-	} else if os.IsNotExist(err) {
+	case os.IsNotExist(err):
 		return WriteFile(name, data, perm, compressed)
-	} else {
+	default:
 		return false, errors.New("core: failed to stat file")
 	}
 }

@@ -30,6 +30,7 @@ import (
 
 // NewSqliteConnectionMocks creates mocks for the SQLite connection.
 func NewSqliteConnectionMocks(t *testing.T) (db.SQLiteConnector, *sqlx.DB, sqlmock.Sqlmock) {
+	t.Helper()
 	sqlDB, sqlMock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)

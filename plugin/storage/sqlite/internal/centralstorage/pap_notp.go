@@ -51,8 +51,6 @@ func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key str
 	}
 
 	switch v := value.(type) {
-	case T:
-		return v, true
 	case string:
 		var zero T
 		switch any(zero).(type) {
@@ -69,6 +67,8 @@ func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key str
 				return any(v).(T), true
 			}
 		}
+	case T:
+		return v, true
 	}
 	var zero T
 	return zero, false

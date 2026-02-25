@@ -78,10 +78,10 @@ type PAPService interface {
 }
 
 // NewV1PAPServer creates a new PAP server.
-func NewV1PAPServer(endpointCtx *services.EndpointContext, Service PAPService) (*V1PAPServer, error) {
+func NewV1PAPServer(endpointCtx *services.EndpointContext, service PAPService) (*V1PAPServer, error) {
 	return &V1PAPServer{
 		ctx:     endpointCtx,
-		service: Service,
+		service: service,
 	}, nil
 }
 
@@ -134,7 +134,7 @@ func (s *V1PAPServer) FetchLedgers(ledgerRequest *LedgerFetchRequest, stream grp
 	}
 	page := int32(0)
 	if ledgerRequest.Page != nil {
-		page = int32(*ledgerRequest.Page)
+		page = *ledgerRequest.Page
 	}
 	pageSize := int32(0)
 	if ledgerRequest.PageSize != nil {

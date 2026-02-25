@@ -237,21 +237,7 @@ func (cp *CliPrinterTerminal) print(output map[string]any, newLine bool) {
 
 // createOutputWithputError creates the output with the error.
 func (cp *CliPrinterTerminal) createOutputWithputError(errMsg string) map[string]any {
-	var output map[string]any
-	if cp.verbose {
-		if cp.output == OutputJSON {
-			output = map[string]any{"error": errMsg}
-		} else {
-			output = map[string]any{"error": errMsg}
-		}
-	} else {
-		if cp.output == OutputJSON {
-			output = map[string]any{"error": errMsg}
-		} else {
-			output = map[string]any{"error": errMsg}
-		}
-	}
-	return output
+	return map[string]any{"error": errMsg}
 }
 
 // Error prints the output.

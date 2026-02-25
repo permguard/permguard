@@ -69,17 +69,17 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 				}
 				switch objInfo.Type() {
 				case objects.ObjectTypeCommit:
-					commits = commits + 1
+					commits++
 					if filterCommits {
 						total += 1
 					}
 				case objects.ObjectTypeTree:
-					trees = trees + 1
+					trees++
 					if filterTrees {
 						total += 1
 					}
 				case objects.ObjectTypeBlob:
-					blobs = blobs + 1
+					blobs++
 					if filterBlob {
 						total += 1
 					}
