@@ -26,11 +26,11 @@ import (
 type EndpointInitializer struct {
 	service      ServiceKind
 	port         int
-	registration func(*grpc.Server, *ServiceContext, *EndpointContext, *storage.StorageConnector) error
+	registration func(*grpc.Server, *ServiceContext, *EndpointContext, *storage.Connector) error
 }
 
 // NewEndpointInitializer creates a new service endpoint factory.
-func NewEndpointInitializer(service ServiceKind, port int, registration func(*grpc.Server, *ServiceContext, *EndpointContext, *storage.StorageConnector) error) (EndpointInitializer, error) {
+func NewEndpointInitializer(service ServiceKind, port int, registration func(*grpc.Server, *ServiceContext, *EndpointContext, *storage.Connector) error) (EndpointInitializer, error) {
 	return EndpointInitializer{
 		service:      service,
 		port:         port,
@@ -49,6 +49,6 @@ func (d EndpointInitializer) Port() int {
 }
 
 // Registration returns the registration.
-func (d EndpointInitializer) Registration() func(*grpc.Server, *ServiceContext, *EndpointContext, *storage.StorageConnector) error {
+func (d EndpointInitializer) Registration() func(*grpc.Server, *ServiceContext, *EndpointContext, *storage.Connector) error {
 	return d.registration
 }

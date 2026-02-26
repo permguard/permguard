@@ -24,10 +24,10 @@ import (
 	"github.com/permguard/permguard/pkg/transport/clients"
 )
 
-// CliDependenciesProvider is the cli dependencies provider.
-type CliDependenciesProvider interface {
+// DependenciesProvider is the cli dependencies provider.
+type DependenciesProvider interface {
 	// CreatePrinter creates a new printer.
-	CreatePrinter(verbose bool, output string) (CliPrinter, error)
+	CreatePrinter(verbose bool, output string) (Printer, error)
 	// CreateGrpcZAPClient creates a new gRPC client for the ZAP service.
 	CreateGrpcZAPClient(zapTarget string) (clients.GrpcZAPClient, error)
 	// CreateGrpcPAPClient creates a new gRPC client for the PAP service.
@@ -38,12 +38,12 @@ type CliDependenciesProvider interface {
 	LanguageFactory() (languages.LanguageFactory, error)
 }
 
-// CliInitializer is the cli initializer.
-type CliInitializer interface {
-	// CliInfo returns the infos of the commands.
-	CliInfo() CliInfo
+// Initializer is the cli initializer.
+type Initializer interface {
+	// Info returns the infos of the commands.
+	Info() Info
 	//  CliCommands returns the commands.
-	CliCommands(deps CliDependenciesProvider, v *viper.Viper) ([]*cobra.Command, error)
+	CliCommands(deps DependenciesProvider, v *viper.Viper) ([]*cobra.Command, error)
 	// LanguageFactory returns the language factory.
 	LanguageFactory() (languages.LanguageFactory, error)
 }

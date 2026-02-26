@@ -26,6 +26,7 @@ import (
 	"github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
+// SqliteRepo is the interface for sqlite repository operations.
 type SqliteRepo interface {
 	// UpsertZone creates or updates a zone.
 	UpsertZone(tx *sql.Tx, isCreate bool, zone *repos.Zone) (*repos.Zone, error)
@@ -52,14 +53,14 @@ type SqliteRepo interface {
 // SqliteExecutor is the interface for executing sqlite commands.
 type SqliteExecutor interface {
 	// Connect connects to the sqlite database.
-	Connect(ctx *storage.StorageContext, sqliteConnector db.SQLiteConnector) (*sqlx.DB, error)
+	Connect(ctx *storage.Context, sqliteConnector db.SQLiteConnector) (*sqlx.DB, error)
 }
 
 // SqliteExec implements the SqliteExecutor interface.
 type SqliteExec struct{}
 
 // Connect connects to the sqlite database.
-func (s SqliteExec) Connect(ctx *storage.StorageContext, sqliteConnector db.SQLiteConnector) (*sqlx.DB, error) {
+func (s SqliteExec) Connect(ctx *storage.Context, sqliteConnector db.SQLiteConnector) (*sqlx.DB, error) {
 	logger := ctx.Logger()
 	db, err := sqliteConnector.Connect(logger, ctx)
 	if err != nil {
@@ -70,12 +71,12 @@ func (s SqliteExec) Connect(ctx *storage.StorageContext, sqliteConnector db.SQLi
 
 // SQLiteCentralStorage implements the sqlite central storage.
 type SQLiteCentralStorage struct {
-	ctx             *storage.StorageContext
+	ctx             *storage.Context
 	sqliteConnector db.SQLiteConnector
 }
 
 // NewSQLiteCentralStorage creates a new sqlite central storage.
-func NewSQLiteCentralStorage(storageContext *storage.StorageContext, sqliteConnector db.SQLiteConnector) (*SQLiteCentralStorage, error) {
+func NewSQLiteCentralStorage(storageContext *storage.Context, sqliteConnector db.SQLiteConnector) (*SQLiteCentralStorage, error) {
 	return &SQLiteCentralStorage{
 		ctx:             storageContext,
 		sqliteConnector: sqliteConnector,

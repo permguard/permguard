@@ -28,7 +28,7 @@ import (
 )
 
 // OnPushSendNotifyCurrentState notifies the current state.
-func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (m *Manager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, _ []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-push", "Advertising - Initiating ledger state notification.", true)
@@ -46,7 +46,7 @@ func (m *WorkspaceManager) OnPushSendNotifyCurrentState(handlerCtx *notpstatemac
 }
 
 // OnPushHandleNotifyCurrentStateResponse handles the current state response.
-func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (m *Manager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-push", "Advertising - Processing response to ledger state notification.", true)
@@ -72,7 +72,7 @@ func (m *WorkspaceManager) OnPushHandleNotifyCurrentStateResponse(handlerCtx *no
 }
 
 // OnPushHandleNegotiationRequest handles the negotiation request.
-func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (m *Manager) OnPushHandleNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-commit", "Negotiation - Handling negotiation request between local and remote commit", true)
@@ -114,7 +114,7 @@ func (m *WorkspaceManager) OnPushHandleNegotiationRequest(handlerCtx *notpstatem
 }
 
 // OnPushSendNegotiationResponse sends the negotiation response.
-func (m *WorkspaceManager) OnPushSendNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (m *Manager) OnPushSendNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-push", "Negotiation - Dispatching response to negotiation request.", true)
@@ -127,7 +127,7 @@ func (m *WorkspaceManager) OnPushSendNegotiationResponse(handlerCtx *notpstatema
 }
 
 // buildPushPacketablesForCommit builds the push packetables for the tree.
-func (m *WorkspaceManager) buildPushPacketablesForCommit(isCode bool, commitObj *objects.Object) ([]notppackets.Packetable, error) {
+func (m *Manager) buildPushPacketablesForCommit(isCode bool, commitObj *objects.Object) ([]notppackets.Packetable, error) {
 	packetable := []notppackets.Packetable{}
 
 	commit, err := objects.ConvertObjectToCommit(commitObj)
@@ -185,7 +185,7 @@ func (m *WorkspaceManager) buildPushPacketablesForCommit(isCode bool, commitObj 
 }
 
 // OnPushExchangeDataStream exchanges the data stream.
-func (m *WorkspaceManager) OnPushExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (m *Manager) OnPushExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-push", "Data Exchange - Handling data exchange.", true)
@@ -223,7 +223,7 @@ func (m *WorkspaceManager) OnPushExchangeDataStream(handlerCtx *notpstatemachine
 }
 
 // OnPushHandleCommitResponse handles the commit response.
-func (m *WorkspaceManager) OnPushHandleCommitResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (m *Manager) OnPushHandleCommitResponse(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-commit", "Commit - Handling commit response.", true)
@@ -236,7 +236,7 @@ func (m *WorkspaceManager) OnPushHandleCommitResponse(handlerCtx *notpstatemachi
 	if err != nil {
 		return nil, err
 	}
-	m.cospMgr.CleanCodeSource()
+	_, _ = m.cospMgr.CleanCodeSource()
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables:  packets,
 		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),

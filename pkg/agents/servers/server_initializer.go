@@ -24,7 +24,7 @@ import (
 // ServerInitializer is the server initializer.
 type ServerInitializer interface {
 	// Embeds the storage initializer.
-	storage.StorageInitializer
+	storage.Initializer
 	// Embeds the service initializer.
 	services.ServiceInitializer
 	// Host returns the service kind set as host.

@@ -22,23 +22,24 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/permguard/permguard/pkg/agents/runtime/mocks"
 	"github.com/permguard/permguard/pkg/agents/storage"
 )
 
-// TestSQLiteStorageFactory tests the SQLiteStorageFactory.
-func TestSQLiteStorageFactory(t *testing.T) {
+// TestStorageFactory tests the StorageFactory.
+func TestStorageFactory(t *testing.T) {
 	assert := assert.New(t)
-	storageFctyCfg, _ := NewSQLiteStorageFactoryConfig()
-	assert.Nil(storageFctyCfg.AddFlags(&flag.FlagSet{}), "error should be nil")
-	assert.Nil(storageFctyCfg.InitFromViper(&viper.Viper{}), "error should be nil")
+	storageFctyCfg, _ := NewStorageFactoryConfig()
+	assert.NoError(storageFctyCfg.AddFlags(&flag.FlagSet{}), "error should be nil")
+	assert.NoError(storageFctyCfg.InitFromViper(&viper.Viper{}), "error should be nil")
 
-	storageFcty, err := NewSQLiteStorageFactory(nil)
+	storageFcty, err := NewStorageFactory(nil)
 	assert.Nil(storageFcty, "storage factory should be nil")
-	assert.NotNil(err, "error should not be nil")
+	require.Error(t, err, "error should not be nil")
 
-	storageFcty, _ = NewSQLiteStorageFactory(storageFctyCfg)
+	storageFcty, _ = NewStorageFactory(storageFctyCfg)
 
 	runtimeCtx := mocks.NewRuntimeContextMock(nil, nil)
 	storageCtx, err := storage.NewStorageContext(runtimeCtx, storage.StorageSQLite)
@@ -48,13 +49,13 @@ func TestSQLiteStorageFactory(t *testing.T) {
 
 	centralstorage, err := storageFcty.CreateCentralStorage(storageCtx)
 	assert.NotNil(centralstorage, "central storage should not be nil")
-	assert.Nil(err, "error should be nil")
+	require.NoError(t, err, "error should be nil")
 
 	centralZAPStorage, err := centralstorage.ZAPCentralStorage()
 	assert.NotNil(centralZAPStorage, "central ZAP storage should not be nil")
-	assert.Nil(err, "error should be nil")
+	require.NoError(t, err, "error should be nil")
 
 	centralPAPStorage, err := centralstorage.PAPCentralStorage()
 	assert.NotNil(centralPAPStorage, "central ZAP storage should not be nil")
-	assert.Nil(err, "error should be nil")
+	assert.NoError(err, "error should be nil")
 }

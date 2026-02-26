@@ -26,35 +26,35 @@ import (
 	"github.com/permguard/permguard/pkg/agents/storage"
 )
 
-// PDPService holds the configuration for the server.
-type PDPService struct {
-	config       *PDPServiceConfig
+// Service holds the configuration for the server.
+type Service struct {
+	config       *ServiceConfig
 	configReader runtime.ServiceConfigReader
 }
 
-// NewPDPService creates a new server  configuration.
-func NewPDPService(pdpServiceCfg *PDPServiceConfig) (*PDPService, error) {
+// NewService creates a new server  configuration.
+func NewService(pdpServiceCfg *ServiceConfig) (*Service, error) {
 	configReader, err := services.NewServiceConfiguration(pdpServiceCfg.ConfigData())
 	if err != nil {
 		return nil, err
 	}
-	return &PDPService{
+	return &Service{
 		config:       pdpServiceCfg,
 		configReader: configReader,
 	}, nil
 }
 
 // Service returns the service kind.
-func (f *PDPService) Service() services.ServiceKind {
+func (f *Service) Service() services.ServiceKind {
 	return f.config.Service()
 }
 
 // Endpoints returns the service kind.
-func (f *PDPService) Endpoints() ([]services.EndpointInitializer, error) {
+func (f *Service) Endpoints() ([]services.EndpointInitializer, error) {
 	endpoint, err := services.NewEndpointInitializer(
 		f.config.Service(),
 		f.config.Port(),
-		func(grpcServer *grpc.Server, srvCtx *services.ServiceContext, endptCtx *services.EndpointContext, storageConnector *storage.StorageConnector) error {
+		func(grpcServer *grpc.Server, srvCtx *services.ServiceContext, endptCtx *services.EndpointContext, storageConnector *storage.Connector) error {
 			storageKind := f.config.StorageCentralEngine()
 			centralStorage, err := storageConnector.CentralStorage(storageKind, endptCtx)
 			if err != nil {
@@ -72,7 +72,7 @@ func (f *PDPService) Endpoints() ([]services.EndpointInitializer, error) {
 			if err != nil {
 				return err
 			}
-			pdpServer, err := pdpv1.NewV1PDPServer(endptCtx, controller)
+			pdpServer, err := pdpv1.NewPDPServer(endptCtx, controller)
 			pdpv1.RegisterV1PDPServiceServer(grpcServer, pdpServer)
 			return err
 		})
@@ -84,6 +84,6 @@ func (f *PDPService) Endpoints() ([]services.EndpointInitializer, error) {
 }
 
 // ServiceConfigReader returns the service configuration reader.
-func (f *PDPService) ServiceConfigReader() (runtime.ServiceConfigReader, error) {
+func (f *Service) ServiceConfigReader() (runtime.ServiceConfigReader, error) {
 	return f.configReader, nil
 }

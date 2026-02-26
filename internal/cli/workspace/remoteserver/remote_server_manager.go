@@ -30,20 +30,20 @@ import (
 	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
 )
 
-// RemoteServerManager implements the internal manager for the remote file.
-type RemoteServerManager struct {
+// Manager implements the internal manager for the remote file.
+type Manager struct {
 	ctx *common.CliCommandContext
 }
 
-// NewRemoteServerManager creates a new remoteuration manager.
-func NewRemoteServerManager(ctx *common.CliCommandContext) (*RemoteServerManager, error) {
-	return &RemoteServerManager{
+// NewManager creates a new remoteuration manager.
+func NewManager(ctx *common.CliCommandContext) (*Manager, error) {
+	return &Manager{
 		ctx: ctx,
 	}, nil
 }
 
 // ServerRemoteLedger gets the remote ledger from the server.
-func (m *RemoteServerManager) ServerRemoteLedger(remoteInfo *wkscommon.RemoteInfo, ledgerInfo *wkscommon.LedgerInfo) (*pap.Ledger, error) {
+func (m *Manager) ServerRemoteLedger(remoteInfo *wkscommon.RemoteInfo, ledgerInfo *wkscommon.LedgerInfo) (*pap.Ledger, error) {
 	if remoteInfo == nil {
 		return nil, errors.New("cli: remote info is nil")
 	}
@@ -94,7 +94,7 @@ type NOTPClient interface {
 }
 
 // NOTPPush push objects using the NOTP protocol.
-func (m *RemoteServerManager) NOTPPush(server string, papPort int, zoneID int64, ledgerID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
+func (m *Manager) NOTPPush(server string, papPort int, zoneID int64, ledgerID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
 	pppServer := fmt.Sprintf("%s:%d", server, papPort)
 	papClient, err := clients.NewGrpcPAPClient(pppServer)
 	if err != nil {
@@ -145,7 +145,7 @@ func (m *RemoteServerManager) NOTPPush(server string, papPort int, zoneID int64,
 }
 
 // NOTPPull pull objects using the NOTP protocol.
-func (m *RemoteServerManager) NOTPPull(server string, papPort int, zoneID int64, ledgerID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
+func (m *Manager) NOTPPull(server string, papPort int, zoneID int64, ledgerID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
 	pppServer := fmt.Sprintf("%s:%d", server, papPort)
 	papClient, err := clients.NewGrpcPAPClient(pppServer)
 	if err != nil {

@@ -35,7 +35,7 @@ func NewMockSqliteExecutor() *MockSqliteExecutor {
 }
 
 // Connect connects to the sqlite database.
-func (m *MockSqliteExecutor) Connect(ctx *storage.StorageContext, sqliteConnector db.SQLiteConnector) (*sqlx.DB, error) {
+func (m *MockSqliteExecutor) Connect(ctx *storage.Context, sqliteConnector db.SQLiteConnector) (*sqlx.DB, error) {
 	args := m.Called(ctx, sqliteConnector)
 	var r0 *sqlx.DB
 	if val, ok := args.Get(0).(*sqlx.DB); ok {

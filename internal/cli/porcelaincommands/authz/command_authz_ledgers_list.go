@@ -35,7 +35,7 @@ const (
 )
 
 // runECommandForListLedgers runs the command for creating a ledger.
-func runECommandForListLedgers(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForListLedgers(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -47,7 +47,7 @@ func runECommandForListLedgers(deps cli.CliDependenciesProvider, cmd *cobra.Comm
 			printer.Println("Failed to list ledgers.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(fmt.Errorf("cli: failed to list ledgers"), err))
+			printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -57,7 +57,7 @@ func runECommandForListLedgers(deps cli.CliDependenciesProvider, cmd *cobra.Comm
 			printer.Println("Failed to list ledgers.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(fmt.Errorf("cli: failed to list ledgers"), err))
+			printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -73,7 +73,7 @@ func runECommandForListLedgers(deps cli.CliDependenciesProvider, cmd *cobra.Comm
 			printer.Println("Failed to list ledgers.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(fmt.Errorf("cli: failed to list ledgers"), err))
+			printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -92,7 +92,7 @@ func runECommandForListLedgers(deps cli.CliDependenciesProvider, cmd *cobra.Comm
 }
 
 // createCommandForLedgerList creates a command for managing ledgerlist.
-func createCommandForLedgerList(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForLedgerList(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List remote ledgers",
@@ -106,21 +106,21 @@ Examples:
   # list all ledgers filtered by ledger id
   permguard authz ledgers list --zone-id 273165098782 --ledger-id 668f3771eacf4094ba8a80942ea5fd3f
 		`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForListLedgers(deps, cmd, v)
 		},
 	}
 
 	command.Flags().Int32P(common.FlagCommonPage, common.FlagCommonPageShort, 1, "specify the page number for paginated results")
-	v.BindPFlag(options.FlagName(commandNameForLedgersList, common.FlagCommonPage), command.Flags().Lookup(common.FlagCommonPage))
+	_ = v.BindPFlag(options.FlagName(commandNameForLedgersList, common.FlagCommonPage), command.Flags().Lookup(common.FlagCommonPage))
 
 	command.Flags().Int32P(common.FlagCommonPageSize, common.FlagCommonPageSizeShort, 1000, "specify the number of results per page")
-	v.BindPFlag(options.FlagName(commandNameForLedgersList, common.FlagCommonPageSize), command.Flags().Lookup(common.FlagCommonPageSize))
+	_ = v.BindPFlag(options.FlagName(commandNameForLedgersList, common.FlagCommonPageSize), command.Flags().Lookup(common.FlagCommonPageSize))
 
 	command.Flags().String(flagLedgerID, "", "filter results by ledger id")
-	v.BindPFlag(options.FlagName(commandNameForLedgersList, flagLedgerID), command.Flags().Lookup(flagLedgerID))
+	_ = v.BindPFlag(options.FlagName(commandNameForLedgersList, flagLedgerID), command.Flags().Lookup(flagLedgerID))
 
 	command.Flags().String(common.FlagCommonName, "", "filter results by ledger name")
-	v.BindPFlag(options.FlagName(commandNameForLedgersList, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
+	_ = v.BindPFlag(options.FlagName(commandNameForLedgersList, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

@@ -17,11 +17,11 @@
 package cosp
 
 const (
-	// CodeFileOfCodeType represents the code file type.
+	// CodeFileTypeOfCodeType represents the code file type.
 	CodeFileTypeOfCodeType = "code"
 	// CodeFileOfSchemaType represents the schema file type.
 	CodeFileOfSchemaType = "schema"
-	// CodeObjectStateModify represents the modify state.
+	// CodeObjectStateUnchanged represents the unchanged state.
 	CodeObjectStateUnchanged = "unchanged"
 	// CodeObjectStateCreate represents the create state.
 	CodeObjectStateCreate = "create"

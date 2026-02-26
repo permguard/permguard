@@ -30,7 +30,7 @@ import (
 )
 
 // runECommandForApplyWorkspace runs the command for creating an workspace.
-func runECommandForApplyWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForApplyWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -63,7 +63,7 @@ func runECommandForApplyWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.C
 }
 
 // CreateCommandForWorkspaceApply creates a command for applyializing a permguard workspace.
-func CreateCommandForWorkspaceApply(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceApply(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "apply",
 		Short: "Apply the plan to the remote ledger",
@@ -72,7 +72,7 @@ func CreateCommandForWorkspaceApply(deps cli.CliDependenciesProvider, v *viper.V
 Examples:
   # apply the plan to the remote ledger
   permguard apply`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForApplyWorkspace(deps, cmd, v)
 		},
 	}

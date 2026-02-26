@@ -23,6 +23,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
@@ -36,7 +37,7 @@ func TestCreateZoneWithErrors(t *testing.T) {
 		storage, _, _, _, _, _, _ := createSQLiteZAPCentralStorageWithMocks()
 		zones, err := storage.CreateZone(nil)
 		assert.Nil(zones, "zones should be nil")
-		assert.NotNil(err, "error should not be nil")
+		require.Error(t, err, "error should not be nil")
 	}
 
 	tests := map[string]struct {
@@ -78,7 +79,7 @@ func TestCreateZoneWithErrors(t *testing.T) {
 		inZone := &zap.Zone{}
 		outZones, err := storage.CreateZone(inZone)
 		assert.Nil(outZones, "zones should be nil")
-		assert.Error(err)
+		require.Error(t, err)
 		if multi, ok := err.(interface{ Unwrap() []error }); ok {
 			errs := multi.Unwrap()
 			isErr := test.Error1.Error() == errs[0].Error()
@@ -108,7 +109,7 @@ func TestCreateZoneWithSuccess(t *testing.T) {
 
 	inZone := &zap.Zone{}
 	outZones, err := storage.CreateZone(inZone)
-	assert.Nil(err, "error should be nil")
+	require.NoError(t, err, "error should be nil")
 	assert.NotNil(outZones, "zones should not be nil")
 	assert.Equal(dbOutZone.ZoneID, outZones.ZoneID, "zone id should be equal")
 	assert.Equal(dbOutZone.Name, outZones.Name, "zone name should be equal")
@@ -124,7 +125,7 @@ func TestUpdateZoneWithErrors(t *testing.T) {
 		storage, _, _, _, _, _, _ := createSQLiteZAPCentralStorageWithMocks()
 		zones, err := storage.UpdateZone(nil)
 		assert.Nil(zones, "zones should be nil")
-		assert.NotNil(err, "error should not be nil")
+		require.Error(t, err, "error should not be nil")
 	}
 
 	tests := map[string]struct {
@@ -166,7 +167,7 @@ func TestUpdateZoneWithErrors(t *testing.T) {
 		inZone := &zap.Zone{}
 		outZones, err := storage.UpdateZone(inZone)
 		assert.Nil(outZones, "zones should be nil")
-		assert.Error(err)
+		require.Error(t, err)
 		if multi, ok := err.(interface{ Unwrap() []error }); ok {
 			errs := multi.Unwrap()
 			isErr := test.Error1.Error() == errs[0].Error()
@@ -195,7 +196,7 @@ func TestUpdateZoneWithSuccess(t *testing.T) {
 
 	inZone := &zap.Zone{}
 	outZones, err := storage.UpdateZone(inZone)
-	assert.Nil(err, "error should be nil")
+	require.NoError(t, err, "error should be nil")
 	assert.NotNil(outZones, "zones should not be nil")
 	assert.Equal(dbOutZone.ZoneID, outZones.ZoneID, "zone id should be equal")
 	assert.Equal(dbOutZone.Name, outZones.Name, "zone name should be equal")
@@ -239,7 +240,7 @@ func TestDeleteZoneWithErrors(t *testing.T) {
 		inZoneID := int64(232956849236)
 		outZones, err := storage.DeleteZone(inZoneID)
 		assert.Nil(outZones, "zones should be nil")
-		assert.Error(err)
+		require.Error(t, err)
 		if multi, ok := err.(interface{ Unwrap() []error }); ok {
 			errs := multi.Unwrap()
 			isErr := test.Error1.Error() == errs[0].Error()
@@ -268,7 +269,7 @@ func TestDeleteZoneWithSuccess(t *testing.T) {
 
 	inZoneID := int64(232956849236)
 	outZones, err := storage.DeleteZone(inZoneID)
-	assert.Nil(err, "error should be nil")
+	require.NoError(t, err, "error should be nil")
 	assert.NotNil(outZones, "zones should not be nil")
 	assert.Equal(dbOutZone.ZoneID, outZones.ZoneID, "zone id should be equal")
 	assert.Equal(dbOutZone.Name, outZones.Name, "zone name should be equal")
@@ -285,7 +286,7 @@ func TestFetchZoneWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(nil, errors.New("operation error"))
 		outZones, err := storage.FetchZones(1, 100, nil)
 		assert.Nil(outZones, "zones should be nil")
-		assert.NotNil(err, "error should not be nil")
+		require.Error(t, err, "error should not be nil")
 	}
 
 	{ // Test with invalid page
@@ -293,7 +294,7 @@ func TestFetchZoneWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outZones, err := storage.FetchZones(0, 100, nil)
 		assert.Nil(outZones, "zones should be nil")
-		assert.NotNil(err, "error should not be nil")
+		require.Error(t, err, "error should not be nil")
 	}
 
 	{ // Test with invalid page size
@@ -301,7 +302,7 @@ func TestFetchZoneWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outZones, err := storage.FetchZones(1, 0, nil)
 		assert.Nil(outZones, "zones should be nil")
-		assert.NotNil(err, "error should not be nil")
+		require.Error(t, err, "error should not be nil")
 	}
 
 	{ // Test with invalid zone id
@@ -309,7 +310,7 @@ func TestFetchZoneWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outZones, err := storage.FetchZones(1, 100, map[string]any{zap.FieldZoneZoneID: "not valid"})
 		assert.Nil(outZones, "zones should be nil")
-		assert.NotNil(err, "error should not be nil")
+		require.Error(t, err, "error should not be nil")
 	}
 
 	{ // Test with invalid zone name
@@ -317,7 +318,7 @@ func TestFetchZoneWithErrors(t *testing.T) {
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		outZones, err := storage.FetchZones(1, 100, map[string]any{zap.FieldZoneName: 2})
 		assert.Nil(outZones, "zones should be nil")
-		assert.NotNil(err, "error should not be nil")
+		require.Error(t, err, "error should not be nil")
 	}
 
 	{ // Test with invalid zone name
@@ -326,7 +327,7 @@ func TestFetchZoneWithErrors(t *testing.T) {
 		mockSQLRepo.On("FetchZones", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("operation error"))
 		outZones, err := storage.FetchZones(1, 100, nil)
 		assert.Nil(outZones, "zones should be nil")
-		assert.NotNil(err, "error should not be nil")
+		require.Error(t, err, "error should not be nil")
 	}
 }
 
@@ -355,9 +356,9 @@ func TestFetchZoneWithSuccess(t *testing.T) {
 	mockSQLRepo.On("FetchZones", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutZones, nil)
 
 	outZones, err := storage.FetchZones(1, 100, map[string]any{zap.FieldZoneZoneID: int64(506074038324), zap.FieldZoneName: "rent-a-car2"})
-	assert.Nil(err, "error should be nil")
+	require.NoError(t, err, "error should be nil")
 	assert.NotNil(outZones, "zones should not be nil")
-	assert.Equal(len(dbOutZones), len(outZones), "zones  and dbZones should have the same length")
+	assert.Len(outZones, len(dbOutZones), "zones  and dbZones should have the same length")
 	for i, outZone := range outZones {
 		assert.Equal(dbOutZones[i].ZoneID, outZone.ZoneID, "zone id should be equal")
 		assert.Equal(dbOutZones[i].Name, outZone.Name, "zone name should be equal")

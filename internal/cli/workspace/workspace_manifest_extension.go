@@ -68,7 +68,7 @@ func (p *ManifestLanguageProvider) AbstractLanguage(partition string) (languages
 }
 
 // buildManifestLanguageManager build a new instance of the manifest language provider.
-func (m *WorkspaceManager) buildManifestLanguageProvider() (*ManifestLanguageProvider, error) {
+func (m *Manager) buildManifestLanguageProvider() (*ManifestLanguageProvider, error) {
 	manifest, err := m.hasValidManifestWorkspaceDir()
 	if err != nil {
 		return nil, err

@@ -58,11 +58,7 @@ func TestCliConfigGetZAPTarget(t *testing.T) {
 		printerMock := mocks.NewPrinterMock()
 		outputPrinter := map[string]any{}
 
-		if outputType == "terminal" {
-			outputPrinter["zap_target"] = "localhost:9092"
-		} else {
-			outputPrinter["zap_target"] = "localhost:9092"
-		}
+		outputPrinter["zap_target"] = "localhost:9092"
 		printerMock.On("PrintMap", outputPrinter).Return()
 		printerMock.On("PrintlnMap", outputPrinter).Return()
 
@@ -103,11 +99,7 @@ func TestCliConfigGetPAPTarget(t *testing.T) {
 		printerMock := mocks.NewPrinterMock()
 		outputPrinter := map[string]any{}
 
-		if outputType == "terminal" {
-			outputPrinter["pap_target"] = "localhost:9092"
-		} else {
-			outputPrinter["pap_target"] = "localhost:9092"
-		}
+		outputPrinter["pap_target"] = "localhost:9092"
 		printerMock.On("PrintMap", outputPrinter).Return()
 		printerMock.On("PrintlnMap", outputPrinter).Return()
 

@@ -18,6 +18,7 @@ package workspace
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace/cosp"
@@ -26,7 +27,7 @@ import (
 )
 
 // ExecPlan generates a plan of changes to apply to the remote ledger based on the differences between the local and remote states.
-func (m *WorkspaceManager) ExecPlan(out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecPlan(out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to build the plan.", nil, true)
 		return output, err
@@ -40,13 +41,13 @@ func (m *WorkspaceManager) ExecPlan(out common.PrinterOutFunc) (map[string]any, 
 	if err != nil {
 		return fail(nil, err)
 	}
-	defer fileLock.Unlock()
+	defer func() { _ = fileLock.Unlock() }()
 
 	return m.execInternalPlan(false, out)
 }
 
 // execInternalPlan generates a plan of changes to apply to the remote ledger based on the differences between the local and remote states.
-func (m *WorkspaceManager) execInternalPlan(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) execInternalPlan(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
 			out(nil, "", "Failed to build the plan.", nil, true)
@@ -112,11 +113,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out common.PrinterOut
 		out(nil, "", errPlanningProcessFailed, nil, true)
 		return fail(output, err)
 	}
-	codeStateObjs, err := m.plan(localCodeState, remoteCodeState)
-	if err != nil {
-		out(nil, "", errPlanningProcessFailed, nil, true)
-		return fail(output, err)
-	}
+	codeStateObjs := m.plan(localCodeState, remoteCodeState)
 
 	unchangedItems := []cosp.CodeObjectState{}
 	createdItems := []cosp.CodeObjectState{}
@@ -151,10 +148,10 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out common.PrinterOut
 			}
 		}
 		out(nil, "", "", nil, true)
-		unchangedCountText := common.UnchangedText(fmt.Sprint(unchanged))
-		createdCountText := common.CreateText(fmt.Sprint(created))
-		modifiedCountText := common.ModifyText(fmt.Sprint(modified))
-		deletedCountText := common.DeleteText(fmt.Sprint(deleted))
+		unchangedCountText := common.UnchangedText(strconv.Itoa(unchanged))
+		createdCountText := common.CreateText(strconv.Itoa(created))
+		modifiedCountText := common.ModifyText(strconv.Itoa(modified))
+		deletedCountText := common.DeleteText(strconv.Itoa(deleted))
 		out(nil, "", fmt.Sprintf("unchanged %s, created %s, modified %s, deleted %s", unchangedCountText, createdCountText, modifiedCountText, deletedCountText), nil, true)
 		out(nil, "", "", nil, true)
 		planObjs := append(createdItems, modifiedItems...)
@@ -200,7 +197,7 @@ func (m *WorkspaceManager) execInternalPlan(internal bool, out common.PrinterOut
 }
 
 // ExecApply applies the plan to the remote ledger
-func (m *WorkspaceManager) ExecApply(out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecApply(out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to apply the plan.", nil, true)
 		return output, err
@@ -214,13 +211,13 @@ func (m *WorkspaceManager) ExecApply(out common.PrinterOutFunc) (map[string]any,
 	if err != nil {
 		return fail(nil, err)
 	}
-	defer fileLock.Unlock()
+	defer func() { _ = fileLock.Unlock() }()
 
 	return m.execInternalApply(false, out)
 }
 
 // execInternalApply applies the plan to the remote ledger
-func (m *WorkspaceManager) execInternalApply(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) execInternalApply(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
 			out(nil, "", "Failed to apply the plan.", nil, true)

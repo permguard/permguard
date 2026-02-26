@@ -19,6 +19,7 @@ package zones
 import (
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -36,7 +37,7 @@ const (
 )
 
 // runECommandForDeleteZone runs the command for creating a zone.
-func runECommandForDeleteZone(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForDeleteZone(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -75,7 +76,7 @@ func runECommandForDeleteZone(deps cli.CliDependenciesProvider, cmd *cobra.Comma
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
-		zoneID := fmt.Sprintf("%d", zone.ZoneID)
+		zoneID := strconv.FormatInt(zone.ZoneID, 10)
 		output[zoneID] = zone.Name
 	} else if ctx.IsJSONOutput() {
 		output["zones"] = []*zap.Zone{zone}
@@ -85,7 +86,7 @@ func runECommandForDeleteZone(deps cli.CliDependenciesProvider, cmd *cobra.Comma
 }
 
 // createCommandForZoneDelete creates a command for managing zonedelete.
-func createCommandForZoneDelete(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForZoneDelete(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a remote zone",
@@ -95,11 +96,11 @@ Examples:
   # delete a zone and output the result in json format
   permguard zones delete --zone-id 273165098782 --output json
 		`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForDeleteZone(deps, cmd, v)
 		},
 	}
 	command.Flags().Int64(common.FlagCommonZoneID, 0, "specify the unique zone id")
-	v.BindPFlag(options.FlagName(commandNameForZonesDelete, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))
+	_ = v.BindPFlag(options.FlagName(commandNameForZonesDelete, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))
 	return command
 }

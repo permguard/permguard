@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strconv"
 
 	"github.com/pelletier/go-toml"
 
@@ -35,41 +36,41 @@ const (
 	hiddenHeadFile = "HEAD"
 )
 
-// RefManager implements the internal manager for the ref files.
-type RefManager struct {
+// Manager implements the internal manager for the ref files.
+type Manager struct {
 	ctx     *common.CliCommandContext
-	persMgr *persistence.PersistenceManager
+	persMgr *persistence.Manager
 }
 
-// NewRefManager creates a new refuration manager.
-func NewRefManager(ctx *common.CliCommandContext, persMgr *persistence.PersistenceManager) (*RefManager, error) {
-	return &RefManager{
+// NewManager creates a new refuration manager.
+func NewManager(ctx *common.CliCommandContext, persMgr *persistence.Manager) (*Manager, error) {
+	return &Manager{
 		ctx:     ctx,
 		persMgr: persMgr,
 	}, nil
 }
 
 // refsDir returns the refs directory.
-func (m *RefManager) refsDir() string {
+func (m *Manager) refsDir() string {
 	return hiddenRefsDir
 }
 
 // headFile returns the head file.
-func (m *RefManager) headFile() string {
+func (m *Manager) headFile() string {
 	return hiddenHeadFile
 }
 
 // refFile returns the ref file.
-func (m *RefManager) refFile(ref string) (string, error) {
+func (m *Manager) refFile(ref string) (string, error) {
 	refInfo, err := wkscommon.ConvertStringWithLedgerIDToRefInfo(ref)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(hiddenRefsDir, refInfo.SourceType(), refInfo.Remote(), fmt.Sprintf("%d", refInfo.ZoneID()), refInfo.LedgerID()), nil
+	return filepath.Join(hiddenRefsDir, refInfo.SourceType(), refInfo.Remote(), strconv.FormatInt(refInfo.ZoneID(), 10), refInfo.LedgerID()), nil
 }
 
 // ensureRefFileExists ensures the ref file exists.
-func (m *RefManager) ensureRefFileExists(ref string) error {
+func (m *Manager) ensureRefFileExists(ref string) error {
 	refFile, err := m.refFile(ref)
 	if err != nil {
 		return err
@@ -82,14 +83,14 @@ func (m *RefManager) ensureRefFileExists(ref string) error {
 }
 
 // GenerateRef generates the ref.
-func (m *RefManager) GenerateRef(remote string, zoneID int64, ledgerID string) string {
+func (m *Manager) GenerateRef(remote string, zoneID int64, ledgerID string) string {
 	refInfo, _ := wkscommon.NewRefInfoFromLedgerName(remote, zoneID, ledgerID)
 	ref := wkscommon.ConvertRefInfoToString(refInfo)
 	return ref
 }
 
 // saveConfig saves the config file.
-func (m *RefManager) saveConfig(name string, override bool, cfg any) error {
+func (m *Manager) saveConfig(name string, override bool, cfg any) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
 		return errors.Join(errors.New("cli: failed to marshal config"), err)
@@ -106,7 +107,7 @@ func (m *RefManager) saveConfig(name string, override bool, cfg any) error {
 }
 
 // SaveHeadConfig saves the head config file.
-func (m *RefManager) SaveHeadConfig(ref string) error {
+func (m *Manager) SaveHeadConfig(ref string) error {
 	headFile := m.headFile()
 	headCfg := headConfig{
 		Reference: headReferenceConfig{
@@ -121,19 +122,19 @@ func (m *RefManager) SaveHeadConfig(ref string) error {
 }
 
 // readHeadConfig reads the config file.
-func (m *RefManager) readHeadConfig() (*headConfig, error) {
+func (m *Manager) readHeadConfig() (*headConfig, error) {
 	var config headConfig
 	err := m.persMgr.ReadTOMLFile(persistence.PermguardDir, m.headFile(), &config)
 	return &config, err
 }
 
 // SaveRefConfig saves the ref configuration.
-func (m *RefManager) SaveRefConfig(ledgerID string, ref string, commit string) error {
+func (m *Manager) SaveRefConfig(ledgerID string, ref string, commit string) error {
 	return m.SaveRefWithRemoteConfig(ledgerID, ref, "", commit)
 }
 
 // SaveRefWithRemoteConfig saves the ref with remote configuration.
-func (m *RefManager) SaveRefWithRemoteConfig(ledgerID string, ref, upstreamRef string, commit string) error {
+func (m *Manager) SaveRefWithRemoteConfig(ledgerID string, ref, upstreamRef string, commit string) error {
 	err := m.ensureRefFileExists(ref)
 	if err != nil {
 		return err
@@ -157,7 +158,7 @@ func (m *RefManager) SaveRefWithRemoteConfig(ledgerID string, ref, upstreamRef s
 }
 
 // readRefConfig reads the ref configuration.
-func (m *RefManager) readRefConfig(ref string) (*refConfig, error) {
+func (m *Manager) readRefConfig(ref string) (*refConfig, error) {
 	refPath, err := m.refFile(ref)
 	if err != nil {
 		return nil, err
@@ -171,7 +172,7 @@ func (m *RefManager) readRefConfig(ref string) (*refConfig, error) {
 }
 
 // RefUpstreamRef reads the ref upstream ref.
-func (m *RefManager) RefUpstreamRef(ref string) (string, error) {
+func (m *Manager) RefUpstreamRef(ref string) (string, error) {
 	refCfg, err := m.readRefConfig(ref)
 	if err != nil {
 		return "", err
@@ -183,7 +184,7 @@ func (m *RefManager) RefUpstreamRef(ref string) (string, error) {
 }
 
 // RefLedgerID reads the ref ledger id.
-func (m *RefManager) RefLedgerID(ref string) (string, error) {
+func (m *Manager) RefLedgerID(ref string) (string, error) {
 	refCfg, err := m.readRefConfig(ref)
 	if err != nil {
 		return "", err
@@ -195,7 +196,7 @@ func (m *RefManager) RefLedgerID(ref string) (string, error) {
 }
 
 // RefCommit reads the ref commit.
-func (m *RefManager) RefCommit(ref string) (string, error) {
+func (m *Manager) RefCommit(ref string) (string, error) {
 	refCfg, err := m.readRefConfig(ref)
 	if err != nil {
 		return "", err
@@ -207,7 +208,7 @@ func (m *RefManager) RefCommit(ref string) (string, error) {
 }
 
 // CurrentHead gets the current head.
-func (m *RefManager) CurrentHead() (*wkscommon.HeadInfo, error) {
+func (m *Manager) CurrentHead() (*wkscommon.HeadInfo, error) {
 	cfgHead, err := m.readHeadConfig()
 	if err != nil {
 		return nil, err
@@ -216,7 +217,7 @@ func (m *RefManager) CurrentHead() (*wkscommon.HeadInfo, error) {
 }
 
 // CurrentHeadRef gets the current head ref.
-func (m *RefManager) CurrentHeadRef() (string, error) {
+func (m *Manager) CurrentHeadRef() (string, error) {
 	headInfo, err := m.CurrentHead()
 	if err != nil {
 		return "", err
@@ -225,7 +226,7 @@ func (m *RefManager) CurrentHeadRef() (string, error) {
 }
 
 // CurrentHeadLedgerID gets the current head ledger id.
-func (m *RefManager) CurrentHeadLedgerID() (string, error) {
+func (m *Manager) CurrentHeadLedgerID() (string, error) {
 	headInfo, err := m.CurrentHead()
 	if err != nil {
 		return "", err
@@ -234,7 +235,7 @@ func (m *RefManager) CurrentHeadLedgerID() (string, error) {
 }
 
 // CurrentHeadCommit gets the current head commit.
-func (m *RefManager) CurrentHeadCommit() (string, error) {
+func (m *Manager) CurrentHeadCommit() (string, error) {
 	headInfo, err := m.CurrentHead()
 	if err != nil {
 		return "", err
@@ -243,7 +244,7 @@ func (m *RefManager) CurrentHeadCommit() (string, error) {
 }
 
 // RefInfo gets the ref information.
-func (m *RefManager) RefInfo(ref string) (*wkscommon.RefInfo, error) {
+func (m *Manager) RefInfo(ref string) (*wkscommon.RefInfo, error) {
 	if len(ref) == 0 {
 		return nil, errors.New("cli: invalid ref")
 	}
@@ -251,7 +252,7 @@ func (m *RefManager) RefInfo(ref string) (*wkscommon.RefInfo, error) {
 }
 
 // CurrentHeadRefInfo gets the current head ref information.
-func (m *RefManager) CurrentHeadRefInfo() (*wkscommon.RefInfo, error) {
+func (m *Manager) CurrentHeadRefInfo() (*wkscommon.RefInfo, error) {
 	headInfo, err := m.CurrentHead()
 	if err != nil {
 		return nil, err

@@ -29,7 +29,7 @@ type cliDependencies struct {
 }
 
 // CreatePrinter creates a new printer.
-func (c *cliDependencies) CreatePrinter(verbose bool, output string) (cli.CliPrinter, error) {
+func (c *cliDependencies) CreatePrinter(verbose bool, output string) (cli.Printer, error) {
 	printer, err := cli.NewCliPrinterTerminal(verbose, output)
 	return printer, err
 }
@@ -54,8 +54,8 @@ func (c *cliDependencies) LanguageFactory() (languages.LanguageFactory, error) {
 	return c.langFactory, nil
 }
 
-// NewCliDependenciesProvider creates a new CliDependenciesProvider.
-func NewCliDependenciesProvider(langFactory languages.LanguageFactory) (cli.CliDependenciesProvider, error) {
+// NewCliDependenciesProvider creates a new DependenciesProvider.
+func NewCliDependenciesProvider(langFactory languages.LanguageFactory) (cli.DependenciesProvider, error) {
 	return &cliDependencies{
 		langFactory: langFactory,
 	}, nil

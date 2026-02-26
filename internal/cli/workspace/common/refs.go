@@ -77,12 +77,12 @@ func GenerateRemoteRef(remote string, zoneID int64, ledger string) string {
 	return generateRef(false, remote, zoneID, ledger)
 }
 
-// GenerateRemoteRef generates the remote ref.
+// GenerateHeadRef generates the head ref.
 func GenerateHeadRef(zoneID int64, ledger string) string {
 	return generateRef(true, HeadKeyword, zoneID, ledger)
 }
 
-// convertRefInfoToString converts the ref information to string.
+// ConvertRefInfoToString converts the ref information to string.
 func ConvertRefInfoToString(refInfo *RefInfo) string {
 	return generateRef(refInfo.IsSourceHead(), refInfo.Remote(), refInfo.ZoneID(), refInfo.Ledger())
 }
@@ -96,7 +96,7 @@ type RefInfo struct {
 	ledgerID   string
 }
 
-// NewRefInfo creates a new ref information.
+// NewRefInfoFromLedgerName creates a new ref information from a ledger name.
 func NewRefInfoFromLedgerName(remote string, zoneID int64, ledgerName string) (*RefInfo, error) {
 	if len(remote) == 0 {
 		return nil, errors.New("cli: invalid remote")
@@ -138,7 +138,7 @@ func (i *RefInfo) SourceType() string {
 	return i.sourceType
 }
 
-// IsSourceRemote returns true if the source is remote.
+// IsSourceHead returns true if the source is head.
 func (i *RefInfo) IsSourceHead() bool {
 	return i.sourceType == headPrefix
 }

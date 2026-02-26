@@ -25,6 +25,7 @@ import (
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
+// PAPController is the controller for the PAP service.
 type PAPController struct {
 	ctx     *services.ServiceContext
 	storage storage.PAPCentralStorage

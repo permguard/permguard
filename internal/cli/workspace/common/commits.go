@@ -42,7 +42,7 @@ func NewCommitInfo(oid string, commit *objects.Commit) (*CommitInfo, error) {
 	}, nil
 }
 
-// GetOID returns the OID of the commit.
+// CommitOID returns the OID of the commit.
 func (c *CommitInfo) CommitOID() string {
 	return c.oid
 }

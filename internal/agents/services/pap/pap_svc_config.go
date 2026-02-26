@@ -37,22 +37,22 @@ const (
 	flagDataFetchMaxPageSize = "data-fetch-maxpagesize"
 )
 
-// PAPServiceConfig holds the configuration for the server.
-type PAPServiceConfig struct {
+// ServiceConfig holds the configuration for the server.
+type ServiceConfig struct {
 	service services.ServiceKind
 	config  map[string]any
 }
 
-// NewPAPServiceConfig creates a new server factory configuration.
-func NewPAPServiceConfig() (*PAPServiceConfig, error) {
-	return &PAPServiceConfig{
+// NewServiceConfig creates a new server factory configuration.
+func NewServiceConfig() (*ServiceConfig, error) {
+	return &ServiceConfig{
 		service: services.ServicePAP,
 		config:  map[string]any{},
 	}, nil
 }
 
 // AddFlags adds flags.
-func (c *PAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
+func (c *ServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(options.FlagName(flagServerPAPPrefix, flagSuffixGrpcPort), 9092, "port to be used for exposing the pap grpc services")
 	flagSet.String(options.FlagName(flagStoragePAPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage-engine-central option")
 	flagSet.Int(options.FlagName(flagServerPAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
@@ -60,7 +60,7 @@ func (c *PAPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 }
 
 // InitFromViper initializes the configuration from viper.
-func (c *PAPServiceConfig) InitFromViper(v *viper.Viper) error {
+func (c *ServiceConfig) InitFromViper(v *viper.Viper) error {
 	// retrieve the grpc port
 	flagName := options.FlagName(flagServerPAPPrefix, flagSuffixGrpcPort)
 	grpcPort := v.GetInt(flagName)
@@ -87,26 +87,26 @@ func (c *PAPServiceConfig) InitFromViper(v *viper.Viper) error {
 }
 
 // ConfigData returns the configuration data.
-func (c *PAPServiceConfig) ConfigData() map[string]any {
+func (c *ServiceConfig) ConfigData() map[string]any {
 	return copier.CopyMap(c.config)
 }
 
 // Port returns the port.
-func (c *PAPServiceConfig) Port() int {
+func (c *ServiceConfig) Port() int {
 	return c.config[flagSuffixGrpcPort].(int)
 }
 
 // StorageCentralEngine returns the storage central engine.
-func (c *PAPServiceConfig) StorageCentralEngine() storage.StorageKind {
-	return c.config[flagCentralEngine].(storage.StorageKind)
+func (c *ServiceConfig) StorageCentralEngine() storage.Kind {
+	return c.config[flagCentralEngine].(storage.Kind)
 }
 
 // DataFetchMaxPageSize returns the maximum number of items to fetch per request.
-func (c *PAPServiceConfig) DataFetchMaxPageSize() int {
+func (c *ServiceConfig) DataFetchMaxPageSize() int {
 	return c.config[flagDataFetchMaxPageSize].(int)
 }
 
 // Service returns the service kind.
-func (c *PAPServiceConfig) Service() services.ServiceKind {
+func (c *ServiceConfig) Service() services.ServiceKind {
 	return c.service
 }

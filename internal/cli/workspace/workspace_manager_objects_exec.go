@@ -29,7 +29,7 @@ import (
 )
 
 // ExecObjects list the objects.
-func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommits, filterTrees, filterBlob bool, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecObjects(includeStorage, includeCode, filterCommits, filterTrees, filterBlob bool, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to access objects in the current workspace.", nil, true)
 		return output, err
@@ -43,7 +43,7 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 	if err != nil {
 		return fail(nil, err)
 	}
-	defer fileLock.Unlock()
+	defer func() { _ = fileLock.Unlock() }()
 
 	filteredObjectInfos, err := m.objectsInfos(includeStorage, includeCode, filterCommits, filterTrees, filterBlob)
 	if err != nil {
@@ -54,53 +54,52 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 		if len(filteredObjectInfos) == 0 {
 			out(nil, "", "No objects found in the current workspace.", nil, true)
 			return output, nil
-		} else {
-			out(nil, "", "Your workspace objects:\n", nil, true)
-			total, commits, trees, blobs := 0, 0, 0, 0
-			for _, objInfo := range filteredObjectInfos {
-				objID := objInfo.OID()
-				objType := objInfo.Type()
-				objHeader := objInfo.Header()
-				if objHeader != nil {
-					codeID := objHeader.CodeID()
-					out(nil, "", fmt.Sprintf("	- %s %s %s", common.IDText(objID), common.KeywordText(objType), common.NameText(codeID)), nil, true)
-				} else {
-					out(nil, "", fmt.Sprintf("	- %s %s", common.IDText(objID), common.KeywordText(objType)), nil, true)
-				}
-				switch objInfo.Type() {
-				case objects.ObjectTypeCommit:
-					commits++
-					if filterCommits {
-						total += 1
-					}
-				case objects.ObjectTypeTree:
-					trees++
-					if filterTrees {
-						total += 1
-					}
-				case objects.ObjectTypeBlob:
-					blobs++
-					if filterBlob {
-						total += 1
-					}
-				}
+		}
+		out(nil, "", "Your workspace objects:\n", nil, true)
+		total, commits, trees, blobs := 0, 0, 0, 0
+		for _, objInfo := range filteredObjectInfos {
+			objID := objInfo.OID()
+			objType := objInfo.Type()
+			objHeader := objInfo.Header()
+			if objHeader != nil {
+				codeID := objHeader.CodeID()
+				out(nil, "", fmt.Sprintf("	- %s %s %s", common.IDText(objID), common.KeywordText(objType), common.NameText(codeID)), nil, true)
+			} else {
+				out(nil, "", fmt.Sprintf("	- %s %s", common.IDText(objID), common.KeywordText(objType)), nil, true)
 			}
-			out(nil, "", "\n", nil, false)
-			var sb strings.Builder
-			if filterCommits || filterTrees || filterBlob {
-				sb.WriteString("total " + common.NumberText(total))
-
+			switch objInfo.Type() {
+			case objects.ObjectTypeCommit:
+				commits++
 				if filterCommits {
-					sb.WriteString(", commit " + common.NumberText(commits))
+					total++
 				}
+			case objects.ObjectTypeTree:
+				trees++
 				if filterTrees {
-					sb.WriteString(", tree " + common.NumberText(trees))
+					total++
 				}
+			case objects.ObjectTypeBlob:
+				blobs++
 				if filterBlob {
-					sb.WriteString(", blob " + common.NumberText(blobs))
+					total++
 				}
-				out(nil, "", sb.String(), nil, true)
 			}
+		}
+		out(nil, "", "\n", nil, false)
+		var sb strings.Builder
+		if filterCommits || filterTrees || filterBlob {
+			sb.WriteString("total " + common.NumberText(total))
+
+			if filterCommits {
+				sb.WriteString(", commit " + common.NumberText(commits))
+			}
+			if filterTrees {
+				sb.WriteString(", tree " + common.NumberText(trees))
+			}
+			if filterBlob {
+				sb.WriteString(", blob " + common.NumberText(blobs))
+			}
+			out(nil, "", sb.String(), nil, true)
 		}
 	} else if m.ctx.IsJSONOutput() {
 		objMaps := []map[string]any{}
@@ -124,7 +123,7 @@ func (m *WorkspaceManager) ExecObjects(includeStorage, includeCode, filterCommit
 
 // execPrintObjectContent prints the object content in human-readable form,
 // optionally converting blob data to a frontend-friendly format.
-func (m *WorkspaceManager) execPrintObjectContent(langPvd *ManifestLanguageProvider, oid string, objInfo objects.ObjectInfo, showFrontendLanguage bool, out common.PrinterOutFunc) error {
+func (m *Manager) execPrintObjectContent(langPvd *ManifestLanguageProvider, oid string, objInfo objects.ObjectInfo, showFrontendLanguage bool, out common.PrinterOutFunc) error {
 	switch instance := objInfo.Instance().(type) {
 	case *objects.Commit:
 		content, err := m.commitString(oid, instance)
@@ -181,7 +180,7 @@ func (m *WorkspaceManager) execPrintObjectContent(langPvd *ManifestLanguageProvi
 
 // execMapObjectContent builds a key-value representation of the object content,
 // optionally transforming blob data into a structured frontend format.
-func (m *WorkspaceManager) execMapObjectContent(langPvd *ManifestLanguageProvider, oid string, objInfo objects.ObjectInfo, showFrontendLanguage bool, outMap map[string]any) error {
+func (m *Manager) execMapObjectContent(langPvd *ManifestLanguageProvider, oid string, objInfo objects.ObjectInfo, showFrontendLanguage bool, outMap map[string]any) error {
 	var contentMap map[string]any
 	var err error
 
@@ -246,7 +245,7 @@ func (m *WorkspaceManager) execMapObjectContent(langPvd *ManifestLanguageProvide
 }
 
 // ExecObjectsCat prints the content or metadata of a specific object identified by its OID.
-func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFrontendLanguage, showRaw, showContent bool, oid string, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecObjectsCat(includeStorage, includeCode, showFrontendLanguage, showRaw, showContent bool, oid string, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to access objects in the current workspace.", nil, true)
 		return output, err
@@ -262,7 +261,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 	if err != nil {
 		return fail(nil, err)
 	}
-	defer fileLock.Unlock()
+	defer func() { _ = fileLock.Unlock() }()
 
 	// Search for the requested object
 	objectInfos, err := m.objectsInfos(includeStorage, includeCode, true, true, true)
@@ -277,7 +276,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 		}
 	}
 	if selected == nil {
-		return fail(nil, fmt.Errorf("object not found"))
+		return fail(nil, errors.New("object not found"))
 	}
 
 	obj := selected.Object()
@@ -349,7 +348,7 @@ func (m *WorkspaceManager) ExecObjectsCat(includeStorage, includeCode, showFront
 }
 
 // ExecHistory shows the commit history of the current workspace.
-func (m *WorkspaceManager) ExecHistory(out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecHistory(out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to access history in the current workspace.", nil, true)
 		return output, err
@@ -367,7 +366,7 @@ func (m *WorkspaceManager) ExecHistory(out common.PrinterOutFunc) (map[string]an
 	if err != nil {
 		return fail(nil, err)
 	}
-	defer fileLock.Unlock()
+	defer func() { _ = fileLock.Unlock() }()
 
 	// Read current head context
 	headCtx, err := m.currentHeadContext()

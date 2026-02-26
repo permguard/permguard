@@ -23,13 +23,14 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
 	"github.com/permguard/permguard/pkg/cli"
 )
 
 // BaseCommandTest tests the command.
-func BaseCommandTest(t *testing.T, cmdFunc func(cli.CliDependenciesProvider, *viper.Viper) *cobra.Command, args []string, hasError bool, outputs []string) {
+func BaseCommandTest(t *testing.T, cmdFunc func(cli.DependenciesProvider, *viper.Viper) *cobra.Command, args []string, hasError bool, outputs []string) {
 	t.Helper()
 	assert := assert.New(t)
 	v := viper.New()
@@ -46,9 +47,9 @@ func BaseCommandTest(t *testing.T, cmdFunc func(cli.CliDependenciesProvider, *vi
 
 	err := cmd.Execute()
 	if hasError {
-		assert.NotNil(err, "err should not be nil")
+		require.Error(t, err, "err should not be nil")
 	} else {
-		assert.Nil(err, "err should be nil")
+		require.NoError(t, err, "err should be nil")
 	}
 
 	output := buf.String()
@@ -58,7 +59,8 @@ func BaseCommandTest(t *testing.T, cmdFunc func(cli.CliDependenciesProvider, *vi
 }
 
 // BaseCommandWithParamsTest tests the command with parameters.
-func BaseCommandWithParamsTest(t *testing.T, v *viper.Viper, cmd *cobra.Command, args []string, hasError bool, outputs []string) {
+func BaseCommandWithParamsTest(t *testing.T, _ *viper.Viper, cmd *cobra.Command, args []string, hasError bool, outputs []string) {
+	t.Helper()
 	assert := assert.New(t)
 
 	assert.NotNil(cmd, "The command should not be nil")
@@ -69,9 +71,9 @@ func BaseCommandWithParamsTest(t *testing.T, v *viper.Viper, cmd *cobra.Command,
 
 	err := cmd.Execute()
 	if hasError {
-		assert.NotNil(err, "err should not be nil")
+		require.Error(t, err, "err should not be nil")
 	} else {
-		assert.Nil(err, "err should be nil")
+		require.NoError(t, err, "err should be nil")
 	}
 
 	output := buf.String()

@@ -21,9 +21,13 @@ import (
 )
 
 const (
-	Permguard          = "PERMGUARD"
-	PermguardUser      = "USER"
-	PermguardWorkload  = "WORKLOAD"
+	// Permguard is the permguard constant.
+	Permguard = "PERMGUARD"
+	// PermguardUser is the permguard user constant.
+	PermguardUser = "USER"
+	// PermguardWorkload is the permguard workload constant.
+	PermguardWorkload = "WORKLOAD"
+	// PermguardAttribute is the permguard attribute constant.
 	PermguardAttribute = "ATTRIBUTE"
 )
 

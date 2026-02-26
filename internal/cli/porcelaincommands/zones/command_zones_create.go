@@ -31,12 +31,12 @@ const (
 )
 
 // runECommandForCreateZone runs the command for creating a zone.
-func runECommandForCreateZone(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForCreateZone(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	return runECommandForUpsertZone(deps, cmd, v, commandNameForZonesCreate, true)
 }
 
 // createCommandForZoneCreate creates a command for managing zonecreate.
-func createCommandForZoneCreate(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForZoneCreate(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create a remote zone",
@@ -45,11 +45,11 @@ func createCommandForZoneCreate(deps cli.CliDependenciesProvider, v *viper.Viper
 Examples:
   # create a zone and output the result in json format
   permguard zones create --name pharmaauthzflow-dev --output json`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForCreateZone(deps, cmd, v)
 		},
 	}
 	command.Flags().String(common.FlagCommonName, "", "specify the zone name")
-	v.BindPFlag(options.FlagName(commandNameForZonesCreate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
+	_ = v.BindPFlag(options.FlagName(commandNameForZonesCreate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

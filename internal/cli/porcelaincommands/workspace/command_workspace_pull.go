@@ -30,7 +30,7 @@ import (
 )
 
 // runECommandForPullWorkspace runs the command for creating an workspace.
-func runECommandForPullWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForPullWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -63,7 +63,7 @@ func runECommandForPullWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Co
 }
 
 // CreateCommandForWorkspacePull creates a command for pullializing a permguard workspace.
-func CreateCommandForWorkspacePull(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspacePull(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pull",
 		Short: "Fetch the latest changes from the remote ledger and constructs the remote state.",
@@ -72,7 +72,7 @@ func CreateCommandForWorkspacePull(deps cli.CliDependenciesProvider, v *viper.Vi
 Examples:
   # fetches the latest changes from the remote ledger and constructs the remote state
   permguard pull`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForPullWorkspace(deps, cmd, v)
 		},
 	}

@@ -20,13 +20,13 @@ import (
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 
-// StorageFactoryConfig is the storage factory config.
-type StorageFactoryConfig interface {
+// FactoryConfig is the storage factory config.
+type FactoryConfig interface {
 	options.Configurable
 }
 
-// StorageFactory is the storage factory.
-type StorageFactory interface {
+// Factory is the storage factory.
+type Factory interface {
 	// CreateCentralStorage creates a central storage.
-	CreateCentralStorage(storageContext *StorageContext) (CentralStorage, error)
+	CreateCentralStorage(storageContext *Context) (CentralStorage, error)
 }

@@ -21,11 +21,16 @@ import (
 )
 
 const (
+	// HostAllInOne represents the all-in-one host kind.
 	HostAllInOne HostKind = "ALL-IN-ONE"
-	HostZAP      HostKind = "ZAP"
-	HostPAP      HostKind = "PAP"
-	HostPIP      HostKind = "PIP"
-	HostPDP      HostKind = "PDP"
+	// HostZAP represents the ZAP host kind.
+	HostZAP HostKind = "ZAP"
+	// HostPAP represents the PAP host kind.
+	HostPAP HostKind = "PAP"
+	// HostPIP represents the PIP host kind.
+	HostPIP HostKind = "PIP"
+	// HostPDP represents the PDP host kind.
+	HostPDP HostKind = "PDP"
 )
 
 // HostKind represents the type of service host.

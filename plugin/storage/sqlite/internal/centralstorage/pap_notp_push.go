@@ -17,6 +17,7 @@
 package centralstorage
 
 import (
+	"context"
 	"errors"
 
 	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
@@ -30,7 +31,7 @@ import (
 )
 
 // OnPushHandleNotifyCurrentState notifies the current state.
-func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	zoneID, ok := getFromHandlerContext[int64](handlerCtx, notptransportsm.ZoneIDKey)
 	if !ok || zoneID <= 0 {
 		return nil, errors.New("storage: invalid input zone id")
@@ -93,7 +94,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleNotifyCurrentState(handlerCtx *notp
 }
 
 // OnPushSendNotifyCurrentStateResponse handles the current state response.
-func (s SQLiteCentralStoragePAP) OnPushSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (s SQLiteCentralStoragePAP) OnPushSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}
@@ -104,7 +105,7 @@ func (s SQLiteCentralStoragePAP) OnPushSendNotifyCurrentStateResponse(handlerCtx
 }
 
 // OnPushSendNegotiationRequest sends the negotiation request.
-func (s SQLiteCentralStoragePAP) OnPushSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (s SQLiteCentralStoragePAP) OnPushSendNegotiationRequest(_ *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}
@@ -112,7 +113,7 @@ func (s SQLiteCentralStoragePAP) OnPushSendNegotiationRequest(handlerCtx *notpst
 }
 
 // OnPushHandleNegotiationResponse handles the negotiation response.
-func (s SQLiteCentralStoragePAP) OnPushHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (s SQLiteCentralStoragePAP) OnPushHandleNegotiationResponse(_ *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}
@@ -130,7 +131,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
@@ -138,7 +139,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 		objStatePacket := &notpagpackets.ObjectStatePacket{}
 		err = notppackets.ConvertPacketable(packet, objStatePacket)
 		if err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return nil, err
 		}
 		keyValue := &repos.KeyValue{
@@ -148,7 +149,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 		}
 		_, err = s.sqlRepo.UpsertKeyValue(tx, keyValue)
 		if err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return nil, err
 		}
 	}
@@ -160,7 +161,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 		remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDKey)
 		err = s.sqlRepo.UpdateLedgerRef(tx, ledger.ZoneID, ledger.LedgerID, ledger.Ref, remoteCommitID)
 		if err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return nil, repos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
 		}
 		if err := tx.Commit(); err != nil {
@@ -174,7 +175,7 @@ func (s SQLiteCentralStoragePAP) OnPushHandleExchangeDataStream(handlerCtx *notp
 }
 
 // OnPushSendCommit sends the commit.
-func (s SQLiteCentralStoragePAP) OnPushSendCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (s SQLiteCentralStoragePAP) OnPushSendCommit(_ *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}

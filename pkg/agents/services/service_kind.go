@@ -21,9 +21,13 @@ import (
 )
 
 const (
+	// ServiceZAP represents the ZAP service kind.
 	ServiceZAP ServiceKind = "ZAP"
+	// ServicePAP represents the PAP service kind.
 	ServicePAP ServiceKind = "PAP"
+	// ServicePIP represents the PIP service kind.
 	ServicePIP ServiceKind = "PIP"
+	// ServicePDP represents the PDP service kind.
 	ServicePDP ServiceKind = "PDP"
 )
 

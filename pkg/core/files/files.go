@@ -150,11 +150,11 @@ func WriteFile(name string, data []byte, perm os.FileMode, compressed bool) (boo
 		if err != nil {
 			return false, errors.New("core: failed to write compressed file")
 		}
-	} else {
-		err := os.WriteFile(name, data, perm)
-		if err != nil {
-			return false, errors.New("core: failed to write file")
-		}
+		return true, nil
+	}
+	err := os.WriteFile(name, data, perm)
+	if err != nil {
+		return false, errors.New("core: failed to write file")
 	}
 	return true, nil
 }

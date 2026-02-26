@@ -32,34 +32,34 @@ const (
 	hiddenConfigFile = "config"
 )
 
-// ConfigManager implements the internal manager for the config file.
-type ConfigManager struct {
+// Manager implements the internal manager for the config file.
+type Manager struct {
 	ctx     *common.CliCommandContext
-	persMgr *persistence.PersistenceManager
+	persMgr *persistence.Manager
 }
 
-// NewConfigManager creates a new configuration manager.
-func NewConfigManager(ctx *common.CliCommandContext, persMgr *persistence.PersistenceManager) (*ConfigManager, error) {
-	return &ConfigManager{
+// NewManager creates a new configuration manager.
+func NewManager(ctx *common.CliCommandContext, persMgr *persistence.Manager) (*Manager, error) {
+	return &Manager{
 		ctx:     ctx,
 		persMgr: persMgr,
 	}, nil
 }
 
 // configFile
-func (m *ConfigManager) configFile() string {
+func (m *Manager) configFile() string {
 	return hiddenConfigFile
 }
 
 // readConfig reads the config file.
-func (m *ConfigManager) readConfig() (*config, error) {
+func (m *Manager) readConfig() (*config, error) {
 	var cfg config
 	err := m.persMgr.ReadTOMLFile(persistence.PermguardDir, m.configFile(), &cfg)
 	return &cfg, err
 }
 
 // saveConfig saves the config file.
-func (m *ConfigManager) saveConfig(override bool, cfg *config) error {
+func (m *Manager) saveConfig(override bool, cfg *config) error {
 	data, err := toml.Marshal(cfg)
 	if err != nil {
 		return errors.Join(err, errors.New("cli: failed to marshal config"))
@@ -77,7 +77,7 @@ func (m *ConfigManager) saveConfig(override bool, cfg *config) error {
 }
 
 // RemoteInfo gets the remote info.
-func (m *ConfigManager) RemoteInfo(remote string) (*wkscommon.RemoteInfo, error) {
+func (m *Manager) RemoteInfo(remote string) (*wkscommon.RemoteInfo, error) {
 	remote, err := wkscommon.SanitizeRemote(remote)
 	if err != nil {
 		return nil, err
@@ -94,7 +94,7 @@ func (m *ConfigManager) RemoteInfo(remote string) (*wkscommon.RemoteInfo, error)
 }
 
 // LedgerInfo gets the ref info.
-func (m *ConfigManager) LedgerInfo(ledgerURI string) (*wkscommon.RefInfo, error) {
+func (m *Manager) LedgerInfo(ledgerURI string) (*wkscommon.RefInfo, error) {
 	cfg, err := m.readConfig()
 	if err != nil {
 		return nil, err
@@ -111,7 +111,7 @@ func (m *ConfigManager) LedgerInfo(ledgerURI string) (*wkscommon.RefInfo, error)
 }
 
 // CheckLedgerIfExists checks if a ledger exists.
-func (m *ConfigManager) CheckLedgerIfExists(ledgerURI string) bool {
+func (m *Manager) CheckLedgerIfExists(ledgerURI string) bool {
 	ledgerURI, _ = wkscommon.SanitizeLedger(ledgerURI)
 	cfg, err := m.readConfig()
 	if err != nil {

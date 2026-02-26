@@ -39,7 +39,7 @@ const (
 )
 
 // runECommandForCloneWorkspace runs the command for creating an workspace.
-func runECommandForCloneWorkspace(args []string, deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForCloneWorkspace(args []string, deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	if len(args) < 1 {
 		color.Red("Invalid arguments")
 		return common.ErrCommandSilent
@@ -62,12 +62,15 @@ func runECommandForCloneWorkspace(args []string, deps cli.CliDependenciesProvide
 		return common.ErrCommandSilent
 	}
 	ledgerFolder := filepath.Join(workDir, folder)
-	cmd.Flags().Set(common.FlagWorkingDirectory, ledgerFolder)
+	_ = cmd.Flags().Set(common.FlagWorkingDirectory, ledgerFolder)
 	if ok, _ := files.CheckPathIfExists(ledgerFolder); ok {
 		color.Red(fmt.Sprintf("The ledger %s already exists", ledgerFolder))
 		return common.ErrCommandSilent
 	}
-	files.CreateDirIfNotExists(ledgerFolder)
+	if _, err := files.CreateDirIfNotExists(ledgerFolder); err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return common.ErrCommandSilent
+	}
 
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
@@ -112,7 +115,7 @@ func runECommandForCloneWorkspace(args []string, deps cli.CliDependenciesProvide
 }
 
 // CreateCommandForWorkspaceClone creates a command for cloneializing a permguard workspace.
-func CreateCommandForWorkspaceClone(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceClone(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "clone",
 		Short: "Clone a remote ledger to the local permguard workspace",
@@ -127,8 +130,8 @@ Examples:
 	}
 
 	command.Flags().Int(flagZAP, 9091, "specify the port number for the ZAP")
-	v.BindPFlag(options.FlagName(commandNameForWorkspacesClone, flagZAP), command.Flags().Lookup(flagZAP))
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesClone, flagZAP), command.Flags().Lookup(flagZAP))
 	command.Flags().Int(flagPAP, 9092, "specify the port number for the PAP")
-	v.BindPFlag(options.FlagName(commandNameForWorkspacesClone, flagPAP), command.Flags().Lookup(flagPAP))
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesClone, flagPAP), command.Flags().Lookup(flagPAP))
 	return command
 }

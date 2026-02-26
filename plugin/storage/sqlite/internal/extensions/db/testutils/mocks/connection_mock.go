@@ -31,31 +31,31 @@ type SQLiteConnectionMock struct {
 }
 
 // Storage returns the storage kind.
-func (c *SQLiteConnectionMock) Storage() storage.StorageKind {
+func (c *SQLiteConnectionMock) Storage() storage.Kind {
 	ret := c.Called()
 
-	var r0 storage.StorageKind
-	if rf, ok := ret.Get(0).(func() storage.StorageKind); ok {
+	var r0 storage.Kind
+	if rf, ok := ret.Get(0).(func() storage.Kind); ok {
 		r0 = rf()
 	} else {
-		r0 = ret.Get(0).(storage.StorageKind)
+		r0 = ret.Get(0).(storage.Kind)
 	}
 	return r0
 }
 
 // Connect connects to the storage.
-func (c *SQLiteConnectionMock) Connect(logger *zap.Logger, ctx *storage.StorageContext) (*sqlx.DB, error) {
+func (c *SQLiteConnectionMock) Connect(logger *zap.Logger, ctx *storage.Context) (*sqlx.DB, error) {
 	ret := c.Called(logger, ctx)
 
 	var r0 *sqlx.DB
-	if rf, ok := ret.Get(0).(func(*zap.Logger, *storage.StorageContext) *sqlx.DB); ok {
+	if rf, ok := ret.Get(0).(func(*zap.Logger, *storage.Context) *sqlx.DB); ok {
 		r0 = rf(logger, ctx)
 	} else {
 		r0 = ret.Get(0).(*sqlx.DB)
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(*zap.Logger, *storage.StorageContext) error); ok {
+	if rf, ok := ret.Get(1).(func(*zap.Logger, *storage.Context) error); ok {
 		r1 = rf(logger, ctx)
 	} else if ret.Get(1) != nil {
 		r1 = ret.Get(1).(error)
@@ -64,11 +64,11 @@ func (c *SQLiteConnectionMock) Connect(logger *zap.Logger, ctx *storage.StorageC
 }
 
 // Disconnect disconnects the connection.
-func (c *SQLiteConnectionMock) Disconnect(logger *zap.Logger, ctx *storage.StorageContext) error {
+func (c *SQLiteConnectionMock) Disconnect(logger *zap.Logger, ctx *storage.Context) error {
 	ret := c.Called(logger, ctx)
 
-	var r0 error = nil
-	if rf, ok := ret.Get(0).(func(*zap.Logger, *storage.StorageContext) error); ok {
+	var r0 error
+	if rf, ok := ret.Get(0).(func(*zap.Logger, *storage.Context) error); ok {
 		r0 = rf(logger, ctx)
 	} else if ret.Get(0) != nil {
 		r0 = ret.Get(0).(error)

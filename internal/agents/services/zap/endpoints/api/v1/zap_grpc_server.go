@@ -38,23 +38,23 @@ type ZAPService interface {
 	FetchZones(page int32, pageSize int32, filter map[string]any) ([]zap.Zone, error)
 }
 
-// NewV1ZAPServer creates a new ZAP server.
-func NewV1ZAPServer(endpointCtx *services.EndpointContext, service ZAPService) (*V1ZAPServer, error) {
-	return &V1ZAPServer{
+// NewZAPServer creates a new ZAP server.
+func NewZAPServer(endpointCtx *services.EndpointContext, service ZAPService) (*ZAPServer, error) {
+	return &ZAPServer{
 		ctx:     endpointCtx,
 		service: service,
 	}, nil
 }
 
-// V1ZAPServer is the gRPC server for the ZAP.
-type V1ZAPServer struct {
+// ZAPServer is the gRPC server for the ZAP.
+type ZAPServer struct {
 	UnimplementedV1ZAPServiceServer
 	ctx     *services.EndpointContext
 	service ZAPService
 }
 
 // CreateZone creates a new zone.
-func (s *V1ZAPServer) CreateZone(ctx context.Context, zoneRequest *ZoneCreateRequest) (*ZoneResponse, error) {
+func (s *ZAPServer) CreateZone(_ context.Context, zoneRequest *ZoneCreateRequest) (*ZoneResponse, error) {
 	zone, err := s.service.CreateZone(&zap.Zone{Name: zoneRequest.Name})
 	if err != nil {
 		return nil, err
@@ -63,7 +63,7 @@ func (s *V1ZAPServer) CreateZone(ctx context.Context, zoneRequest *ZoneCreateReq
 }
 
 // UpdateZone updates a zone.
-func (s *V1ZAPServer) UpdateZone(ctx context.Context, zoneRequest *ZoneUpdateRequest) (*ZoneResponse, error) {
+func (s *ZAPServer) UpdateZone(_ context.Context, zoneRequest *ZoneUpdateRequest) (*ZoneResponse, error) {
 	zone, err := s.service.UpdateZone((&zap.Zone{ZoneID: zoneRequest.ZoneID, Name: zoneRequest.Name}))
 	if err != nil {
 		return nil, err
@@ -72,7 +72,7 @@ func (s *V1ZAPServer) UpdateZone(ctx context.Context, zoneRequest *ZoneUpdateReq
 }
 
 // DeleteZone deletes a zone.
-func (s *V1ZAPServer) DeleteZone(ctx context.Context, zoneRequest *ZoneDeleteRequest) (*ZoneResponse, error) {
+func (s *ZAPServer) DeleteZone(_ context.Context, zoneRequest *ZoneDeleteRequest) (*ZoneResponse, error) {
 	zone, err := s.service.DeleteZone(zoneRequest.ZoneID)
 	if err != nil {
 		return nil, err
@@ -81,7 +81,7 @@ func (s *V1ZAPServer) DeleteZone(ctx context.Context, zoneRequest *ZoneDeleteReq
 }
 
 // FetchZones returns all zones.
-func (s *V1ZAPServer) FetchZones(zoneRequest *ZoneFetchRequest, stream grpc.ServerStreamingServer[ZoneResponse]) error {
+func (s *ZAPServer) FetchZones(zoneRequest *ZoneFetchRequest, stream grpc.ServerStreamingServer[ZoneResponse]) error {
 	fields := map[string]any{}
 	if zoneRequest.ZoneID != nil {
 		fields[zap.FieldZoneZoneID] = *zoneRequest.ZoneID
@@ -106,7 +106,9 @@ func (s *V1ZAPServer) FetchZones(zoneRequest *ZoneFetchRequest, stream grpc.Serv
 		if err != nil {
 			return err
 		}
-		stream.SendMsg(cvtedZone)
+		if err := stream.SendMsg(cvtedZone); err != nil {
+			return err
+		}
 	}
 	return nil
 }

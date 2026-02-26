@@ -36,7 +36,7 @@ const (
 )
 
 // runECommandForDeleteLedger runs the command for creating a ledger.
-func runECommandForDeleteLedger(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForDeleteLedger(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -48,7 +48,7 @@ func runECommandForDeleteLedger(deps cli.CliDependenciesProvider, cmd *cobra.Com
 			printer.Println("Failed to delete the ledger.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(fmt.Errorf("cli: failed to delete the ledger"), err))
+			printer.Error(errors.Join(errors.New("cli: failed to delete the ledger"), err))
 		}
 	}
 	client, err := deps.CreateGrpcPAPClient(papTarget)
@@ -57,7 +57,7 @@ func runECommandForDeleteLedger(deps cli.CliDependenciesProvider, cmd *cobra.Com
 			printer.Println("Failed to delete the ledger.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(fmt.Errorf("cli: failed to delete the ledger"), err))
+			printer.Error(errors.Join(errors.New("cli: failed to delete the ledger"), err))
 		}
 	}
 	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
@@ -68,7 +68,7 @@ func runECommandForDeleteLedger(deps cli.CliDependenciesProvider, cmd *cobra.Com
 			printer.Println("Failed to delete the ledger.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(fmt.Errorf("cli: failed to delete the ledger"), err))
+			printer.Error(errors.Join(errors.New("cli: failed to delete the ledger"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -85,7 +85,7 @@ func runECommandForDeleteLedger(deps cli.CliDependenciesProvider, cmd *cobra.Com
 }
 
 // createCommandForLedgerDelete creates a command for managing ledgerdelete.
-func createCommandForLedgerDelete(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForLedgerDelete(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a remote ledger",
@@ -95,11 +95,11 @@ Examples:
   # delete a ledger and output the result in json format
   permguard authz ledgers delete --zone-id 273165098782 --ledger-id 668f3771eacf4094ba8a80942ea5fd3f --output json
 		`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForDeleteLedger(deps, cmd, v)
 		},
 	}
 	command.Flags().String(flagLedgerID, "", "specify the ID of the ledger to delete")
-	v.BindPFlag(options.FlagName(commandNameForLedgersDelete, flagLedgerID), command.Flags().Lookup(flagLedgerID))
+	_ = v.BindPFlag(options.FlagName(commandNameForLedgersDelete, flagLedgerID), command.Flags().Lookup(flagLedgerID))
 	return command
 }

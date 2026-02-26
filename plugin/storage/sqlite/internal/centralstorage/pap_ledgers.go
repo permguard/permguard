@@ -17,6 +17,7 @@
 package centralstorage
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -25,6 +26,7 @@ import (
 )
 
 const (
+	// LedgerDefaultName is the default name for a ledger.
 	LedgerDefaultName = "default"
 )
 
@@ -37,7 +39,7 @@ func (s SQLiteCentralStoragePAP) CreateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
@@ -55,7 +57,7 @@ func (s SQLiteCentralStoragePAP) CreateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 	}
 	dbOutLedger, err := s.sqlRepo.UpsertLedger(tx, true, dbInLedger)
 	if err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -73,7 +75,7 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
@@ -92,7 +94,7 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 	}
 	dbOutLedger, err := s.sqlRepo.UpsertLedger(tx, false, dbInLedger)
 	if err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -107,13 +109,13 @@ func (s SQLiteCentralStoragePAP) DeleteLedger(zoneID int64, ledgerID string) (*p
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
 	dbOutLedger, err := s.sqlRepo.DeleteLedger(tx, zoneID, ledgerID)
 	if err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {

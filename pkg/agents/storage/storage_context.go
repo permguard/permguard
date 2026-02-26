@@ -32,55 +32,55 @@ const (
 
 type storageCtxKey struct{}
 
-// StorageContext is the storage context.
-type StorageContext struct {
+// Context is the storage context.
+type Context struct {
 	ctx       context.Context
-	parentCtx runtime.RuntimeContext
+	parentCtx runtime.Context
 }
 
 // NewStorageContext creates a new storage context.
-func NewStorageContext(runtimeContext runtime.RuntimeContext, storage StorageKind) (*StorageContext, error) {
+func NewStorageContext(runtimeContext runtime.Context, storage Kind) (*Context, error) {
 	newLogger := runtimeContext.Logger().With(zap.String(string("storage"), storage.String()))
 	data := map[string]any{ctxStgStorageKey: storage, ctxStgLoggerKey: newLogger}
 	ctx := context.WithValue(runtimeContext.Context(), storageCtxKey{}, data)
-	return &StorageContext{
+	return &Context{
 		ctx:       ctx,
 		parentCtx: runtimeContext,
 	}, nil
 }
 
 // Context returns the context.
-func (s *StorageContext) Context() context.Context {
+func (s *Context) Context() context.Context {
 	return s.ctx
 }
 
 // Storage returns the storage.
-func (s *StorageContext) Storage() StorageKind {
-	return s.ctx.Value(storageCtxKey{}).(map[string]any)[ctxStgStorageKey].(StorageKind)
+func (s *Context) Storage() Kind {
+	return s.ctx.Value(storageCtxKey{}).(map[string]any)[ctxStgStorageKey].(Kind)
 }
 
 // Logger returns the logger.
-func (s *StorageContext) Logger() *zap.Logger {
+func (s *Context) Logger() *zap.Logger {
 	return s.ctx.Value(storageCtxKey{}).(map[string]any)[ctxStgLoggerKey].(*zap.Logger)
 }
 
 // ParentLoggerMessage returns the parent logger message.
-func (s *StorageContext) ParentLoggerMessage() string {
+func (s *Context) ParentLoggerMessage() string {
 	storage := s.Storage().String()
 	return fmt.Sprintf("%s[%s]", s.parentCtx.ParentLoggerMessage(), storage)
 }
 
 // LogMessage returns a well formatted log message.
-func (s *StorageContext) LogMessage(message string) string {
+func (s *Context) LogMessage(message string) string {
 	return fmt.Sprintf("%s: %s", s.ParentLoggerMessage(), message)
 }
 
 // HostConfigReader returns the host configuration reader.
-func (s *StorageContext) HostConfigReader() (runtime.HostConfigReader, error) {
+func (s *Context) HostConfigReader() (runtime.HostConfigReader, error) {
 	return s.parentCtx.HostConfigReader()
 }
 
 // ServiceConfigReader returns the service configuration reader.
-func (s *StorageContext) ServiceConfigReader() (runtime.ServiceConfigReader, error) {
+func (s *Context) ServiceConfigReader() (runtime.ServiceConfigReader, error) {
 	return s.parentCtx.ServiceConfigReader()
 }

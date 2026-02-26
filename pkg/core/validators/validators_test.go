@@ -43,9 +43,9 @@ func TestValidateCodeID(t *testing.T) {
 	for _, tc := range testCases {
 		result := ValidateCodeID(tc.entity, int64(tc.zoneID))
 		if tc.hasError {
-			assert.NotNil(result, "error should not be nil")
+			assert.Error(result, "error should not be nil")
 		} else {
-			assert.Nil(result, "error should be nil")
+			assert.NoError(result, "error should be nil")
 		}
 	}
 }
@@ -72,9 +72,9 @@ func TestValidateUUID(t *testing.T) {
 	for _, tc := range testCases {
 		result := ValidateUUID(tc.entity, tc.UUID)
 		if tc.hasError {
-			assert.NotNil(result, "error should not be nil")
+			assert.Error(result, "error should not be nil")
 		} else {
-			assert.Nil(result, "error should be nil")
+			assert.NoError(result, "error should be nil")
 		}
 	}
 }
@@ -104,9 +104,9 @@ func TestValidateName(t *testing.T) {
 	for _, tc := range testCases {
 		result := ValidateName(tc.entity, tc.name)
 		if tc.hasError {
-			assert.NotNil(result, "error should not be nil")
+			assert.Error(result, "error should not be nil")
 		} else {
-			assert.Nil(result, "error should be nil")
+			assert.NoError(result, "error should be nil")
 		}
 	}
 }

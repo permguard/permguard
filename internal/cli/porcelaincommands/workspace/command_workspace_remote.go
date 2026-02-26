@@ -30,7 +30,7 @@ import (
 )
 
 // runECommandForRemoteWorkspace runs the command for creating an workspace.
-func runECommandForRemoteWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForRemoteWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -63,12 +63,12 @@ func runECommandForRemoteWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.
 }
 
 // CreateCommandForWorkspaceRemote creates a command for remoteializing a permguard workspace.
-func CreateCommandForWorkspaceRemote(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceRemote(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "remote",
 		Short: `Manage remote server for tracking and interaction`,
 		Long:  common.BuildCliLongTemplate(`This command manages remote server for tracking and interaction`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForRemoteWorkspace(deps, cmd, v)
 		},
 	}

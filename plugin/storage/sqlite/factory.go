@@ -27,41 +27,41 @@ import (
 	"github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
-// SQLiteStorageFactoryConfig holds the configuration for the server factory.
-type SQLiteStorageFactoryConfig struct {
+// StorageFactoryConfig holds the configuration for the server factory.
+type StorageFactoryConfig struct {
 	config *db.SQLiteConnectionConfig
 }
 
-// NewSQLiteStorageFactoryConfig creates a new server factory configuration.
-func NewSQLiteStorageFactoryConfig() (*SQLiteStorageFactoryConfig, error) {
+// NewStorageFactoryConfig creates a new server factory configuration.
+func NewStorageFactoryConfig() (*StorageFactoryConfig, error) {
 	dbConnCfg, err := db.NewSQLiteConnectionConfig()
 	if err != nil {
 		return nil, err
 	}
-	return &SQLiteStorageFactoryConfig{
+	return &StorageFactoryConfig{
 		config: dbConnCfg,
 	}, nil
 }
 
 // AddFlags adds flags.
-func (c *SQLiteStorageFactoryConfig) AddFlags(flagSet *flag.FlagSet) error {
+func (c *StorageFactoryConfig) AddFlags(flagSet *flag.FlagSet) error {
 	return c.config.AddFlags(flagSet)
 }
 
 // InitFromViper initializes the configuration from viper.
-func (c *SQLiteStorageFactoryConfig) InitFromViper(v *viper.Viper) error {
+func (c *StorageFactoryConfig) InitFromViper(v *viper.Viper) error {
 	err := c.config.InitFromViper(v)
 	return err
 }
 
-// SQLiteStorageFactory holds the configuration for the server factory.
-type SQLiteStorageFactory struct {
-	config          *SQLiteStorageFactoryConfig
+// StorageFactory holds the configuration for the server factory.
+type StorageFactory struct {
+	config          *StorageFactoryConfig
 	sqliteConnector db.SQLiteConnector
 }
 
-// NewSQLiteStorageFactory creates a new server factory configuration.
-func NewSQLiteStorageFactory(storageFctyCfg *SQLiteStorageFactoryConfig) (*SQLiteStorageFactory, error) {
+// NewStorageFactory creates a new server factory configuration.
+func NewStorageFactory(storageFctyCfg *StorageFactoryConfig) (*StorageFactory, error) {
 	if storageFctyCfg == nil {
 		return nil, errors.New("storage: storage factory configuration cannot be nil")
 	}
@@ -69,13 +69,13 @@ func NewSQLiteStorageFactory(storageFctyCfg *SQLiteStorageFactoryConfig) (*SQLit
 	if err != nil {
 		return nil, err
 	}
-	return &SQLiteStorageFactory{
+	return &StorageFactory{
 		config:          storageFctyCfg,
 		sqliteConnector: connection,
 	}, nil
 }
 
 // CreateCentralStorage returns the central storage.
-func (f *SQLiteStorageFactory) CreateCentralStorage(storageContext *storage.StorageContext) (storage.CentralStorage, error) {
+func (f *StorageFactory) CreateCentralStorage(storageContext *storage.Context) (storage.CentralStorage, error) {
 	return centralstorage.NewSQLiteCentralStorage(storageContext, f.sqliteConnector)
 }

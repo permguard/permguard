@@ -17,22 +17,25 @@
 package repositories
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // SQLite driver
 
 	"github.com/permguard/permguard/pkg/core/validators"
 )
 
+// Ledger type constants.
 const (
 	// errorMessageLedgerInvalidZoneID is the error message ledger invalid zone id.
 	errorMessageLedgerInvalidZoneID = "storage: invalid client input - zone id is not valid (id: %d)"
 )
 
+// Ledger type constants.
 const (
 	LedgerType       = "ledger"
 	LedgerTypePolicy = "policy"
@@ -86,9 +89,9 @@ func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*L
 	var err error
 	if isCreate {
 		ledgerID = GenerateUUID()
-		result, err = tx.Exec("INSERT INTO ledgers (zone_id, ledger_id, kind, name) VALUES (?, ?, ?, ?)", zoneID, ledgerID, ledgerKind, ledgerName)
+		result, err = tx.ExecContext(context.Background(), "INSERT INTO ledgers (zone_id, ledger_id, kind, name) VALUES (?, ?, ?, ?)", zoneID, ledgerID, ledgerKind, ledgerName)
 	} else {
-		result, err = tx.Exec("UPDATE ledgers SET name = ? WHERE zone_id = ? and ledger_id = ?", ledgerName, zoneID, ledgerID)
+		result, err = tx.ExecContext(context.Background(), "UPDATE ledgers SET name = ? WHERE zone_id = ? and ledger_id = ?", ledgerName, zoneID, ledgerID)
 	}
 	if err != nil || result == nil {
 		action := "update"
@@ -100,7 +103,7 @@ func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*L
 	}
 
 	var dbLedger Ledger
-	err = tx.QueryRow("SELECT zone_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID).Scan(
+	err = tx.QueryRowContext(context.Background(), "SELECT zone_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID).Scan(
 		&dbLedger.ZoneID,
 		&dbLedger.LedgerID,
 		&dbLedger.CreatedAt,
@@ -131,7 +134,7 @@ func (r *Repository) UpdateLedgerRef(tx *sql.Tx, zoneID int64, ledgerID, current
 	}
 
 	var dbCurrentRef string
-	err := tx.QueryRow("SELECT ref FROM ledgers WHERE zone_id = ? AND ledger_id = ?", zoneID, ledgerID).Scan(&dbCurrentRef)
+	err := tx.QueryRowContext(context.Background(), "SELECT ref FROM ledgers WHERE zone_id = ? AND ledger_id = ?", zoneID, ledgerID).Scan(&dbCurrentRef)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return errors.Join(fmt.Errorf("storage: ledger not found (zone_id: %d, ledger_id: %s)", zoneID, ledgerID), err)
@@ -143,7 +146,7 @@ func (r *Repository) UpdateLedgerRef(tx *sql.Tx, zoneID int64, ledgerID, current
 		return fmt.Errorf("current ref mismatch (expected: %s, got: %s)", dbCurrentRef, currentRef)
 	}
 
-	result, err := tx.Exec("UPDATE ledgers SET ref = ? WHERE zone_id = ? AND ledger_id = ?", newRef, zoneID, ledgerID)
+	result, err := tx.ExecContext(context.Background(), "UPDATE ledgers SET ref = ? WHERE zone_id = ? AND ledger_id = ?", newRef, zoneID, ledgerID)
 	if err != nil {
 		return WrapSqliteError("failed to update ledger ref", err)
 	}
@@ -168,7 +171,7 @@ func (r *Repository) DeleteLedger(tx *sql.Tx, zoneID int64, ledgerID string) (*L
 	}
 
 	var dbLedger Ledger
-	err := tx.QueryRow("SELECT zone_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID).Scan(
+	err := tx.QueryRowContext(context.Background(), "SELECT zone_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID).Scan(
 		&dbLedger.ZoneID,
 		&dbLedger.LedgerID,
 		&dbLedger.CreatedAt,
@@ -180,7 +183,7 @@ func (r *Repository) DeleteLedger(tx *sql.Tx, zoneID int64, ledgerID string) (*L
 	if err != nil {
 		return nil, WrapSqliteError(fmt.Sprintf("invalid client input - ledger id is not valid (id: %s)", ledgerID), err)
 	}
-	res, err := tx.Exec("DELETE FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID)
+	res, err := tx.ExecContext(context.Background(), "DELETE FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID)
 	if err != nil || res == nil {
 		return nil, WrapSqliteError(fmt.Sprintf("failed to delete ledger - operation 'delete-ledger' encountered an issue (id: %s)", ledgerID), err)
 	}

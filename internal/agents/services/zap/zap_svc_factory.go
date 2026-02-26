@@ -24,47 +24,47 @@ import (
 	"github.com/permguard/permguard/pkg/agents/services"
 )
 
-// ZAPServiceFactoryConfig holds the configuration for the server factory.
-type ZAPServiceFactoryConfig struct {
-	config *ZAPServiceConfig
+// ServiceFactoryConfig holds the configuration for the server factory.
+type ServiceFactoryConfig struct {
+	config *ServiceConfig
 }
 
-// NewZAPServiceFactoryConfig creates a new server factory configuration.
-func NewZAPServiceFactoryConfig() (*ZAPServiceFactoryConfig, error) {
-	zapServiceConfig, err := NewZAPServiceConfig()
+// NewServiceFactoryConfig creates a new server factory configuration.
+func NewServiceFactoryConfig() (*ServiceFactoryConfig, error) {
+	zapServiceConfig, err := NewServiceConfig()
 	if err != nil {
 		return nil, err
 	}
-	return &ZAPServiceFactoryConfig{
+	return &ServiceFactoryConfig{
 		config: zapServiceConfig,
 	}, nil
 }
 
 // AddFlags adds flags.
-func (c *ZAPServiceFactoryConfig) AddFlags(flagSet *flag.FlagSet) error {
+func (c *ServiceFactoryConfig) AddFlags(flagSet *flag.FlagSet) error {
 	return c.config.AddFlags(flagSet)
 }
 
 // InitFromViper initializes the configuration from viper.
-func (c *ZAPServiceFactoryConfig) InitFromViper(v *viper.Viper) error {
+func (c *ServiceFactoryConfig) InitFromViper(v *viper.Viper) error {
 	err := c.config.InitFromViper(v)
 	return err
 }
 
-// ZAPServiceFactory holds the configuration for the server factory.
-type ZAPServiceFactory struct {
-	config *ZAPServiceFactoryConfig
+// ServiceFactory holds the configuration for the server factory.
+type ServiceFactory struct {
+	config *ServiceFactoryConfig
 }
 
-// NewZAPServiceFactory creates a new server factory configuration.
-func NewZAPServiceFactory(serviceFctyCfg *ZAPServiceFactoryConfig) (*ZAPServiceFactory, error) {
-	return &ZAPServiceFactory{
+// NewServiceFactory creates a new server factory configuration.
+func NewServiceFactory(serviceFctyCfg *ServiceFactoryConfig) (*ServiceFactory, error) {
+	return &ServiceFactory{
 		config: serviceFctyCfg,
 	}, nil
 }
 
 // Create creates a new service.
-func (f *ZAPServiceFactory) Create() (services.Serviceable, error) {
-	service, err := NewZAPService(f.config.config)
+func (f *ServiceFactory) Create() (services.Serviceable, error) {
+	service, err := NewService(f.config.config)
 	return service, err
 }

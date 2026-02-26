@@ -33,7 +33,7 @@ import (
 // viperWriteEndpoint writes the setting to the viper configuration.
 func viperWriteEndpoint(v *viper.Viper, key string, value string) error {
 	if !validators.IsValidHostnamePort(value) {
-		return fmt.Errorf("invalid hostname:port")
+		return errors.New("invalid hostname:port")
 	}
 	valueMap := map[string]interface{}{
 		key: value,
@@ -42,7 +42,7 @@ func viperWriteEndpoint(v *viper.Viper, key string, value string) error {
 }
 
 // runECommandForZAPSet runs the command for setting the zap endpoint.
-func runECommandForZAPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+func runECommandForZAPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -71,7 +71,7 @@ func runECommandForZAPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 }
 
 // runECommandForPAPSet runs the command for setting the pap endpoint.
-func runECommandForPAPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+func runECommandForPAPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -100,7 +100,7 @@ func runECommandForPAPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 }
 
 // runECommandForPDPSet runs the command for setting the pdp endpoint.
-func runECommandForPDPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+func runECommandForPDPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -129,7 +129,7 @@ func runECommandForPDPSet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 }
 
 // CreateCommandForConfig for managing config.
-func createCommandForConfigZAPSet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigZAPSet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "zap-endpoint",
 		Short: "Set the zap endpoint",
@@ -147,7 +147,7 @@ permguard config zap-endpoint localhost:9091
 }
 
 // CreateCommandForConfig for managing config.
-func createCommandForConfigPAPSet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigPAPSet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pap-endpoint",
 		Short: "Set the pap endpoint",
@@ -165,7 +165,7 @@ permguard config pap-endpoint localhost:9092
 }
 
 // CreateCommandForConfig for managing config.
-func createCommandForConfigPDPSet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigPDPSet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pdp-endpoint",
 		Short: "Set the pdp endpoint",
@@ -182,12 +182,12 @@ permguard config pdp-endpoint localhost:9094
 	return command
 }
 
-func createCommandForConfigSet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigSet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "set",
 		Short: "Set configuration items",
 		Long:  common.BuildCliLongTemplate(`This command sets configuration items.`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
 	}

@@ -24,7 +24,7 @@ import (
 	"sync"
 
 	"github.com/jmoiron/sqlx"
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // SQLite driver
 
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -40,7 +40,7 @@ const (
 
 // SQLiteConnectionConfig holds the configuration for the connection.
 type SQLiteConnectionConfig struct {
-	storageKind storage.StorageKind
+	storageKind storage.Kind
 	dbName      string
 }
 
@@ -64,7 +64,7 @@ func (c *SQLiteConnectionConfig) InitFromViper(v *viper.Viper) error {
 }
 
 // Storage returns the storage kind.
-func (c *SQLiteConnectionConfig) Storage() storage.StorageKind {
+func (c *SQLiteConnectionConfig) Storage() storage.Kind {
 	return c.storageKind
 }
 
@@ -76,11 +76,11 @@ func (c *SQLiteConnectionConfig) DBName() string {
 // SQLiteConnector is the interface for the sqlite connector.
 type SQLiteConnector interface {
 	// Storage returns the storage kind.
-	Storage() storage.StorageKind
+	Storage() storage.Kind
 	// Connect connects to sqlite and return a client.
-	Connect(logger *zap.Logger, ctx *storage.StorageContext) (*sqlx.DB, error)
+	Connect(logger *zap.Logger, ctx *storage.Context) (*sqlx.DB, error)
 	// Disconnect disconnects from sqlite.
-	Disconnect(logger *zap.Logger, ctx *storage.StorageContext) error
+	Disconnect(logger *zap.Logger, ctx *storage.Context) error
 }
 
 // SQLiteConnection holds the connection's configuration.
@@ -101,12 +101,12 @@ func NewSQLiteConnection(connectionCgf *SQLiteConnectionConfig) (SQLiteConnector
 }
 
 // Storage returns the storage kind.
-func (c *SQLiteConnection) Storage() storage.StorageKind {
+func (c *SQLiteConnection) Storage() storage.Kind {
 	return c.config.Storage()
 }
 
 // Connect connects to sqlite and return a client.
-func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *storage.StorageContext) (*sqlx.DB, error) {
+func (c *SQLiteConnection) Connect(_ *zap.Logger, ctx *storage.Context) (*sqlx.DB, error) {
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
 	if c.db != nil {
@@ -135,7 +135,7 @@ func (c *SQLiteConnection) Connect(logger *zap.Logger, ctx *storage.StorageConte
 }
 
 // Disconnect disconnects from sqlite.
-func (c *SQLiteConnection) Disconnect(logger *zap.Logger, ctx *storage.StorageContext) error {
+func (c *SQLiteConnection) Disconnect(_ *zap.Logger, _ *storage.Context) error {
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
 	if c.db == nil {

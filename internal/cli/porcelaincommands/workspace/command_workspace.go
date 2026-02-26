@@ -30,7 +30,7 @@ import (
 )
 
 // validateArg is the function to validate the arguments.
-var validateArg = func(cmd *cobra.Command, args []string) error {
+var validateArg = func(_ *cobra.Command, args []string) error {
 	if len(args) != 1 {
 		return errors.New("requires one argument")
 	}
@@ -38,7 +38,7 @@ var validateArg = func(cmd *cobra.Command, args []string) error {
 }
 
 // outFunc is the function to output the result.
-var outFunc = func(ctx *common.CliCommandContext, printer cli.CliPrinter) common.PrinterOutFunc {
+var outFunc = func(ctx *common.CliCommandContext, printer cli.Printer) common.PrinterOutFunc {
 	return func(output map[string]any, key string, value any, err error, newLine bool) map[string]any {
 		if ctx.IsJSONOutput() {
 			key = strings.ReplaceAll(key, "-", "_")
@@ -67,7 +67,7 @@ var outFunc = func(ctx *common.CliCommandContext, printer cli.CliPrinter) common
 }
 
 // CreateCommandsForWorkspace creates the workspace commands.
-func CreateCommandsForWorkspace(deps cli.CliDependenciesProvider, v *viper.Viper) []*cobra.Command {
+func CreateCommandsForWorkspace(deps cli.DependenciesProvider, v *viper.Viper) []*cobra.Command {
 	commands := []*cobra.Command{
 		CreateCommandForWorkspaceInit(deps, v),
 		CreateCommandForWorkspaceRemote(deps, v),

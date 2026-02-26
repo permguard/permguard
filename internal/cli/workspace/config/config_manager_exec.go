@@ -25,7 +25,7 @@ import (
 )
 
 // ExecInitialize initializes the config resources.
-func (m *ConfigManager) ExecInitialize() error {
+func (m *Manager) ExecInitialize() error {
 	version, _ := m.ctx.ClientVersion()
 	cfg := config{
 		Core: coreConfig{
@@ -38,7 +38,7 @@ func (m *ConfigManager) ExecInitialize() error {
 }
 
 // ExecAddRemote adds a remote.
-func (m *ConfigManager) ExecAddRemote(remote string, server string, zap int, pap int, output map[string]any, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecAddRemote(remote string, server string, zap int, pap int, output map[string]any, out common.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -65,7 +65,9 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, zap int, pap
 		PAPPort: pap,
 	}
 	cfg.Remotes[remote] = cfgRemote
-	m.saveConfig(true, cfg)
+	if err := m.saveConfig(true, cfg); err != nil {
+		return output, err
+	}
 	out(nil, "", fmt.Sprintf("Remote %s has been added.", common.KeywordText(remote)), nil, true)
 	output = map[string]any{}
 	if m.ctx.IsJSONOutput() {
@@ -84,7 +86,7 @@ func (m *ConfigManager) ExecAddRemote(remote string, server string, zap int, pap
 }
 
 // ExecRemoveRemote removes a remote.
-func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecRemoveRemote(remote string, output map[string]any, out common.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -120,12 +122,14 @@ func (m *ConfigManager) ExecRemoveRemote(remote string, output map[string]any, o
 		output = out(output, "remotes", remotes, nil, true)
 	}
 	delete(cfg.Remotes, remote)
-	m.saveConfig(true, cfg)
+	if err := m.saveConfig(true, cfg); err != nil {
+		return output, err
+	}
 	return output, nil
 }
 
 // ExecListRemotes lists the remotes.
-func (m *ConfigManager) ExecListRemotes(output map[string]any, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecListRemotes(output map[string]any, out common.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -165,7 +169,7 @@ func (m *ConfigManager) ExecListRemotes(output map[string]any, out common.Printe
 }
 
 // ExecAddLedger adds a ledger.
-func (m *ConfigManager) ExecAddLedger(ledgerURI, ref, remote, ledger, ledgerID string, zoneID int64, output map[string]any, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecAddLedger(ledgerURI, ref, remote, ledger, ledgerID string, zoneID int64, output map[string]any, out common.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -196,7 +200,9 @@ func (m *ConfigManager) ExecAddLedger(ledgerURI, ref, remote, ledger, ledgerID s
 			IsHead:     true,
 		}
 		cfg.Ledgers[ledgerURI] = cfgLedger
-		m.saveConfig(true, cfg)
+		if err := m.saveConfig(true, cfg); err != nil {
+			return output, err
+		}
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "ledger", fmt.Sprintf("Ref successfully set to %s.", common.KeywordText(cfgLedger.Ref)), nil, true)
@@ -218,7 +224,7 @@ func (m *ConfigManager) ExecAddLedger(ledgerURI, ref, remote, ledger, ledgerID s
 }
 
 // ExecListLedgers lists the ledgers.
-func (m *ConfigManager) ExecListLedgers(output map[string]any, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecListLedgers(output map[string]any, out common.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}

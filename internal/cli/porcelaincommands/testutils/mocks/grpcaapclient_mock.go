@@ -58,7 +58,7 @@ func (m *GrpcZAPClientMock) DeleteZone(zoneID int64) (*zap.Zone, error) {
 }
 
 // FetchZones fetches zones.
-func (m *GrpcZAPClientMock) FetchZones(page int32, pageSize int32) ([]zap.Zone, error) {
+func (m *GrpcZAPClientMock) FetchZones(page int32, _ int32) ([]zap.Zone, error) {
 	args := m.Called(page)
 	var r0 []zap.Zone
 	if val, ok := args.Get(0).([]zap.Zone); ok {

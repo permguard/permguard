@@ -26,35 +26,35 @@ import (
 	"github.com/permguard/permguard/pkg/agents/storage"
 )
 
-// ZAPService holds the configuration for the server.
-type ZAPService struct {
-	config       *ZAPServiceConfig
+// Service holds the configuration for the server.
+type Service struct {
+	config       *ServiceConfig
 	configReader runtime.ServiceConfigReader
 }
 
-// NewZAPService creates a new server  configuration.
-func NewZAPService(zapServiceCfg *ZAPServiceConfig) (*ZAPService, error) {
+// NewService creates a new server  configuration.
+func NewService(zapServiceCfg *ServiceConfig) (*Service, error) {
 	configReader, err := services.NewServiceConfiguration(zapServiceCfg.ConfigData())
 	if err != nil {
 		return nil, err
 	}
-	return &ZAPService{
+	return &Service{
 		config:       zapServiceCfg,
 		configReader: configReader,
 	}, nil
 }
 
 // Service returns the service kind.
-func (f *ZAPService) Service() services.ServiceKind {
+func (f *Service) Service() services.ServiceKind {
 	return f.config.Service()
 }
 
 // Endpoints returns the service kind.
-func (f *ZAPService) Endpoints() ([]services.EndpointInitializer, error) {
+func (f *Service) Endpoints() ([]services.EndpointInitializer, error) {
 	endpoint, err := services.NewEndpointInitializer(
 		f.config.Service(),
 		f.config.Port(),
-		func(grpcServer *grpc.Server, srvCtx *services.ServiceContext, endptCtx *services.EndpointContext, storageConnector *storage.StorageConnector) error {
+		func(grpcServer *grpc.Server, srvCtx *services.ServiceContext, endptCtx *services.EndpointContext, storageConnector *storage.Connector) error {
 			storageKind := f.config.StorageCentralEngine()
 			centralStorage, err := storageConnector.CentralStorage(storageKind, endptCtx)
 			if err != nil {
@@ -72,7 +72,7 @@ func (f *ZAPService) Endpoints() ([]services.EndpointInitializer, error) {
 			if err != nil {
 				return err
 			}
-			zapServer, err := zapv1.NewV1ZAPServer(endptCtx, controller)
+			zapServer, err := zapv1.NewZAPServer(endptCtx, controller)
 			zapv1.RegisterV1ZAPServiceServer(grpcServer, zapServer)
 			return err
 		})
@@ -84,6 +84,6 @@ func (f *ZAPService) Endpoints() ([]services.EndpointInitializer, error) {
 }
 
 // ServiceConfigReader returns the service configuration reader.
-func (f *ZAPService) ServiceConfigReader() (runtime.ServiceConfigReader, error) {
+func (f *Service) ServiceConfigReader() (runtime.ServiceConfigReader, error) {
 	return f.configReader, nil
 }

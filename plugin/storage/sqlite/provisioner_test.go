@@ -24,11 +24,11 @@ import (
 )
 
 // TestSQLiteStorageFactory tests the SQLiteStorageFactory.
-func TestSQLiteStorageProvisioner(t *testing.T) {
+func TestStorageProvisioner(t *testing.T) {
 	assert := assert.New(t)
 
-	storageProvisioner, err := NewSQLiteStorageProvisioner()
+	storageProvisioner, err := NewStorageProvisioner()
 	assert.NotNil(storageProvisioner, "storage provisioner should not be nil")
-	assert.Nil(err, "error should be nil")
-	assert.Nil(storageProvisioner.AddFlags(&flag.FlagSet{}), "error should be nil")
+	assert.NoError(err, "error should be nil")
+	assert.NoError(storageProvisioner.AddFlags(&flag.FlagSet{}), "error should be nil")
 }

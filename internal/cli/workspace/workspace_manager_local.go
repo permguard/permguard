@@ -41,13 +41,13 @@ func groupCodeFiles(codeFiles []cosp.CodeFile) map[string][]cosp.CodeFile {
 }
 
 // cleanupLocalArea cleans up the local area.
-func (m *WorkspaceManager) cleanupLocalArea() (bool, error) {
+func (m *Manager) cleanupLocalArea() (bool, error) {
 	return m.cospMgr.CleanCodeSource()
 }
 
 // scanSourceCodeFiles scans the source code and schema files across all supported partitions.
 // It returns two lists: the included files and the ignored files.
-func (m *WorkspaceManager) scanSourceCodeFiles(langPvd *ManifestLanguageProvider) ([]cosp.CodeFile, []cosp.CodeFile, error) {
+func (m *Manager) scanSourceCodeFiles(langPvd *ManifestLanguageProvider) ([]cosp.CodeFile, []cosp.CodeFile, error) {
 	partitions := langPvd.Partitions()
 	if len(partitions) == 0 {
 		return nil, nil, errors.New("cli: no partitions are supported")
@@ -102,7 +102,7 @@ func (m *WorkspaceManager) scanSourceCodeFiles(langPvd *ManifestLanguageProvider
 
 // scanByKind scans and filters files of a specific kind (e.g., code or schema) for a given partition.
 // It returns the included files and the ignored files, each annotated with partition and kind.
-func (m *WorkspaceManager) scanByKind(partition string, kind string, extensions, ignorePatterns []string, workDir string) ([]cosp.CodeFile, []cosp.CodeFile, error) {
+func (m *Manager) scanByKind(partition string, kind string, extensions, ignorePatterns []string, workDir string) ([]cosp.CodeFile, []cosp.CodeFile, error) {
 	partitionPath := filepath.Join(".", strings.TrimPrefix(partition, "/"))
 	includedPaths, ignoredPaths, err := m.persMgr.ScanAndFilterFiles(persistence.WorkspaceDir, partitionPath, extensions, ignorePatterns, hiddenIgnoreFile)
 	if err != nil {
@@ -139,7 +139,7 @@ func (m *WorkspaceManager) scanByKind(partition string, kind string, extensions,
 
 // blobifyPermSchemaFile processes a PermGuard schema file.
 // It enforces that only one schema file is allowed per workspace.
-func (m *WorkspaceManager) blobifyPermSchemaFile(langPvd *ManifestLanguageProvider, partition, path, wkdir string, mode uint32, blobifiedCodeFiles []cosp.CodeFile, data []byte, file cosp.CodeFile) ([]cosp.CodeFile, error) {
+func (m *Manager) blobifyPermSchemaFile(langPvd *ManifestLanguageProvider, partition, path, wkdir string, mode uint32, blobifiedCodeFiles []cosp.CodeFile, data []byte, file cosp.CodeFile) ([]cosp.CodeFile, error) {
 	absLang, err := langPvd.AbstractLanguage(file.Partition)
 	if err != nil {
 		return nil, err
@@ -169,7 +169,7 @@ func (m *WorkspaceManager) blobifyPermSchemaFile(langPvd *ManifestLanguageProvid
 }
 
 // blobifyLanguageFile processes a PermGuard policy file containing multiple logical sections.
-func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider, partition string, path string, data []byte,
+func (m *Manager) blobifyLanguageFile(langPvd *ManifestLanguageProvider, partition string, path string, data []byte,
 	file cosp.CodeFile, wkdir string, mode uint32, blobifiedCodeFiles []cosp.CodeFile,
 ) ([]cosp.CodeFile, error) {
 	absLang, err := langPvd.AbstractLanguage(file.Partition)
@@ -202,7 +202,7 @@ func (m *WorkspaceManager) blobifyLanguageFile(langPvd *ManifestLanguageProvider
 }
 
 // buildCodeFileFromSection builds a CodeFile from a given SectionObject with metadata, errors and OID assignment.
-func (m *WorkspaceManager) buildCodeFileFromSection(secObj *objects.SectionObject, inputFile cosp.CodeFile, path, wkdir string, mode uint32) cosp.CodeFile {
+func (m *Manager) buildCodeFileFromSection(secObj *objects.SectionObject, inputFile cosp.CodeFile, path, wkdir string, mode uint32) cosp.CodeFile {
 	codeFile := cosp.CodeFile{
 		Partition:       secObj.Partition(),
 		Kind:            inputFile.Kind,
@@ -225,7 +225,10 @@ func (m *WorkspaceManager) buildCodeFileFromSection(secObj *objects.SectionObjec
 	} else {
 		obj := secObj.Object()
 		codeFile.OID = obj.OID()
-		m.cospMgr.SaveCodeSourceObject(obj.OID(), obj.Content())
+		if _, err := m.cospMgr.SaveCodeSourceObject(obj.OID(), obj.Content()); err != nil {
+			codeFile.HasErrors = true
+			codeFile.Error = err.Error()
+		}
 	}
 
 	return codeFile
@@ -233,7 +236,7 @@ func (m *WorkspaceManager) buildCodeFileFromSection(secObj *objects.SectionObjec
 
 // blobifyLocal processes source files and converts them into blobs, handling both code and schema types.
 // It ensures that only one schema file exists per partition and constructs a tree object to represent the structure.
-func (m *WorkspaceManager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLanguageProvider) (string, []cosp.CodeFile, error) {
+func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLanguageProvider) (string, []cosp.CodeFile, error) {
 	blobifiedCodeFiles := []cosp.CodeFile{}
 	partitionSchemas := map[string]int{}
 
@@ -372,7 +375,7 @@ func (m *WorkspaceManager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *Mani
 
 // retrieveCodeMap loads the code map and separates valid and invalid files.
 // A file is considered invalid if it has explicit errors or if its object name is duplicated.
-func (m *WorkspaceManager) retrieveCodeMap() ([]cosp.CodeFile, []cosp.CodeFile, error) {
+func (m *Manager) retrieveCodeMap() ([]cosp.CodeFile, []cosp.CodeFile, error) {
 	codeFiles, err := m.cospMgr.ReadCodeSourceCodeMap()
 	if err != nil {
 		return nil, nil, err

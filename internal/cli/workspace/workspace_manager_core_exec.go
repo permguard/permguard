@@ -30,7 +30,7 @@ import (
 )
 
 // ExecPrintContext prints the context.
-func (m *WorkspaceManager) ExecPrintContext(output map[string]any, out common.PrinterOutFunc) map[string]any {
+func (m *Manager) ExecPrintContext(output map[string]any, out common.PrinterOutFunc) map[string]any {
 	if !m.ctx.IsVerboseTerminalOutput() {
 		return output
 	}
@@ -52,7 +52,7 @@ type InitParms struct {
 }
 
 // ExecInitWorkspace initializes the workspace.
-func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to initialize the workspace.", nil, true)
 		return output, err
@@ -115,7 +115,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out common.P
 	if err != nil {
 		return fail(nil, err)
 	}
-	defer fileLock.Unlock()
+	defer func() { _ = fileLock.Unlock() }()
 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "init", fmt.Sprintf("Initializing Permguard workspace in '%s'.", common.FileText(homeHiddenDir)), nil, true)
@@ -161,7 +161,7 @@ func (m *WorkspaceManager) ExecInitWorkspace(initParams *InitParms, out common.P
 }
 
 // execInternalAddRemote adds a remote.
-func (m *WorkspaceManager) execInternalAddRemote(internal bool, remote string, server string, zapPort int, papPort int, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) execInternalAddRemote(internal bool, remote string, server string, zapPort int, papPort int, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
 			out(nil, "", fmt.Sprintf("Failed to add remote %s.", common.KeywordText(remote)), nil, true)
@@ -187,7 +187,7 @@ func (m *WorkspaceManager) execInternalAddRemote(internal bool, remote string, s
 }
 
 // ExecAddRemote adds a remote.
-func (m *WorkspaceManager) ExecAddRemote(remote string, server string, zapPort int, papPort int, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecAddRemote(remote string, server string, zapPort int, papPort int, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", fmt.Sprintf("Failed to add remote %s.", common.KeywordText(remote)), nil, true)
 		return output, err
@@ -201,13 +201,13 @@ func (m *WorkspaceManager) ExecAddRemote(remote string, server string, zapPort i
 	if err != nil {
 		return fail(nil, err)
 	}
-	defer fileLock.Unlock()
+	defer func() { _ = fileLock.Unlock() }()
 
 	return m.execInternalAddRemote(false, remote, server, zapPort, papPort, out)
 }
 
 // ExecRemoveRemote removes a remote.
-func (m *WorkspaceManager) ExecRemoveRemote(remote string, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecRemoveRemote(remote string, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", fmt.Sprintf("Failed to remove remote %s.", common.KeywordText(remote)), nil, true)
 		return output, err
@@ -221,7 +221,7 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out common.PrinterOut
 	if err != nil {
 		return fail(nil, err)
 	}
-	defer fileLock.Unlock()
+	defer func() { _ = fileLock.Unlock() }()
 
 	refInfo, err := m.rfsMgr.CurrentHeadRefInfo()
 	if err != nil {
@@ -238,7 +238,7 @@ func (m *WorkspaceManager) ExecRemoveRemote(remote string, out common.PrinterOut
 }
 
 // ExecListRemotes lists the remotes.
-func (m *WorkspaceManager) ExecListRemotes(out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecListRemotes(out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to list remotes.", nil, true)
 		return output, err
@@ -252,14 +252,14 @@ func (m *WorkspaceManager) ExecListRemotes(out common.PrinterOutFunc) (map[strin
 	if err != nil {
 		return fail(nil, err)
 	}
-	defer fileLock.Unlock()
+	defer func() { _ = fileLock.Unlock() }()
 
 	output, err := m.cfgMgr.ExecListRemotes(nil, out)
 	return output, err
 }
 
 // ExecListLedgers lists the ledgers.
-func (m *WorkspaceManager) ExecListLedgers(out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecListLedgers(out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to list ledgers.", nil, true)
 		return output, err
@@ -273,7 +273,7 @@ func (m *WorkspaceManager) ExecListLedgers(out common.PrinterOutFunc) (map[strin
 	if err != nil {
 		return fail(nil, err)
 	}
-	defer fileLock.Unlock()
+	defer func() { _ = fileLock.Unlock() }()
 
 	output, err := m.cfgMgr.ExecListLedgers(nil, out)
 	return output, err

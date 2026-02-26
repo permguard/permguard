@@ -41,13 +41,13 @@ const (
 )
 
 // runECommandForCheck runs the command for executing check.
-func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	handleInputError := func(ctx *common.CliCommandContext, printer cli.CliPrinter, err error, message string) error {
+	handleInputError := func(ctx *common.CliCommandContext, printer cli.Printer, err error, message string) error {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to check the authorization request.")
 		}
@@ -89,7 +89,7 @@ func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v
 			printer.Println("Failed to check the authorization request.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(fmt.Errorf("cli: storage: failed to check the authorization request"), err))
+			printer.Error(errors.Join(errors.New("cli: storage: failed to check the authorization request"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -99,7 +99,7 @@ func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v
 			printer.Println("Failed to check the authorization request.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(fmt.Errorf("cli: storage: failed to check the authorization request"), err))
+			printer.Error(errors.Join(errors.New("cli: storage: failed to check the authorization request"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -109,7 +109,7 @@ func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v
 			printer.Println("Failed to check the authorization request.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(fmt.Errorf("cli: storage: failed to check the authorization request"), err))
+			printer.Error(errors.Join(errors.New("cli: storage: failed to check the authorization request"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -165,7 +165,7 @@ func runECommandForCheck(deps cli.CliDependenciesProvider, cmd *cobra.Command, v
 }
 
 // createCommandForCheck creates a command for executing check.
-func createCommandForCheck(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForCheck(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "check",
 		Short: "Check an authorization request",
@@ -181,7 +181,7 @@ Examples:
 	}
 
 	command.PersistentFlags().Int64(common.FlagCommonZoneID, 0, "zone id")
-	v.BindPFlag(options.FlagName(commandNameForCheck, common.FlagCommonZoneID), command.PersistentFlags().Lookup(common.FlagCommonZoneID))
+	_ = v.BindPFlag(options.FlagName(commandNameForCheck, common.FlagCommonZoneID), command.PersistentFlags().Lookup(common.FlagCommonZoneID))
 
 	return command
 }

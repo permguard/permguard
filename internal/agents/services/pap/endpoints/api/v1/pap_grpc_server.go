@@ -77,23 +77,23 @@ type PAPService interface {
 	OnPushSendCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 }
 
-// NewV1PAPServer creates a new PAP server.
-func NewV1PAPServer(endpointCtx *services.EndpointContext, service PAPService) (*V1PAPServer, error) {
-	return &V1PAPServer{
+// NewPAPServer creates a new PAP server.
+func NewPAPServer(endpointCtx *services.EndpointContext, service PAPService) (*PAPServer, error) {
+	return &PAPServer{
 		ctx:     endpointCtx,
 		service: service,
 	}, nil
 }
 
-// V1PAPServer is the gRPC server for the PAP.
-type V1PAPServer struct {
+// PAPServer is the gRPC server for the PAP.
+type PAPServer struct {
 	UnimplementedV1PAPServiceServer
 	ctx     *services.EndpointContext
 	service PAPService
 }
 
 // CreateLedger creates a new ledger.
-func (s *V1PAPServer) CreateLedger(ctx context.Context, ledgerRequest *LedgerCreateRequest) (*LedgerResponse, error) {
+func (s *PAPServer) CreateLedger(_ context.Context, ledgerRequest *LedgerCreateRequest) (*LedgerResponse, error) {
 	ledger, err := s.service.CreateLedger(&pap.Ledger{ZoneID: ledgerRequest.ZoneID, Name: ledgerRequest.Name, Kind: ledgerRequest.Kind})
 	if err != nil {
 		return nil, err
@@ -102,7 +102,7 @@ func (s *V1PAPServer) CreateLedger(ctx context.Context, ledgerRequest *LedgerCre
 }
 
 // UpdateLedger updates a ledger.
-func (s *V1PAPServer) UpdateLedger(ctx context.Context, ledgerRequest *LedgerUpdateRequest) (*LedgerResponse, error) {
+func (s *PAPServer) UpdateLedger(_ context.Context, ledgerRequest *LedgerUpdateRequest) (*LedgerResponse, error) {
 	ledger, err := s.service.UpdateLedger((&pap.Ledger{LedgerID: ledgerRequest.LedgerID, ZoneID: ledgerRequest.ZoneID, Name: ledgerRequest.Name}))
 	if err != nil {
 		return nil, err
@@ -111,7 +111,7 @@ func (s *V1PAPServer) UpdateLedger(ctx context.Context, ledgerRequest *LedgerUpd
 }
 
 // DeleteLedger deletes a ledger.
-func (s *V1PAPServer) DeleteLedger(ctx context.Context, ledgerRequest *LedgerDeleteRequest) (*LedgerResponse, error) {
+func (s *PAPServer) DeleteLedger(_ context.Context, ledgerRequest *LedgerDeleteRequest) (*LedgerResponse, error) {
 	ledger, err := s.service.DeleteLedger(ledgerRequest.ZoneID, ledgerRequest.LedgerID)
 	if err != nil {
 		return nil, err
@@ -120,7 +120,7 @@ func (s *V1PAPServer) DeleteLedger(ctx context.Context, ledgerRequest *LedgerDel
 }
 
 // FetchLedgers returns all ledgers.
-func (s *V1PAPServer) FetchLedgers(ledgerRequest *LedgerFetchRequest, stream grpc.ServerStreamingServer[LedgerResponse]) error {
+func (s *PAPServer) FetchLedgers(ledgerRequest *LedgerFetchRequest, stream grpc.ServerStreamingServer[LedgerResponse]) error {
 	fields := map[string]any{}
 	fields[pap.FieldLedgerZoneID] = ledgerRequest.ZoneID
 	if ledgerRequest.Kind != nil {
@@ -138,7 +138,7 @@ func (s *V1PAPServer) FetchLedgers(ledgerRequest *LedgerFetchRequest, stream grp
 	}
 	pageSize := int32(0)
 	if ledgerRequest.PageSize != nil {
-		pageSize = int32(*ledgerRequest.PageSize)
+		pageSize = *ledgerRequest.PageSize
 	}
 	ledgers, err := s.service.FetchLedgers(page, pageSize, ledgerRequest.ZoneID, fields)
 	if err != nil {
@@ -149,18 +149,20 @@ func (s *V1PAPServer) FetchLedgers(ledgerRequest *LedgerFetchRequest, stream grp
 		if err != nil {
 			return err
 		}
-		stream.SendMsg(cvtedLedger)
+		if err := stream.SendMsg(cvtedLedger); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 // ReceivePack receives objects from the client.
-func (s *V1PAPServer) ReceivePack(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
+func (s *PAPServer) ReceivePack(_ grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
 	return nil
 }
 
 // createWiredStateMachine creates a wired state machine.
-func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) (*notpstatemachines.StateMachine, error) {
+func (s *PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) (*notpstatemachines.StateMachine, error) {
 	var sender notptransport.WireSendFunc = func(packet *notppackets.Packet) error {
 		pack := &PackMessage{
 			Data: packet.Data,
@@ -267,7 +269,7 @@ func (s *V1PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pa
 }
 
 // NOTPStream handles bidirectional stream using the NOTP protocol.
-func (s *V1PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
+func (s *PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
 	md, ok := metadata.FromIncomingContext(stream.Context())
 	if !ok {
 		return errors.New("pap-endpoint: notp stream missing metadata")

@@ -30,7 +30,7 @@ import (
 )
 
 // OnPullHandleRequestCurrentState handles the request for the current state.
-func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	zoneID, ok := getFromHandlerContext[int64](handlerCtx, notptransportsm.ZoneIDKey)
 	if !ok || zoneID <= 0 {
 		return nil, errors.New("storage: invalid input zone id")
@@ -105,7 +105,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(handlerCtx *not
 }
 
 // OnPullSendNotifyCurrentStateResponse notifies the current state.
-func (s SQLiteCentralStoragePAP) OnPullSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (s SQLiteCentralStoragePAP) OnPullSendNotifyCurrentStateResponse(_ *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}
@@ -114,7 +114,7 @@ func (s SQLiteCentralStoragePAP) OnPullSendNotifyCurrentStateResponse(handlerCtx
 }
 
 // OnPullSendNegotiationRequest sends the negotiation request.
-func (s SQLiteCentralStoragePAP) OnPullSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (s SQLiteCentralStoragePAP) OnPullSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	zoneID, ok := getFromHandlerContext[int64](handlerCtx, notptransportsm.ZoneIDKey)
 	if !ok || zoneID <= 0 {
 		return nil, errors.New("storage: invalid input zone id")
@@ -155,7 +155,7 @@ func (s SQLiteCentralStoragePAP) OnPullSendNegotiationRequest(handlerCtx *notpst
 }
 
 // OnPullHandleNegotiationResponse handles the negotiation response.
-func (s SQLiteCentralStoragePAP) OnPullHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (s SQLiteCentralStoragePAP) OnPullHandleNegotiationResponse(_ *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}
@@ -224,7 +224,7 @@ func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(zoneID int64, com
 }
 
 // OnPullHandleExchangeDataStream exchanges the data stream.
-func (s SQLiteCentralStoragePAP) OnPullHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (s SQLiteCentralStoragePAP) OnPullHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	zoneID, ok := getFromHandlerContext[int64](handlerCtx, notptransportsm.ZoneIDKey)
 	if !ok || zoneID <= 0 {
 		return nil, errors.New("storage: invalid input zone id")
@@ -255,7 +255,7 @@ func (s SQLiteCentralStoragePAP) OnPullHandleExchangeDataStream(handlerCtx *notp
 }
 
 // OnPullHandleCommit handles the commit.
-func (s SQLiteCentralStoragePAP) OnPullHandleCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (s SQLiteCentralStoragePAP) OnPullHandleCommit(_ *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
 	handlerReturn := &notpstatemachines.HostHandlerReturn{
 		Packetables: packets,
 	}

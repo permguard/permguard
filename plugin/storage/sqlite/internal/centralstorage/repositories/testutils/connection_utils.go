@@ -22,13 +22,15 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
 
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // SQLite driver
 
 	"github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 	"github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db/testutils"
 )
 
+// CreateConnectionMocks creates connection mocks for testing.
 func CreateConnectionMocks(t *testing.T) (db.SQLiteConnector, *sqlx.DB, *sqlx.DB, sqlmock.Sqlmock) {
+	t.Helper()
 	sqlConnector, sqlDB, sqlDBMock := testutils.NewSqliteConnectionMocks(t)
 	return sqlConnector, sqlDB, sqlDB, sqlDBMock
 }

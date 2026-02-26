@@ -30,7 +30,7 @@ import (
 )
 
 // runECommandForRefreshWorkspace runs the command for creating an workspace.
-func runECommandForRefreshWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForRefreshWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -63,7 +63,7 @@ func runECommandForRefreshWorkspace(deps cli.CliDependenciesProvider, cmd *cobra
 }
 
 // CreateCommandForWorkspaceRefresh creates a command for refreshializing a permguard workspace.
-func CreateCommandForWorkspaceRefresh(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceRefresh(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "refresh",
 		Short: "Scan source files in the current workspace and synchronizes the local state",
@@ -72,7 +72,7 @@ func CreateCommandForWorkspaceRefresh(deps cli.CliDependenciesProvider, v *viper
 Examples:
   # scan source files in the current directory and synchronizes the local state
   permguard refresh`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForRefreshWorkspace(deps, cmd, v)
 		},
 	}

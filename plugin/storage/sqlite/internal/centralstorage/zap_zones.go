@@ -17,6 +17,7 @@
 package centralstorage
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -33,7 +34,7 @@ func (s SQLiteCentralStorageZAP) CreateZone(zone *zap.Zone) (*zap.Zone, error) {
 	if err != nil {
 		return nil, repo.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return nil, repo.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
@@ -52,7 +53,7 @@ func (s SQLiteCentralStorageZAP) CreateZone(zone *zap.Zone) (*zap.Zone, error) {
 		}
 	}
 	if err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -70,7 +71,7 @@ func (s SQLiteCentralStorageZAP) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
 	if err != nil {
 		return nil, repo.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return nil, repo.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
@@ -80,7 +81,7 @@ func (s SQLiteCentralStorageZAP) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
 	}
 	dbOutzone, err := s.sqlRepo.UpsertZone(tx, false, dbInZone)
 	if err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -95,13 +96,13 @@ func (s SQLiteCentralStorageZAP) DeleteZone(zoneID int64) (*zap.Zone, error) {
 	if err != nil {
 		return nil, repo.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return nil, repo.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
 	dbOutzone, err := s.sqlRepo.DeleteZone(tx, zoneID)
 	if err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {

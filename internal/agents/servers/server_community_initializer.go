@@ -33,7 +33,7 @@ import (
 type CommunityServerInitializer struct {
 	host      services.HostKind
 	hostInfos map[services.HostKind]*services.HostInfo
-	storages  []storage.StorageKind
+	storages  []storage.Kind
 	services  []services.ServiceKind
 }
 
@@ -53,7 +53,7 @@ Copyright © 2022 Nitro Agility S.r.l.
 		services.HostPDP:      {Name: "PDP (Policy Decision Point)", Use: "pdp", Short: "The official Permguard Server - Start the PDP service", Long: fmt.Sprintf(template, "Using this option the Policy Decision Point (PDP) service is started.")},
 	}
 	hosts := []services.HostKind{services.HostAllInOne, services.HostZAP, services.HostPAP, services.HostPIP, services.HostPDP}
-	storages := []storage.StorageKind{storage.StorageSQLite}
+	storages := []storage.Kind{storage.StorageSQLite}
 	services := []services.ServiceKind{services.ServiceZAP, services.ServicePAP, services.ServicePIP, services.ServicePDP}
 
 	if !host.IsValid(hosts) {
@@ -83,8 +83,8 @@ func (c *CommunityServerInitializer) HostInfo() *services.HostInfo {
 }
 
 // Storages returns the active storage kinds.
-func (c *CommunityServerInitializer) Storages(centralStorageEngine storage.StorageKind) []storage.StorageKind {
-	storages := []storage.StorageKind{}
+func (c *CommunityServerInitializer) Storages(centralStorageEngine storage.Kind) []storage.Kind {
+	storages := []storage.Kind{}
 	for _, storageKind := range c.storages {
 		if storage.StorageNone.Equal(storageKind) {
 			continue
@@ -97,13 +97,13 @@ func (c *CommunityServerInitializer) Storages(centralStorageEngine storage.Stora
 }
 
 // StoragesFactories returns the storage factories providers.
-func (c *CommunityServerInitializer) StoragesFactories(centralStorageEngine storage.StorageKind) (map[storage.StorageKind]storage.StorageFactoryProvider, error) {
-	factories := map[storage.StorageKind]storage.StorageFactoryProvider{}
+func (c *CommunityServerInitializer) StoragesFactories(centralStorageEngine storage.Kind) (map[storage.Kind]storage.FactoryProvider, error) {
+	factories := map[storage.Kind]storage.FactoryProvider{}
 	for _, storageKind := range c.Storages(centralStorageEngine) {
 		if storageKind == storage.StorageSQLite {
-			fFactCfg := func() (storage.StorageFactoryConfig, error) { return sqlite.NewSQLiteStorageFactoryConfig() }
-			fFact := func(config storage.StorageFactoryConfig) (storage.StorageFactory, error) {
-				return sqlite.NewSQLiteStorageFactory(config.(*sqlite.SQLiteStorageFactoryConfig))
+			fFactCfg := func() (storage.FactoryConfig, error) { return sqlite.NewStorageFactoryConfig() }
+			fFact := func(config storage.FactoryConfig) (storage.Factory, error) {
+				return sqlite.NewStorageFactory(config.(*sqlite.StorageFactoryConfig))
 			}
 			fcty, err := storage.NewStorageFactoryProvider(fFactCfg, fFact)
 			if err != nil {
@@ -127,9 +127,9 @@ func (c *CommunityServerInitializer) ServicesFactories() (map[services.ServiceKi
 	for _, serviceKind := range c.services {
 		switch serviceKind {
 		case services.ServiceZAP:
-			fFactCfg := func() (services.ServiceFactoryConfig, error) { return zap.NewZAPServiceFactoryConfig() }
+			fFactCfg := func() (services.ServiceFactoryConfig, error) { return zap.NewServiceFactoryConfig() }
 			fFact := func(config services.ServiceFactoryConfig) (services.ServiceFactory, error) {
-				return zap.NewZAPServiceFactory(config.(*zap.ZAPServiceFactoryConfig))
+				return zap.NewServiceFactory(config.(*zap.ServiceFactoryConfig))
 			}
 			fcty, err := services.NewServiceFactoryProvider(fFactCfg, fFact)
 			if err != nil {
@@ -138,9 +138,9 @@ func (c *CommunityServerInitializer) ServicesFactories() (map[services.ServiceKi
 			factories[serviceKind] = *fcty
 			continue
 		case services.ServicePAP:
-			fFactCfg := func() (services.ServiceFactoryConfig, error) { return pap.NewPAPServiceFactoryConfig() }
+			fFactCfg := func() (services.ServiceFactoryConfig, error) { return pap.NewServiceFactoryConfig() }
 			fFact := func(config services.ServiceFactoryConfig) (services.ServiceFactory, error) {
-				return pap.NewPAPServiceFactory(config.(*pap.PAPServiceFactoryConfig))
+				return pap.NewServiceFactory(config.(*pap.ServiceFactoryConfig))
 			}
 			fcty, err := services.NewServiceFactoryProvider(fFactCfg, fFact)
 			if err != nil {
@@ -151,9 +151,9 @@ func (c *CommunityServerInitializer) ServicesFactories() (map[services.ServiceKi
 		case services.ServicePIP:
 			continue
 		case services.ServicePDP:
-			fFactCfg := func() (services.ServiceFactoryConfig, error) { return pdp.NewPDPServiceFactoryConfig() }
+			fFactCfg := func() (services.ServiceFactoryConfig, error) { return pdp.NewServiceFactoryConfig() }
 			fFact := func(config services.ServiceFactoryConfig) (services.ServiceFactory, error) {
-				return pdp.NewPDPServiceFactory(config.(*pdp.PDPServiceFactoryConfig))
+				return pdp.NewServiceFactory(config.(*pdp.ServiceFactoryConfig))
 			}
 			fcty, err := services.NewServiceFactoryProvider(fFactCfg, fFact)
 			if err != nil {

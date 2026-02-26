@@ -19,6 +19,7 @@ package zones
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/fatih/color"
@@ -32,7 +33,7 @@ import (
 )
 
 // runECommandForUpsertZone runs the command for creating or updating a zone.
-func runECommandForUpsertZone(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+func runECommandForUpsertZone(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
 	opGetErroMessage := func(op bool) string {
 		if op {
 			return "Failed to create the zone"
@@ -91,7 +92,7 @@ func runECommandForUpsertZone(deps cli.CliDependenciesProvider, cmd *cobra.Comma
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
-		zoneID := fmt.Sprintf("%d", zone.ZoneID)
+		zoneID := strconv.FormatInt(zone.ZoneID, 10)
 		output[zoneID] = zone.Name
 	} else if ctx.IsJSONOutput() {
 		output["zones"] = []*zap.Zone{zone}
@@ -101,12 +102,12 @@ func runECommandForUpsertZone(deps cli.CliDependenciesProvider, cmd *cobra.Comma
 }
 
 // runECommandForZones runs the command for managing zones.
-func runECommandForZones(cmd *cobra.Command, args []string) error {
+func runECommandForZones(cmd *cobra.Command, _ []string) error {
 	return cmd.Help()
 }
 
 // CreateCommandForZones creates a command for managing zones.
-func CreateCommandForZones(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForZones(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "zones",
 		Short: "Manage zones on the remote server",
@@ -115,7 +116,7 @@ func CreateCommandForZones(deps cli.CliDependenciesProvider, v *viper.Viper) *co
 	}
 
 	command.PersistentFlags().Int64(common.FlagCommonZoneID, 0, "filter results by zone ID across all subcommands")
-	v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))
+	_ = v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))
 
 	command.AddCommand(createCommandForZoneCreate(deps, v))
 	command.AddCommand(createCommandForZoneUpdate(deps, v))

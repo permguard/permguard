@@ -29,7 +29,7 @@ import (
 )
 
 // runECommandForCreateIdentity runs the command for creating an identity.
-func runECommandForCreateIdentity(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForCreateIdentity(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -58,12 +58,12 @@ func runECommandForCreateIdentity(deps cli.CliDependenciesProvider, cmd *cobra.C
 }
 
 // CreateCommandForVersion creates a command for version.
-func CreateCommandForVersion(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForVersion(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "version",
 		Short: "Show the version details",
 		Long:  common.BuildCliLongTemplate(`This command shows the version details.`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForCreateIdentity(deps, cmd, v)
 		},
 	}

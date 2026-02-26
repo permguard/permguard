@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestRemoteRefStatePacket tests the remote ref state packet
@@ -32,12 +33,12 @@ func TestRemoteRefStatePacket(t *testing.T) {
 	packet.RefCommit = "952dd2f1-1ba2-44b5-92d0-1b6fb8d6f3c0"
 
 	data, err := packet.Serialize()
-	assert.NoError(err)
+	require.NoError(t, err)
 
 	newPacket := &RemoteRefStatePacket{}
 	err = newPacket.Deserialize(data)
 
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.Equal(packet.RefPrevCommit, newPacket.RefPrevCommit)
 	assert.Equal(packet.RefCommit, newPacket.RefCommit)
 	assert.Equal(packet.OpCode, newPacket.OpCode)

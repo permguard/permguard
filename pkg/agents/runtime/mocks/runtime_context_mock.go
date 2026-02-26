@@ -25,7 +25,7 @@ import (
 	mock "github.com/stretchr/testify/mock"
 )
 
-// RuntimeContextMock is a mock type for the RuntimeContext type.
+// RuntimeContextMock is a mock type for the Context type.
 type RuntimeContextMock struct {
 	mock.Mock
 }
@@ -118,7 +118,7 @@ func (s *mockServiceConfig) Value(key string) (any, error) {
 	return nil, nil
 }
 
-// NewRuntimeContextMock creates a new RuntimeContextMock.
+// NewRuntimeContextMock creates a new ContextMock.
 func NewRuntimeContextMock(hostCfgReader any, svcCfgReader any) *RuntimeContextMock {
 	ctx := &RuntimeContextMock{}
 	ctx.On("Logger").Return(zap.NewNop())

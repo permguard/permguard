@@ -23,6 +23,7 @@ import (
 	_ "embed"
 )
 
+// Flag constants for CLI commands.
 const (
 	FlagWorkingDirectory      = "workdir"
 	FlagWorkingDirectoryShort = "w"

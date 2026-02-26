@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package models implements the agent PAP (Policy Decision Point) models.
+// Package pap implements the agent PAP (Policy Administration Point) models.
 package pap

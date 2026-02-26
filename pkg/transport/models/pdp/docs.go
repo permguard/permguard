@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package models implements the agent PDP (Policy Decision Point) models.
+// Package pdp implements the agent PDP (Policy Decision Point) models.
 package pdp

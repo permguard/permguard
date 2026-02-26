@@ -26,7 +26,7 @@ import (
 
 // SQLiteCentralStoragePDP implements the sqlite central storage.
 type SQLiteCentralStoragePDP struct {
-	ctx             *storage.StorageContext
+	ctx             *storage.Context
 	sqliteConnector db.SQLiteConnector
 	sqlRepo         SqliteRepo
 	sqlExec         SqliteExecutor
@@ -34,7 +34,7 @@ type SQLiteCentralStoragePDP struct {
 }
 
 // newSQLitePDPCentralStorage creates a new SQLitePDPCentralStorage.
-func newSQLitePDPCentralStorage(storageContext *storage.StorageContext, sqliteConnector db.SQLiteConnector, ledger SqliteRepo, sqlExec SqliteExecutor) (*SQLiteCentralStoragePDP, error) {
+func newSQLitePDPCentralStorage(storageContext *storage.Context, sqliteConnector db.SQLiteConnector, ledger SqliteRepo, sqlExec SqliteExecutor) (*SQLiteCentralStoragePDP, error) {
 	if storageContext == nil || sqliteConnector == nil {
 		return nil, errors.New("storage: storageContext is nil")
 	}

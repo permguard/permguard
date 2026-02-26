@@ -29,6 +29,7 @@ import (
 	"github.com/permguard/permguard/pkg/core/validators"
 )
 
+// LogAction represents the type of log action.
 type LogAction string
 
 const (
@@ -42,27 +43,27 @@ const (
 	LogActionPush = "push"
 )
 
-// LogsManager implements the internal manager for the logs file.
-type LogsManager struct {
+// Manager implements the internal manager for the logs file.
+type Manager struct {
 	ctx     *common.CliCommandContext
-	persMgr *persistence.PersistenceManager
+	persMgr *persistence.Manager
 }
 
-// NewLogsManager creates a new logsuration manager.
-func NewLogsManager(ctx *common.CliCommandContext, persMgr *persistence.PersistenceManager) (*LogsManager, error) {
-	return &LogsManager{
+// NewManager creates a new logsuration manager.
+func NewManager(ctx *common.CliCommandContext, persMgr *persistence.Manager) (*Manager, error) {
+	return &Manager{
 		ctx:     ctx,
 		persMgr: persMgr,
 	}, nil
 }
 
 // logsDir returns the logs directory.
-func (c *LogsManager) logsDir() string {
+func (c *Manager) logsDir() string {
 	return hiddenLogsDir
 }
 
 // Log an entry
-func (c *LogsManager) Log(refInfo *wkscommon.RefInfo, origin string, target string, action LogAction, actionStatus bool, actionDetail string) (bool, error) {
+func (c *Manager) Log(refInfo *wkscommon.RefInfo, origin string, target string, action LogAction, actionStatus bool, actionDetail string) (bool, error) {
 	if refInfo == nil {
 		return false, errors.New("invalid ref info")
 	}
@@ -75,7 +76,7 @@ func (c *LogsManager) Log(refInfo *wkscommon.RefInfo, origin string, target stri
 	if strings.TrimSpace(string(action)) == "" {
 		return false, errors.New("invalid action")
 	}
-	if strings.TrimSpace(string(actionDetail)) == "" {
+	if strings.TrimSpace(actionDetail) == "" {
 		return false, errors.New("invalid action")
 	}
 	logDir := refInfo.LedgerFilePath(false)

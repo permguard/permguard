@@ -16,10 +16,10 @@
 
 package storage
 
-// StorageInitializer is the storage initializer.
-type StorageInitializer interface {
+// Initializer is the storage initializer.
+type Initializer interface {
 	// Storages returns the active storage kinds.
-	Storages(centralStorageEngine StorageKind) []StorageKind
+	Storages(centralStorageEngine Kind) []Kind
 	// StoragesFactories returns the list of the required storages factories providers.
-	StoragesFactories(centralStorageEngine StorageKind) (map[StorageKind]StorageFactoryProvider, error)
+	StoragesFactories(centralStorageEngine Kind) (map[Kind]FactoryProvider, error)
 }

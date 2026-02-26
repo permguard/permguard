@@ -24,8 +24,8 @@ import (
 	"github.com/permguard/permguard/pkg/agents/storage"
 )
 
-// MockSQLiteConnector sqlite connector mock
-type MockSQLiteConnector struct {
+// MockSQLiteConnector sqlite connector mock.
+type MockSQLiteConnector struct { //nolint:revive // Mock prefix is conventional
 	mock.Mock
 }
 
@@ -35,17 +35,17 @@ func NewMockSQLiteConnector() *MockSQLiteConnector {
 }
 
 // Storage returns the storage kind.
-func (m *MockSQLiteConnector) Storage() storage.StorageKind {
+func (m *MockSQLiteConnector) Storage() storage.Kind {
 	args := m.Called()
-	var r0 storage.StorageKind
-	if val, ok := args.Get(0).(storage.StorageKind); ok {
+	var r0 storage.Kind
+	if val, ok := args.Get(0).(storage.Kind); ok {
 		r0 = val
 	}
 	return r0
 }
 
 // Connect connects to the sqlite database.
-func (m *MockSQLiteConnector) Connect(logger *zap.Logger, ctx *storage.StorageContext) (*sqlx.DB, error) {
+func (m *MockSQLiteConnector) Connect(logger *zap.Logger, ctx *storage.Context) (*sqlx.DB, error) {
 	args := m.Called(logger, ctx)
 	var r0 *sqlx.DB
 	if val, ok := args.Get(0).(*sqlx.DB); ok {
@@ -55,7 +55,7 @@ func (m *MockSQLiteConnector) Connect(logger *zap.Logger, ctx *storage.StorageCo
 }
 
 // Disconnect disconnects from the sqlite database.
-func (m *MockSQLiteConnector) Disconnect(logger *zap.Logger, ctx *storage.StorageContext) error {
+func (m *MockSQLiteConnector) Disconnect(logger *zap.Logger, ctx *storage.Context) error {
 	args := m.Called(logger, ctx)
 	return args.Error(0)
 }

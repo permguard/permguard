@@ -78,11 +78,7 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 		errMsg := fmt.Sprintf("%s: missing policy store in authorization model", authzen.AuthzErrBadRequestMessage)
 		return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
 	}
-	expReq, err := authorizationCheckExpandAuthorizationCheckWithDefaults(request)
-	if err != nil {
-		errMsg := fmt.Sprintf("%s: failed to expand authorization request with defaults", authzen.AuthzErrBadRequestMessage)
-		return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
-	}
+	expReq := authorizationCheckExpandAuthorizationCheckWithDefaults(request)
 	type evalItem struct {
 		listID int
 		value  *pdp.EvaluationResponse
@@ -194,13 +190,23 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 		authzCheckEvaluations = []pdp.EvaluationResponse{}
 		for _, expandedRequest := range expReq.Evaluations {
 			authzCtx := authzen.AuthorizationModel{}
-			authzCtx.SetSubject(expandedRequest.Subject.Type, expandedRequest.Subject.ID, expandedRequest.Subject.Source, expandedRequest.Subject.Properties)
-			authzCtx.SetResource(expandedRequest.Resource.Type, expandedRequest.Resource.ID, expandedRequest.Resource.Properties)
-			authzCtx.SetAction(expandedRequest.Action.Name, expandedRequest.Action.Properties)
-			authzCtx.SetContext(expandedRequest.Context)
+			if err := authzCtx.SetSubject(expandedRequest.Subject.Type, expandedRequest.Subject.ID, expandedRequest.Subject.Source, expandedRequest.Subject.Properties); err != nil {
+				return nil, err
+			}
+			if err := authzCtx.SetResource(expandedRequest.Resource.Type, expandedRequest.Resource.ID, expandedRequest.Resource.Properties); err != nil {
+				return nil, err
+			}
+			if err := authzCtx.SetAction(expandedRequest.Action.Name, expandedRequest.Action.Properties); err != nil {
+				return nil, err
+			}
+			if err := authzCtx.SetContext(expandedRequest.Context); err != nil {
+				return nil, err
+			}
 			entities := expReq.AuthorizationModel.Entities
 			if entities != nil {
-				authzCtx.SetEntities(entities.Schema, entities.Items)
+				if err := authzCtx.SetEntities(entities.Schema, entities.Items); err != nil {
+					return nil, err
+				}
 			}
 			contextID := expandedRequest.ContextID
 			// TODO: Fix manifest refactoring
@@ -276,7 +282,7 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 			decision, _ := json.Marshal(decisionLog)
 			switch decisionKind {
 			case decisions.DecisionLogFile:
-				files.AppendToFile(decisionLogsPath, append(decision, '\n'), false)
+				_, _ = files.AppendToFile(decisionLogsPath, append(decision, '\n'), false)
 			case decisions.DecisionLogStdOut:
 				logger.Info("DECISION-LOG", zap.String("decision", string(decision)))
 			}

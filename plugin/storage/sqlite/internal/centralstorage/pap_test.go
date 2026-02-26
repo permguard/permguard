@@ -29,7 +29,7 @@ import (
 )
 
 // createSQLitePAPCentralStorageWithMocks creates a new SQLiteCentralStoragePAP with mocks.
-func createSQLitePAPCentralStorageWithMocks() (*SQLiteCentralStoragePAP, *storage.StorageContext, *cssmocks.MockSQLiteConnector, *cssmocks.MockSqliteRepo, *cssmocks.MockSqliteExecutor, *sqlx.DB, sqlmock.Sqlmock) {
+func createSQLitePAPCentralStorageWithMocks() (*SQLiteCentralStoragePAP, *storage.Context, *cssmocks.MockSQLiteConnector, *cssmocks.MockSqliteRepo, *cssmocks.MockSqliteExecutor, *sqlx.DB, sqlmock.Sqlmock) {
 	mockRuntimeCtx := mocks.NewRuntimeContextMock(nil, nil)
 	mockStorageCtx, _ := storage.NewStorageContext(mockRuntimeCtx, storage.StorageSQLite)
 	mockConnector := cssmocks.NewMockSQLiteConnector()
@@ -46,5 +46,5 @@ func TestNewSQLitePAPCentralStorage(t *testing.T) {
 	assert := assert.New(t)
 	storage, err := newSQLitePAPCentralStorage(nil, nil, nil, nil)
 	assert.Nil(storage, "storage should be nil")
-	assert.NotNil(err, "error should not be nil")
+	assert.Error(err, "error should not be nil")
 }

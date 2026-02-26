@@ -26,7 +26,7 @@ import (
 
 // SQLiteCentralStorageZAP implements the sqlite central storage.
 type SQLiteCentralStorageZAP struct {
-	ctx             *storage.StorageContext
+	ctx             *storage.Context
 	sqliteConnector db.SQLiteConnector
 	sqlRepo         SqliteRepo
 	sqlExec         SqliteExecutor
@@ -34,7 +34,7 @@ type SQLiteCentralStorageZAP struct {
 }
 
 // newSQLiteZAPCentralStorage creates a new SQLiteZAPCentralStorage.
-func newSQLiteZAPCentralStorage(storageContext *storage.StorageContext, sqliteConnector db.SQLiteConnector, ledger SqliteRepo, sqlExec SqliteExecutor) (*SQLiteCentralStorageZAP, error) {
+func newSQLiteZAPCentralStorage(storageContext *storage.Context, sqliteConnector db.SQLiteConnector, ledger SqliteRepo, sqlExec SqliteExecutor) (*SQLiteCentralStorageZAP, error) {
 	if storageContext == nil || sqliteConnector == nil {
 		return nil, errors.New("storage: storageContext is nil")
 	}

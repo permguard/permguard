@@ -29,6 +29,7 @@ import (
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 
+// Build information variables.
 var (
 	Version   = "dev"
 	Commit    = "none"
@@ -41,9 +42,9 @@ func runECommand(cmd *cobra.Command) error {
 }
 
 // Run the provisionier.
-func Run(cliInitializer cli.CliInitializer) {
+func Run(cliInitializer cli.Initializer) {
 	// Create the command.
-	v, err := options.NewViperFromConfig(func(v *viper.Viper) map[string]any {
+	v, err := options.NewViperFromConfig(func(_ *viper.Viper) map[string]any {
 		mapValues := map[string]any{
 			options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPTarget): "localhost:9091",
 			options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPTarget): "localhost:9092",
@@ -66,14 +67,14 @@ func Run(cliInitializer cli.CliInitializer) {
 	if err != nil {
 		os.Exit(1)
 	}
-	cmdInfo := cliInitializer.CliInfo()
+	cmdInfo := cliInitializer.Info()
 	command := &cobra.Command{
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Use:           cmdInfo.Use,
 		Short:         cmdInfo.Short,
 		Long:          cmdInfo.Long,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommand(cmd)
 		},
 	}

@@ -23,6 +23,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCheckPathIfExists(t *testing.T) {
@@ -30,29 +31,29 @@ func TestCheckPathIfExists(t *testing.T) {
 
 	folderName := filepath.Join(".tmp", uuid.NewString())
 	err := os.MkdirAll(folderName, 0o755)
-	assert.NoError(err)
+	require.NoError(t, err)
 
 	existingFile := filepath.Join(folderName, "existing_file.txt")
 	nonExistingFile := filepath.Join(folderName, "non_existing_file.txt")
 
 	// Create an existing file
 	file, err := os.Create(existingFile)
-	assert.NoError(err)
+	require.NoError(t, err)
 	file.Close()
 
 	// Test with existing file
 	exists, err := CheckPathIfExists(existingFile)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.True(exists)
 
 	// Test with non-existing file
 	exists, err = CheckPathIfExists(nonExistingFile)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.False(exists)
 
 	// Clean up the test folder
 	err = os.RemoveAll(folderName)
-	assert.NoError(err)
+	require.NoError(t, err)
 }
 
 func TestCreateFileIfNotExists(t *testing.T) {
@@ -60,23 +61,23 @@ func TestCreateFileIfNotExists(t *testing.T) {
 
 	folderName := filepath.Join(".tmp", uuid.NewString())
 	err := os.MkdirAll(folderName, 0o755)
-	assert.NoError(err)
+	require.NoError(t, err)
 
 	fileName := filepath.Join(folderName, "new_file.txt")
 
 	// Test creating a new file
 	created, err := CreateFileIfNotExists(fileName)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.True(created)
 
 	// Test with existing file
 	created, err = CreateFileIfNotExists(fileName)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.False(created)
 
 	// Clean up the test folder
 	err = os.RemoveAll(folderName)
-	assert.NoError(err)
+	require.NoError(t, err)
 }
 
 func TestCreateDirIfNotExists(t *testing.T) {
@@ -86,17 +87,17 @@ func TestCreateDirIfNotExists(t *testing.T) {
 
 	// Test creating a new directory
 	created, err := CreateDirIfNotExists(folderName)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.True(created)
 
 	// Test with existing directory
 	created, err = CreateDirIfNotExists(folderName)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.False(created)
 
 	// Clean up the test folder
 	err = os.RemoveAll(folderName)
-	assert.NoError(err)
+	require.NoError(t, err)
 }
 
 func TestWriteFileIfNotExists(t *testing.T) {
@@ -104,24 +105,24 @@ func TestWriteFileIfNotExists(t *testing.T) {
 
 	folderName := filepath.Join(".tmp", uuid.NewString())
 	err := os.MkdirAll(folderName, 0o755)
-	assert.NoError(err)
+	require.NoError(t, err)
 
 	fileName := filepath.Join(folderName, "new_file.txt")
 	data := []byte("Hello, World!")
 
 	// Test writing a new file
 	written, err := WriteFileIfNotExists(fileName, data, 0o644, false)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.True(written)
 
 	// Test with existing file
 	written, err = WriteFileIfNotExists(fileName, data, 0o644, false)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.False(written)
 
 	// Clean up the test folder
 	err = os.RemoveAll(folderName)
-	assert.NoError(err)
+	require.NoError(t, err)
 }
 
 func TestAppendToFile(t *testing.T) {
@@ -129,24 +130,24 @@ func TestAppendToFile(t *testing.T) {
 
 	folderName := filepath.Join(".tmp", uuid.NewString())
 	err := os.MkdirAll(folderName, 0o755)
-	assert.NoError(err)
+	require.NoError(t, err)
 
 	fileName := filepath.Join(folderName, "append_file.txt")
 	data := []byte("Hello, World!\n")
 
 	// Create the file and append data
 	written, err := AppendToFile(fileName, data, false)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.True(written)
 
 	// Append more data
 	written, err = AppendToFile(fileName, []byte("Another line\n"), false)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.True(written)
 
 	// Clean up the test folder
 	err = os.RemoveAll(folderName)
-	assert.NoError(err)
+	require.NoError(t, err)
 }
 
 func TestReadTOMLFile(t *testing.T) {
@@ -154,7 +155,7 @@ func TestReadTOMLFile(t *testing.T) {
 
 	folderName := filepath.Join(".tmp", uuid.NewString())
 	err := os.MkdirAll(folderName, 0o755)
-	assert.NoError(err)
+	require.NoError(t, err)
 
 	fileName := filepath.Join(folderName, "config.toml")
 	data := []byte(`
@@ -164,7 +165,7 @@ age = 30
 
 	// Write the TOML file
 	_, err = WriteFile(fileName, data, 0o644, false)
-	assert.NoError(err)
+	require.NoError(t, err)
 
 	// Define a structure to read the TOML data
 	var config struct {
@@ -174,11 +175,11 @@ age = 30
 
 	// Read the TOML file
 	err = ReadTOMLFile(fileName, &config)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.Equal("test", config.Name)
 	assert.Equal(30, config.Age)
 
 	// Clean up the test folder
 	err = os.RemoveAll(folderName)
-	assert.NoError(err)
+	require.NoError(t, err)
 }

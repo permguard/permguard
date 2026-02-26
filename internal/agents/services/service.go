@@ -29,17 +29,17 @@ import (
 // ServiceConfig represents the service configuration.
 type ServiceConfig struct {
 	hostable         services.Hostable
-	storageConnector *storage.StorageConnector
+	storageConnector *storage.Connector
 	serviceable      services.Serviceable
 }
 
 // NewServiceConfig creates a new service configuration.
-func newServiceConfig(hostable services.Hostable, storageConnector *storage.StorageConnector, serviceable services.Serviceable) (*ServiceConfig, error) {
+func newServiceConfig(hostable services.Hostable, storageConnector *storage.Connector, serviceable services.Serviceable) *ServiceConfig {
 	return &ServiceConfig{
 		hostable:         hostable,
 		storageConnector: storageConnector,
 		serviceable:      serviceable,
-	}, nil
+	}
 }
 
 // Hostable returns the hostable.
@@ -47,8 +47,8 @@ func (c *ServiceConfig) Hostable() services.Hostable {
 	return c.hostable
 }
 
-// StorageConnector returns the storage connector.
-func (c *ServiceConfig) StorageConnector() *storage.StorageConnector {
+// Connector returns the storage connector.
+func (c *ServiceConfig) Connector() *storage.Connector {
 	return c.storageConnector
 }
 
@@ -96,11 +96,7 @@ func (s *Service) Serve(ctx context.Context) (bool, error) {
 	}
 	endpoints := make([]*Endpoint, 0, len(edpts))
 	for _, edpt := range edpts {
-		endpointCfg, err := newEndpointConfig(s.config.Hostable(), edpt.Service(), s.config.StorageConnector(), edpt.Port(), edpt.Registration())
-		if err != nil {
-			logger.Error("Service cannot create endpoint config", zap.Error(err))
-			return false, err
-		}
+		endpointCfg := newEndpointConfig(s.config.Hostable(), edpt.Service(), s.config.Connector(), edpt.Port(), edpt.Registration())
 		endpoint, err := newEndpoint(endpointCfg, s.ctx)
 		if err != nil {
 			logger.Error("Service cannot create endpoint", zap.Error(err))

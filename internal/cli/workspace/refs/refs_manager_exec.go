@@ -25,7 +25,7 @@ import (
 )
 
 // ExecInitalize the ref resources.
-func (m *RefManager) ExecInitalize() error {
+func (m *Manager) ExecInitalize() error {
 	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, m.refsDir())
 	if err != nil {
 		return err
@@ -39,7 +39,7 @@ func (m *RefManager) ExecInitalize() error {
 }
 
 // ExecCheckoutRefFilesForRemote checks out the remote refs files for the remote.
-func (m *RefManager) ExecCheckoutRefFilesForRemote(remote string, zoneID int64, ledger string, ledgerID string, commit string, output map[string]any, out common.PrinterOutFunc) (string, string, map[string]any, error) {
+func (m *Manager) ExecCheckoutRefFilesForRemote(remote string, zoneID int64, _ string, ledgerID string, commit string, output map[string]any, _ common.PrinterOutFunc) (string, string, map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -57,7 +57,7 @@ func (m *RefManager) ExecCheckoutRefFilesForRemote(remote string, zoneID int64, 
 }
 
 // ExecCheckoutHead checks out the head.
-func (m *RefManager) ExecCheckoutHead(ref string, output map[string]any, out common.PrinterOutFunc) (*wkscommon.HeadInfo, map[string]any, error) {
+func (m *Manager) ExecCheckoutHead(ref string, output map[string]any, out common.PrinterOutFunc) (*wkscommon.HeadInfo, map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}

@@ -17,12 +17,13 @@
 package repositories
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // SQLite driver
 )
 
 // UpsertKeyValue creates or updates a key-value pair.
@@ -43,7 +44,7 @@ func (r *Repository) UpsertKeyValue(tx *sql.Tx, keyValue *KeyValue) (*KeyValue, 
 	var result sql.Result
 	var err error
 
-	result, err = tx.Exec(`
+	result, err = tx.ExecContext(context.Background(), `
 		INSERT INTO key_values (zone_id, kv_key, kv_value)
 		VALUES (?, ?, ?)
 		ON CONFLICT(zone_id, kv_key)
@@ -57,7 +58,7 @@ func (r *Repository) UpsertKeyValue(tx *sql.Tx, keyValue *KeyValue) (*KeyValue, 
 	}
 
 	var dbKeyValue KeyValue
-	err = tx.QueryRow("SELECT zone_id, kv_key, kv_value FROM key_values WHERE zone_id = ? and kv_key = ?", zoneID, key).Scan(
+	err = tx.QueryRowContext(context.Background(), "SELECT zone_id, kv_key, kv_value FROM key_values WHERE zone_id = ? and kv_key = ?", zoneID, key).Scan(
 		&dbKeyValue.ZoneID,
 		&dbKeyValue.Key,
 		&dbKeyValue.Value,
@@ -75,7 +76,7 @@ func (r *Repository) KeyValue(db *sqlx.DB, zoneID int64, key string) (*KeyValue,
 	}
 
 	var dbKeyValue KeyValue
-	err := db.QueryRow("SELECT zone_id, kv_key, kv_value FROM key_values WHERE zone_id = ? and kv_key = ?", zoneID, key).Scan(
+	err := db.QueryRowContext(context.Background(), "SELECT zone_id, kv_key, kv_value FROM key_values WHERE zone_id = ? and kv_key = ?", zoneID, key).Scan(
 		&dbKeyValue.ZoneID,
 		&dbKeyValue.Key,
 		&dbKeyValue.Value,

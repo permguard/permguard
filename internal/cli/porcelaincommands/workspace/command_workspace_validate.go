@@ -30,7 +30,7 @@ import (
 )
 
 // runECommandForValidateWorkspace runs the command for creating an workspace.
-func runECommandForValidateWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForValidateWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -60,7 +60,7 @@ func runECommandForValidateWorkspace(deps cli.CliDependenciesProvider, cmd *cobr
 }
 
 // CreateCommandForWorkspaceValidate creates a command for validateializing a permguard workspace.
-func CreateCommandForWorkspaceValidate(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceValidate(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "validate",
 		Short: "Validate the local state for consistency and correctness",
@@ -69,7 +69,7 @@ func CreateCommandForWorkspaceValidate(deps cli.CliDependenciesProvider, v *vipe
 Examples:
   # validate the local state for consistency and correctness",
   permguard validate`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForValidateWorkspace(deps, cmd, v)
 		},
 	}

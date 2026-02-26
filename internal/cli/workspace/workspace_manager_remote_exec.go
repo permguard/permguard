@@ -17,7 +17,7 @@
 package workspace
 
 import (
-	//"encoding/json"
+	// "encoding/json"
 	"errors"
 	"fmt"
 	"path"
@@ -43,7 +43,7 @@ const (
 )
 
 // execInternalCheckoutLedger checks out a ledger.
-func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI string, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) execInternalCheckoutLedger(internal bool, ledgerURI string, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
 			out(nil, "", fmt.Sprintf("Failed to check out the ledger %s.", common.KeywordText(ledgerURI)), nil, true)
@@ -140,7 +140,7 @@ func (m *WorkspaceManager) execInternalCheckoutLedger(internal bool, ledgerURI s
 }
 
 // ExecCheckoutLedger checks out a ledger.
-func (m *WorkspaceManager) ExecCheckoutLedger(ledgerURI string, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecCheckoutLedger(ledgerURI string, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", fmt.Sprintf("Failed to checkout the ledger %s.", common.KeywordText(ledgerURI)), nil, true)
 		return output, err
@@ -154,21 +154,21 @@ func (m *WorkspaceManager) ExecCheckoutLedger(ledgerURI string, out common.Print
 	if err != nil {
 		return fail(nil, err)
 	}
-	defer fileLock.Unlock()
+	defer func() { _ = fileLock.Unlock() }()
 
 	return m.execInternalCheckoutLedger(false, ledgerURI, out)
 }
 
 // execInternalPull executes an internal pull.
-func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
-	fail := func(output map[string]any, err error) (map[string]any, error) {
+func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
+	fail := func(err error) (map[string]any, error) {
 		if !internal {
 			out(nil, "", "Failed to pull changes from the remote ledger.", nil, true)
 		}
-		return output, err
+		return nil, err
 	}
 
-	m.execInternalRefresh(true, out)
+	_, _ = m.execInternalRefresh(true, out)
 
 	output := map[string]any{}
 
@@ -177,7 +177,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 	var headCtx *currentHeadContext
 	headCtx, err = m.currentHeadContext()
 	if err != nil {
-		return fail(nil, err)
+		return fail(err)
 	}
 	headRefInfo := headCtx.headRefInfo
 	remoteRefInfo := headCtx.remoteRefInfo
@@ -197,7 +197,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 	var ctx *notpstatemachines.StateMachineRuntimeContext
 	ctx, err = m.rmSrvtMgr.NOTPPull(headCtx.Server(), headCtx.ServerPAPPort(), headCtx.ZoneID(), headCtx.LedgerID(), bag, m)
 	if err != nil {
-		return fail(nil, err)
+		return fail(err)
 	}
 
 	localCommitID, _ := getFromRuntimeContext[string](ctx, LocalCodeCommitIDKey)
@@ -221,14 +221,14 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 		if m.ctx.IsTerminalOutput() {
 			out(nil, "", "Not all commits were successfully pulled. Please retry the operation.", nil, true)
 		}
-		return fail(nil, errors.New("cli: not all commits were successfully pulled"))
+		return fail(errors.New("cli: not all commits were successfully pulled"))
 	default:
 		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
 		if !committed || localCommitID == "" || remoteCommitID == "" {
 			if localCommitID != "" && remoteCommitID != "" {
 				_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.LedgerURI())
 				if err != nil {
-					return fail(nil, err)
+					return fail(err)
 				}
 			}
 		}
@@ -236,58 +236,58 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 		if err != nil {
 			_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.LedgerURI())
 			if err != nil {
-				return fail(nil, err)
+				return fail(err)
 			}
-			return fail(nil, err)
+			return fail(err)
 		}
 		err = m.rfsMgr.SaveRefWithRemoteConfig(headRefInfo.LedgerID(), headRefInfo.Ref(), remoteRefInfo.Ref(), remoteCommitID)
 		if err != nil {
 			_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.LedgerURI())
 			if err != nil {
-				return fail(nil, err)
+				return fail(err)
 			}
-			return fail(nil, err)
+			return fail(err)
 		}
 		_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, true, remoteRefInfo.LedgerURI())
 		if err != nil {
-			return fail(nil, err)
+			return fail(err)
 		}
 		_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, true, remoteRefInfo.LedgerURI())
 		if err != nil {
-			return fail(nil, err)
+			return fail(err)
 		}
 	}
 	if remoteCommitID != objects.ZeroOID {
 		langPvd, err := m.buildManifestLanguageProvider()
 		if err != nil {
-			return fail(nil, err)
+			return fail(err)
 		}
 
 		commitObj, err := m.cospMgr.ReadObject(remoteCommitID)
 		if err != nil {
-			return fail(nil, err)
+			return fail(err)
 		}
 		commit, err := objects.ConvertObjectToCommit(commitObj)
 		if err != nil {
-			return fail(nil, err)
+			return fail(err)
 		}
 
 		treeObj, err := m.cospMgr.ReadObject(commit.Tree())
 		if err != nil {
-			return fail(nil, err)
+			return fail(err)
 		}
 		tree, err := objects.ConvertObjectToTree(treeObj)
 		if err != nil {
-			return fail(nil, err)
+			return fail(err)
 		}
 
 		codeMap, err := m.cospMgr.ReadCodeSourceCodeMap()
 		if err != nil {
-			return fail(nil, err)
+			return fail(err)
 		}
-		codeMapIds := make(map[string]bool)
+		codeMapIDs := make(map[string]bool)
 		for _, code := range codeMap {
-			codeMapIds[code.OID] = true
+			codeMapIDs[code.OID] = true
 		}
 
 		codeEntries := []map[string]any{}
@@ -305,14 +305,14 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 				"lanaguage_version": entry.LanguageVersion(),
 				"language_type":     entry.LanguageType(),
 			})
-			if _, ok := codeMapIds[entry.OID()]; !ok {
+			if _, ok := codeMapIDs[entry.OID()]; !ok {
 				entryObj, err := m.cospMgr.ReadObject(entry.OID())
 				if err != nil {
-					return fail(nil, err)
+					return fail(err)
 				}
 				classType, codeBlock, err := objects.ReadObjectContentBytes(entryObj)
 				if err != nil {
-					return fail(nil, err)
+					return fail(err)
 				}
 				objInfo, err := m.objMar.ObjectInfo(entryObj)
 				if err != nil {
@@ -337,18 +337,18 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 					langTypeID := header.LanguageTypeID()
 					absLang, err := langPvd.AbstractLanguage(partition)
 					if err != nil {
-						return fail(nil, err)
+						return fail(err)
 					}
 					langCodeBlock, err := absLang.ConvertBytesToFrontendLanguage(nil, langID, langVersionID, langTypeID, codeBlock)
 					if err != nil {
-						return fail(nil, err)
+						return fail(err)
 					}
 					if _, ok := codeBlocks[partition]; !ok {
 						codeBlocks[partition] = [][]byte{}
 					}
 					codeBlocks[partition] = append(codeBlocks[partition], langCodeBlock)
 				default:
-					return fail(nil, errors.New("cli: invalid class type"))
+					return fail(errors.New("cli: invalid class type"))
 				}
 			}
 		}
@@ -356,41 +356,45 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 		for partition, codeBlockItem := range codeBlocks {
 			absLang, err := langPvd.AbstractLanguage(partition)
 			if err != nil {
-				return fail(nil, err)
+				return fail(err)
 			}
 			codeBlock, ext, err := absLang.CreatePolicyContentBytes(nil, codeBlockItem)
 			if err != nil {
-				return fail(nil, err)
+				return fail(err)
 			}
 			fileName, err := files.GenerateUniqueFile(CodeGenFileName, ext)
 			if err != nil {
-				return fail(nil, err)
+				return fail(err)
 			}
 			fileBase := strings.TrimPrefix(partition, "/")
 			fileName = path.Join(fileBase, fileName)
-			m.persMgr.WriteFile(persistence.WorkspaceDir, fileName, codeBlock, 0o644, false)
+			if _, err := m.persMgr.WriteFile(persistence.WorkspaceDir, fileName, codeBlock, 0o644, false); err != nil {
+				return fail(err)
+			}
 		}
 		for partition, schemaBlockItem := range schemaBlocks {
 			absLang, err := langPvd.AbstractLanguage(partition)
 			if err != nil {
-				return fail(nil, err)
+				return fail(err)
 			}
 			schemaBlock, _, err := absLang.CreateSchemaContentBytes(nil, schemaBlockItem)
 			if err != nil {
-				return fail(nil, err)
+				return fail(err)
 			}
 			schemaFileNames := absLang.SchemaFileNames()
 			if len(schemaFileNames) < 1 {
-				return fail(nil, errors.New("cli: no schema file names are supported"))
+				return fail(errors.New("cli: no schema file names are supported"))
 			}
 			schemaFileName := schemaFileNames[0]
 			fileBase := strings.TrimPrefix(partition, "/")
 			schemaFileName = path.Join(fileBase, schemaFileName)
-			m.persMgr.WriteFile(persistence.WorkspaceDir, schemaFileName, schemaBlock, 0o644, false)
+			if _, err := m.persMgr.WriteFile(persistence.WorkspaceDir, schemaFileName, schemaBlock, 0o644, false); err != nil {
+				return fail(err)
+			}
 		}
 	}
 
-	m.cospMgr.CleanCodeSource()
+	_, _ = m.cospMgr.CleanCodeSource()
 
 	if !internal {
 		if m.ctx.IsVerboseTerminalOutput() {
@@ -403,7 +407,7 @@ func (m *WorkspaceManager) execInternalPull(internal bool, out common.PrinterOut
 }
 
 // ExecPull fetches the latest changes from the remote ledger and constructs the remote state.
-func (m *WorkspaceManager) ExecPull(out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecPull(out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to pull changes from the remote ledger.", nil, true)
 		return output, err
@@ -417,13 +421,13 @@ func (m *WorkspaceManager) ExecPull(out common.PrinterOutFunc) (map[string]any, 
 	if err != nil {
 		return fail(nil, err)
 	}
-	defer fileLock.Unlock()
+	defer func() { _ = fileLock.Unlock() }()
 
 	return m.execInternalPull(false, out)
 }
 
 // ExecCloneLedger clones a ledger.
-func (m *WorkspaceManager) ExecCloneLedger(ledgerURI string, zapPort, papPort int, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecCloneLedger(ledgerURI string, zapPort, papPort int, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", fmt.Sprintf("Failed to clone the ledger %s.", common.KeywordText(ledgerURI)), nil, true)
 		return output, err
@@ -452,7 +456,7 @@ func (m *WorkspaceManager) ExecCloneLedger(ledgerURI string, zapPort, papPort in
 		if err != nil {
 			return fail(nil, err)
 		}
-		defer fileLock.Unlock()
+		defer func() { _ = fileLock.Unlock() }()
 		output, err = m.execInternalAddRemote(true, OriginRemoteName, uriServer, zapPort, papPort, out)
 		if err == nil {
 			ledgerURI := fmt.Sprintf("%s/%s/%s", OriginRemoteName, uriZoneID, uriLedger)
