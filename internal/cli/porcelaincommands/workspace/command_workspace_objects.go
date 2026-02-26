@@ -49,7 +49,7 @@ const (
 )
 
 // runECommandForObjectsWorkspace run the command for listing objects in the workspace.
-func runECommandForObjectsWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForObjectsWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -99,7 +99,7 @@ func runECommandForObjectsWorkspace(deps cli.CliDependenciesProvider, cmd *cobra
 }
 
 // CreateCommandForWorkspaceObjects creates a command for diffializing a permguard workspace.
-func CreateCommandForWorkspaceObjects(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceObjects(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "objects",
 		Short: "Manage the object store",
@@ -108,28 +108,28 @@ func CreateCommandForWorkspaceObjects(deps cli.CliDependenciesProvider, v *viper
 Examples:
   # list the objects in the workspace
   permguard objects`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForObjectsWorkspace(deps, cmd, v)
 		},
 	}
 
 	command.PersistentFlags().Bool(commandNameForWorkspacesObjectsListObjects, false, "include objects from the object store in the results")
-	v.BindPFlag(options.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListObjects), command.PersistentFlags().Lookup(commandNameForWorkspacesObjectsListObjects))
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListObjects), command.PersistentFlags().Lookup(commandNameForWorkspacesObjectsListObjects))
 
 	command.PersistentFlags().Bool(commandNameForWorkspacesObjectsListCode, false, "include objects from the code store in the results")
-	v.BindPFlag(options.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListCode), command.PersistentFlags().Lookup(commandNameForWorkspacesObjectsListCode))
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListCode), command.PersistentFlags().Lookup(commandNameForWorkspacesObjectsListCode))
 
 	command.Flags().Bool(commandNameForWorkspacesObjectsListCommit, false, "filter results to include only objects of type 'commit'")
-	v.BindPFlag(options.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListCommit), command.Flags().Lookup(commandNameForWorkspacesObjectsListCommit))
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListCommit), command.Flags().Lookup(commandNameForWorkspacesObjectsListCommit))
 
 	command.Flags().Bool(commandNameForWorkspacesObjectsListTree, false, "filter results to include only objects of type 'tree'")
-	v.BindPFlag(options.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListTree), command.Flags().Lookup(commandNameForWorkspacesObjectsListTree))
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListTree), command.Flags().Lookup(commandNameForWorkspacesObjectsListTree))
 
 	command.Flags().Bool(commandNameForWorkspacesObjectsListBlob, false, "filter results to include only objects of type 'blob'")
-	v.BindPFlag(options.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListBlob), command.Flags().Lookup(commandNameForWorkspacesObjectsListBlob))
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListBlob), command.Flags().Lookup(commandNameForWorkspacesObjectsListBlob))
 
 	command.Flags().Bool(commandNameForWorkspacesObjectsListAll, false, "include all object types in the results")
-	v.BindPFlag(options.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListAll), command.Flags().Lookup(commandNameForWorkspacesObjectsListAll))
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListAll), command.Flags().Lookup(commandNameForWorkspacesObjectsListAll))
 
 	command.AddCommand(CreateCommandForWorkspaceObjectsCat(deps, v))
 	return command

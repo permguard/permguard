@@ -17,6 +17,7 @@
 package common
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 
+// Build information variables.
 var (
 	Version   string
 	BuildTime string
@@ -35,7 +37,7 @@ var (
 )
 
 // CreateContextAndPrinter creates a new cli context and printer.
-func CreateContextAndPrinter(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, cli.CliPrinter, error) {
+func CreateContextAndPrinter(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, cli.Printer, error) {
 	ctx, err := newCliContext(cmd, v)
 	if err != nil {
 		return nil, nil, err
@@ -152,7 +154,7 @@ func (c *CliCommandContext) WorkDir() string {
 func (c *CliCommandContext) ZAPTarget() (string, error) {
 	target := c.v.Get(options.FlagName(FlagPrefixZAP, FlagSuffixZAPTarget))
 	if target == nil {
-		return "", fmt.Errorf("cli: zap target is not set")
+		return "", errors.New("cli: zap target is not set")
 	}
 	return target.(string), nil
 }
@@ -161,7 +163,7 @@ func (c *CliCommandContext) ZAPTarget() (string, error) {
 func (c *CliCommandContext) PAPTarget() (string, error) {
 	target := c.v.Get(options.FlagName(FlagPrefixPAP, FlagSuffixPAPTarget))
 	if target == nil {
-		return "", fmt.Errorf("cli: pap target is not set")
+		return "", errors.New("cli: pap target is not set")
 	}
 	return target.(string), nil
 }
@@ -170,7 +172,7 @@ func (c *CliCommandContext) PAPTarget() (string, error) {
 func (c *CliCommandContext) PDPTarget() (string, error) {
 	target := c.v.Get(options.FlagName(FlagPrefixPDP, FlagSuffixPDPTarget))
 	if target == nil {
-		return "", fmt.Errorf("cli: pdp target is not set")
+		return "", errors.New("cli: pdp target is not set")
 	}
 	return target.(string), nil
 }

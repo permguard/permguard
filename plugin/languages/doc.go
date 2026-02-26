@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// package languages contains language implementations.
+// Package languages contains language implementations.
 package languages

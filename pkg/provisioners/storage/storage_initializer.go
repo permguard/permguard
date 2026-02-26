@@ -16,10 +16,10 @@
 
 package storage
 
-// StorageProvisionerInitializer is the storage provisioner initializer.
-type StorageProvisionerInitializer interface {
-	// StorageProvisionerInfo returns the infos of the storage provisioner.
-	StorageProvisionerInfo() StorageProvisionerInfo
-	// StorageProvisioner returns the storage provisioner.
-	StorageProvisioner() (StorageProvisioner, error)
+// ProvisionerInitializer is the storage provisioner initializer.
+type ProvisionerInitializer interface {
+	// ProvisionerInfo returns the infos of the storage provisioner.
+	ProvisionerInfo() ProvisionerInfo
+	// Provisioner returns the storage provisioner.
+	Provisioner() (Provisioner, error)
 }

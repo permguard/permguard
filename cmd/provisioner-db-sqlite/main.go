@@ -14,6 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+// Package main is the entry point for the SQLite database provisioner.
 package main
 
 import (
@@ -25,18 +26,18 @@ import (
 // SQLiteStorageInitializer is the storage initializer.
 type SQLiteStorageInitializer struct{}
 
-// StorageProvisionerInfo returns the infos of the storage provisioner.
-func (s *SQLiteStorageInitializer) StorageProvisionerInfo() storage.StorageProvisionerInfo {
-	return storage.StorageProvisionerInfo{
+// ProvisionerInfo returns the infos of the storage provisioner.
+func (s *SQLiteStorageInitializer) ProvisionerInfo() storage.ProvisionerInfo {
+	return storage.ProvisionerInfo{
 		Name:  "SQLite Storage Provisioner",
 		Use:   "Provision the SQLite storage",
 		Short: "Provision the SQLite storage",
 	}
 }
 
-// StorageProvisioner returns the storage provisioner.
-func (s *SQLiteStorageInitializer) StorageProvisioner() (storage.StorageProvisioner, error) {
-	return sqlite.NewSQLiteStorageProvisioner()
+// Provisioner returns the storage provisioner.
+func (s *SQLiteStorageInitializer) Provisioner() (storage.Provisioner, error) {
+	return sqlite.NewStorageProvisioner()
 }
 
 func main() {

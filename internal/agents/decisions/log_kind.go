@@ -22,9 +22,12 @@ import (
 )
 
 const (
-	DecisionLogNone   DecisionLogKind = "NONE"
+	// DecisionLogNone represents no decision logging.
+	DecisionLogNone DecisionLogKind = "NONE"
+	// DecisionLogStdOut represents stdout decision logging.
 	DecisionLogStdOut DecisionLogKind = "STDOUT"
-	DecisionLogFile   DecisionLogKind = "FILE"
+	// DecisionLogFile represents file decision logging.
+	DecisionLogFile DecisionLogKind = "FILE"
 )
 
 // DecisionLogKind is the type of decision log.

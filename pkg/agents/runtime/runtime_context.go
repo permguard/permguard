@@ -14,6 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+//nolint:revive // package name is intentional
 package runtime
 
 import (
@@ -24,8 +25,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// RuntimeContext is the interface for the runtime context.
-type RuntimeContext interface {
+// Context is the interface for the runtime context.
+type Context interface {
 	// Logger returns the logger.
 	Logger() *zap.Logger
 	// ParentLoggerMessage returns the parent logger message.

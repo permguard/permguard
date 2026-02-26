@@ -28,11 +28,11 @@ import (
 // ServerFactoryConfig holds the configuration for the server factory.
 type ServerFactoryConfig struct {
 	config               *ServerConfig
-	centralStorageEngine storage.StorageKind
+	centralStorageEngine storage.Kind
 }
 
 // NewServerFactoryConfig creates a new server factory configuration.
-func NewServerFactoryConfig(initializer servers.ServerInitializer, centralStorageEngine storage.StorageKind) (*ServerFactoryConfig, error) {
+func NewServerFactoryConfig(initializer servers.ServerInitializer, centralStorageEngine storage.Kind) (*ServerFactoryConfig, error) {
 	host := initializer.Host()
 	storages := initializer.Storages(centralStorageEngine)
 	storagesFactories, err := initializer.StoragesFactories(centralStorageEngine)
@@ -44,10 +44,7 @@ func NewServerFactoryConfig(initializer servers.ServerInitializer, centralStorag
 	if err != nil {
 		return nil, err
 	}
-	serverConfig, err := newServerConfig(host, centralStorageEngine, storages, storagesFactories, services, servicesFactories)
-	if err != nil {
-		return nil, err
-	}
+	serverConfig := newServerConfig(host, centralStorageEngine, storages, storagesFactories, services, servicesFactories)
 	return &ServerFactoryConfig{
 		config:               serverConfig,
 		centralStorageEngine: centralStorageEngine,

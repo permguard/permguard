@@ -49,44 +49,44 @@ const (
 	gitIgnoreFile = ".gitignore"
 )
 
-// WorkspaceManager implements the internal manager to manage the .permguard directory.
-type WorkspaceManager struct {
+// Manager implements the internal manager to manage the .permguard directory.
+type Manager struct {
 	ctx       *common.CliCommandContext
 	homeDir   string
 	objMar    *objects.ObjectManager
 	langFct   languages.LanguageFactory
-	persMgr   *persistence.PersistenceManager
-	rmSrvtMgr *remoteserver.RemoteServerManager
-	cfgMgr    *config.ConfigManager
-	logsMgr   *logs.LogsManager
-	rfsMgr    *refs.RefManager
-	cospMgr   *cosp.COSPManager
+	persMgr   *persistence.Manager
+	rmSrvtMgr *remoteserver.Manager
+	cfgMgr    *config.Manager
+	logsMgr   *logs.Manager
+	rfsMgr    *refs.Manager
+	cospMgr   *cosp.Manager
 }
 
 // NewInternalManager creates a new internal manager.
-func NewInternalManager(ctx *common.CliCommandContext, langFct languages.LanguageFactory) (*WorkspaceManager, error) {
+func NewInternalManager(ctx *common.CliCommandContext, langFct languages.LanguageFactory) (*Manager, error) {
 	homeDir := ctx.WorkDir()
 	objMar, err := objects.NewObjectManager()
 	if err != nil {
 		return nil, err
 	}
-	persMgr, err := persistence.NewPersistenceManager(homeDir, hiddenDir, ctx)
+	persMgr, err := persistence.NewManager(homeDir, hiddenDir, ctx)
 	if err != nil {
 		return nil, err
 	}
-	rmSrvtMgr, err := remoteserver.NewRemoteServerManager(ctx)
+	rmSrvtMgr, err := remoteserver.NewManager(ctx)
 	if err != nil {
 		return nil, err
 	}
-	cfgMgr, err := config.NewConfigManager(ctx, persMgr)
+	cfgMgr, err := config.NewManager(ctx, persMgr)
 	if err != nil {
 		return nil, err
 	}
-	logsMgr, err := logs.NewLogsManager(ctx, persMgr)
+	logsMgr, err := logs.NewManager(ctx, persMgr)
 	if err != nil {
 		return nil, err
 	}
-	rfsMgr, err := refs.NewRefManager(ctx, persMgr)
+	rfsMgr, err := refs.NewManager(ctx, persMgr)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func NewInternalManager(ctx *common.CliCommandContext, langFct languages.Languag
 	if err != nil {
 		return nil, err
 	}
-	return &WorkspaceManager{
+	return &Manager{
 		homeDir:   homeDir,
 		ctx:       ctx,
 		objMar:    objMar,
@@ -109,17 +109,17 @@ func NewInternalManager(ctx *common.CliCommandContext, langFct languages.Languag
 }
 
 // homeHiddenDir returns the home hidden directory.
-func (m *WorkspaceManager) homeHiddenDir() string {
+func (m *Manager) homeHiddenDir() string {
 	return filepath.Join(m.homeDir, hiddenDir)
 }
 
 // lockFile returns the lock file.
-func (m *WorkspaceManager) lockFile() string {
+func (m *Manager) lockFile() string {
 	return filepath.Join(m.homeHiddenDir(), hiddenLockFile)
 }
 
 // isWorkspaceDir checks if the directory is a workspace directory.
-func (m *WorkspaceManager) isWorkspaceDir() bool {
+func (m *Manager) isWorkspaceDir() bool {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return false
@@ -137,9 +137,11 @@ func (m *WorkspaceManager) isWorkspaceDir() bool {
 }
 
 // tryLock tries to lock the workspace.
-func (m *WorkspaceManager) tryLock() (*flock.Flock, error) {
+func (m *Manager) tryLock() (*flock.Flock, error) {
 	lockFile := m.lockFile()
-	m.persMgr.CreateFileIfNotExists(persistence.WorkDir, lockFile)
+	if _, err := m.persMgr.CreateFileIfNotExists(persistence.WorkDir, lockFile); err != nil {
+		return nil, err
+	}
 	fileLock := flock.New(lockFile)
 	lock, err := fileLock.TryLock()
 	if !lock || err != nil {
@@ -149,7 +151,7 @@ func (m *WorkspaceManager) tryLock() (*flock.Flock, error) {
 }
 
 // codeFileInfo represents info about the code file.
-func (m *WorkspaceManager) printFiles(action string, files []string, out common.PrinterOutFunc) {
+func (m *Manager) printFiles(action string, files []string, out common.PrinterOutFunc) {
 	out(nil, "", fmt.Sprintf("	- %s:", action), nil, true)
 	for _, file := range files {
 		out(nil, "", fmt.Sprintf("	  	- '%s'", common.FileText(common.FileText(file))), nil, true)
@@ -157,14 +159,14 @@ func (m *WorkspaceManager) printFiles(action string, files []string, out common.
 }
 
 // raiseWrongWorkspaceDirError raises an error when the directory is not a workspace directory.
-func (m *WorkspaceManager) raiseWrongWorkspaceDirError(out common.PrinterOutFunc) error {
+func (m *Manager) raiseWrongWorkspaceDirError(out common.PrinterOutFunc) error {
 	out(nil, "", "The current working directory is not a valid Permguard workspace.", nil, true)
 	out(nil, "", "Please initialize the workspace by running the 'init' command.", nil, true)
 	return fmt.Errorf("cli: %s is not a permguard workspace directory", m.homeHiddenDir())
 }
 
 // hasValidManifestWorkspaceDir checks if the directory is a valid workspace directory.
-func (m *WorkspaceManager) hasValidManifestWorkspaceDir() (*manifests.Manifest, error) {
+func (m *Manager) hasValidManifestWorkspaceDir() (*manifests.Manifest, error) {
 	manifestData, _, err := m.persMgr.ReadFile(persistence.WorkspaceDir, manifests.ManifestFileName, false)
 	if err != nil {
 		return nil, errors.Join(errors.New("cli: could not read the manifest file in the workspace directory"), err)

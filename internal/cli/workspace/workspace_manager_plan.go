@@ -25,12 +25,12 @@ import (
 )
 
 // plan generates a plan of changes to apply to the remote ledger based on the differences between the local and remote states.
-func (m *WorkspaceManager) plan(currentCodeObsStates []cosp.CodeObjectState, remoteCodeObsStates []cosp.CodeObjectState) ([]cosp.CodeObjectState, error) {
-	return m.cospMgr.CalculateCodeObjectsState(currentCodeObsStates, remoteCodeObsStates), nil
+func (m *Manager) plan(currentCodeObsStates []cosp.CodeObjectState, remoteCodeObsStates []cosp.CodeObjectState) []cosp.CodeObjectState {
+	return m.cospMgr.CalculateCodeObjectsState(currentCodeObsStates, remoteCodeObsStates)
 }
 
 // buildPlanTree builds the plan tree.
-func (m *WorkspaceManager) buildPlanTree(plan []cosp.CodeObjectState) (*objects.Tree, *objects.Object, error) {
+func (m *Manager) buildPlanTree(plan []cosp.CodeObjectState) (*objects.Tree, *objects.Object, error) {
 	var err error
 	var tree *objects.Tree
 	tree, err = objects.NewTree()
@@ -59,7 +59,7 @@ func (m *WorkspaceManager) buildPlanTree(plan []cosp.CodeObjectState) (*objects.
 }
 
 // buildPlanCommit builds the plan commit.
-func (m *WorkspaceManager) buildPlanCommit(tree string, parentCommitID string) (*objects.Commit, *objects.Object, error) {
+func (m *Manager) buildPlanCommit(tree string, parentCommitID string) (*objects.Commit, *objects.Object, error) {
 	commit, err := objects.NewCommit(tree, parentCommitID, "", time.Now(), "", time.Now(), "cli commit")
 	if err != nil {
 		return nil, nil, errors.Join(errors.New("cli: commit cannot be created"), err)

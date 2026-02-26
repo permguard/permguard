@@ -19,9 +19,10 @@ package repositories
 import (
 	"errors"
 	"fmt"
-	//"modernc.org/sqlite"
+	// "modernc.org/sqlite"
 )
 
+// SQLite error wrapping constants.
 const (
 	WrapSqliteParamForeignKey = "foreign-key"
 )
@@ -31,6 +32,7 @@ func WrapSqliteError(msg string, err error) error {
 	return WrapSqliteErrorWithParams(msg, err, nil)
 }
 
-func WrapSqliteErrorWithParams(msg string, err error, params map[string]string) error {
+// WrapSqliteErrorWithParams wraps a sqlite error with parameters.
+func WrapSqliteErrorWithParams(msg string, err error, _ map[string]string) error {
 	return errors.Join(fmt.Errorf("generic error (%s)", msg), err)
 }

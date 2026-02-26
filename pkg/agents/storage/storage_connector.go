@@ -20,22 +20,22 @@ import (
 	"github.com/permguard/permguard/pkg/agents/runtime"
 )
 
-// StorageConnector is the storage connector.
-type StorageConnector struct {
-	defaultStorageKind StorageKind
-	factories          map[StorageKind]StorageFactoryProvider
+// Connector is the storage connector.
+type Connector struct {
+	defaultStorageKind Kind
+	factories          map[Kind]FactoryProvider
 }
 
 // NewStorageConnector creates a new storage connector.
-func NewStorageConnector(defaultStorageKind StorageKind, facatories map[StorageKind]StorageFactoryProvider) (*StorageConnector, error) {
-	return &StorageConnector{
+func NewStorageConnector(defaultStorageKind Kind, facatories map[Kind]FactoryProvider) (*Connector, error) {
+	return &Connector{
 		defaultStorageKind: defaultStorageKind,
 		factories:          facatories,
 	}, nil
 }
 
 // CentralStorage returns the central storage.
-func (s StorageConnector) CentralStorage(storageKind StorageKind, runtimeCotext runtime.RuntimeContext) (CentralStorage, error) {
+func (s Connector) CentralStorage(storageKind Kind, runtimeCotext runtime.Context) (CentralStorage, error) {
 	if storageKind == "" {
 		storageKind = s.defaultStorageKind
 	}

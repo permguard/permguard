@@ -26,35 +26,35 @@ import (
 	"github.com/permguard/permguard/pkg/agents/storage"
 )
 
-// PAPService holds the configuration for the server.
-type PAPService struct {
-	config       *PAPServiceConfig
+// Service holds the configuration for the server.
+type Service struct {
+	config       *ServiceConfig
 	configReader runtime.ServiceConfigReader
 }
 
-// NewPAPService creates a new server  configuration.
-func NewPAPService(papServiceCfg *PAPServiceConfig) (*PAPService, error) {
+// NewService creates a new server  configuration.
+func NewService(papServiceCfg *ServiceConfig) (*Service, error) {
 	configReader, err := services.NewServiceConfiguration(papServiceCfg.ConfigData())
 	if err != nil {
 		return nil, err
 	}
-	return &PAPService{
+	return &Service{
 		config:       papServiceCfg,
 		configReader: configReader,
 	}, nil
 }
 
 // Service returns the service kind.
-func (f *PAPService) Service() services.ServiceKind {
+func (f *Service) Service() services.ServiceKind {
 	return f.config.Service()
 }
 
 // Endpoints returns the service kind.
-func (f *PAPService) Endpoints() ([]services.EndpointInitializer, error) {
+func (f *Service) Endpoints() ([]services.EndpointInitializer, error) {
 	endpoint, err := services.NewEndpointInitializer(
 		f.config.Service(),
 		f.config.Port(),
-		func(grpcServer *grpc.Server, srvCtx *services.ServiceContext, endptCtx *services.EndpointContext, storageConnector *storage.StorageConnector) error {
+		func(grpcServer *grpc.Server, srvCtx *services.ServiceContext, endptCtx *services.EndpointContext, storageConnector *storage.Connector) error {
 			storageKind := f.config.StorageCentralEngine()
 			centralStorage, err := storageConnector.CentralStorage(storageKind, endptCtx)
 			if err != nil {
@@ -72,7 +72,7 @@ func (f *PAPService) Endpoints() ([]services.EndpointInitializer, error) {
 			if err != nil {
 				return err
 			}
-			papServer, err := papv1.NewV1PAPServer(endptCtx, controller)
+			papServer, err := papv1.NewPAPServer(endptCtx, controller)
 			papv1.RegisterV1PAPServiceServer(grpcServer, papServer)
 			return err
 		})
@@ -84,6 +84,6 @@ func (f *PAPService) Endpoints() ([]services.EndpointInitializer, error) {
 }
 
 // ServiceConfigReader returns the service configuration reader.
-func (f *PAPService) ServiceConfigReader() (runtime.ServiceConfigReader, error) {
+func (f *Service) ServiceConfigReader() (runtime.ServiceConfigReader, error) {
 	return f.configReader, nil
 }

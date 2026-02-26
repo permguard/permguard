@@ -22,29 +22,31 @@ import (
 )
 
 const (
-	StorageNone   StorageKind = ""
-	StorageSQLite StorageKind = "SQLITE"
+	// StorageNone represents no storage.
+	StorageNone Kind = ""
+	// StorageSQLite represents the SQLite storage kind.
+	StorageSQLite Kind = "SQLITE"
 )
 
-// StorageKind is the type of storage.
-type StorageKind string
+// Kind is the type of storage.
+type Kind string
 
 // NewStorageKindFromString creates a new storage kind from a string.
-func NewStorageKindFromString(storage string) (StorageKind, error) {
-	return StorageKind(strings.ToUpper(storage)), nil
+func NewStorageKindFromString(storage string) (Kind, error) {
+	return Kind(strings.ToUpper(storage)), nil
 }
 
 // String returns the string representation of the storage kind.
-func (s StorageKind) String() string {
+func (s Kind) String() string {
 	return strings.ToUpper(string(s))
 }
 
 // Equal returns true if the storage kind is equal to the input storage kind.
-func (s StorageKind) Equal(storage StorageKind) bool {
+func (s Kind) Equal(storage Kind) bool {
 	return s.String() == storage.String()
 }
 
 // IsValid returns true if the storage kind is valid.
-func (s StorageKind) IsValid(storages []StorageKind) bool {
+func (s Kind) IsValid(storages []Kind) bool {
 	return slices.ContainsFunc(storages, s.Equal)
 }

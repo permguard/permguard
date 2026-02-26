@@ -39,22 +39,22 @@ const (
 	flagSuffixDecisionLog    = "decision-log"
 )
 
-// PDPServiceConfig holds the configuration for the server.
-type PDPServiceConfig struct {
+// ServiceConfig holds the configuration for the server.
+type ServiceConfig struct {
 	service services.ServiceKind
 	config  map[string]any
 }
 
-// NewPDPServiceConfig creates a new server factory configuration.
-func NewPDPServiceConfig() (*PDPServiceConfig, error) {
-	return &PDPServiceConfig{
+// NewServiceConfig creates a new server factory configuration.
+func NewServiceConfig() (*ServiceConfig, error) {
+	return &ServiceConfig{
 		service: services.ServicePDP,
 		config:  map[string]any{},
 	}, nil
 }
 
 // AddFlags adds flags.
-func (c *PDPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
+func (c *ServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(options.FlagName(flagServerPDPPrefix, flagSuffixGrpcPort), 9094, "port to be used for exposing the pdp grpc services")
 	flagSet.String(options.FlagName(flagStoragePDPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage-engine-central option")
 	flagSet.Int(options.FlagName(flagServerPDPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
@@ -63,7 +63,7 @@ func (c *PDPServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 }
 
 // InitFromViper initializes the configuration from viper.
-func (c *PDPServiceConfig) InitFromViper(v *viper.Viper) error {
+func (c *ServiceConfig) InitFromViper(v *viper.Viper) error {
 	// retrieve the grpc port
 	flagName := options.FlagName(flagServerPDPPrefix, flagSuffixGrpcPort)
 	grpcPort := v.GetInt(flagName)
@@ -98,31 +98,31 @@ func (c *PDPServiceConfig) InitFromViper(v *viper.Viper) error {
 }
 
 // ConfigData returns the configuration data.
-func (c *PDPServiceConfig) ConfigData() map[string]any {
+func (c *ServiceConfig) ConfigData() map[string]any {
 	return copier.CopyMap(c.config)
 }
 
 // Port returns the port.
-func (c *PDPServiceConfig) Port() int {
+func (c *ServiceConfig) Port() int {
 	return c.config[flagSuffixGrpcPort].(int)
 }
 
 // StorageCentralEngine returns the storage central engine.
-func (c *PDPServiceConfig) StorageCentralEngine() storage.StorageKind {
-	return c.config[flagCentralEngine].(storage.StorageKind)
+func (c *ServiceConfig) StorageCentralEngine() storage.Kind {
+	return c.config[flagCentralEngine].(storage.Kind)
 }
 
 // DataFetchMaxPageSize returns the maximum number of items to fetch per request.
-func (c *PDPServiceConfig) DataFetchMaxPageSize() int {
+func (c *ServiceConfig) DataFetchMaxPageSize() int {
 	return c.config[flagDataFetchMaxPageSize].(int)
 }
 
 // DecisionLog returns the decision log.
-func (c *PDPServiceConfig) DecisionLog() string {
+func (c *ServiceConfig) DecisionLog() string {
 	return c.config[flagSuffixDecisionLog].(string)
 }
 
 // Service returns the service kind.
-func (c *PDPServiceConfig) Service() services.ServiceKind {
+func (c *ServiceConfig) Service() services.ServiceKind {
 	return c.service
 }

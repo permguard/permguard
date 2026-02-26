@@ -24,47 +24,47 @@ import (
 	"github.com/permguard/permguard/pkg/agents/services"
 )
 
-// PAPServiceFactoryConfig holds the configuration for the server factory.
-type PAPServiceFactoryConfig struct {
-	config *PAPServiceConfig
+// ServiceFactoryConfig holds the configuration for the server factory.
+type ServiceFactoryConfig struct {
+	config *ServiceConfig
 }
 
-// NewPAPServiceFactoryConfig creates a new server factory configuration.
-func NewPAPServiceFactoryConfig() (*PAPServiceFactoryConfig, error) {
-	papServiceConfig, err := NewPAPServiceConfig()
+// NewServiceFactoryConfig creates a new server factory configuration.
+func NewServiceFactoryConfig() (*ServiceFactoryConfig, error) {
+	papServiceConfig, err := NewServiceConfig()
 	if err != nil {
 		return nil, err
 	}
-	return &PAPServiceFactoryConfig{
+	return &ServiceFactoryConfig{
 		config: papServiceConfig,
 	}, nil
 }
 
 // AddFlags adds flags.
-func (c *PAPServiceFactoryConfig) AddFlags(flagSet *flag.FlagSet) error {
+func (c *ServiceFactoryConfig) AddFlags(flagSet *flag.FlagSet) error {
 	return c.config.AddFlags(flagSet)
 }
 
 // InitFromViper initializes the configuration from viper.
-func (c *PAPServiceFactoryConfig) InitFromViper(v *viper.Viper) error {
+func (c *ServiceFactoryConfig) InitFromViper(v *viper.Viper) error {
 	err := c.config.InitFromViper(v)
 	return err
 }
 
-// PAPServiceFactory holds the configuration for the server factory.
-type PAPServiceFactory struct {
-	config *PAPServiceFactoryConfig
+// ServiceFactory holds the configuration for the server factory.
+type ServiceFactory struct {
+	config *ServiceFactoryConfig
 }
 
-// NewPAPServiceFactory creates a new server factory configuration.
-func NewPAPServiceFactory(papServiceCfg *PAPServiceFactoryConfig) (*PAPServiceFactory, error) {
-	return &PAPServiceFactory{
+// NewServiceFactory creates a new server factory configuration.
+func NewServiceFactory(papServiceCfg *ServiceFactoryConfig) (*ServiceFactory, error) {
+	return &ServiceFactory{
 		config: papServiceCfg,
 	}, nil
 }
 
 // Create creates a new service.
-func (f *PAPServiceFactory) Create() (services.Serviceable, error) {
-	service, err := NewPAPService(f.config.config)
+func (f *ServiceFactory) Create() (services.Serviceable, error) {
+	service, err := NewService(f.config.config)
 	return service, err
 }

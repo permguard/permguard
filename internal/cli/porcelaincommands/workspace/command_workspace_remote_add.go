@@ -41,7 +41,7 @@ const (
 )
 
 // runECommandForRemoteAddWorkspace runs the command for creating an workspace.
-func runECommandForRemoteAddWorkspace(args []string, deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForRemoteAddWorkspace(args []string, deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -87,7 +87,7 @@ func runECommandForRemoteAddWorkspace(args []string, deps cli.CliDependenciesPro
 }
 
 // CreateCommandForWorkspaceRemoteAdd creates a command for remoteaddializing a permguard workspace.
-func CreateCommandForWorkspaceRemoteAdd(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceRemoteAdd(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "add",
 		Short: `add a new remote ledger to track and interact with`,
@@ -102,8 +102,8 @@ Examples:
 	}
 
 	command.Flags().Int(flagZAP, 9091, "specify the port number for the ZAP")
-	v.BindPFlag(options.FlagName(commandNameForWorkspacesRemoteAdd, flagZAP), command.Flags().Lookup(flagZAP))
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesRemoteAdd, flagZAP), command.Flags().Lookup(flagZAP))
 	command.Flags().Int(flagPAP, 9092, "specify the port number for the PAP")
-	v.BindPFlag(options.FlagName(commandNameForWorkspacesRemoteAdd, flagPAP), command.Flags().Lookup(flagPAP))
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesRemoteAdd, flagPAP), command.Flags().Lookup(flagPAP))
 	return command
 }

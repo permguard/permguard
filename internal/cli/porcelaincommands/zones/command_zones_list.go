@@ -19,6 +19,7 @@ package zones
 import (
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -35,7 +36,7 @@ const (
 )
 
 // runECommandForListZones runs the command for creating a zone.
-func runECommandForListZones(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForListZones(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -80,7 +81,7 @@ func runECommandForListZones(deps cli.CliDependenciesProvider, cmd *cobra.Comman
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
 		for _, zone := range zones {
-			zoneID := fmt.Sprintf("%d", zone.ZoneID)
+			zoneID := strconv.FormatInt(zone.ZoneID, 10)
 			output[zoneID] = zone.Name
 		}
 	} else if ctx.IsJSONOutput() {
@@ -91,7 +92,7 @@ func runECommandForListZones(deps cli.CliDependenciesProvider, cmd *cobra.Comman
 }
 
 // createCommandForZoneList creates a command for managing zonelist.
-func createCommandForZoneList(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForZoneList(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List remote zones",
@@ -107,17 +108,17 @@ Examples:
   # list zones and filter by zone and name
   permguard zones list --zone-id 268786704340--name dev
 		`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForListZones(deps, cmd, v)
 		},
 	}
 	command.Flags().Int32P(common.FlagCommonPage, common.FlagCommonPageShort, 1, "specify the page number for pagination")
-	v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonPage), command.Flags().Lookup(common.FlagCommonPage))
+	_ = v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonPage), command.Flags().Lookup(common.FlagCommonPage))
 	command.Flags().Int32P(common.FlagCommonPageSize, common.FlagCommonPageSizeShort, 1000, "specify the number of items per page")
-	v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonPageSize), command.Flags().Lookup(common.FlagCommonPageSize))
+	_ = v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonPageSize), command.Flags().Lookup(common.FlagCommonPageSize))
 	command.Flags().Int64(common.FlagCommonZoneID, 0, "filter results by zone ID")
-	v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))
+	_ = v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))
 	command.Flags().String(common.FlagCommonName, "", "filter results by zone name")
-	v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
+	_ = v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

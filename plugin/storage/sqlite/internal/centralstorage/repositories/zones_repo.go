@@ -17,6 +17,7 @@
 package repositories
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/binary"
@@ -26,7 +27,7 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // SQLite driver
 
 	"github.com/permguard/permguard/pkg/core/validators"
 )
@@ -39,7 +40,7 @@ func GenerateZoneID() int64 {
 	if err != nil {
 		// Fallback is acceptable here since this is for ID uniqueness not security tokens
 		var buf [8]byte
-		rand.Read(buf[:])
+		_, _ = rand.Read(buf[:])
 		return base + int64(binary.BigEndian.Uint64(buf[:])%uint64(maxRange))
 	}
 	return base + n.Int64()
@@ -64,9 +65,9 @@ func (r *Repository) UpsertZone(tx *sql.Tx, isCreate bool, zone *Zone) (*Zone, e
 	var err error
 	if isCreate {
 		zoneID = GenerateZoneID()
-		result, err = tx.Exec("INSERT INTO zones (zone_id, name) VALUES (?, ?)", zoneID, zoneName)
+		result, err = tx.ExecContext(context.Background(), "INSERT INTO zones (zone_id, name) VALUES (?, ?)", zoneID, zoneName)
 	} else {
-		result, err = tx.Exec("UPDATE zones SET name = ? WHERE zone_id = ?", zoneName, zoneID)
+		result, err = tx.ExecContext(context.Background(), "UPDATE zones SET name = ? WHERE zone_id = ?", zoneName, zoneID)
 	}
 	if err != nil || result == nil {
 		action := "update"
@@ -77,7 +78,7 @@ func (r *Repository) UpsertZone(tx *sql.Tx, isCreate bool, zone *Zone) (*Zone, e
 	}
 
 	var dbZone Zone
-	err = tx.QueryRow("SELECT zone_id, created_at, updated_at, name FROM zones WHERE zone_id = ?", zoneID).Scan(
+	err = tx.QueryRowContext(context.Background(), "SELECT zone_id, created_at, updated_at, name FROM zones WHERE zone_id = ?", zoneID).Scan(
 		&dbZone.ZoneID,
 		&dbZone.CreatedAt,
 		&dbZone.UpdatedAt,
@@ -96,7 +97,7 @@ func (r *Repository) DeleteZone(tx *sql.Tx, zoneID int64) (*Zone, error) {
 	}
 
 	var dbZone Zone
-	err := tx.QueryRow("SELECT zone_id, created_at, updated_at, name FROM zones WHERE zone_id = ?", zoneID).Scan(
+	err := tx.QueryRowContext(context.Background(), "SELECT zone_id, created_at, updated_at, name FROM zones WHERE zone_id = ?", zoneID).Scan(
 		&dbZone.ZoneID,
 		&dbZone.CreatedAt,
 		&dbZone.UpdatedAt,
@@ -105,7 +106,7 @@ func (r *Repository) DeleteZone(tx *sql.Tx, zoneID int64) (*Zone, error) {
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("storage: invalid client input - zone id is not valid (id: %d)", zoneID), err)
 	}
-	res, err := tx.Exec("DELETE FROM zones WHERE zone_id = ?", zoneID)
+	res, err := tx.ExecContext(context.Background(), "DELETE FROM zones WHERE zone_id = ?", zoneID)
 	if err != nil || res == nil {
 		return nil, errors.Join(fmt.Errorf("storage: failed to delete zone - operation 'delete-zone' encountered an issue (id: %d)", zoneID), err)
 	}

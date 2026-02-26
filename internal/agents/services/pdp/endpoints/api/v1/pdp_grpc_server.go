@@ -33,23 +33,23 @@ type PDPService interface {
 	AuthorizationCheck(request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error)
 }
 
-// NewV1PDPServer creates a new PDP server.
-func NewV1PDPServer(endpointCtx *services.EndpointContext, service PDPService) (*V1PDPServer, error) {
-	return &V1PDPServer{
+// NewPDPServer creates a new PDP server.
+func NewPDPServer(endpointCtx *services.EndpointContext, service PDPService) (*PDPServer, error) {
+	return &PDPServer{
 		ctx:     endpointCtx,
 		service: service,
 	}, nil
 }
 
-// V1PDPServer is the gRPC server for the PDP.
-type V1PDPServer struct {
+// PDPServer is the gRPC server for the PDP.
+type PDPServer struct {
 	UnimplementedV1PDPServiceServer
 	ctx     *services.EndpointContext
 	service PDPService
 }
 
 // AuthorizationCheck checks the authorization.
-func (s *V1PDPServer) AuthorizationCheck(ctx context.Context, request *AuthorizationCheckRequest) (*AuthorizationCheckResponse, error) {
+func (s *PDPServer) AuthorizationCheck(_ context.Context, request *AuthorizationCheckRequest) (*AuthorizationCheckResponse, error) {
 	logger := s.ctx.Logger()
 	if request != nil {
 		jsonData, err := json.MarshalIndent(request, "", "  ")

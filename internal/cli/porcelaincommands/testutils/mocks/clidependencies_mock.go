@@ -30,10 +30,10 @@ type CliDependenciesMock struct {
 }
 
 // CreatePrinter creates a new printer.
-func (m *CliDependenciesMock) CreatePrinter(verbose bool, output string) (cli.CliPrinter, error) {
+func (m *CliDependenciesMock) CreatePrinter(verbose bool, output string) (cli.Printer, error) {
 	args := m.Called(verbose, output)
-	var r0 cli.CliPrinter
-	if val, ok := args.Get(0).(cli.CliPrinter); ok {
+	var r0 cli.Printer
+	if val, ok := args.Get(0).(cli.Printer); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)

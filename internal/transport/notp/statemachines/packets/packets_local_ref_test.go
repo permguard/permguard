@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestLocalRefStatePacket tests the local ref state packet
@@ -34,12 +35,12 @@ func TestLocalRefStatePacket(t *testing.T) {
 	packet.OpCode = 0x15
 
 	data, err := packet.Serialize()
-	assert.NoError(err)
+	require.NoError(t, err)
 
 	newPacket := &LocalRefStatePacket{}
 	err = newPacket.Deserialize(data)
 
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.Equal(packet.RefCommit, newPacket.RefCommit)
 	assert.Equal(packet.HasConflicts, newPacket.HasConflicts)
 	assert.Equal(packet.IsUpToDate, newPacket.IsUpToDate)

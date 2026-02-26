@@ -22,7 +22,7 @@ import (
 )
 
 // currentHeadContext gets the current head context.
-func (m *WorkspaceManager) currentHeadContext() (*currentHeadContext, error) {
+func (m *Manager) currentHeadContext() (*currentHeadContext, error) {
 	headRef, err := m.rfsMgr.CurrentHeadRef()
 	if err != nil {
 		return nil, err
@@ -79,7 +79,7 @@ func (m *WorkspaceManager) currentHeadContext() (*currentHeadContext, error) {
 }
 
 // CurrentHeadCommit gets the current head commit.
-func (m *WorkspaceManager) CurrentHeadCommit(ref string) (*objects.Commit, error) {
+func (m *Manager) CurrentHeadCommit(ref string) (*objects.Commit, error) {
 	remoteCommitID, err := m.rfsMgr.RefCommit(ref)
 	if err != nil {
 		return nil, err
@@ -99,7 +99,7 @@ func (m *WorkspaceManager) CurrentHeadCommit(ref string) (*objects.Commit, error
 }
 
 // CurrentHeadTree gets the current head tree.
-func (m *WorkspaceManager) CurrentHeadTree(ref string) (*objects.Tree, error) {
+func (m *Manager) CurrentHeadTree(ref string) (*objects.Tree, error) {
 	commit, err := m.CurrentHeadCommit(ref)
 	if err != nil {
 		return nil, err

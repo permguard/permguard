@@ -19,13 +19,14 @@ package workspace
 import (
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace/cosp"
 )
 
 // buildOutputForCodeFiles builds the output for the code files.
-func buildOutputForCodeFiles(codeFiles []cosp.CodeFile, m *WorkspaceManager, out common.PrinterOutFunc, output map[string]any) map[string]any {
+func buildOutputForCodeFiles(codeFiles []cosp.CodeFile, m *Manager, out common.PrinterOutFunc, output map[string]any) map[string]any {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -45,7 +46,7 @@ func buildOutputForCodeFiles(codeFiles []cosp.CodeFile, m *WorkspaceManager, out
 				errorsMap[cFile] = map[string]any{}
 			}
 			fileMap := errorsMap[cFile].(map[string]any)
-			section := fmt.Sprintf("%d", cSection)
+			section := strconv.Itoa(cSection)
 			if _, ok := fileMap[section]; !ok {
 				fileMap[section] = map[string]any{}
 			}
@@ -77,7 +78,7 @@ func buildOutputForCodeFiles(codeFiles []cosp.CodeFile, m *WorkspaceManager, out
 }
 
 // ExecRefresh scans source files in the current directory and synchronizes the local state,
-func (m *WorkspaceManager) ExecRefresh(out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecRefresh(out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to refresh the current workspace.", nil, true)
 		return output, err
@@ -91,13 +92,13 @@ func (m *WorkspaceManager) ExecRefresh(out common.PrinterOutFunc) (map[string]an
 	if err != nil {
 		return fail(nil, err)
 	}
-	defer fileLock.Unlock()
+	defer func() { _ = fileLock.Unlock() }()
 
 	return m.execInternalRefresh(false, out)
 }
 
 // execInternalRefresh scans source files in the current directory and synchronizes the local state,
-func (m *WorkspaceManager) execInternalRefresh(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) execInternalRefresh(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
 			out(nil, "", "Failed to refresh the current workspace.", nil, true)
@@ -181,7 +182,7 @@ func (m *WorkspaceManager) execInternalRefresh(internal bool, out common.Printer
 }
 
 // ExecValidate validates the local state.
-func (m *WorkspaceManager) ExecValidate(out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecValidate(out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", "Failed to validate the current workspace.", nil, true)
 		return output, err
@@ -195,13 +196,13 @@ func (m *WorkspaceManager) ExecValidate(out common.PrinterOutFunc) (map[string]a
 	if err != nil {
 		return fail(nil, err)
 	}
-	defer fileLock.Unlock()
+	defer func() { _ = fileLock.Unlock() }()
 
 	return m.execInternalValidate(false, out)
 }
 
 // execInternalValidate validates the local state.
-func (m *WorkspaceManager) execInternalValidate(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) execInternalValidate(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
 			out(nil, "", "Failed to validate the current workspace.", nil, true)

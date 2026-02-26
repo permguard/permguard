@@ -31,12 +31,12 @@ const (
 )
 
 // runECommandForUpdateZone runs the command for creating a zone.
-func runECommandForUpdateZone(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForUpdateZone(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	return runECommandForUpsertZone(deps, cmd, v, commandNameForZonesUpdate, false)
 }
 
 // createCommandForZoneUpdate creates a command for managing zoneupdate.
-func createCommandForZoneUpdate(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForZoneUpdate(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update a remote zone",
@@ -46,13 +46,13 @@ Examples:
   # update a zone and output the result in json format
   permguard zones update --zone-id 273165098782 --name pharmaauthzflow-dev --output json
 		`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForUpdateZone(deps, cmd, v)
 		},
 	}
 	command.Flags().Int64(common.FlagCommonZoneID, 0, "specify the zone id to update")
-	v.BindPFlag(options.FlagName(commandNameForZonesUpdate, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))
+	_ = v.BindPFlag(options.FlagName(commandNameForZonesUpdate, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))
 	command.Flags().String(common.FlagCommonName, "", "specify the new zone name")
-	v.BindPFlag(options.FlagName(commandNameForZonesUpdate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
+	_ = v.BindPFlag(options.FlagName(commandNameForZonesUpdate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

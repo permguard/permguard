@@ -42,7 +42,7 @@ const (
 )
 
 // runECommandForInitWorkspace runs the command for creating an workspace.
-func runECommandForInitWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForInitWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -81,7 +81,7 @@ func runECommandForInitWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Co
 }
 
 // CreateCommandForWorkspaceInit creates a command for initializing a permguard workspace.
-func CreateCommandForWorkspaceInit(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceInit(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize a permguard workspace",
@@ -90,19 +90,19 @@ func CreateCommandForWorkspaceInit(deps cli.CliDependenciesProvider, v *viper.Vi
 Examples:
   # initialize a new working directory
   permguard init`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForInitWorkspace(deps, cmd, v)
 		},
 	}
 
 	command.Flags().String(commandNameForWorkspacesInitName, "", "specify the name of the workspace to initialize")
-	v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName), command.Flags().Lookup(commandNameForWorkspacesInitName))
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName), command.Flags().Lookup(commandNameForWorkspacesInitName))
 
 	command.Flags().String(commandNameForWorkspacesInitAuthzLanguage, "", "specify the authz language of the workspace to initialize")
-	v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzLanguage), command.Flags().Lookup(commandNameForWorkspacesInitAuthzLanguage))
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzLanguage), command.Flags().Lookup(commandNameForWorkspacesInitAuthzLanguage))
 
 	command.Flags().String(commandNameForWorkspacesInitAuthzTemplate, "", "specify the authz template of the workspace to initialize")
-	v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzTemplate), command.Flags().Lookup(commandNameForWorkspacesInitAuthzTemplate))
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzTemplate), command.Flags().Lookup(commandNameForWorkspacesInitAuthzTemplate))
 
 	return command
 }

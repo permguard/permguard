@@ -17,6 +17,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"flag"
@@ -26,7 +27,7 @@ import (
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // SQLite driver
 
 	"github.com/permguard/permguard/pkg/cli/options"
 	azidb "github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
@@ -41,8 +42,8 @@ const (
 //go:embed migrations/*.sql
 var embedMigrations embed.FS
 
-// SQLiteStorageProvisioner is the storage provisioner for SQLite.
-type SQLiteStorageProvisioner struct {
+// StorageProvisioner is the storage provisioner for SQLite.
+type StorageProvisioner struct {
 	debug    bool
 	logLevel string
 	logger   *zap.Logger
@@ -52,19 +53,19 @@ type SQLiteStorageProvisioner struct {
 	config   *azidb.SQLiteConnectionConfig
 }
 
-// NewSQLiteStorageProvisioner creates a new SQLiteStorageProvisioner.
-func NewSQLiteStorageProvisioner() (*SQLiteStorageProvisioner, error) {
+// NewStorageProvisioner creates a new StorageProvisioner.
+func NewStorageProvisioner() (*StorageProvisioner, error) {
 	config, err := azidb.NewSQLiteConnectionConfig()
 	if err != nil {
 		return nil, err
 	}
-	return &SQLiteStorageProvisioner{
+	return &StorageProvisioner{
 		config: config,
 	}, nil
 }
 
 // AddFlags adds flags.
-func (p *SQLiteStorageProvisioner) AddFlags(flagSet *flag.FlagSet) error {
+func (p *StorageProvisioner) AddFlags(flagSet *flag.FlagSet) error {
 	err := options.AddFlagsForCommon(flagSet)
 	if err != nil {
 		return err
@@ -80,7 +81,7 @@ func (p *SQLiteStorageProvisioner) AddFlags(flagSet *flag.FlagSet) error {
 }
 
 // InitFromViper initializes the configuration from viper.
-func (p *SQLiteStorageProvisioner) InitFromViper(v *viper.Viper) error {
+func (p *StorageProvisioner) InitFromViper(v *viper.Viper) error {
 	debug, logLevel, err := options.InitFromViperForCommon(v)
 	if err != nil {
 		return err
@@ -102,7 +103,7 @@ func (p *SQLiteStorageProvisioner) InitFromViper(v *viper.Viper) error {
 }
 
 // setup sets up the database.
-func (p *SQLiteStorageProvisioner) setup() (*sql.DB, error) {
+func (p *StorageProvisioner) setup() (*sql.DB, error) {
 	dbDir := p.dbDir
 	dbName := p.config.DBName()
 	if !strings.HasSuffix(dbName, ".db") {
@@ -113,7 +114,7 @@ func (p *SQLiteStorageProvisioner) setup() (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = db.Ping()
+	err = db.PingContext(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +128,7 @@ func (p *SQLiteStorageProvisioner) setup() (*sql.DB, error) {
 }
 
 // Up provisions the database.
-func (p *SQLiteStorageProvisioner) Up() error {
+func (p *StorageProvisioner) Up() error {
 	if !p.up {
 		p.logger.Info("Database provisioning skipped")
 		return nil
@@ -148,7 +149,7 @@ func (p *SQLiteStorageProvisioner) Up() error {
 }
 
 // Down deprovisions the database.
-func (p *SQLiteStorageProvisioner) Down() error {
+func (p *StorageProvisioner) Down() error {
 	if !p.down {
 		p.logger.Info("Database deprovisioning skipped")
 		return nil

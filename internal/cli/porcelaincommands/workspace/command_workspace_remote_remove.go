@@ -30,7 +30,7 @@ import (
 )
 
 // runECommandForRemoteRemoveWorkspace runs the command for creating an workspace.
-func runECommandForRemoteRemoveWorkspace(args []string, deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForRemoteRemoveWorkspace(args []string, deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -73,7 +73,7 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps cli.CliDependencies
 }
 
 // CreateCommandForWorkspaceRemoteRemove creates a command for remoteremoveializing a permguard workspace.
-func CreateCommandForWorkspaceRemoteRemove(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceRemoteRemove(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "remove",
 		Short: `remove a remote ledger from the configuration`,

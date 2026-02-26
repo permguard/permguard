@@ -20,16 +20,16 @@ import (
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 
-// StorageProvisionerInfo declares the storage provisioner information.
-type StorageProvisionerInfo struct {
+// ProvisionerInfo declares the storage provisioner information.
+type ProvisionerInfo struct {
 	Name  string
 	Use   string
 	Short string
 	Long  string
 }
 
-// StorageProvisioner is the storage provisioner.
-type StorageProvisioner interface {
+// Provisioner is the storage provisioner.
+type Provisioner interface {
 	options.Configurable
 	// Up provision the storage.
 	Up() error

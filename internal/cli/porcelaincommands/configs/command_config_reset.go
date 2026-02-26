@@ -30,7 +30,7 @@ import (
 )
 
 // runECommandReset runs the command for resetting the config.
-func runECommandReset(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandReset(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -61,12 +61,12 @@ func runECommandReset(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *v
 }
 
 // CreateCommandForConfig for managing config.
-func createCommandForConfigReset(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigReset(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "reset",
 		Short: "Reset the cli config settings",
 		Long:  common.BuildCliLongTemplate(`This command resets the cli config settings.`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandReset(deps, cmd, v)
 		},
 	}

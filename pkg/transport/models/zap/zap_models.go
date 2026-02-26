@@ -21,8 +21,10 @@ import (
 )
 
 const (
+	// FieldZoneZoneID is the zone ID field for zones.
 	FieldZoneZoneID = "zone_id"
-	FieldZoneName   = "name"
+	// FieldZoneName is the name field for zones.
+	FieldZoneName = "name"
 )
 
 // Zone is the zone.

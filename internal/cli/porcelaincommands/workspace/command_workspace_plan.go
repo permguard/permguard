@@ -30,7 +30,7 @@ import (
 )
 
 // runECommandForPlanWorkspace runs the command for creating an workspace.
-func runECommandForPlanWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForPlanWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -63,7 +63,7 @@ func runECommandForPlanWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Co
 }
 
 // CreateCommandForWorkspacePlan creates a command for planializing a permguard workspace.
-func CreateCommandForWorkspacePlan(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspacePlan(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "plan",
 		Short: "Generate a plan of changes to apply to the remote ledger based on the differences between the local and remote states",
@@ -72,7 +72,7 @@ func CreateCommandForWorkspacePlan(deps cli.CliDependenciesProvider, v *viper.Vi
 Examples:
   # generate a plan of changes to apply to the remote ledger based on the differences between the local and remote states
   permguard plan`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForPlanWorkspace(deps, cmd, v)
 		},
 	}

@@ -126,6 +126,14 @@ linters:
       - std-error-handling
     rules:
       - linters:
+          - revive
+        path: "internal/cli/common/"
+        text: "var-naming"
+      - linters:
+          - revive
+        path: "internal/cli/workspace/common/"
+        text: "var-naming"
+      - linters:
           - noctx
           - perfsprint
         path: _test\.go

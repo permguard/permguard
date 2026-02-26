@@ -16,30 +16,30 @@
 
 package storage
 
-// StorageFactoryProvider is the storage provider.
-type StorageFactoryProvider struct {
-	config      StorageFactoryConfig
-	funcSvcFact func(StorageFactoryConfig) (StorageFactory, error)
+// FactoryProvider is the storage provider.
+type FactoryProvider struct {
+	config      FactoryConfig
+	funcSvcFact func(FactoryConfig) (Factory, error)
 }
 
 // NewStorageFactoryProvider creates a new storage factory provider.
-func NewStorageFactoryProvider(funcSvcFactCfg func() (StorageFactoryConfig, error), funcSvcFact func(StorageFactoryConfig) (StorageFactory, error)) (*StorageFactoryProvider, error) {
+func NewStorageFactoryProvider(funcSvcFactCfg func() (FactoryConfig, error), funcSvcFact func(FactoryConfig) (Factory, error)) (*FactoryProvider, error) {
 	config, err := funcSvcFactCfg()
 	if err != nil {
 		return nil, err
 	}
-	return &StorageFactoryProvider{
+	return &FactoryProvider{
 		config:      config,
 		funcSvcFact: funcSvcFact,
 	}, nil
 }
 
 // FactoryConfig returns the factory configuration.
-func (p StorageFactoryProvider) FactoryConfig() (StorageFactoryConfig, error) {
+func (p FactoryProvider) FactoryConfig() (FactoryConfig, error) {
 	return p.config, nil
 }
 
 // CreateFactory creates a new factory.
-func (p StorageFactoryProvider) CreateFactory() (StorageFactory, error) {
+func (p FactoryProvider) CreateFactory() (Factory, error) {
 	return p.funcSvcFact(p.config)
 }

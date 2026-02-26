@@ -29,7 +29,7 @@ import (
 )
 
 // createSQLiteZAPCentralStorageWithMocks creates a new SQLiteCentralStorageZAP with mocks.
-func createSQLiteZAPCentralStorageWithMocks() (*SQLiteCentralStorageZAP, *storage.StorageContext, *csmocks.MockSQLiteConnector, *csmocks.MockSqliteRepo, *csmocks.MockSqliteExecutor, *sqlx.DB, sqlmock.Sqlmock) {
+func createSQLiteZAPCentralStorageWithMocks() (*SQLiteCentralStorageZAP, *storage.Context, *csmocks.MockSQLiteConnector, *csmocks.MockSqliteRepo, *csmocks.MockSqliteExecutor, *sqlx.DB, sqlmock.Sqlmock) {
 	mockRuntimeCtx := mocks.NewRuntimeContextMock(nil, nil)
 	mockStorageCtx, _ := storage.NewStorageContext(mockRuntimeCtx, storage.StorageSQLite)
 	mockConnector := csmocks.NewMockSQLiteConnector()
@@ -46,5 +46,5 @@ func TestNewSQLiteZAPCentralStorage(t *testing.T) {
 	assert := assert.New(t)
 	storage, err := newSQLiteZAPCentralStorage(nil, nil, nil, nil)
 	assert.Nil(storage, "storage should be nil")
-	assert.NotNil(err, "error should not be nil")
+	assert.Error(err, "error should not be nil")
 }

@@ -17,13 +17,13 @@
 package common
 
 const (
-	// Remote keywords.
+	// RemoteKeyword is the remote keyword.
 	RemoteKeyword = "remote"
-	// Remote sub keywords.
+	// RemotesKeyword is the remotes keyword.
 	RemotesKeyword = "remotes"
-	// Remote sub sub keywords.
+	// HeadKeyword is the head keyword.
 	HeadKeyword = "head"
-	// Remote sub sub sub keywords.
+	// HeadsKeyword is the heads keyword.
 	HeadsKeyword = "heads"
 )
 

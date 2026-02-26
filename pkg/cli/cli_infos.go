@@ -16,8 +16,8 @@
 
 package cli
 
-// CliInfo declares the cli information.
-type CliInfo struct {
+// Info declares the cli information.
+type Info struct {
 	Name  string
 	Use   string
 	Short string

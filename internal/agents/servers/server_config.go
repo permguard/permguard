@@ -40,18 +40,18 @@ type ServerConfig struct {
 	debug                bool
 	logLevel             string
 	appData              string
-	centralStorageEngine storage.StorageKind
-	storages             []storage.StorageKind
-	storagesFactories    map[storage.StorageKind]storage.StorageFactoryProvider
+	centralStorageEngine storage.Kind
+	storages             []storage.Kind
+	storagesFactories    map[storage.Kind]storage.FactoryProvider
 	services             []services.ServiceKind
 	servicesFactories    map[services.ServiceKind]services.ServiceFactoryProvider
 }
 
 // newServerConfig creates a new server factory configuration.
-func newServerConfig(host services.HostKind, centralStorageEngine storage.StorageKind,
-	storages []storage.StorageKind, storagesFactories map[storage.StorageKind]storage.StorageFactoryProvider,
+func newServerConfig(host services.HostKind, centralStorageEngine storage.Kind,
+	storages []storage.Kind, storagesFactories map[storage.Kind]storage.FactoryProvider,
 	services []services.ServiceKind, servicesFactories map[services.ServiceKind]services.ServiceFactoryProvider,
-) (*ServerConfig, error) {
+) *ServerConfig {
 	return &ServerConfig{
 		host:                 host,
 		centralStorageEngine: centralStorageEngine,
@@ -59,7 +59,7 @@ func newServerConfig(host services.HostKind, centralStorageEngine storage.Storag
 		storagesFactories:    copier.CopyMap(storagesFactories),
 		services:             copier.CopySlice(services),
 		servicesFactories:    copier.CopyMap(servicesFactories),
-	}, nil
+	}
 }
 
 // Host returns the host kind.
@@ -68,17 +68,17 @@ func (c *ServerConfig) Host() services.HostKind {
 }
 
 // CentralStorageEngine returns the central storage engine.
-func (c *ServerConfig) CentralStorageEngine() storage.StorageKind {
+func (c *ServerConfig) CentralStorageEngine() storage.Kind {
 	return c.centralStorageEngine
 }
 
 // Storages returns service kinds.
-func (c *ServerConfig) Storages() []storage.StorageKind {
+func (c *ServerConfig) Storages() []storage.Kind {
 	return copier.CopySlice(c.storages)
 }
 
 // StoragesFactories returns factories.
-func (c *ServerConfig) StoragesFactories() map[storage.StorageKind]storage.StorageFactoryProvider {
+func (c *ServerConfig) StoragesFactories() map[storage.Kind]storage.FactoryProvider {
 	return copier.CopyMap(c.storagesFactories)
 }
 

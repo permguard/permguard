@@ -24,47 +24,47 @@ import (
 	"github.com/permguard/permguard/pkg/agents/services"
 )
 
-// PDPServiceFactoryConfig holds the configuration for the server factory.
-type PDPServiceFactoryConfig struct {
-	config *PDPServiceConfig
+// ServiceFactoryConfig holds the configuration for the server factory.
+type ServiceFactoryConfig struct {
+	config *ServiceConfig
 }
 
-// NewPDPServiceFactoryConfig creates a new server factory configuration.
-func NewPDPServiceFactoryConfig() (*PDPServiceFactoryConfig, error) {
-	pDPServiceConfig, err := NewPDPServiceConfig()
+// NewServiceFactoryConfig creates a new server factory configuration.
+func NewServiceFactoryConfig() (*ServiceFactoryConfig, error) {
+	pDPServiceConfig, err := NewServiceConfig()
 	if err != nil {
 		return nil, err
 	}
-	return &PDPServiceFactoryConfig{
+	return &ServiceFactoryConfig{
 		config: pDPServiceConfig,
 	}, nil
 }
 
 // AddFlags adds flags.
-func (c *PDPServiceFactoryConfig) AddFlags(flagSet *flag.FlagSet) error {
+func (c *ServiceFactoryConfig) AddFlags(flagSet *flag.FlagSet) error {
 	return c.config.AddFlags(flagSet)
 }
 
 // InitFromViper initializes the configuration from viper.
-func (c *PDPServiceFactoryConfig) InitFromViper(v *viper.Viper) error {
+func (c *ServiceFactoryConfig) InitFromViper(v *viper.Viper) error {
 	err := c.config.InitFromViper(v)
 	return err
 }
 
-// PDPServiceFactory holds the configuration for the server factory.
-type PDPServiceFactory struct {
-	config *PDPServiceFactoryConfig
+// ServiceFactory holds the configuration for the server factory.
+type ServiceFactory struct {
+	config *ServiceFactoryConfig
 }
 
-// NewPDPServiceFactory creates a new server factory configuration.
-func NewPDPServiceFactory(pdpServiceCfg *PDPServiceFactoryConfig) (*PDPServiceFactory, error) {
-	return &PDPServiceFactory{
+// NewServiceFactory creates a new server factory configuration.
+func NewServiceFactory(pdpServiceCfg *ServiceFactoryConfig) (*ServiceFactory, error) {
+	return &ServiceFactory{
 		config: pdpServiceCfg,
 	}, nil
 }
 
 // Create creates a new service.
-func (f *PDPServiceFactory) Create() (services.Serviceable, error) {
-	service, err := NewPDPService(f.config.config)
+func (f *ServiceFactory) Create() (services.Serviceable, error) {
+	service, err := NewService(f.config.config)
 	return service, err
 }

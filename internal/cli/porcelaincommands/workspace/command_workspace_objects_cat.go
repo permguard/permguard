@@ -42,7 +42,7 @@ const (
 )
 
 // runECommandForObjectsCatWorkspace runs the command for catting the object content.
-func runECommandForObjectsCatWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, oid string) error {
+func runECommandForObjectsCatWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, oid string) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -85,7 +85,7 @@ func runECommandForObjectsCatWorkspace(deps cli.CliDependenciesProvider, cmd *co
 }
 
 // CreateCommandForWorkspaceObjectsCat creates the command for catting the object content.
-func CreateCommandForWorkspaceObjectsCat(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceObjectsCat(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "cat",
 		Short: "Cat the object content",
@@ -101,13 +101,13 @@ Examples:
 	}
 
 	command.Flags().Bool(commandNameForWorkspacesCatRaw, false, "display the raw, unprocessed content")
-	v.BindPFlag(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatRaw), command.Flags().Lookup(commandNameForWorkspacesCatRaw))
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatRaw), command.Flags().Lookup(commandNameForWorkspacesCatRaw))
 
 	command.Flags().Bool(commandNameForWorkspacesCatContent, false, "display only the processed content")
-	v.BindPFlag(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatContent), command.Flags().Lookup(commandNameForWorkspacesCatContent))
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatContent), command.Flags().Lookup(commandNameForWorkspacesCatContent))
 
 	command.Flags().Bool(commandNameForWorkspacesFrontendLanguage, false, "display the content formatted using the front-end language")
-	v.BindPFlag(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesFrontendLanguage), command.Flags().Lookup(commandNameForWorkspacesFrontendLanguage))
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesFrontendLanguage), command.Flags().Lookup(commandNameForWorkspacesFrontendLanguage))
 
 	return command
 }

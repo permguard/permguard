@@ -21,12 +21,18 @@ import (
 )
 
 const (
-	FieldLedgerZoneID   = "zone_id"
+	// FieldLedgerZoneID is the zone ID field for ledgers.
+	FieldLedgerZoneID = "zone_id"
+	// FieldLedgerLedgerID is the ledger ID field for ledgers.
 	FieldLedgerLedgerID = "ledger_id"
-	FieldLedgerKind     = "kind"
-	FieldLedgerName     = "name"
+	// FieldLedgerKind is the kind field for ledgers.
+	FieldLedgerKind = "kind"
+	// FieldLedgerName is the name field for ledgers.
+	FieldLedgerName = "name"
+	// FieldSchemaSchemaID is the schema ID field for schemas.
 	FieldSchemaSchemaID = "schema_id"
-	FieldSchemaZoneID   = "zone_id"
+	// FieldSchemaZoneID is the zone ID field for schemas.
+	FieldSchemaZoneID = "zone_id"
 )
 
 // Ledger is the ledger.

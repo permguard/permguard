@@ -24,6 +24,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/permguard/permguard/pkg/agents/runtime/mocks"
 	"github.com/permguard/permguard/pkg/agents/storage"
@@ -45,7 +46,7 @@ func TestSqliteExecutor(t *testing.T) {
 
 		db, err := sqliteExec.Connect(mockStorageCtx, mockConnector)
 		assert.Nil(db, "db should be nil")
-		assert.NotNil(err, "error should not be nil")
+		require.Error(t, err, "error should not be nil")
 	}
 
 	{
@@ -63,7 +64,7 @@ func TestSqliteExecutor(t *testing.T) {
 		db, err := sqliteExec.Connect(mockStorageCtx, mockConnector)
 		assert.NotNil(db, "db should be nil")
 		assert.Equal(sqlxDB, db, "db should be equal")
-		assert.Nil(err, "error should not be nil")
+		assert.NoError(err, "error should not be nil")
 	}
 }
 
@@ -77,14 +78,14 @@ func TestNewSQLiteCentralStorage(t *testing.T) {
 		mockConnector := testutilsmocks.NewMockSQLiteConnector()
 
 		sqliteExec, err := NewSQLiteCentralStorage(mockStorageCtx, mockConnector)
-		assert.NoError(err)
+		require.NoError(t, err)
 
 		zapcentralstorage, err := sqliteExec.ZAPCentralStorage()
 		assert.NotNil(zapcentralstorage)
-		assert.NoError(err)
+		require.NoError(t, err)
 
 		papcentralstorage, err := sqliteExec.PAPCentralStorage()
 		assert.NotNil(papcentralstorage)
-		assert.NoError(err)
+		require.NoError(t, err)
 	}
 }

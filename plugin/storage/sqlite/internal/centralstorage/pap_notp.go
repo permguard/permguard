@@ -17,7 +17,7 @@
 package centralstorage
 
 import (
-	"fmt"
+	"errors"
 	"strconv"
 
 	"github.com/jmoiron/sqlx"
@@ -83,7 +83,7 @@ func GetObjectForType[T any](objMng *objects.ObjectManager, obj *objects.Object)
 	instance := objInfo.Instance()
 	value, ok := instance.(*T)
 	if !ok {
-		return nil, fmt.Errorf("storage: invalid object type")
+		return nil, errors.New("storage: invalid object type")
 	}
 	return value, nil
 }
@@ -123,7 +123,7 @@ func (s SQLiteCentralStoragePAP) readLedgerFromHandlerContext(handlerCtx *notpst
 		return nil, err
 	}
 	if len(ledgers) == 0 {
-		return nil, fmt.Errorf("storage: ledger not found")
+		return nil, errors.New("storage: ledger not found")
 	}
 	return &ledgers[0], nil
 }

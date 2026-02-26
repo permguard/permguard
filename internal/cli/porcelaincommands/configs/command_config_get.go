@@ -29,7 +29,7 @@ import (
 )
 
 // runECommandForZAPGet runs the command for getting the zap endpoint.
-func runECommandForZAPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForZAPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -50,7 +50,7 @@ func runECommandForZAPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 }
 
 // runECommandForPAPGet runs the command for getting the pap endpoint.
-func runECommandForPAPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForPAPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -71,7 +71,7 @@ func runECommandForPAPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 }
 
 // runECommandForPDPGet runs the command for getting the pdp endpoint.
-func runECommandForPDPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForPDPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -92,12 +92,12 @@ func runECommandForPDPGet(deps cli.CliDependenciesProvider, cmd *cobra.Command, 
 }
 
 // CreateCommandForConfig for managing config.
-func createCommandForConfigZAPGet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigZAPGet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "zap-endpoint",
 		Short: "Get the zap endpoint",
 		Long:  common.BuildCliLongTemplate(`This command gets the zap endpoint.`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForZAPGet(deps, cmd, v)
 		},
 	}
@@ -105,12 +105,12 @@ func createCommandForConfigZAPGet(deps cli.CliDependenciesProvider, v *viper.Vip
 }
 
 // CreateCommandForConfig for managing config.
-func createCommandForConfigPAPGet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigPAPGet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pap-endpoint",
 		Short: "Get the pap endpoint",
 		Long:  common.BuildCliLongTemplate(`This command gets the pap endpoint.`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForPAPGet(deps, cmd, v)
 		},
 	}
@@ -118,24 +118,24 @@ func createCommandForConfigPAPGet(deps cli.CliDependenciesProvider, v *viper.Vip
 }
 
 // CreateCommandForConfig for managing config.
-func createCommandForConfigPDPGet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigPDPGet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pdp-endpoint",
 		Short: "Get the pdp endpoint",
 		Long:  common.BuildCliLongTemplate(`This command gets the pdp endpoint.`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForPDPGet(deps, cmd, v)
 		},
 	}
 	return command
 }
 
-func createCommandForConfigGet(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigGet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "get",
 		Short: "Get configuration items",
 		Long:  common.BuildCliLongTemplate(`This command gets configuration items.`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
 	}

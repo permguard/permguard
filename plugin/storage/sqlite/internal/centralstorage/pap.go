@@ -26,7 +26,7 @@ import (
 
 // SQLiteCentralStoragePAP implements the sqlite central storage.
 type SQLiteCentralStoragePAP struct {
-	ctx             *storage.StorageContext
+	ctx             *storage.Context
 	sqliteConnector db.SQLiteConnector
 	sqlRepo         SqliteRepo
 	sqlExec         SqliteExecutor
@@ -34,7 +34,7 @@ type SQLiteCentralStoragePAP struct {
 }
 
 // newSQLitePAPCentralStorage creates a new SQLitePAPCentralStorage.
-func newSQLitePAPCentralStorage(storageContext *storage.StorageContext, sqliteConnector db.SQLiteConnector, ledger SqliteRepo, sqlExec SqliteExecutor) (*SQLiteCentralStoragePAP, error) {
+func newSQLitePAPCentralStorage(storageContext *storage.Context, sqliteConnector db.SQLiteConnector, ledger SqliteRepo, sqlExec SqliteExecutor) (*SQLiteCentralStoragePAP, error) {
 	if storageContext == nil || sqliteConnector == nil {
 		return nil, errors.New("storage: storageContext is nil")
 	}

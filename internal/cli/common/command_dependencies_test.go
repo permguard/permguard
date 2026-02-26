@@ -20,12 +20,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestNewCliDependenciesProvider tests the NewCliDependenciesProvider function.
 func TestNewCliDependenciesProvider(t *testing.T) {
 	assert := assert.New(t)
 	depsProvider, err := NewCliDependenciesProvider(nil)
-	assert.Nil(err, "err should be nil")
+	require.NoError(t, err, "err should be nil")
 	assert.NotNil(depsProvider, "depsProvider should not be nil")
 }

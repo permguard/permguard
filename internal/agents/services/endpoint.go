@@ -33,21 +33,21 @@ import (
 // EndpointConfig represents the endpoint configuration.
 type EndpointConfig struct {
 	hostable         services.Hostable
-	storageConnector *storage.StorageConnector
+	storageConnector *storage.Connector
 	service          services.ServiceKind
 	port             int
-	registration     func(*grpc.Server, *services.ServiceContext, *services.EndpointContext, *storage.StorageConnector) error
+	registration     func(*grpc.Server, *services.ServiceContext, *services.EndpointContext, *storage.Connector) error
 }
 
 // newEndpointConfig creates a new endpoint configuration.
-func newEndpointConfig(hostable services.Hostable, service services.ServiceKind, storageConnector *storage.StorageConnector, port int, registration func(*grpc.Server, *services.ServiceContext, *services.EndpointContext, *storage.StorageConnector) error) (*EndpointConfig, error) {
+func newEndpointConfig(hostable services.Hostable, service services.ServiceKind, storageConnector *storage.Connector, port int, registration func(*grpc.Server, *services.ServiceContext, *services.EndpointContext, *storage.Connector) error) *EndpointConfig {
 	return &EndpointConfig{
 		hostable:         hostable,
 		storageConnector: storageConnector,
 		service:          service,
 		port:             port,
 		registration:     registration,
-	}, nil
+	}
 }
 
 // Hostable returns the hostable.
@@ -55,8 +55,8 @@ func (c *EndpointConfig) Hostable() services.Hostable {
 	return c.hostable
 }
 
-// StorageConnector returns the storage connector.
-func (c *EndpointConfig) StorageConnector() *storage.StorageConnector {
+// Connector returns the storage connector.
+func (c *EndpointConfig) Connector() *storage.Connector {
 	return c.storageConnector
 }
 
@@ -71,7 +71,7 @@ func (c *EndpointConfig) Port() int {
 }
 
 // Registration returns the registration function.
-func (c *EndpointConfig) Registration() func(*grpc.Server, *services.ServiceContext, *services.EndpointContext, *storage.StorageConnector) error {
+func (c *EndpointConfig) Registration() func(*grpc.Server, *services.ServiceContext, *services.EndpointContext, *storage.Connector) error {
 	return c.registration
 }
 
@@ -100,7 +100,7 @@ func (e *Endpoint) logger() *zap.Logger {
 }
 
 // Serve starts the grpcendpoint.
-func (e *Endpoint) Serve(ctx context.Context, serviceCtx *services.ServiceContext) (bool, error) {
+func (e *Endpoint) Serve(_ context.Context, serviceCtx *services.ServiceContext) (bool, error) {
 	logger := e.logger()
 	logger.Debug("Endpoint is starting")
 	grpcServer := grpc.NewServer(
@@ -110,7 +110,7 @@ func (e *Endpoint) Serve(ctx context.Context, serviceCtx *services.ServiceContex
 	port := e.config.Port()
 
 	registration := e.config.Registration()
-	err := registration(grpcServer, serviceCtx, e.ctx, e.config.StorageConnector())
+	err := registration(grpcServer, serviceCtx, e.ctx, e.config.Connector())
 	if err != nil {
 		return false, err
 	}
@@ -119,7 +119,8 @@ func (e *Endpoint) Serve(ctx context.Context, serviceCtx *services.ServiceContex
 	grpc_health_v1.RegisterHealthServer(grpcServer, hs)
 	hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	lc := net.ListenConfig{}
+	lis, err := lc.Listen(context.Background(), "tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		logger.Error("Endpoint cannot listen on port", zap.Error(err))
 		return false, err
@@ -143,7 +144,7 @@ func (e *Endpoint) Serve(ctx context.Context, serviceCtx *services.ServiceContex
 }
 
 // GracefulStop stops the grpcendpoint.
-func (e *Endpoint) GracefulStop(ctx context.Context) (bool, error) {
+func (e *Endpoint) GracefulStop(_ context.Context) (bool, error) {
 	logger := e.logger()
 	logger.Debug("Endpoint is stopping")
 	e.grpcServer.GracefulStop()

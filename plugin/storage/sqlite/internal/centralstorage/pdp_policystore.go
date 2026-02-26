@@ -46,22 +46,22 @@ func authorizationCheckReadKeyValue(s *SQLiteCentralStoragePDP, db *sqlx.DB, obj
 }
 
 // authorizationCheckReadBytes reads the key value for the authorization check.
-func authorizationCheckReadBytes(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *objects.ObjectManager, zoneID int64, key string) (string, []byte, error) {
+func authorizationCheckReadBytes(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *objects.ObjectManager, zoneID int64, key string) ([]byte, error) {
 	value, err := authorizationCheckReadKeyValue(s, db, objMng, zoneID, key)
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 	object, err := objMng.DeserializeObjectFromBytes(value)
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
-	objectType, instanceBytes, err := objMng.InstanceBytesFromBytes(object)
-	return objectType, instanceBytes, err
+	_, instanceBytes, err := objMng.InstanceBytesFromBytes(object)
+	return instanceBytes, err
 }
 
 // authorizationCheckReadTree reads the tree object for the authorization check.
 func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *objects.ObjectManager, zoneID int64, commitID string) (*objects.Tree, error) {
-	_, ocontent, err := authorizationCheckReadBytes(s, db, objMng, zoneID, commitID)
+	ocontent, err := authorizationCheckReadBytes(s, db, objMng, zoneID, commitID)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng 
 	if err != nil {
 		return nil, err
 	}
-	_, ocontent, err = authorizationCheckReadBytes(s, db, objMng, zoneID, commitObj.Tree())
+	ocontent, err = authorizationCheckReadBytes(s, db, objMng, zoneID, commitObj.Tree())
 	if err != nil {
 		return nil, err
 	}
@@ -123,11 +123,12 @@ func (s SQLiteCentralStoragePDP) LoadPolicyStore(zoneID int64, storeID string) (
 		}
 		objInfoHeader := objInfo.Header()
 		oid := objInfo.OID()
-		if objInfoHeader.CodeTypeID() == types.ClassTypeSchemaID {
+		switch objInfoHeader.CodeTypeID() {
+		case types.ClassTypeSchemaID:
 			authzPolicyStore.AddSchema(oid, objInfo)
-		} else if objInfoHeader.CodeTypeID() == types.ClassTypePolicyID {
+		case types.ClassTypePolicyID:
 			authzPolicyStore.AddPolicy(oid, objInfo)
-		} else {
+		default:
 			return nil, errors.New("storage: server couldn't process the code type id")
 		}
 	}

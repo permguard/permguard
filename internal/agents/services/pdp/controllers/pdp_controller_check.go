@@ -23,7 +23,7 @@ import (
 )
 
 // authorizationCheckExpandAuthorizationCheckWithDefaults expands the authorization check with defaults.
-func authorizationCheckExpandAuthorizationCheckWithDefaults(request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckRequest, error) {
+func authorizationCheckExpandAuthorizationCheckWithDefaults(request *pdp.AuthorizationCheckWithDefaultsRequest) *pdp.AuthorizationCheckRequest {
 	expReq := &pdp.AuthorizationCheckRequest{}
 	expReq.AuthorizationModel = request.AuthorizationModel
 
@@ -75,7 +75,7 @@ func authorizationCheckExpandAuthorizationCheckWithDefaults(request *pdp.Authori
 			expReq.Evaluations = append(expReq.Evaluations, expRequest)
 		}
 	}
-	return expReq, nil
+	return expReq
 }
 
 // authorizationCheckBuildContextResponse builds the context response for the authorization check.

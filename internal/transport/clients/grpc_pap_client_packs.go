@@ -79,7 +79,7 @@ func (c *GrpcPAPClient) NOTPStream(hostHandler notpstatemachines.HostHandler, zo
 	if err != nil {
 		return nil, err
 	}
-	defer stream.CloseSend()
+	defer func() { _ = stream.CloseSend() }()
 
 	stateMachine, err := c.createWiredStateMachine(stream, hostHandler)
 	if err != nil {

@@ -33,59 +33,59 @@ import (
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
-// CedarLanguageAbstraction is the abstraction for the cedar language.
-type CedarLanguageAbstraction struct {
+// LanguageAbstraction is the abstraction for the cedar language.
+type LanguageAbstraction struct {
 	objMng *objects.ObjectManager
 }
 
-// NewCedarLanguageAbstraction creates a new CedarLanguageAbstraction.
-func NewCedarLanguageAbstraction() (*CedarLanguageAbstraction, error) {
+// NewCedarLanguageAbstraction creates a new LanguageAbstraction.
+func NewCedarLanguageAbstraction() (*LanguageAbstraction, error) {
 	objMng, err := objects.NewObjectManager()
 	if err != nil {
 		return nil, errors.Join(errors.New("cedar: failed to create the object manager"), err)
 	}
-	return &CedarLanguageAbstraction{
+	return &LanguageAbstraction{
 		objMng: objMng,
 	}, nil
 }
 
 // BuildManifest builds the manifest.
-func (abs *CedarLanguageAbstraction) BuildManifest(manifest *manifests.Manifest, template string) (*manifests.Manifest, error) {
+func (abs *LanguageAbstraction) BuildManifest(manifest *manifests.Manifest, template string) (*manifests.Manifest, error) {
 	return cedarlang.BuildManifest(manifest, template, engines.EngineName, engines.EngineVersion, engines.EngineDist, false)
 }
 
 // ValidateManifest validates the manifest.
-func (abs *CedarLanguageAbstraction) ValidateManifest(manifest *manifests.Manifest) (bool, error) {
+func (abs *LanguageAbstraction) ValidateManifest(manifest *manifests.Manifest) (bool, error) {
 	return cedarlang.ValidateManifest(manifest)
 }
 
 // Language gets the language name
-func (abs *CedarLanguageAbstraction) Language() string {
+func (abs *LanguageAbstraction) Language() string {
 	return cedarlang.LanguageCedar
 }
 
 // LanguageID gets the language id
-func (abs *CedarLanguageAbstraction) LanguageID() uint32 {
+func (abs *LanguageAbstraction) LanguageID() uint32 {
 	return cedarlang.LanguageCedarID
 }
 
 // FrontendLanguage gets fronted language.
-func (abs *CedarLanguageAbstraction) FrontendLanguage() string {
+func (abs *LanguageAbstraction) FrontendLanguage() string {
 	return cedarlang.LanguageCedar
 }
 
 // BackendLanguage gets backend language.
-func (abs *CedarLanguageAbstraction) BackendLanguage() string {
+func (abs *LanguageAbstraction) BackendLanguage() string {
 	return cedarlang.LanguageCedarJSON
 }
 
 // PolicyFileExtensions gets the policy file extensions.
-func (abs *CedarLanguageAbstraction) PolicyFileExtensions() []string {
+func (abs *LanguageAbstraction) PolicyFileExtensions() []string {
 	return []string{cedarlang.LanguageFileExtension}
 }
 
 // CreatePolicyBlobObjects creates multi sections policy blob objects.
-func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(mfestLang *manifests.Language, partition string, filePath string, data []byte) (*objects.MultiSectionsObject, error) {
+func (abs *LanguageAbstraction) CreatePolicyBlobObjects(mfestLang *manifests.Language, partition string, filePath string, data []byte) (*objects.MultiSectionsObject, error) {
 	if mfestLang.Name != cedarlang.LanguageCedar {
 		return nil, errors.New("cedar: unsupported frontend language")
 	}
@@ -96,7 +96,7 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(mfestLang *manifest
 		if err2 != nil {
 			return nil, errors.New("cedar: failed to create the multi section object")
 		}
-		multiSecObj.AddSectionObjectWithError(0, err)
+		_ = multiSecObj.AddSectionObjectWithError(0, err)
 		return multiSecObj, nil
 	}
 
@@ -125,34 +125,33 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(mfestLang *manifest
 		var policyID string
 		annPolicyID, exists := policy.Annotations()["id"]
 		if !exists {
-			multiSecObj.AddSectionObjectWithError(i, errors.New("cedar: missing the policy id"))
+			_ = multiSecObj.AddSectionObjectWithError(i, errors.New("cedar: missing the policy id"))
 			continue
-		} else {
-			policyID = string(annPolicyID)
 		}
+		policyID = string(annPolicyID)
 		objName := policyID
 		codeID := objName
 
 		if isValid, err := validators.ValidatePolicyName(policyID); !isValid {
-			multiSecObj.AddSectionObjectWithError(i, err)
+			_ = multiSecObj.AddSectionObjectWithError(i, err)
 			continue
 		}
 
 		header, err := objects.NewObjectHeader(partition, true, langID, langVersionID, langPolicyTypeID, codeID, codeTypeID)
 		if err != nil {
-			multiSecObj.AddSectionObjectWithError(i, err)
+			_ = multiSecObj.AddSectionObjectWithError(i, err)
 			continue
 		}
 
 		policyJSON, err := policy.MarshalJSON()
 		if err != nil {
-			multiSecObj.AddSectionObjectWithError(i, err)
+			_ = multiSecObj.AddSectionObjectWithError(i, err)
 			continue
 		}
 
 		obj, err := abs.objMng.CreateBlobObject(header, policyJSON)
 		if err != nil {
-			multiSecObj.AddSectionObjectWithError(i, err)
+			_ = multiSecObj.AddSectionObjectWithError(i, err)
 			continue
 		}
 
@@ -161,14 +160,14 @@ func (abs *CedarLanguageAbstraction) CreatePolicyBlobObjects(mfestLang *manifest
 			return nil, errors.Join(errors.New("cedar: failed to get the object info"), err)
 		}
 
-		multiSecObj.AddSectionObjectWithParams(obj, partition, objInfo.Type(), objName, codeID, codeType, lang, langVersion, langPolicyType, i)
+		_ = multiSecObj.AddSectionObjectWithParams(obj, partition, objInfo.Type(), objName, codeID, codeType, lang, langVersion, langPolicyType, i)
 	}
 
 	return multiSecObj, nil
 }
 
 // CreatePolicyContentBytes creates a multi policy content bytes.
-func (abs *CedarLanguageAbstraction) CreatePolicyContentBytes(mfestLang *manifests.Language, blocks [][]byte) ([]byte, string, error) {
+func (abs *LanguageAbstraction) CreatePolicyContentBytes(_ *manifests.Language, blocks [][]byte) ([]byte, string, error) {
 	var sb strings.Builder
 	for i, block := range blocks {
 		if i > 0 {
@@ -180,12 +179,12 @@ func (abs *CedarLanguageAbstraction) CreatePolicyContentBytes(mfestLang *manifes
 }
 
 // SchemaFileNames gets schema file names.
-func (abs *CedarLanguageAbstraction) SchemaFileNames() []string {
+func (abs *LanguageAbstraction) SchemaFileNames() []string {
 	return []string{cedarlang.LanguageSchemaFileName}
 }
 
 // CreateSchemaBlobObjects creates multi sections schema blob objects.
-func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(mfestLang *manifests.Language, partition string, path string, data []byte) (*objects.MultiSectionsObject, error) {
+func (abs *LanguageAbstraction) CreateSchemaBlobObjects(mfestLang *manifests.Language, partition string, path string, data []byte) (*objects.MultiSectionsObject, error) {
 	if mfestLang.Name != cedarlang.LanguageCedar {
 		return nil, errors.New("cedar: unsupported frontend language")
 	}
@@ -214,13 +213,13 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(mfestLang *manifest
 	}
 	header, err := objects.NewObjectHeader(partition, true, langID, langVersionID, langSchemaTypeID, codeID, codeTypeID)
 	if err != nil {
-		multiSecObj.AddSectionObjectWithError(0, err)
+		_ = multiSecObj.AddSectionObjectWithError(0, err)
 		return multiSecObj, nil
 	}
 
 	obj, err := abs.objMng.CreateBlobObject(header, data)
 	if err != nil {
-		multiSecObj.AddSectionObjectWithError(0, err)
+		_ = multiSecObj.AddSectionObjectWithError(0, err)
 		return multiSecObj, nil
 	}
 
@@ -229,12 +228,12 @@ func (abs *CedarLanguageAbstraction) CreateSchemaBlobObjects(mfestLang *manifest
 		return nil, errors.Join(errors.New("cedar: failed to get the object info"), err)
 	}
 
-	multiSecObj.AddSectionObjectWithParams(obj, partition, objInfo.Type(), objName, codeID, codeType, lang, langVersion, langSchemaType, 0)
+	_ = multiSecObj.AddSectionObjectWithParams(obj, partition, objInfo.Type(), objName, codeID, codeType, lang, langVersion, langSchemaType, 0)
 	return multiSecObj, nil
 }
 
 // CreateSchemaContentBytes creates a schema content bytes.
-func (abs *CedarLanguageAbstraction) CreateSchemaContentBytes(mfestLang *manifests.Language, blocks []byte) ([]byte, string, error) {
+func (abs *LanguageAbstraction) CreateSchemaContentBytes(_ *manifests.Language, blocks []byte) ([]byte, string, error) {
 	if len(blocks) == 0 {
 		return nil, "", errors.New("cedar: schema cannot be empty")
 	}
@@ -242,7 +241,7 @@ func (abs *CedarLanguageAbstraction) CreateSchemaContentBytes(mfestLang *manifes
 }
 
 // ConvertBytesToFrontendLanguage converts bytes to the frontend language.
-func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(mfestLang *manifests.Language, langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error) {
+func (abs *LanguageAbstraction) ConvertBytesToFrontendLanguage(_ *manifests.Language, langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error) {
 	if cedarlang.LanguageCedarJSONID != langID {
 		return nil, errors.New("cedar: invalid backend language")
 	}
@@ -267,7 +266,7 @@ func (abs *CedarLanguageAbstraction) ConvertBytesToFrontendLanguage(mfestLang *m
 }
 
 // AuthorizationCheck checks the authorization.
-func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Language, contextID string, policyStore *authzen.PolicyStore, authzCtx *authzen.AuthorizationModel) (*authzen.AuthorizationDecision, error) {
+func (abs *LanguageAbstraction) AuthorizationCheck(_ *manifests.Language, contextID string, policyStore *authzen.PolicyStore, authzCtx *authzen.AuthorizationModel) (*authzen.AuthorizationDecision, error) {
 	// Creates a new policy set.
 	ps := cedar.NewPolicySet()
 	for _, policy := range policyStore.Policies() {
@@ -345,7 +344,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 		return nil, errors.Join(errors.New("cedar: bad request for the context"), err)
 	}
 	hasIllegalKey := false
-	contextRecord.Iterate(func(key cedar.String, val cedar.Value) bool {
+	contextRecord.Iterate(func(key cedar.String, _ cedar.Value) bool {
 		keyStr := key.String()
 		isValid, _ := verifyKey(keyStr)
 		if !isValid {
@@ -359,7 +358,7 @@ func (abs *CedarLanguageAbstraction) AuthorizationCheck(mfestLang *manifests.Lan
 	}
 
 	// Build the entities.
-	var entities cedar.EntityMap = nil
+	var entities cedar.EntityMap
 	authzEntities := authzCtx.Entities()
 	if authzEntities != nil {
 		authzEntitiesItems := authzEntities.Items()

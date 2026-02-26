@@ -21,7 +21,7 @@ import (
 )
 
 // ExecInitalize the plans resources.
-func (m *COSPManager) ExecInitalize() error {
+func (m *Manager) ExecInitalize() error {
 	_, err := m.persMgr.CreateDirIfNotExists(persistence.PermguardDir, m.codeDir())
 	if err != nil {
 		return err

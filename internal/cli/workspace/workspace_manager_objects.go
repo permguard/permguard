@@ -30,7 +30,7 @@ import (
 )
 
 // objectsInfos retrieves and filters object metadata based on object type.
-func (m *WorkspaceManager) objectsInfos(includeStorage, includeCode, filterCommits, filterTrees, filterBlob bool) ([]objects.ObjectInfo, error) {
+func (m *Manager) objectsInfos(includeStorage, includeCode, filterCommits, filterTrees, filterBlob bool) ([]objects.ObjectInfo, error) {
 	var filteredObjects []objects.ObjectInfo
 
 	// Fetch all raw objs from the COSP manager
@@ -77,7 +77,7 @@ func (m *WorkspaceManager) objectsInfos(includeStorage, includeCode, filterCommi
 }
 
 // history gets the commit history.
-func (m *WorkspaceManager) history(commit string) ([]wkscommon.CommitInfo, error) {
+func (m *Manager) history(commit string) ([]wkscommon.CommitInfo, error) {
 	commitHistory, err := m.cospMgr.History(commit)
 	if err != nil {
 		return nil, err
@@ -86,7 +86,7 @@ func (m *WorkspaceManager) history(commit string) ([]wkscommon.CommitInfo, error
 }
 
 // commitString gets the commit string.
-func (m *WorkspaceManager) commitString(oid string, commit *objects.Commit) (string, error) {
+func (m *Manager) commitString(oid string, commit *objects.Commit) (string, error) {
 	if commit == nil {
 		return "", errors.New("cli: commit is nil")
 	}
@@ -112,7 +112,7 @@ func (m *WorkspaceManager) commitString(oid string, commit *objects.Commit) (str
 }
 
 // commitMap gets the commit map.
-func (m *WorkspaceManager) commitMap(oid string, commit *objects.Commit) (map[string]any, error) {
+func (m *Manager) commitMap(oid string, commit *objects.Commit) (map[string]any, error) {
 	if commit == nil {
 		return nil, errors.New("cli: commit is nil")
 	}
@@ -132,14 +132,14 @@ func (m *WorkspaceManager) commitMap(oid string, commit *objects.Commit) (map[st
 }
 
 // treeString gets the tree string.
-func (m *WorkspaceManager) treeString(oid string, tree *objects.Tree) (string, error) {
+func (m *Manager) treeString(oid string, tree *objects.Tree) (string, error) {
 	if tree == nil {
 		return "", errors.New("cli: tree is nil")
 	}
 
 	var output strings.Builder
 
-	output.WriteString(fmt.Sprintf("%s %s:", common.KeywordText("tree"), common.IDText(oid)))
+	fmt.Fprintf(&output, "%s %s:", common.KeywordText("tree"), common.IDText(oid))
 
 	entries := tree.Entries()
 	for _, entry := range entries {
@@ -150,15 +150,15 @@ func (m *WorkspaceManager) treeString(oid string, tree *objects.Tree) (string, e
 		oid := entry.OID()
 		oname := entry.OName()
 		entryType := entry.Type()
-		output.WriteString(fmt.Sprintf("\n  - %s %s %s %s %s %s %s", common.IDText(oid), common.KeywordText(entryType), common.NameText(partition),
-			common.NameText(oname), common.LanguageText(language), common.LanguageText(languageVersion), common.LanguageKeywordText(languageType)))
+		fmt.Fprintf(&output, "\n  - %s %s %s %s %s %s %s", common.IDText(oid), common.KeywordText(entryType), common.NameText(partition),
+			common.NameText(oname), common.LanguageText(language), common.LanguageText(languageVersion), common.LanguageKeywordText(languageType))
 	}
 
 	return output.String(), nil
 }
 
 // treeMap gets the tree map.
-func (m *WorkspaceManager) treeMap(oid string, tree *objects.Tree) (map[string]any, error) {
+func (m *Manager) treeMap(oid string, tree *objects.Tree) (map[string]any, error) {
 	if tree == nil {
 		return nil, errors.New("cli: tree is nil")
 	}
@@ -185,7 +185,7 @@ func (m *WorkspaceManager) treeMap(oid string, tree *objects.Tree) (map[string]a
 }
 
 // blobString gets the blob string.
-func (m *WorkspaceManager) blobString(blob any) ([]byte, bool, error) {
+func (m *Manager) blobString(blob any) ([]byte, bool, error) {
 	if blob == nil {
 		return nil, false, errors.New("cli: tree is nil")
 	}
@@ -197,7 +197,7 @@ func (m *WorkspaceManager) blobString(blob any) ([]byte, bool, error) {
 }
 
 // getBlobString gets the blob map.
-func (m *WorkspaceManager) blobMap(blob any) (map[string]any, error) {
+func (m *Manager) blobMap(blob any) (map[string]any, error) {
 	if blob == nil {
 		return nil, errors.New("cli: tree is nil")
 	}

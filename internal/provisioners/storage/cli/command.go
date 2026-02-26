@@ -17,7 +17,7 @@ import (
 var asciiArt string
 
 // runECommand runs the command.
-func runECommand(cmdInfo storage.StorageProvisionerInfo, storageProvisioner storage.StorageProvisioner, v *viper.Viper) error {
+func runECommand(cmdInfo storage.ProvisionerInfo, storageProvisioner storage.Provisioner, v *viper.Viper) error {
 	fmt.Println(asciiArt)
 	fmt.Printf("Permguard %s - Copyright © 2022 Nitro Agility S.r.l.\n", cmdInfo.Name)
 	fmt.Println("")
@@ -39,7 +39,7 @@ func runECommand(cmdInfo storage.StorageProvisionerInfo, storageProvisioner stor
 }
 
 // Run the provisionier.
-func Run(provisionerInitializer storage.StorageProvisionerInitializer) {
+func Run(provisionerInitializer storage.ProvisionerInitializer) {
 	if provisionerInitializer == nil {
 		fmt.Printf("Storage provisioner cannot be nil\n")
 		os.Exit(1)
@@ -52,18 +52,18 @@ func Run(provisionerInitializer storage.StorageProvisionerInitializer) {
 		os.Exit(1)
 	}
 
-	storageProvisioner, err := provisionerInitializer.StorageProvisioner()
+	storageProvisioner, err := provisionerInitializer.Provisioner()
 	if err != nil {
 		fmt.Printf("Storage provisioner cannot add flags %s\n", err.Error())
 		os.Exit(1)
 	}
 
-	cmdInfo := provisionerInitializer.StorageProvisionerInfo()
+	cmdInfo := provisionerInitializer.ProvisionerInfo()
 	command := &cobra.Command{
 		Use:   cmdInfo.Use,
 		Short: cmdInfo.Short,
 		Long:  cmdInfo.Long,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			return runECommand(cmdInfo, storageProvisioner, v)
 		},
 	}

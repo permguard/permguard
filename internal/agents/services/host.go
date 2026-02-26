@@ -31,14 +31,14 @@ type HostConfig struct {
 	logger            *zap.Logger
 	host              services.HostKind
 	hostable          services.Hostable
-	storageConnector  *storage.StorageConnector
+	storageConnector  *storage.Connector
 	services          []services.ServiceKind
 	servicesFactories map[services.ServiceKind]services.ServiceFactoryProvider
 	appData           string
 }
 
 // NewHostConfig creates a new host configuration.
-func NewHostConfig(host services.HostKind, hostable services.Hostable, storageConnector *storage.StorageConnector,
+func NewHostConfig(host services.HostKind, hostable services.Hostable, storageConnector *storage.Connector,
 	services []services.ServiceKind, servicesFactories map[services.ServiceKind]services.ServiceFactoryProvider, logger *zap.Logger, appData string,
 ) (*HostConfig, error) {
 	return &HostConfig{
@@ -57,8 +57,8 @@ func (h *HostConfig) Hostable() services.Hostable {
 	return h.hostable
 }
 
-// StorageConnector returns the storage connector.
-func (h *HostConfig) StorageConnector() *storage.StorageConnector {
+// Connector returns the storage connector.
+func (h *HostConfig) Connector() *storage.Connector {
 	return h.storageConnector
 }
 
@@ -98,27 +98,23 @@ func (h *Host) logger() *zap.Logger {
 }
 
 // buildServicesForServe builds the services for the host.
-func buildServicesForServe(h *Host, factories []services.ServiceFactory, logger *zap.Logger) ([]*Service, bool, bool, error) {
+func buildServicesForServe(h *Host, factories []services.ServiceFactory, logger *zap.Logger) ([]*Service, bool, error) {
 	services := make([]*Service, len(h.config.ServicesFactories()))
 	for i, factory := range factories {
 		svcable, err := factory.Create()
 		if err != nil {
 			logger.Error("Error creating the service from the factory", zap.Error(err))
-			return nil, true, false, err
+			return nil, true, err
 		}
-		serviceCfg, err := newServiceConfig(h.config.Hostable(), h.config.StorageConnector(), svcable)
-		if err != nil {
-			logger.Error("Error creating service config", zap.Error(err))
-			return nil, true, false, err
-		}
+		serviceCfg := newServiceConfig(h.config.Hostable(), h.config.Connector(), svcable)
 		service, err := newService(serviceCfg, h.ctx)
 		if err != nil {
 			logger.Error("Error creating service", zap.Error(err))
-			return nil, true, false, err
+			return nil, true, err
 		}
 		services[i] = service
 	}
-	return services, false, false, nil
+	return services, false, nil
 }
 
 // Serve starts the host.
@@ -136,9 +132,9 @@ func (h *Host) Serve(ctx context.Context) (bool, error) {
 		factories[count] = factory
 		count++
 	}
-	services, shouldReturn, returnValue, returnValue1 := buildServicesForServe(h, factories, logger)
+	services, shouldReturn, returnValue1 := buildServicesForServe(h, factories, logger)
 	if shouldReturn {
-		return returnValue, returnValue1
+		return false, returnValue1
 	}
 	h.services = services
 	hasStarted := true

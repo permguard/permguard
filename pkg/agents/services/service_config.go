@@ -16,7 +16,10 @@
 
 package services
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // ServiceConfiguration declares the service configuration.
 type ServiceConfiguration struct {
@@ -26,7 +29,7 @@ type ServiceConfiguration struct {
 // NewServiceConfiguration creates a new service configuration.
 func NewServiceConfiguration(data map[string]any) (*ServiceConfiguration, error) {
 	if data == nil {
-		return nil, fmt.Errorf("service: data is nil")
+		return nil, errors.New("service: data is nil")
 	}
 	return &ServiceConfiguration{
 		data: data,

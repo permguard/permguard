@@ -79,6 +79,7 @@ func AddCobraFlags(cmd *cobra.Command, v *viper.Viper, funcs ...func(*flag.FlagS
 	return addCobraFlags(cmd, v, false, funcs...)
 }
 
+// AddCobraPersistentFlags adds persistent flags to a cobra command.
 func AddCobraPersistentFlags(cmd *cobra.Command, v *viper.Viper, funcs ...func(*flag.FlagSet) error) error {
 	return addCobraFlags(cmd, v, true, funcs...)
 }

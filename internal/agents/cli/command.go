@@ -45,8 +45,11 @@ const (
 var asciiArt string
 
 var (
-	Version   string
+	// Version is the application version.
+	Version string
+	// BuildTime is the build timestamp.
 	BuildTime string
+	// GitCommit is the git commit hash.
 	GitCommit string
 )
 
@@ -179,7 +182,7 @@ func Run(serverInitializer servers.ServerInitializer, startup func(*zap.Logger),
 		Use:   cmdInfo.Use,
 		Short: cmdInfo.Short,
 		Long:  cmdInfo.Long,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			return runECommand(cmdInfo, serverFactoryCfg, v, startup, shutdown)
 		},
 	}

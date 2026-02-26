@@ -38,8 +38,8 @@ const (
 	OutputJSON = "JSON"
 )
 
-// CliPrinter is the cli printer.
-type CliPrinter interface {
+// Printer is the cli printer.
+type Printer interface {
 	// Print prints the message.
 	Print(message string)
 	// PrintMap prints the output.
@@ -95,26 +95,26 @@ func marshalWithSnakeCase(v any) ([]byte, error) {
 	return json.Marshal(processedData)
 }
 
-// CliPrinterTerminal is the cli printer.
-type CliPrinterTerminal struct {
+// PrinterTerminal is the cli printer.
+type PrinterTerminal struct {
 	verbose bool
 	output  string
 }
 
 // NewCliPrinterTerminal returns a new cli printer.
-func NewCliPrinterTerminal(verbose bool, output string) (*CliPrinterTerminal, error) {
+func NewCliPrinterTerminal(verbose bool, output string) (*PrinterTerminal, error) {
 	out := strings.ToUpper(output)
 	if out != OutputTerminal && out != OutputJSON {
 		return nil, errors.New("cli: invalid output")
 	}
-	return &CliPrinterTerminal{
+	return &PrinterTerminal{
 		verbose: verbose,
 		output:  strings.ToUpper(output),
 	}, nil
 }
 
 // printJSON prints the output as json.
-func (cp *CliPrinterTerminal) printJSON(output map[string]any) {
+func (cp *PrinterTerminal) printJSON(output map[string]any) {
 	if output == nil {
 		output = make(map[string]any)
 	}
@@ -133,7 +133,7 @@ func (cp *CliPrinterTerminal) printJSON(output map[string]any) {
 }
 
 // printValue prints the value.
-func (cp *CliPrinterTerminal) printValue(key string, value any, newLine bool) {
+func (cp *PrinterTerminal) printValue(key string, value any, newLine bool) {
 	if value == nil || (reflect.TypeOf(value).Kind() == reflect.String && value.(string) == "") {
 		keyColor := color.New(color.FgHiBlack)
 		keyColor.Println(key)
@@ -174,7 +174,7 @@ func (cp *CliPrinterTerminal) printValue(key string, value any, newLine bool) {
 }
 
 // printTerminal prints the output as terminal text.
-func (cp *CliPrinterTerminal) printTerminal(output map[string]any, isError bool, newLine bool) {
+func (cp *PrinterTerminal) printTerminal(output map[string]any, isError bool, newLine bool) {
 	keys := make([]string, 0, len(output))
 	for k := range output {
 		keys = append(keys, k)
@@ -198,27 +198,27 @@ func (cp *CliPrinterTerminal) printTerminal(output map[string]any, isError bool,
 }
 
 // Print prints the output.
-func (cp *CliPrinterTerminal) Print(message string) {
+func (cp *PrinterTerminal) Print(message string) {
 	cp.PrintMap(map[string]any{"": message})
 }
 
 // PrintMap prints the output.
-func (cp *CliPrinterTerminal) PrintMap(output map[string]any) {
+func (cp *PrinterTerminal) PrintMap(output map[string]any) {
 	cp.print(output, false)
 }
 
 // Println prints the output.
-func (cp *CliPrinterTerminal) Println(message string) {
+func (cp *PrinterTerminal) Println(message string) {
 	cp.PrintlnMap(map[string]any{"": message})
 }
 
 // PrintlnMap prints the output.
-func (cp *CliPrinterTerminal) PrintlnMap(output map[string]any) {
+func (cp *PrinterTerminal) PrintlnMap(output map[string]any) {
 	cp.print(output, true)
 }
 
 // print prints the output.
-func (cp *CliPrinterTerminal) print(output map[string]any, newLine bool) {
+func (cp *PrinterTerminal) print(output map[string]any, newLine bool) {
 	switch cp.output {
 	case OutputJSON:
 		if output == nil {
@@ -236,20 +236,20 @@ func (cp *CliPrinterTerminal) print(output map[string]any, newLine bool) {
 }
 
 // createOutputWithputError creates the output with the error.
-func (cp *CliPrinterTerminal) createOutputWithputError(errMsg string) map[string]any {
+func (cp *PrinterTerminal) createOutputWithputError(errMsg string) map[string]any {
 	return map[string]any{"error": errMsg}
 }
 
 // Error prints the output.
-func (cp *CliPrinterTerminal) Error(err error) {
+func (cp *PrinterTerminal) Error(err error) {
 	var output map[string]any
 	cp.ErrorWithOutput(output, err)
 }
 
 // ErrorWithOutput prints the error with the output.
-func (cp *CliPrinterTerminal) ErrorWithOutput(output map[string]any, err error) {
+func (cp *PrinterTerminal) ErrorWithOutput(output map[string]any, err error) {
 	if _, ok := err.(*net.OpError); ok {
-		err = fmt.Errorf("server cannot be reached")
+		err = errors.New("server cannot be reached")
 	}
 	if output == nil {
 		output = make(map[string]any)

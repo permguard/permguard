@@ -95,7 +95,7 @@ func NewViperFromConfig(onCreation func(*viper.Viper) map[string]any) (*viper.Vi
 			}
 			v.Set(mapValuesKey, mapValuesValue)
 		}
-		v.WriteConfig()
+		_ = v.WriteConfig()
 	}
 	configureViper(v)
 	return v, nil

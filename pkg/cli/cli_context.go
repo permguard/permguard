@@ -20,7 +20,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-type CliContext interface {
+// Context defines the CLI context interface.
+type Context interface {
 	// Viper returns the viper.
 	Viper() *viper.Viper
 	// GetVerbose returns true if the verbose.

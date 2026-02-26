@@ -31,12 +31,12 @@ const (
 )
 
 // runECommandForUpdateLedger runs the command for creating a ledger.
-func runECommandForUpdateLedger(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForUpdateLedger(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	return runECommandForUpsertLedger(deps, cmd, v, commandNameForLedgersUpdate, false)
 }
 
 // createCommandForLedgerUpdate creates a command for managing ledgerupdate.
-func createCommandForLedgerUpdate(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForLedgerUpdate(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update a remote ledger",
@@ -46,13 +46,13 @@ Examples:
   # update a ledger and output the result in json format
   permguard authz ledgers update --zone-id 273165098782 --ledger-id 668f3771eacf4094ba8a80942ea5fd3f --name v1.1 --output json
 		`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForUpdateLedger(deps, cmd, v)
 		},
 	}
 	command.Flags().String(flagLedgerID, "", "specify the ID of the ledger to update")
-	v.BindPFlag(options.FlagName(commandNameForLedgersUpdate, flagLedgerID), command.Flags().Lookup(flagLedgerID))
+	_ = v.BindPFlag(options.FlagName(commandNameForLedgersUpdate, flagLedgerID), command.Flags().Lookup(flagLedgerID))
 	command.Flags().String(common.FlagCommonName, "", "specify the new name for the ledger")
-	v.BindPFlag(options.FlagName(commandNameForLedgersUpdate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
+	_ = v.BindPFlag(options.FlagName(commandNameForLedgersUpdate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

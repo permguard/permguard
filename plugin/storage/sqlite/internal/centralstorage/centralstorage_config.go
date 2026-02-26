@@ -17,6 +17,7 @@
 package centralstorage
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/permguard/permguard/pkg/agents/runtime"
@@ -40,9 +41,9 @@ type SQLiteCentralStorageConfig struct {
 }
 
 // NewSQLiteCentralStorageConfig creates a new SQLite central storage configuration.
-func NewSQLiteCentralStorageConfig(ctx *storage.StorageContext) (*SQLiteCentralStorageConfig, error) {
+func NewSQLiteCentralStorageConfig(ctx *storage.Context) (*SQLiteCentralStorageConfig, error) {
 	if ctx == nil {
-		return nil, fmt.Errorf("storage: invalid storage context")
+		return nil, errors.New("storage: invalid storage context")
 	}
 	cgfReader, err := ctx.ServiceConfigReader()
 	if err != nil {

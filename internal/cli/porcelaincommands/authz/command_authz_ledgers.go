@@ -41,7 +41,7 @@ const (
 )
 
 // runECommandForCreateLedger runs the command for creating a ledger.
-func runECommandForUpsertLedger(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
 	opGetErroMessage := func(op bool) string {
 		if op {
 			return "Failed to create the ledger"
@@ -108,12 +108,12 @@ func runECommandForUpsertLedger(deps cli.CliDependenciesProvider, cmd *cobra.Com
 }
 
 // runECommandForLedgers runs the command for managing ledgers.
-func runECommandForLedgers(cmd *cobra.Command, args []string) error {
+func runECommandForLedgers(cmd *cobra.Command, _ []string) error {
 	return cmd.Help()
 }
 
 // createCommandForLedgers creates a command for managing ledgers.
-func createCommandForLedgers(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForLedgers(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "ledgers",
 		Short: "Manage ledgers on the remote server",
@@ -122,7 +122,7 @@ func createCommandForLedgers(deps cli.CliDependenciesProvider, v *viper.Viper) *
 	}
 
 	command.PersistentFlags().Int64(common.FlagCommonZoneID, 0, "zone id")
-	v.BindPFlag(options.FlagName(commandNameForLedger, common.FlagCommonZoneID), command.PersistentFlags().Lookup(common.FlagCommonZoneID))
+	_ = v.BindPFlag(options.FlagName(commandNameForLedger, common.FlagCommonZoneID), command.PersistentFlags().Lookup(common.FlagCommonZoneID))
 
 	command.AddCommand(createCommandForLedgerCreate(deps, v))
 	command.AddCommand(createCommandForLedgerUpdate(deps, v))

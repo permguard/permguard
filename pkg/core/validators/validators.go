@@ -31,10 +31,10 @@ func ValidateCodeID(entity string, zoneID int64) error {
 	if isValid, err := validators.ValidateInstance(vZoneID); err != nil || !isValid {
 		return fmt.Errorf("validators: %s name %d is not valid", entity, vZoneID.ZoneID)
 	}
-	min := int64(100000000000)
-	max := int64(999999999999)
-	if zoneID < min || zoneID > max {
-		return fmt.Errorf("validators: %s name %d is not valid. it must be between %d and %d", entity, zoneID, min, max)
+	minVal := int64(100000000000)
+	maxVal := int64(999999999999)
+	if zoneID < minVal || zoneID > maxVal {
+		return fmt.Errorf("validators: %s name %d is not valid. it must be between %d and %d", entity, zoneID, minVal, maxVal)
 	}
 	return nil
 }
@@ -59,7 +59,7 @@ func ValidateSHA256(entity string, hash string) error {
 		return fmt.Errorf("validators: %s hash %s is not valid", entity, hash)
 	}
 	for _, c := range hash {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 			return fmt.Errorf("validators: %s hash %s contains invalid characters", entity, hash)
 		}
 	}

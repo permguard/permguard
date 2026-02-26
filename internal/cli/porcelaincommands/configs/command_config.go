@@ -25,12 +25,12 @@ import (
 )
 
 // runECommandForConfig runs the command for managing config.
-func runECommandForConfig(cmd *cobra.Command, args []string) error {
+func runECommandForConfig(cmd *cobra.Command, _ []string) error {
 	return cmd.Help()
 }
 
 // CreateCommandForConfig for managing config.
-func CreateCommandForConfig(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForConfig(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "config",
 		Short: "Configure the command line settings",

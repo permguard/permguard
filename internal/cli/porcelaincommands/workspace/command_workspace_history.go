@@ -30,7 +30,7 @@ import (
 )
 
 // runECommandForHistoryWorkspace run the command for listing history in the workspace.
-func runECommandForHistoryWorkspace(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForHistoryWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -60,7 +60,7 @@ func runECommandForHistoryWorkspace(deps cli.CliDependenciesProvider, cmd *cobra
 }
 
 // CreateCommandForWorkspaceHistory creates a command for diffializing a permguard workspace.
-func CreateCommandForWorkspaceHistory(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceHistory(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "history",
 		Short: "Show the history",
@@ -69,7 +69,7 @@ func CreateCommandForWorkspaceHistory(deps cli.CliDependenciesProvider, v *viper
 Examples:
   # show the history
   permguard history`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForHistoryWorkspace(deps, cmd, v)
 		},
 	}

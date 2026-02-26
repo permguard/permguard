@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestObjectStatePacket tests the object  state packet
@@ -32,12 +33,12 @@ func TestObjectStatePacket(t *testing.T) {
 	packet.Content = []byte("mycontent")
 
 	data, err := packet.Serialize()
-	assert.NoError(err)
+	require.NoError(t, err)
 
 	newPacket := &ObjectStatePacket{}
 	err = newPacket.Deserialize(data)
 
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.Equal(packet.OID, newPacket.OID)
 	assert.Equal(packet.OType, newPacket.OType)
 	assert.Equal(packet.Content, newPacket.Content)

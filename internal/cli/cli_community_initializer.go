@@ -37,9 +37,9 @@ func NewCommunityCliInitializer() (*CommunityCliInitializer, error) {
 	return &CommunityCliInitializer{}, nil
 }
 
-// CliInfo returns the infos of the cli.
-func (s *CommunityCliInitializer) CliInfo() cli.CliInfo {
-	return cli.CliInfo{
+// Info returns the infos of the cli.
+func (s *CommunityCliInitializer) Info() cli.Info {
+	return cli.Info{
 		Name:  "Community Command Line Interface",
 		Use:   "permguard",
 		Short: "The official Permguard© Cli",
@@ -48,7 +48,7 @@ func (s *CommunityCliInitializer) CliInfo() cli.CliInfo {
 }
 
 // CliCommands returns commands.
-func (s *CommunityCliInitializer) CliCommands(deps cli.CliDependenciesProvider, v *viper.Viper) ([]*cobra.Command, error) {
+func (s *CommunityCliInitializer) CliCommands(deps cli.DependenciesProvider, v *viper.Viper) ([]*cobra.Command, error) {
 	zonesCmd := zones.CreateCommandForZones(deps, v)
 	authzCmd := authz.CreateCommandForAuthZ(deps, v)
 	configCmd := configs.CreateCommandForConfig(deps, v)

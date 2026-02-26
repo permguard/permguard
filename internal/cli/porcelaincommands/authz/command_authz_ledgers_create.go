@@ -31,12 +31,12 @@ const (
 )
 
 // runECommandForCreateLedger runs the command for creating a ledger.
-func runECommandForCreateLedger(deps cli.CliDependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForCreateLedger(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	return runECommandForUpsertLedger(deps, cmd, v, commandNameForLedgersCreate, true)
 }
 
 // createCommandForLedgerCreate creates a command for managing ledgercreate.
-func createCommandForLedgerCreate(deps cli.CliDependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForLedgerCreate(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create a remote ledger",
@@ -46,11 +46,11 @@ Examples:
   # create a ledger and output the result in json format
   permguard authz ledgers create --zone-id 273165098782 --name pharmaauthzflow --output json
 		`),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForCreateLedger(deps, cmd, v)
 		},
 	}
 	command.Flags().String(common.FlagCommonName, "", "specify the name of the ledger to create")
-	v.BindPFlag(options.FlagName(commandNameForLedgersCreate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
+	_ = v.BindPFlag(options.FlagName(commandNameForLedgersCreate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }
