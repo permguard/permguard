@@ -35,18 +35,18 @@ func (c *cliDependencies) CreatePrinter(verbose bool, output string) (cli.Printe
 }
 
 // CreateGrpcZAPClient creates a new gRPC client for the ZAP service.
-func (c *cliDependencies) CreateGrpcZAPClient(zapTarget string) (clients.GrpcZAPClient, error) {
-	return iclients.NewGrpcZAPClient(zapTarget)
+func (c *cliDependencies) CreateGrpcZAPClient(zapEndpoint string) (clients.GrpcZAPClient, error) {
+	return iclients.NewGrpcZAPClient(zapEndpoint)
 }
 
 // CreateGrpcPAPClient creates a new gRPC client for the PAP service.
-func (c *cliDependencies) CreateGrpcPAPClient(zapTarget string) (clients.GrpcPAPClient, error) {
-	return iclients.NewGrpcPAPClient(zapTarget)
+func (c *cliDependencies) CreateGrpcPAPClient(papEndpoint string) (clients.GrpcPAPClient, error) {
+	return iclients.NewGrpcPAPClient(papEndpoint)
 }
 
 // CreateGrpcPDPClient creates a new gRPC client for the PDP service.
-func (c *cliDependencies) CreateGrpcPDPClient(zapTarget string) (clients.GrpcPDPClient, error) {
-	return iclients.NewGrpcPDPClient(zapTarget)
+func (c *cliDependencies) CreateGrpcPDPClient(pdpEndpoint string) (clients.GrpcPDPClient, error) {
+	return iclients.NewGrpcPDPClient(pdpEndpoint)
 }
 
 // LanguageFactory creates a new gRPC client for the PAP service.

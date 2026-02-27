@@ -150,29 +150,29 @@ func (c *CliCommandContext) WorkDir() string {
 	return c.workDir
 }
 
-// ZAPTarget returns the zap target.
-func (c *CliCommandContext) ZAPTarget() (string, error) {
-	target := c.v.Get(options.FlagName(FlagPrefixZAP, FlagSuffixZAPTarget))
-	if target == nil {
-		return "", errors.New("cli: zap target is not set")
+// ZAPEndpoint returns the zap endpoint.
+func (c *CliCommandContext) ZAPEndpoint() (string, error) {
+	endpoint := c.v.Get(options.FlagName(FlagPrefixZAP, FlagSuffixZAPEndpoint))
+	if endpoint == nil {
+		return "", errors.New("cli: zap endpoint is not set")
 	}
-	return target.(string), nil
+	return endpoint.(string), nil
 }
 
-// PAPTarget returns the pap target.
-func (c *CliCommandContext) PAPTarget() (string, error) {
-	target := c.v.Get(options.FlagName(FlagPrefixPAP, FlagSuffixPAPTarget))
-	if target == nil {
-		return "", errors.New("cli: pap target is not set")
+// PAPEndpoint returns the pap endpoint.
+func (c *CliCommandContext) PAPEndpoint() (string, error) {
+	endpoint := c.v.Get(options.FlagName(FlagPrefixPAP, FlagSuffixPAPEndpoint))
+	if endpoint == nil {
+		return "", errors.New("cli: pap endpoint is not set")
 	}
-	return target.(string), nil
+	return endpoint.(string), nil
 }
 
-// PDPTarget returns the pdp target.
-func (c *CliCommandContext) PDPTarget() (string, error) {
-	target := c.v.Get(options.FlagName(FlagPrefixPDP, FlagSuffixPDPTarget))
-	if target == nil {
-		return "", errors.New("cli: pdp target is not set")
+// PDPEndpoint returns the pdp endpoint.
+func (c *CliCommandContext) PDPEndpoint() (string, error) {
+	endpoint := c.v.Get(options.FlagName(FlagPrefixPDP, FlagSuffixPDPEndpoint))
+	if endpoint == nil {
+		return "", errors.New("cli: pdp endpoint is not set")
 	}
-	return target.(string), nil
+	return endpoint.(string), nil
 }

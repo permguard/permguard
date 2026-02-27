@@ -41,7 +41,7 @@ func runECommandForListLedgers(deps cli.DependenciesProvider, cmd *cobra.Command
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	papTarget, err := ctx.PAPTarget()
+	papEndpoint, err := ctx.PAPEndpoint()
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to list ledgers.")
@@ -51,7 +51,7 @@ func runECommandForListLedgers(deps cli.DependenciesProvider, cmd *cobra.Command
 		}
 		return common.ErrCommandSilent
 	}
-	client, err := deps.CreateGrpcPAPClient(papTarget)
+	client, err := deps.CreateGrpcPAPClient(papEndpoint)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to list ledgers.")

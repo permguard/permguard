@@ -27,22 +27,22 @@ import (
 
 // GrpcPDPClient is a gRPC client for the PDP service.
 type GrpcPDPClient struct {
-	target string
+	endpoint string
 }
 
 // NewGrpcPDPClient creates a new gRPC client for the PDP service.
-func NewGrpcPDPClient(target string) (*GrpcPDPClient, error) {
-	if target == "" {
-		return nil, errors.New("client: target is required")
+func NewGrpcPDPClient(endpoint string) (*GrpcPDPClient, error) {
+	if endpoint == "" {
+		return nil, errors.New("client: endpoint is required")
 	}
 	return &GrpcPDPClient{
-		target: target,
+		endpoint: endpoint,
 	}, nil
 }
 
 // createGRPCClient creates a new gRPC client.
 func (c *GrpcPDPClient) createGRPCClient() (pdpv1.V1PDPServiceClient, *grpc.ClientConn, error) {
-	conn, err := grpc.NewClient(c.target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(c.endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, nil, err
 	}

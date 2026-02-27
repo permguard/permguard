@@ -31,12 +31,12 @@ import (
 // TestCreateCommandForConfigZAPGet tests the createCommandForConfigZAPGet function.
 func TestCreateCommandForConfigZAPGet(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command gets the zap grpc target."}
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command gets the zap endpoint."}
 	testutils.BaseCommandTest(t, createCommandForConfigZAPGet, args, false, outputs)
 }
 
-// TestCliConfigGetZAPTarget tests the command for getting the zap target.
-func TestCliConfigGetZAPTarget(t *testing.T) {
+// TestCliConfigGetZAPEndpoint tests the command for getting the zap endpoint.
+func TestCliConfigGetZAPEndpoint(t *testing.T) {
 	tests := []string{
 		"terminal",
 		"json",
@@ -47,7 +47,7 @@ func TestCliConfigGetZAPTarget(t *testing.T) {
 
 		v := viper.New()
 		v.Set("output", outputType)
-		v.Set(options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPTarget), "localhost:9092")
+		v.Set(options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPEndpoint), "localhost:9092")
 
 		depsMocks := mocks.NewCliDependenciesMock()
 		cmd := createCommandForConfigZAPGet(depsMocks, v)
@@ -58,7 +58,7 @@ func TestCliConfigGetZAPTarget(t *testing.T) {
 		printerMock := mocks.NewPrinterMock()
 		outputPrinter := map[string]any{}
 
-		outputPrinter["zap_target"] = "localhost:9092"
+		outputPrinter["zap_endpoint"] = "localhost:9092"
 		printerMock.On("PrintMap", outputPrinter).Return()
 		printerMock.On("PrintlnMap", outputPrinter).Return()
 
@@ -72,12 +72,12 @@ func TestCliConfigGetZAPTarget(t *testing.T) {
 // TestCreateCommandForConfigPAPGet tests the createCommandForConfigPAPGet function.
 func TestCreateCommandForConfigPAPGet(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command gets the pap grpc target."}
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command gets the pap endpoint."}
 	testutils.BaseCommandTest(t, createCommandForConfigPAPGet, args, false, outputs)
 }
 
-// TestCliConfigGetPAPTarget tests the command for getting the pap target.
-func TestCliConfigGetPAPTarget(t *testing.T) {
+// TestCliConfigGetPAPEndpoint tests the command for getting the pap endpoint.
+func TestCliConfigGetPAPEndpoint(t *testing.T) {
 	tests := []string{
 		"terminal",
 		"json",
@@ -88,7 +88,7 @@ func TestCliConfigGetPAPTarget(t *testing.T) {
 
 		v := viper.New()
 		v.Set("output", outputType)
-		v.Set(options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPTarget), "localhost:9092")
+		v.Set(options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPEndpoint), "localhost:9092")
 
 		depsMocks := mocks.NewCliDependenciesMock()
 		cmd := createCommandForConfigPAPGet(depsMocks, v)
@@ -99,7 +99,7 @@ func TestCliConfigGetPAPTarget(t *testing.T) {
 		printerMock := mocks.NewPrinterMock()
 		outputPrinter := map[string]any{}
 
-		outputPrinter["pap_target"] = "localhost:9092"
+		outputPrinter["pap_endpoint"] = "localhost:9092"
 		printerMock.On("PrintMap", outputPrinter).Return()
 		printerMock.On("PrintlnMap", outputPrinter).Return()
 

@@ -58,7 +58,7 @@ func TestCliLedgersUpdateWithError(t *testing.T) {
 		outputs := []string{""}
 
 		v := viper.New()
-		v.Set(options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPTarget), "localhost:9092")
+		v.Set(options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPEndpoint), "localhost:9092")
 
 		depsMocks := mocks.NewCliDependenciesMock()
 		cmd := createCommandForLedgerUpdate(depsMocks, v)
@@ -98,7 +98,7 @@ func TestCliLedgersUpdateWithSuccess(t *testing.T) {
 
 		v := viper.New()
 		v.Set("output", outputType)
-		v.Set(options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPTarget), "localhost:9092")
+		v.Set(options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPEndpoint), "localhost:9092")
 
 		depsMocks := mocks.NewCliDependenciesMock()
 		cmd := createCommandForLedgerUpdate(depsMocks, v)

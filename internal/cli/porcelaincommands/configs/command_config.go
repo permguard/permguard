@@ -40,5 +40,6 @@ func CreateCommandForConfig(deps cli.DependenciesProvider, v *viper.Viper) *cobr
 	command.AddCommand(createCommandForConfigReset(deps, v))
 	command.AddCommand(createCommandForConfigGet(deps, v))
 	command.AddCommand(createCommandForConfigSet(deps, v))
+	command.AddCommand(createCommandForConfigShow(deps, v))
 	return command
 }

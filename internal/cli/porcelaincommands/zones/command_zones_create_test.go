@@ -59,7 +59,7 @@ func TestCliZonesCreateWithError(t *testing.T) {
 		outputs := []string{""}
 
 		v := viper.New()
-		v.Set(options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPTarget), "localhost:9092")
+		v.Set(options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPEndpoint), "localhost:9092")
 
 		depsMocks := mocks.NewCliDependenciesMock()
 		cmd := createCommandForZoneCreate(depsMocks, v)
@@ -99,7 +99,7 @@ func TestCliZonesCreateWithSuccess(t *testing.T) {
 
 		v := viper.New()
 		v.Set("output", outputType)
-		v.Set(options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPTarget), "localhost:9092")
+		v.Set(options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPEndpoint), "localhost:9092")
 
 		depsMocks := mocks.NewCliDependenciesMock()
 		cmd := createCommandForZoneCreate(depsMocks, v)
