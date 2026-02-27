@@ -82,7 +82,7 @@ func TestCreateZoneWithErrors(t *testing.T) {
 		require.Error(t, err)
 		if multi, ok := err.(interface{ Unwrap() []error }); ok {
 			errs := multi.Unwrap()
-			isErr := test.Error1.Error() == errs[0].Error()
+			isErr := test.Error1.Error() == errs[1].Error()
 			assert.True(isErr, "error should be equal")
 		}
 	}
@@ -170,7 +170,7 @@ func TestUpdateZoneWithErrors(t *testing.T) {
 		require.Error(t, err)
 		if multi, ok := err.(interface{ Unwrap() []error }); ok {
 			errs := multi.Unwrap()
-			isErr := test.Error1.Error() == errs[0].Error()
+			isErr := test.Error1.Error() == errs[1].Error()
 			assert.True(isErr, "error should be equal")
 		}
 	}
@@ -243,7 +243,7 @@ func TestDeleteZoneWithErrors(t *testing.T) {
 		require.Error(t, err)
 		if multi, ok := err.(interface{ Unwrap() []error }); ok {
 			errs := multi.Unwrap()
-			isErr := test.Error1.Error() == errs[0].Error()
+			isErr := test.Error1.Error() == errs[1].Error()
 			assert.True(isErr, "error should be equal")
 		}
 	}
