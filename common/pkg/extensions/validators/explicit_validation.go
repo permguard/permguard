@@ -59,6 +59,27 @@ func IsValidHostnamePort(hostnamePath string) bool {
 	return isValid && err == nil
 }
 
+// IsValidEndpoint validates that the value is a valid endpoint with scheme (grpc://, http://, https://).
+func IsValidEndpoint(value string) bool {
+	if value == "" {
+		return false
+	}
+	allowedSchemes := []string{"grpc://", "http://", "https://"}
+	var hostPort string
+	matched := false
+	for _, scheme := range allowedSchemes {
+		if strings.HasPrefix(value, scheme) {
+			hostPort = strings.TrimPrefix(value, scheme)
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		return false
+	}
+	return IsValidHostnamePort(hostPort)
+}
+
 // ValidateSimpleName validates a simple name.
 func ValidateSimpleName(name string) bool {
 	vName := struct {

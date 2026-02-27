@@ -32,8 +32,8 @@ import (
 
 // viperWriteEndpoint writes the setting to the viper configuration.
 func viperWriteEndpoint(v *viper.Viper, key string, value string) error {
-	if !validators.IsValidHostnamePort(value) {
-		return errors.New("invalid hostname:port")
+	if !validators.IsValidEndpoint(value) {
+		return errors.New("invalid endpoint: must be in the format scheme://hostname:port where scheme is grpc, http, or https")
 	}
 	valueMap := map[string]interface{}{
 		key: value,
@@ -136,8 +136,8 @@ func createCommandForConfigZAPSet(deps cli.DependenciesProvider, v *viper.Viper)
 		Long: common.BuildCliLongTemplate(`This command sets the zap endpoint.
 
 Examples:
-# set the zap endpoint to localhost:9091
-permguard config zap-endpoint localhost:9091
+# set the zap endpoint to grpc://localhost:9091
+permguard config set zap-endpoint grpc://localhost:9091
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForZAPSet(deps, cmd, v, args)
@@ -154,8 +154,8 @@ func createCommandForConfigPAPSet(deps cli.DependenciesProvider, v *viper.Viper)
 		Long: common.BuildCliLongTemplate(`This command sets the pap endpoint.
 
 Examples:
-# set the pap endpoint to localhost:9092
-permguard config pap-endpoint localhost:9092
+# set the pap endpoint to grpc://localhost:9092
+permguard config set pap-endpoint grpc://localhost:9092
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForPAPSet(deps, cmd, v, args)
@@ -172,8 +172,8 @@ func createCommandForConfigPDPSet(deps cli.DependenciesProvider, v *viper.Viper)
 		Long: common.BuildCliLongTemplate(`This command sets the pdp endpoint.
 
 Examples:
-# set the pdp endpoint to localhost:9094
-permguard config pdp-endpoint localhost:9094
+# set the pdp endpoint to grpc://localhost:9094
+permguard config set pdp-endpoint grpc://localhost:9094
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForPDPSet(deps, cmd, v, args)
