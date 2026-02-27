@@ -17,8 +17,6 @@
 package clients
 
 import (
-	"errors"
-
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -32,11 +30,12 @@ type GrpcZAPClient struct {
 
 // NewGrpcZAPClient creates a new gRPC client for the ZAP service.
 func NewGrpcZAPClient(endpoint string) (*GrpcZAPClient, error) {
-	if endpoint == "" {
-		return nil, errors.New("grpc-client: endpoint is required")
+	hostPort, err := parseGrpcEndpoint(endpoint)
+	if err != nil {
+		return nil, err
 	}
 	return &GrpcZAPClient{
-		endpoint: endpoint,
+		endpoint: hostPort,
 	}, nil
 }
 
