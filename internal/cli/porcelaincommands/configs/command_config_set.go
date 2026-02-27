@@ -50,20 +50,20 @@ func runECommandForZAPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 	}
 	if len(args) == 0 {
 		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the zap target.")
+			printer.Println("Failed to set the zap endpoint.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to set the zap target"), err))
+			printer.Error(errors.Join(errors.New("cli: failed to set the zap endpoint"), err))
 		}
 		return common.ErrCommandSilent
 	}
-	err = viperWriteEndpoint(v, options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPTarget), args[0])
+	err = viperWriteEndpoint(v, options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPEndpoint), args[0])
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the zap target.")
+			printer.Println("Failed to set the zap endpoint.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to set the zap target"), err))
+			printer.Error(errors.Join(errors.New("cli: failed to set the zap endpoint"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -79,20 +79,20 @@ func runECommandForPAPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 	}
 	if len(args) == 0 {
 		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the pap target.")
+			printer.Println("Failed to set the pap endpoint.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to set the pap target"), err))
+			printer.Error(errors.Join(errors.New("cli: failed to set the pap endpoint"), err))
 		}
 		return common.ErrCommandSilent
 	}
-	err = viperWriteEndpoint(v, options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPTarget), args[0])
+	err = viperWriteEndpoint(v, options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPEndpoint), args[0])
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the pap target.")
+			printer.Println("Failed to set the pap endpoint.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to set the pap target"), err))
+			printer.Error(errors.Join(errors.New("cli: failed to set the pap endpoint"), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -108,32 +108,32 @@ func runECommandForPDPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 	}
 	if len(args) == 0 {
 		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the pdp target.")
+			printer.Println("Failed to set the pdp endpoint.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to set the pdp target"), err))
+			printer.Error(errors.Join(errors.New("cli: failed to set the pdp endpoint"), err))
 		}
 		return common.ErrCommandSilent
 	}
-	err = viperWriteEndpoint(v, options.FlagName(common.FlagPrefixPDP, common.FlagSuffixPDPTarget), args[0])
+	err = viperWriteEndpoint(v, options.FlagName(common.FlagPrefixPDP, common.FlagSuffixPDPEndpoint), args[0])
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the pdp target.")
+			printer.Println("Failed to set the pdp endpoint.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to set the pdp target"), err))
+			printer.Error(errors.Join(errors.New("cli: failed to set the pdp endpoint"), err))
 		}
 		return common.ErrCommandSilent
 	}
 	return nil
 }
 
-// createCommandForConfigZAPSet creates the command for setting the zap grpc target.
+// createCommandForConfigZAPSet creates the command for setting the zap endpoint.
 func createCommandForConfigZAPSet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "zap-endpoint",
 		Short: "Set the zap endpoint",
-		Long: common.BuildCliLongTemplate(`This command sets the zap grpc target.
+		Long: common.BuildCliLongTemplate(`This command sets the zap endpoint.
 
 Examples:
 # set the zap endpoint to localhost:9091
@@ -146,12 +146,12 @@ permguard config zap-endpoint localhost:9091
 	return command
 }
 
-// createCommandForConfigPAPSet creates the command for setting the pap grpc target.
+// createCommandForConfigPAPSet creates the command for setting the pap endpoint.
 func createCommandForConfigPAPSet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pap-endpoint",
 		Short: "Set the pap endpoint",
-		Long: common.BuildCliLongTemplate(`This command sets the pap grpc target.
+		Long: common.BuildCliLongTemplate(`This command sets the pap endpoint.
 
 Examples:
 # set the pap endpoint to localhost:9092
@@ -164,7 +164,7 @@ permguard config pap-endpoint localhost:9092
 	return command
 }
 
-// createCommandForConfigPDPSet creates the command for setting the pdp grpc target.
+// createCommandForConfigPDPSet creates the command for setting the pdp endpoint.
 func createCommandForConfigPDPSet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pdp-endpoint",

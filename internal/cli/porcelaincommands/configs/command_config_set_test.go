@@ -30,12 +30,12 @@ import (
 // TestCreateCommandForConfigZAPSet tests the createCommandForConfigZAPSet function.
 func TestCreateCommandForConfigZAPSet(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command sets the zap grpc target."}
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command sets the zap endpoint."}
 	testutils.BaseCommandTest(t, createCommandForConfigZAPSet, args, false, outputs)
 }
 
-// TestCliConfigSetZAPTarget tests the command for setting the zap target.
-func TestCliConfigSetZAPTargetWithError(t *testing.T) {
+// TestCliConfigSetZAPEndpoint tests the command for setting the zap endpoint.
+func TestCliConfigSetZAPEndpointWithError(t *testing.T) {
 	tests := []string{
 		"terminal",
 		"json",
@@ -67,12 +67,12 @@ func TestCliConfigSetZAPTargetWithError(t *testing.T) {
 // TestCreateCommandForConfigPAPSet tests the createCommandForConfigPAPSet function.
 func TestCreateCommandForConfigPAPSet(t *testing.T) {
 	args := []string{"-h"}
-	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command sets the pap grpc target."}
+	outputs := []string{"The official Permguard Command Line Interface", "Copyright © 2022 Nitro Agility S.r.l.", "This command sets the pap endpoint."}
 	testutils.BaseCommandTest(t, createCommandForConfigPAPSet, args, false, outputs)
 }
 
-// TestCliConfigSetPAPTarget tests the command for setting the pap target.
-func TestCliConfigSetPAPTargetWithError(t *testing.T) {
+// TestCliConfigSetPAPEndpoint tests the command for setting the pap endpoint.
+func TestCliConfigSetPAPEndpointWithError(t *testing.T) {
 	tests := []string{
 		"terminal",
 		"json",

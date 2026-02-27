@@ -42,7 +42,7 @@ func runECommandForDeleteLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	papTarget, err := ctx.PAPTarget()
+	papEndpoint, err := ctx.PAPEndpoint()
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to delete the ledger.")
@@ -51,7 +51,7 @@ func runECommandForDeleteLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 			printer.Error(errors.Join(errors.New("cli: failed to delete the ledger"), err))
 		}
 	}
-	client, err := deps.CreateGrpcPAPClient(papTarget)
+	client, err := deps.CreateGrpcPAPClient(papEndpoint)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to delete the ledger.")

@@ -27,22 +27,22 @@ import (
 
 // GrpcZAPClient is a gRPC client for the ZAP service.
 type GrpcZAPClient struct {
-	target string
+	endpoint string
 }
 
 // NewGrpcZAPClient creates a new gRPC client for the ZAP service.
-func NewGrpcZAPClient(target string) (*GrpcZAPClient, error) {
-	if target == "" {
-		return nil, errors.New("grpc-client: target is required")
+func NewGrpcZAPClient(endpoint string) (*GrpcZAPClient, error) {
+	if endpoint == "" {
+		return nil, errors.New("grpc-client: endpoint is required")
 	}
 	return &GrpcZAPClient{
-		target: target,
+		endpoint: endpoint,
 	}, nil
 }
 
 // createGRPCClient creates a new gRPC client.
 func (c *GrpcZAPClient) createGRPCClient() (zapv1.V1ZAPServiceClient, *grpc.ClientConn, error) {
-	conn, err := grpc.NewClient(c.target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(c.endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, nil, err
 	}

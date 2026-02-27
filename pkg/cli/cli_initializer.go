@@ -29,11 +29,11 @@ type DependenciesProvider interface {
 	// CreatePrinter creates a new printer.
 	CreatePrinter(verbose bool, output string) (Printer, error)
 	// CreateGrpcZAPClient creates a new gRPC client for the ZAP service.
-	CreateGrpcZAPClient(zapTarget string) (clients.GrpcZAPClient, error)
+	CreateGrpcZAPClient(zapEndpoint string) (clients.GrpcZAPClient, error)
 	// CreateGrpcPAPClient creates a new gRPC client for the PAP service.
-	CreateGrpcPAPClient(zapTarget string) (clients.GrpcPAPClient, error)
+	CreateGrpcPAPClient(papEndpoint string) (clients.GrpcPAPClient, error)
 	// CreateGrpcPDPClient creates a new gRPC client for the PDP service.
-	CreateGrpcPDPClient(zapTarget string) (clients.GrpcPDPClient, error)
+	CreateGrpcPDPClient(pdpEndpoint string) (clients.GrpcPDPClient, error)
 	// LanguageFactory returns the language factory.
 	LanguageFactory() (languages.LanguageFactory, error)
 }

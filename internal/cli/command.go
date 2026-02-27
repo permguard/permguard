@@ -46,9 +46,9 @@ func Run(cliInitializer cli.Initializer) {
 	// Create the command.
 	v, err := options.NewViperFromConfig(func(_ *viper.Viper) map[string]any {
 		mapValues := map[string]any{
-			options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPTarget): "localhost:9091",
-			options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPTarget): "localhost:9092",
-			options.FlagName(common.FlagPrefixPDP, common.FlagSuffixPDPTarget): "localhost:9094",
+			options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPEndpoint): "localhost:9091",
+			options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPEndpoint): "localhost:9092",
+			options.FlagName(common.FlagPrefixPDP, common.FlagSuffixPDPEndpoint): "localhost:9094",
 		}
 		return mapValues
 	})

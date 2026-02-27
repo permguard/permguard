@@ -83,7 +83,7 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 		return handleInputError(ctx, printer, err, "Invalid input for the authz check.")
 	}
 
-	pdpTarget, err := ctx.PDPTarget()
+	pdpEndpoint, err := ctx.PDPEndpoint()
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to check the authorization request.")
@@ -93,7 +93,7 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 		}
 		return common.ErrCommandSilent
 	}
-	client, err := deps.CreateGrpcPDPClient(pdpTarget)
+	client, err := deps.CreateGrpcPDPClient(pdpEndpoint)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to check the authorization request.")

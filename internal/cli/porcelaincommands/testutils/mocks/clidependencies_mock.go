@@ -40,8 +40,8 @@ func (m *CliDependenciesMock) CreatePrinter(verbose bool, output string) (cli.Pr
 }
 
 // CreateGrpcZAPClient creates a new gRPC ZAP client.
-func (m *CliDependenciesMock) CreateGrpcZAPClient(zapTarget string) (clients.GrpcZAPClient, error) {
-	args := m.Called(zapTarget)
+func (m *CliDependenciesMock) CreateGrpcZAPClient(zapEndpoint string) (clients.GrpcZAPClient, error) {
+	args := m.Called(zapEndpoint)
 	var r0 clients.GrpcZAPClient
 	if val, ok := args.Get(0).(clients.GrpcZAPClient); ok {
 		r0 = val
@@ -50,8 +50,8 @@ func (m *CliDependenciesMock) CreateGrpcZAPClient(zapTarget string) (clients.Grp
 }
 
 // CreateGrpcPAPClient creates a new gRPC PAP client.
-func (m *CliDependenciesMock) CreateGrpcPAPClient(papTarget string) (clients.GrpcPAPClient, error) {
-	args := m.Called(papTarget)
+func (m *CliDependenciesMock) CreateGrpcPAPClient(papEndpoint string) (clients.GrpcPAPClient, error) {
+	args := m.Called(papEndpoint)
 	var r0 clients.GrpcPAPClient
 	if val, ok := args.Get(0).(clients.GrpcPAPClient); ok {
 		r0 = val
@@ -60,8 +60,8 @@ func (m *CliDependenciesMock) CreateGrpcPAPClient(papTarget string) (clients.Grp
 }
 
 // CreateGrpcPDPClient creates a new gRPC PDP client.
-func (m *CliDependenciesMock) CreateGrpcPDPClient(pdpTarget string) (clients.GrpcPDPClient, error) {
-	args := m.Called(pdpTarget)
+func (m *CliDependenciesMock) CreateGrpcPDPClient(pdpEndpoint string) (clients.GrpcPDPClient, error) {
+	args := m.Called(pdpEndpoint)
 	var r0 clients.GrpcPDPClient
 	if val, ok := args.Get(0).(clients.GrpcPDPClient); ok {
 		r0 = val

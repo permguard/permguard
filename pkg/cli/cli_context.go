@@ -32,8 +32,8 @@ type Context interface {
 	IsTerminalOutput() bool
 	// IsJSONOutput returns true if the output is json.
 	IsJSONOutput() bool
-	// ZAPTarget returns the zap target.
-	ZAPTarget() string
-	// PAPTarget returns the pap target.
-	PAPTarget() string
+	// ZAPEndpoint returns the zap endpoint.
+	ZAPEndpoint() string
+	// PAPEndpoint returns the pap endpoint.
+	PAPEndpoint() string
 }

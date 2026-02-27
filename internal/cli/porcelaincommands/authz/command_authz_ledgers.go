@@ -53,7 +53,7 @@ func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	papTarget, err := ctx.PAPTarget()
+	papEndpoint, err := ctx.PAPEndpoint()
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
@@ -63,7 +63,7 @@ func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 		}
 		return common.ErrCommandSilent
 	}
-	client, err := deps.CreateGrpcPAPClient(papTarget)
+	client, err := deps.CreateGrpcPAPClient(papEndpoint)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))

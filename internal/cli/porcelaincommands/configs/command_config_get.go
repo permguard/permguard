@@ -35,17 +35,17 @@ func runECommandForZAPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	zapTarget, err := ctx.ZAPTarget()
+	zapEndpoint, err := ctx.ZAPEndpoint()
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to get the zap target.")
+			printer.Println("Failed to get the zap endpoint.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to get the zap target"), err))
+			printer.Error(errors.Join(errors.New("cli: failed to get the zap endpoint"), err))
 		}
 		return common.ErrCommandSilent
 	}
-	printer.PrintlnMap(map[string]any{"zap_target": zapTarget})
+	printer.PrintlnMap(map[string]any{"zap_endpoint": zapEndpoint})
 	return nil
 }
 
@@ -56,17 +56,17 @@ func runECommandForPAPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	papTarget, err := ctx.PAPTarget()
+	papEndpoint, err := ctx.PAPEndpoint()
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to get the pap target.")
+			printer.Println("Failed to get the pap endpoint.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to get the pap target"), err))
+			printer.Error(errors.Join(errors.New("cli: failed to get the pap endpoint"), err))
 		}
 		return common.ErrCommandSilent
 	}
-	printer.PrintlnMap(map[string]any{"pap_target": papTarget})
+	printer.PrintlnMap(map[string]any{"pap_endpoint": papEndpoint})
 	return nil
 }
 
@@ -77,26 +77,26 @@ func runECommandForPDPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	pdpTarget, err := ctx.PDPTarget()
+	pdpEndpoint, err := ctx.PDPEndpoint()
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to get the pdp target.")
+			printer.Println("Failed to get the pdp endpoint.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to get the pdp target"), err))
+			printer.Error(errors.Join(errors.New("cli: failed to get the pdp endpoint"), err))
 		}
 		return common.ErrCommandSilent
 	}
-	printer.PrintlnMap(map[string]any{"pdp_target": pdpTarget})
+	printer.PrintlnMap(map[string]any{"pdp_endpoint": pdpEndpoint})
 	return nil
 }
 
-// createCommandForConfigZAPGet creates the command for getting the zap grpc target.
+// createCommandForConfigZAPGet creates the command for getting the zap endpoint.
 func createCommandForConfigZAPGet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "zap-endpoint",
 		Short: "Get the zap endpoint",
-		Long:  common.BuildCliLongTemplate(`This command gets the zap grpc target.`),
+		Long:  common.BuildCliLongTemplate(`This command gets the zap endpoint.`),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForZAPGet(deps, cmd, v)
 		},
@@ -104,12 +104,12 @@ func createCommandForConfigZAPGet(deps cli.DependenciesProvider, v *viper.Viper)
 	return command
 }
 
-// createCommandForConfigPAPGet creates the command for getting the pap grpc target.
+// createCommandForConfigPAPGet creates the command for getting the pap endpoint.
 func createCommandForConfigPAPGet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pap-endpoint",
 		Short: "Get the pap endpoint",
-		Long:  common.BuildCliLongTemplate(`This command gets the pap grpc target.`),
+		Long:  common.BuildCliLongTemplate(`This command gets the pap endpoint.`),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForPAPGet(deps, cmd, v)
 		},
@@ -117,7 +117,7 @@ func createCommandForConfigPAPGet(deps cli.DependenciesProvider, v *viper.Viper)
 	return command
 }
 
-// createCommandForConfigPDPGet creates the command for getting the pdp grpc target.
+// createCommandForConfigPDPGet creates the command for getting the pdp endpoint.
 func createCommandForConfigPDPGet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pdp-endpoint",

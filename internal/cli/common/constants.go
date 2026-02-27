@@ -42,11 +42,11 @@ const (
 	FlagCommonFile            = "file"
 	FlagCommonFileShort       = "f"
 	FlagPrefixZAP             = "zap"
-	FlagSuffixZAPTarget       = "target"
+	FlagSuffixZAPEndpoint     = "endpoint"
 	FlagPrefixPAP             = "pap"
-	FlagSuffixPAPTarget       = "target"
+	FlagSuffixPAPEndpoint     = "endpoint"
 	FlagPrefixPDP             = "pdp"
-	FlagSuffixPDPTarget       = "target"
+	FlagSuffixPDPEndpoint     = "endpoint"
 )
 
 //go:embed "art.txt"
