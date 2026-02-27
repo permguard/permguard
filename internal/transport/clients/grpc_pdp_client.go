@@ -17,8 +17,6 @@
 package clients
 
 import (
-	"errors"
-
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -32,11 +30,12 @@ type GrpcPDPClient struct {
 
 // NewGrpcPDPClient creates a new gRPC client for the PDP service.
 func NewGrpcPDPClient(endpoint string) (*GrpcPDPClient, error) {
-	if endpoint == "" {
-		return nil, errors.New("client: endpoint is required")
+	hostPort, err := parseGrpcEndpoint(endpoint)
+	if err != nil {
+		return nil, err
 	}
 	return &GrpcPDPClient{
-		endpoint: endpoint,
+		endpoint: hostPort,
 	}, nil
 }
 
