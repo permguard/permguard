@@ -91,7 +91,7 @@ func runECommandForPDPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 	return nil
 }
 
-// CreateCommandForConfig for managing config.
+// createCommandForConfigZAPGet creates the command for getting the zap grpc target.
 func createCommandForConfigZAPGet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "zap-endpoint",
@@ -104,7 +104,7 @@ func createCommandForConfigZAPGet(deps cli.DependenciesProvider, v *viper.Viper)
 	return command
 }
 
-// CreateCommandForConfig for managing config.
+// createCommandForConfigPAPGet creates the command for getting the pap grpc target.
 func createCommandForConfigPAPGet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pap-endpoint",
@@ -117,7 +117,7 @@ func createCommandForConfigPAPGet(deps cli.DependenciesProvider, v *viper.Viper)
 	return command
 }
 
-// CreateCommandForConfig for managing config.
+// createCommandForConfigPDPGet creates the command for getting the pdp grpc target.
 func createCommandForConfigPDPGet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pdp-endpoint",

@@ -60,7 +60,7 @@ func runECommandReset(deps cli.DependenciesProvider, cmd *cobra.Command, v *vipe
 	return nil
 }
 
-// CreateCommandForConfig for managing config.
+// createCommandForConfigReset creates the command for resetting the cli config settings.
 func createCommandForConfigReset(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "reset",

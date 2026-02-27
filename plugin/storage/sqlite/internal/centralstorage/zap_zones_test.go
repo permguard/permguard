@@ -331,7 +331,7 @@ func TestFetchZoneWithErrors(t *testing.T) {
 	}
 }
 
-// TestFetchZoneWithSuccess tests the DeleteZone function with success.
+// TestFetchZoneWithSuccess tests the FetchZones function with success.
 func TestFetchZoneWithSuccess(t *testing.T) {
 	assert := assert.New(t)
 

@@ -108,7 +108,7 @@ func runECommandForPDPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 	}
 	if len(args) == 0 {
 		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the zap target.")
+			printer.Println("Failed to set the pdp target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			printer.Error(errors.Join(errors.New("cli: failed to set the pdp target"), err))
@@ -118,7 +118,7 @@ func runECommandForPDPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 	err = viperWriteEndpoint(v, options.FlagName(common.FlagPrefixPDP, common.FlagSuffixPDPTarget), args[0])
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the zap target.")
+			printer.Println("Failed to set the pdp target.")
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
 			printer.Error(errors.Join(errors.New("cli: failed to set the pdp target"), err))
@@ -128,7 +128,7 @@ func runECommandForPDPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 	return nil
 }
 
-// CreateCommandForConfig for managing config.
+// createCommandForConfigZAPSet creates the command for setting the zap grpc target.
 func createCommandForConfigZAPSet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "zap-endpoint",
@@ -146,7 +146,7 @@ permguard config zap-endpoint localhost:9091
 	return command
 }
 
-// CreateCommandForConfig for managing config.
+// createCommandForConfigPAPSet creates the command for setting the pap grpc target.
 func createCommandForConfigPAPSet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pap-endpoint",
@@ -164,7 +164,7 @@ permguard config pap-endpoint localhost:9092
 	return command
 }
 
-// CreateCommandForConfig for managing config.
+// createCommandForConfigPDPSet creates the command for setting the pdp grpc target.
 func createCommandForConfigPDPSet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pdp-endpoint",
