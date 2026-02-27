@@ -96,7 +96,7 @@ func createCommandForConfigZAPGet(deps cli.DependenciesProvider, v *viper.Viper)
 	command := &cobra.Command{
 		Use:   "zap-endpoint",
 		Short: "Get the zap endpoint",
-		Long:  common.BuildCliLongTemplate(`This command gets the zap endpoint.`),
+		Long:  common.BuildCliLongTemplate(`This command gets the zap grpc target.`),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForZAPGet(deps, cmd, v)
 		},
@@ -109,7 +109,7 @@ func createCommandForConfigPAPGet(deps cli.DependenciesProvider, v *viper.Viper)
 	command := &cobra.Command{
 		Use:   "pap-endpoint",
 		Short: "Get the pap endpoint",
-		Long:  common.BuildCliLongTemplate(`This command gets the pap endpoint.`),
+		Long:  common.BuildCliLongTemplate(`This command gets the pap grpc target.`),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForPAPGet(deps, cmd, v)
 		},

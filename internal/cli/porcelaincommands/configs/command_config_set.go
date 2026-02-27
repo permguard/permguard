@@ -133,7 +133,7 @@ func createCommandForConfigZAPSet(deps cli.DependenciesProvider, v *viper.Viper)
 	command := &cobra.Command{
 		Use:   "zap-endpoint",
 		Short: "Set the zap endpoint",
-		Long: common.BuildCliLongTemplate(`This command sets the zap endpoint.
+		Long: common.BuildCliLongTemplate(`This command sets the zap grpc target.
 
 Examples:
 # set the zap endpoint to localhost:9091
@@ -151,7 +151,7 @@ func createCommandForConfigPAPSet(deps cli.DependenciesProvider, v *viper.Viper)
 	command := &cobra.Command{
 		Use:   "pap-endpoint",
 		Short: "Set the pap endpoint",
-		Long: common.BuildCliLongTemplate(`This command sets the pap endpoint.
+		Long: common.BuildCliLongTemplate(`This command sets the pap grpc target.
 
 Examples:
 # set the pap endpoint to localhost:9092
