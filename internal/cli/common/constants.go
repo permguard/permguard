@@ -36,6 +36,7 @@ const (
 	FlagCommonPageSize        = "size"
 	FlagCommonPageSizeShort   = "s"
 	FlagCommonZoneID          = "zone-id"
+	FlagCommonLedgerID        = "ledger-id"
 	FlagCommonName            = "name"
 	FlagCommonEmail           = "email"
 	FlagCommonDescription     = "description"

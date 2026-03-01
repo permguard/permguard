@@ -100,7 +100,7 @@ Examples:
 			return runECommandForDeleteZone(deps, cmd, v)
 		},
 	}
-	command.Flags().Int64(common.FlagCommonZoneID, 0, "specify the unique zone id")
+	command.Flags().Int64(common.FlagCommonZoneID, 0, "specify the ID of the zone to delete")
 	_ = v.BindPFlag(options.FlagName(commandNameForZonesDelete, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))
 	return command
 }

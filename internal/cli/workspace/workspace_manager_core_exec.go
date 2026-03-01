@@ -26,6 +26,7 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
 	"github.com/permguard/permguard/pkg/authz/languages"
+	"github.com/permguard/permguard/ztauthstar-cedar/pkg/cedarlang"
 	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 )
 
@@ -49,6 +50,10 @@ type InitParms struct {
 	AuthZLanguage string
 	// AuthZTemplate the authz template.
 	AuthZTemplate string
+	// ZoneID the zone id.
+	ZoneID int64
+	// LedgerID the ledger id.
+	LedgerID string
 }
 
 // ExecInitWorkspace initializes the workspace.
@@ -75,6 +80,9 @@ func (m *Manager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOut
 			name = ids.GenerateID()
 		}
 		authzLang := strings.ToLower(initParams.AuthZLanguage)
+		if len(strings.TrimSpace(authzLang)) == 0 {
+			authzLang = cedarlang.LanguageName
+		}
 		authzTemplate := strings.ToLower(initParams.AuthZTemplate)
 
 		var requirement *manifests.Requirement

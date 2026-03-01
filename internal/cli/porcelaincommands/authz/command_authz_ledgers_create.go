@@ -43,10 +43,15 @@ func createCommandForLedgerCreate(deps cli.DependenciesProvider, v *viper.Viper)
 		Long: common.BuildCliLongTemplate(`This command creates a remote ledger.
 
 Examples:
+  # create a ledger
+  permguard authz ledgers create --zone-id 273165098782 pharmaauthzflow
   # create a ledger and output the result in json format
-  permguard authz ledgers create --zone-id 273165098782 --name pharmaauthzflow --output json
+  permguard authz ledgers create --zone-id 273165098782 pharmaauthzflow --output json
 		`),
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 && !cmd.Flags().Changed(common.FlagCommonName) {
+				_ = cmd.Flags().Set(common.FlagCommonName, args[0])
+			}
 			return runECommandForCreateLedger(deps, cmd, v)
 		},
 	}

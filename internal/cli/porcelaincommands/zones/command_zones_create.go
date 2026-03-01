@@ -43,13 +43,18 @@ func createCommandForZoneCreate(deps cli.DependenciesProvider, v *viper.Viper) *
 		Long: common.BuildCliLongTemplate(`This command creates a remote zone.
 
 Examples:
+  # create a zone
+  permguard zones create pharmaauthzflow-dev
   # create a zone and output the result in json format
-  permguard zones create --name pharmaauthzflow-dev --output json`),
-		RunE: func(cmd *cobra.Command, _ []string) error {
+  permguard zones create pharmaauthzflow-dev --output json`),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 && !cmd.Flags().Changed(common.FlagCommonName) {
+				_ = cmd.Flags().Set(common.FlagCommonName, args[0])
+			}
 			return runECommandForCreateZone(deps, cmd, v)
 		},
 	}
-	command.Flags().String(common.FlagCommonName, "", "specify the zone name")
+	command.Flags().String(common.FlagCommonName, "", "specify the name of the zone to create")
 	_ = v.BindPFlag(options.FlagName(commandNameForZonesCreate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

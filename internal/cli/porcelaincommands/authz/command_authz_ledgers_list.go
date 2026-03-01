@@ -66,8 +66,7 @@ func runECommandForListLedgers(deps cli.DependenciesProvider, cmd *cobra.Command
 	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
 	ledgerID := v.GetString(options.FlagName(commandNameForLedgersList, flagLedgerID))
 	kind := v.GetString(options.FlagName(commandNameForLedgersList, flagLedgerKind))
-	name := v.GetString(options.FlagName(commandNameForLedgersList, common.FlagCommonName))
-	ledgers, err := client.FetchLedgersBy(page, pageSize, zoneID, ledgerID, kind, name)
+	ledgers, err := client.FetchLedgersBy(page, pageSize, zoneID, ledgerID, kind, "")
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to list ledgers.")
@@ -99,12 +98,10 @@ func createCommandForLedgerList(deps cli.DependenciesProvider, v *viper.Viper) *
 		Long: common.BuildCliLongTemplate(`This command lists all remote ledgers.
 
 Examples:
-  # list all ledgers and output in json format
-  permguard authz ledgers list --zone-id 273165098782 --output json
-  # list all ledgers filtered by name
-  permguard authz ledgers list --zone-id 273165098782 --name v1
-  # list all ledgers filtered by ledger id
-  permguard authz ledgers list --zone-id 273165098782 --ledger-id 668f3771eacf4094ba8a80942ea5fd3f
+		# list all ledgers and output in json format
+		permguard authz ledgers list --zone-id 273165098782 --output json
+		# list all ledgers filtered by ledger id
+		permguard authz ledgers list --zone-id 273165098782 --ledger-id 668f3771eacf4094ba8a80942ea5fd3f
 		`),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForListLedgers(deps, cmd, v)
@@ -119,8 +116,5 @@ Examples:
 
 	command.Flags().String(flagLedgerID, "", "filter results by ledger id")
 	_ = v.BindPFlag(options.FlagName(commandNameForLedgersList, flagLedgerID), command.Flags().Lookup(flagLedgerID))
-
-	command.Flags().String(common.FlagCommonName, "", "filter results by ledger name")
-	_ = v.BindPFlag(options.FlagName(commandNameForLedgersList, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

@@ -54,7 +54,7 @@ func TestCliLedgersCreateWithError(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		args := []string{"ledgers", "create", "--name", "v1.0", "--output", test.OutputType}
+		args := []string{"ledgers", "create", "v1.0", "--output", test.OutputType}
 		outputs := []string{""}
 
 		v := viper.New()
@@ -93,7 +93,7 @@ func TestCliLedgersCreateWithSuccess(t *testing.T) {
 		"json",
 	}
 	for _, outputType := range tests {
-		args := []string{"ledgers", "create", "--name", "v1.0", "--output", outputType}
+		args := []string{"ledgers", "create", "v1.0", "--output", outputType}
 		outputs := []string{""}
 
 		v := viper.New()
