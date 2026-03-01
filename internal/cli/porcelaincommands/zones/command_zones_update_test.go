@@ -55,7 +55,7 @@ func TestCliZonesUpdateWithError(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		args := []string{"zones", "update", "--name", "mycorporate", "--output", test.OutputType}
+		args := []string{"zones", "update", "mycorporate", "--output", test.OutputType}
 		outputs := []string{""}
 
 		v := viper.New()
@@ -94,7 +94,7 @@ func TestCliZonesUpdateWithSuccess(t *testing.T) {
 		"json",
 	}
 	for _, outputType := range tests {
-		args := []string{"zones", "update", "--name", "mycorporate", "--output", outputType}
+		args := []string{"zones", "update", "mycorporate", "--output", outputType}
 		outputs := []string{""}
 
 		v := viper.New()

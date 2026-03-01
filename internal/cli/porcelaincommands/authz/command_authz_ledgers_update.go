@@ -43,10 +43,15 @@ func createCommandForLedgerUpdate(deps cli.DependenciesProvider, v *viper.Viper)
 		Long: common.BuildCliLongTemplate(`This command updates a remote ledger.
 
 Examples:
+  # update a ledger
+  permguard authz ledgers update --zone-id 273165098782 --ledger-id 668f3771eacf4094ba8a80942ea5fd3f v1.1
   # update a ledger and output the result in json format
-  permguard authz ledgers update --zone-id 273165098782 --ledger-id 668f3771eacf4094ba8a80942ea5fd3f --name v1.1 --output json
+  permguard authz ledgers update --zone-id 273165098782 --ledger-id 668f3771eacf4094ba8a80942ea5fd3f v1.1 --output json
 		`),
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 && !cmd.Flags().Changed(common.FlagCommonName) {
+				_ = cmd.Flags().Set(common.FlagCommonName, args[0])
+			}
 			return runECommandForUpdateLedger(deps, cmd, v)
 		},
 	}

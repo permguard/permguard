@@ -55,7 +55,7 @@ func TestCliZonesCreateWithError(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		args := []string{"zones", "create", "--name", "mycorporate", "--output", test.OutputType}
+		args := []string{"zones", "create", "mycorporate", "--output", test.OutputType}
 		outputs := []string{""}
 
 		v := viper.New()
@@ -94,7 +94,7 @@ func TestCliZonesCreateWithSuccess(t *testing.T) {
 		"json",
 	}
 	for _, outputType := range tests {
-		args := []string{"zones", "create", "--name", "mycorporate", "--output", outputType}
+		args := []string{"zones", "create", "mycorporate", "--output", outputType}
 		outputs := []string{""}
 
 		v := viper.New()

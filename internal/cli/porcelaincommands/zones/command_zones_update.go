@@ -43,16 +43,21 @@ func createCommandForZoneUpdate(deps cli.DependenciesProvider, v *viper.Viper) *
 		Long: common.BuildCliLongTemplate(`This command updates a remote zone.
 
 Examples:
+  # update a zone
+  permguard zones update --zone-id 273165098782 pharmaauthzflow-dev
   # update a zone and output the result in json format
-  permguard zones update --zone-id 273165098782 --name pharmaauthzflow-dev --output json
+  permguard zones update --zone-id 273165098782 pharmaauthzflow-dev --output json
 		`),
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 && !cmd.Flags().Changed(common.FlagCommonName) {
+				_ = cmd.Flags().Set(common.FlagCommonName, args[0])
+			}
 			return runECommandForUpdateZone(deps, cmd, v)
 		},
 	}
-	command.Flags().Int64(common.FlagCommonZoneID, 0, "specify the zone id to update")
+	command.Flags().Int64(common.FlagCommonZoneID, 0, "specify the ID of the zone to update")
 	_ = v.BindPFlag(options.FlagName(commandNameForZonesUpdate, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))
-	command.Flags().String(common.FlagCommonName, "", "specify the new zone name")
+	command.Flags().String(common.FlagCommonName, "", "specify the new name for the zone")
 	_ = v.BindPFlag(options.FlagName(commandNameForZonesUpdate, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

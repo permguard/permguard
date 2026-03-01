@@ -66,9 +66,8 @@ func runECommandForListZones(deps cli.DependenciesProvider, cmd *cobra.Command, 
 	page := v.GetInt32(options.FlagName(commandNameForZonesList, common.FlagCommonPage))
 	pageSize := v.GetInt32(options.FlagName(commandNameForZonesList, common.FlagCommonPageSize))
 	zoneID := v.GetInt64(options.FlagName(commandNameForZonesList, common.FlagCommonZoneID))
-	name := v.GetString(options.FlagName(commandNameForZonesList, common.FlagCommonName))
 
-	zones, err := client.FetchZonesBy(page, pageSize, zoneID, name)
+	zones, err := client.FetchZonesBy(page, pageSize, zoneID, "")
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to list zones.")
@@ -99,14 +98,12 @@ func createCommandForZoneList(deps cli.DependenciesProvider, v *viper.Viper) *co
 		Long: common.BuildCliLongTemplate(`This command lists all remote zones.
 
 Examples:
-  # list all zones and output the result in json format
-  permguard zones list --output json
-  # list all zones for page 1 and page size 100
-  permguard zones list --page 1 --size 100
-  # list zones and filter by zone
-  permguard zones list --zone-id 268786704340
-  # list zones and filter by zone and name
-  permguard zones list --zone-id 268786704340--name dev
+		# list all zones and output the result in json format
+		permguard zones list --output json
+		# list all zones for page 1 and page size 100
+		permguard zones list --page 1 --size 100
+		# list zones and filter by zone
+		permguard zones list --zone-id 268786704340
 		`),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForListZones(deps, cmd, v)
@@ -118,7 +115,5 @@ Examples:
 	_ = v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonPageSize), command.Flags().Lookup(common.FlagCommonPageSize))
 	command.Flags().Int64(common.FlagCommonZoneID, 0, "filter results by zone ID")
 	_ = v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))
-	command.Flags().String(common.FlagCommonName, "", "filter results by zone name")
-	_ = v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonName), command.Flags().Lookup(common.FlagCommonName))
 	return command
 }

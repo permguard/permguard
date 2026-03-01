@@ -62,10 +62,14 @@ func runECommandForInitWorkspace(deps cli.DependenciesProvider, cmd *cobra.Comma
 	name := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName))
 	authzLanguage := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzLanguage))
 	authzTemplate := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzTemplate))
+	zoneID := v.GetInt64(options.FlagName(commandNameForWorkspaceInit, common.FlagCommonZoneID))
+	ledgerID := v.GetString(options.FlagName(commandNameForWorkspaceInit, common.FlagCommonLedgerID))
 	initParams := &workspace.InitParms{
 		Name:          name,
 		AuthZLanguage: authzLanguage,
 		AuthZTemplate: authzTemplate,
+		ZoneID:        zoneID,
+		LedgerID:      ledgerID,
 	}
 	output, err := wksMgr.ExecInitWorkspace(initParams, outFunc(ctx, printer))
 	if err != nil {
@@ -89,8 +93,13 @@ func CreateCommandForWorkspaceInit(deps cli.DependenciesProvider, v *viper.Viper
 
 Examples:
   # initialize a new working directory
-  permguard init`),
-		RunE: func(cmd *cobra.Command, _ []string) error {
+  permguard init
+  # initialize a new working directory with a specific name
+  permguard init myworkspace`),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 && !cmd.Flags().Changed(commandNameForWorkspacesInitName) {
+				_ = cmd.Flags().Set(commandNameForWorkspacesInitName, args[0])
+			}
 			return runECommandForInitWorkspace(deps, cmd, v)
 		},
 	}
@@ -103,6 +112,12 @@ Examples:
 
 	command.Flags().String(commandNameForWorkspacesInitAuthzTemplate, "", "specify the authz template of the workspace to initialize")
 	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzTemplate), command.Flags().Lookup(commandNameForWorkspacesInitAuthzTemplate))
+
+	command.Flags().Int64(common.FlagCommonZoneID, 0, "specify the zone id")
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))
+
+	command.Flags().String(common.FlagCommonLedgerID, "", "specify the ledger id")
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, common.FlagCommonLedgerID), command.Flags().Lookup(common.FlagCommonLedgerID))
 
 	return command
 }
