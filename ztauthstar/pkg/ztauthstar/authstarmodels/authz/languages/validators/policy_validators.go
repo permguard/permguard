@@ -27,16 +27,16 @@ import (
 func ValidatePolicyName(name string) (bool, error) {
 	sanitized := strings.ToLower(strings.TrimSpace(name))
 	if strings.HasPrefix(name, "permguard") {
-		return false, fmt.Errorf("language: name %s is not valid. it cannot have 'permguard' as a prefix.", name)
+		return false, fmt.Errorf("language: name %s is not valid. it cannot have 'permguard' as a prefix", name)
 	}
 	if name != sanitized {
-		return false, fmt.Errorf("language: name %s is not valid. it must be in lower case.", name)
+		return false, fmt.Errorf("language: name %s is not valid. it must be in lower case", name)
 	}
 	vName := struct {
 		Name string `validate:"required,name"`
 	}{Name: name}
 	if isValid, err := validators.ValidateInstance(vName); err != nil || !isValid {
-		return false, fmt.Errorf("language: name %s is not valid.", vName.Name)
+		return false, fmt.Errorf("language: name %s is not valid", vName.Name)
 	}
 	return true, nil
 }
