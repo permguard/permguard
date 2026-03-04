@@ -16,10 +16,20 @@
 
 package copier
 
+import "maps"
+
 // MergeMaps merges two maps into a single map.
-func MergeMaps(map1, map2 map[string]any) map[string]any {
-	for key, value := range map2 {
-		map1[key] = value
-	}
-	return map1
+// The second map (src) overwrites any conflicting keys from the first map (dest).
+// Returns a new map to avoid mutating the input maps.
+func MergeMaps(dest, src map[string]any) map[string]any {
+	// Preallocate capacity for efficiency
+	merged := make(map[string]any, len(dest)+len(src))
+
+	// Copy dest into merged
+	maps.Copy(merged, dest)
+
+	// Copy src into merged, overwriting any existing keys
+	maps.Copy(merged, src)
+
+	return merged
 }

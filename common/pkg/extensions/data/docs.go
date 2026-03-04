@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package crypto implements data functions.
+// Package data crypto implements data functions.
 package data

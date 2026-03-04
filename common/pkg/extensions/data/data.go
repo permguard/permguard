@@ -19,34 +19,52 @@ package data
 import (
 	"bytes"
 	"compress/zlib"
+	"io"
 )
 
-// CompressData compresses data.
+// CompressData compresses data using zlib compression.
+// It returns the compressed data or an error if compression fails.
 func CompressData(data []byte) ([]byte, error) {
+	if len(data) == 0 {
+		return []byte{}, nil
+	}
+
 	var buf bytes.Buffer
 	zlibWriter := zlib.NewWriter(&buf)
-	if _, err := zlibWriter.Write(data); err != nil {
+	defer zlibWriter.Close() // Ensure writer is closed even on error
+
+	_, err := zlibWriter.Write(data)
+	if err != nil {
 		return nil, err
 	}
-	if err := zlibWriter.Close(); err != nil {
+
+	err = zlibWriter.Close()
+	if err != nil {
 		return nil, err
 	}
+
 	return buf.Bytes(), nil
 }
 
-// DecompressData decompresses data.
+// DecompressData decompresses zlib-compressed data.
+// It returns the decompressed data or an error if decompression fails.
 func DecompressData(data []byte) ([]byte, error) {
-	var buf bytes.Buffer
-	buf.Write(data)
-	zlibReader, err := zlib.NewReader(&buf)
+	if len(data) == 0 {
+		return []byte{}, nil
+	}
+
+	buf := bytes.NewReader(data)
+	zlibReader, err := zlib.NewReader(buf)
 	if err != nil {
 		return nil, err
 	}
 	defer zlibReader.Close()
 
 	var outBuf bytes.Buffer
-	if _, err := outBuf.ReadFrom(zlibReader); err != nil {
+	_, err = io.Copy(&outBuf, zlibReader)
+	if err != nil {
 		return nil, err
 	}
+
 	return outBuf.Bytes(), nil
 }

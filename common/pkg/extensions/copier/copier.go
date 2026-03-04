@@ -17,26 +17,39 @@
 package copier
 
 import (
+	"maps"
+
 	jinzhuCopier "github.com/jinzhu/copier"
 )
 
-// CopySlice returns a new slice with the same elements of the input slice.
+// CopySlice returns a new slice with shallow copies of the elements from the input slice.
+// If the input slice is nil, returns nil.
+// This function performs a shallow copy, meaning nested pointers or slices will share references.
 func CopySlice[T any](slice []T) []T {
+	if slice == nil {
+		return nil
+	}
 	newSlice := make([]T, len(slice))
 	copy(newSlice, slice)
 	return newSlice
 }
 
-// CopyMap returns a new map with the same elements of the input map.
+// CopyMap returns a new map with shallow copies of the key-value pairs from the input map.
+// If the input map is nil, returns nil.
+// This function performs a shallow copy, meaning nested values that are pointers or slices will share references.
 func CopyMap[K comparable, V any](m map[K]V) map[K]V {
-	c := make(map[K]V, len(m))
-	for k, v := range m {
-		c[k] = v
+	if m == nil {
+		return nil
 	}
+	c := make(map[K]V, len(m))
+	maps.Copy(c, m)
 	return c
 }
 
-// Copy returns a new value with the same fields of the input value.
-func Copy(toValue any, fromValue any) (err error) {
+// Copy copies the fields from fromValue to toValue using reflection.
+// It performs a shallow copy by default. Returns an error if the copy operation fails,
+// such as when types are incompatible or if reflection encounters issues.
+// For deep copying, consider using the underlying library's options or alternative methods.
+func Copy(toValue any, fromValue any) error {
 	return jinzhuCopier.Copy(toValue, fromValue)
 }

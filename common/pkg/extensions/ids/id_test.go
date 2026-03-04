@@ -1,4 +1,4 @@
-// Copyright 2024 Nitro Agility S.r.l.
+// Copyright 2025 Nitro Agility S.r.l.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,18 +14,30 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package ids implements the host ids.
 package ids
 
 import (
-	"encoding/hex"
+	"regexp"
+	"testing"
 
-	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 )
 
-// GenerateID generates a random UUID v4 and returns it as a 32-character
-// hexadecimal string (without hyphens), suitable for use as a compact identifier.
-func GenerateID() string {
-	id := uuid.New()
-	return hex.EncodeToString(id[:])
+func TestGenerateID(t *testing.T) {
+	assert := assert.New(t)
+
+	// Test 1: Generated ID should be a 32-character hexadecimal string
+	id := GenerateID()
+	assert.Len(id, 32)
+
+	// Test 2: Generated ID should only contain valid hexadecimal characters
+	hexPattern := regexp.MustCompile(`^[0-9a-f]{32}$`)
+	assert.True(hexPattern.MatchString(id))
+
+	// Test 3: Two generated IDs should be unique
+	id2 := GenerateID()
+	assert.NotEqual(id, id2)
+
+	// Test 4: Generated ID should not contain hyphens
+	assert.NotContains(id, "-")
 }
