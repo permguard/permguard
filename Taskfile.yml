@@ -351,13 +351,6 @@ tasks:
         -e PERMGUARD_DEBUG="TRUE"
         permguard/all-in-one:latest
 
-  # Documentation
-
-  docs:
-    desc: Start documentation server
-    cmds:
-      - cd www && npm i && npm run dev
-
   # Git Flow
 
   push-docs:
