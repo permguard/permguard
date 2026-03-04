@@ -21,15 +21,17 @@ import (
 	"encoding/hex"
 )
 
-// ComputeSHA256 computes the SHA1 hash of the given data.
+// ComputeSHA256 computes the SHA256 hash of the given data.
+// It returns the hash as a lowercase hexadecimal string.
+// This function is safe for concurrent use.
 func ComputeSHA256(data []byte) string {
-	hasher := sha256.New()
-	hasher.Write(data)
-	hashBytes := hasher.Sum(nil)
-	return hex.EncodeToString(hashBytes)
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:])
 }
 
-// ComputeStringSHA256 computes the SHA1 hash of the given string.
+// ComputeStringSHA256 computes the SHA256 hash of the given string.
+// It converts the string to bytes and delegates to ComputeSHA256.
+// This function is safe for concurrent use.
 func ComputeStringSHA256(data string) string {
 	return ComputeSHA256([]byte(data))
 }

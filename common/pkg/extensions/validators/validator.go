@@ -24,25 +24,27 @@ import (
 	"github.com/google/uuid"
 )
 
+// Pre-compiled regex patterns for validation functions.
+// Compiling once at package level avoids repeated compilation on every call.
+var (
+	simpleNameRegex   = regexp.MustCompile(`^[a-z][a-z0-9]*[a-z0-9]$`)
+	nameRegex         = regexp.MustCompile(`^[a-z0-9][a-z0-9\-\._]*[a-z0-9]$`)
+	wildcardNameRegex = regexp.MustCompile(`^[a-z\*][a-z0-9\*\-\._]*[a-z0-9\*]*$`)
+)
+
 // isSimpleName is a custom validator for simple name.
 func isSimpleName(fl validator.FieldLevel) bool {
-	pattern := `^[a-z][a-z0-9]*[a-z0-9]$`
-	regex := regexp.MustCompile(pattern)
-	return regex.MatchString(fl.Field().String())
+	return simpleNameRegex.MatchString(fl.Field().String())
 }
 
 // isName is a custom validator for name.
 func isName(fl validator.FieldLevel) bool {
-	pattern := `^[a-z0-9][a-z0-9\-\._]*[a-z0-9]$`
-	regex := regexp.MustCompile(pattern)
-	return regex.MatchString(fl.Field().String())
+	return nameRegex.MatchString(fl.Field().String())
 }
 
-// isWildcardName is a custom validator for wilcard name.
+// isWildcardName is a custom validator for wildcard name.
 func isWildcardName(fl validator.FieldLevel) bool {
-	pattern := `^[a-z\*][a-z0-9\*\-\._]*[a-z0-9\*]*$`
-	regex := regexp.MustCompile(pattern)
-	return regex.MatchString(fl.Field().String())
+	return wildcardNameRegex.MatchString(fl.Field().String())
 }
 
 // isUUID is a custom validator for UUID.

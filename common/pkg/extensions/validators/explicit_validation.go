@@ -35,7 +35,7 @@ func IsValidPort(port int) bool {
 	return port >= 1 && port <= 65535
 }
 
-// IsValidHostname checks if the given hostnameis valid.
+// IsValidHostname checks if the given hostname is valid.
 func IsValidHostname(hostnamePath string) bool {
 	if hostnamePath == "" {
 		return false
@@ -89,20 +89,14 @@ func ValidateSimpleName(name string) bool {
 	return isValid && err == nil
 }
 
-// ValidateCodeID validates an code id.
+// ValidateCodeID validates a code id.
+// A valid code ID must be a 12-digit number in the range [100000000000, 999999999999].
 func ValidateCodeID(codeID int64) bool {
-	vCodeID := struct {
-		CodeID int64 `validate:"required,gt=0"`
-	}{CodeID: codeID}
-	if isValid, err := ValidateInstance(vCodeID); err != nil || !isValid {
-		return false
-	}
-	min := int64(100000000000)
-	max := int64(999999999999)
-	if codeID < min || codeID > max {
-		return false
-	}
-	return true
+	const (
+		minCodeID = int64(100000000000)
+		maxCodeID = int64(999999999999)
+	)
+	return codeID >= minCodeID && codeID <= maxCodeID
 }
 
 // formatAsUUID formats a string as a UUID.
@@ -125,13 +119,12 @@ func ValidateUUID(id string) bool {
 	vID := struct {
 		ID string `validate:"required,uuid4"`
 	}{ID: formattedID}
-	if isValid, err := ValidateInstance(vID); err != nil || !isValid {
-		return false
-	}
-	return true
+	isValid, err := ValidateInstance(vID)
+	return isValid && err == nil
 }
 
 // ValidateIdentityUserName validates the identity name specifically for user-type identities.
+// It accepts either a valid name or a valid email address.
 func ValidateIdentityUserName(name string) bool {
 	if ValidateName(name) {
 		return true
@@ -139,44 +132,34 @@ func ValidateIdentityUserName(name string) bool {
 	vEmail := struct {
 		Email string `validate:"required,email"`
 	}{Email: name}
-	if isValid, err := ValidateInstance(vEmail); err != nil || !isValid {
-		return false
-	}
-	return true
+	isValid, err := ValidateInstance(vEmail)
+	return isValid && err == nil
 }
 
 // ValidateName validates a name.
+// A valid name must be lowercase, trimmed, and must not start with "permguard".
 func ValidateName(name string) bool {
 	sanitized := strings.ToLower(strings.TrimSpace(name))
-	if strings.HasPrefix(name, "permguard") {
-		return false
-	}
-	if name != sanitized {
+	if strings.HasPrefix(name, "permguard") || name != sanitized {
 		return false
 	}
 	vName := struct {
 		Name string `validate:"required,name"`
 	}{Name: name}
-	if isValid, err := ValidateInstance(vName); err != nil || !isValid {
-		return false
-	}
-	return true
+	isValid, err := ValidateInstance(vName)
+	return isValid && err == nil
 }
 
 // ValidateWildcardName validates a wildcard name.
+// A valid wildcard name must be lowercase, trimmed, and must not start with "permguard".
 func ValidateWildcardName(name string) bool {
 	sanitized := strings.ToLower(strings.TrimSpace(name))
-	if strings.HasPrefix(name, "permguard") {
-		return false
-	}
-	if name != sanitized {
+	if strings.HasPrefix(name, "permguard") || name != sanitized {
 		return false
 	}
 	vName := struct {
 		Name string `validate:"required,wildcardname"`
 	}{Name: name}
-	if isValid, err := ValidateInstance(vName); err != nil || !isValid {
-		return false
-	}
-	return true
+	isValid, err := ValidateInstance(vName)
+	return isValid && err == nil
 }

@@ -18,31 +18,40 @@ package copier
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 )
 
-// ConvertStructToMap converts a struct to a map.
+// ConvertStructToMap converts a struct to a map[string]any using JSON marshaling.
+// It returns an error if the input is nil or if marshaling/unmarshaling fails.
 func ConvertStructToMap(obj any) (map[string]any, error) {
-	var data map[string]any
+	if obj == nil {
+		return nil, errors.New("input object cannot be nil")
+	}
 	jsonBytes, err := json.Marshal(obj)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to marshal struct to JSON: %w", err)
 	}
+	var data map[string]any
 	err = json.Unmarshal(jsonBytes, &data)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal JSON to map: %w", err)
 	}
 	return data, nil
 }
 
-// ConvertMapToStruct converts a map to a struct.
+// ConvertMapToStruct converts a map[string]any to a struct using JSON marshaling.
+// It returns an error if the target is nil or if marshaling/unmarshaling fails.
 func ConvertMapToStruct(obj map[string]any, target any) error {
+	if target == nil {
+		return errors.New("target object cannot be nil")
+	}
 	jsonBytes, err := json.Marshal(obj)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal map to JSON: %w", err)
 	}
-	err = json.Unmarshal(jsonBytes, target)
-	if err != nil {
-		return err
+	if err = json.Unmarshal(jsonBytes, target); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON to struct: %w", err)
 	}
 	return nil
 }
