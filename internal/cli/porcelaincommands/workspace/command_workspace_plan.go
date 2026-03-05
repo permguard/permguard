@@ -25,8 +25,8 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/internal/cli/workspace"
 	"github.com/permguard/permguard/internal/cli/core"
+	"github.com/permguard/permguard/internal/cli/workspace"
 )
 
 // runECommandForPlanWorkspace runs the command for creating an workspace.

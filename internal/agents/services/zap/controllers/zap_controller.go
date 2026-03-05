@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -50,13 +51,16 @@ func NewZAPController(serviceContext *services.ServiceContext, zapCentralStorage
 
 // CreateZone creates a new zone.
 func (s ZAPController) CreateZone(ctx context.Context, zone *zapmodels.Zone) (*zapmodels.Zone, error) {
-	var logger *zap.Logger; if s.ctx != nil { logger = s.ctx.Logger() }
+	var logger *zap.Logger
+	if s.ctx != nil {
+		logger = s.ctx.Logger()
+	}
 
 	if zone == nil {
-		return nil, fmt.Errorf("zap-controller: zone is nil")
+		return nil, errors.New("zap-controller: zone is nil")
 	}
 	if strings.TrimSpace(zone.Name) == "" {
-		return nil, fmt.Errorf("zap-controller: zone name is empty")
+		return nil, errors.New("zap-controller: zone name is empty")
 	}
 
 	if logger != nil {
@@ -76,10 +80,13 @@ func (s ZAPController) CreateZone(ctx context.Context, zone *zapmodels.Zone) (*z
 
 // UpdateZone updates a zone.
 func (s ZAPController) UpdateZone(ctx context.Context, zone *zapmodels.Zone) (*zapmodels.Zone, error) {
-	var logger *zap.Logger; if s.ctx != nil { logger = s.ctx.Logger() }
+	var logger *zap.Logger
+	if s.ctx != nil {
+		logger = s.ctx.Logger()
+	}
 
 	if zone == nil {
-		return nil, fmt.Errorf("zap-controller: zone is nil")
+		return nil, errors.New("zap-controller: zone is nil")
 	}
 	if zone.ZoneID <= 0 {
 		return nil, fmt.Errorf("zap-controller: invalid zone id %d", zone.ZoneID)
@@ -102,7 +109,10 @@ func (s ZAPController) UpdateZone(ctx context.Context, zone *zapmodels.Zone) (*z
 
 // DeleteZone delete a zone.
 func (s ZAPController) DeleteZone(ctx context.Context, zoneID int64) (*zapmodels.Zone, error) {
-	var logger *zap.Logger; if s.ctx != nil { logger = s.ctx.Logger() }
+	var logger *zap.Logger
+	if s.ctx != nil {
+		logger = s.ctx.Logger()
+	}
 
 	if zoneID <= 0 {
 		return nil, fmt.Errorf("zap-controller: invalid zone id %d", zoneID)
@@ -125,7 +135,10 @@ func (s ZAPController) DeleteZone(ctx context.Context, zoneID int64) (*zapmodels
 
 // FetchZones returns all zones filtering by search criteria.
 func (s ZAPController) FetchZones(ctx context.Context, page int32, pageSize int32, fields map[string]any) ([]zapmodels.Zone, error) {
-	var logger *zap.Logger; if s.ctx != nil { logger = s.ctx.Logger() }
+	var logger *zap.Logger
+	if s.ctx != nil {
+		logger = s.ctx.Logger()
+	}
 
 	if logger != nil {
 		logger.Info("fetching zones", zap.Int32("page", page), zap.Int32("page_size", pageSize))

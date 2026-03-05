@@ -20,8 +20,8 @@ package transport
 import (
 	"errors"
 
-	"github.com/permguard/permguard/pkg/extensions/data"
 	notppkts "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	"github.com/permguard/permguard/pkg/extensions/data"
 )
 
 // TransportLayer represents the transport layer responsible for packet transmission in the NOTP protocol.

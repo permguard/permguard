@@ -110,6 +110,7 @@ linters:
       enable-all: true
       disable:
         - error-is-as
+        - require-error
     usetesting:
       context-background: true
       context-todo: true
@@ -133,6 +134,22 @@ linters:
           - revive
         path: "internal/cli/workspace/common/"
         text: "var-naming"
+      - linters:
+          - revive
+        path: "pkg/extensions/crypto/"
+        text: "var-naming"
+      - linters:
+          - revive
+        path: "pkg/agents/runtime/"
+        text: "var-naming"
+      - linters:
+          - revive
+        path: "plugin/doc.go"
+        text: "var-naming"
+      - linters:
+          - revive
+        path: "plugin/storage/sqlite/internal/centralstorage/testutils/mocks/"
+        text: "exported"
       - linters:
           - noctx
           - perfsprint

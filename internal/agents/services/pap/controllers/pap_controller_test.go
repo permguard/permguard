@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	notppkts "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
 	statemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
@@ -43,18 +44,21 @@ func (m *mockPAPStorage) CreateLedger(ctx context.Context, ledger *pap.Ledger) (
 	}
 	return ledger, nil
 }
+
 func (m *mockPAPStorage) UpdateLedger(ctx context.Context, ledger *pap.Ledger) (*pap.Ledger, error) {
 	if m.updateLedgerFn != nil {
 		return m.updateLedgerFn(ctx, ledger)
 	}
 	return ledger, nil
 }
+
 func (m *mockPAPStorage) DeleteLedger(ctx context.Context, zoneID int64, ledgerID string) (*pap.Ledger, error) {
 	if m.deleteLedgerFn != nil {
 		return m.deleteLedgerFn(ctx, zoneID, ledgerID)
 	}
 	return &pap.Ledger{ZoneID: zoneID, LedgerID: ledgerID}, nil
 }
+
 func (m *mockPAPStorage) FetchLedgers(ctx context.Context, page int32, pageSize int32, zoneID int64, fields map[string]any) ([]pap.Ledger, error) {
 	if m.fetchLedgersFn != nil {
 		return m.fetchLedgersFn(ctx, page, pageSize, zoneID, fields)
@@ -66,36 +70,47 @@ func (m *mockPAPStorage) FetchLedgers(ctx context.Context, page int32, pageSize 
 func (m *mockPAPStorage) OnPullHandleRequestCurrentState(_ *statemachines.HandlerContext, _ *smpackets.StatePacket, _ []notppkts.Packetable) (*statemachines.HostHandlerReturn, error) {
 	return nil, nil
 }
+
 func (m *mockPAPStorage) OnPullSendNotifyCurrentStateResponse(_ *statemachines.HandlerContext, _ *smpackets.StatePacket, _ []notppkts.Packetable) (*statemachines.HostHandlerReturn, error) {
 	return nil, nil
 }
+
 func (m *mockPAPStorage) OnPullSendNegotiationRequest(_ *statemachines.HandlerContext, _ *smpackets.StatePacket, _ []notppkts.Packetable) (*statemachines.HostHandlerReturn, error) {
 	return nil, nil
 }
+
 func (m *mockPAPStorage) OnPullHandleNegotiationResponse(_ *statemachines.HandlerContext, _ *smpackets.StatePacket, _ []notppkts.Packetable) (*statemachines.HostHandlerReturn, error) {
 	return nil, nil
 }
+
 func (m *mockPAPStorage) OnPullHandleExchangeDataStream(_ *statemachines.HandlerContext, _ *smpackets.StatePacket, _ []notppkts.Packetable) (*statemachines.HostHandlerReturn, error) {
 	return nil, nil
 }
+
 func (m *mockPAPStorage) OnPullHandleCommit(_ *statemachines.HandlerContext, _ *smpackets.StatePacket, _ []notppkts.Packetable) (*statemachines.HostHandlerReturn, error) {
 	return nil, nil
 }
+
 func (m *mockPAPStorage) OnPushHandleNotifyCurrentState(_ *statemachines.HandlerContext, _ *smpackets.StatePacket, _ []notppkts.Packetable) (*statemachines.HostHandlerReturn, error) {
 	return nil, nil
 }
+
 func (m *mockPAPStorage) OnPushSendNotifyCurrentStateResponse(_ *statemachines.HandlerContext, _ *smpackets.StatePacket, _ []notppkts.Packetable) (*statemachines.HostHandlerReturn, error) {
 	return nil, nil
 }
+
 func (m *mockPAPStorage) OnPushSendNegotiationRequest(_ *statemachines.HandlerContext, _ *smpackets.StatePacket, _ []notppkts.Packetable) (*statemachines.HostHandlerReturn, error) {
 	return nil, nil
 }
+
 func (m *mockPAPStorage) OnPushHandleNegotiationResponse(_ *statemachines.HandlerContext, _ *smpackets.StatePacket, _ []notppkts.Packetable) (*statemachines.HostHandlerReturn, error) {
 	return nil, nil
 }
+
 func (m *mockPAPStorage) OnPushHandleExchangeDataStream(_ *statemachines.HandlerContext, _ *smpackets.StatePacket, _ []notppkts.Packetable) (*statemachines.HostHandlerReturn, error) {
 	return nil, nil
 }
+
 func (m *mockPAPStorage) OnPushSendCommit(_ *statemachines.HandlerContext, _ *smpackets.StatePacket, _ []notppkts.Packetable) (*statemachines.HostHandlerReturn, error) {
 	return nil, nil
 }
@@ -116,13 +131,13 @@ func TestPAPController_CreateLedger(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl, _ := NewPAPController(nil, &mockPAPStorage{})
-			result, err := ctrl.CreateLedger(context.Background(), tt.input)
+			result, err := ctrl.CreateLedger(t.Context(), tt.input)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errMsg)
 				assert.Nil(t, result)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, result)
 			}
 		})
@@ -131,13 +146,13 @@ func TestPAPController_CreateLedger(t *testing.T) {
 
 func TestPAPController_CreateLedger_StorageError(t *testing.T) {
 	mockStorage := &mockPAPStorage{
-		createLedgerFn: func(ctx context.Context, ledger *pap.Ledger) (*pap.Ledger, error) {
+		createLedgerFn: func(_ context.Context, _ *pap.Ledger) (*pap.Ledger, error) {
 			return nil, errors.New("db error")
 		},
 	}
 	ctrl, _ := NewPAPController(nil, mockStorage)
-	result, err := ctrl.CreateLedger(context.Background(), &pap.Ledger{ZoneID: 1, Name: "test"})
-	assert.Error(t, err)
+	result, err := ctrl.CreateLedger(t.Context(), &pap.Ledger{ZoneID: 1, Name: "test"})
+	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "pap-controller:")
 	assert.Contains(t, err.Error(), "db error")
@@ -157,12 +172,12 @@ func TestPAPController_UpdateLedger(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl, _ := NewPAPController(nil, &mockPAPStorage{})
-			result, err := ctrl.UpdateLedger(context.Background(), tt.input)
+			result, err := ctrl.UpdateLedger(t.Context(), tt.input)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errMsg)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, result)
 			}
 		})
@@ -184,12 +199,12 @@ func TestPAPController_DeleteLedger(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl, _ := NewPAPController(nil, &mockPAPStorage{})
-			result, err := ctrl.DeleteLedger(context.Background(), tt.zoneID, tt.ledgerID)
+			result, err := ctrl.DeleteLedger(t.Context(), tt.zoneID, tt.ledgerID)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errMsg)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, result)
 			}
 		})
@@ -198,7 +213,7 @@ func TestPAPController_DeleteLedger(t *testing.T) {
 
 func TestPAPController_FetchLedgers(t *testing.T) {
 	ctrl, _ := NewPAPController(nil, &mockPAPStorage{})
-	result, err := ctrl.FetchLedgers(context.Background(), 1, 10, 1, map[string]any{})
-	assert.NoError(t, err)
+	result, err := ctrl.FetchLedgers(t.Context(), 1, 10, 1, map[string]any{})
+	require.NoError(t, err)
 	assert.NotNil(t, result)
 }

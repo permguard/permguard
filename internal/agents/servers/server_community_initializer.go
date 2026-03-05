@@ -19,13 +19,13 @@ package servers
 import (
 	"fmt"
 
-	"github.com/permguard/permguard/pkg/extensions/copier"
 	"github.com/permguard/permguard/internal/agents/services/pap"
 	"github.com/permguard/permguard/internal/agents/services/pdp"
 	"github.com/permguard/permguard/internal/agents/services/zap"
 	"github.com/permguard/permguard/pkg/agents/servers"
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/extensions/copier"
 	"github.com/permguard/permguard/plugin/storage/sqlite"
 )
 

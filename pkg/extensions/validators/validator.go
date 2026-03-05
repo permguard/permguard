@@ -69,11 +69,21 @@ func ValidateInstance(s any) (bool, error) {
 		return false, nil
 	}
 	validate := validator.New()
-	validate.RegisterValidation("isuuid", isUUID)
-	validate.RegisterValidation("simplename", isSimpleName)
-	validate.RegisterValidation("name", isName)
-	validate.RegisterValidation("wildcardname", isWildcardName)
-	validate.RegisterValidation("dirpath", dirpath)
+	if err := validate.RegisterValidation("isuuid", isUUID); err != nil {
+		return false, err
+	}
+	if err := validate.RegisterValidation("simplename", isSimpleName); err != nil {
+		return false, err
+	}
+	if err := validate.RegisterValidation("name", isName); err != nil {
+		return false, err
+	}
+	if err := validate.RegisterValidation("wildcardname", isWildcardName); err != nil {
+		return false, err
+	}
+	if err := validate.RegisterValidation("dirpath", dirpath); err != nil {
+		return false, err
+	}
 	err := validate.Struct(s)
 	if err != nil {
 		return false, err

@@ -112,7 +112,7 @@ func (s SQLiteCentralStorageZAP) DeleteZone(ctx context.Context, zoneID int64) (
 }
 
 // FetchZones returns all zones.
-func (s SQLiteCentralStorageZAP) FetchZones(ctx context.Context, page int32, pageSize int32, fields map[string]any) ([]zap.Zone, error) {
+func (s SQLiteCentralStorageZAP) FetchZones(_ context.Context, page int32, pageSize int32, fields map[string]any) ([]zap.Zone, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.DataFetchMaxPageSize() {
 		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize)
 	}

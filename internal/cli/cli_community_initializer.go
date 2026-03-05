@@ -21,12 +21,12 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/core"
 	"github.com/permguard/permguard/internal/cli/porcelaincommands/authz"
 	"github.com/permguard/permguard/internal/cli/porcelaincommands/configs"
 	"github.com/permguard/permguard/internal/cli/porcelaincommands/workspace"
 	"github.com/permguard/permguard/internal/cli/porcelaincommands/zones"
 	"github.com/permguard/permguard/pkg/authz/languages"
-	"github.com/permguard/permguard/internal/cli/core"
 )
 
 // CommunityCliInitializer  is the community cli initializer.

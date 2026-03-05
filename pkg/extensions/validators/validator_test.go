@@ -21,13 +21,14 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIsSimpleName(t *testing.T) {
 	assert := assert.New(t)
 
 	validate := validator.New()
-	validate.RegisterValidation("simplename", isSimpleName)
+	assert.NoError(validate.RegisterValidation("simplename", isSimpleName))
 
 	// Test 1: Valid simple name
 	err := validate.Var("abc123", "simplename")
@@ -35,56 +36,55 @@ func TestIsSimpleName(t *testing.T) {
 
 	// Test 2: Invalid simple name (contains uppercase letters)
 	err = validate.Var("Abc123", "simplename")
-	assert.NotNil(err)
+	assert.Error(err)
 
 	// Test 3: Invalid simple name (ends with non-alphanumeric)
 	err = validate.Var("abc123-", "simplename")
-	assert.NotNil(err)
+	assert.Error(err)
 }
 
 func TestIsName(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	validate := validator.New()
-	validate.RegisterValidation("name", isName)
+	require.NoError(validate.RegisterValidation("name", isName))
 
 	// Test 1: Valid name
 	err := validate.Var("abc-123.name", "name")
-	assert.NoError(err)
+	require.NoError(err)
 
 	// Test 2: Invalid name (starts with uppercase)
 	err = validate.Var("Abc-123.name", "name")
-	assert.NotNil(err)
+	require.Error(err)
 
 	// Test 3: Invalid name (contains invalid character)
 	err = validate.Var("abc@123.name", "name")
-	assert.NotNil(err)
+	assert.Error(err)
 }
 
 func TestIsWildcardName(t *testing.T) {
-	assert := assert.New(t)
-
 	validate := validator.New()
-	validate.RegisterValidation("wildcardname", isWildcardName)
+	require.NoError(t, validate.RegisterValidation("wildcardname", isWildcardName))
 
 	// Test 1: Valid wildcard name
 	err := validate.Var("abc-123.*name", "wildcardname")
-	assert.NoError(err)
+	require.NoError(t, err)
 
 	// Test 2: Invalid wildcard name (starts with non-allowed character)
 	err = validate.Var("-abc123", "wildcardname")
-	assert.NotNil(err)
+	require.Error(t, err)
 
 	// Test 3: Valid wildcard name with asterisk
 	err = validate.Var("*abc-123", "wildcardname")
-	assert.NoError(err)
+	require.NoError(t, err)
 }
 
 func TestIsUUID(t *testing.T) {
 	assert := assert.New(t)
 
 	validate := validator.New()
-	validate.RegisterValidation("isuuid", isUUID)
+	assert.NoError(validate.RegisterValidation("isuuid", isUUID))
 
 	// Test 1: Valid UUID
 	err := validate.Var("550e8400-e29b-41d4-a716-446655440000", "isuuid")
@@ -92,7 +92,7 @@ func TestIsUUID(t *testing.T) {
 
 	// Test 2: Invalid UUID
 	err = validate.Var("not-a-uuid", "isuuid")
-	assert.NotNil(err)
+	assert.Error(err)
 }
 
 func TestValidateInstance(t *testing.T) {
@@ -120,5 +120,5 @@ func TestValidateInstance(t *testing.T) {
 	instance.UUID = "invalid-uuid"
 	valid, err = ValidateInstance(&instance)
 	assert.False(valid)
-	assert.NotNil(err)
+	assert.Error(err)
 }

@@ -17,9 +17,9 @@
 package common
 
 import (
+	"github.com/permguard/permguard/internal/cli/core"
 	iclients "github.com/permguard/permguard/internal/transport/clients"
 	"github.com/permguard/permguard/pkg/authz/languages"
-	"github.com/permguard/permguard/internal/cli/core"
 	"github.com/permguard/permguard/pkg/transport/clients"
 )
 

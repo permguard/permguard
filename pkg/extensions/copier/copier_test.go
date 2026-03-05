@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCopySlice(t *testing.T) {
@@ -72,7 +73,8 @@ func TestCopy(t *testing.T) {
 	to := Person{}
 
 	err := Copy(&to, &from)
-	assert.NoError(err)
+	require := require.New(t)
+	require.NoError(err)
 	assert.Equal(from, to)
 
 	// Modify the original struct and verify the copied struct is not affected

@@ -25,8 +25,8 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/internal/cli/workspace"
 	"github.com/permguard/permguard/internal/cli/core"
+	"github.com/permguard/permguard/internal/cli/workspace"
 )
 
 // runECommandForHistoryWorkspace run the command for listing history in the workspace.

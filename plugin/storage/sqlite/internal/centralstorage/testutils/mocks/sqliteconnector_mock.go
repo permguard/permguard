@@ -25,7 +25,7 @@ import (
 )
 
 // MockSQLiteConnector sqlite connector mock.
-type MockSQLiteConnector struct { //nolint:revive // Mock prefix is conventional
+type MockSQLiteConnector struct {
 	mock.Mock
 }
 

@@ -17,8 +17,8 @@
 package authz
 
 import (
-	"context"
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"

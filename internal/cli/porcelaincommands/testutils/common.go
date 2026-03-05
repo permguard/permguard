@@ -25,8 +25,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
 	"github.com/permguard/permguard/internal/cli/core"
+	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
 )
 
 // BaseCommandTest tests the command.

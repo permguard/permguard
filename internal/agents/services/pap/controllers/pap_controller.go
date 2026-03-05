@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -52,16 +53,19 @@ func NewPAPController(serviceContext *services.ServiceContext, storage storage.P
 
 // CreateLedger creates a new ledger.
 func (s PAPController) CreateLedger(ctx context.Context, ledger *pap.Ledger) (*pap.Ledger, error) {
-	var logger *zap.Logger; if s.ctx != nil { logger = s.ctx.Logger() }
+	var logger *zap.Logger
+	if s.ctx != nil {
+		logger = s.ctx.Logger()
+	}
 
 	if ledger == nil {
-		return nil, fmt.Errorf("pap-controller: ledger is nil")
+		return nil, errors.New("pap-controller: ledger is nil")
 	}
 	if ledger.ZoneID <= 0 {
 		return nil, fmt.Errorf("pap-controller: invalid zone id %d", ledger.ZoneID)
 	}
 	if strings.TrimSpace(ledger.Name) == "" {
-		return nil, fmt.Errorf("pap-controller: ledger name is empty")
+		return nil, errors.New("pap-controller: ledger name is empty")
 	}
 
 	if logger != nil {
@@ -81,10 +85,13 @@ func (s PAPController) CreateLedger(ctx context.Context, ledger *pap.Ledger) (*p
 
 // UpdateLedger updates a ledger.
 func (s PAPController) UpdateLedger(ctx context.Context, ledger *pap.Ledger) (*pap.Ledger, error) {
-	var logger *zap.Logger; if s.ctx != nil { logger = s.ctx.Logger() }
+	var logger *zap.Logger
+	if s.ctx != nil {
+		logger = s.ctx.Logger()
+	}
 
 	if ledger == nil {
-		return nil, fmt.Errorf("pap-controller: ledger is nil")
+		return nil, errors.New("pap-controller: ledger is nil")
 	}
 	if ledger.ZoneID <= 0 {
 		return nil, fmt.Errorf("pap-controller: invalid zone id %d", ledger.ZoneID)
@@ -107,13 +114,16 @@ func (s PAPController) UpdateLedger(ctx context.Context, ledger *pap.Ledger) (*p
 
 // DeleteLedger deletes a ledger.
 func (s PAPController) DeleteLedger(ctx context.Context, zoneID int64, ledgerID string) (*pap.Ledger, error) {
-	var logger *zap.Logger; if s.ctx != nil { logger = s.ctx.Logger() }
+	var logger *zap.Logger
+	if s.ctx != nil {
+		logger = s.ctx.Logger()
+	}
 
 	if zoneID <= 0 {
 		return nil, fmt.Errorf("pap-controller: invalid zone id %d", zoneID)
 	}
 	if strings.TrimSpace(ledgerID) == "" {
-		return nil, fmt.Errorf("pap-controller: ledger id is empty")
+		return nil, errors.New("pap-controller: ledger id is empty")
 	}
 
 	if logger != nil {
@@ -133,7 +143,10 @@ func (s PAPController) DeleteLedger(ctx context.Context, zoneID int64, ledgerID 
 
 // FetchLedgers gets all ledgers.
 func (s PAPController) FetchLedgers(ctx context.Context, page int32, pageSize int32, zoneID int64, fields map[string]any) ([]pap.Ledger, error) {
-	var logger *zap.Logger; if s.ctx != nil { logger = s.ctx.Logger() }
+	var logger *zap.Logger
+	if s.ctx != nil {
+		logger = s.ctx.Logger()
+	}
 
 	if logger != nil {
 		logger.Info("fetching ledgers", zap.Int64("zone_id", zoneID), zap.Int32("page", page), zap.Int32("page_size", pageSize))

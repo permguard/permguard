@@ -20,20 +20,22 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCompressData(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	// Test 1: Compress empty data returns empty slice without error
 	compressed, err := CompressData([]byte{})
-	assert.NoError(err)
+	require.NoError(err)
 	assert.Equal([]byte{}, compressed)
 
 	// Test 2: Compress non-empty data returns non-empty result without error
 	data := []byte("Hello, World!")
 	compressed, err = CompressData(data)
-	assert.NoError(err)
+	require.NoError(err)
 	assert.NotEmpty(compressed)
 
 	// Test 3: Compressed data should differ from original data
@@ -41,7 +43,7 @@ func TestCompressData(t *testing.T) {
 
 	// Test 4: Compress nil data returns empty slice without error
 	compressed, err = CompressData(nil)
-	assert.NoError(err)
+	require.NoError(err)
 	assert.Equal([]byte{}, compressed)
 }
 
@@ -50,17 +52,17 @@ func TestDecompressData(t *testing.T) {
 
 	// Test 1: Decompress empty data returns empty slice without error
 	decompressed, err := DecompressData([]byte{})
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.Equal([]byte{}, decompressed)
 
 	// Test 2: Decompress nil data returns empty slice without error
 	decompressed, err = DecompressData(nil)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.Equal([]byte{}, decompressed)
 
 	// Test 3: Decompress invalid data returns an error
 	_, err = DecompressData([]byte("invalid zlib data"))
-	assert.Error(err)
+	require.Error(t, err)
 }
 
 func TestCompressDecompressData(t *testing.T) {
@@ -69,11 +71,11 @@ func TestCompressDecompressData(t *testing.T) {
 	// Test 1: Compress and decompress returns original data
 	original := []byte("Hello, World!")
 	compressed, err := CompressData(original)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.NotEmpty(compressed)
 
 	decompressed, err := DecompressData(compressed)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.Equal(original, decompressed)
 
 	// Test 2: Compress and decompress a larger payload
@@ -82,20 +84,20 @@ func TestCompressDecompressData(t *testing.T) {
 		largeData[i] = byte(i % 256)
 	}
 	compressed, err = CompressData(largeData)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.NotEmpty(compressed)
 
 	decompressed, err = DecompressData(compressed)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.Equal(largeData, decompressed)
 
 	// Test 3: Compress and decompress data with repeated patterns
 	repeatedData := []byte("abcabcabcabcabcabcabcabcabcabc")
 	compressed, err = CompressData(repeatedData)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.NotEmpty(compressed)
 
 	decompressed, err = DecompressData(compressed)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.Equal(repeatedData, decompressed)
 }

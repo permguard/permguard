@@ -125,7 +125,7 @@ func (s SQLiteCentralStoragePAP) DeleteLedger(ctx context.Context, zoneID int64,
 }
 
 // FetchLedgers returns all ledgers.
-func (s SQLiteCentralStoragePAP) FetchLedgers(ctx context.Context, page int32, pageSize int32, zoneID int64, fields map[string]any) ([]pap.Ledger, error) {
+func (s SQLiteCentralStoragePAP) FetchLedgers(_ context.Context, page int32, pageSize int32, zoneID int64, fields map[string]any) ([]pap.Ledger, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.DataFetchMaxPageSize() {
 		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize)
 	}

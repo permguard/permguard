@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConvertStructToMap(t *testing.T) {
@@ -34,15 +35,15 @@ func TestConvertStructToMap(t *testing.T) {
 	// Test 1: Convert a struct to a map
 	person := Person{Name: "John", Age: 30}
 	resultMap, err := ConvertStructToMap(person)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.Equal("John", resultMap["Name"])
 	assert.Equal(30, int(resultMap["Age"].(float64))) // JSON Unmarshal converts numbers to float64 by default
 
 	// Test 2: Convert an empty struct to a map
 	emptyPerson := Person{}
 	resultMap, err = ConvertStructToMap(emptyPerson)
-	assert.NoError(err)
-	assert.Equal("", resultMap["Name"])
+	require.NoError(t, err)
+	assert.Empty(resultMap["Name"])
 	assert.Equal(0, int(resultMap["Age"].(float64)))
 }
 
@@ -59,7 +60,7 @@ func TestConvertMapToStruct(t *testing.T) {
 	personMap := map[string]any{"Name": "John", "Age": 30}
 	var person Person
 	err := ConvertMapToStruct(personMap, &person)
-	assert.NoError(err)
+	require.NoError(t, err)
 	assert.Equal("John", person.Name)
 	assert.Equal(30, person.Age)
 
@@ -67,7 +68,7 @@ func TestConvertMapToStruct(t *testing.T) {
 	emptyMap := map[string]any{}
 	var emptyPerson Person
 	err = ConvertMapToStruct(emptyMap, &emptyPerson)
-	assert.NoError(err)
-	assert.Equal("", emptyPerson.Name)
+	require.NoError(t, err)
+	assert.Empty(emptyPerson.Name)
 	assert.Equal(0, emptyPerson.Age)
 }

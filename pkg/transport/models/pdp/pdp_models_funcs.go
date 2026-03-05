@@ -57,6 +57,8 @@ func IsValidIdentityType(identityType string) bool {
 	return false
 }
 
+// IsValidIdentiyType checks if the identity type is valid.
+//
 // Deprecated: Use IsValidIdentityType instead.
 func IsValidIdentiyType(identityType string) bool {
 	return IsValidIdentityType(identityType)

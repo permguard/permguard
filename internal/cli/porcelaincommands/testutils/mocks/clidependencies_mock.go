@@ -19,8 +19,8 @@ package mocks
 import (
 	mock "github.com/stretchr/testify/mock"
 
-	"github.com/permguard/permguard/pkg/authz/languages"
 	"github.com/permguard/permguard/internal/cli/core"
+	"github.com/permguard/permguard/pkg/authz/languages"
 	"github.com/permguard/permguard/pkg/transport/clients"
 )
 

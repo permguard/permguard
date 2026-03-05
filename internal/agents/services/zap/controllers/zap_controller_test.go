@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	zapmodels "github.com/permguard/permguard/pkg/transport/models/zap"
 )
@@ -77,13 +78,13 @@ func TestZAPController_CreateZone(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl, _ := NewZAPController(nil, &mockZAPStorage{})
-			result, err := ctrl.CreateZone(context.Background(), tt.input)
+			result, err := ctrl.CreateZone(t.Context(), tt.input)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errMsg)
 				assert.Nil(t, result)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, result)
 			}
 		})
@@ -92,13 +93,13 @@ func TestZAPController_CreateZone(t *testing.T) {
 
 func TestZAPController_CreateZone_StorageError(t *testing.T) {
 	mockStorage := &mockZAPStorage{
-		createZoneFn: func(ctx context.Context, zone *zapmodels.Zone) (*zapmodels.Zone, error) {
+		createZoneFn: func(_ context.Context, _ *zapmodels.Zone) (*zapmodels.Zone, error) {
 			return nil, errors.New("db error")
 		},
 	}
 	ctrl, _ := NewZAPController(nil, mockStorage)
-	result, err := ctrl.CreateZone(context.Background(), &zapmodels.Zone{Name: "test"})
-	assert.Error(t, err)
+	result, err := ctrl.CreateZone(t.Context(), &zapmodels.Zone{Name: "test"})
+	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "zap-controller:")
 	assert.Contains(t, err.Error(), "db error")
@@ -119,12 +120,12 @@ func TestZAPController_UpdateZone(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl, _ := NewZAPController(nil, &mockZAPStorage{})
-			result, err := ctrl.UpdateZone(context.Background(), tt.input)
+			result, err := ctrl.UpdateZone(t.Context(), tt.input)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errMsg)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, result)
 			}
 		})
@@ -145,12 +146,12 @@ func TestZAPController_DeleteZone(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl, _ := NewZAPController(nil, &mockZAPStorage{})
-			result, err := ctrl.DeleteZone(context.Background(), tt.zoneID)
+			result, err := ctrl.DeleteZone(t.Context(), tt.zoneID)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errMsg)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, result)
 			}
 		})
@@ -159,7 +160,7 @@ func TestZAPController_DeleteZone(t *testing.T) {
 
 func TestZAPController_FetchZones(t *testing.T) {
 	ctrl, _ := NewZAPController(nil, &mockZAPStorage{})
-	result, err := ctrl.FetchZones(context.Background(), 1, 10, map[string]any{})
-	assert.NoError(t, err)
+	result, err := ctrl.FetchZones(t.Context(), 1, 10, map[string]any{})
+	require.NoError(t, err)
 	assert.NotNil(t, result)
 }

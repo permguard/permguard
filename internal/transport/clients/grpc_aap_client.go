@@ -26,7 +26,7 @@ import (
 )
 
 // CreateZone creates a new zone.
-func (c *GrpcZAPClient) CreateZone(ctx context.Context, name string) (*zap.Zone, error) {
+func (c *GrpcZAPClient) CreateZone(_ context.Context, name string) (*zap.Zone, error) {
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
@@ -40,7 +40,7 @@ func (c *GrpcZAPClient) CreateZone(ctx context.Context, name string) (*zap.Zone,
 }
 
 // UpdateZone updates a zone.
-func (c *GrpcZAPClient) UpdateZone(ctx context.Context, zone *zap.Zone) (*zap.Zone, error) {
+func (c *GrpcZAPClient) UpdateZone(_ context.Context, zone *zap.Zone) (*zap.Zone, error) {
 	if zone == nil {
 		return nil, errors.New("grpc-client: invalid zone instance")
 	}
@@ -60,7 +60,7 @@ func (c *GrpcZAPClient) UpdateZone(ctx context.Context, zone *zap.Zone) (*zap.Zo
 }
 
 // DeleteZone deletes a zone.
-func (c *GrpcZAPClient) DeleteZone(ctx context.Context, zoneID int64) (*zap.Zone, error) {
+func (c *GrpcZAPClient) DeleteZone(_ context.Context, zoneID int64) (*zap.Zone, error) {
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
@@ -89,7 +89,7 @@ func (c *GrpcZAPClient) FetchZonesByName(ctx context.Context, page int32, pageSi
 }
 
 // FetchZonesBy returns all zones filtering by zone id and name.
-func (c *GrpcZAPClient) FetchZonesBy(ctx context.Context, page int32, pageSize int32, zoneID int64, name string) ([]zap.Zone, error) {
+func (c *GrpcZAPClient) FetchZonesBy(_ context.Context, page int32, pageSize int32, zoneID int64, name string) ([]zap.Zone, error) {
 	client, conn, err := c.createGRPCClient()
 	if err != nil {
 		return nil, err
