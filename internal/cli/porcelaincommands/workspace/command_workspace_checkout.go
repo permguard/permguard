@@ -26,11 +26,11 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 )
 
 // runECommandForCheckoutWorkspace runs the command for creating an workspace.
-func runECommandForCheckoutWorkspace(args []string, deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForCheckoutWorkspace(args []string, deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -73,7 +73,7 @@ func runECommandForCheckoutWorkspace(args []string, deps cli.DependenciesProvide
 }
 
 // CreateCommandForWorkspaceCheckout creates a command for checkoutializing a permguard workspace.
-func CreateCommandForWorkspaceCheckout(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceCheckout(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "checkout",
 		Short: `Check out the contents of a remote ledger to the local permguard workspace`,

@@ -24,11 +24,11 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 )
 
 // runECommandForConfigShow runs the command for showing the current config.
-func runECommandForConfigShow(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForConfigShow(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -62,7 +62,7 @@ func runECommandForConfigShow(deps cli.DependenciesProvider, cmd *cobra.Command,
 }
 
 // createCommandForConfigShow creates the command for showing the current CLI configuration.
-func createCommandForConfigShow(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigShow(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "show",
 		Short: "Show current CLI configuration",

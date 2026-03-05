@@ -26,11 +26,11 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 )
 
 // runECommandForHistoryWorkspace run the command for listing history in the workspace.
-func runECommandForHistoryWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForHistoryWorkspace(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -60,7 +60,7 @@ func runECommandForHistoryWorkspace(deps cli.DependenciesProvider, cmd *cobra.Co
 }
 
 // CreateCommandForWorkspaceHistory creates a command for diffializing a permguard workspace.
-func CreateCommandForWorkspaceHistory(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceHistory(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "history",
 		Short: "Show the history",

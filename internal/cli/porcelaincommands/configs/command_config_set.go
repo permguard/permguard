@@ -26,7 +26,7 @@ import (
 
 	"github.com/permguard/permguard/pkg/extensions/validators"
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 
@@ -42,7 +42,7 @@ func viperWriteEndpoint(v *viper.Viper, key string, value string) error {
 }
 
 // runECommandForZAPSet runs the command for setting the zap endpoint.
-func runECommandForZAPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+func runECommandForZAPSet(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -71,7 +71,7 @@ func runECommandForZAPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 }
 
 // runECommandForPAPSet runs the command for setting the pap endpoint.
-func runECommandForPAPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+func runECommandForPAPSet(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -100,7 +100,7 @@ func runECommandForPAPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 }
 
 // runECommandForPDPSet runs the command for setting the pdp endpoint.
-func runECommandForPDPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+func runECommandForPDPSet(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -129,7 +129,7 @@ func runECommandForPDPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 }
 
 // createCommandForConfigZAPSet creates the command for setting the zap endpoint.
-func createCommandForConfigZAPSet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigZAPSet(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "zap-endpoint",
 		Short: "Set the zap endpoint",
@@ -147,7 +147,7 @@ permguard config set zap-endpoint grpc://localhost:9091
 }
 
 // createCommandForConfigPAPSet creates the command for setting the pap endpoint.
-func createCommandForConfigPAPSet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigPAPSet(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pap-endpoint",
 		Short: "Set the pap endpoint",
@@ -165,7 +165,7 @@ permguard config set pap-endpoint grpc://localhost:9092
 }
 
 // createCommandForConfigPDPSet creates the command for setting the pdp endpoint.
-func createCommandForConfigPDPSet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigPDPSet(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pdp-endpoint",
 		Short: "Set the pdp endpoint",
@@ -182,7 +182,7 @@ permguard config set pdp-endpoint grpc://localhost:9094
 	return command
 }
 
-func createCommandForConfigSet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigSet(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "set",
 		Short: "Set configuration items",

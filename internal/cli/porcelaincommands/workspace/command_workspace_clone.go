@@ -28,7 +28,7 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 	"github.com/permguard/permguard/pkg/cli/options"
 	"github.com/permguard/permguard/pkg/core/files"
 )
@@ -39,7 +39,7 @@ const (
 )
 
 // runECommandForCloneWorkspace runs the command for creating an workspace.
-func runECommandForCloneWorkspace(args []string, deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForCloneWorkspace(args []string, deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	if len(args) < 1 {
 		color.Red("Invalid arguments")
 		return common.ErrCommandSilent
@@ -115,7 +115,7 @@ func runECommandForCloneWorkspace(args []string, deps cli.DependenciesProvider, 
 }
 
 // CreateCommandForWorkspaceClone creates a command for cloneializing a permguard workspace.
-func CreateCommandForWorkspaceClone(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceClone(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "clone",
 		Short: "Clone a remote ledger to the local permguard workspace",

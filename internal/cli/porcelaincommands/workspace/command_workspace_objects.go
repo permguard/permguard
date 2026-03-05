@@ -26,7 +26,7 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 
@@ -49,7 +49,7 @@ const (
 )
 
 // runECommandForObjectsWorkspace run the command for listing objects in the workspace.
-func runECommandForObjectsWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForObjectsWorkspace(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -99,7 +99,7 @@ func runECommandForObjectsWorkspace(deps cli.DependenciesProvider, cmd *cobra.Co
 }
 
 // CreateCommandForWorkspaceObjects creates a command for diffializing a permguard workspace.
-func CreateCommandForWorkspaceObjects(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceObjects(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "objects",
 		Short: "Manage the object store",

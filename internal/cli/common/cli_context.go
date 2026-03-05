@@ -25,7 +25,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/pkg/extensions/validators"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 
@@ -37,7 +37,7 @@ var (
 )
 
 // CreateContextAndPrinter creates a new cli context and printer.
-func CreateContextAndPrinter(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, cli.Printer, error) {
+func CreateContextAndPrinter(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, core.Printer, error) {
 	ctx, err := newCliContext(cmd, v)
 	if err != nil {
 		return nil, nil, err
@@ -75,7 +75,7 @@ func newCliContext(cmd *cobra.Command, v *viper.Viper) (*CliCommandContext, erro
 		return nil, err
 	}
 	ctx.output = strings.ToUpper(strings.TrimSpace(output))
-	if ctx.output != cli.OutputTerminal && ctx.output != cli.OutputJSON {
+	if ctx.output != core.OutputTerminal && ctx.output != core.OutputJSON {
 		return nil, fmt.Errorf("cli: %s is an invalid output", output)
 	}
 	verbose, err := cmd.Flags().GetBool(FlagVerbose)
@@ -122,7 +122,7 @@ func (c *CliCommandContext) Output() string {
 
 // IsTerminalOutput returns true if the output is json.
 func (c *CliCommandContext) IsTerminalOutput() bool {
-	return c.Output() == cli.OutputTerminal
+	return c.Output() == core.OutputTerminal
 }
 
 // IsNotVerboseTerminalOutput return true if the output is terminal and verbosity is not enabled.
@@ -137,7 +137,7 @@ func (c *CliCommandContext) IsVerboseTerminalOutput() bool {
 
 // IsJSONOutput returns true if the output is json.
 func (c *CliCommandContext) IsJSONOutput() bool {
-	return c.Output() == cli.OutputJSON
+	return c.Output() == core.OutputJSON
 }
 
 // IsVerboseJSONOutput returns true if the output is json and verbosity is enabled.

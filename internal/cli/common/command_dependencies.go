@@ -19,7 +19,7 @@ package common
 import (
 	iclients "github.com/permguard/permguard/internal/transport/clients"
 	"github.com/permguard/permguard/pkg/authz/languages"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 	"github.com/permguard/permguard/pkg/transport/clients"
 )
 
@@ -29,8 +29,8 @@ type cliDependencies struct {
 }
 
 // CreatePrinter creates a new printer.
-func (c *cliDependencies) CreatePrinter(verbose bool, output string) (cli.Printer, error) {
-	printer, err := cli.NewCliPrinterTerminal(verbose, output)
+func (c *cliDependencies) CreatePrinter(verbose bool, output string) (core.Printer, error) {
+	printer, err := core.NewCliPrinterTerminal(verbose, output)
 	return printer, err
 }
 
@@ -55,7 +55,7 @@ func (c *cliDependencies) LanguageFactory() (languages.LanguageFactory, error) {
 }
 
 // NewCliDependenciesProvider creates a new DependenciesProvider.
-func NewCliDependenciesProvider(langFactory languages.LanguageFactory) (cli.DependenciesProvider, error) {
+func NewCliDependenciesProvider(langFactory languages.LanguageFactory) (core.DependenciesProvider, error) {
 	return &cliDependencies{
 		langFactory: langFactory,
 	}, nil

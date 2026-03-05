@@ -28,13 +28,13 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 	"github.com/permguard/permguard/pkg/cli/options"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 // runECommandForUpsertZone runs the command for creating or updating a zone.
-func runECommandForUpsertZone(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
+func runECommandForUpsertZone(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
 	opGetErroMessage := func(op bool) string {
 		if op {
 			return "Failed to create the zone"
@@ -108,7 +108,7 @@ func runECommandForZones(cmd *cobra.Command, _ []string) error {
 }
 
 // CreateCommandForZones creates a command for managing zones.
-func CreateCommandForZones(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForZones(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "zones",
 		Short: "Manage zones on the remote server",

@@ -25,12 +25,12 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 // runECommandReset runs the command for resetting the config.
-func runECommandReset(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandReset(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -61,7 +61,7 @@ func runECommandReset(deps cli.DependenciesProvider, cmd *cobra.Command, v *vipe
 }
 
 // createCommandForConfigReset creates the command for resetting the cli config settings.
-func createCommandForConfigReset(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigReset(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "reset",
 		Short: "Reset the cli config settings",

@@ -21,7 +21,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 
@@ -31,12 +31,12 @@ const (
 )
 
 // runECommandForUpdateLedger runs the command for creating a ledger.
-func runECommandForUpdateLedger(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForUpdateLedger(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	return runECommandForUpsertLedger(deps, cmd, v, commandNameForLedgersUpdate, false)
 }
 
 // createCommandForLedgerUpdate creates a command for managing ledgerupdate.
-func createCommandForLedgerUpdate(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForLedgerUpdate(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "update",
 		Short: "Update a remote ledger",

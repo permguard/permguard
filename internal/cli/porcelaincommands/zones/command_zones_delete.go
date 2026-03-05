@@ -27,7 +27,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 	"github.com/permguard/permguard/pkg/cli/options"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
@@ -38,7 +38,7 @@ const (
 )
 
 // runECommandForDeleteZone runs the command for creating a zone.
-func runECommandForDeleteZone(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForDeleteZone(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -87,7 +87,7 @@ func runECommandForDeleteZone(deps cli.DependenciesProvider, cmd *cobra.Command,
 }
 
 // createCommandForZoneDelete creates a command for managing zonedelete.
-func createCommandForZoneDelete(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForZoneDelete(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a remote zone",

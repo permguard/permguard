@@ -25,11 +25,11 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 )
 
 // runECommandForZAPGet runs the command for getting the zap endpoint.
-func runECommandForZAPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForZAPGet(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -50,7 +50,7 @@ func runECommandForZAPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 }
 
 // runECommandForPAPGet runs the command for getting the pap endpoint.
-func runECommandForPAPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForPAPGet(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -71,7 +71,7 @@ func runECommandForPAPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 }
 
 // runECommandForPDPGet runs the command for getting the pdp endpoint.
-func runECommandForPDPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForPDPGet(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -92,7 +92,7 @@ func runECommandForPDPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 }
 
 // createCommandForConfigZAPGet creates the command for getting the zap endpoint.
-func createCommandForConfigZAPGet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigZAPGet(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "zap-endpoint",
 		Short: "Get the zap endpoint",
@@ -105,7 +105,7 @@ func createCommandForConfigZAPGet(deps cli.DependenciesProvider, v *viper.Viper)
 }
 
 // createCommandForConfigPAPGet creates the command for getting the pap endpoint.
-func createCommandForConfigPAPGet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigPAPGet(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pap-endpoint",
 		Short: "Get the pap endpoint",
@@ -118,7 +118,7 @@ func createCommandForConfigPAPGet(deps cli.DependenciesProvider, v *viper.Viper)
 }
 
 // createCommandForConfigPDPGet creates the command for getting the pdp endpoint.
-func createCommandForConfigPDPGet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigPDPGet(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pdp-endpoint",
 		Short: "Get the pdp endpoint",
@@ -130,7 +130,7 @@ func createCommandForConfigPDPGet(deps cli.DependenciesProvider, v *viper.Viper)
 	return command
 }
 
-func createCommandForConfigGet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForConfigGet(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "get",
 		Short: "Get configuration items",

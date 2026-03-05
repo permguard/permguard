@@ -26,11 +26,11 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 )
 
 // runECommandForRemoteWorkspace runs the command for creating an workspace.
-func runECommandForRemoteWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForRemoteWorkspace(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -63,7 +63,7 @@ func runECommandForRemoteWorkspace(deps cli.DependenciesProvider, cmd *cobra.Com
 }
 
 // CreateCommandForWorkspaceRemote creates a command for remoteializing a permguard workspace.
-func CreateCommandForWorkspaceRemote(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceRemote(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "remote",
 		Short: `Manage remote server for tracking and interaction`,

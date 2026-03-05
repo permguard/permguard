@@ -14,5 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package cli implements the command line interface.
-package cli
+// Package core implements the command line interface.
+package core

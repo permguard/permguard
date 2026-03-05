@@ -26,7 +26,7 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 
@@ -41,7 +41,7 @@ const (
 )
 
 // runECommandForRemoteAddWorkspace runs the command for creating an workspace.
-func runECommandForRemoteAddWorkspace(args []string, deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForRemoteAddWorkspace(args []string, deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -87,7 +87,7 @@ func runECommandForRemoteAddWorkspace(args []string, deps cli.DependenciesProvid
 }
 
 // CreateCommandForWorkspaceRemoteAdd creates a command for remoteaddializing a permguard workspace.
-func CreateCommandForWorkspaceRemoteAdd(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceRemoteAdd(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "add",
 		Short: `add a new remote ledger to track and interact with`,

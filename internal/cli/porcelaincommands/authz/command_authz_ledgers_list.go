@@ -26,7 +26,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 
@@ -36,7 +36,7 @@ const (
 )
 
 // runECommandForListLedgers runs the command for creating a ledger.
-func runECommandForListLedgers(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForListLedgers(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -92,7 +92,7 @@ func runECommandForListLedgers(deps cli.DependenciesProvider, cmd *cobra.Command
 }
 
 // createCommandForLedgerList creates a command for managing ledgerlist.
-func createCommandForLedgerList(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForLedgerList(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "list",
 		Short: "List remote ledgers",

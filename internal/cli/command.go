@@ -25,7 +25,7 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	commoncmds "github.com/permguard/permguard/internal/cli/commoncommands"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 
@@ -42,7 +42,7 @@ func runECommand(cmd *cobra.Command) error {
 }
 
 // Run the provisionier.
-func Run(cliInitializer cli.Initializer) {
+func Run(cliInitializer core.Initializer) {
 	// Create the command.
 	v, err := options.NewViperFromConfig(func(_ *viper.Viper) map[string]any {
 		mapValues := map[string]any{

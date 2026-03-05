@@ -26,11 +26,11 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 )
 
 // runECommandForPlanWorkspace runs the command for creating an workspace.
-func runECommandForPlanWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForPlanWorkspace(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -63,7 +63,7 @@ func runECommandForPlanWorkspace(deps cli.DependenciesProvider, cmd *cobra.Comma
 }
 
 // CreateCommandForWorkspacePlan creates a command for planializing a permguard workspace.
-func CreateCommandForWorkspacePlan(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspacePlan(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "plan",
 		Short: "Generate a plan of changes to apply to the remote ledger based on the differences between the local and remote states",

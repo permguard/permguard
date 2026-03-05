@@ -26,7 +26,7 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 
@@ -42,7 +42,7 @@ const (
 )
 
 // runECommandForObjectsCatWorkspace runs the command for catting the object content.
-func runECommandForObjectsCatWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, oid string) error {
+func runECommandForObjectsCatWorkspace(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, oid string) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -85,7 +85,7 @@ func runECommandForObjectsCatWorkspace(deps cli.DependenciesProvider, cmd *cobra
 }
 
 // CreateCommandForWorkspaceObjectsCat creates the command for catting the object content.
-func CreateCommandForWorkspaceObjectsCat(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceObjectsCat(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "cat",
 		Short: "Cat the object content",

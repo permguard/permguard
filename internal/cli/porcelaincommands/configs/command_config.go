@@ -21,7 +21,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 )
 
 // runECommandForConfig runs the command for managing config.
@@ -30,7 +30,7 @@ func runECommandForConfig(cmd *cobra.Command, _ []string) error {
 }
 
 // CreateCommandForConfig for managing config.
-func CreateCommandForConfig(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForConfig(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "config",
 		Short: "Configure the command line settings",

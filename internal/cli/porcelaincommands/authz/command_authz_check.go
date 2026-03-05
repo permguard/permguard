@@ -31,7 +31,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 	"github.com/permguard/permguard/pkg/cli/options"
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
 )
@@ -42,13 +42,13 @@ const (
 )
 
 // runECommandForCheck runs the command for executing check.
-func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+func runECommandForCheck(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	handleInputError := func(ctx *common.CliCommandContext, printer cli.Printer, err error, message string) error {
+	handleInputError := func(ctx *common.CliCommandContext, printer core.Printer, err error, message string) error {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to check the authorization request.")
 		}
@@ -166,7 +166,7 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 }
 
 // createCommandForCheck creates a command for executing check.
-func createCommandForCheck(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForCheck(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "check",
 		Short: "Check an authorization request",

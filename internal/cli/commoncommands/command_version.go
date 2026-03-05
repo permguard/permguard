@@ -25,11 +25,11 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 )
 
 // runECommandForCreateIdentity runs the command for creating an identity.
-func runECommandForCreateIdentity(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForCreateIdentity(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -58,7 +58,7 @@ func runECommandForCreateIdentity(deps cli.DependenciesProvider, cmd *cobra.Comm
 }
 
 // CreateCommandForVersion creates a command for version.
-func CreateCommandForVersion(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForVersion(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "version",
 		Short: "Show the version details",

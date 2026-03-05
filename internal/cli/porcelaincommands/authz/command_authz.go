@@ -21,7 +21,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 )
 
 // runECommandForAuthZ runs the command for managing authz.
@@ -30,7 +30,7 @@ func runECommandForAuthZ(cmd *cobra.Command) error {
 }
 
 // CreateCommandForAuthZ for managing authz.
-func CreateCommandForAuthZ(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForAuthZ(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "authz",
 		Short: "Manage ledgers on the remote server",

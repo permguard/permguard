@@ -26,7 +26,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 	"github.com/permguard/permguard/pkg/cli/options"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
@@ -37,7 +37,7 @@ const (
 )
 
 // runECommandForDeleteLedger runs the command for creating a ledger.
-func runECommandForDeleteLedger(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForDeleteLedger(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -86,7 +86,7 @@ func runECommandForDeleteLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 }
 
 // createCommandForLedgerDelete creates a command for managing ledgerdelete.
-func createCommandForLedgerDelete(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForLedgerDelete(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a remote ledger",

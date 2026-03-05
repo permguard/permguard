@@ -21,7 +21,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 
@@ -31,12 +31,12 @@ const (
 )
 
 // runECommandForCreateZone runs the command for creating a zone.
-func runECommandForCreateZone(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForCreateZone(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	return runECommandForUpsertZone(deps, cmd, v, commandNameForZonesCreate, true)
 }
 
 // createCommandForZoneCreate creates a command for managing zonecreate.
-func createCommandForZoneCreate(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func createCommandForZoneCreate(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "create",
 		Short: "Create a remote zone",

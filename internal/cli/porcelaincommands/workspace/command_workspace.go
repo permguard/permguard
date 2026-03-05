@@ -26,7 +26,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 )
 
 // validateArg is the function to validate the arguments.
@@ -38,7 +38,7 @@ var validateArg = func(_ *cobra.Command, args []string) error {
 }
 
 // outFunc is the function to output the result.
-var outFunc = func(ctx *common.CliCommandContext, printer cli.Printer) common.PrinterOutFunc {
+var outFunc = func(ctx *common.CliCommandContext, printer core.Printer) common.PrinterOutFunc {
 	return func(output map[string]any, key string, value any, err error, newLine bool) map[string]any {
 		if ctx.IsJSONOutput() {
 			key = strings.ReplaceAll(key, "-", "_")
@@ -67,7 +67,7 @@ var outFunc = func(ctx *common.CliCommandContext, printer cli.Printer) common.Pr
 }
 
 // CreateCommandsForWorkspace creates the workspace commands.
-func CreateCommandsForWorkspace(deps cli.DependenciesProvider, v *viper.Viper) []*cobra.Command {
+func CreateCommandsForWorkspace(deps core.DependenciesProvider, v *viper.Viper) []*cobra.Command {
 	commands := []*cobra.Command{
 		CreateCommandForWorkspaceInit(deps, v),
 		CreateCommandForWorkspaceRemote(deps, v),

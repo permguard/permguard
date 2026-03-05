@@ -26,11 +26,11 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 )
 
 // runECommandForLedgerWorkspace runs the command for the local ledger.
-func runECommandForLedgerWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForLedgerWorkspace(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -63,7 +63,7 @@ func runECommandForLedgerWorkspace(deps cli.DependenciesProvider, cmd *cobra.Com
 }
 
 // CreateCommandForWorkspaceLedger creates a command for ledgerializing a permguard workspace.
-func CreateCommandForWorkspaceLedger(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceLedger(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "ledger",
 		Short: `Manage the ledger`,

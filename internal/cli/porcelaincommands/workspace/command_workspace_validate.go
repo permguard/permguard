@@ -26,11 +26,11 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 )
 
 // runECommandForValidateWorkspace runs the command for creating an workspace.
-func runECommandForValidateWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForValidateWorkspace(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -60,7 +60,7 @@ func runECommandForValidateWorkspace(deps cli.DependenciesProvider, cmd *cobra.C
 }
 
 // CreateCommandForWorkspaceValidate creates a command for validateializing a permguard workspace.
-func CreateCommandForWorkspaceValidate(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspaceValidate(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "validate",
 		Short: "Validate the local state for consistency and correctness",

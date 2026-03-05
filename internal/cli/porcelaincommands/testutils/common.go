@@ -26,11 +26,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 )
 
 // BaseCommandTest tests the command.
-func BaseCommandTest(t *testing.T, cmdFunc func(cli.DependenciesProvider, *viper.Viper) *cobra.Command, args []string, hasError bool, outputs []string) {
+func BaseCommandTest(t *testing.T, cmdFunc func(core.DependenciesProvider, *viper.Viper) *cobra.Command, args []string, hasError bool, outputs []string) {
 	t.Helper()
 	assert := assert.New(t)
 	v := viper.New()

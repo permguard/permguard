@@ -26,11 +26,11 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 )
 
 // runECommandForPullWorkspace runs the command for creating an workspace.
-func runECommandForPullWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+func runECommandForPullWorkspace(deps core.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
 		color.Red(fmt.Sprintf("%s", err))
@@ -63,7 +63,7 @@ func runECommandForPullWorkspace(deps cli.DependenciesProvider, cmd *cobra.Comma
 }
 
 // CreateCommandForWorkspacePull creates a command for pullializing a permguard workspace.
-func CreateCommandForWorkspacePull(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+func CreateCommandForWorkspacePull(deps core.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pull",
 		Short: "Fetch the latest changes from the remote ledger and constructs the remote state.",

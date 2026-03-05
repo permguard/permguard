@@ -26,7 +26,7 @@ import (
 	"github.com/permguard/permguard/internal/cli/porcelaincommands/workspace"
 	"github.com/permguard/permguard/internal/cli/porcelaincommands/zones"
 	"github.com/permguard/permguard/pkg/authz/languages"
-	"github.com/permguard/permguard/internal/cli/clilib"
+	"github.com/permguard/permguard/internal/cli/core"
 )
 
 // CommunityCliInitializer  is the community cli initializer.
@@ -38,8 +38,8 @@ func NewCommunityCliInitializer() (*CommunityCliInitializer, error) {
 }
 
 // Info returns the infos of the cli.
-func (s *CommunityCliInitializer) Info() cli.Info {
-	return cli.Info{
+func (s *CommunityCliInitializer) Info() core.Info {
+	return core.Info{
 		Name:  "Community Command Line Interface",
 		Use:   "permguard",
 		Short: "The official Permguard© Cli",
@@ -48,7 +48,7 @@ func (s *CommunityCliInitializer) Info() cli.Info {
 }
 
 // CliCommands returns commands.
-func (s *CommunityCliInitializer) CliCommands(deps cli.DependenciesProvider, v *viper.Viper) ([]*cobra.Command, error) {
+func (s *CommunityCliInitializer) CliCommands(deps core.DependenciesProvider, v *viper.Viper) ([]*cobra.Command, error) {
 	zonesCmd := zones.CreateCommandForZones(deps, v)
 	authzCmd := authz.CreateCommandForAuthZ(deps, v)
 	configCmd := configs.CreateCommandForConfig(deps, v)
