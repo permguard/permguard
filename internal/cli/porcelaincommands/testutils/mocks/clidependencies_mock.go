@@ -20,7 +20,7 @@ import (
 	mock "github.com/stretchr/testify/mock"
 
 	"github.com/permguard/permguard/pkg/authz/languages"
-	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/internal/cli/clilib"
 	"github.com/permguard/permguard/pkg/transport/clients"
 )
 

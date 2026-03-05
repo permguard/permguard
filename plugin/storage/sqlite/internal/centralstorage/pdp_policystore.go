@@ -17,14 +17,15 @@
 package centralstorage
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
 
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
-	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
-	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	"github.com/permguard/permguard/ztauthstar/pkg/authz/languages/types"
+	"github.com/permguard/permguard/ztauthstar/pkg/authz/objects"
 )
 
 // authorizationCheckReadBytes reads the key value for the authorization check.
@@ -77,7 +78,7 @@ func authorizationCheckReadTree(s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng 
 }
 
 // LoadPolicyStore loads the policy store for a given zone ID and store ID.
-func (s SQLiteCentralStoragePDP) LoadPolicyStore(zoneID int64, storeID string) (*authzen.PolicyStore, error) {
+func (s SQLiteCentralStoragePDP) LoadPolicyStore(ctx context.Context, zoneID int64, storeID string) (*authzen.PolicyStore, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, errors.Join(errors.New("storage: server couldn't connect to the database"), err)

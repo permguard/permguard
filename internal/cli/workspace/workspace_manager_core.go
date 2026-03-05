@@ -32,8 +32,8 @@ import (
 	refs "github.com/permguard/permguard/internal/cli/workspace/refs"
 	"github.com/permguard/permguard/internal/cli/workspace/remoteserver"
 	"github.com/permguard/permguard/pkg/authz/languages"
-	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
-	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	manifests "github.com/permguard/permguard/ztauthstar/pkg/authz/manifests"
+	"github.com/permguard/permguard/ztauthstar/pkg/authz/objects"
 )
 
 const (

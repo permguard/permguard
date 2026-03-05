@@ -47,14 +47,19 @@ func IsValidProperties(properties map[string]any) bool {
 	return true
 }
 
-// IsValidIdentiyType checks if the identity type is valid.
-func IsValidIdentiyType(identityType string) bool {
+// IsValidIdentityType checks if the identity type is valid.
+func IsValidIdentityType(identityType string) bool {
 	identityType = strings.ToUpper(identityType)
 	switch identityType {
 	case PermguardUser, PermguardWorkload, PermguardAttribute:
 		return true
 	}
 	return false
+}
+
+// Deprecated: Use IsValidIdentityType instead.
+func IsValidIdentiyType(identityType string) bool {
+	return IsValidIdentityType(identityType)
 }
 
 // NewEvaluationErrorResponse creates an evaluation error response.

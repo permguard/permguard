@@ -26,13 +26,13 @@ import (
 )
 
 // CreateLedger creates a new ledger.
-func (c *GrpcPAPClient) CreateLedger(zoneID int64, kind string, name string) (*pap.Ledger, error) {
+func (c *GrpcPAPClient) CreateLedger(ctx context.Context, zoneID int64, kind string, name string) (*pap.Ledger, error) {
 	client, conn, err := c.createGRPCClient()
 	defer conn.Close()
 	if err != nil {
 		return nil, err
 	}
-	ledger, err := client.CreateLedger(context.Background(), &papv1.LedgerCreateRequest{ZoneID: zoneID, Name: name, Kind: kind})
+	ledger, err := client.CreateLedger(ctx, &papv1.LedgerCreateRequest{ZoneID: zoneID, Name: name, Kind: kind})
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func (c *GrpcPAPClient) CreateLedger(zoneID int64, kind string, name string) (*p
 }
 
 // UpdateLedger updates an ledger.
-func (c *GrpcPAPClient) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, error) {
+func (c *GrpcPAPClient) UpdateLedger(ctx context.Context, ledger *pap.Ledger) (*pap.Ledger, error) {
 	if ledger == nil {
 		return nil, errors.New("client: invalid ledger instance")
 	}
@@ -49,7 +49,7 @@ func (c *GrpcPAPClient) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, error) {
 	if err != nil {
 		return nil, err
 	}
-	updatedLedger, err := client.UpdateLedger(context.Background(), &papv1.LedgerUpdateRequest{
+	updatedLedger, err := client.UpdateLedger(ctx, &papv1.LedgerUpdateRequest{
 		LedgerID: ledger.LedgerID,
 		ZoneID:   ledger.ZoneID,
 		Kind:     ledger.Kind,
@@ -62,13 +62,13 @@ func (c *GrpcPAPClient) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, error) {
 }
 
 // DeleteLedger deletes an ledger.
-func (c *GrpcPAPClient) DeleteLedger(zoneID int64, ledgerID string) (*pap.Ledger, error) {
+func (c *GrpcPAPClient) DeleteLedger(ctx context.Context, zoneID int64, ledgerID string) (*pap.Ledger, error) {
 	client, conn, err := c.createGRPCClient()
 	defer conn.Close()
 	if err != nil {
 		return nil, err
 	}
-	ledger, err := client.DeleteLedger(context.Background(), &papv1.LedgerDeleteRequest{ZoneID: zoneID, LedgerID: ledgerID})
+	ledger, err := client.DeleteLedger(ctx, &papv1.LedgerDeleteRequest{ZoneID: zoneID, LedgerID: ledgerID})
 	if err != nil {
 		return nil, err
 	}
@@ -76,22 +76,22 @@ func (c *GrpcPAPClient) DeleteLedger(zoneID int64, ledgerID string) (*pap.Ledger
 }
 
 // FetchLedgers returns all ledgers.
-func (c *GrpcPAPClient) FetchLedgers(page int32, pageSize int32, zoneID int64) ([]pap.Ledger, error) {
-	return c.FetchLedgersBy(page, pageSize, zoneID, "", "", "")
+func (c *GrpcPAPClient) FetchLedgers(ctx context.Context, page int32, pageSize int32, zoneID int64) ([]pap.Ledger, error) {
+	return c.FetchLedgersBy(ctx, page, pageSize, zoneID, "", "", "")
 }
 
 // FetchLedgersByID returns all ledgers filtering by ledger id.
-func (c *GrpcPAPClient) FetchLedgersByID(page int32, pageSize int32, zoneID int64, ledgerID string) ([]pap.Ledger, error) {
-	return c.FetchLedgersBy(page, pageSize, zoneID, ledgerID, "", "")
+func (c *GrpcPAPClient) FetchLedgersByID(ctx context.Context, page int32, pageSize int32, zoneID int64, ledgerID string) ([]pap.Ledger, error) {
+	return c.FetchLedgersBy(ctx, page, pageSize, zoneID, ledgerID, "", "")
 }
 
 // FetchLedgersByName returns all ledgers filtering by name.
-func (c *GrpcPAPClient) FetchLedgersByName(page int32, pageSize int32, zoneID int64, name string) ([]pap.Ledger, error) {
-	return c.FetchLedgersBy(page, pageSize, zoneID, "", "", name)
+func (c *GrpcPAPClient) FetchLedgersByName(ctx context.Context, page int32, pageSize int32, zoneID int64, name string) ([]pap.Ledger, error) {
+	return c.FetchLedgersBy(ctx, page, pageSize, zoneID, "", "", name)
 }
 
 // FetchLedgersBy returns all ledgers filtering by ledger id and name.
-func (c *GrpcPAPClient) FetchLedgersBy(page int32, pageSize int32, zoneID int64, ledgerID string, kind string, name string) ([]pap.Ledger, error) {
+func (c *GrpcPAPClient) FetchLedgersBy(ctx context.Context, page int32, pageSize int32, zoneID int64, ledgerID string, kind string, name string) ([]pap.Ledger, error) {
 	client, conn, err := c.createGRPCClient()
 	defer conn.Close()
 	if err != nil {
@@ -112,7 +112,7 @@ func (c *GrpcPAPClient) FetchLedgersBy(page int32, pageSize int32, zoneID int64,
 	if ledgerID != "" {
 		ledgerFetchRequest.LedgerID = &ledgerID
 	}
-	stream, err := client.FetchLedgers(context.Background(), ledgerFetchRequest)
+	stream, err := client.FetchLedgers(ctx, ledgerFetchRequest)
 	if err != nil {
 		return nil, err
 	}

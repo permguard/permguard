@@ -17,7 +17,7 @@
 package controllers
 
 import (
-	"github.com/permguard/permguard/common/pkg/extensions/ids"
+	"github.com/permguard/permguard/pkg/extensions/ids"
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 )

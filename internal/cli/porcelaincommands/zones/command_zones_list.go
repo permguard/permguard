@@ -17,6 +17,7 @@
 package zones
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -26,7 +27,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/internal/cli/clilib"
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 
@@ -67,7 +68,7 @@ func runECommandForListZones(deps cli.DependenciesProvider, cmd *cobra.Command, 
 	pageSize := v.GetInt32(options.FlagName(commandNameForZonesList, common.FlagCommonPageSize))
 	zoneID := v.GetInt64(options.FlagName(commandNameForZonesList, common.FlagCommonZoneID))
 
-	zones, err := client.FetchZonesBy(page, pageSize, zoneID, "")
+	zones, err := client.FetchZonesBy(context.Background(), page, pageSize, zoneID, "")
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to list zones.")

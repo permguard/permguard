@@ -19,18 +19,18 @@ package statemachines
 import (
 	"fmt"
 
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
-	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
+	notppkts "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	smpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
 )
 
 // createStatePacket creates a state packet.
-func createStatePacket(runtime *StateMachineRuntimeContext, messageCode uint16, messageValue uint64) (*notpsmpackets.StatePacket, *HandlerContext, error) {
+func createStatePacket(runtime *StateMachineRuntimeContext, messageCode uint16, messageValue uint64) (*smpackets.StatePacket, *HandlerContext, error) {
 	handlerCtx := &HandlerContext{
 		flow:           runtime.FlowType(),
 		bag:            runtime.bag,
 		currentStateID: runtime.CurrentStateID(),
 	}
-	packet := &notpsmpackets.StatePacket{
+	packet := &smpackets.StatePacket{
 		MessageCode:  messageCode,
 		MessageValue: messageValue,
 		ErrorCode:    0,
@@ -39,17 +39,17 @@ func createStatePacket(runtime *StateMachineRuntimeContext, messageCode uint16, 
 }
 
 // shouldHandlePacket checks if the packet should be handled.
-func shouldHandlePacket(packet *notpsmpackets.StatePacket) bool {
-	return packet.MessageCode != notpsmpackets.ActionResponseMessage && packet.MessageCode != notpsmpackets.StartFlowMessage
+func shouldHandlePacket(packet *smpackets.StatePacket) bool {
+	return packet.MessageCode != smpackets.ActionResponseMessage && packet.MessageCode != smpackets.StartFlowMessage
 }
 
 // createAndHandleStatePacket creates a state packet and handles it.
-func createAndHandleStatePacket(runtime *StateMachineRuntimeContext, messageCode uint16, messageValue uint64, packetables []notppackets.Packetable) (*notpsmpackets.StatePacket, []notppackets.Packetable, bool, bool, error) {
+func createAndHandleStatePacket(runtime *StateMachineRuntimeContext, messageCode uint16, messageValue uint64, packetables []notppkts.Packetable) (*smpackets.StatePacket, []notppkts.Packetable, bool, bool, error) {
 	statePacket, handlerCtx, err := createStatePacket(runtime, messageCode, messageValue)
 	if err != nil {
 		return nil, nil, false, false, fmt.Errorf("notp: failed to create state packet: %w", err)
 	}
-	var handledPacketables []notppackets.Packetable
+	var handledPacketables []notppkts.Packetable
 	hasMore := false
 	if shouldHandlePacket(statePacket) {
 		handlerReturn, err := runtime.HandleStream(handlerCtx, statePacket, packetables)
@@ -74,14 +74,14 @@ func createAndHandleStatePacket(runtime *StateMachineRuntimeContext, messageCode
 }
 
 // createAndHandleAndStreamStatePacket creates a state packet, handles it, and streams it.
-func createAndHandleAndStreamStatePacket(runtime *StateMachineRuntimeContext, messageCode uint16, packetables []notppackets.Packetable) (notppackets.Packetable, bool, error) {
-	messageValue := notppackets.CombineUint32toUint64(notpsmpackets.UnknownValue, notpsmpackets.UnknownValue)
+func createAndHandleAndStreamStatePacket(runtime *StateMachineRuntimeContext, messageCode uint16, packetables []notppkts.Packetable) (notppkts.Packetable, bool, error) {
+	messageValue := notppkts.CombineUint32toUint64(smpackets.UnknownValue, smpackets.UnknownValue)
 	return createAndHandleAndStreamStatePacketWithValue(runtime, messageCode, messageValue, packetables)
 }
 
 // createAndHandleAndStreamStatePacketWithValue creates a state packet with value, handles it, and streams it.
-func createAndHandleAndStreamStatePacketWithValue(runtime *StateMachineRuntimeContext, messageCode uint16, messageValue uint64, packetables []notppackets.Packetable) (notppackets.Packetable, bool, error) {
-	var packet *notpsmpackets.StatePacket
+func createAndHandleAndStreamStatePacketWithValue(runtime *StateMachineRuntimeContext, messageCode uint16, messageValue uint64, packetables []notppkts.Packetable) (notppkts.Packetable, bool, error) {
+	var packet *smpackets.StatePacket
 	hasMore := true
 	for hasMore {
 		statePacket, handledPacketable, handlerHasMore, terminate, err := createAndHandleStatePacket(runtime, messageCode, messageValue, packetables)
@@ -95,7 +95,7 @@ func createAndHandleAndStreamStatePacketWithValue(runtime *StateMachineRuntimeCo
 		}
 		hasMore = handlerHasMore
 		packet = statePacket
-		streamPacketables := append([]notppackets.Packetable{statePacket}, handledPacketable...)
+		streamPacketables := append([]notppkts.Packetable{statePacket}, handledPacketable...)
 		err = runtime.SendStream(streamPacketables)
 		if err != nil {
 			err := sendTermination(runtime)
@@ -107,15 +107,15 @@ func createAndHandleAndStreamStatePacketWithValue(runtime *StateMachineRuntimeCo
 
 // sendTermination sends a termination message.
 func sendTermination(runtime *StateMachineRuntimeContext) error {
-	statePacket := &notpsmpackets.StatePacket{
-		MessageCode: notpsmpackets.TerminateMessage,
+	statePacket := &smpackets.StatePacket{
+		MessageCode: smpackets.TerminateMessage,
 	}
 	err := runtime.Send(statePacket)
 	return err
 }
 
 // receiveAndHandleStatePacket receives a state packet and handles it.
-func receiveAndHandleStatePacket(runtime *StateMachineRuntimeContext, expectedMessageCode uint16) (*notpsmpackets.StatePacket, []notppackets.Packetable, bool, error) {
+func receiveAndHandleStatePacket(runtime *StateMachineRuntimeContext, expectedMessageCode uint16) (*smpackets.StatePacket, []notppkts.Packetable, bool, error) {
 	handlerCtx := &HandlerContext{
 		flow:           runtime.FlowType(),
 		bag:            runtime.bag,
@@ -125,7 +125,7 @@ func receiveAndHandleStatePacket(runtime *StateMachineRuntimeContext, expectedMe
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("notp: failed to receive packets: %w", err)
 	}
-	statePacket := &notpsmpackets.StatePacket{}
+	statePacket := &smpackets.StatePacket{}
 	data, err := packetsStream[0].Serialize()
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("notp: failed to serialize packet: %w", err)
@@ -137,13 +137,13 @@ func receiveAndHandleStatePacket(runtime *StateMachineRuntimeContext, expectedMe
 	if statePacket.HasError() {
 		return nil, nil, false, fmt.Errorf("notp: received state packet with error: %d", statePacket.ErrorCode)
 	}
-	if statePacket.MessageCode == notpsmpackets.TerminateMessage {
+	if statePacket.MessageCode == smpackets.TerminateMessage {
 		return nil, nil, true, nil
 	}
 	if statePacket.MessageCode != expectedMessageCode {
 		return nil, nil, false, fmt.Errorf("notp: received unexpected state code: %d", statePacket.MessageCode)
 	}
-	var handledPacketables []notppackets.Packetable
+	var handledPacketables []notppkts.Packetable
 	if shouldHandlePacket(statePacket) {
 		handlerReturn, err := runtime.HandleStream(handlerCtx, statePacket, packetsStream[1:])
 		if handlerReturn != nil {

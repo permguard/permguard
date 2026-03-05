@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"strings"
 
-	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	manifests "github.com/permguard/permguard/ztauthstar/pkg/authz/manifests"
 )
 
 const (

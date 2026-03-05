@@ -18,7 +18,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 
 	"github.com/permguard/permguard/internal/agents/cli"
 	"github.com/permguard/permguard/internal/agents/servers"
@@ -29,7 +29,7 @@ func main() {
 	// Run the command with the zap host kind.
 	initializer, err := servers.NewCommunityServerInitializer(services.HostPIP)
 	if err != nil {
-		panic(fmt.Sprintf("server: error creating server: %s", err.Error()))
+		log.Fatalf("server: error creating server: %s", err.Error())
 	}
 	cli.Run(initializer, nil, nil)
 }

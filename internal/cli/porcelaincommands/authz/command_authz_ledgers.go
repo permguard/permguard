@@ -17,6 +17,7 @@
 package authz
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -26,7 +27,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/internal/cli/clilib"
 	"github.com/permguard/permguard/pkg/cli/options"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
@@ -80,11 +81,11 @@ func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 		Name:   name,
 	}
 	if isCreate {
-		ledger, err = client.CreateLedger(zoneID, "policy", name)
+		ledger, err = client.CreateLedger(context.Background(), zoneID, "policy", name)
 	} else {
 		ledgerID := v.GetString(options.FlagName(flagPrefix, flagLedgerID))
 		ledger.LedgerID = ledgerID
-		ledger, err = client.UpdateLedger(ledger)
+		ledger, err = client.UpdateLedger(context.Background(), ledger)
 	}
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {

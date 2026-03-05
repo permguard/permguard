@@ -21,13 +21,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/permguard/permguard/common/pkg/extensions/ids"
-	"github.com/permguard/permguard/common/pkg/extensions/validators"
+	"github.com/permguard/permguard/pkg/extensions/ids"
+	"github.com/permguard/permguard/pkg/extensions/validators"
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
 	"github.com/permguard/permguard/pkg/authz/languages"
 	"github.com/permguard/permguard/ztauthstar-cedar/pkg/cedarlang"
-	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	manifests "github.com/permguard/permguard/ztauthstar/pkg/authz/manifests"
 )
 
 // ExecPrintContext prints the context.

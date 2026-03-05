@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/permguard/permguard/common/pkg/extensions/validators"
+	"github.com/permguard/permguard/pkg/extensions/validators"
 )
 
 // ValidateCodeID validates a zone ID.

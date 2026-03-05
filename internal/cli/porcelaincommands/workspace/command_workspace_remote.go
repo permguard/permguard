@@ -26,7 +26,7 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace"
-	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/internal/cli/clilib"
 )
 
 // runECommandForRemoteWorkspace runs the command for creating an workspace.

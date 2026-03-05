@@ -17,11 +17,13 @@
 package clients
 
 import (
+	"context"
+
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 
 // GrpcPDPClient is the gRPC PDP client servicer.
 type GrpcPDPClient interface {
 	// AuthorizationCheck checks the authorization.
-	AuthorizationCheck(request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error)
+	AuthorizationCheck(ctx context.Context, request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error)
 }

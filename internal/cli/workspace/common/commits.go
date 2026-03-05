@@ -19,7 +19,7 @@ package common
 import (
 	"errors"
 
-	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	"github.com/permguard/permguard/ztauthstar/pkg/authz/objects"
 )
 
 // CommitInfo define a commit info.

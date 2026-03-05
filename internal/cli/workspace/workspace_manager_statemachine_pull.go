@@ -19,43 +19,43 @@ package workspace
 import (
 	"errors"
 
-	notpagpackets "github.com/permguard/permguard/internal/transport/notp/statemachines/packets"
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
-	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
-	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
+	notpagpkts "github.com/permguard/permguard/internal/transport/notp/statemachines/packets"
+	notppkts "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	statemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
+	smpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
 )
 
 // OnPullSendRequestCurrentState sends the current state request.
-func (m *Manager) OnPullSendRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, _ []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (m *Manager) OnPullSendRequestCurrentState(handlerCtx *statemachines.HandlerContext, _ *smpackets.StatePacket, _ []notppkts.Packetable) (*statemachines.HostHandlerReturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-pull", "Advertising - Initiating request for ledger state.", true)
 	}
 	handlerCtx.SetValue(CommittedKey, false)
-	packet := &notpagpackets.RemoteRefStatePacket{
+	packet := &notpagpkts.RemoteRefStatePacket{
 		RefPrevCommit: wksCtx.ctx.remoteCommitID,
 		RefCommit:     wksCtx.ctx.remoteCommitID,
 	}
-	handlerReturn := &notpstatemachines.HostHandlerReturn{
-		Packetables: []notppackets.Packetable{packet},
+	handlerReturn := &statemachines.HostHandlerReturn{
+		Packetables: []notppkts.Packetable{packet},
 	}
 	handlerCtx.SetValue(LocalCodeCommitIDKey, wksCtx.ctx.remoteCommitID)
 	return handlerReturn, nil
 }
 
 // OnPullHandleRequestCurrentStateResponse handles the current state response.
-func (m *Manager) OnPullHandleRequestCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (m *Manager) OnPullHandleRequestCurrentStateResponse(handlerCtx *statemachines.HandlerContext, _ *smpackets.StatePacket, packets []notppkts.Packetable) (*statemachines.HostHandlerReturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-pull", "Advertising - Processing response for ledger state request.", true)
 	}
-	localRefSPacket := &notpagpackets.LocalRefStatePacket{}
-	err := notppackets.ConvertPacketable(packets[0], localRefSPacket)
+	localRefSPacket := &notpagpkts.LocalRefStatePacket{}
+	err := notppkts.ConvertPacketable(packets[0], localRefSPacket)
 	if err != nil {
 		return nil, err
 	}
 	handlerCtx.SetValue(RemoteCommitIDKey, localRefSPacket.RefCommit)
-	handlerReturn := &notpstatemachines.HostHandlerReturn{
+	handlerReturn := &statemachines.HostHandlerReturn{
 		Packetables: packets,
 	}
 	if localRefSPacket.IsUpToDate {
@@ -68,45 +68,45 @@ func (m *Manager) OnPullHandleRequestCurrentStateResponse(handlerCtx *notpstatem
 	handlerCtx.SetValue(RemoteCommitIDKey, localRefSPacket.RefCommit)
 	handlerCtx.SetValue(RemoteCommitsCountKey, localRefSPacket.NumberOfCommits)
 	handlerCtx.SetValue(LocalCommitsCountKey, uint32(0))
-	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
+	handlerReturn.MessageValue = notppkts.CombineUint32toUint64(smpackets.AcknowledgedValue, smpackets.UnknownValue)
 	return handlerReturn, nil
 }
 
 // OnPullSendNegotiationRequest sends the negotiation request.
-func (m *Manager) OnPullSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (m *Manager) OnPullSendNegotiationRequest(handlerCtx *statemachines.HandlerContext, _ *smpackets.StatePacket, packets []notppkts.Packetable) (*statemachines.HostHandlerReturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-pull", "Negotiation - Sending negotiation request.", true)
 	}
-	handlerReturn := &notpstatemachines.HostHandlerReturn{
+	handlerReturn := &statemachines.HostHandlerReturn{
 		Packetables:  packets,
-		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
+		MessageValue: notppkts.CombineUint32toUint64(smpackets.AcknowledgedValue, smpackets.UnknownValue),
 	}
 	return handlerReturn, nil
 }
 
 // OnPullHandleNegotiationResponse handle the negotiation response.
-func (m *Manager) OnPullHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (m *Manager) OnPullHandleNegotiationResponse(handlerCtx *statemachines.HandlerContext, _ *smpackets.StatePacket, packets []notppkts.Packetable) (*statemachines.HostHandlerReturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-pull", "Negotiation - Processing response to negotiation request.", true)
 	}
-	handlerReturn := &notpstatemachines.HostHandlerReturn{
+	handlerReturn := &statemachines.HostHandlerReturn{
 		Packetables:  packets,
-		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
+		MessageValue: notppkts.CombineUint32toUint64(smpackets.AcknowledgedValue, smpackets.UnknownValue),
 	}
 	return handlerReturn, nil
 }
 
 // OnPullHandleExchangeDataStream handles the data exchange.
-func (m *Manager) OnPullHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (m *Manager) OnPullHandleExchangeDataStream(handlerCtx *statemachines.HandlerContext, statePacket *smpackets.StatePacket, packets []notppkts.Packetable) (*statemachines.HostHandlerReturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-pull", "Data Exchange - Managing data exchange.", true)
 	}
 	for _, packet := range packets {
-		objStatePacket := &notpagpackets.ObjectStatePacket{}
-		err := notppackets.ConvertPacketable(packet, objStatePacket)
+		objStatePacket := &notpagpkts.ObjectStatePacket{}
+		err := notppkts.ConvertPacketable(packet, objStatePacket)
 		if err != nil {
 			return nil, err
 		}
@@ -118,22 +118,22 @@ func (m *Manager) OnPullHandleExchangeDataStream(handlerCtx *notpstatemachines.H
 	commitsCount, _ := getFromHandlerContext[uint32](handlerCtx, LocalCommitsCountKey)
 	commitsCount++
 	handlerCtx.SetValue(LocalCommitsCountKey, commitsCount)
-	handlerReturn := &notpstatemachines.HostHandlerReturn{
-		Packetables:  []notppackets.Packetable{},
+	handlerReturn := &statemachines.HostHandlerReturn{
+		Packetables:  []notppkts.Packetable{},
 		MessageValue: statePacket.MessageValue,
 	}
 	return handlerReturn, nil
 }
 
 // OnPullSendCommit handles the commit response.
-func (m *Manager) OnPullSendCommit(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
+func (m *Manager) OnPullSendCommit(handlerCtx *statemachines.HandlerContext, _ *smpackets.StatePacket, packets []notppkts.Packetable) (*statemachines.HostHandlerReturn, error) {
 	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
 		wksCtx.outFunc("notp-commit", "Commit - Sending commit request.", true)
 	}
-	handlerReturn := &notpstatemachines.HostHandlerReturn{
+	handlerReturn := &statemachines.HostHandlerReturn{
 		Packetables:  packets,
-		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
+		MessageValue: notppkts.CombineUint32toUint64(smpackets.AcknowledgedValue, smpackets.UnknownValue),
 	}
 	handlerCtx.SetValue(CommittedKey, true)
 	return handlerReturn, nil

@@ -17,9 +17,15 @@
 package controllers
 
 import (
+	"context"
+	"fmt"
+	"strings"
+
+	"go.uber.org/zap"
+
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
-	"github.com/permguard/permguard/pkg/transport/models/zap"
+	zapmodels "github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 // ZAPController is the controller for the ZAP service.
@@ -43,21 +49,95 @@ func NewZAPController(serviceContext *services.ServiceContext, zapCentralStorage
 }
 
 // CreateZone creates a new zone.
-func (s ZAPController) CreateZone(zone *zap.Zone) (*zap.Zone, error) {
-	return s.storage.CreateZone(zone)
+func (s ZAPController) CreateZone(ctx context.Context, zone *zapmodels.Zone) (*zapmodels.Zone, error) {
+	var logger *zap.Logger; if s.ctx != nil { logger = s.ctx.Logger() }
+
+	if zone == nil {
+		return nil, fmt.Errorf("zap-controller: zone is nil")
+	}
+	if strings.TrimSpace(zone.Name) == "" {
+		return nil, fmt.Errorf("zap-controller: zone name is empty")
+	}
+
+	if logger != nil {
+		logger.Info("creating zone", zap.String("name", zone.Name))
+	}
+
+	result, err := s.storage.CreateZone(ctx, zone)
+	if err != nil {
+		if logger != nil {
+			logger.Error("failed to create zone", zap.Error(err))
+		}
+		return nil, fmt.Errorf("zap-controller: %w", err)
+	}
+
+	return result, nil
 }
 
 // UpdateZone updates a zone.
-func (s ZAPController) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
-	return s.storage.UpdateZone(zone)
+func (s ZAPController) UpdateZone(ctx context.Context, zone *zapmodels.Zone) (*zapmodels.Zone, error) {
+	var logger *zap.Logger; if s.ctx != nil { logger = s.ctx.Logger() }
+
+	if zone == nil {
+		return nil, fmt.Errorf("zap-controller: zone is nil")
+	}
+	if zone.ZoneID <= 0 {
+		return nil, fmt.Errorf("zap-controller: invalid zone id %d", zone.ZoneID)
+	}
+
+	if logger != nil {
+		logger.Info("updating zone", zap.Int64("zone_id", zone.ZoneID), zap.String("name", zone.Name))
+	}
+
+	result, err := s.storage.UpdateZone(ctx, zone)
+	if err != nil {
+		if logger != nil {
+			logger.Error("failed to update zone", zap.Int64("zone_id", zone.ZoneID), zap.Error(err))
+		}
+		return nil, fmt.Errorf("zap-controller: %w", err)
+	}
+
+	return result, nil
 }
 
 // DeleteZone delete a zone.
-func (s ZAPController) DeleteZone(zoneID int64) (*zap.Zone, error) {
-	return s.storage.DeleteZone(zoneID)
+func (s ZAPController) DeleteZone(ctx context.Context, zoneID int64) (*zapmodels.Zone, error) {
+	var logger *zap.Logger; if s.ctx != nil { logger = s.ctx.Logger() }
+
+	if zoneID <= 0 {
+		return nil, fmt.Errorf("zap-controller: invalid zone id %d", zoneID)
+	}
+
+	if logger != nil {
+		logger.Info("deleting zone", zap.Int64("zone_id", zoneID))
+	}
+
+	result, err := s.storage.DeleteZone(ctx, zoneID)
+	if err != nil {
+		if logger != nil {
+			logger.Error("failed to delete zone", zap.Int64("zone_id", zoneID), zap.Error(err))
+		}
+		return nil, fmt.Errorf("zap-controller: %w", err)
+	}
+
+	return result, nil
 }
 
 // FetchZones returns all zones filtering by search criteria.
-func (s ZAPController) FetchZones(page int32, pageSize int32, fields map[string]any) ([]zap.Zone, error) {
-	return s.storage.FetchZones(page, pageSize, fields)
+func (s ZAPController) FetchZones(ctx context.Context, page int32, pageSize int32, fields map[string]any) ([]zapmodels.Zone, error) {
+	var logger *zap.Logger; if s.ctx != nil { logger = s.ctx.Logger() }
+
+	if logger != nil {
+		logger.Info("fetching zones", zap.Int32("page", page), zap.Int32("page_size", pageSize))
+	}
+
+	result, err := s.storage.FetchZones(ctx, page, pageSize, fields)
+	if err != nil {
+		if logger != nil {
+			logger.Error("failed to fetch zones", zap.Error(err))
+		}
+		return nil, fmt.Errorf("zap-controller: %w", err)
+	}
+
+	return result, nil
 }

@@ -25,7 +25,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/internal/cli/clilib"
 )
 
 // runECommandForZAPGet runs the command for getting the zap endpoint.

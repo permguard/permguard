@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/permguard/permguard/common/pkg/extensions/validators"
+	"github.com/permguard/permguard/pkg/extensions/validators"
 )
 
 // RemoteInfo represents the remote information.

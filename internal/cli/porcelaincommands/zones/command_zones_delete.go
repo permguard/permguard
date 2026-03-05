@@ -17,6 +17,7 @@
 package zones
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -26,7 +27,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/internal/cli/clilib"
 	"github.com/permguard/permguard/pkg/cli/options"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
@@ -64,7 +65,7 @@ func runECommandForDeleteZone(deps cli.DependenciesProvider, cmd *cobra.Command,
 		return common.ErrCommandSilent
 	}
 	zoneID := v.GetInt64(options.FlagName(commandNameForZonesDelete, common.FlagCommonZoneID))
-	zone, err := client.DeleteZone(zoneID)
+	zone, err := client.DeleteZone(context.Background(), zoneID)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to delete the zone.")

@@ -21,18 +21,18 @@ import (
 	"errors"
 	"time"
 
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	notppkts "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
 )
 
 // InMemoryStream simulates an in-memory stream for packet transmission with a fixed timeout.
 type InMemoryStream struct {
-	packets  []notppackets.Packet
-	packetCh chan notppackets.Packet
+	packets  []notppkts.Packet
+	packetCh chan notppkts.Packet
 	timeout  time.Duration
 }
 
 // TransmitPacket appends a packet to the in-memory stream.
-func (t *InMemoryStream) TransmitPacket(packet *notppackets.Packet) error {
+func (t *InMemoryStream) TransmitPacket(packet *notppkts.Packet) error {
 	if packet == nil {
 		return errors.New("notp: cannot transmit a nil packet")
 	}
@@ -42,7 +42,7 @@ func (t *InMemoryStream) TransmitPacket(packet *notppackets.Packet) error {
 }
 
 // ReceivePacket retrieves the oldest packet from the in-memory stream, with a fixed timeout.
-func (t *InMemoryStream) ReceivePacket() (*notppackets.Packet, error) {
+func (t *InMemoryStream) ReceivePacket() (*notppkts.Packet, error) {
 	select {
 	case packet := <-t.packetCh:
 		return &packet, nil
@@ -54,8 +54,8 @@ func (t *InMemoryStream) ReceivePacket() (*notppackets.Packet, error) {
 // NewInMemoryStream creates and initializes a new in-memory stream with a fixed timeout.
 func NewInMemoryStream(timeout time.Duration) (*InMemoryStream, error) {
 	return &InMemoryStream{
-		packets:  make([]notppackets.Packet, 0),
-		packetCh: make(chan notppackets.Packet, 10),
+		packets:  make([]notppkts.Packet, 0),
+		packetCh: make(chan notppkts.Packet, 10),
 		timeout:  timeout,
 	}, nil
 }

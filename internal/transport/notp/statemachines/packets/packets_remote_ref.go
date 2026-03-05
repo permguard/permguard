@@ -17,7 +17,7 @@
 package packets
 
 import (
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	notppkts "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
 )
 
 // RemoteRefStatePacket is the packet to advertise the remote ref state.
@@ -32,29 +32,29 @@ type RemoteRefStatePacket struct {
 
 // Type returns the type of the packet.
 func (p *RemoteRefStatePacket) Type() uint64 {
-	return notppackets.CombineUint32toUint64(RemoteRefStatePacketType, 0)
+	return notppkts.CombineUint32toUint64(RemoteRefStatePacketType, 0)
 }
 
 // Serialize serializes the packet.
 func (p *RemoteRefStatePacket) Serialize() ([]byte, error) {
-	data := notppackets.SerializeString(nil, p.RefPrevCommit, notppackets.PacketNullByte)
-	data = notppackets.SerializeString(data, p.RefCommit, notppackets.PacketNullByte)
-	data = notppackets.SerializeUint16(data, p.OpCode, notppackets.PacketNullByte)
+	data := notppkts.SerializeString(nil, p.RefPrevCommit, notppkts.PacketNullByte)
+	data = notppkts.SerializeString(data, p.RefCommit, notppkts.PacketNullByte)
+	data = notppkts.SerializeUint16(data, p.OpCode, notppkts.PacketNullByte)
 	return data, nil
 }
 
 // Deserialize deserializes the packet.
 func (p *RemoteRefStatePacket) Deserialize(data []byte) error {
 	var err error
-	p.RefPrevCommit, data, err = notppackets.DeserializeString(data, notppackets.PacketNullByte)
+	p.RefPrevCommit, data, err = notppkts.DeserializeString(data, notppkts.PacketNullByte)
 	if err != nil {
 		return err
 	}
-	p.RefCommit, data, err = notppackets.DeserializeString(data, notppackets.PacketNullByte)
+	p.RefCommit, data, err = notppkts.DeserializeString(data, notppkts.PacketNullByte)
 	if err != nil {
 		return err
 	}
-	p.OpCode, _, err = notppackets.DeserializeUint16(data, notppackets.PacketNullByte)
+	p.OpCode, _, err = notppkts.DeserializeUint16(data, notppkts.PacketNullByte)
 	if err != nil {
 		return err
 	}

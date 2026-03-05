@@ -17,6 +17,7 @@
 package centralstorage
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -35,7 +36,7 @@ func TestCreateLedgerWithErrors(t *testing.T) {
 
 	{ // Test with nil ledger
 		storage, _, _, _, _, _, _ := createSQLitePAPCentralStorageWithMocks()
-		ledgers, err := storage.CreateLedger(nil)
+		ledgers, err := storage.CreateLedger(context.Background(), nil)
 		assert.Nil(ledgers, "ledgers should be nil")
 		require.Error(t, err, "error should not be nil")
 	}
@@ -70,7 +71,7 @@ func TestCreateLedgerWithErrors(t *testing.T) {
 		}
 
 		inLedger := &pap.Ledger{}
-		outLedgers, err := storage.CreateLedger(inLedger)
+		outLedgers, err := storage.CreateLedger(context.Background(), inLedger)
 		assert.Nil(outLedgers, "ledgers should be nil")
 		require.Error(t, err)
 		if multi, ok := err.(interface{ Unwrap() []error }); ok {
@@ -101,7 +102,7 @@ func TestCreateLedgerWithSuccess(t *testing.T) {
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
 	inLedger := &pap.Ledger{}
-	outLedgers, err := storage.CreateLedger(inLedger)
+	outLedgers, err := storage.CreateLedger(context.Background(), inLedger)
 	require.NoError(t, err, "error should be nil")
 	assert.NotNil(outLedgers, "ledgers should not be nil")
 	assert.Equal(dbOutLedger.LedgerID, outLedgers.LedgerID, "ledger id should be equal")
@@ -116,7 +117,7 @@ func TestUpdateLedgerWithErrors(t *testing.T) {
 
 	{ // Test with nil ledger
 		storage, _, _, _, _, _, _ := createSQLitePAPCentralStorageWithMocks()
-		ledgers, err := storage.UpdateLedger(nil)
+		ledgers, err := storage.UpdateLedger(context.Background(), nil)
 		assert.Nil(ledgers, "ledgers should be nil")
 		require.Error(t, err, "error should not be nil")
 	}
@@ -152,7 +153,7 @@ func TestUpdateLedgerWithErrors(t *testing.T) {
 
 		inLedger := &pap.Ledger{}
 		inLedger.Kind = repos.LedgerTypePolicy
-		outLedgers, err := storage.UpdateLedger(inLedger)
+		outLedgers, err := storage.UpdateLedger(context.Background(), inLedger)
 		assert.Nil(outLedgers, "ledgers should be nil")
 		require.Error(t, err)
 		if multi, ok := err.(interface{ Unwrap() []error }); ok {
@@ -185,7 +186,7 @@ func TestUpdateLedgerWithSuccess(t *testing.T) {
 	inLedger := &pap.Ledger{}
 	inLedger.Kind = repos.LedgerTypePolicy
 
-	outLedgers, err := storage.UpdateLedger(inLedger)
+	outLedgers, err := storage.UpdateLedger(context.Background(), inLedger)
 	require.NoError(t, err, "error should be nil")
 	assert.NotNil(outLedgers, "ledgers should not be nil")
 	assert.Equal(dbOutLedger.LedgerID, outLedgers.LedgerID, "ledger id should be equal")
@@ -228,7 +229,7 @@ func TestDeleteLedgerWithErrors(t *testing.T) {
 		}
 
 		inLedgerID := repos.GenerateUUID()
-		outLedgers, err := storage.DeleteLedger(repos.GenerateZoneID(), inLedgerID)
+		outLedgers, err := storage.DeleteLedger(context.Background(), repos.GenerateZoneID(), inLedgerID)
 		assert.Nil(outLedgers, "ledgers should be nil")
 		require.Error(t, err)
 		if multi, ok := err.(interface{ Unwrap() []error }); ok {
@@ -259,7 +260,7 @@ func TestDeleteLedgerWithSuccess(t *testing.T) {
 	mockSQLDB.ExpectCommit().WillReturnError(nil)
 
 	inLedgerID := repos.GenerateUUID()
-	outLedgers, err := storage.DeleteLedger(repos.GenerateZoneID(), inLedgerID)
+	outLedgers, err := storage.DeleteLedger(context.Background(), repos.GenerateZoneID(), inLedgerID)
 	require.NoError(t, err, "error should be nil")
 	assert.NotNil(outLedgers, "ledgers should not be nil")
 	assert.Equal(dbOutLedger.LedgerID, outLedgers.LedgerID, "ledger id should be equal")
@@ -275,7 +276,7 @@ func TestFetchLedgerWithErrors(t *testing.T) {
 	{ // Test with invalid page
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, _, _ := createSQLitePAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(nil, errors.New("operation error"))
-		outLedgers, err := storage.FetchLedgers(1, 100, 232956849236, nil)
+		outLedgers, err := storage.FetchLedgers(context.Background(), 1, 100, 232956849236, nil)
 		assert.Nil(outLedgers, "ledgers should be nil")
 		require.Error(t, err, "error should not be nil")
 	}
@@ -283,7 +284,7 @@ func TestFetchLedgerWithErrors(t *testing.T) {
 	{ // Test with invalid page
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLitePAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outLedgers, err := storage.FetchLedgers(0, 100, 232956849236, nil)
+		outLedgers, err := storage.FetchLedgers(context.Background(), 0, 100, 232956849236, nil)
 		assert.Nil(outLedgers, "ledgers should be nil")
 		require.Error(t, err, "error should not be nil")
 	}
@@ -291,7 +292,7 @@ func TestFetchLedgerWithErrors(t *testing.T) {
 	{ // Test with invalid page size
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLitePAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outLedgers, err := storage.FetchLedgers(1, 0, 232956849236, nil)
+		outLedgers, err := storage.FetchLedgers(context.Background(), 1, 0, 232956849236, nil)
 		assert.Nil(outLedgers, "ledgers should be nil")
 		require.Error(t, err, "error should not be nil")
 	}
@@ -299,7 +300,7 @@ func TestFetchLedgerWithErrors(t *testing.T) {
 	{ // Test with invalid ledger id
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLitePAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outLedgers, err := storage.FetchLedgers(1, 100, 232956849236, map[string]any{pap.FieldLedgerLedgerID: 232956849236})
+		outLedgers, err := storage.FetchLedgers(context.Background(), 1, 100, 232956849236, map[string]any{pap.FieldLedgerLedgerID: 232956849236})
 		assert.Nil(outLedgers, "ledgers should be nil")
 		require.Error(t, err, "error should not be nil")
 	}
@@ -307,7 +308,7 @@ func TestFetchLedgerWithErrors(t *testing.T) {
 	{ // Test with invalid ledger name
 		storage, mockStorageCtx, mockConnector, _, mockSQLExec, sqlDB, _ := createSQLitePAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
-		outLedgers, err := storage.FetchLedgers(1, 100, 232956849236, map[string]any{pap.FieldLedgerName: 2})
+		outLedgers, err := storage.FetchLedgers(context.Background(), 1, 100, 232956849236, map[string]any{pap.FieldLedgerName: 2})
 		assert.Nil(outLedgers, "ledgers should be nil")
 		require.Error(t, err, "error should not be nil")
 	}
@@ -316,7 +317,7 @@ func TestFetchLedgerWithErrors(t *testing.T) {
 		storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLitePAPCentralStorageWithMocks()
 		mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 		mockSQLRepo.On("FetchLedgers", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("operation error"))
-		outLedgers, err := storage.FetchLedgers(1, 100, 232956849236, nil)
+		outLedgers, err := storage.FetchLedgers(context.Background(), 1, 100, 232956849236, nil)
 		assert.Nil(outLedgers, "ledgers should be nil")
 		require.Error(t, err, "error should not be nil")
 	}
@@ -348,7 +349,7 @@ func TestFetchLedgerWithSuccess(t *testing.T) {
 	mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 	mockSQLRepo.On("FetchLedgers", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(dbOutLedgers, nil)
 
-	outLedgers, err := storage.FetchLedgers(1, 100, 232956849236, map[string]any{pap.FieldLedgerLedgerID: repos.GenerateUUID(), pap.FieldLedgerName: "rent-a-car2"})
+	outLedgers, err := storage.FetchLedgers(context.Background(), 1, 100, 232956849236, map[string]any{pap.FieldLedgerLedgerID: repos.GenerateUUID(), pap.FieldLedgerName: "rent-a-car2"})
 	require.NoError(t, err, "error should be nil")
 	assert.NotNil(outLedgers, "ledgers should not be nil")
 	assert.Len(dbOutLedgers, len(outLedgers), "ledgers and dbLedgers should have the same length")

@@ -24,7 +24,7 @@ import (
 )
 
 // AuthorizationCheck checks the authorization request.
-func (c *GrpcPDPClient) AuthorizationCheck(request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error) {
+func (c *GrpcPDPClient) AuthorizationCheck(ctx context.Context, request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error) {
 	client, conn, err := c.createGRPCClient()
 	defer conn.Close()
 	if err != nil {
@@ -34,7 +34,7 @@ func (c *GrpcPDPClient) AuthorizationCheck(request *pdp.AuthorizationCheckWithDe
 	if err != nil {
 		return nil, err
 	}
-	response, err := client.AuthorizationCheck(context.Background(), req)
+	response, err := client.AuthorizationCheck(ctx, req)
 	if err != nil {
 		return nil, err
 	}

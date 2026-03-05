@@ -17,44 +17,46 @@
 package storage
 
 import (
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
-	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
-	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
-	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
+	"context"
+
+	notppkts "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	statemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
+	smpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
+	papmodels "github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
-// PAPCentralStorage is the interface for the ZAP central storage.
+// PAPCentralStorage is the interface for the PAP central storage.
 type PAPCentralStorage interface {
 	// CreateLedger creates a new ledger.
-	CreateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error)
-	// UpdateLedger updates an ledger.
-	UpdateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error)
-	// DeleteLedger deletes an ledger.
-	DeleteLedger(zoneID int64, ledgerID string) (*azmodelspap.Ledger, error)
+	CreateLedger(ctx context.Context, ledger *papmodels.Ledger) (*papmodels.Ledger, error)
+	// UpdateLedger updates a ledger.
+	UpdateLedger(ctx context.Context, ledger *papmodels.Ledger) (*papmodels.Ledger, error)
+	// DeleteLedger deletes a ledger.
+	DeleteLedger(ctx context.Context, zoneID int64, ledgerID string) (*papmodels.Ledger, error)
 	// FetchLedgers gets all ledgers.
-	FetchLedgers(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelspap.Ledger, error)
+	FetchLedgers(ctx context.Context, page int32, pageSize int32, zoneID int64, fields map[string]any) ([]papmodels.Ledger, error)
 	// OnPullHandleRequestCurrentState handles the request for the current state.
-	OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPullHandleRequestCurrentState(handlerCtx *statemachines.HandlerContext, statePacket *smpackets.StatePacket, packets []notppkts.Packetable) (*statemachines.HostHandlerReturn, error)
 	// OnPullSendNotifyCurrentStateResponse notifies the current state.
-	OnPullSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPullSendNotifyCurrentStateResponse(handlerCtx *statemachines.HandlerContext, statePacket *smpackets.StatePacket, packets []notppkts.Packetable) (*statemachines.HostHandlerReturn, error)
 	// OnPullSendNegotiationRequest sends the negotiation request.
-	OnPullSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPullSendNegotiationRequest(handlerCtx *statemachines.HandlerContext, statePacket *smpackets.StatePacket, packets []notppkts.Packetable) (*statemachines.HostHandlerReturn, error)
 	// OnPullHandleNegotiationResponse handles the negotiation response.
-	OnPullHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPullHandleNegotiationResponse(handlerCtx *statemachines.HandlerContext, statePacket *smpackets.StatePacket, packets []notppkts.Packetable) (*statemachines.HostHandlerReturn, error)
 	// OnPullHandleExchangeDataStream exchanges the data stream.
-	OnPullHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPullHandleExchangeDataStream(handlerCtx *statemachines.HandlerContext, statePacket *smpackets.StatePacket, packets []notppkts.Packetable) (*statemachines.HostHandlerReturn, error)
 	// OnPullHandleCommit handles the commit.
-	OnPullHandleCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPullHandleCommit(handlerCtx *statemachines.HandlerContext, statePacket *smpackets.StatePacket, packets []notppkts.Packetable) (*statemachines.HostHandlerReturn, error)
 	// OnPushHandleNotifyCurrentState notifies the current state.
-	OnPushHandleNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPushHandleNotifyCurrentState(handlerCtx *statemachines.HandlerContext, statePacket *smpackets.StatePacket, packets []notppkts.Packetable) (*statemachines.HostHandlerReturn, error)
 	// OnPushSendNotifyCurrentStateResponse handles the current state response.
-	OnPushSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPushSendNotifyCurrentStateResponse(handlerCtx *statemachines.HandlerContext, statePacket *smpackets.StatePacket, packets []notppkts.Packetable) (*statemachines.HostHandlerReturn, error)
 	// OnPushSendNegotiationRequest sends the negotiation request.
-	OnPushSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPushSendNegotiationRequest(handlerCtx *statemachines.HandlerContext, statePacket *smpackets.StatePacket, packets []notppkts.Packetable) (*statemachines.HostHandlerReturn, error)
 	// OnPushHandleNegotiationResponse handles the negotiation response.
-	OnPushHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPushHandleNegotiationResponse(handlerCtx *statemachines.HandlerContext, statePacket *smpackets.StatePacket, packets []notppkts.Packetable) (*statemachines.HostHandlerReturn, error)
 	// OnPushHandleExchangeDataStream exchanges the data stream.
-	OnPushHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPushHandleExchangeDataStream(handlerCtx *statemachines.HandlerContext, statePacket *smpackets.StatePacket, packets []notppkts.Packetable) (*statemachines.HostHandlerReturn, error)
 	// OnPushSendCommit sends the commit.
-	OnPushSendCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPushSendCommit(handlerCtx *statemachines.HandlerContext, statePacket *smpackets.StatePacket, packets []notppkts.Packetable) (*statemachines.HostHandlerReturn, error)
 }

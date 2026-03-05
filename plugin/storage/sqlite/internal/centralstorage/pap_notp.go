@@ -17,16 +17,17 @@
 package centralstorage
 
 import (
+	"context"
 	"errors"
 	"strconv"
 
 	"github.com/jmoiron/sqlx"
 
 	"github.com/permguard/permguard/pkg/transport/models/pap"
-	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	"github.com/permguard/permguard/ztauthstar/pkg/authz/objects"
 
 	notpagstatemachines "github.com/permguard/permguard/internal/transport/notp/statemachines"
-	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
+	statemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
 )
 
 const (
@@ -43,7 +44,7 @@ const (
 )
 
 // getFromHandlerContext gets the value from the handler context.
-func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key string) (T, bool) {
+func getFromHandlerContext[T any](ctx *statemachines.HandlerContext, key string) (T, bool) {
 	value, ok := ctx.Value(key)
 	if !ok {
 		var zero T
@@ -102,7 +103,7 @@ func (s SQLiteCentralStoragePAP) readObject(db *sqlx.DB, zoneID int64, oid strin
 }
 
 // extractMetaData extracts the meta data.
-func (s SQLiteCentralStoragePAP) extractMetaData(ctx *notpstatemachines.HandlerContext) (int64, string) {
+func (s SQLiteCentralStoragePAP) extractMetaData(ctx *statemachines.HandlerContext) (int64, string) {
 	zoneIDStr, _ := getFromHandlerContext[string](ctx, notpagstatemachines.ZoneIDKey)
 	zoneID, err := strconv.ParseInt(zoneIDStr, 10, 64)
 	if err != nil {
@@ -113,12 +114,12 @@ func (s SQLiteCentralStoragePAP) extractMetaData(ctx *notpstatemachines.HandlerC
 }
 
 // readLedgerFromHandlerContext reads the ledger from the handler context.
-func (s SQLiteCentralStoragePAP) readLedgerFromHandlerContext(handlerCtx *notpstatemachines.HandlerContext) (*pap.Ledger, error) {
+func (s SQLiteCentralStoragePAP) readLedgerFromHandlerContext(handlerCtx *statemachines.HandlerContext) (*pap.Ledger, error) {
 	zoneID, ledgerID := s.extractMetaData(handlerCtx)
 	fields := map[string]any{
 		pap.FieldLedgerLedgerID: ledgerID,
 	}
-	ledgers, err := s.FetchLedgers(1, 1, zoneID, fields)
+	ledgers, err := s.FetchLedgers(context.TODO(), 1, 1, zoneID, fields)
 	if err != nil {
 		return nil, err
 	}

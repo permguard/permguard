@@ -17,23 +17,25 @@
 package clients
 
 import (
+	"context"
+
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 // GrpcZAPClient is the gRPC ZAP client servicer.
 type GrpcZAPClient interface {
 	// CreateZone creates a new zone.
-	CreateZone(name string) (*zap.Zone, error)
+	CreateZone(ctx context.Context, name string) (*zap.Zone, error)
 	// UpdateZone updates a zone.
-	UpdateZone(zone *zap.Zone) (*zap.Zone, error)
+	UpdateZone(ctx context.Context, zone *zap.Zone) (*zap.Zone, error)
 	// DeleteZone deletes a zone.
-	DeleteZone(zoneID int64) (*zap.Zone, error)
+	DeleteZone(ctx context.Context, zoneID int64) (*zap.Zone, error)
 	// FetchZones fetches zones.
-	FetchZones(page int32, pageSize int32) ([]zap.Zone, error)
+	FetchZones(ctx context.Context, page int32, pageSize int32) ([]zap.Zone, error)
 	// FetchZonesByID fetches zones by ID.
-	FetchZonesByID(page int32, pageSize int32, zoneID int64) ([]zap.Zone, error)
+	FetchZonesByID(ctx context.Context, page int32, pageSize int32, zoneID int64) ([]zap.Zone, error)
 	// FetchZonesByName fetches zones by name.
-	FetchZonesByName(page int32, pageSize int32, name string) ([]zap.Zone, error)
+	FetchZonesByName(ctx context.Context, page int32, pageSize int32, name string) ([]zap.Zone, error)
 	// FetchZonesBy fetches zones by.
-	FetchZonesBy(page int32, pageSize int32, zoneID int64, name string) ([]zap.Zone, error)
+	FetchZonesBy(ctx context.Context, page int32, pageSize int32, zoneID int64, name string) ([]zap.Zone, error)
 }

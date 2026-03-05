@@ -23,7 +23,7 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace/cosp"
 	"github.com/permguard/permguard/internal/cli/workspace/logs"
-	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	"github.com/permguard/permguard/ztauthstar/pkg/authz/objects"
 )
 
 // ExecPlan generates a plan of changes to apply to the remote ledger based on the differences between the local and remote states.

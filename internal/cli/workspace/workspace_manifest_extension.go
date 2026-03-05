@@ -20,7 +20,7 @@ import (
 	"errors"
 
 	"github.com/permguard/permguard/pkg/authz/languages"
-	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	manifests "github.com/permguard/permguard/ztauthstar/pkg/authz/manifests"
 )
 
 type languageInfo struct {

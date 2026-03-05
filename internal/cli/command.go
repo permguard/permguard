@@ -25,7 +25,7 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	commoncmds "github.com/permguard/permguard/internal/cli/commoncommands"
-	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/internal/cli/clilib"
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 

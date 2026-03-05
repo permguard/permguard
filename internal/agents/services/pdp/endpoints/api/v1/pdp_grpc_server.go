@@ -30,7 +30,7 @@ import (
 // PDPService is the service for the PDP.
 type PDPService interface {
 	// AuthorizationCheck checks the authorization.
-	AuthorizationCheck(request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error)
+	AuthorizationCheck(ctx context.Context, request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error)
 }
 
 // NewPDPServer creates a new PDP server.
@@ -49,7 +49,7 @@ type PDPServer struct {
 }
 
 // AuthorizationCheck checks the authorization.
-func (s *PDPServer) AuthorizationCheck(_ context.Context, request *AuthorizationCheckRequest) (*AuthorizationCheckResponse, error) {
+func (s *PDPServer) AuthorizationCheck(ctx context.Context, request *AuthorizationCheckRequest) (*AuthorizationCheckResponse, error) {
 	logger := s.ctx.Logger()
 	if request != nil {
 		jsonData, err := json.MarshalIndent(request, "", "  ")
@@ -63,7 +63,7 @@ func (s *PDPServer) AuthorizationCheck(_ context.Context, request *Authorization
 	if req == nil {
 		return nil, errors.Join(errors.New("pdp-endpoint: request cannot be nil"), err)
 	}
-	authzResponse, err := s.service.AuthorizationCheck(req)
+	authzResponse, err := s.service.AuthorizationCheck(ctx, req)
 	if err != nil {
 		authzResponse = &pdp.AuthorizationCheckResponse{
 			RequestID: req.RequestID,

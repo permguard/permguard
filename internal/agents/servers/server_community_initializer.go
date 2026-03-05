@@ -19,7 +19,7 @@ package servers
 import (
 	"fmt"
 
-	"github.com/permguard/permguard/common/pkg/extensions/copier"
+	"github.com/permguard/permguard/pkg/extensions/copier"
 	"github.com/permguard/permguard/internal/agents/services/pap"
 	"github.com/permguard/permguard/internal/agents/services/pdp"
 	"github.com/permguard/permguard/internal/agents/services/zap"
@@ -57,7 +57,7 @@ Copyright © 2022 Nitro Agility S.r.l.
 	services := []services.ServiceKind{services.ServiceZAP, services.ServicePAP, services.ServicePIP, services.ServicePDP}
 
 	if !host.IsValid(hosts) {
-		panic(fmt.Sprintf("server: invalid server kind: %s", host))
+		return nil, fmt.Errorf("server: invalid server kind: %s", host)
 	}
 	return &CommunityServerInitializer{
 		host:      host,

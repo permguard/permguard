@@ -25,7 +25,7 @@ import (
 
 	"go.uber.org/zap"
 
-	iservices "github.com/permguard/permguard/internal/agents/services"
+	internalservices "github.com/permguard/permguard/internal/agents/services"
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/cli/options"
@@ -53,7 +53,7 @@ func newServer(serverCfg *ServerConfig) (*Server, error) {
 	return srv, nil
 }
 
-// Host returns the hsot kind.
+// Host returns the host kind.
 func (s *Server) Host() services.HostKind {
 	return s.config.host
 }
@@ -69,7 +69,7 @@ func (s *Server) Logger() *zap.Logger {
 }
 
 // serveExecStop executes the server stop.
-func serveExecStop(ctx context.Context, logger *zap.Logger, hasStarted bool, host *iservices.Host, onShutdown func(), s *Server) {
+func serveExecStop(ctx context.Context, logger *zap.Logger, hasStarted bool, host *internalservices.Host, onShutdown func(), s *Server) {
 	logger.Info("Bootstrapper is stopping the server")
 	if hasStarted {
 		done, err := host.GracefulStop(ctx)
@@ -106,13 +106,13 @@ func (s *Server) Serve(ctx context.Context, onShutdown func()) (bool, error) {
 		s.startLock.Unlock()
 		return false, err
 	}
-	hostCfg, err := iservices.NewHostConfig(s.config.Host(), s, storageConnector, s.config.Services(), s.config.ServicesFactories(), logger, s.config.AppData())
+	hostCfg, err := internalservices.NewHostConfig(s.config.Host(), s, storageConnector, s.config.Services(), s.config.ServicesFactories(), logger, s.config.AppData())
 	if err != nil {
 		logger.Error("Bootstrapper cannot create the host config", zap.Error(err))
 		s.startLock.Unlock()
 		return false, err
 	}
-	host, err := iservices.NewHost(hostCfg)
+	host, err := internalservices.NewHost(hostCfg)
 	if err != nil {
 		logger.Error("Bootstrapper cannot create the host", zap.Error(err))
 		s.startLock.Unlock()

@@ -17,7 +17,7 @@
 package packets
 
 import (
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	notppkts "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
 )
 
 const (
@@ -73,22 +73,22 @@ type StatePacket struct {
 
 // Type returns the packet type.
 func (p *StatePacket) Type() uint64 {
-	return notppackets.CombineUint32toUint64(StatePacketType, 0)
+	return notppkts.CombineUint32toUint64(StatePacketType, 0)
 }
 
 // HasAck returns true if the packet has an acknowledgment.
 func (p *StatePacket) HasAck() bool {
-	return notppackets.HasUint64AUint32(p.MessageValue, AcknowledgedValue) && !p.HasError()
+	return notppkts.HasUint64AUint32(p.MessageValue, AcknowledgedValue) && !p.HasError()
 }
 
 // HasActiveDataStream returns true if the packet has an active data stream.
 func (p *StatePacket) HasActiveDataStream() bool {
-	return notppackets.HasUint64AUint32(p.MessageValue, ActiveDataStreamValue) && !p.HasError()
+	return notppkts.HasUint64AUint32(p.MessageValue, ActiveDataStreamValue) && !p.HasError()
 }
 
 // HasCompletedDataStream returns true if the packet has a completed data stream.
 func (p *StatePacket) HasCompletedDataStream() bool {
-	return notppackets.HasUint64AUint32(p.MessageValue, CompletedDataStreamValue) && !p.HasError()
+	return notppkts.HasUint64AUint32(p.MessageValue, CompletedDataStreamValue) && !p.HasError()
 }
 
 // HasError returns true if the packet has errors.
@@ -98,24 +98,24 @@ func (p *StatePacket) HasError() bool {
 
 // Serialize serializes the packet into bytes.
 func (p *StatePacket) Serialize() ([]byte, error) {
-	data := notppackets.SerializeUint16(nil, p.MessageCode, notppackets.PacketNullByte)
-	data = notppackets.SerializeUint64(data, p.MessageValue, notppackets.PacketNullByte)
-	data = notppackets.SerializeUint16(data, p.ErrorCode, notppackets.PacketNullByte)
+	data := notppkts.SerializeUint16(nil, p.MessageCode, notppkts.PacketNullByte)
+	data = notppkts.SerializeUint64(data, p.MessageValue, notppkts.PacketNullByte)
+	data = notppkts.SerializeUint16(data, p.ErrorCode, notppkts.PacketNullByte)
 	return data, nil
 }
 
 // Deserialize deserializes the packet from bytes.
 func (p *StatePacket) Deserialize(data []byte) error {
 	var err error
-	p.MessageCode, data, err = notppackets.DeserializeUint16(data, notppackets.PacketNullByte)
+	p.MessageCode, data, err = notppkts.DeserializeUint16(data, notppkts.PacketNullByte)
 	if err != nil {
 		return err
 	}
-	p.MessageValue, data, err = notppackets.DeserializeUint64(data, notppackets.PacketNullByte)
+	p.MessageValue, data, err = notppkts.DeserializeUint64(data, notppkts.PacketNullByte)
 	if err != nil {
 		return err
 	}
-	p.ErrorCode, _, err = notppackets.DeserializeUint16(data, notppackets.PacketNullByte)
+	p.ErrorCode, _, err = notppkts.DeserializeUint16(data, notppkts.PacketNullByte)
 	if err != nil {
 		return err
 	}

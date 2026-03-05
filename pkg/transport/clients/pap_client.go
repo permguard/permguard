@@ -17,23 +17,25 @@
 package clients
 
 import (
+	"context"
+
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
 // GrpcPAPClient is the gRPC PAP client servicer.
 type GrpcPAPClient interface {
 	// CreateLedger creates a ledger.
-	CreateLedger(zoneID int64, kind string, name string) (*pap.Ledger, error)
+	CreateLedger(ctx context.Context, zoneID int64, kind string, name string) (*pap.Ledger, error)
 	// UpdateLedger updates a ledger.
-	UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, error)
+	UpdateLedger(ctx context.Context, ledger *pap.Ledger) (*pap.Ledger, error)
 	// DeleteLedger deletes a ledger.
-	DeleteLedger(zoneID int64, ledgerID string) (*pap.Ledger, error)
+	DeleteLedger(ctx context.Context, zoneID int64, ledgerID string) (*pap.Ledger, error)
 	// FetchLedgers returns all ledgers.
-	FetchLedgers(page int32, pageSize int32, zoneID int64) ([]pap.Ledger, error)
+	FetchLedgers(ctx context.Context, page int32, pageSize int32, zoneID int64) ([]pap.Ledger, error)
 	// FetchLedgersByID returns all ledgers filtering by ledger id.
-	FetchLedgersByID(page int32, pageSize int32, zoneID int64, ledgerID string) ([]pap.Ledger, error)
+	FetchLedgersByID(ctx context.Context, page int32, pageSize int32, zoneID int64, ledgerID string) ([]pap.Ledger, error)
 	// FetchLedgersByName returns all ledgers filtering by name.
-	FetchLedgersByName(page int32, pageSize int32, zoneID int64, name string) ([]pap.Ledger, error)
+	FetchLedgersByName(ctx context.Context, page int32, pageSize int32, zoneID int64, name string) ([]pap.Ledger, error)
 	// FetchLedgersBy returns all ledgers filtering by ledger id and name.
-	FetchLedgersBy(page int32, pageSize int32, zoneID int64, ledgerID string, kind string, name string) ([]pap.Ledger, error)
+	FetchLedgersBy(ctx context.Context, page int32, pageSize int32, zoneID int64, ledgerID string, kind string, name string) ([]pap.Ledger, error)
 }

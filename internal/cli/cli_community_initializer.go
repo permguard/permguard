@@ -26,7 +26,7 @@ import (
 	"github.com/permguard/permguard/internal/cli/porcelaincommands/workspace"
 	"github.com/permguard/permguard/internal/cli/porcelaincommands/zones"
 	"github.com/permguard/permguard/pkg/authz/languages"
-	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/internal/cli/clilib"
 )
 
 // CommunityCliInitializer  is the community cli initializer.

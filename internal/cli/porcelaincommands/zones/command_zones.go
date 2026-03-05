@@ -17,6 +17,7 @@
 package zones
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -27,7 +28,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/internal/cli/clilib"
 	"github.com/permguard/permguard/pkg/cli/options"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
@@ -72,14 +73,14 @@ func runECommandForUpsertZone(deps cli.DependenciesProvider, cmd *cobra.Command,
 	name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
 	var zone *zap.Zone
 	if isCreate {
-		zone, err = client.CreateZone(name)
+		zone, err = client.CreateZone(context.Background(), name)
 	} else {
 		zoneID := v.GetInt64(options.FlagName(flagPrefix, common.FlagCommonZoneID))
 		inputZone := &zap.Zone{
 			ZoneID: zoneID,
 			Name:   name,
 		}
-		zone, err = client.UpdateZone(inputZone)
+		zone, err = client.UpdateZone(context.Background(), inputZone)
 	}
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {

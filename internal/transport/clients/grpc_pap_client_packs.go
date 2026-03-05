@@ -26,10 +26,10 @@ import (
 
 	papv1 "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
 
-	notptransportsm "github.com/permguard/permguard/internal/transport/notp/statemachines"
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
-	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
-	notptransport "github.com/permguard/permguard/notp-protocol/pkg/notp/transport"
+	notpsm "github.com/permguard/permguard/internal/transport/notp/statemachines"
+	notppkts "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	statemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
+	notpxport "github.com/permguard/permguard/notp-protocol/pkg/notp/transport"
 )
 
 const (
@@ -38,29 +38,29 @@ const (
 )
 
 // createWiredStateMachine creates a wired state machine.
-func (c *GrpcPAPClient) createWiredStateMachine(stream grpc.BidiStreamingClient[papv1.PackMessage, papv1.PackMessage], hostHandler notpstatemachines.HostHandler) (*notpstatemachines.StateMachine, error) {
-	var sender notptransport.WireSendFunc = func(packet *notppackets.Packet) error {
+func (c *GrpcPAPClient) createWiredStateMachine(stream grpc.BidiStreamingClient[papv1.PackMessage, papv1.PackMessage], hostHandler statemachines.HostHandler) (*statemachines.StateMachine, error) {
+	var sender notpxport.WireSendFunc = func(packet *notppkts.Packet) error {
 		pack := &papv1.PackMessage{
 			Data: packet.Data,
 		}
 		return stream.Send(pack)
 	}
-	var receiver notptransport.WireRecvFunc = func() (*notppackets.Packet, error) {
+	var receiver notpxport.WireRecvFunc = func() (*notppkts.Packet, error) {
 		pack, err := stream.Recv()
 		if err != nil {
 			return nil, err
 		}
-		return &notppackets.Packet{Data: pack.Data}, nil
+		return &notppkts.Packet{Data: pack.Data}, nil
 	}
-	transportStream, err := notptransport.NewWireStream(sender, receiver, DefaultTimeout)
+	transportStream, err := notpxport.NewWireStream(sender, receiver, DefaultTimeout)
 	if err != nil {
 		return nil, err
 	}
-	transportLayer, err := notptransport.NewTransportLayer(transportStream.TransmitPacket, transportStream.ReceivePacket, nil)
+	transportLayer, err := notpxport.NewTransportLayer(transportStream.TransmitPacket, transportStream.ReceivePacket, nil)
 	if err != nil {
 		return nil, err
 	}
-	stateMachine, err := notpstatemachines.NewFollowerStateMachine(hostHandler, transportLayer)
+	stateMachine, err := statemachines.NewFollowerStateMachine(hostHandler, transportLayer)
 	if err != nil {
 		return nil, err
 	}
@@ -68,13 +68,13 @@ func (c *GrpcPAPClient) createWiredStateMachine(stream grpc.BidiStreamingClient[
 }
 
 // NOTPStream handles bidirectional stream using the NOTP protocol.
-func (c *GrpcPAPClient) NOTPStream(hostHandler notpstatemachines.HostHandler, zoneID int64, ledgerID string, bag map[string]any, flowType notpstatemachines.FlowType) (*notpstatemachines.StateMachineRuntimeContext, error) {
+func (c *GrpcPAPClient) NOTPStream(hostHandler statemachines.HostHandler, zoneID int64, ledgerID string, bag map[string]any, flowType statemachines.FlowType) (*statemachines.StateMachineRuntimeContext, error) {
 	client, conn, err := c.createGRPCClient()
 	defer conn.Close()
 	if err != nil {
 		return nil, err
 	}
-	ctx := metadata.AppendToOutgoingContext(context.Background(), notptransportsm.ZoneIDKey, strconv.FormatInt(zoneID, 10), notptransportsm.LedgerIDKey, ledgerID)
+	ctx := metadata.AppendToOutgoingContext(context.Background(), notpsm.ZoneIDKey, strconv.FormatInt(zoneID, 10), notpsm.LedgerIDKey, ledgerID)
 	stream, err := client.NOTPStream(ctx)
 	if err != nil {
 		return nil, err

@@ -27,10 +27,10 @@ import (
 	"github.com/permguard/permguard/pkg/authz/engines"
 	"github.com/permguard/permguard/ztauthstar-cedar/pkg/cedarlang"
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
-	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
-	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/validators"
-	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
-	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	"github.com/permguard/permguard/ztauthstar/pkg/authz/languages/types"
+	"github.com/permguard/permguard/ztauthstar/pkg/authz/languages/validators"
+	manifests "github.com/permguard/permguard/ztauthstar/pkg/authz/manifests"
+	"github.com/permguard/permguard/ztauthstar/pkg/authz/objects"
 )
 
 // LanguageAbstraction is the abstraction for the cedar language.

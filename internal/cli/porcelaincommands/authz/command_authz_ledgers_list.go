@@ -17,6 +17,7 @@
 package authz
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -25,7 +26,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/internal/cli/clilib"
 	"github.com/permguard/permguard/pkg/cli/options"
 )
 
@@ -66,7 +67,7 @@ func runECommandForListLedgers(deps cli.DependenciesProvider, cmd *cobra.Command
 	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
 	ledgerID := v.GetString(options.FlagName(commandNameForLedgersList, flagLedgerID))
 	kind := v.GetString(options.FlagName(commandNameForLedgersList, flagLedgerKind))
-	ledgers, err := client.FetchLedgersBy(page, pageSize, zoneID, ledgerID, kind, "")
+	ledgers, err := client.FetchLedgersBy(context.Background(), page, pageSize, zoneID, ledgerID, kind, "")
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to list ledgers.")

@@ -31,7 +31,7 @@ const (
 )
 
 // CreateLedger creates a new ledger.
-func (s SQLiteCentralStoragePAP) CreateLedger(ledger *pap.Ledger) (*pap.Ledger, error) {
+func (s SQLiteCentralStoragePAP) CreateLedger(ctx context.Context, ledger *pap.Ledger) (*pap.Ledger, error) {
 	if ledger == nil {
 		return nil, errors.New("storage: invalid client input - ledger is nil")
 	}
@@ -39,7 +39,7 @@ func (s SQLiteCentralStoragePAP) CreateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	tx, err := db.BeginTx(context.Background(), nil)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
@@ -67,7 +67,7 @@ func (s SQLiteCentralStoragePAP) CreateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 }
 
 // UpdateLedger updates a ledger.
-func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, error) {
+func (s SQLiteCentralStoragePAP) UpdateLedger(ctx context.Context, ledger *pap.Ledger) (*pap.Ledger, error) {
 	if ledger == nil {
 		return nil, errors.New("storage: invalid client input - ledger is nil")
 	}
@@ -75,7 +75,7 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	tx, err := db.BeginTx(context.Background(), nil)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
@@ -104,12 +104,12 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 }
 
 // DeleteLedger deletes a ledger.
-func (s SQLiteCentralStoragePAP) DeleteLedger(zoneID int64, ledgerID string) (*pap.Ledger, error) {
+func (s SQLiteCentralStoragePAP) DeleteLedger(ctx context.Context, zoneID int64, ledgerID string) (*pap.Ledger, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	tx, err := db.BeginTx(context.Background(), nil)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
@@ -125,7 +125,7 @@ func (s SQLiteCentralStoragePAP) DeleteLedger(zoneID int64, ledgerID string) (*p
 }
 
 // FetchLedgers returns all ledgers.
-func (s SQLiteCentralStoragePAP) FetchLedgers(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]pap.Ledger, error) {
+func (s SQLiteCentralStoragePAP) FetchLedgers(ctx context.Context, page int32, pageSize int32, zoneID int64, fields map[string]any) ([]pap.Ledger, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.DataFetchMaxPageSize() {
 		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize)
 	}

@@ -17,9 +17,9 @@
 package workspace
 
 import (
-	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	"github.com/permguard/permguard/ztauthstar/pkg/authz/objects"
 
-	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
+	statemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
 )
 
 const (
@@ -50,7 +50,7 @@ const (
 )
 
 // getFromHandlerContext gets the value from the handler context.
-func getFromRuntimeContext[T any](ctx *notpstatemachines.StateMachineRuntimeContext, key string) (T, bool) {
+func getFromRuntimeContext[T any](ctx *statemachines.StateMachineRuntimeContext, key string) (T, bool) {
 	value, ok := ctx.Value(key)
 	if !ok {
 		var zero T
@@ -65,7 +65,7 @@ func getFromRuntimeContext[T any](ctx *notpstatemachines.StateMachineRuntimeCont
 }
 
 // getFromHandlerContext gets the value from the handler context.
-func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key string) (T, bool) {
+func getFromHandlerContext[T any](ctx *statemachines.HandlerContext, key string) (T, bool) {
 	value, ok := ctx.Value(key)
 	if !ok {
 		var zero T
@@ -87,7 +87,7 @@ type workspaceHandlerContext struct {
 }
 
 // createWorkspaceHandlerContext creates the workspace handler context.
-func createWorkspaceHandlerContext(ctx *notpstatemachines.HandlerContext) *workspaceHandlerContext {
+func createWorkspaceHandlerContext(ctx *statemachines.HandlerContext) *workspaceHandlerContext {
 	outfunc, _ := getFromHandlerContext[func(key string, output string, newLine bool)](ctx, OutFuncKey)
 	tree, _ := getFromHandlerContext[*objects.Object](ctx, LocalCodeTreeObjectKey)
 	headContext, _ := getFromHandlerContext[*currentHeadContext](ctx, HeadContextKey)

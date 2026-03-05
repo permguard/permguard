@@ -18,7 +18,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 
 	"github.com/permguard/permguard/internal/cli"
 )
@@ -27,7 +27,7 @@ func main() {
 	// Run the cli
 	initializer, err := cli.NewCommunityCliInitializer()
 	if err != nil {
-		panic(fmt.Sprintf("cli: error creating cli: %s", err.Error()))
+		log.Fatalf("cli: error creating cli: %s", err.Error())
 	}
 	cli.Run(initializer)
 }

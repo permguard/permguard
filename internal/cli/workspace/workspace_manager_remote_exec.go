@@ -26,9 +26,9 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/internal/cli/workspace/logs"
-	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
-	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
-	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	statemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
+	"github.com/permguard/permguard/ztauthstar/pkg/authz/languages/types"
+	"github.com/permguard/permguard/ztauthstar/pkg/authz/objects"
 
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
 	"github.com/permguard/permguard/pkg/core/files"
@@ -194,7 +194,7 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 		HeadContextKey:       headCtx,
 	}
 
-	var ctx *notpstatemachines.StateMachineRuntimeContext
+	var ctx *statemachines.StateMachineRuntimeContext
 	ctx, err = m.rmSrvtMgr.NOTPPull(headCtx.Server(), headCtx.ServerPAPPort(), headCtx.ZoneID(), headCtx.LedgerID(), bag, m)
 	if err != nil {
 		return fail(err)

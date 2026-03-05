@@ -24,8 +24,8 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/workspace/cosp"
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
-	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
-	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	"github.com/permguard/permguard/ztauthstar/pkg/authz/languages/types"
+	"github.com/permguard/permguard/ztauthstar/pkg/authz/objects"
 )
 
 // groupCodeFiles groups the code files.

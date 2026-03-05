@@ -17,6 +17,7 @@
 package mocks
 
 import (
+	"context"
 	mock "github.com/stretchr/testify/mock"
 
 	"github.com/permguard/permguard/pkg/transport/models/zap"
@@ -28,7 +29,7 @@ type GrpcZAPClientMock struct {
 }
 
 // CreateZone creates a new zone.
-func (m *GrpcZAPClientMock) CreateZone(name string) (*zap.Zone, error) {
+func (m *GrpcZAPClientMock) CreateZone(_ context.Context, name string) (*zap.Zone, error) {
 	args := m.Called(name)
 	var r0 *zap.Zone
 	if val, ok := args.Get(0).(*zap.Zone); ok {
@@ -38,7 +39,7 @@ func (m *GrpcZAPClientMock) CreateZone(name string) (*zap.Zone, error) {
 }
 
 // UpdateZone updates a zone.
-func (m *GrpcZAPClientMock) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
+func (m *GrpcZAPClientMock) UpdateZone(_ context.Context, zone *zap.Zone) (*zap.Zone, error) {
 	args := m.Called(zone)
 	var r0 *zap.Zone
 	if val, ok := args.Get(0).(*zap.Zone); ok {
@@ -48,7 +49,7 @@ func (m *GrpcZAPClientMock) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
 }
 
 // DeleteZone deletes a zone.
-func (m *GrpcZAPClientMock) DeleteZone(zoneID int64) (*zap.Zone, error) {
+func (m *GrpcZAPClientMock) DeleteZone(_ context.Context, zoneID int64) (*zap.Zone, error) {
 	args := m.Called(zoneID)
 	var r0 *zap.Zone
 	if val, ok := args.Get(0).(*zap.Zone); ok {
@@ -58,7 +59,7 @@ func (m *GrpcZAPClientMock) DeleteZone(zoneID int64) (*zap.Zone, error) {
 }
 
 // FetchZones fetches zones.
-func (m *GrpcZAPClientMock) FetchZones(page int32, _ int32) ([]zap.Zone, error) {
+func (m *GrpcZAPClientMock) FetchZones(_ context.Context, page int32, _ int32) ([]zap.Zone, error) {
 	args := m.Called(page)
 	var r0 []zap.Zone
 	if val, ok := args.Get(0).([]zap.Zone); ok {
@@ -68,7 +69,7 @@ func (m *GrpcZAPClientMock) FetchZones(page int32, _ int32) ([]zap.Zone, error) 
 }
 
 // FetchZonesByID fetches zones by ID.
-func (m *GrpcZAPClientMock) FetchZonesByID(page int32, pageSize int32, zoneID int64) ([]zap.Zone, error) {
+func (m *GrpcZAPClientMock) FetchZonesByID(_ context.Context, page int32, pageSize int32, zoneID int64) ([]zap.Zone, error) {
 	args := m.Called(page, pageSize, zoneID)
 	var r0 []zap.Zone
 	if val, ok := args.Get(0).([]zap.Zone); ok {
@@ -78,7 +79,7 @@ func (m *GrpcZAPClientMock) FetchZonesByID(page int32, pageSize int32, zoneID in
 }
 
 // FetchZonesByName fetches zones by name.
-func (m *GrpcZAPClientMock) FetchZonesByName(page int32, pageSize int32, name string) ([]zap.Zone, error) {
+func (m *GrpcZAPClientMock) FetchZonesByName(_ context.Context, page int32, pageSize int32, name string) ([]zap.Zone, error) {
 	args := m.Called(page, pageSize, name)
 	var r0 []zap.Zone
 	if val, ok := args.Get(0).([]zap.Zone); ok {
@@ -88,7 +89,7 @@ func (m *GrpcZAPClientMock) FetchZonesByName(page int32, pageSize int32, name st
 }
 
 // FetchZonesBy fetches zones by.
-func (m *GrpcZAPClientMock) FetchZonesBy(page int32, pageSize int32, zoneID int64, name string) ([]zap.Zone, error) {
+func (m *GrpcZAPClientMock) FetchZonesBy(_ context.Context, page int32, pageSize int32, zoneID int64, name string) ([]zap.Zone, error) {
 	args := m.Called(page, pageSize, zoneID, name)
 	var r0 []zap.Zone
 	if val, ok := args.Get(0).([]zap.Zone); ok {

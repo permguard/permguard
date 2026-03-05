@@ -17,6 +17,7 @@
 package authz
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -25,7 +26,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/internal/cli/clilib"
 	"github.com/permguard/permguard/pkg/cli/options"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
@@ -62,7 +63,7 @@ func runECommandForDeleteLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 	}
 	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
 	ledgerID := v.GetString(options.FlagName(commandNameForLedgersDelete, flagLedgerID))
-	ledger, err := client.DeleteLedger(zoneID, ledgerID)
+	ledger, err := client.DeleteLedger(context.Background(), zoneID, ledgerID)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to delete the ledger.")

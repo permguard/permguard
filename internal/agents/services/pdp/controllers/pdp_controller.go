@@ -17,6 +17,7 @@
 package controllers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -60,7 +61,7 @@ func NewPDPController(serviceContext *services.ServiceContext, storage storage.P
 }
 
 // AuthorizationCheck checks if the request is authorized.
-func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error) {
+func (s PDPController) AuthorizationCheck(ctx context.Context, request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error) {
 	if request == nil {
 		errMsg := fmt.Sprintf("%s: received nil request", authzen.AuthzErrBadRequestMessage)
 		return pdp.NewAuthorizationCheckErrorResponse(nil, "", authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
@@ -117,7 +118,7 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
-		if !pdp.IsValidIdentiyType(principal.Type) {
+		if !pdp.IsValidIdentityType(principal.Type) {
 			errMsg := fmt.Sprintf("%s: invalid the principal type", authzen.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
@@ -127,7 +128,7 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
-		if !pdp.IsValidIdentiyType(evaluation.Subject.Type) {
+		if !pdp.IsValidIdentityType(evaluation.Subject.Type) {
 			errMsg := fmt.Sprintf("%s: invalid subject type", authzen.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
@@ -171,7 +172,7 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 	authzCheckEvaluations := []pdp.EvaluationResponse{}
 	if reqEvaluationsSize > 0 {
 		authzModel := expReq.AuthorizationModel
-		authzPolicyStore, err2 := s.storage.LoadPolicyStore(authzModel.ZoneID, authzModel.PolicyStore.ID)
+		authzPolicyStore, err2 := s.storage.LoadPolicyStore(ctx, authzModel.ZoneID, authzModel.PolicyStore.ID)
 		if err2 != nil {
 			if logger := s.ctx.Logger(); logger != nil {
 				logger.Error("authorization check has failed", zap.Error(err2))

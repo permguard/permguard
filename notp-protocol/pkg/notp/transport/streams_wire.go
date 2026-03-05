@@ -22,14 +22,14 @@ import (
 	"io"
 	"time"
 
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	notppkts "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
 )
 
 // WireSendFunc wire send function.
-type WireSendFunc func(packet *notppackets.Packet) error
+type WireSendFunc func(packet *notppkts.Packet) error
 
 // WireRecvFunc wire receive function.
-type WireRecvFunc func() (*notppackets.Packet, error)
+type WireRecvFunc func() (*notppkts.Packet, error)
 
 // WireStream wire stream.
 type WireStream struct {
@@ -39,7 +39,7 @@ type WireStream struct {
 }
 
 // TransmitPacket appends a packet to the in-wire stream.
-func (t *WireStream) TransmitPacket(packet *notppackets.Packet) error {
+func (t *WireStream) TransmitPacket(packet *notppkts.Packet) error {
 	errCh := make(chan error, 1)
 
 	go func() {
@@ -62,8 +62,8 @@ func (t *WireStream) TransmitPacket(packet *notppackets.Packet) error {
 }
 
 // ReceivePacket retrieves the oldest packet from the in-wire stream, with a fixed timeout.
-func (t *WireStream) ReceivePacket() (*notppackets.Packet, error) {
-	packetCh := make(chan *notppackets.Packet, 1)
+func (t *WireStream) ReceivePacket() (*notppkts.Packet, error) {
+	packetCh := make(chan *notppkts.Packet, 1)
 	errCh := make(chan error, 1)
 
 	go func() {

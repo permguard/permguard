@@ -28,7 +28,7 @@ import (
 	"github.com/fatih/color"
 	"google.golang.org/grpc/status"
 
-	"github.com/permguard/permguard/common/pkg/extensions/copier"
+	"github.com/permguard/permguard/pkg/extensions/copier"
 )
 
 const (
@@ -235,8 +235,8 @@ func (cp *PrinterTerminal) print(output map[string]any, newLine bool) {
 	}
 }
 
-// createOutputWithputError creates the output with the error.
-func (cp *PrinterTerminal) createOutputWithputError(errMsg string) map[string]any {
+// createOutputWithError creates the output with the error.
+func (cp *PrinterTerminal) createOutputWithError(errMsg string) map[string]any {
 	return map[string]any{"error": errMsg}
 }
 
@@ -262,7 +262,7 @@ func (cp *PrinterTerminal) ErrorWithOutput(output map[string]any, err error) {
 		} else {
 			errInputMsg = err.Error()
 		}
-		errorOutput = cp.createOutputWithputError(errInputMsg)
+		errorOutput = cp.createOutputWithError(errInputMsg)
 	}
 	if len(errorOutput) > 0 {
 		output = copier.MergeMaps(output, errorOutput)

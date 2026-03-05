@@ -17,6 +17,7 @@
 package authz
 
 import (
+	"context"
 	"bufio"
 	"encoding/json"
 	"errors"
@@ -30,7 +31,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/internal/cli/clilib"
 	"github.com/permguard/permguard/pkg/cli/options"
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
 )
@@ -103,7 +104,7 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 		}
 		return common.ErrCommandSilent
 	}
-	authzResp, err := client.AuthorizationCheck(&authzReq)
+	authzResp, err := client.AuthorizationCheck(context.Background(), &authzReq)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to check the authorization request.")
