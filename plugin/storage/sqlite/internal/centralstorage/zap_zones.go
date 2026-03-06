@@ -18,23 +18,23 @@ package centralstorage
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
+	storage "github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 	repo "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // CreateZone creates a new zone.
-func (s SQLiteCentralStorageZAP) CreateZone(zone *zap.Zone) (*zap.Zone, error) {
+func (s SQLiteCentralStorageZAP) CreateZone(ctx context.Context, zone *zap.Zone) (*zap.Zone, error) {
 	if zone == nil {
-		return nil, errors.New("storage invalid client input - zone is nil")
+		return nil, fmt.Errorf("storage: invalid client input - zone is nil: %w", storage.ErrInvalidInput)
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, repo.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	tx, err := db.BeginTx(context.Background(), nil)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, repo.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
@@ -42,14 +42,14 @@ func (s SQLiteCentralStorageZAP) CreateZone(zone *zap.Zone) (*zap.Zone, error) {
 		ZoneID: zone.ZoneID,
 		Name:   zone.Name,
 	}
-	dbOutZone, err := s.sqlRepo.UpsertZone(tx, true, dbInZone)
+	dbOutZone, err := s.sqlRepo.UpsertZone(ctx, tx, true, dbInZone)
 	if s.config.EnabledDefaultCreation() {
 		if err == nil {
 			ledger := &repo.Ledger{
 				ZoneID: dbOutZone.ZoneID,
 				Name:   LedgerDefaultName,
 			}
-			_, err = s.sqlRepo.UpsertLedger(tx, true, ledger)
+			_, err = s.sqlRepo.UpsertLedger(ctx, tx, true, ledger)
 		}
 	}
 	if err != nil {
@@ -63,15 +63,15 @@ func (s SQLiteCentralStorageZAP) CreateZone(zone *zap.Zone) (*zap.Zone, error) {
 }
 
 // UpdateZone updates a zone.
-func (s SQLiteCentralStorageZAP) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
+func (s SQLiteCentralStorageZAP) UpdateZone(ctx context.Context, zone *zap.Zone) (*zap.Zone, error) {
 	if zone == nil {
-		return nil, errors.New("storage: invalid client input - zone is nil")
+		return nil, fmt.Errorf("storage: invalid client input - zone is nil: %w", storage.ErrInvalidInput)
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, repo.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	tx, err := db.BeginTx(context.Background(), nil)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, repo.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
@@ -79,7 +79,7 @@ func (s SQLiteCentralStorageZAP) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
 		ZoneID: zone.ZoneID,
 		Name:   zone.Name,
 	}
-	dbOutzone, err := s.sqlRepo.UpsertZone(tx, false, dbInZone)
+	dbOutzone, err := s.sqlRepo.UpsertZone(ctx, tx, false, dbInZone)
 	if err != nil {
 		_ = tx.Rollback()
 		return nil, err
@@ -91,16 +91,16 @@ func (s SQLiteCentralStorageZAP) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
 }
 
 // DeleteZone deletes a zone.
-func (s SQLiteCentralStorageZAP) DeleteZone(zoneID int64) (*zap.Zone, error) {
+func (s SQLiteCentralStorageZAP) DeleteZone(ctx context.Context, zoneID int64) (*zap.Zone, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, repo.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	tx, err := db.BeginTx(context.Background(), nil)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, repo.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
-	dbOutzone, err := s.sqlRepo.DeleteZone(tx, zoneID)
+	dbOutzone, err := s.sqlRepo.DeleteZone(ctx, tx, zoneID)
 	if err != nil {
 		_ = tx.Rollback()
 		return nil, err
@@ -112,9 +112,9 @@ func (s SQLiteCentralStorageZAP) DeleteZone(zoneID int64) (*zap.Zone, error) {
 }
 
 // FetchZones returns all zones.
-func (s SQLiteCentralStorageZAP) FetchZones(page int32, pageSize int32, fields map[string]any) ([]zap.Zone, error) {
+func (s SQLiteCentralStorageZAP) FetchZones(ctx context.Context, page int32, pageSize int32, fields map[string]any) ([]zap.Zone, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.DataFetchMaxPageSize() {
-		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize)
+		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid: %w", page, pageSize, storage.ErrInvalidInput)
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -124,7 +124,7 @@ func (s SQLiteCentralStorageZAP) FetchZones(page int32, pageSize int32, fields m
 	if _, ok := fields[zap.FieldZoneZoneID]; ok {
 		zoneID, ok := fields[zap.FieldZoneZoneID].(int64)
 		if !ok {
-			return nil, fmt.Errorf("storage: invalid client input - zone id is not valid (zone id: %d)", zoneID)
+			return nil, fmt.Errorf("storage: invalid client input - zone id is not valid (zone id: %d): %w", zoneID, storage.ErrInvalidInput)
 		}
 		filterID = &zoneID
 	}
@@ -132,11 +132,11 @@ func (s SQLiteCentralStorageZAP) FetchZones(page int32, pageSize int32, fields m
 	if _, ok := fields[zap.FieldZoneName]; ok {
 		zoneName, ok := fields[zap.FieldZoneName].(string)
 		if !ok {
-			return nil, fmt.Errorf("storage: invalid client input - zone name is not valid (zone name: %s)", zoneName)
+			return nil, fmt.Errorf("storage: invalid client input - zone name is not valid (zone name: %s): %w", zoneName, storage.ErrInvalidInput)
 		}
 		filterName = &zoneName
 	}
-	dbZones, err := s.sqlRepo.FetchZones(db, page, pageSize, filterID, filterName)
+	dbZones, err := s.sqlRepo.FetchZones(ctx, db, page, pageSize, filterID, filterName)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +144,7 @@ func (s SQLiteCentralStorageZAP) FetchZones(page int32, pageSize int32, fields m
 	for i, a := range dbZones {
 		zone, err := mapZoneToAgentZone(&a)
 		if err != nil {
-			return nil, fmt.Errorf("storage: failed to convert zone entity (%s)", repo.LogZoneEntry(&a))
+			return nil, fmt.Errorf("storage: failed to convert zone entity (%s): %w", repo.LogZoneEntry(&a), storage.ErrInternal)
 		}
 		zones[i] = *zone
 	}

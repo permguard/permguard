@@ -17,11 +17,13 @@
 package storage
 
 import (
+	"context"
+
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 )
 
 // PDPCentralStorage is the interface for the PDP central storage.
 type PDPCentralStorage interface {
 	// LoadPolicyStore loads the policy store for a given zone ID and store ID.
-	LoadPolicyStore(zoneID int64, storeID string) (*authzen.PolicyStore, error)
+	LoadPolicyStore(ctx context.Context, zoneID int64, storeID string) (*authzen.PolicyStore, error)
 }

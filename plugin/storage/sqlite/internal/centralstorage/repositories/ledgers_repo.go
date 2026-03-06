@@ -19,13 +19,13 @@ package repositories
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite" // SQLite driver
 
+	storage "github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/core/validators"
 )
 
@@ -51,7 +51,7 @@ func ConvertLedgerKindToID(kind string) (int16, error) {
 	cKey := strings.ToLower(kind)
 	value, ok := ledgersMap[cKey]
 	if !ok {
-		return 0, fmt.Errorf("invalid client input - ledger kind %s is not valid", kind)
+		return 0, fmt.Errorf("invalid client input - ledger kind %s is not valid: %w", kind, storage.ErrInvalidInput)
 	}
 	return value, nil
 }
@@ -67,18 +67,18 @@ func ConvertLedgerKindToString(id int16) (string, error) {
 }
 
 // UpsertLedger creates or updates a ledger.
-func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*Ledger, error) {
+func (r *Repository) UpsertLedger(ctx context.Context, tx *sql.Tx, isCreate bool, ledger *Ledger) (*Ledger, error) {
 	if ledger == nil {
-		return nil, fmt.Errorf("storage: invalid client input - ledger data is missing or malformed (%s)", LogLedgerEntry(ledger))
+		return nil, fmt.Errorf("storage: invalid client input - ledger data is missing or malformed (%s): %w", LogLedgerEntry(ledger), storage.ErrInvalidInput)
 	}
 	if err := validators.ValidateCodeID(LedgerType, ledger.ZoneID); err != nil {
-		return nil, errors.Join(fmt.Errorf(errorMessageLedgerInvalidZoneID, ledger.ZoneID), err)
+		return nil, fmt.Errorf(errorMessageLedgerInvalidZoneID+": %w", ledger.ZoneID, storage.ErrInvalidInput)
 	}
 	if !isCreate && validators.ValidateUUID(LedgerType, ledger.LedgerID) != nil {
-		return nil, fmt.Errorf("storage: invalid client input - ledger id is not valid (%s)", LogLedgerEntry(ledger))
+		return nil, fmt.Errorf("storage: invalid client input - ledger id is not valid (%s): %w", LogLedgerEntry(ledger), storage.ErrInvalidInput)
 	}
 	if err := validators.ValidateName(LedgerType, ledger.Name); err != nil {
-		return nil, errors.Join(fmt.Errorf("invalid client input - ledger name is not valid (%s)", LogLedgerEntry(ledger)), err)
+		return nil, fmt.Errorf("invalid client input - ledger name is not valid (%s): %w", LogLedgerEntry(ledger), storage.ErrInvalidInput)
 	}
 
 	zoneID := ledger.ZoneID
@@ -89,9 +89,9 @@ func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*L
 	var err error
 	if isCreate {
 		ledgerID = GenerateUUID()
-		result, err = tx.ExecContext(context.Background(), "INSERT INTO ledgers (zone_id, ledger_id, kind, name) VALUES (?, ?, ?, ?)", zoneID, ledgerID, ledgerKind, ledgerName)
+		result, err = tx.ExecContext(ctx, "INSERT INTO ledgers (zone_id, ledger_id, kind, name) VALUES (?, ?, ?, ?)", zoneID, ledgerID, ledgerKind, ledgerName)
 	} else {
-		result, err = tx.ExecContext(context.Background(), "UPDATE ledgers SET name = ? WHERE zone_id = ? and ledger_id = ?", ledgerName, zoneID, ledgerID)
+		result, err = tx.ExecContext(ctx, "UPDATE ledgers SET name = ? WHERE zone_id = ? and ledger_id = ?", ledgerName, zoneID, ledgerID)
 	}
 	if err != nil || result == nil {
 		action := "update"
@@ -103,7 +103,7 @@ func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*L
 	}
 
 	var dbLedger Ledger
-	err = tx.QueryRowContext(context.Background(), "SELECT zone_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID).Scan(
+	err = tx.QueryRowContext(ctx, "SELECT zone_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID).Scan(
 		&dbLedger.ZoneID,
 		&dbLedger.LedgerID,
 		&dbLedger.CreatedAt,
@@ -119,34 +119,34 @@ func (r *Repository) UpsertLedger(tx *sql.Tx, isCreate bool, ledger *Ledger) (*L
 }
 
 // UpdateLedgerRef updates the ref of a ledger.
-func (r *Repository) UpdateLedgerRef(tx *sql.Tx, zoneID int64, ledgerID, currentRef, newRef string) error {
+func (r *Repository) UpdateLedgerRef(ctx context.Context, tx *sql.Tx, zoneID int64, ledgerID, currentRef, newRef string) error {
 	if err := validators.ValidateCodeID(LedgerType, zoneID); err != nil {
-		return errors.Join(fmt.Errorf(errorMessageLedgerInvalidZoneID, zoneID), err)
+		return fmt.Errorf(errorMessageLedgerInvalidZoneID+": %w", zoneID, storage.ErrInvalidInput)
 	}
 	if err := validators.ValidateUUID(LedgerType, ledgerID); err != nil {
-		return errors.Join(fmt.Errorf("storage: invalid client input - ledger id is not valid (id: %s)", ledgerID), err)
+		return fmt.Errorf("storage: invalid client input - ledger id is not valid (id: %s): %w", ledgerID, storage.ErrInvalidInput)
 	}
 	if err := validators.ValidateSHA256(LedgerType, currentRef); err != nil {
-		return errors.Join(fmt.Errorf("storage: invalid client input - current ref is not valid (ref: %s)", currentRef), err)
+		return fmt.Errorf("storage: invalid client input - current ref is not valid (ref: %s): %w", currentRef, storage.ErrInvalidInput)
 	}
 	if err := validators.ValidateSHA256(LedgerType, newRef); err != nil {
-		return errors.Join(fmt.Errorf("storage: invalid client input - new ref is not valid (ref: %s)", newRef), err)
+		return fmt.Errorf("storage: invalid client input - new ref is not valid (ref: %s): %w", newRef, storage.ErrInvalidInput)
 	}
 
 	var dbCurrentRef string
-	err := tx.QueryRowContext(context.Background(), "SELECT ref FROM ledgers WHERE zone_id = ? AND ledger_id = ?", zoneID, ledgerID).Scan(&dbCurrentRef)
+	err := tx.QueryRowContext(ctx, "SELECT ref FROM ledgers WHERE zone_id = ? AND ledger_id = ?", zoneID, ledgerID).Scan(&dbCurrentRef)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return errors.Join(fmt.Errorf("storage: ledger not found (zone_id: %d, ledger_id: %s)", zoneID, ledgerID), err)
+			return fmt.Errorf("storage: ledger not found (zone_id: %d, ledger_id: %s): %w", zoneID, ledgerID, storage.ErrNotFound)
 		}
 		return WrapSqliteError("failed to retrieve current ref for ledger", err)
 	}
 
 	if dbCurrentRef != currentRef {
-		return fmt.Errorf("current ref mismatch (expected: %s, got: %s)", dbCurrentRef, currentRef)
+		return fmt.Errorf("current ref mismatch (expected: %s, got: %s): %w", dbCurrentRef, currentRef, storage.ErrConflict)
 	}
 
-	result, err := tx.ExecContext(context.Background(), "UPDATE ledgers SET ref = ? WHERE zone_id = ? AND ledger_id = ?", newRef, zoneID, ledgerID)
+	result, err := tx.ExecContext(ctx, "UPDATE ledgers SET ref = ? WHERE zone_id = ? AND ledger_id = ?", newRef, zoneID, ledgerID)
 	if err != nil {
 		return WrapSqliteError("failed to update ledger ref", err)
 	}
@@ -156,22 +156,22 @@ func (r *Repository) UpdateLedgerRef(tx *sql.Tx, zoneID int64, ledgerID, current
 		return WrapSqliteError("failed to get rows affected for update ref", err)
 	}
 	if rows != 1 {
-		return fmt.Errorf("update failed, no rows affected (zone_id: %d, ledger_id: %s)", zoneID, ledgerID)
+		return fmt.Errorf("update failed, no rows affected (zone_id: %d, ledger_id: %s): %w", zoneID, ledgerID, storage.ErrNotFound)
 	}
 	return nil
 }
 
 // DeleteLedger deletes a ledger.
-func (r *Repository) DeleteLedger(tx *sql.Tx, zoneID int64, ledgerID string) (*Ledger, error) {
+func (r *Repository) DeleteLedger(ctx context.Context, tx *sql.Tx, zoneID int64, ledgerID string) (*Ledger, error) {
 	if err := validators.ValidateCodeID(LedgerType, zoneID); err != nil {
-		return nil, errors.Join(fmt.Errorf(errorMessageLedgerInvalidZoneID, zoneID), err)
+		return nil, fmt.Errorf(errorMessageLedgerInvalidZoneID+": %w", zoneID, storage.ErrInvalidInput)
 	}
 	if err := validators.ValidateUUID(LedgerType, ledgerID); err != nil {
-		return nil, errors.Join(fmt.Errorf("storage: invalid client input - ledger id is not valid (id: %s)", ledgerID), err)
+		return nil, fmt.Errorf("storage: invalid client input - ledger id is not valid (id: %s): %w", ledgerID, storage.ErrInvalidInput)
 	}
 
 	var dbLedger Ledger
-	err := tx.QueryRowContext(context.Background(), "SELECT zone_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID).Scan(
+	err := tx.QueryRowContext(ctx, "SELECT zone_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID).Scan(
 		&dbLedger.ZoneID,
 		&dbLedger.LedgerID,
 		&dbLedger.CreatedAt,
@@ -183,7 +183,7 @@ func (r *Repository) DeleteLedger(tx *sql.Tx, zoneID int64, ledgerID string) (*L
 	if err != nil {
 		return nil, WrapSqliteError(fmt.Sprintf("invalid client input - ledger id is not valid (id: %s)", ledgerID), err)
 	}
-	res, err := tx.ExecContext(context.Background(), "DELETE FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID)
+	res, err := tx.ExecContext(ctx, "DELETE FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID)
 	if err != nil || res == nil {
 		return nil, WrapSqliteError(fmt.Sprintf("failed to delete ledger - operation 'delete-ledger' encountered an issue (id: %s)", ledgerID), err)
 	}
@@ -195,12 +195,12 @@ func (r *Repository) DeleteLedger(tx *sql.Tx, zoneID int64, ledgerID string) (*L
 }
 
 // FetchLedgers retrieves ledgers.
-func (r *Repository) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]Ledger, error) {
+func (r *Repository) FetchLedgers(ctx context.Context, db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]Ledger, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize)
+		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid: %w", page, pageSize, storage.ErrInvalidInput)
 	}
 	if err := validators.ValidateCodeID(LedgerType, zoneID); err != nil {
-		return nil, fmt.Errorf(errorMessageLedgerInvalidZoneID, zoneID)
+		return nil, fmt.Errorf(errorMessageLedgerInvalidZoneID+": %w", zoneID, storage.ErrInvalidInput)
 	}
 
 	var dbLedgers []Ledger
@@ -215,7 +215,7 @@ func (r *Repository) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, zoneI
 	if filterID != nil {
 		ledgerID := *filterID
 		if err := validators.ValidateUUID(LedgerType, ledgerID); err != nil {
-			return nil, errors.Join(fmt.Errorf("storage: invalid client input - ledger id is not valid (id: %s)", ledgerID), err)
+			return nil, fmt.Errorf("storage: invalid client input - ledger id is not valid (id: %s): %w", ledgerID, storage.ErrInvalidInput)
 		}
 		conditions = append(conditions, "ledger_id = ?")
 		args = append(args, ledgerID)
@@ -224,7 +224,7 @@ func (r *Repository) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, zoneI
 	if filterName != nil {
 		ledgerName := *filterName
 		if err := validators.ValidateName(LedgerType, ledgerName); err != nil {
-			return nil, errors.Join(fmt.Errorf("storage: invalid client input - ledger name is not valid (name: %s)", ledgerName), err)
+			return nil, fmt.Errorf("storage: invalid client input - ledger name is not valid (name: %s): %w", ledgerName, storage.ErrInvalidInput)
 		}
 		ledgerName = "%" + ledgerName + "%"
 		conditions = append(conditions, "name LIKE ?")
@@ -243,7 +243,7 @@ func (r *Repository) FetchLedgers(db *sqlx.DB, page int32, pageSize int32, zoneI
 
 	args = append(args, limit, offset)
 
-	err := db.Select(&dbLedgers, baseQuery, args...)
+	err := db.SelectContext(ctx, &dbLedgers, baseQuery, args...)
 	if err != nil {
 		return nil, WrapSqliteError(fmt.Sprintf("failed to retrieve ledgers - operation 'retrieve-ledgers' encountered an issue with parameters %v", args), err)
 	}

@@ -21,16 +21,39 @@ import (
 	"encoding/json"
 	"errors"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/permguard/permguard/pkg/agents/services"
+	storage "github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 	"go.uber.org/zap"
 )
 
+// mapStorageError maps storage sentinel errors to gRPC status codes.
+func mapStorageError(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, storage.ErrNotFound):
+		return status.Errorf(codes.NotFound, "%v", err)
+	case errors.Is(err, storage.ErrAlreadyExists):
+		return status.Errorf(codes.AlreadyExists, "%v", err)
+	case errors.Is(err, storage.ErrConflict):
+		return status.Errorf(codes.Aborted, "%v", err)
+	case errors.Is(err, storage.ErrInvalidInput):
+		return status.Errorf(codes.InvalidArgument, "%v", err)
+	default:
+		return status.Errorf(codes.Internal, "%v", err)
+	}
+}
+
 // PDPService is the service for the PDP.
 type PDPService interface {
 	// AuthorizationCheck checks the authorization.
-	AuthorizationCheck(request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error)
+	AuthorizationCheck(ctx context.Context, request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error)
 }
 
 // NewPDPServer creates a new PDP server.
@@ -49,7 +72,7 @@ type PDPServer struct {
 }
 
 // AuthorizationCheck checks the authorization.
-func (s *PDPServer) AuthorizationCheck(_ context.Context, request *AuthorizationCheckRequest) (*AuthorizationCheckResponse, error) {
+func (s *PDPServer) AuthorizationCheck(ctx context.Context, request *AuthorizationCheckRequest) (*AuthorizationCheckResponse, error) {
 	logger := s.ctx.Logger()
 	if request != nil {
 		jsonData, err := json.MarshalIndent(request, "", "  ")
@@ -61,9 +84,9 @@ func (s *PDPServer) AuthorizationCheck(_ context.Context, request *Authorization
 	}
 	req, err := MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request)
 	if req == nil {
-		return nil, errors.Join(errors.New("pdp-endpoint: request cannot be nil"), err)
+		return nil, mapStorageError(errors.Join(errors.New("pdp-endpoint: request cannot be nil"), err))
 	}
-	authzResponse, err := s.service.AuthorizationCheck(req)
+	authzResponse, err := s.service.AuthorizationCheck(ctx, req)
 	if err != nil {
 		authzResponse = &pdp.AuthorizationCheckResponse{
 			RequestID: req.RequestID,

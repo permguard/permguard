@@ -17,6 +17,7 @@
 package centralstorage
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/jmoiron/sqlx"
@@ -29,25 +30,25 @@ import (
 // SqliteRepo is the interface for sqlite repository operations.
 type SqliteRepo interface {
 	// UpsertZone creates or updates a zone.
-	UpsertZone(tx *sql.Tx, isCreate bool, zone *repos.Zone) (*repos.Zone, error)
+	UpsertZone(ctx context.Context, tx *sql.Tx, isCreate bool, zone *repos.Zone) (*repos.Zone, error)
 	// DeleteZone deletes a zone.
-	DeleteZone(tx *sql.Tx, zoneID int64) (*repos.Zone, error)
+	DeleteZone(ctx context.Context, tx *sql.Tx, zoneID int64) (*repos.Zone, error)
 	// FetchZone fetches a zone.
-	FetchZones(db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]repos.Zone, error)
+	FetchZones(ctx context.Context, db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]repos.Zone, error)
 
 	// UpsertLedger creates or updates a ledger.
-	UpsertLedger(tx *sql.Tx, isCreate bool, ledger *repos.Ledger) (*repos.Ledger, error)
+	UpsertLedger(ctx context.Context, tx *sql.Tx, isCreate bool, ledger *repos.Ledger) (*repos.Ledger, error)
 	// DeleteLedger deletes a ledger.
-	DeleteLedger(tx *sql.Tx, zoneID int64, ledgerID string) (*repos.Ledger, error)
+	DeleteLedger(ctx context.Context, tx *sql.Tx, zoneID int64, ledgerID string) (*repos.Ledger, error)
 	// FetchLedgers fetches ledgers.
-	FetchLedgers(db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]repos.Ledger, error)
+	FetchLedgers(ctx context.Context, db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]repos.Ledger, error)
 	// UpdateLedgerRef updates the ledger ref.
-	UpdateLedgerRef(tx *sql.Tx, zoneID int64, ledgerID, currentRef, newRef string) error
+	UpdateLedgerRef(ctx context.Context, tx *sql.Tx, zoneID int64, ledgerID, currentRef, newRef string) error
 
 	// UpsertKeyValue creates or updates a key value.
-	UpsertKeyValue(tx *sql.Tx, keyValue *repos.KeyValue) (*repos.KeyValue, error)
+	UpsertKeyValue(ctx context.Context, tx *sql.Tx, keyValue *repos.KeyValue) (*repos.KeyValue, error)
 	// DeleteKeyValue deletes a key value.
-	KeyValue(db *sqlx.DB, zoneID int64, key string) (*repos.KeyValue, error)
+	KeyValue(ctx context.Context, db *sqlx.DB, zoneID int64, key string) (*repos.KeyValue, error)
 }
 
 // SqliteExecutor is the interface for executing sqlite commands.

@@ -23,9 +23,12 @@ import (
 	"time"
 
 	grpc "google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"github.com/permguard/permguard/pkg/agents/services"
+	storage "github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 
 	notptransportsm "github.com/permguard/permguard/internal/transport/notp/statemachines"
@@ -40,41 +43,60 @@ const (
 	DefaultTimeout = 30 * time.Second
 )
 
+// mapStorageError maps storage sentinel errors to gRPC status codes.
+func mapStorageError(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, storage.ErrNotFound):
+		return status.Errorf(codes.NotFound, "%v", err)
+	case errors.Is(err, storage.ErrAlreadyExists):
+		return status.Errorf(codes.AlreadyExists, "%v", err)
+	case errors.Is(err, storage.ErrConflict):
+		return status.Errorf(codes.Aborted, "%v", err)
+	case errors.Is(err, storage.ErrInvalidInput):
+		return status.Errorf(codes.InvalidArgument, "%v", err)
+	default:
+		return status.Errorf(codes.Internal, "%v", err)
+	}
+}
+
 // PAPService is the service for the PAP.
 type PAPService interface {
 	Setup() error
 	// CreateLedger creates a new ledger.
-	CreateLedger(ledger *pap.Ledger) (*pap.Ledger, error)
+	CreateLedger(ctx context.Context, ledger *pap.Ledger) (*pap.Ledger, error)
 	// UpdateLedger updates an ledger.
-	UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, error)
+	UpdateLedger(ctx context.Context, ledger *pap.Ledger) (*pap.Ledger, error)
 	// DeleteLedger deletes an ledger.
-	DeleteLedger(zoneID int64, ledgerID string) (*pap.Ledger, error)
+	DeleteLedger(ctx context.Context, zoneID int64, ledgerID string) (*pap.Ledger, error)
 	// FetchLedgers gets all ledgers.
-	FetchLedgers(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]pap.Ledger, error)
+	FetchLedgers(ctx context.Context, page int32, pageSize int32, zoneID int64, fields map[string]any) ([]pap.Ledger, error)
 	// OnPullHandleRequestCurrentState handles the request for the current state.
-	OnPullHandleRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPullHandleRequestCurrentState(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPullSendNotifyCurrentStateResponse notifies the current state.
-	OnPullSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPullSendNotifyCurrentStateResponse(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPullSendNegotiationRequest sends the negotiation request.
-	OnPullSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPullSendNegotiationRequest(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPullHandleNegotiationResponse handles the negotiation response.
-	OnPullHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPullHandleNegotiationResponse(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPullHandleExchangeDataStream exchanges the data stream.
-	OnPullHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPullHandleExchangeDataStream(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPullHandleCommit handles the commit.
-	OnPullHandleCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPullHandleCommit(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPushHandleNotifyCurrentState notifies the current state.
-	OnPushHandleNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPushHandleNotifyCurrentState(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPushSendNotifyCurrentStateResponse handles the current state response.
-	OnPushSendNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPushSendNotifyCurrentStateResponse(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPushSendNegotiationRequest sends the negotiation request.
-	OnPushSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPushSendNegotiationRequest(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPushHandleNegotiationResponse handles the negotiation response.
-	OnPushHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPushHandleNegotiationResponse(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPushHandleExchangeDataStream exchanges the data stream.
-	OnPushHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPushHandleExchangeDataStream(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 	// OnPushSendCommit sends the commit.
-	OnPushSendCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	OnPushSendCommit(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
 }
 
 // NewPAPServer creates a new PAP server.
@@ -93,34 +115,35 @@ type PAPServer struct {
 }
 
 // CreateLedger creates a new ledger.
-func (s *PAPServer) CreateLedger(_ context.Context, ledgerRequest *LedgerCreateRequest) (*LedgerResponse, error) {
-	ledger, err := s.service.CreateLedger(&pap.Ledger{ZoneID: ledgerRequest.ZoneID, Name: ledgerRequest.Name, Kind: ledgerRequest.Kind})
+func (s *PAPServer) CreateLedger(ctx context.Context, ledgerRequest *LedgerCreateRequest) (*LedgerResponse, error) {
+	ledger, err := s.service.CreateLedger(ctx, &pap.Ledger{ZoneID: ledgerRequest.ZoneID, Name: ledgerRequest.Name, Kind: ledgerRequest.Kind})
 	if err != nil {
-		return nil, err
+		return nil, mapStorageError(err)
 	}
 	return MapAgentLedgerToGrpcLedgerResponse(ledger)
 }
 
 // UpdateLedger updates a ledger.
-func (s *PAPServer) UpdateLedger(_ context.Context, ledgerRequest *LedgerUpdateRequest) (*LedgerResponse, error) {
-	ledger, err := s.service.UpdateLedger((&pap.Ledger{LedgerID: ledgerRequest.LedgerID, ZoneID: ledgerRequest.ZoneID, Name: ledgerRequest.Name}))
+func (s *PAPServer) UpdateLedger(ctx context.Context, ledgerRequest *LedgerUpdateRequest) (*LedgerResponse, error) {
+	ledger, err := s.service.UpdateLedger(ctx, (&pap.Ledger{LedgerID: ledgerRequest.LedgerID, ZoneID: ledgerRequest.ZoneID, Name: ledgerRequest.Name}))
 	if err != nil {
-		return nil, err
+		return nil, mapStorageError(err)
 	}
 	return MapAgentLedgerToGrpcLedgerResponse(ledger)
 }
 
 // DeleteLedger deletes a ledger.
-func (s *PAPServer) DeleteLedger(_ context.Context, ledgerRequest *LedgerDeleteRequest) (*LedgerResponse, error) {
-	ledger, err := s.service.DeleteLedger(ledgerRequest.ZoneID, ledgerRequest.LedgerID)
+func (s *PAPServer) DeleteLedger(ctx context.Context, ledgerRequest *LedgerDeleteRequest) (*LedgerResponse, error) {
+	ledger, err := s.service.DeleteLedger(ctx, ledgerRequest.ZoneID, ledgerRequest.LedgerID)
 	if err != nil {
-		return nil, err
+		return nil, mapStorageError(err)
 	}
 	return MapAgentLedgerToGrpcLedgerResponse(ledger)
 }
 
 // FetchLedgers returns all ledgers.
 func (s *PAPServer) FetchLedgers(ledgerRequest *LedgerFetchRequest, stream grpc.ServerStreamingServer[LedgerResponse]) error {
+	ctx := stream.Context()
 	fields := map[string]any{}
 	fields[pap.FieldLedgerZoneID] = ledgerRequest.ZoneID
 	if ledgerRequest.Kind != nil {
@@ -140,9 +163,9 @@ func (s *PAPServer) FetchLedgers(ledgerRequest *LedgerFetchRequest, stream grpc.
 	if ledgerRequest.PageSize != nil {
 		pageSize = *ledgerRequest.PageSize
 	}
-	ledgers, err := s.service.FetchLedgers(page, pageSize, ledgerRequest.ZoneID, fields)
+	ledgers, err := s.service.FetchLedgers(ctx, page, pageSize, ledgerRequest.ZoneID, fields)
 	if err != nil {
-		return err
+		return mapStorageError(err)
 	}
 	for _, ledger := range ledgers {
 		cvtedLedger, err := MapAgentLedgerToGrpcLedgerResponse(&ledger)
@@ -162,7 +185,7 @@ func (s *PAPServer) ReceivePack(_ grpc.BidiStreamingServer[PackMessage, PackMess
 }
 
 // createWiredStateMachine creates a wired state machine.
-func (s *PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) (*notpstatemachines.StateMachine, error) {
+func (s *PAPServer) createWiredStateMachine(ctx context.Context, stream grpc.BidiStreamingServer[PackMessage, PackMessage]) (*notpstatemachines.StateMachine, error) {
 	var sender notptransport.WireSendFunc = func(packet *notppackets.Packet) error {
 		pack := &PackMessage{
 			Data: packet.Data,
@@ -189,9 +212,9 @@ func (s *PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pack
 		case notpstatemachines.ProcessRequestObjectsStateID:
 			switch statePacket.MessageCode {
 			case notpsmpackets.RequestCurrentObjectsStateMessage:
-				return s.service.OnPullHandleRequestCurrentState(handlerCtx, statePacket, packets)
+				return s.service.OnPullHandleRequestCurrentState(ctx, handlerCtx, statePacket, packets)
 			case notpsmpackets.RespondCurrentStateMessage:
-				return s.service.OnPullSendNotifyCurrentStateResponse(handlerCtx, statePacket, packets)
+				return s.service.OnPullSendNotifyCurrentStateResponse(ctx, handlerCtx, statePacket, packets)
 			default:
 				return nil, fmt.Errorf("pap-endpoint: invalid message code %d", statePacket.MessageCode)
 			}
@@ -199,9 +222,9 @@ func (s *PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pack
 		case notpstatemachines.PublisherNegotiationStateID:
 			switch statePacket.MessageCode {
 			case notpsmpackets.NegotiationRequestMessage:
-				return s.service.OnPullSendNegotiationRequest(handlerCtx, statePacket, packets)
+				return s.service.OnPullSendNegotiationRequest(ctx, handlerCtx, statePacket, packets)
 			case notpsmpackets.RespondNegotiationRequestMessage:
-				return s.service.OnPullHandleNegotiationResponse(handlerCtx, statePacket, packets)
+				return s.service.OnPullHandleNegotiationResponse(ctx, handlerCtx, statePacket, packets)
 			default:
 				return nil, fmt.Errorf("pap-endpoint: invalid message code %d", statePacket.MessageCode)
 			}
@@ -209,7 +232,7 @@ func (s *PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pack
 		case notpstatemachines.PublisherDataStreamStateID:
 			switch statePacket.MessageCode {
 			case notpsmpackets.ExchangeDataStreamMessage:
-				return s.service.OnPullHandleExchangeDataStream(handlerCtx, statePacket, packets)
+				return s.service.OnPullHandleExchangeDataStream(ctx, handlerCtx, statePacket, packets)
 			default:
 				return nil, fmt.Errorf("pap-endpoint: invalid message code %d", statePacket.MessageCode)
 			}
@@ -217,7 +240,7 @@ func (s *PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pack
 		case notpstatemachines.PublisherCommitStateID:
 			switch statePacket.MessageCode {
 			case notpsmpackets.CommitMessage:
-				return s.service.OnPullHandleCommit(handlerCtx, statePacket, packets)
+				return s.service.OnPullHandleCommit(ctx, handlerCtx, statePacket, packets)
 			default:
 				return nil, fmt.Errorf("pap-endpoint: invalid message code %d", statePacket.MessageCode)
 			}
@@ -225,9 +248,9 @@ func (s *PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pack
 		case notpstatemachines.ProcessNotifyObjectsStateID:
 			switch statePacket.MessageCode {
 			case notpsmpackets.NotifyCurrentObjectStatesMessage:
-				return s.service.OnPushHandleNotifyCurrentState(handlerCtx, statePacket, packets)
+				return s.service.OnPushHandleNotifyCurrentState(ctx, handlerCtx, statePacket, packets)
 			case notpsmpackets.RespondCurrentStateMessage:
-				return s.service.OnPushSendNotifyCurrentStateResponse(handlerCtx, statePacket, packets)
+				return s.service.OnPushSendNotifyCurrentStateResponse(ctx, handlerCtx, statePacket, packets)
 			default:
 				return nil, fmt.Errorf("pap-endpoint: invalid message code %d", statePacket.MessageCode)
 			}
@@ -235,9 +258,9 @@ func (s *PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pack
 		case notpstatemachines.SubscriberNegotiationStateID:
 			switch statePacket.MessageCode {
 			case notpsmpackets.NegotiationRequestMessage:
-				return s.service.OnPushSendNegotiationRequest(handlerCtx, statePacket, packets)
+				return s.service.OnPushSendNegotiationRequest(ctx, handlerCtx, statePacket, packets)
 			case notpsmpackets.RespondNegotiationRequestMessage:
-				return s.service.OnPushHandleNegotiationResponse(handlerCtx, statePacket, packets)
+				return s.service.OnPushHandleNegotiationResponse(ctx, handlerCtx, statePacket, packets)
 			default:
 				return nil, fmt.Errorf("pap-endpoint: invalid message code %d", statePacket.MessageCode)
 			}
@@ -245,7 +268,7 @@ func (s *PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pack
 		case notpstatemachines.SubscriberDataStreamStateID:
 			switch statePacket.MessageCode {
 			case notpsmpackets.ExchangeDataStreamMessage:
-				return s.service.OnPushHandleExchangeDataStream(handlerCtx, statePacket, packets)
+				return s.service.OnPushHandleExchangeDataStream(ctx, handlerCtx, statePacket, packets)
 			default:
 				return nil, fmt.Errorf("pap-endpoint: invalid message code %d", statePacket.MessageCode)
 			}
@@ -253,7 +276,7 @@ func (s *PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pack
 		case notpstatemachines.SubscriberCommitStateID:
 			switch statePacket.MessageCode {
 			case notpsmpackets.CommitMessage:
-				return s.service.OnPushSendCommit(handlerCtx, statePacket, packets)
+				return s.service.OnPushSendCommit(ctx, handlerCtx, statePacket, packets)
 			default:
 				return nil, fmt.Errorf("pap-endpoint: invalid message code %d", statePacket.MessageCode)
 			}
@@ -270,7 +293,8 @@ func (s *PAPServer) createWiredStateMachine(stream grpc.BidiStreamingServer[Pack
 
 // NOTPStream handles bidirectional stream using the NOTP protocol.
 func (s *PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, PackMessage]) error {
-	md, ok := metadata.FromIncomingContext(stream.Context())
+	ctx := stream.Context()
+	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return errors.New("pap-endpoint: notp stream missing metadata")
 	}
@@ -283,7 +307,7 @@ func (s *PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, Pack
 		return errors.New("pap-endpoint: notp stream missing ledger id")
 	}
 
-	stateMachine, err := s.createWiredStateMachine(stream)
+	stateMachine, err := s.createWiredStateMachine(ctx, stream)
 	if err != nil {
 		return err
 	}
@@ -292,7 +316,7 @@ func (s *PAPServer) NOTPStream(stream grpc.BidiStreamingServer[PackMessage, Pack
 	bag[notptransportsm.LedgerIDKey] = repositoryID[0]
 	_, err = stateMachine.Run(bag, notpstatemachines.UnknownFlowType)
 	if err != nil {
-		return errors.Join(errors.New("pap-endpoint: notp stream unhandled err"), err)
+		return mapStorageError(err)
 	}
 	return nil
 }

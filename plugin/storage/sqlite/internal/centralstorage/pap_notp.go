@@ -17,11 +17,13 @@
 package centralstorage
 
 import (
-	"errors"
+	"context"
+	"fmt"
 	"strconv"
 
 	"github.com/jmoiron/sqlx"
 
+	storage "github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
@@ -83,14 +85,14 @@ func GetObjectForType[T any](objMng *objects.ObjectManager, obj *objects.Object)
 	instance := objInfo.Instance()
 	value, ok := instance.(*T)
 	if !ok {
-		return nil, errors.New("storage: invalid object type")
+		return nil, fmt.Errorf("storage: invalid object type: %w", storage.ErrInternal)
 	}
 	return value, nil
 }
 
 // readObject reads the object.
-func (s SQLiteCentralStoragePAP) readObject(db *sqlx.DB, zoneID int64, oid string) (*objects.Object, error) {
-	keyValue, errkey := s.sqlRepo.KeyValue(db, zoneID, oid)
+func (s SQLiteCentralStoragePAP) readObject(ctx context.Context, db *sqlx.DB, zoneID int64, oid string) (*objects.Object, error) {
+	keyValue, errkey := s.sqlRepo.KeyValue(ctx, db, zoneID, oid)
 	if errkey != nil || keyValue == nil || keyValue.Value == nil {
 		return nil, nil
 	}
@@ -113,17 +115,17 @@ func (s SQLiteCentralStoragePAP) extractMetaData(ctx *notpstatemachines.HandlerC
 }
 
 // readLedgerFromHandlerContext reads the ledger from the handler context.
-func (s SQLiteCentralStoragePAP) readLedgerFromHandlerContext(handlerCtx *notpstatemachines.HandlerContext) (*pap.Ledger, error) {
+func (s SQLiteCentralStoragePAP) readLedgerFromHandlerContext(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext) (*pap.Ledger, error) {
 	zoneID, ledgerID := s.extractMetaData(handlerCtx)
 	fields := map[string]any{
 		pap.FieldLedgerLedgerID: ledgerID,
 	}
-	ledgers, err := s.FetchLedgers(1, 1, zoneID, fields)
+	ledgers, err := s.FetchLedgers(ctx, 1, 1, zoneID, fields)
 	if err != nil {
 		return nil, err
 	}
 	if len(ledgers) == 0 {
-		return nil, errors.New("storage: ledger not found")
+		return nil, fmt.Errorf("storage: ledger not found: %w", storage.ErrNotFound)
 	}
 	return &ledgers[0], nil
 }

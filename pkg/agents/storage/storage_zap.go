@@ -17,17 +17,19 @@
 package storage
 
 import (
+	"context"
+
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 // ZAPCentralStorage is the interface for the ZAP central storage.
 type ZAPCentralStorage interface {
 	// CreateZone creates a new zone.
-	CreateZone(zone *zap.Zone) (*zap.Zone, error)
+	CreateZone(ctx context.Context, zone *zap.Zone) (*zap.Zone, error)
 	// UpdateZone updates a zone.
-	UpdateZone(zone *zap.Zone) (*zap.Zone, error)
+	UpdateZone(ctx context.Context, zone *zap.Zone) (*zap.Zone, error)
 	// DeleteZone deletes a zone.
-	DeleteZone(zoneID int64) (*zap.Zone, error)
+	DeleteZone(ctx context.Context, zoneID int64) (*zap.Zone, error)
 	// FetchZones returns all zones filtering by search criteria.
-	FetchZones(page int32, pageSize int32, fields map[string]any) ([]zap.Zone, error)
+	FetchZones(ctx context.Context, page int32, pageSize int32, fields map[string]any) ([]zap.Zone, error)
 }

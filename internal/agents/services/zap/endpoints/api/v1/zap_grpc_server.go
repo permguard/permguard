@@ -18,24 +18,48 @@ package v1
 
 import (
 	"context"
+	"errors"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/permguard/permguard/pkg/agents/services"
+	storage "github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
-	"google.golang.org/grpc"
 )
+
+// mapStorageError maps storage sentinel errors to gRPC status codes.
+func mapStorageError(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, storage.ErrNotFound):
+		return status.Errorf(codes.NotFound, "%v", err)
+	case errors.Is(err, storage.ErrAlreadyExists):
+		return status.Errorf(codes.AlreadyExists, "%v", err)
+	case errors.Is(err, storage.ErrConflict):
+		return status.Errorf(codes.Aborted, "%v", err)
+	case errors.Is(err, storage.ErrInvalidInput):
+		return status.Errorf(codes.InvalidArgument, "%v", err)
+	default:
+		return status.Errorf(codes.Internal, "%v", err)
+	}
+}
 
 // ZAPService is the service for the ZAP.
 type ZAPService interface {
 	Setup() error
 
 	// CreateZone creates a new zone.
-	CreateZone(zone *zap.Zone) (*zap.Zone, error)
+	CreateZone(ctx context.Context, zone *zap.Zone) (*zap.Zone, error)
 	// UpdateZone updates a zone.
-	UpdateZone(zone *zap.Zone) (*zap.Zone, error)
+	UpdateZone(ctx context.Context, zone *zap.Zone) (*zap.Zone, error)
 	// DeleteZone deletes a zone.
-	DeleteZone(zoneID int64) (*zap.Zone, error)
+	DeleteZone(ctx context.Context, zoneID int64) (*zap.Zone, error)
 	// FetchZones returns all zones.
-	FetchZones(page int32, pageSize int32, filter map[string]any) ([]zap.Zone, error)
+	FetchZones(ctx context.Context, page int32, pageSize int32, filter map[string]any) ([]zap.Zone, error)
 }
 
 // NewZAPServer creates a new ZAP server.
@@ -54,34 +78,35 @@ type ZAPServer struct {
 }
 
 // CreateZone creates a new zone.
-func (s *ZAPServer) CreateZone(_ context.Context, zoneRequest *ZoneCreateRequest) (*ZoneResponse, error) {
-	zone, err := s.service.CreateZone(&zap.Zone{Name: zoneRequest.Name})
+func (s *ZAPServer) CreateZone(ctx context.Context, zoneRequest *ZoneCreateRequest) (*ZoneResponse, error) {
+	zone, err := s.service.CreateZone(ctx, &zap.Zone{Name: zoneRequest.Name})
 	if err != nil {
-		return nil, err
+		return nil, mapStorageError(err)
 	}
 	return MapAgentZoneToGrpcZoneResponse(zone)
 }
 
 // UpdateZone updates a zone.
-func (s *ZAPServer) UpdateZone(_ context.Context, zoneRequest *ZoneUpdateRequest) (*ZoneResponse, error) {
-	zone, err := s.service.UpdateZone((&zap.Zone{ZoneID: zoneRequest.ZoneID, Name: zoneRequest.Name}))
+func (s *ZAPServer) UpdateZone(ctx context.Context, zoneRequest *ZoneUpdateRequest) (*ZoneResponse, error) {
+	zone, err := s.service.UpdateZone(ctx, (&zap.Zone{ZoneID: zoneRequest.ZoneID, Name: zoneRequest.Name}))
 	if err != nil {
-		return nil, err
+		return nil, mapStorageError(err)
 	}
 	return MapAgentZoneToGrpcZoneResponse(zone)
 }
 
 // DeleteZone deletes a zone.
-func (s *ZAPServer) DeleteZone(_ context.Context, zoneRequest *ZoneDeleteRequest) (*ZoneResponse, error) {
-	zone, err := s.service.DeleteZone(zoneRequest.ZoneID)
+func (s *ZAPServer) DeleteZone(ctx context.Context, zoneRequest *ZoneDeleteRequest) (*ZoneResponse, error) {
+	zone, err := s.service.DeleteZone(ctx, zoneRequest.ZoneID)
 	if err != nil {
-		return nil, err
+		return nil, mapStorageError(err)
 	}
 	return MapAgentZoneToGrpcZoneResponse(zone)
 }
 
 // FetchZones returns all zones.
 func (s *ZAPServer) FetchZones(zoneRequest *ZoneFetchRequest, stream grpc.ServerStreamingServer[ZoneResponse]) error {
+	ctx := stream.Context()
 	fields := map[string]any{}
 	if zoneRequest.ZoneID != nil {
 		fields[zap.FieldZoneZoneID] = *zoneRequest.ZoneID
@@ -97,9 +122,9 @@ func (s *ZAPServer) FetchZones(zoneRequest *ZoneFetchRequest, stream grpc.Server
 	if zoneRequest.PageSize != nil {
 		pageSize = *zoneRequest.PageSize
 	}
-	zones, err := s.service.FetchZones(page, pageSize, fields)
+	zones, err := s.service.FetchZones(ctx, page, pageSize, fields)
 	if err != nil {
-		return err
+		return mapStorageError(err)
 	}
 	for _, zone := range zones {
 		cvtedZone, err := MapAgentZoneToGrpcZoneResponse(&zone)
