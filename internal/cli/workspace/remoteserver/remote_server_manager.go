@@ -50,12 +50,12 @@ func (m *Manager) ServerRemoteLedger(remoteInfo *wkscommon.RemoteInfo, ledgerInf
 	if ledgerInfo == nil {
 		return nil, errors.New("cli: ledger info is nil")
 	}
-	zoneerver := fmt.Sprintf("%s:%d", remoteInfo.Server(), remoteInfo.ZAPPort())
+	zoneerver := fmt.Sprintf("grpc://%s:%d", remoteInfo.Server(), remoteInfo.ZAPPort())
 	zapClient, err := clients.NewGrpcZAPClient(zoneerver)
 	if err != nil {
 		return nil, err
 	}
-	pppServer := fmt.Sprintf("%s:%d", remoteInfo.Server(), remoteInfo.PAPPort())
+	pppServer := fmt.Sprintf("grpc://%s:%d", remoteInfo.Server(), remoteInfo.PAPPort())
 	papClient, err := clients.NewGrpcPAPClient(pppServer)
 	if err != nil {
 		return nil, err
@@ -95,7 +95,7 @@ type NOTPClient interface {
 
 // NOTPPush push objects using the NOTP protocol.
 func (m *Manager) NOTPPush(server string, papPort int, zoneID int64, ledgerID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
-	pppServer := fmt.Sprintf("%s:%d", server, papPort)
+	pppServer := fmt.Sprintf("grpc://%s:%d", server, papPort)
 	papClient, err := clients.NewGrpcPAPClient(pppServer)
 	if err != nil {
 		return nil, err
@@ -146,7 +146,7 @@ func (m *Manager) NOTPPush(server string, papPort int, zoneID int64, ledgerID st
 
 // NOTPPull pull objects using the NOTP protocol.
 func (m *Manager) NOTPPull(server string, papPort int, zoneID int64, ledgerID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
-	pppServer := fmt.Sprintf("%s:%d", server, papPort)
+	pppServer := fmt.Sprintf("grpc://%s:%d", server, papPort)
 	papClient, err := clients.NewGrpcPAPClient(pppServer)
 	if err != nil {
 		return nil, err
