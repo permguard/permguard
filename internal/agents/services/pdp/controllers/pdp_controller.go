@@ -117,7 +117,7 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
-		if !pdp.IsValidIdentiyType(principal.Type) {
+		if !pdp.IsValidIdentityType(principal.Type) {
 			errMsg := fmt.Sprintf("%s: invalid the principal type", authzen.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
@@ -127,13 +127,13 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
-		if !pdp.IsValidIdentiyType(evaluation.Subject.Type) {
+		if !pdp.IsValidIdentityType(evaluation.Subject.Type) {
 			errMsg := fmt.Sprintf("%s: invalid subject type", authzen.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
 		if !pdp.IsValidProperties(evaluation.Subject.Properties) {
-			errMsg := fmt.Sprintf("%s: invalid  subject properties", authzen.AuthzErrBadRequestMessage)
+			errMsg := fmt.Sprintf("%s: invalid subject properties", authzen.AuthzErrBadRequestMessage)
 			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
 			continue
 		}
@@ -264,7 +264,7 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 	}
 	decisionLog, err := runtime.GetTypedValue[string](cfgReader.Value, "decision-log")
 	if err != nil {
-		return nil, errors.Join(errors.New("pdp-service:  failed to get decision logs configuration"), err)
+		return nil, errors.Join(errors.New("pdp-service: failed to get decision logs configuration"), err)
 	}
 	if decisions.ShouldLogDecision(decisionLog) {
 		var decisionLogsPath string
