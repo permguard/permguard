@@ -132,9 +132,9 @@ func (h *Host) Serve(ctx context.Context) (bool, error) {
 		factories[count] = factory
 		count++
 	}
-	services, shouldReturn, returnValue1 := buildServicesForServe(h, factories, logger)
-	if shouldReturn {
-		return false, returnValue1
+	services, hasError, err := buildServicesForServe(h, factories, logger)
+	if hasError {
+		return false, err
 	}
 	h.services = services
 	hasStarted := true

@@ -53,7 +53,7 @@ func newServer(serverCfg *ServerConfig) (*Server, error) {
 	return srv, nil
 }
 
-// Host returns the hsot kind.
+// Host returns the host kind.
 func (s *Server) Host() services.HostKind {
 	return s.config.host
 }
