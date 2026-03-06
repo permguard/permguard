@@ -26,7 +26,7 @@ import (
 )
 
 func main() {
-	// Run the command with the zap host kind.
+	// Run the command with the all-in-one host kind.
 	initializer, err := servers.NewCommunityServerInitializer(services.HostAllInOne)
 	if err != nil {
 		panic(fmt.Sprintf("server: error creating server: %s", err.Error()))

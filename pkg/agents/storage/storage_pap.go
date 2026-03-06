@@ -23,7 +23,7 @@ import (
 	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
-// PAPCentralStorage is the interface for the ZAP central storage.
+// PAPCentralStorage is the interface for the PAP central storage.
 type PAPCentralStorage interface {
 	// CreateLedger creates a new ledger.
 	CreateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error)

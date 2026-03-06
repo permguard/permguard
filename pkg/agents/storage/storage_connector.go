@@ -27,19 +27,19 @@ type Connector struct {
 }
 
 // NewStorageConnector creates a new storage connector.
-func NewStorageConnector(defaultStorageKind Kind, facatories map[Kind]FactoryProvider) (*Connector, error) {
+func NewStorageConnector(defaultStorageKind Kind, factories map[Kind]FactoryProvider) (*Connector, error) {
 	return &Connector{
 		defaultStorageKind: defaultStorageKind,
-		factories:          facatories,
+		factories:          factories,
 	}, nil
 }
 
 // CentralStorage returns the central storage.
-func (s Connector) CentralStorage(storageKind Kind, runtimeCotext runtime.Context) (CentralStorage, error) {
+func (s Connector) CentralStorage(storageKind Kind, runtimeContext runtime.Context) (CentralStorage, error) {
 	if storageKind == "" {
 		storageKind = s.defaultStorageKind
 	}
-	storageCtx, err := NewStorageContext(runtimeCotext, storageKind)
+	storageCtx, err := NewStorageContext(runtimeContext, storageKind)
 	if err != nil {
 		return nil, err
 	}
