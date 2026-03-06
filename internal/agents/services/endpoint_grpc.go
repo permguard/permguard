@@ -47,3 +47,23 @@ func withServerUnaryInterceptor(serviceCtx *services.EndpointContext) grpc.Serve
 		return h, err
 	})
 }
+
+// withServerStreamInterceptor returns a grpc.ServerOption that adds a stream interceptor to the server.
+func withServerStreamInterceptor(serviceCtx *services.EndpointContext) grpc.ServerOption {
+	return grpc.StreamInterceptor(func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		logger := serviceCtx.Logger()
+		defer func() {
+			if err := recover(); err != nil {
+				logger.Error(serviceCtx.LogMessage(fmt.Sprintf("Stream request generated a panic: %v stacktrace:%s", err, debug.Stack())))
+			}
+		}()
+		start := time.Now()
+		err := handler(srv, ss)
+		if err != nil {
+			logger.Error(serviceCtx.LogMessage(fmt.Sprintf("Stream request failed to be served - method:%s duration:%s error:%v", info.FullMethod, time.Since(start), err)), zap.Error(err))
+		} else {
+			logger.Debug(serviceCtx.LogMessage(fmt.Sprintf("Stream request - method:%s duration:%s", info.FullMethod, time.Since(start))), zap.Duration("duration", time.Since(start)))
+		}
+		return err
+	})
+}

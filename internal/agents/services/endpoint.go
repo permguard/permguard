@@ -105,6 +105,7 @@ func (e *Endpoint) Serve(_ context.Context, serviceCtx *services.ServiceContext)
 	logger.Debug("Endpoint is starting")
 	grpcServer := grpc.NewServer(
 		withServerUnaryInterceptor(e.ctx),
+		withServerStreamInterceptor(e.ctx),
 	)
 	e.grpcServer = grpcServer
 	port := e.config.Port()
