@@ -47,8 +47,8 @@ func IsValidProperties(properties map[string]any) bool {
 	return true
 }
 
-// IsValidIdentiyType checks if the identity type is valid.
-func IsValidIdentiyType(identityType string) bool {
+// IsValidIdentityType checks if the identity type is valid.
+func IsValidIdentityType(identityType string) bool {
 	identityType = strings.ToUpper(identityType)
 	switch identityType {
 	case PermguardUser, PermguardWorkload, PermguardAttribute:
@@ -58,17 +58,17 @@ func IsValidIdentiyType(identityType string) bool {
 }
 
 // NewEvaluationErrorResponse creates an evaluation error response.
-func NewEvaluationErrorResponse(requestID string, erroCode string, adminReason string, userReason string) *EvaluationResponse {
+func NewEvaluationErrorResponse(requestID string, errorCode string, adminReason string, userReason string) *EvaluationResponse {
 	return &EvaluationResponse{
 		RequestID: requestID,
 		Decision:  false,
 		Context: &ContextResponse{
 			ReasonAdmin: &ReasonResponse{
-				Code:    erroCode,
+				Code:    errorCode,
 				Message: adminReason,
 			},
 			ReasonUser: &ReasonResponse{
-				Code:    erroCode,
+				Code:    errorCode,
 				Message: userReason,
 			},
 		},
@@ -76,7 +76,7 @@ func NewEvaluationErrorResponse(requestID string, erroCode string, adminReason s
 }
 
 // NewAuthorizationCheckErrorResponse creates an authorization check error response.
-func NewAuthorizationCheckErrorResponse(authzCheckResponse *AuthorizationCheckResponse, requestID string, erroCode string, adminReason string, userReason string) *AuthorizationCheckResponse {
+func NewAuthorizationCheckErrorResponse(authzCheckResponse *AuthorizationCheckResponse, requestID string, errorCode string, adminReason string, userReason string) *AuthorizationCheckResponse {
 	if authzCheckResponse == nil {
 		authzCheckResponse = &AuthorizationCheckResponse{}
 	}
@@ -87,11 +87,11 @@ func NewAuthorizationCheckErrorResponse(authzCheckResponse *AuthorizationCheckRe
 		authzCheckResponse.Context = &ContextResponse{}
 	}
 	authzCheckResponse.Context.ReasonAdmin = &ReasonResponse{
-		Code:    erroCode,
+		Code:    errorCode,
 		Message: adminReason,
 	}
 	authzCheckResponse.Context.ReasonUser = &ReasonResponse{
-		Code:    erroCode,
+		Code:    errorCode,
 		Message: userReason,
 	}
 	return authzCheckResponse

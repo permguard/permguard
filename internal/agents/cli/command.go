@@ -59,29 +59,29 @@ func addFlagsForCentralStorage(flagSet *flag.FlagSet) error {
 	return nil
 }
 
-// addFlagsForServerInitalizer adds the flags for the server initializer.
-func addFlagsForServerInitalizer(serverInitializer servers.ServerInitializer, v *viper.Viper, command *cobra.Command, serverFactoryCfg *iservers.ServerFactoryConfig, funcs []func(*flag.FlagSet) error) {
+// addFlagsForServerInitializer adds the flags for the server initializer.
+func addFlagsForServerInitializer(serverInitializer servers.ServerInitializer, v *viper.Viper, command *cobra.Command, serverFactoryCfg *iservers.ServerFactoryConfig, funcs []func(*flag.FlagSet) error) {
 	var err error
-	msgErroOnAddFlags := "Bootstrapper cannot add flags %s\n"
+	msgErrorOnAddFlags := "Bootstrapper cannot add flags %s\n"
 
 	if serverInitializer.HasCentralStorage() {
 		err = options.AddCobraFlags(command, v, addFlagsForCentralStorage)
 		if err != nil {
-			fmt.Printf(msgErroOnAddFlags, err.Error())
+			fmt.Printf(msgErrorOnAddFlags, err.Error())
 			os.Exit(1)
 		}
 	}
 
 	err = options.AddCobraFlags(command, v, serverFactoryCfg.AddFlags)
 	if err != nil {
-		fmt.Printf(msgErroOnAddFlags, err.Error())
+		fmt.Printf(msgErrorOnAddFlags, err.Error())
 		os.Exit(1)
 	}
 
 	if len(funcs) == 0 {
 		err := options.AddCobraFlags(command, v, funcs...)
 		if err != nil {
-			fmt.Printf(msgErroOnAddFlags, err.Error())
+			fmt.Printf(msgErrorOnAddFlags, err.Error())
 			os.Exit(1)
 		}
 	}
@@ -115,12 +115,12 @@ func runECommand(cmdInfo *services.HostInfo, serverFactoryCfg *iservers.ServerFa
 	}
 	serverFactory, err := iservers.NewServerFactory(serverFactoryCfg)
 	if err != nil {
-		fmt.Printf("Bootstrapper failed  creating factory for  %s\n", cmdInfo.Name)
+		fmt.Printf("Bootstrapper failed creating factory for %s\n", cmdInfo.Name)
 		os.Exit(1)
 	}
 	server, err := serverFactory.CreateServer()
 	if err != nil {
-		fmt.Printf("Bootstrapper failed  creating the server  %s\n", cmdInfo.Name)
+		fmt.Printf("Bootstrapper failed creating the server %s\n", cmdInfo.Name)
 		os.Exit(1)
 	}
 
@@ -172,7 +172,7 @@ func Run(serverInitializer servers.ServerInitializer, startup func(*zap.Logger),
 
 	serverFactoryCfg, err := iservers.NewServerFactoryConfig(serverInitializer, centralStorageEngine)
 	if err != nil {
-		fmt.Printf("Bootstrapper cannot inizialize the server factory config %s\n", err.Error())
+		fmt.Printf("Bootstrapper cannot initialize the server factory config %s\n", err.Error())
 		os.Exit(1)
 	}
 
@@ -189,5 +189,5 @@ func Run(serverInitializer servers.ServerInitializer, startup func(*zap.Logger),
 
 	// Add flags.
 	// Execute the command.
-	addFlagsForServerInitalizer(serverInitializer, v, command, serverFactoryCfg, funcs)
+	addFlagsForServerInitializer(serverInitializer, v, command, serverFactoryCfg, funcs)
 }
