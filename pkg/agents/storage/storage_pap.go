@@ -17,6 +17,8 @@
 package storage
 
 import (
+	"context"
+
 	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
 	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
 	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
@@ -26,11 +28,11 @@ import (
 // PAPCentralStorage is the interface for the PAP central storage.
 type PAPCentralStorage interface {
 	// CreateLedger creates a new ledger.
-	CreateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error)
+	CreateLedger(ctx context.Context, ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error)
 	// UpdateLedger updates an ledger.
-	UpdateLedger(ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error)
+	UpdateLedger(ctx context.Context, ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error)
 	// DeleteLedger deletes an ledger.
-	DeleteLedger(zoneID int64, ledgerID string) (*azmodelspap.Ledger, error)
+	DeleteLedger(ctx context.Context, zoneID int64, ledgerID string) (*azmodelspap.Ledger, error)
 	// FetchLedgers gets all ledgers.
 	FetchLedgers(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelspap.Ledger, error)
 	// OnPullHandleRequestCurrentState handles the request for the current state.
