@@ -100,7 +100,7 @@ func (e *Endpoint) logger() *zap.Logger {
 }
 
 // Serve starts the grpcendpoint.
-func (e *Endpoint) Serve(_ context.Context, serviceCtx *services.ServiceContext) (bool, error) {
+func (e *Endpoint) Serve(ctx context.Context, serviceCtx *services.ServiceContext) (bool, error) {
 	logger := e.logger()
 	logger.Debug("Endpoint is starting")
 	grpcServer := grpc.NewServer(
@@ -121,7 +121,7 @@ func (e *Endpoint) Serve(_ context.Context, serviceCtx *services.ServiceContext)
 	hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 
 	lc := net.ListenConfig{}
-	lis, err := lc.Listen(context.Background(), "tcp", fmt.Sprintf(":%d", port))
+	lis, err := lc.Listen(ctx, "tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		logger.Error("Endpoint cannot listen on port", zap.Error(err))
 		return false, err

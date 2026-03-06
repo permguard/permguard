@@ -17,11 +17,11 @@
 package controllers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/permguard/permguard/internal/agents/decisions"
 	"github.com/permguard/permguard/pkg/agents/runtime"
@@ -60,7 +60,7 @@ func NewPDPController(serviceContext *services.ServiceContext, storage storage.P
 }
 
 // AuthorizationCheck checks if the request is authorized.
-func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error) {
+func (s PDPController) AuthorizationCheck(ctx context.Context, request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error) {
 	if request == nil {
 		errMsg := fmt.Sprintf("%s: received nil request", authzen.AuthzErrBadRequestMessage)
 		return pdp.NewAuthorizationCheckErrorResponse(nil, "", authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
@@ -87,79 +87,9 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 	reqEvaluations := []pdp.EvaluationRequest{}
 	reqEvaluationsCounter := 0
 	for _, evaluation := range expReq.Evaluations {
-		if request.AuthorizationModel.ZoneID == 0 {
-			errMsg := fmt.Sprintf("%s: invalid zone id", authzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
-			continue
-		}
-		policyStore := request.AuthorizationModel.PolicyStore
-		if len(policyStore.Kind) == 0 {
-			policyStore.Kind = LedgerKind
-		}
-		if strings.ToLower(policyStore.Kind) != LedgerKind {
-			errMsg := fmt.Sprintf("%s: invalid zone type", authzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
-			continue
-		}
-		if len(strings.TrimSpace(policyStore.ID)) == 0 {
-			errMsg := fmt.Sprintf("%s: invalid policy store id", authzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
-			continue
-		}
-		principal := request.AuthorizationModel.Principal
-		if principal == nil {
-			errMsg := fmt.Sprintf("%s: invalid principal", authzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
-			continue
-		}
-		if len(strings.TrimSpace(principal.ID)) == 0 {
-			errMsg := fmt.Sprintf("%s: invalid the principal id", authzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
-			continue
-		}
-		if !pdp.IsValidIdentityType(principal.Type) {
-			errMsg := fmt.Sprintf("%s: invalid the principal type", authzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
-			continue
-		}
-		if len(strings.TrimSpace(evaluation.Subject.ID)) == 0 {
-			errMsg := fmt.Sprintf("%s: invalid subject id", authzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
-			continue
-		}
-		if !pdp.IsValidIdentityType(evaluation.Subject.Type) {
-			errMsg := fmt.Sprintf("%s: invalid subject type", authzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
-			continue
-		}
-		if !pdp.IsValidProperties(evaluation.Subject.Properties) {
-			errMsg := fmt.Sprintf("%s: invalid subject properties", authzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
-			continue
-		}
-		if len(strings.TrimSpace(evaluation.Resource.ID)) == 0 {
-			errMsg := fmt.Sprintf("%s: invalid resource id", authzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
-			continue
-		}
-		if len(strings.TrimSpace(evaluation.Resource.Type)) == 0 {
-			errMsg := fmt.Sprintf("%s: invalid resource type", authzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
-			continue
-		}
-		if !pdp.IsValidProperties(evaluation.Resource.Properties) {
-			errMsg := fmt.Sprintf("%s: invalid resource properties", authzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
-			continue
-		}
-		if len(strings.TrimSpace(evaluation.Action.Name)) == 0 {
-			errMsg := fmt.Sprintf("%s: invalid action name", authzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
-			continue
-		}
-		if !pdp.IsValidProperties(evaluation.Action.Properties) {
-			errMsg := fmt.Sprintf("%s: invalid action properties", authzen.AuthzErrBadRequestMessage)
-			evalItems = append(evalItems, evalItem{listID: -1, value: pdp.NewEvaluationErrorResponse(evaluation.RequestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage)})
+		input := buildEvaluationInput(request.AuthorizationModel, &evaluation)
+		if errResp := validateEvaluation(evaluation.RequestID, input); errResp != nil {
+			evalItems = append(evalItems, evalItem{listID: -1, value: errResp})
 			continue
 		}
 		evalItems = append(evalItems, evalItem{listID: reqEvaluationsCounter, value: nil})
@@ -171,7 +101,7 @@ func (s PDPController) AuthorizationCheck(request *pdp.AuthorizationCheckWithDef
 	authzCheckEvaluations := []pdp.EvaluationResponse{}
 	if reqEvaluationsSize > 0 {
 		authzModel := expReq.AuthorizationModel
-		authzPolicyStore, err2 := s.storage.LoadPolicyStore(authzModel.ZoneID, authzModel.PolicyStore.ID)
+		authzPolicyStore, err2 := s.storage.LoadPolicyStore(ctx, authzModel.ZoneID, authzModel.PolicyStore.ID)
 		if err2 != nil {
 			if logger := s.ctx.Logger(); logger != nil {
 				logger.Error("authorization check has failed", zap.Error(err2))

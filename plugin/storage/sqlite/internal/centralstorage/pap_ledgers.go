@@ -18,9 +18,9 @@ package centralstorage
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
+	storage "github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
@@ -31,15 +31,15 @@ const (
 )
 
 // CreateLedger creates a new ledger.
-func (s SQLiteCentralStoragePAP) CreateLedger(ledger *pap.Ledger) (*pap.Ledger, error) {
+func (s SQLiteCentralStoragePAP) CreateLedger(ctx context.Context, ledger *pap.Ledger) (*pap.Ledger, error) {
 	if ledger == nil {
-		return nil, errors.New("storage: invalid client input - ledger is nil")
+		return nil, fmt.Errorf("storage: invalid client input - ledger is nil: %w", storage.ErrInvalidInput)
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	tx, err := db.BeginTx(context.Background(), nil)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
@@ -48,14 +48,14 @@ func (s SQLiteCentralStoragePAP) CreateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 	}
 	kind, err := repos.ConvertLedgerKindToID(ledger.Kind)
 	if err != nil {
-		return nil, errors.Join(fmt.Errorf("storage: invalid client input - ledger kind %s is not valid", ledger.Kind), err)
+		return nil, fmt.Errorf("storage: invalid client input - ledger kind %s is not valid: %w", ledger.Kind, storage.ErrInvalidInput)
 	}
 	dbInLedger := &repos.Ledger{
 		ZoneID: ledger.ZoneID,
 		Name:   ledger.Name,
 		Kind:   kind,
 	}
-	dbOutLedger, err := s.sqlRepo.UpsertLedger(tx, true, dbInLedger)
+	dbOutLedger, err := s.sqlRepo.UpsertLedger(ctx, tx, true, dbInLedger)
 	if err != nil {
 		_ = tx.Rollback()
 		return nil, err
@@ -67,15 +67,15 @@ func (s SQLiteCentralStoragePAP) CreateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 }
 
 // UpdateLedger updates a ledger.
-func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, error) {
+func (s SQLiteCentralStoragePAP) UpdateLedger(ctx context.Context, ledger *pap.Ledger) (*pap.Ledger, error) {
 	if ledger == nil {
-		return nil, errors.New("storage: invalid client input - ledger is nil")
+		return nil, fmt.Errorf("storage: invalid client input - ledger is nil: %w", storage.ErrInvalidInput)
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	tx, err := db.BeginTx(context.Background(), nil)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
@@ -84,7 +84,7 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 	}
 	kind, err := repos.ConvertLedgerKindToID(ledger.Kind)
 	if err != nil {
-		return nil, errors.Join(fmt.Errorf("storage: invalid client input - ledger kind %s is not valid", ledger.Kind), err)
+		return nil, fmt.Errorf("storage: invalid client input - ledger kind %s is not valid: %w", ledger.Kind, storage.ErrInvalidInput)
 	}
 	dbInLedger := &repos.Ledger{
 		LedgerID: ledger.LedgerID,
@@ -92,7 +92,7 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 		Kind:     kind,
 		Name:     ledger.Name,
 	}
-	dbOutLedger, err := s.sqlRepo.UpsertLedger(tx, false, dbInLedger)
+	dbOutLedger, err := s.sqlRepo.UpsertLedger(ctx, tx, false, dbInLedger)
 	if err != nil {
 		_ = tx.Rollback()
 		return nil, err
@@ -104,16 +104,16 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, 
 }
 
 // DeleteLedger deletes a ledger.
-func (s SQLiteCentralStoragePAP) DeleteLedger(zoneID int64, ledgerID string) (*pap.Ledger, error) {
+func (s SQLiteCentralStoragePAP) DeleteLedger(ctx context.Context, zoneID int64, ledgerID string) (*pap.Ledger, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	tx, err := db.BeginTx(context.Background(), nil)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, repos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
-	dbOutLedger, err := s.sqlRepo.DeleteLedger(tx, zoneID, ledgerID)
+	dbOutLedger, err := s.sqlRepo.DeleteLedger(ctx, tx, zoneID, ledgerID)
 	if err != nil {
 		_ = tx.Rollback()
 		return nil, err
@@ -125,9 +125,9 @@ func (s SQLiteCentralStoragePAP) DeleteLedger(zoneID int64, ledgerID string) (*p
 }
 
 // FetchLedgers returns all ledgers.
-func (s SQLiteCentralStoragePAP) FetchLedgers(page int32, pageSize int32, zoneID int64, fields map[string]any) ([]pap.Ledger, error) {
+func (s SQLiteCentralStoragePAP) FetchLedgers(ctx context.Context, page int32, pageSize int32, zoneID int64, fields map[string]any) ([]pap.Ledger, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.DataFetchMaxPageSize() {
-		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid", page, pageSize)
+		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid: %w", page, pageSize, storage.ErrInvalidInput)
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -137,7 +137,7 @@ func (s SQLiteCentralStoragePAP) FetchLedgers(page int32, pageSize int32, zoneID
 	if _, ok := fields[pap.FieldLedgerLedgerID]; ok {
 		ledgerID, ok := fields[pap.FieldLedgerLedgerID].(string)
 		if !ok {
-			return nil, fmt.Errorf("storage: invalid client input - ledger id is not valid (ledger id: %s)", ledgerID)
+			return nil, fmt.Errorf("storage: invalid client input - ledger id is not valid (ledger id: %s): %w", ledgerID, storage.ErrInvalidInput)
 		}
 		filterID = &ledgerID
 	}
@@ -145,11 +145,11 @@ func (s SQLiteCentralStoragePAP) FetchLedgers(page int32, pageSize int32, zoneID
 	if _, ok := fields[pap.FieldLedgerName]; ok {
 		ledgerName, ok := fields[pap.FieldLedgerName].(string)
 		if !ok {
-			return nil, fmt.Errorf("storage: invalid client input - ledger name is not valid (ledger name: %s)", ledgerName)
+			return nil, fmt.Errorf("storage: invalid client input - ledger name is not valid (ledger name: %s): %w", ledgerName, storage.ErrInvalidInput)
 		}
 		filterName = &ledgerName
 	}
-	dbLedgers, err := s.sqlRepo.FetchLedgers(db, page, pageSize, zoneID, filterID, filterName)
+	dbLedgers, err := s.sqlRepo.FetchLedgers(ctx, db, page, pageSize, zoneID, filterID, filterName)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +157,7 @@ func (s SQLiteCentralStoragePAP) FetchLedgers(page int32, pageSize int32, zoneID
 	for i, a := range dbLedgers {
 		ledger, err := mapLedgerToAgentLedger(&a)
 		if err != nil {
-			return nil, fmt.Errorf("storage: failed to convert ledger entity (%s)", repos.LogLedgerEntry(&a))
+			return nil, fmt.Errorf("storage: failed to convert ledger entity (%s): %w", repos.LogLedgerEntry(&a), storage.ErrInternal)
 		}
 		ledgers[i] = *ledger
 	}

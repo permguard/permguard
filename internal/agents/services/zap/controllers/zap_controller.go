@@ -17,6 +17,8 @@
 package controllers
 
 import (
+	"context"
+
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
@@ -43,21 +45,21 @@ func NewZAPController(serviceContext *services.ServiceContext, zapCentralStorage
 }
 
 // CreateZone creates a new zone.
-func (s ZAPController) CreateZone(zone *zap.Zone) (*zap.Zone, error) {
-	return s.storage.CreateZone(zone)
+func (s ZAPController) CreateZone(ctx context.Context, zone *zap.Zone) (*zap.Zone, error) {
+	return s.storage.CreateZone(ctx, zone)
 }
 
 // UpdateZone updates a zone.
-func (s ZAPController) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
-	return s.storage.UpdateZone(zone)
+func (s ZAPController) UpdateZone(ctx context.Context, zone *zap.Zone) (*zap.Zone, error) {
+	return s.storage.UpdateZone(ctx, zone)
 }
 
 // DeleteZone delete a zone.
-func (s ZAPController) DeleteZone(zoneID int64) (*zap.Zone, error) {
-	return s.storage.DeleteZone(zoneID)
+func (s ZAPController) DeleteZone(ctx context.Context, zoneID int64) (*zap.Zone, error) {
+	return s.storage.DeleteZone(ctx, zoneID)
 }
 
 // FetchZones returns all zones filtering by search criteria.
-func (s ZAPController) FetchZones(page int32, pageSize int32, fields map[string]any) ([]zap.Zone, error) {
-	return s.storage.FetchZones(page, pageSize, fields)
+func (s ZAPController) FetchZones(ctx context.Context, page int32, pageSize int32, fields map[string]any) ([]zap.Zone, error) {
+	return s.storage.FetchZones(ctx, page, pageSize, fields)
 }

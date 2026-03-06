@@ -17,9 +17,12 @@
 package repositories
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
-	// "modernc.org/sqlite"
+	"strings"
+
+	storage "github.com/permguard/permguard/pkg/agents/storage"
 )
 
 // SQLite error wrapping constants.
@@ -34,5 +37,29 @@ func WrapSqliteError(msg string, err error) error {
 
 // WrapSqliteErrorWithParams wraps a sqlite error with parameters.
 func WrapSqliteErrorWithParams(msg string, err error, _ map[string]string) error {
-	return errors.Join(fmt.Errorf("generic error (%s)", msg), err)
+	if err == nil {
+		return fmt.Errorf("storage: %s: %w", msg, storage.ErrInternal)
+	}
+
+	sentinel := classifyError(err)
+	return fmt.Errorf("storage: %s: %w: %w", msg, sentinel, err)
+}
+
+// classifyError maps a raw error to the appropriate sentinel error.
+func classifyError(err error) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return storage.ErrNotFound
+	}
+
+	errMsg := err.Error()
+	switch {
+	case strings.Contains(errMsg, "UNIQUE constraint"):
+		return storage.ErrAlreadyExists
+	case strings.Contains(errMsg, "FOREIGN KEY constraint"):
+		return storage.ErrConflict
+	case strings.Contains(errMsg, "NOT NULL constraint"):
+		return storage.ErrInvalidInput
+	default:
+		return storage.ErrInternal
+	}
 }
