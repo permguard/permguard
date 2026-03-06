@@ -14,7 +14,6 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-//nolint:revive // package name is intentional
 package runtime
 
 import (

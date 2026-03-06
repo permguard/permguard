@@ -92,7 +92,7 @@ func generateFlowID() uint64 {
 	return n
 }
 
-// terminateWithFinal terminates the state machine with a final state..
+// terminateWithFinal terminates the state machine with a final state.
 func terminateWithFinal(runtime *StateMachineRuntimeContext) (*StateTransitionInfo, error) {
 	return &StateTransitionInfo{
 		Runtime: runtime,
@@ -333,14 +333,14 @@ func publisherNegotiationState(runtime *StateMachineRuntimeContext) (*StateTrans
 		return terminateWithFinal(runtime)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("notp: publusher negotiation failed to receive and handle notify current state packet: %w", err)
+		return nil, fmt.Errorf("notp: publisher negotiation failed to receive and handle notify current state packet: %w", err)
 	}
 	_, terminate, err = createAndHandleAndStreamStatePacket(runtime, notpsmpackets.RespondNegotiationRequestMessage, packetables)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("notp: publusher negotiation failed to create and handle respond current state packet: %w", err)
+		return nil, fmt.Errorf("notp: publisher negotiation failed to create and handle respond current state packet: %w", err)
 	}
 	stateID := PublisherDataStreamStateID
 	return &StateTransitionInfo{
