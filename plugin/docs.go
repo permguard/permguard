@@ -15,4 +15,4 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package plugin contains some plugin implementations.
-package plugin //nolint:revive // intentional name matching domain concept
+package plugin
