@@ -182,7 +182,7 @@ archives:
     id: permguard_all_in_one
     ids: ["permguard_all_in_one_linux", "permguard_all_in_one_windows", "permguard_all_in_one_darwin"]
     name_template: >-
-      {{ .ProjectName }}_{{ .Binary }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
+      {{ .Binary }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
       - goos: windows
         formats: [zip]
@@ -190,7 +190,7 @@ archives:
     id: permguard_control_plane
     ids: ["permguard_control_plane_linux", "permguard_control_plane_windows", "permguard_control_plane_darwin"]
     name_template: >-
-      {{ .ProjectName }}_{{ .Binary }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
+      {{ .Binary }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
       - goos: windows
         formats: [zip]
@@ -198,7 +198,7 @@ archives:
     id: permguard_data_plane
     ids: ["permguard_data_plane_linux", "permguard_data_plane_windows", "permguard_data_plane_darwin"]
     name_template: >-
-      {{ .ProjectName }}_{{ .Binary }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
+      {{ .Binary }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
       - goos: windows
         formats: [zip]
