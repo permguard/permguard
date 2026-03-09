@@ -18,6 +18,7 @@ package servers
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/permguard/permguard/common/pkg/extensions/copier"
 	"github.com/permguard/permguard/internal/agents/services/pap"
@@ -31,39 +32,37 @@ import (
 
 // CommunityServerInitializer is the community service factory initializer.
 type CommunityServerInitializer struct {
-	host      services.HostKind
-	hostInfos map[services.HostKind]*services.HostInfo
-	storages  []storage.Kind
-	services  []services.ServiceKind
+	hostInfo *services.HostInfo
+	storages []storage.Kind
+	services []services.ServiceKind
 }
 
 // NewCommunityServerInitializer creates a new community server initializer.
-func NewCommunityServerInitializer(host services.HostKind) (servers.ServerInitializer, error) {
+func NewCommunityServerInitializer(displayName string, serviceKinds []services.ServiceKind) (servers.ServerInitializer, error) {
+	if len(serviceKinds) == 0 {
+		return nil, fmt.Errorf("server: at least one service kind must be specified")
+	}
+	svcNames := make([]string, len(serviceKinds))
+	for i, svc := range serviceKinds {
+		svcNames[i] = svc.String()
+	}
 	template := `The official Permguard Server
 Copyright © 2022 Nitro Agility S.r.l.
 
 %s
 
   Find more information at: https://community.permguard.com/docs/0.0.x/devops/authz-server/configuration-options/`
-	hostInfos := map[services.HostKind]*services.HostInfo{
-		services.HostAllInOne: {Name: "AllInOne", Use: "all-in-one", Short: "The official Permguard Server - Start all services", Long: fmt.Sprintf(template, "Using this option all services are started.")},
-		services.HostZAP:      {Name: "ZAP (Zone Administration Point)", Use: "zap", Short: "The official Permguard Server - Start the ZAP service", Long: fmt.Sprintf(template, "Using this option the Zone Administration Point (ZAP) service is started.")},
-		services.HostPAP:      {Name: "PAP (Policy Administration Point)", Use: "pap", Short: "The official Permguard Server - Start the PAP service", Long: fmt.Sprintf(template, "Using this option the Policy Administration Point (PAP) service is started.")},
-		services.HostPIP:      {Name: "PIP (Policy Information Point)", Use: "pip", Short: "The official Permguard Server - Start the PIP service", Long: fmt.Sprintf(template, "Using this option the Policy Information Point (PIP) service is started.")},
-		services.HostPDP:      {Name: "PDP (Policy Decision Point)", Use: "pdp", Short: "The official Permguard Server - Start the PDP service", Long: fmt.Sprintf(template, "Using this option the Policy Decision Point (PDP) service is started.")},
+	hostInfo := &services.HostInfo{
+		Name:  displayName,
+		Use:   strings.ToLower(strings.ReplaceAll(displayName, " ", "-")),
+		Short: fmt.Sprintf("The official Permguard Server - %s", displayName),
+		Long:  fmt.Sprintf(template, fmt.Sprintf("Starting services: %s.", strings.Join(svcNames, ", "))),
 	}
-	hosts := []services.HostKind{services.HostAllInOne, services.HostZAP, services.HostPAP, services.HostPIP, services.HostPDP}
 	storages := []storage.Kind{storage.StorageSQLite}
-	services := []services.ServiceKind{services.ServiceZAP, services.ServicePAP, services.ServicePIP, services.ServicePDP}
-
-	if !host.IsValid(hosts) {
-		panic(fmt.Sprintf("server: invalid server kind: %s", host))
-	}
 	return &CommunityServerInitializer{
-		host:      host,
-		hostInfos: hostInfos,
-		storages:  storages,
-		services:  host.Services(hosts, services),
+		hostInfo: hostInfo,
+		storages: storages,
+		services: copier.CopySlice(serviceKinds),
 	}, nil
 }
 
@@ -72,14 +71,9 @@ func (c *CommunityServerInitializer) HasCentralStorage() bool {
 	return true
 }
 
-// Host returns the service kind set as host.
-func (c *CommunityServerInitializer) Host() services.HostKind {
-	return c.host
-}
-
 // HostInfo returns the infos of the service kind set as host.
 func (c *CommunityServerInitializer) HostInfo() *services.HostInfo {
-	return c.hostInfos[c.host]
+	return c.hostInfo
 }
 
 // Storages returns the active storage kinds.

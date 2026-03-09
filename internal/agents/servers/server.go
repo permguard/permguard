@@ -26,7 +26,6 @@ import (
 	"go.uber.org/zap"
 
 	iservices "github.com/permguard/permguard/internal/agents/services"
-	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/cli/options"
 )
@@ -53,9 +52,9 @@ func newServer(serverCfg *ServerConfig) (*Server, error) {
 	return srv, nil
 }
 
-// Host returns the host kind.
-func (s *Server) Host() services.HostKind {
-	return s.config.host
+// DisplayName returns the display name.
+func (s *Server) DisplayName() string {
+	return s.config.displayName
 }
 
 // HasDebug returns true if debug is enabled.
@@ -106,7 +105,7 @@ func (s *Server) Serve(ctx context.Context, onShutdown func()) (bool, error) {
 		s.startLock.Unlock()
 		return false, err
 	}
-	hostCfg, err := iservices.NewHostConfig(s.config.Host(), s, storageConnector, s.config.Services(), s.config.ServicesFactories(), logger, s.config.AppData())
+	hostCfg, err := iservices.NewHostConfig(s.config.DisplayName(), s, storageConnector, s.config.Services(), s.config.ServicesFactories(), logger, s.config.AppData())
 	if err != nil {
 		logger.Error("Bootstrapper cannot create the host config", zap.Error(err))
 		s.startLock.Unlock()

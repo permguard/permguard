@@ -29,7 +29,7 @@ import (
 // HostConfig represents the host configuration.
 type HostConfig struct {
 	logger            *zap.Logger
-	host              services.HostKind
+	displayName       string
 	hostable          services.Hostable
 	storageConnector  *storage.Connector
 	services          []services.ServiceKind
@@ -38,12 +38,12 @@ type HostConfig struct {
 }
 
 // NewHostConfig creates a new host configuration.
-func NewHostConfig(host services.HostKind, hostable services.Hostable, storageConnector *storage.Connector,
+func NewHostConfig(displayName string, hostable services.Hostable, storageConnector *storage.Connector,
 	services []services.ServiceKind, servicesFactories map[services.ServiceKind]services.ServiceFactoryProvider, logger *zap.Logger, appData string,
 ) (*HostConfig, error) {
 	return &HostConfig{
 		logger:            logger,
-		host:              host,
+		displayName:       displayName,
 		hostable:          hostable,
 		storageConnector:  storageConnector,
 		services:          services,
@@ -82,7 +82,7 @@ type Host struct {
 // NewHost creates a new host.
 func NewHost(hostCfg *HostConfig) (*Host, error) {
 	hostCfgReader := services.NewHostConfiguration(hostCfg.AppData())
-	hostCtx, err := services.NewHostContext(hostCfg.host, hostCfg.hostable, hostCfg.logger, hostCfgReader)
+	hostCtx, err := services.NewHostContext(hostCfg.displayName, hostCfg.hostable, hostCfg.logger, hostCfgReader)
 	if err != nil {
 		return nil, err
 	}

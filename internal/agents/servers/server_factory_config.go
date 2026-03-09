@@ -33,7 +33,7 @@ type ServerFactoryConfig struct {
 
 // NewServerFactoryConfig creates a new server factory configuration.
 func NewServerFactoryConfig(initializer servers.ServerInitializer, centralStorageEngine storage.Kind) (*ServerFactoryConfig, error) {
-	host := initializer.Host()
+	hostInfo := initializer.HostInfo()
 	storages := initializer.Storages(centralStorageEngine)
 	storagesFactories, err := initializer.StoragesFactories(centralStorageEngine)
 	if err != nil {
@@ -44,7 +44,7 @@ func NewServerFactoryConfig(initializer servers.ServerInitializer, centralStorag
 	if err != nil {
 		return nil, err
 	}
-	serverConfig := newServerConfig(host, centralStorageEngine, storages, storagesFactories, services, servicesFactories)
+	serverConfig := newServerConfig(hostInfo.Name, centralStorageEngine, storages, storagesFactories, services, servicesFactories)
 	return &ServerFactoryConfig{
 		config:               serverConfig,
 		centralStorageEngine: centralStorageEngine,

@@ -40,9 +40,9 @@ type HostContext struct {
 }
 
 // NewHostContext creates a new host context.
-func NewHostContext(host HostKind, hostable Hostable, logger *zap.Logger, configReader runtime.HostConfigReader) (*HostContext, error) {
-	newLogger := logger.With(zap.String(string("host"), host.String()))
-	data := map[string]any{ctxHostHostkey: host, ctxHostServerkey: hostable, ctxHostLoggerkey: newLogger, ctxHostCfgReader: configReader}
+func NewHostContext(displayName string, hostable Hostable, logger *zap.Logger, configReader runtime.HostConfigReader) (*HostContext, error) {
+	newLogger := logger.With(zap.String("host", displayName))
+	data := map[string]any{ctxHostHostkey: displayName, ctxHostServerkey: hostable, ctxHostLoggerkey: newLogger, ctxHostCfgReader: configReader}
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, hostCtxKey{}, data)
 	return &HostContext{
@@ -55,9 +55,9 @@ func (h *HostContext) Context() context.Context {
 	return h.ctx
 }
 
-// Host returns the host.
-func (h *HostContext) Host() HostKind {
-	return h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHostHostkey].(HostKind)
+// DisplayName returns the display name of the host.
+func (h *HostContext) DisplayName() string {
+	return h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHostHostkey].(string)
 }
 
 // Logger returns the logger.
@@ -77,7 +77,7 @@ func (h *HostContext) Shutdown(ctx context.Context) {
 
 // ParentLoggerMessage returns the parent logger message.
 func (h *HostContext) ParentLoggerMessage() string {
-	return fmt.Sprintf("[%s]", h.Host().String())
+	return fmt.Sprintf("[%s]", h.DisplayName())
 }
 
 // LogMessage returns a well formatted log message.
