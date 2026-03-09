@@ -46,9 +46,9 @@ builds:
       - -X {{ .Env.PROJECT_PATH }}/internal/cli/common.GitCommit={{ .Commit }}
 
 
-  - id: permguard_server_all_in_one_linux
+  - id: permguard_all_in_one_linux
     dir: "./cmd/server-all-in-one"
-    binary: "server_all_in_one"
+    binary: "permguard_all_in_one"
     goos: [linux]
     goarch: [amd64, arm64]
     env:
@@ -59,9 +59,9 @@ builds:
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.BuildTime={{ .Timestamp }}
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.GitCommit={{ .Commit }}
 
-  - id: permguard_server_all_in_one_windows
+  - id: permguard_all_in_one_windows
     dir: "./cmd/server-all-in-one"
-    binary: "server_all_in_one"
+    binary: "permguard_all_in_one"
     goos: [windows]
     goarch: [amd64, arm64]
     env:
@@ -72,9 +72,9 @@ builds:
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.BuildTime={{ .Timestamp }}
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.GitCommit={{ .Commit }}
 
-  - id: permguard_server_all_in_one_darwin
+  - id: permguard_all_in_one_darwin
     dir: "./cmd/server-all-in-one"
-    binary: "server_all_in_one"
+    binary: "permguard_all_in_one"
     goos: [darwin]
     goarch: [amd64, arm64]
     env:
@@ -85,9 +85,9 @@ builds:
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.BuildTime={{ .Timestamp }}
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.GitCommit={{ .Commit }}
 
-  - id: permguard_server_control_plane_linux
+  - id: permguard_control_plane_linux
     dir: "./cmd/control-plane"
-    binary: "server_control_plane"
+    binary: "permguard_control_plane"
     goos: [linux]
     goarch: [amd64, arm64]
     env:
@@ -98,9 +98,9 @@ builds:
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.BuildTime={{ .Timestamp }}
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.GitCommit={{ .Commit }}
 
-  - id: permguard_server_control_plane_windows
+  - id: permguard_control_plane_windows
     dir: "./cmd/control-plane"
-    binary: "server_control_plane"
+    binary: "permguard_control_plane"
     goos: [windows]
     goarch: [amd64, arm64]
     env:
@@ -111,9 +111,9 @@ builds:
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.BuildTime={{ .Timestamp }}
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.GitCommit={{ .Commit }}
 
-  - id: permguard_server_control_plane_darwin
+  - id: permguard_control_plane_darwin
     dir: "./cmd/control-plane"
-    binary: "server_control_plane"
+    binary: "permguard_control_plane"
     goos: [darwin]
     goarch: [amd64, arm64]
     env:
@@ -124,9 +124,9 @@ builds:
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.BuildTime={{ .Timestamp }}
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.GitCommit={{ .Commit }}
 
-  - id: permguard_server_data_plane_linux
+  - id: permguard_data_plane_linux
     dir: "./cmd/data-plane"
-    binary: "server_data_plane"
+    binary: "permguard_data_plane"
     goos: [linux]
     goarch: [amd64, arm64]
     env:
@@ -137,9 +137,9 @@ builds:
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.BuildTime={{ .Timestamp }}
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.GitCommit={{ .Commit }}
 
-  - id: permguard_server_data_plane_windows
+  - id: permguard_data_plane_windows
     dir: "./cmd/data-plane"
-    binary: "server_data_plane"
+    binary: "permguard_data_plane"
     goos: [windows]
     goarch: [amd64, arm64]
     env:
@@ -150,9 +150,9 @@ builds:
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.BuildTime={{ .Timestamp }}
       - -X {{ .Env.PROJECT_PATH }}/internal/agents/cli.GitCommit={{ .Commit }}
 
-  - id: permguard_server_data_plane_darwin
+  - id: permguard_data_plane_darwin
     dir: "./cmd/data-plane"
-    binary: "server_data_plane"
+    binary: "permguard_data_plane"
     goos: [darwin]
     goarch: [amd64, arm64]
     env:
@@ -179,24 +179,24 @@ archives:
       - goos: windows
         formats: [zip]
   - formats: [tar.gz]
-    id: permguard_server_all_in_one
-    ids: ["permguard_server_all_in_one_linux", "permguard_server_all_in_one_windows", "permguard_server_all_in_one_darwin"]
+    id: permguard_all_in_one
+    ids: ["permguard_all_in_one_linux", "permguard_all_in_one_windows", "permguard_all_in_one_darwin"]
     name_template: >-
       {{ .ProjectName }}_{{ .Binary }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
       - goos: windows
         formats: [zip]
   - formats: [tar.gz]
-    id: permguard_server_control_plane
-    ids: ["permguard_server_control_plane_linux", "permguard_server_control_plane_windows", "permguard_server_control_plane_darwin"]
+    id: permguard_control_plane
+    ids: ["permguard_control_plane_linux", "permguard_control_plane_windows", "permguard_control_plane_darwin"]
     name_template: >-
       {{ .ProjectName }}_{{ .Binary }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
       - goos: windows
         formats: [zip]
   - formats: [tar.gz]
-    id: permguard_server_data_plane
-    ids: ["permguard_server_data_plane_linux", "permguard_server_data_plane_windows", "permguard_server_data_plane_darwin"]
+    id: permguard_data_plane
+    ids: ["permguard_data_plane_linux", "permguard_data_plane_windows", "permguard_data_plane_darwin"]
     name_template: >-
       {{ .ProjectName }}_{{ .Binary }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
@@ -235,10 +235,10 @@ nfpms:
       - permguard_cli
 
 dockers_v2:
-  - id: permguard_server_all_in_one
+  - id: permguard_all_in_one
     dockerfile: ./cmd/server-all-in-one/Dockerfile
     ids:
-      - permguard_server_all_in_one_linux
+      - permguard_all_in_one_linux
     images:
       - permguard/all-in-one
     tags:
@@ -251,18 +251,18 @@ dockers_v2:
     extra_files:
       - tmp/permguard.db
     build_args:
-      BINARY_NAME: server_all_in_one
+      BINARY_NAME: permguard_all_in_one
       DB_FILE: tmp/permguard.db
     labels:
-      org.opencontainers.image.title: "permguard-server-all-in-one"
+      org.opencontainers.image.title: "permguard-all-in-one"
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.source: "{{ .Env.PROJECT_PATH }}"
 
-  - id: permguard_server_control_plane
+  - id: permguard_control_plane
     dockerfile: ./cmd/control-plane/Dockerfile
     ids:
-      - permguard_server_control_plane_linux
+      - permguard_control_plane_linux
     images:
       - permguard/control-plane
     tags:
@@ -275,18 +275,18 @@ dockers_v2:
     extra_files:
       - tmp/permguard.db
     build_args:
-      BINARY_NAME: server_control_plane
+      BINARY_NAME: permguard_control_plane
       DB_FILE: tmp/permguard.db
     labels:
-      org.opencontainers.image.title: "permguard-server-control-plane"
+      org.opencontainers.image.title: "permguard-control-plane"
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.source: "{{ .Env.PROJECT_PATH }}"
 
-  - id: permguard_server_data_plane
+  - id: permguard_data_plane
     dockerfile: ./cmd/data-plane/Dockerfile
     ids:
-      - permguard_server_data_plane_linux
+      - permguard_data_plane_linux
     images:
       - permguard/data-plane
     tags:
@@ -299,10 +299,10 @@ dockers_v2:
     extra_files:
       - tmp/permguard.db
     build_args:
-      BINARY_NAME: server_data_plane
+      BINARY_NAME: permguard_data_plane
       DB_FILE: tmp/permguard.db
     labels:
-      org.opencontainers.image.title: "permguard-server-data-plane"
+      org.opencontainers.image.title: "permguard-data-plane"
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.source: "{{ .Env.PROJECT_PATH }}"

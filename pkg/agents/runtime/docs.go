@@ -15,6 +15,4 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package runtime implements the runtime package for the agents.
-//
-//nolint:revive // package name is intentional
-package runtime
+package runtime //nolint:revive // intentional name matching domain concept
