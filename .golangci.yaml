@@ -134,6 +134,14 @@ linters:
         path: "internal/cli/workspace/common/"
         text: "var-naming"
       - linters:
+          - revive
+        path: "pkg/agents/runtime/"
+        text: "var-naming"
+      - linters:
+          - revive
+        path: "plugin/"
+        text: "var-naming"
+      - linters:
           - noctx
           - perfsprint
         path: _test\.go
