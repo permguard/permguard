@@ -19,7 +19,7 @@ FROM alpine:3.22.2
 
 # Build-time args
 ARG TARGETARCH
-ARG BINARY_NAME=server-all-in-one
+ARG BINARY_NAME=permguard_all_in_one
 ARG DB_FILE=permguard.db
 ARG GRPC_HP_VER=v0.4.18
 
@@ -36,9 +36,9 @@ WORKDIR /opt/permguard
 RUN mkdir -p /opt/permguard/volume && chown -R app:app /opt/permguard
 
 # App binary + seed DB (owned by non-root)
-COPY --chown=app:app linux/${TARGETARCH}/${BINARY_NAME} /opt/permguard/server-all-in-one
+COPY --chown=app:app linux/${TARGETARCH}/${BINARY_NAME} /opt/permguard/permguard-all-in-one
 COPY --chown=app:app ${DB_FILE} /opt/permguard/permguard.db
-RUN chmod +x /opt/permguard/server-all-in-one
+RUN chmod +x /opt/permguard/permguard-all-in-one
 
 # Startup script (idempotent seed copy, then exec)
 RUN printf '%s\n' \
@@ -47,7 +47,7 @@ RUN printf '%s\n' \
   'if [ ! -f /opt/permguard/volume/permguard.db ]; then' \
   '  cp /opt/permguard/permguard.db /opt/permguard/volume/;' \
   'fi' \
-  'exec /opt/permguard/server-all-in-one' \
+  'exec /opt/permguard/permguard-all-in-one' \
   > /opt/permguard/startup.sh && \
   chown app:app /opt/permguard/startup.sh && \
   chmod +x /opt/permguard/startup.sh
