@@ -339,6 +339,26 @@ tasks:
         -e PERMGUARD_DEBUG="TRUE"
         permguard/all-in-one:latest
 
+  dh:control-plane:
+    desc: Start Control Plane server using Docker Hub image
+    cmds:
+      - >
+        docker run --rm -it
+        -v ./samples/volume:/opt/permguard/volume
+        -p 9091:9091 -p 9092:9092
+        -e PERMGUARD_DEBUG="TRUE"
+        permguard/control-plane:latest
+
+  dh:data-plane:
+    desc: Start Data Plane server using Docker Hub image
+    cmds:
+      - >
+        docker run --rm -it
+        -v ./samples/volume:/opt/permguard/volume
+        -p 9094:9094
+        -e PERMGUARD_DEBUG="TRUE"
+        permguard/data-plane:latest
+
   # Git Flow
 
   push-docs:

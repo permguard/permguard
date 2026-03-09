@@ -17,6 +17,7 @@
 package servers
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -40,7 +41,7 @@ type CommunityServerInitializer struct {
 // NewCommunityServerInitializer creates a new community server initializer.
 func NewCommunityServerInitializer(displayName string, serviceKinds []services.ServiceKind) (servers.ServerInitializer, error) {
 	if len(serviceKinds) == 0 {
-		return nil, fmt.Errorf("server: at least one service kind must be specified")
+		return nil, errors.New("server: at least one service kind must be specified")
 	}
 	svcNames := make([]string, len(serviceKinds))
 	for i, svc := range serviceKinds {
