@@ -275,34 +275,22 @@ tasks:
       - go run cmd/cli/main.go {{.CLI_ARGS}}
     silent: false
 
-  server-allinone:
+  allinone:
     desc: Start all-in-one server
     cmds:
       - go run cmd/server-all-in-one/main.go {{.CLI_ARGS}}
     silent: false
 
-  server-zap:
-    desc: Start Zap server
+  control-plane:
+    desc: Start Control Plane server (ZAP, PAP, PIP)
     cmds:
-      - go run cmd/server-zap/main.go {{.CLI_ARGS}}
+      - go run cmd/control-plane/main.go {{.CLI_ARGS}}
     silent: false
 
-  server-pap:
-    desc: Start PAP server
+  data-plane:
+    desc: Start Data Plane server (PDP)
     cmds:
-      - go run cmd/server-pap/main.go {{.CLI_ARGS}}
-    silent: false
-
-  server-pip:
-    desc: Start PIP server
-    cmds:
-      - go run cmd/server-pip/main.go {{.CLI_ARGS}}
-    silent: false
-
-  server-pdp:
-    desc: Start PDP server
-    cmds:
-      - go run cmd/server-pdp/main.go {{.CLI_ARGS}}
+      - go run cmd/data-plane/main.go {{.CLI_ARGS}}
     silent: false
 
   # ci

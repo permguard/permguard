@@ -27,8 +27,6 @@ type ServerInitializer interface {
 	storage.Initializer
 	// Embeds the service initializer.
 	services.ServiceInitializer
-	// Host returns the service kind set as host.
-	Host() services.HostKind
 	// HostInfo returns the infos of the service kind set as host.
 	HostInfo() *services.HostInfo
 	// HasCentralStorage returns true if a central storage is required.

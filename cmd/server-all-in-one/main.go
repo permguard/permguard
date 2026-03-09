@@ -26,8 +26,13 @@ import (
 )
 
 func main() {
-	// Run the command with the all-in-one host kind.
-	initializer, err := servers.NewCommunityServerInitializer(services.HostAllInOne)
+	// Run the command with all services (all-in-one).
+	initializer, err := servers.NewCommunityServerInitializer("All-In-One", []services.ServiceKind{
+		services.ServiceZAP,
+		services.ServicePAP,
+		services.ServicePIP,
+		services.ServicePDP,
+	})
 	if err != nil {
 		panic(fmt.Sprintf("server: error creating server: %s", err.Error()))
 	}

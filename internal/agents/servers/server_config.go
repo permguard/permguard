@@ -36,7 +36,7 @@ const (
 
 // ServerConfig holds the configuration for the server.
 type ServerConfig struct {
-	host                 services.HostKind
+	displayName          string
 	debug                bool
 	logLevel             string
 	appData              string
@@ -48,12 +48,12 @@ type ServerConfig struct {
 }
 
 // newServerConfig creates a new server factory configuration.
-func newServerConfig(host services.HostKind, centralStorageEngine storage.Kind,
+func newServerConfig(displayName string, centralStorageEngine storage.Kind,
 	storages []storage.Kind, storagesFactories map[storage.Kind]storage.FactoryProvider,
 	services []services.ServiceKind, servicesFactories map[services.ServiceKind]services.ServiceFactoryProvider,
 ) *ServerConfig {
 	return &ServerConfig{
-		host:                 host,
+		displayName:          displayName,
 		centralStorageEngine: centralStorageEngine,
 		storages:             copier.CopySlice(storages),
 		storagesFactories:    copier.CopyMap(storagesFactories),
@@ -62,9 +62,9 @@ func newServerConfig(host services.HostKind, centralStorageEngine storage.Kind,
 	}
 }
 
-// Host returns the host kind.
-func (c *ServerConfig) Host() services.HostKind {
-	return c.host
+// DisplayName returns the display name.
+func (c *ServerConfig) DisplayName() string {
+	return c.displayName
 }
 
 // CentralStorageEngine returns the central storage engine.

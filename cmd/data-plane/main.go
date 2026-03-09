@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package main is the entry point for the PIP server.
+// Package main is the entry point for the PDP server.
 package main
 
 import (
@@ -26,8 +26,10 @@ import (
 )
 
 func main() {
-	// Run the command with the PIP host kind.
-	initializer, err := servers.NewCommunityServerInitializer(services.HostPIP)
+	// Run the command with the Data Plane service (PDP).
+	initializer, err := servers.NewCommunityServerInitializer("Data Plane", []services.ServiceKind{
+		services.ServicePDP,
+	})
 	if err != nil {
 		panic(fmt.Sprintf("server: error creating server: %s", err.Error()))
 	}
