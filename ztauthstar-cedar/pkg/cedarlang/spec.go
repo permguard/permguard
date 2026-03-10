@@ -30,6 +30,11 @@ const (
 	// LanguageCedarJSONID represents the unique identifier for the JSON-based Cedar language.
 	LanguageCedarJSONID = uint32(2)
 
+	// RuntimeKey is the manifest runtime key for the cedar community runtime.
+	RuntimeKey = "cedar"
+	// LanguageManifestVersion is the semver range version string used in the manifest for the cedar language.
+	LanguageManifestVersion = ">=0.0.0"
+
 	// LanguageSyntaxVersion defines the latest syntax version used by the Cedar language.
 	LanguageSyntaxVersion = "0.0"
 	// LanguageSyntaxVersionID defines the latest syntax version ID used by the Cedar language.
