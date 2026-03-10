@@ -52,16 +52,20 @@ func runECommandForConfigShow(deps cli.DependenciesProvider, cmd *cobra.Command,
 		authzLanguage = "not set"
 	}
 	if ctx.IsTerminalOutput() {
-		printer.Println(fmt.Sprintf("zap-endpoint: %s", zapEndpoint))
-		printer.Println(fmt.Sprintf("pap-endpoint: %s", papEndpoint))
-		printer.Println(fmt.Sprintf("pdp-endpoint: %s", pdpEndpoint))
-		printer.Println(fmt.Sprintf("authz-language: %s", authzLanguage))
+		printer.Println(fmt.Sprintf("endpoints.zap: %s", zapEndpoint))
+		printer.Println(fmt.Sprintf("endpoints.pap: %s", papEndpoint))
+		printer.Println(fmt.Sprintf("endpoints.pdp: %s", pdpEndpoint))
+		printer.Println(fmt.Sprintf("authz.language: %s", authzLanguage))
 	} else if ctx.IsJSONOutput() {
 		output := map[string]any{
-			"zap_endpoint":   zapEndpoint,
-			"pap_endpoint":   papEndpoint,
-			"pdp_endpoint":   pdpEndpoint,
-			"authz_language": authzLanguage,
+			"endpoints": map[string]any{
+				"zap": zapEndpoint,
+				"pap": papEndpoint,
+				"pdp": pdpEndpoint,
+			},
+			"authz": map[string]any{
+				"language": authzLanguage,
+			},
 		}
 		printer.PrintlnMap(output)
 	}
