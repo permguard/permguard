@@ -123,7 +123,11 @@ func (cp *PrinterTerminal) printJSON(output map[string]any) {
 		errInputMsg, _ := errInputObj.(string)
 		lines := strings.Split(strings.ReplaceAll(errInputMsg, "\r\n", "\n"), "\n")
 		output["error"] = lines[0]
-		output["causes"] = lines[1:]
+		causes := make([]string, 0, len(lines)-1)
+		for _, line := range lines[1:] {
+			causes = append(causes, sanitizeErrorMessage(line))
+		}
+		output["causes"] = causes
 	}
 	jsonData, err := marshalWithSnakeCase(output)
 	if err != nil {
@@ -233,6 +237,15 @@ func (cp *PrinterTerminal) print(output map[string]any, newLine bool) {
 		}
 		cp.printTerminal(output, false, newLine)
 	}
+}
+
+// sanitizeErrorMessage strips internal gRPC prefixes from error strings.
+// e.g. "rpc error: code = AlreadyExists desc = foo" → "foo"
+func sanitizeErrorMessage(msg string) string {
+	if idx := strings.Index(msg, " desc = "); idx != -1 {
+		return msg[idx+len(" desc = "):]
+	}
+	return msg
 }
 
 // createOutputWithputError creates the output with the error.
