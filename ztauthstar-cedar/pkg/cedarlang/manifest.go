@@ -45,8 +45,11 @@ func BuildManifest(manifest *manifests.Manifest, template string, engineName, en
 	if manifest.Runtimes == nil {
 		manifest.Runtimes = map[string]manifests.Runtime{}
 	}
-	if manifest.Partitions == nil {
-		manifest.Partitions = map[string]manifests.Partition{}
+	if len(manifest.BizPolicies) == 0 {
+		manifest.BizPolicies = []manifests.BizPolicy{{Partitions: map[string]manifests.Partition{}}}
+	}
+	if manifest.BizPolicies[0].Partitions == nil {
+		manifest.BizPolicies[0] = manifests.BizPolicy{Partitions: map[string]manifests.Partition{}}
 	}
 	runtimeKey := fmt.Sprintf("%s[%s+]", LanguageCedar, LanguageSyntaxVersion)
 	_, ok := manifest.Runtimes[runtimeKey]
@@ -64,13 +67,13 @@ func BuildManifest(manifest *manifests.Manifest, template string, engineName, en
 		}
 		manifest.Runtimes[runtimeKey] = runtime
 	}
-	partition, ok := manifest.Partitions[partitionKey]
+	partition, ok := manifest.BizPolicies[0].Partitions[partitionKey]
 	if !ok {
 		partition = manifests.Partition{
 			Runtime: runtimeKey,
 			Schema:  schema,
 		}
-		manifest.Partitions[partitionKey] = partition
+		manifest.BizPolicies[0].Partitions[partitionKey] = partition
 	}
 	partition.Runtime = partitionKey
 	return manifest, nil
@@ -87,19 +90,27 @@ func ValidateManifest(manifest *manifests.Manifest) (bool, error) {
 	if manifest.Runtimes == nil {
 		return false, errors.New("[cedar] manifest has invalid runtimes")
 	}
-	if manifest.Partitions == nil {
-		return false, errors.New("[cedar] manifest has invalid partitions")
-	}
-	if manifest.Partitions == nil {
-		manifest.Partitions = map[string]manifests.Partition{}
+	if len(manifest.BizPolicies) == 0 {
+		return false, errors.New("[cedar] manifest has invalid biz policies")
 	}
 	runtimeKey := fmt.Sprintf("%s[%s+]", LanguageCedar, LanguageSyntaxVersion)
 	_, ok := manifest.Runtimes[runtimeKey]
 	if !ok {
 		return false, errors.New("[cedar] manifest is missing cedar runtime")
 	}
-	partition, ok := manifest.Partitions[partitionKey]
-	if !ok {
+	var partition manifests.Partition
+	found := false
+	for _, bizPolicy := range manifest.BizPolicies {
+		if bizPolicy.Partitions == nil {
+			continue
+		}
+		if p, ok := bizPolicy.Partitions[partitionKey]; ok {
+			partition = p
+			found = true
+			break
+		}
+	}
+	if !found {
 		return false, errors.New("[cedar] manifest is missing the root partition")
 	}
 	if partition.Runtime != runtimeKey {

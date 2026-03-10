@@ -80,23 +80,25 @@ func (m *Manager) buildManifestLanguageProvider() (*ManifestLanguageProvider, er
 		manifest:  manifest,
 		langInfos: map[string]languageInfo{},
 	}
-	for partitionKey, partition := range manifest.Partitions {
-		if _, ok := manifest.Runtimes[partition.Runtime]; !ok {
-			continue
-		}
-		runtime := manifest.Runtimes[partition.Runtime]
-		if _, ok := mfestLangMgr.langInfos[partition.Runtime]; !ok {
-			lang := runtime.Language
-			absLang, err := m.langFct.LanguageAbastraction(lang.Name, lang.Version)
-			if err != nil {
-				return nil, err
+	for _, bizPolicy := range manifest.BizPolicies {
+		for partitionKey, partition := range bizPolicy.Partitions {
+			if _, ok := manifest.Runtimes[partition.Runtime]; !ok {
+				continue
 			}
-			mfestLangMgr.langInfos[partitionKey] = languageInfo{
-				lang:    &runtime.Language,
-				langAbs: absLang,
+			runtime := manifest.Runtimes[partition.Runtime]
+			if _, ok := mfestLangMgr.langInfos[partition.Runtime]; !ok {
+				lang := runtime.Language
+				absLang, err := m.langFct.LanguageAbastraction(lang.Name, lang.Version)
+				if err != nil {
+					return nil, err
+				}
+				mfestLangMgr.langInfos[partitionKey] = languageInfo{
+					lang:    &runtime.Language,
+					langAbs: absLang,
+				}
+			} else {
+				continue
 			}
-		} else {
-			continue
 		}
 	}
 	return mfestLangMgr, nil

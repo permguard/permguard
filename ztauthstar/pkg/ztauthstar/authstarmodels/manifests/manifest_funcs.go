@@ -34,8 +34,8 @@ func NewManifest(name, description string) (*Manifest, error) {
 			Name:        name,
 			Description: description,
 		},
-		Runtimes:   make(map[string]Runtime),
-		Partitions: make(map[string]Partition),
+		Runtimes:    make(map[string]Runtime),
+		BizPolicies: []BizPolicy{},
 	}
 	return manifest, nil
 }
