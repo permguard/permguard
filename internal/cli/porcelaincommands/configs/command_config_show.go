@@ -25,6 +25,7 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/pkg/cli"
+	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 // runECommandForConfigShow runs the command for showing the current config.
@@ -46,15 +47,21 @@ func runECommandForConfigShow(deps cli.DependenciesProvider, cmd *cobra.Command,
 	if err != nil {
 		pdpEndpoint = "not set"
 	}
+	authzLanguage := v.GetString(options.FlagName(common.FlagPrefixWorkspaceInit, common.FlagSuffixWorkspaceInitAuthzLanguage))
+	if len(authzLanguage) == 0 {
+		authzLanguage = "not set"
+	}
 	if ctx.IsTerminalOutput() {
 		printer.Println(fmt.Sprintf("zap-endpoint: %s", zapEndpoint))
 		printer.Println(fmt.Sprintf("pap-endpoint: %s", papEndpoint))
 		printer.Println(fmt.Sprintf("pdp-endpoint: %s", pdpEndpoint))
+		printer.Println(fmt.Sprintf("authz-language: %s", authzLanguage))
 	} else if ctx.IsJSONOutput() {
 		output := map[string]any{
-			"zap_endpoint": zapEndpoint,
-			"pap_endpoint": papEndpoint,
-			"pdp_endpoint": pdpEndpoint,
+			"zap_endpoint":   zapEndpoint,
+			"pap_endpoint":   papEndpoint,
+			"pdp_endpoint":   pdpEndpoint,
+			"authz_language": authzLanguage,
 		}
 		printer.PrintlnMap(output)
 	}

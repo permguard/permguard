@@ -78,6 +78,9 @@ func runECommandForInitWorkspace(deps cli.DependenciesProvider, cmd *cobra.Comma
 		}
 		return common.ErrCommandSilent
 	}
+	_ = options.OverrideViperFromConfig(v, map[string]interface{}{
+		options.FlagName(common.FlagPrefixWorkspaceInit, common.FlagSuffixWorkspaceInitAuthzLanguage): authzLanguage,
+	})
 	if ctx.IsJSONOutput() {
 		printer.PrintlnMap(output)
 	}
