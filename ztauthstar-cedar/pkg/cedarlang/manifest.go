@@ -18,7 +18,6 @@ package cedarlang
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
@@ -51,7 +50,7 @@ func BuildManifest(manifest *manifests.Manifest, template string, engineName, en
 	if manifest.BizPolicies[0].Partitions == nil {
 		manifest.BizPolicies[0] = manifests.BizPolicy{Partitions: map[string]manifests.Partition{}}
 	}
-	runtimeKey := fmt.Sprintf("%s[%s+]", LanguageCedar, LanguageSyntaxVersion)
+	runtimeKey := RuntimeKey
 	_, ok := manifest.Runtimes[runtimeKey]
 	if !ok {
 		runtime := manifests.Runtime{
@@ -62,20 +61,17 @@ func BuildManifest(manifest *manifests.Manifest, template string, engineName, en
 			},
 			Language: manifests.Language{
 				Name:    LanguageCedar,
-				Version: fmt.Sprintf("%s+", LanguageSyntaxVersion),
+				Version: LanguageManifestVersion,
 			},
 		}
 		manifest.Runtimes[runtimeKey] = runtime
 	}
-	partition, ok := manifest.BizPolicies[0].Partitions[partitionKey]
-	if !ok {
-		partition = manifests.Partition{
+	if _, ok = manifest.BizPolicies[0].Partitions[partitionKey]; !ok {
+		manifest.BizPolicies[0].Partitions[partitionKey] = manifests.Partition{
 			Runtime: runtimeKey,
 			Schema:  schema,
 		}
-		manifest.BizPolicies[0].Partitions[partitionKey] = partition
 	}
-	partition.Runtime = partitionKey
 	return manifest, nil
 }
 
@@ -87,34 +83,34 @@ func ValidateManifest(manifest *manifests.Manifest) (bool, error) {
 	if strings.TrimSpace(manifest.Metadata.Name) == "" {
 		return false, errors.New("[cedar] manifest has invalid name")
 	}
-	if manifest.Runtimes == nil {
+	if len(manifest.Runtimes) == 0 {
 		return false, errors.New("[cedar] manifest has invalid runtimes")
 	}
-	if len(manifest.BizPolicies) == 0 {
-		return false, errors.New("[cedar] manifest has invalid biz policies")
+	cedarRuntimeFound := false
+	for _, runtime := range manifest.Runtimes {
+		if runtime.Language.Name == LanguageCedar {
+			cedarRuntimeFound = true
+			break
+		}
 	}
-	runtimeKey := fmt.Sprintf("%s[%s+]", LanguageCedar, LanguageSyntaxVersion)
-	_, ok := manifest.Runtimes[runtimeKey]
-	if !ok {
+	if !cedarRuntimeFound {
 		return false, errors.New("[cedar] manifest is missing cedar runtime")
 	}
-	var partition manifests.Partition
-	found := false
 	for _, bizPolicy := range manifest.BizPolicies {
 		if bizPolicy.Partitions == nil {
 			continue
 		}
-		if p, ok := bizPolicy.Partitions[partitionKey]; ok {
-			partition = p
-			found = true
-			break
+		partition, ok := bizPolicy.Partitions[partitionKey]
+		if !ok {
+			continue
 		}
-	}
-	if !found {
-		return false, errors.New("[cedar] manifest is missing the root partition")
-	}
-	if partition.Runtime != runtimeKey {
-		return false, errors.New("[cedar] manifest has a not valid runtime")
+		runtime, ok := manifest.Runtimes[partition.Runtime]
+		if !ok {
+			continue
+		}
+		if runtime.Language.Name != LanguageCedar {
+			return false, errors.New("[cedar] manifest root partition does not reference a cedar runtime")
+		}
 	}
 	return true, nil
 }

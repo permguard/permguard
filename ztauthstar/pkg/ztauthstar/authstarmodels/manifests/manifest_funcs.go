@@ -18,7 +18,9 @@ package manifest
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -40,13 +42,42 @@ func NewManifest(name, description string) (*Manifest, error) {
 	return manifest, nil
 }
 
+var semverRangeRe = regexp.MustCompile(`^(?:\d+\.\d+\.\d+|>=\d+\.\d+\.\d+(?:\s+<\d+\.\d+\.\d+)?)$`)
+
+// ValidateSemverRange validates that the version string is a valid semver range expression.
+// Accepted forms: "1.2.3", ">=1.0.0", ">=1.0.0 <2.0.0".
+func ValidateSemverRange(version string) bool {
+	return semverRangeRe.MatchString(version)
+}
+
 // ValidateManifest validates the input manifest.
 func ValidateManifest(manifest *Manifest) (bool, error) {
 	if manifest == nil {
-		return false, fmt.Errorf("[ztas] manifest is nil")
+		return false, errors.New("[ztas] manifest is nil")
 	}
 	if len(strings.ReplaceAll(manifest.Metadata.Name, " ", "")) == 0 {
-		return false, fmt.Errorf("[ztas] manifest name is empty")
+		return false, errors.New("[ztas] manifest name is empty")
+	}
+	for runtimeKey, runtime := range manifest.Runtimes {
+		if !ValidateSemverRange(runtime.Language.Version) {
+			return false, fmt.Errorf("[ztas] runtime %q has invalid language version: %q", runtimeKey, runtime.Language.Version)
+		}
+		if !ValidateSemverRange(runtime.Engine.Version) {
+			return false, fmt.Errorf("[ztas] runtime %q has invalid engine version: %q", runtimeKey, runtime.Engine.Version)
+		}
+	}
+	if len(manifest.BizPolicies) == 0 {
+		return false, errors.New("[ztas] manifest has no biz_policies")
+	}
+	for i, bizPolicy := range manifest.BizPolicies {
+		if _, ok := bizPolicy.Partitions["/"]; !ok {
+			return false, fmt.Errorf("[ztas] biz_policies[%d] is missing root partition", i)
+		}
+		for partKey, partition := range bizPolicy.Partitions {
+			if _, ok := manifest.Runtimes[partition.Runtime]; !ok {
+				return false, fmt.Errorf("[ztas] biz_policies[%d] partition %q references undefined runtime %q", i, partKey, partition.Runtime)
+			}
+		}
 	}
 	return true, nil
 }
