@@ -117,7 +117,7 @@ type ContextResponse struct {
 // EvaluationResponse represents the result of the evaluation process.
 type EvaluationResponse struct {
 	RequestID string           `json:"request_id,omitempty"`
-	Decision  bool             `json:"decision,omitempty" validate:"required"`
+	Decision  bool             `json:"decision" validate:"required"`
 	Context   *ContextResponse `json:"context,omitempty"`
 }
 
