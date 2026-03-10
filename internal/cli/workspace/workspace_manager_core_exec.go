@@ -26,7 +26,6 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
 	"github.com/permguard/permguard/pkg/authz/languages"
-	"github.com/permguard/permguard/ztauthstar-cedar/pkg/cedarlang"
 	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 )
 
@@ -79,9 +78,9 @@ func (m *Manager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOut
 		if len(strings.ReplaceAll(name, " ", "")) == 0 {
 			name = ids.GenerateID()
 		}
-		authzLang := strings.ToLower(initParams.AuthZLanguage)
-		if len(strings.TrimSpace(authzLang)) == 0 {
-			authzLang = cedarlang.LanguageName
+		authzLang := strings.ToLower(strings.TrimSpace(initParams.AuthZLanguage))
+		if len(authzLang) == 0 {
+			return fail(nil, fmt.Errorf("cli: authz language is required"))
 		}
 		authzTemplate := strings.ToLower(initParams.AuthZTemplate)
 

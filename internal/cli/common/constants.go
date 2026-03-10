@@ -46,8 +46,10 @@ const (
 	FlagSuffixZAPEndpoint     = "endpoint"
 	FlagPrefixPAP             = "pap"
 	FlagSuffixPAPEndpoint     = "endpoint"
-	FlagPrefixPDP             = "pdp"
-	FlagSuffixPDPEndpoint     = "endpoint"
+	FlagPrefixPDP                          = "pdp"
+	FlagSuffixPDPEndpoint                  = "endpoint"
+	FlagPrefixWorkspaceInit                = "workspace-init"
+	FlagSuffixWorkspaceInitAuthzLanguage   = "authz-language"
 )
 
 //go:embed "art.txt"
