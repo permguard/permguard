@@ -17,6 +17,7 @@
 package manifest
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -87,19 +88,16 @@ func ConvertManifestToBytes(manifest *Manifest, indent bool) ([]byte, error) {
 	if manifest == nil {
 		return nil, fmt.Errorf("[ztas] manifest is nil")
 	}
-	var data []byte
-	var err error
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
 	if indent {
-		data, err = json.MarshalIndent(manifest, "", "  ")
-		if err != nil {
-			return nil, fmt.Errorf("[ztas] failed to serialize the manifest: %w", err)
-		}
-	} else {
-		data, err = json.Marshal(manifest)
-		if err != nil {
-			return nil, fmt.Errorf("[ztas] failed to serialize the manifest: %w", err)
-		}
+		enc.SetIndent("", "  ")
 	}
+	if err := enc.Encode(manifest); err != nil {
+		return nil, fmt.Errorf("[ztas] failed to serialize the manifest: %w", err)
+	}
+	data := bytes.TrimRight(buf.Bytes(), "\n")
 	return data, nil
 }
 
