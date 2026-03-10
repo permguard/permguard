@@ -17,6 +17,7 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -80,7 +81,7 @@ func (m *Manager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOut
 		}
 		authzLang := strings.ToLower(strings.TrimSpace(initParams.AuthZLanguage))
 		if len(authzLang) == 0 {
-			return fail(nil, fmt.Errorf("cli: authz language is required"))
+			return fail(nil, errors.New("cli: authz language is required"))
 		}
 		authzTemplate := strings.ToLower(initParams.AuthZTemplate)
 
