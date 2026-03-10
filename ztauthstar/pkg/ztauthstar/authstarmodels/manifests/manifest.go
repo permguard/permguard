@@ -18,8 +18,13 @@ package manifest
 
 // Manifest represnts an Auth* model manifest.
 type Manifest struct {
-	Metadata   Metadata             `json:"metadata"`
-	Runtimes   map[string]Runtime   `json:"runtimes"`
+	Metadata    Metadata           `json:"metadata"`
+	Runtimes    map[string]Runtime `json:"runtimes"`
+	BizPolicies []BizPolicy        `json:"biz_policies"`
+}
+
+// BizPolicy represents a set of business policies with their partitions.
+type BizPolicy struct {
 	Partitions map[string]Partition `json:"partitions"`
 }
 
