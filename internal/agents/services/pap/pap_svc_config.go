@@ -35,7 +35,7 @@ const (
 	flagSuffixGrpcPort       = "grpc-port"
 	flagCentralEngine        = "engine-central"
 	flagDataFetchMaxPageSize = "data-fetch-maxpagesize"
-	flagMaxObjectSize        = "authstar-max-object-size"
+	flagAuthstarMaxObjectSize = "authstar-max-object-size"
 )
 
 // ServiceConfig holds the configuration for the server.
@@ -57,7 +57,7 @@ func (c *ServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Int(options.FlagName(flagServerPAPPrefix, flagSuffixGrpcPort), 9092, "port to be used for exposing the pap grpc services")
 	flagSet.String(options.FlagName(flagStoragePAPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage-engine-central option")
 	flagSet.Int(options.FlagName(flagServerPAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
-	flagSet.Int(options.FlagName(flagServerPAPPrefix, flagMaxObjectSize), 5242880, "authstar maximum object size in bytes for push/pull operations (default 5MB)")
+	flagSet.Int(options.FlagName(flagServerPAPPrefix, flagAuthstarMaxObjectSize), 5242880, "authstar maximum object size in bytes for push/pull operations (default 5MB)")
 	return nil
 }
 
@@ -86,12 +86,12 @@ func (c *ServiceConfig) InitFromViper(v *viper.Viper) error {
 	}
 	c.config[flagDataFetchMaxPageSize] = dataFetchMaxPageSize
 	// retrieve the authstar max object size
-	flagName = options.FlagName(flagServerPAPPrefix, flagMaxObjectSize)
+	flagName = options.FlagName(flagServerPAPPrefix, flagAuthstarMaxObjectSize)
 	maxObjectSize := v.GetInt(flagName)
 	if maxObjectSize <= 0 {
 		return errors.New("pap-service: invalid authstar max object size")
 	}
-	c.config[flagMaxObjectSize] = maxObjectSize
+	c.config[flagAuthstarMaxObjectSize] = maxObjectSize
 	return nil
 }
 
@@ -117,7 +117,7 @@ func (c *ServiceConfig) DataFetchMaxPageSize() int {
 
 // AuthstarMaxObjectSize returns the authstar maximum object size in bytes.
 func (c *ServiceConfig) AuthstarMaxObjectSize() int {
-	return c.config[flagMaxObjectSize].(int)
+	return c.config[flagAuthstarMaxObjectSize].(int)
 }
 
 // Service returns the service kind.

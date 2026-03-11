@@ -176,3 +176,22 @@ func (c *CliCommandContext) PDPEndpoint() (string, error) {
 	}
 	return endpoint.(string), nil
 }
+
+// AuthstarMaxObjectSize returns the authstar max object size.
+func (c *CliCommandContext) AuthstarMaxObjectSize() (int, error) {
+	key := options.FlagName(FlagPrefixAuthstar, FlagSuffixAuthstarMaxObjectSize)
+	val := c.v.Get(key)
+	if val == nil {
+		return 0, errors.New("cli: authstar-max-object-size is not set")
+	}
+	switch v := val.(type) {
+	case int:
+		return v, nil
+	case int64:
+		return int(v), nil
+	case float64:
+		return int(v), nil
+	default:
+		return 0, fmt.Errorf("cli: authstar-max-object-size has invalid type %T", val)
+	}
+}

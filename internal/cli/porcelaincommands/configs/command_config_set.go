@@ -19,6 +19,7 @@ package configs
 import (
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -182,6 +183,67 @@ permguard config set pdp-endpoint grpc://localhost:9094
 	return command
 }
 
+// runECommandForAuthstarMaxObjectSizeSet runs the command for setting the authstar max object size.
+func runECommandForAuthstarMaxObjectSizeSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return common.ErrCommandSilent
+	}
+	if len(args) == 0 {
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to set the authstar max object size.")
+		}
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			printer.Error(errors.Join(errors.New("cli: failed to set the authstar max object size"), err))
+		}
+		return common.ErrCommandSilent
+	}
+	size, err := strconv.Atoi(args[0])
+	if err != nil || size <= 0 {
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to set the authstar max object size: value must be a positive integer.")
+		}
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			printer.Error(errors.New("cli: authstar-max-object-size must be a positive integer"))
+		}
+		return common.ErrCommandSilent
+	}
+	key := options.FlagName(common.FlagPrefixAuthstar, common.FlagSuffixAuthstarMaxObjectSize)
+	valueMap := map[string]interface{}{
+		key: size,
+	}
+	err = options.OverrideViperFromConfig(v, valueMap)
+	if err != nil {
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to set the authstar max object size.")
+		}
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			printer.Error(errors.Join(errors.New("cli: failed to set the authstar max object size"), err))
+		}
+		return common.ErrCommandSilent
+	}
+	return nil
+}
+
+// createCommandForConfigAuthstarMaxObjectSizeSet creates the command for setting the authstar max object size.
+func createCommandForConfigAuthstarMaxObjectSizeSet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+	command := &cobra.Command{
+		Use:   "authstar-max-object-size",
+		Short: "Set the authstar max object size",
+		Long: common.BuildCliLongTemplate(`This command sets the authstar max object size in bytes.
+
+Examples:
+# set the authstar max object size to 10MB
+permguard config set authstar-max-object-size 10485760
+		`),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runECommandForAuthstarMaxObjectSizeSet(deps, cmd, v, args)
+		},
+	}
+	return command
+}
+
 func createCommandForConfigSet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "set",
@@ -194,5 +256,6 @@ func createCommandForConfigSet(deps cli.DependenciesProvider, v *viper.Viper) *c
 	command.AddCommand(createCommandForConfigZAPSet(deps, v))
 	command.AddCommand(createCommandForConfigPAPSet(deps, v))
 	command.AddCommand(createCommandForConfigPDPSet(deps, v))
+	command.AddCommand(createCommandForConfigAuthstarMaxObjectSizeSet(deps, v))
 	return command
 }
