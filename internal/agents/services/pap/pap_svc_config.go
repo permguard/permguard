@@ -30,11 +30,11 @@ import (
 )
 
 const (
-	flagStoragePAPPrefix     = "storage-pap"
-	flagServerPAPPrefix      = "server-pap"
-	flagSuffixGrpcPort       = "grpc-port"
-	flagCentralEngine        = "engine-central"
-	flagDataFetchMaxPageSize = "data-fetch-maxpagesize"
+	flagStoragePAPPrefix      = "storage-pap"
+	flagServerPAPPrefix       = "server-pap"
+	flagSuffixGrpcPort        = "grpc-port"
+	flagCentralEngine         = "engine-central"
+	flagDataFetchMaxPageSize  = "data-fetch-maxpagesize"
 	flagAuthstarMaxObjectSize = "authstar-max-object-size"
 )
 

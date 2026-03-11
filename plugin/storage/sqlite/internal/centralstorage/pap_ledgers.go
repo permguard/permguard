@@ -57,8 +57,7 @@ func (s SQLiteCentralStoragePAP) CreateLedger(ctx context.Context, ledger *pap.L
 	}
 	dbOutLedger, err := s.sqlRepo.UpsertLedger(ctx, tx, true, dbInLedger)
 	if err != nil {
-		_ = tx.Rollback()
-		return nil, err
+		return nil, rollback(tx, err)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, azrepos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
@@ -94,8 +93,7 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ctx context.Context, ledger *pap.L
 	}
 	dbOutLedger, err := s.sqlRepo.UpsertLedger(ctx, tx, false, dbInLedger)
 	if err != nil {
-		_ = tx.Rollback()
-		return nil, err
+		return nil, rollback(tx, err)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, azrepos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
@@ -115,8 +113,7 @@ func (s SQLiteCentralStoragePAP) DeleteLedger(ctx context.Context, zoneID int64,
 	}
 	dbOutLedger, err := s.sqlRepo.DeleteLedger(ctx, tx, zoneID, ledgerID)
 	if err != nil {
-		_ = tx.Rollback()
-		return nil, err
+		return nil, rollback(tx, err)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, azrepos.WrapSqliteError(errorMessageCannotCommitTransaction, err)

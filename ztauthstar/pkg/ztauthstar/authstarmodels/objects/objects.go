@@ -286,7 +286,7 @@ type TreeEntry struct {
 // NewTreeEntry creates a new tree entry.
 func NewTreeEntry(partition, otype, oid, oname, codeID, codeType, language, languageVersion, languageType string) (*TreeEntry, error) {
 	if strings.TrimSpace(partition) == "" {
-		return nil, errors.New("objects: object type is empty")
+		return nil, errors.New("objects: partition is empty")
 	} else if strings.TrimSpace(otype) == "" {
 		return nil, errors.New("objects: object type is empty")
 	} else if strings.TrimSpace(oid) == "" {
