@@ -91,8 +91,8 @@ func (m *Manager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOut
 			return fail(nil, err)
 		}
 
-		var absLang languages.LanguageAbastraction
-		absLang, err = m.langFct.LanguageAbastraction(requirement.Name(), requirement.Version())
+		var absLang languages.LanguageAbstraction
+		absLang, err = m.langFct.LanguageAbstraction(requirement.Name(), requirement.Version())
 		if err != nil {
 			return fail(nil, err)
 		}

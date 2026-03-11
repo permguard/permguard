@@ -29,7 +29,7 @@ import (
 	"github.com/permguard/permguard/pkg/cli"
 )
 
-// runECommandForCheckoutWorkspace runs the command for creating an workspace.
+// runECommandForCheckoutWorkspace runs the command for checking out a workspace.
 func runECommandForCheckoutWorkspace(args []string, deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
@@ -80,7 +80,7 @@ func runECommandForCheckoutWorkspace(args []string, deps cli.DependenciesProvide
 	return nil
 }
 
-// CreateCommandForWorkspaceCheckout creates a command for checkoutializing a permguard workspace.
+// CreateCommandForWorkspaceCheckout creates a command for checking out a workspace.
 func CreateCommandForWorkspaceCheckout(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "checkout",

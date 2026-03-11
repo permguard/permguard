@@ -29,7 +29,7 @@ import (
 	"github.com/permguard/permguard/pkg/cli"
 )
 
-// runECommandForPlanWorkspace runs the command for creating an workspace.
+// runECommandForPlanWorkspace runs the command for generating a workspace plan.
 func runECommandForPlanWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
@@ -70,7 +70,7 @@ func runECommandForPlanWorkspace(deps cli.DependenciesProvider, cmd *cobra.Comma
 	return nil
 }
 
-// CreateCommandForWorkspacePlan creates a command for planializing a permguard workspace.
+// CreateCommandForWorkspacePlan creates a command for generating a workspace plan.
 func CreateCommandForWorkspacePlan(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "plan",

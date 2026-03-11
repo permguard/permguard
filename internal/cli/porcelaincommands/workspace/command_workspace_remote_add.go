@@ -40,7 +40,7 @@ const (
 	flagPAP = "pap"
 )
 
-// runECommandForRemoteAddWorkspace runs the command for creating an workspace.
+// runECommandForRemoteAddWorkspace runs the command for adding a workspace remote.
 func runECommandForRemoteAddWorkspace(args []string, deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
@@ -94,7 +94,7 @@ func runECommandForRemoteAddWorkspace(args []string, deps cli.DependenciesProvid
 	return nil
 }
 
-// CreateCommandForWorkspaceRemoteAdd creates a command for remoteaddializing a permguard workspace.
+// CreateCommandForWorkspaceRemoteAdd creates a command for adding a workspace remote.
 func CreateCommandForWorkspaceRemoteAdd(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "add",

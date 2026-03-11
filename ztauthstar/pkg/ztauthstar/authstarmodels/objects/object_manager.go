@@ -17,37 +17,51 @@
 package objects
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
+
+	"github.com/fxamacker/cbor/v2"
 )
 
-const (
-	// PacketNullByte is the null byte used to separate data in the packet.
-	PacketNullByte = 0xFF
-)
+// objectEnvelope is the CBOR envelope wrapping every stored object.
+type objectEnvelope struct {
+	Type string `cbor:"1,keyasint"`
+	Data []byte `cbor:"2,keyasint"`
+}
 
 // ObjectManager is the manager for policies.
-type ObjectManager struct{}
+type ObjectManager struct {
+	encMode cbor.EncMode
+	decMode cbor.DecMode
+}
 
 // NewObjectManager creates a new ObjectManager.
 func NewObjectManager() (*ObjectManager, error) {
-	return &ObjectManager{}, nil
+	encMode, err := cbor.CanonicalEncOptions().EncMode()
+	if err != nil {
+		return nil, fmt.Errorf("objects: failed to create cbor encoder: %w", err)
+	}
+	decMode, err := cbor.DecOptions{}.DecMode()
+	if err != nil {
+		return nil, fmt.Errorf("objects: failed to create cbor decoder: %w", err)
+	}
+	return &ObjectManager{
+		encMode: encMode,
+		decMode: decMode,
+	}, nil
 }
 
-// CreateObject creates an object.
-func (m *ObjectManager) createOject(objectType string, content []byte) (*Object, error) {
-	length := len(content)
-	var buffer bytes.Buffer
-	buffer.WriteString(objectType)
-	buffer.WriteString(" ")
-	buffer.WriteString(fmt.Sprintf("%d", length))
-	buffer.WriteByte(PacketNullByte)
-	buffer.Write(content)
-	objContent := buffer.Bytes()
-	return NewObject(objContent)
+// createObject wraps typed payload bytes into a CBOR envelope and computes the OID.
+func (m *ObjectManager) createObject(objectType string, payload []byte) (*Object, error) {
+	env := objectEnvelope{
+		Type: objectType,
+		Data: payload,
+	}
+	content, err := m.encMode.Marshal(env)
+	if err != nil {
+		return nil, fmt.Errorf("objects: failed to encode envelope: %w", err)
+	}
+	return NewObject(content)
 }
 
 // CreateCommitObject creates a commit object.
@@ -56,7 +70,7 @@ func (m *ObjectManager) CreateCommitObject(commit *Commit) (*Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	return m.createOject(ObjectTypeCommit, commitBytes)
+	return m.createObject(ObjectTypeCommit, commitBytes)
 }
 
 // CreateTreeObject creates a tree object.
@@ -65,7 +79,7 @@ func (m *ObjectManager) CreateTreeObject(tree *Tree) (*Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	return m.createOject(ObjectTypeTree, treeBytes)
+	return m.createObject(ObjectTypeTree, treeBytes)
 }
 
 // CreateBlobObject creates a blob object.
@@ -77,7 +91,7 @@ func (m *ObjectManager) CreateBlobObject(header *ObjectHeader, data []byte) (*Ob
 	if err != nil {
 		return nil, err
 	}
-	return m.createOject(ObjectTypeBlob, objData)
+	return m.createObject(ObjectTypeBlob, objData)
 }
 
 // DeserializeObjectFromBytes deserializes an object from bytes.
@@ -85,33 +99,19 @@ func (m *ObjectManager) DeserializeObjectFromBytes(binaryData []byte) (*Object, 
 	return NewObject(binaryData)
 }
 
-// InstanceBytesFromBytes gets the instance bytes from bytes.
+// InstanceBytesFromBytes extracts the object type and payload from a CBOR envelope.
 func (m *ObjectManager) InstanceBytesFromBytes(object *Object) (string, []byte, error) {
 	if object == nil {
 		return "", nil, errors.New("objects: object is nil")
 	}
-	objContent := object.content
-	nulIndex := bytes.IndexByte(objContent, PacketNullByte)
-	if nulIndex == -1 {
-		return "", nil, fmt.Errorf("objects: invalid object format: no NUL separator found")
+	var env objectEnvelope
+	if err := m.decMode.Unmarshal(object.content, &env); err != nil {
+		return "", nil, fmt.Errorf("objects: failed to decode envelope: %w", err)
 	}
-	header := string(objContent[:nulIndex])
-	headerParts := strings.SplitN(header, " ", 2)
-	if len(headerParts) != 2 {
-		return "", nil, fmt.Errorf("objects: invalid object header format")
+	if env.Type == "" {
+		return "", nil, errors.New("objects: invalid object envelope: empty type")
 	}
-	objectType := headerParts[0]
-	length, err := strconv.Atoi(headerParts[1])
-	if err != nil {
-		return "", nil, fmt.Errorf("objects: invalid length: %v", err)
-	}
-	start := nulIndex + 1
-	end := start + length
-	content := objContent[start:end]
-	if len(content) != length {
-		return "", nil, fmt.Errorf("objects: content length mismatch: expected %d, got %d", length, len(content))
-	}
-	return objectType, content, nil
+	return env.Type, env.Data, nil
 }
 
 // ObjectInfo gets the object info.

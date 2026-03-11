@@ -43,7 +43,7 @@ const (
 	commandNameForWorkspacesInitTemplate = "template"
 )
 
-// runECommandForInitWorkspace runs the command for creating an workspace.
+// runECommandForInitWorkspace runs the command for initializing a workspace.
 func runECommandForInitWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {

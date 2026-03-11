@@ -25,7 +25,7 @@ import (
 
 type languageInfo struct {
 	lang    *azmanifests.Language
-	langAbs languages.LanguageAbastraction
+	langAbs languages.LanguageAbstraction
 }
 
 // ManifestLanguageProvider manifest language provider.
@@ -56,7 +56,7 @@ func (p *ManifestLanguageProvider) Language(partition string) (*azmanifests.Lang
 }
 
 // AbstractLanguage gets the abstract language for the input partition.
-func (p *ManifestLanguageProvider) AbstractLanguage(partition string) (languages.LanguageAbastraction, error) {
+func (p *ManifestLanguageProvider) AbstractLanguage(partition string) (languages.LanguageAbstraction, error) {
 	if p.langInfos == nil {
 		return nil, errors.New("cli: parition doens't exists")
 	}
@@ -88,7 +88,7 @@ func (m *Manager) buildManifestLanguageProvider() (*ManifestLanguageProvider, er
 			runtime := manifest.Runtimes[partition.Runtime]
 			if _, ok := mfestLangMgr.langInfos[partition.Runtime]; !ok {
 				lang := runtime.Language
-				absLang, err := m.langFct.LanguageAbastraction(lang.Name, lang.Version)
+				absLang, err := m.langFct.LanguageAbstraction(lang.Name, lang.Version)
 				if err != nil {
 					return nil, err
 				}

@@ -29,7 +29,7 @@ import (
 	"github.com/permguard/permguard/pkg/cli"
 )
 
-// runECommandForPullWorkspace runs the command for creating an workspace.
+// runECommandForPullWorkspace runs the command for pulling workspace changes.
 func runECommandForPullWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
@@ -70,7 +70,7 @@ func runECommandForPullWorkspace(deps cli.DependenciesProvider, cmd *cobra.Comma
 	return nil
 }
 
-// CreateCommandForWorkspacePull creates a command for pullializing a permguard workspace.
+// CreateCommandForWorkspacePull creates a command for pulling workspace changes.
 func CreateCommandForWorkspacePull(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pull",

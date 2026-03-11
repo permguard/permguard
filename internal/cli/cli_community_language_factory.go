@@ -26,13 +26,13 @@ import (
 
 // CommunityLanguageFactory is the factory for the community language.
 type CommunityLanguageFactory struct {
-	languages map[string]languages.LanguageAbastraction
+	languages map[string]languages.LanguageAbstraction
 }
 
 // NewCommunityLanguageFactory creates a new community language factory.
 func NewCommunityLanguageFactory() (*CommunityLanguageFactory, error) {
 	languageFactory := &CommunityLanguageFactory{
-		languages: map[string]languages.LanguageAbastraction{},
+		languages: map[string]languages.LanguageAbstraction{},
 	}
 	cedarLanguageAbs, err := cedar.NewCedarLanguageAbstraction()
 	if err != nil {
@@ -42,8 +42,8 @@ func NewCommunityLanguageFactory() (*CommunityLanguageFactory, error) {
 	return languageFactory, nil
 }
 
-// LanguageAbastraction gets the language abstraction for the input language.
-func (c *CommunityLanguageFactory) LanguageAbastraction(language, version string) (languages.LanguageAbastraction, error) {
+// LanguageAbstraction gets the language abstraction for the input language.
+func (c *CommunityLanguageFactory) LanguageAbstraction(language, version string) (languages.LanguageAbstraction, error) {
 	langAbs, exists := c.languages[language]
 	if !exists {
 		return nil, fmt.Errorf("cli: invalid language %s with version %s", language, version)

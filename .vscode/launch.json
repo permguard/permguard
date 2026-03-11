@@ -20,7 +20,7 @@
       // "args": ["apply", "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-server/cedar/pharmaauthzflow", "-v", ],
       // "args": ["objects", "--all", "--code",  "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-server/cedar/pharmaauthzflow", "-v", ],
       // "args": ["validate",  "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-server/cedar/pharmaauthzflow", "-v", ],
-      //"args": ["init",  "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-server/cedar/pharmaauthzflow", "--authz-language", "cedar[0.0+]", "pharmaauthzflow", "-v", ],
+      //"args": ["init",  "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-server/cedar/pharmaauthzflow", "--language", "cedar[0.0+]", "pharmaauthzflow", "-v", ],
       // "args": ["clone", "origin/273165098782/pharmaauthzflow", "-w", "/Users/nicolagallo/source/tmp/", "-o", "json"],
       // "args": ["authz", "ledgers", "create", "branches", "--zone-id", "851990457443", "-w", "/Users/nicolagallo/source/tmp/", "-o", "json"],
       // "args": ["authz", "check", "requests/ok_onlyone1.json", "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/playground-server/cedar/pharmaauthzflow", "-v", ],

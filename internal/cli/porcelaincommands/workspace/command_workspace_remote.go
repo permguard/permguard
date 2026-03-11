@@ -29,7 +29,7 @@ import (
 	"github.com/permguard/permguard/pkg/cli"
 )
 
-// runECommandForRemoteWorkspace runs the command for creating an workspace.
+// runECommandForRemoteWorkspace runs the command for listing workspace remotes.
 func runECommandForRemoteWorkspace(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
 	if err != nil {
@@ -70,7 +70,7 @@ func runECommandForRemoteWorkspace(deps cli.DependenciesProvider, cmd *cobra.Com
 	return nil
 }
 
-// CreateCommandForWorkspaceRemote creates a command for remoteializing a permguard workspace.
+// CreateCommandForWorkspaceRemote creates a command for managing workspace remotes.
 func CreateCommandForWorkspaceRemote(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "remote",

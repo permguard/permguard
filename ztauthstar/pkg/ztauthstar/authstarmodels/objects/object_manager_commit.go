@@ -19,115 +19,97 @@ package objects
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 )
 
-// SerializeCommit serializes a commit object.
+// cborCommit is the CBOR-serializable representation of a commit.
+type cborCommit struct {
+	Tree               string `cbor:"1,keyasint"`
+	Parent             string `cbor:"2,keyasint"`
+	Author             string `cbor:"3,keyasint"`
+	AuthorTimestamp    int64  `cbor:"4,keyasint"`
+	Committer          string `cbor:"5,keyasint"`
+	CommitterTimestamp int64  `cbor:"6,keyasint"`
+	Message            string `cbor:"7,keyasint"`
+}
+
+// SerializeCommit serializes a commit object to CBOR.
 func (m *ObjectManager) SerializeCommit(commit *Commit) ([]byte, error) {
 	if commit == nil {
 		return nil, errors.New("objects: commit is nil")
 	}
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("tree %s\n", commit.tree))
-	sb.WriteString(fmt.Sprintf("parent %s\n", commit.parent))
-	sb.WriteString(fmt.Sprintf("author %s %s\n", commit.metaData.authorTimestamp.Format(time.RFC3339), commit.metaData.author))
-	sb.WriteString(fmt.Sprintf("committer %s %s\n", commit.metaData.committerTimestamp.Format(time.RFC3339), commit.metaData.committer))
-	sb.WriteString(commit.message)
-	return []byte(sb.String()), nil
-}
-
-// parseIdentity parses the identity line.
-func (m *ObjectManager) parseIdentity(line string) (string, time.Time) {
-	parts := strings.Split(line, " ")
-	if len(parts) < 2 {
-		return "", time.Time{}
+	c := cborCommit{
+		Tree:               commit.tree,
+		Parent:             commit.parent,
+		Author:             commit.metaData.author,
+		AuthorTimestamp:    commit.metaData.authorTimestamp.Unix(),
+		Committer:          commit.metaData.committer,
+		CommitterTimestamp: commit.metaData.committerTimestamp.Unix(),
+		Message:            commit.message,
 	}
-	datePart := parts[0]
-	parsedTime, _ := time.Parse(time.RFC3339, datePart)
-
-	identityPart := strings.Join(parts[1:], " ")
-	return identityPart, parsedTime
+	return m.encMode.Marshal(c)
 }
 
-// DeserializeCommit deserializes a commit object.
+// DeserializeCommit deserializes a commit object from CBOR.
 func (m *ObjectManager) DeserializeCommit(data []byte) (*Commit, error) {
 	if data == nil {
 		return nil, errors.New("objects: data is nil")
 	}
-	inputStr := string(data)
-	lines := strings.Split(inputStr, "\n")
-	commit := &Commit{}
-	for i := 0; i < len(lines); i++ {
-		line := lines[i]
-		if strings.HasPrefix(line, "tree ") {
-			commit.tree = strings.TrimPrefix(line, "tree ")
-		} else if strings.HasPrefix(line, "parent ") {
-			commit.parent = strings.TrimPrefix(line, "parent ")
-		} else if strings.HasPrefix(line, "author ") {
-			author, date := m.parseIdentity(strings.TrimPrefix(line, "author "))
-			commit.metaData.author = author
-			commit.metaData.authorTimestamp = date
-		} else if strings.HasPrefix(line, "committer ") {
-			committer, date := m.parseIdentity(strings.TrimPrefix(line, "committer "))
-			commit.metaData.committer = committer
-			commit.metaData.committerTimestamp = date
-		} else if i == len(lines)-1 {
-			commit.message = line
-		}
+	var c cborCommit
+	if err := m.decMode.Unmarshal(data, &c); err != nil {
+		return nil, fmt.Errorf("objects: failed to decode commit: %w", err)
 	}
-	return commit, nil
+	return &Commit{
+		tree:   c.Tree,
+		parent: c.Parent,
+		metaData: CommitMetaData{
+			author:             c.Author,
+			authorTimestamp:    time.Unix(c.AuthorTimestamp, 0),
+			committer:          c.Committer,
+			committerTimestamp: time.Unix(c.CommitterTimestamp, 0),
+		},
+		message: c.Message,
+	}, nil
 }
 
-// buildCommitHistory builds the commit history.
-func (m *ObjectManager) buildCommitHistory(fromCommitID string, toCommitID string, match bool, history []Commit, objFunc func(string) (*Object, error)) (bool, []Commit, error) {
-	if fromCommitID == ZeroOID && toCommitID == ZeroOID {
-		match = true
-		return match, history, nil
-	}
-	var commitObj *Object
-	var err error
-	if fromCommitID != ZeroOID {
-		commitObj, err = objFunc(fromCommitID)
-		if err != nil {
-			return false, nil, err
-		}
-	}
-	var commit *Commit
-	if commitObj != nil {
-		commitObjInfo, err := m.ObjectInfo(commitObj)
-		if err != nil {
-			return false, nil, err
-		}
-		var ok bool
-		commit, ok = commitObjInfo.Instance().(*Commit)
-		if !ok {
-			return false, nil, fmt.Errorf("objects: invalid object type")
-		}
-		if commit != nil {
-			history = append(history, *commit)
-		}
-	}
-	if commitObj == nil || commit == nil {
-		return match, history, nil
-	}
-	if commitObj.OID() == toCommitID {
-		match = true
-		return match, history, nil
-	}
-	return m.buildCommitHistory(commit.Parent(), toCommitID, match, history, objFunc)
-}
-
-// BuildCommitHistory builds the commit history.
+// BuildCommitHistory builds the commit history iteratively walking from fromCommitID toward toCommitID.
 func (m *ObjectManager) BuildCommitHistory(fromCommitID string, toCommitID string, reverse bool, objFunc func(string) (*Object, error)) (bool, []Commit, error) {
 	if fromCommitID == ZeroOID && toCommitID == ZeroOID {
 		return true, []Commit{}, nil
 	}
-	match, history, err := m.buildCommitHistory(fromCommitID, toCommitID, false, []Commit{}, objFunc)
-	if err == nil && reverse {
+	var history []Commit
+	match := false
+	currentID := fromCommitID
+	for currentID != ZeroOID {
+		commitObj, err := objFunc(currentID)
+		if err != nil {
+			return false, nil, err
+		}
+		if commitObj == nil {
+			break
+		}
+		commitObjInfo, err := m.ObjectInfo(commitObj)
+		if err != nil {
+			return false, nil, err
+		}
+		commit, ok := commitObjInfo.Instance().(*Commit)
+		if !ok {
+			return false, nil, fmt.Errorf("objects: invalid object type")
+		}
+		if commit == nil {
+			break
+		}
+		history = append(history, *commit)
+		if commitObj.OID() == toCommitID {
+			match = true
+			break
+		}
+		currentID = commit.Parent()
+	}
+	if reverse {
 		for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
 			history[i], history[j] = history[j], history[i]
 		}
 	}
-	return match, history, err
+	return match, history, nil
 }

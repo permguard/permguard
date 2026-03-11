@@ -17,128 +17,57 @@
 package objects
 
 import (
-	"bytes"
-	"encoding/base64"
-	"encoding/binary"
 	"errors"
+	"fmt"
 )
 
-// SerializeBlob serializes an ObjectHeader and its associated data into a binary format.
-// The serialization format starts with Partition and includes a null byte delimiter
-// between the header and the blob content.
+// cborBlob is the CBOR-serializable representation of a blob object.
+type cborBlob struct {
+	Partition         string `cbor:"1,keyasint"`
+	IsNativeLanguage  bool   `cbor:"2,keyasint"`
+	LanguageID        uint32 `cbor:"3,keyasint"`
+	LanguageVersionID uint32 `cbor:"4,keyasint"`
+	LanguageTypeID    uint32 `cbor:"5,keyasint"`
+	CodeTypeID        uint32 `cbor:"6,keyasint"`
+	CodeID            string `cbor:"7,keyasint"`
+	Data              []byte `cbor:"8,keyasint"`
+}
+
+// SerializeBlob serializes an ObjectHeader and its associated data into CBOR.
 func (m *ObjectManager) SerializeBlob(header *ObjectHeader, data []byte) ([]byte, error) {
 	if header == nil {
 		return nil, errors.New("objects: header is nil")
 	}
-
-	var buffer bytes.Buffer
-
-	// Write Partition as string prefixed with uint16 length
-	partitionBytes := []byte(header.partition)
-	partitionLen := uint16(len(partitionBytes))
-	if err := binary.Write(&buffer, binary.BigEndian, partitionLen); err != nil {
-		return nil, err
+	b := cborBlob{
+		Partition:         header.partition,
+		IsNativeLanguage:  header.isNativeLanguage,
+		LanguageID:        header.languageID,
+		LanguageVersionID: header.languageVersionID,
+		LanguageTypeID:    header.languageTypeID,
+		CodeTypeID:        header.codeTypeID,
+		CodeID:            header.codeID,
+		Data:              data,
 	}
-	if _, err := buffer.Write(partitionBytes); err != nil {
-		return nil, err
-	}
-
-	// Write standard header fields
-	if err := binary.Write(&buffer, binary.BigEndian, header.isNativeLanguage); err != nil {
-		return nil, err
-	}
-	if err := binary.Write(&buffer, binary.BigEndian, header.languageID); err != nil {
-		return nil, err
-	}
-	if err := binary.Write(&buffer, binary.BigEndian, header.languageVersionID); err != nil {
-		return nil, err
-	}
-	if err := binary.Write(&buffer, binary.BigEndian, header.languageTypeID); err != nil {
-		return nil, err
-	}
-	if err := binary.Write(&buffer, binary.BigEndian, header.codeTypeID); err != nil {
-		return nil, err
-	}
-
-	// Encode codeID as base64 string with length prefix
-	encodedCodeID := base64.StdEncoding.EncodeToString([]byte(header.codeID))
-	codeIDBytes := []byte(encodedCodeID)
-	codeIDLen := uint16(len(codeIDBytes))
-	if err := binary.Write(&buffer, binary.BigEndian, codeIDLen); err != nil {
-		return nil, err
-	}
-	if _, err := buffer.Write(codeIDBytes); err != nil {
-		return nil, err
-	}
-
-	// Write null byte as header delimiter
-	if err := buffer.WriteByte(PacketNullByte); err != nil {
-		return nil, err
-	}
-
-	// Append actual blob content
-	return append(buffer.Bytes(), data...), nil
+	return m.encMode.Marshal(b)
 }
 
-// DeserializeBlob deserializes an ObjectHeader and its associated data from a binary format.
-// The header is expected to end with a null byte delimiter, followed by the content data.
+// DeserializeBlob deserializes an ObjectHeader and its associated data from CBOR.
 func (m *ObjectManager) DeserializeBlob(data []byte) (*ObjectHeader, []byte, error) {
-	if len(data) < 1 {
-		return nil, nil, errors.New("objects: data is too short to contain an ObjectHeader")
+	if len(data) == 0 {
+		return nil, nil, errors.New("objects: data is empty")
 	}
-
-	delimiterIndex := bytes.IndexByte(data, PacketNullByte)
-	if delimiterIndex == -1 {
-		return nil, nil, errors.New("objects: null packet delimiter not found")
+	var b cborBlob
+	if err := m.decMode.Unmarshal(data, &b); err != nil {
+		return nil, nil, fmt.Errorf("objects: failed to decode blob: %w", err)
 	}
-
-	reader := bytes.NewReader(data[:delimiterIndex])
-	header := &ObjectHeader{}
-
-	// Read Partition string (uint16 length + bytes)
-	var partitionLen uint16
-	if err := binary.Read(reader, binary.BigEndian, &partitionLen); err != nil {
-		return nil, nil, errors.New("objects: failed to read partition length")
+	header := &ObjectHeader{
+		partition:         b.Partition,
+		isNativeLanguage:  b.IsNativeLanguage,
+		languageID:        b.LanguageID,
+		languageVersionID: b.LanguageVersionID,
+		languageTypeID:    b.LanguageTypeID,
+		codeTypeID:        b.CodeTypeID,
+		codeID:            b.CodeID,
 	}
-	partitionBytes := make([]byte, partitionLen)
-	if _, err := reader.Read(partitionBytes); err != nil {
-		return nil, nil, errors.New("objects: failed to read partition")
-	}
-	header.partition = string(partitionBytes)
-
-	// Read standard header fields
-	if err := binary.Read(reader, binary.BigEndian, &header.isNativeLanguage); err != nil {
-		return nil, nil, err
-	}
-	if err := binary.Read(reader, binary.BigEndian, &header.languageID); err != nil {
-		return nil, nil, err
-	}
-	if err := binary.Read(reader, binary.BigEndian, &header.languageVersionID); err != nil {
-		return nil, nil, err
-	}
-	if err := binary.Read(reader, binary.BigEndian, &header.languageTypeID); err != nil {
-		return nil, nil, err
-	}
-	if err := binary.Read(reader, binary.BigEndian, &header.codeTypeID); err != nil {
-		return nil, nil, err
-	}
-
-	// Read and decode codeID from base64-encoded string
-	var codeIDLen uint16
-	if err := binary.Read(reader, binary.BigEndian, &codeIDLen); err != nil {
-		return nil, nil, errors.New("objects: failed to read codeID length")
-	}
-	codeIDBytes := make([]byte, codeIDLen)
-	if _, err := reader.Read(codeIDBytes); err != nil {
-		return nil, nil, errors.New("objects: failed to read codeID")
-	}
-	decodedCodeID, err := base64.StdEncoding.DecodeString(string(codeIDBytes))
-	if err != nil {
-		return nil, nil, errors.New("objects: failed to decode codeID")
-	}
-	header.codeID = string(decodedCodeID)
-
-	// Extract remaining data after null byte
-	remainingData := data[delimiterIndex+1:]
-	return header, remainingData, nil
+	return header, b.Data, nil
 }

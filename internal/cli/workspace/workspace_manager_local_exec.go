@@ -120,6 +120,14 @@ func (m *Manager) execInternalRefresh(internal bool, out common.PrinterOutFunc) 
 			out(nil, "refresh", "The local area was already clean.", nil, true)
 		}
 	}
+	// Pre-condition: verify the code source area is clean before proceeding with blobification.
+	isClean, err := m.cospMgr.IsCodeSourceClean()
+	if err != nil {
+		return fail(nil, err)
+	}
+	if !isClean {
+		return fail(nil, errors.New("cli: code source area is not clean after cleanup"))
+	}
 	langPvd, err := m.buildManifestLanguageProvider()
 	if err != nil {
 		return fail(nil, err)

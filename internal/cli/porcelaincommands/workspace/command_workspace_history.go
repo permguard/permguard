@@ -67,7 +67,7 @@ func runECommandForHistoryWorkspace(deps cli.DependenciesProvider, cmd *cobra.Co
 	return nil
 }
 
-// CreateCommandForWorkspaceHistory creates a command for diffializing a permguard workspace.
+// CreateCommandForWorkspaceHistory creates a command for showing workspace history.
 func CreateCommandForWorkspaceHistory(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "history",

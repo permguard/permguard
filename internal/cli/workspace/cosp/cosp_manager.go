@@ -104,8 +104,22 @@ func (m *Manager) codeSourceObjectDir(oid string, basePath string) (string, stri
 }
 
 // CleanCodeSource cleans the code source area.
+// Post-condition: after a successful call, the code source directory does not exist.
 func (m *Manager) CleanCodeSource() (bool, error) {
-	return m.persMgr.DeletePath(persistence.PermguardDir, m.codeSourceDir())
+	cleaned, err := m.persMgr.DeletePath(persistence.PermguardDir, m.codeSourceDir())
+	if err != nil {
+		return false, errors.Join(errors.New("cli: failed to clean code source area"), err)
+	}
+	return cleaned, nil
+}
+
+// IsCodeSourceClean checks if the code source area is empty or does not exist.
+func (m *Manager) IsCodeSourceClean() (bool, error) {
+	exists, err := m.persMgr.CheckPathIfExists(persistence.PermguardDir, m.codeSourceDir())
+	if err != nil {
+		return false, err
+	}
+	return !exists, nil
 }
 
 // SaveCodeSourceObject saves the object in the code source.

@@ -19,10 +19,22 @@ package objects
 import (
 	"fmt"
 	"sort"
-	"strings"
 )
 
-// SerializeTree serializes a tree object.
+// cborTreeEntry is the CBOR-serializable representation of a tree entry.
+type cborTreeEntry struct {
+	Type            string `cbor:"1,keyasint"`
+	Partition       string `cbor:"2,keyasint"`
+	OID             string `cbor:"3,keyasint"`
+	OName           string `cbor:"4,keyasint"`
+	CodeID          string `cbor:"5,keyasint"`
+	CodeType        string `cbor:"6,keyasint"`
+	Language        string `cbor:"7,keyasint"`
+	LanguageVersion string `cbor:"8,keyasint"`
+	LanguageType    string `cbor:"9,keyasint"`
+}
+
+// SerializeTree serializes a tree object to CBOR.
 func (m *ObjectManager) SerializeTree(tree *Tree) ([]byte, error) {
 	if tree == nil {
 		return nil, fmt.Errorf("objects: tree is nil")
@@ -30,49 +42,51 @@ func (m *ObjectManager) SerializeTree(tree *Tree) ([]byte, error) {
 	sort.Slice(tree.entries, func(i, j int) bool {
 		return tree.entries[i].OID() < tree.entries[j].OID()
 	})
-	var sb strings.Builder
-	treeSize := len(tree.entries)
+	entries := make([]cborTreeEntry, len(tree.entries))
 	for i, entry := range tree.entries {
 		partition := entry.partition
 		if partition == "" {
 			partition = "/"
 		}
-		sb.WriteString(fmt.Sprintf("%s %s %s %s %s %s %s %s %s", entry.otype, partition, entry.oid, entry.oname, entry.codeID, entry.codeType, entry.language, entry.languageVersion, entry.languageType))
-		if i != treeSize-1 {
-			sb.WriteString("\n")
+		entries[i] = cborTreeEntry{
+			Type:            entry.otype,
+			Partition:       partition,
+			OID:             entry.oid,
+			OName:           entry.oname,
+			CodeID:          entry.codeID,
+			CodeType:        entry.codeType,
+			Language:        entry.language,
+			LanguageVersion: entry.languageVersion,
+			LanguageType:    entry.languageType,
 		}
 	}
-	return []byte(sb.String()), nil
+	return m.encMode.Marshal(entries)
 }
 
-// DeserializeTree deserializes a tree object.
+// DeserializeTree deserializes a tree object from CBOR.
 func (m *ObjectManager) DeserializeTree(data []byte) (*Tree, error) {
 	if data == nil {
 		return nil, fmt.Errorf("objects: data is nil")
 	}
-	inputStr := strings.TrimSpace(string(data))
-	tree := &Tree{}
-	if inputStr == "" {
-		return tree, nil
+	var entries []cborTreeEntry
+	if err := m.decMode.Unmarshal(data, &entries); err != nil {
+		return nil, fmt.Errorf("objects: failed to decode tree: %w", err)
 	}
-	lines := strings.Split(inputStr, "\n")
-	for _, line := range lines {
-		parts := strings.SplitN(line, " ", 9)
-		if len(parts) != 9 {
-			return nil, fmt.Errorf("objects: invalid entry format: %s", line)
+	tree := &Tree{
+		entries: make([]TreeEntry, len(entries)),
+	}
+	for i, e := range entries {
+		tree.entries[i] = TreeEntry{
+			otype:           e.Type,
+			partition:       e.Partition,
+			oid:             e.OID,
+			oname:           e.OName,
+			codeID:          e.CodeID,
+			codeType:        e.CodeType,
+			language:        e.Language,
+			languageVersion: e.LanguageVersion,
+			languageType:    e.LanguageType,
 		}
-		entry := TreeEntry{
-			otype:           parts[0],
-			partition:       parts[1],
-			oid:             parts[2],
-			oname:           parts[3],
-			codeID:          parts[4],
-			codeType:        parts[5],
-			language:        parts[6],
-			languageVersion: parts[7],
-			languageType:    parts[8],
-		}
-		tree.entries = append(tree.entries, entry)
 	}
 	return tree, nil
 }
