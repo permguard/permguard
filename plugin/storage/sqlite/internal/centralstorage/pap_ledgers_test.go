@@ -60,6 +60,7 @@ func TestCreateLedgerWithErrors(t *testing.T) {
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
 			mockSQLRepo.On("UpsertLedger", mock.Anything, true, mock.Anything).Return(nil, errors.New(testcase))
+			mockSQLDB.ExpectRollback()
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
@@ -141,6 +142,7 @@ func TestUpdateLedgerWithErrors(t *testing.T) {
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
 			mockSQLRepo.On("UpsertLedger", mock.Anything, false, mock.Anything).Return(nil, errors.New(testcase))
+			mockSQLDB.ExpectRollback()
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
@@ -218,6 +220,7 @@ func TestDeleteLedgerWithErrors(t *testing.T) {
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
 			mockSQLRepo.On("DeleteLedger", mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New(testcase))
+			mockSQLDB.ExpectRollback()
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()

@@ -18,6 +18,7 @@ package configs
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -54,7 +55,7 @@ func runECommandForConfigShow(deps cli.DependenciesProvider, cmd *cobra.Command,
 	authstarMaxObjectSize, err := ctx.AuthstarMaxObjectSize()
 	authstarMaxObjectSizeStr := "not set"
 	if err == nil {
-		authstarMaxObjectSizeStr = fmt.Sprintf("%d", authstarMaxObjectSize)
+		authstarMaxObjectSizeStr = strconv.Itoa(authstarMaxObjectSize)
 	}
 	if ctx.IsTerminalOutput() {
 		printer.Println(fmt.Sprintf("endpoints.zap: %s", zapEndpoint))
