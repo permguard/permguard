@@ -47,15 +47,15 @@ func runECommandForConfigShow(deps cli.DependenciesProvider, cmd *cobra.Command,
 	if err != nil {
 		pdpEndpoint = "not set"
 	}
-	authzLanguage := v.GetString(options.FlagName(common.FlagPrefixWorkspaceInit, common.FlagSuffixWorkspaceInitAuthzLanguage))
-	if len(authzLanguage) == 0 {
-		authzLanguage = "not set"
+	language := v.GetString(options.FlagName(common.FlagPrefixWorkspaceInit, common.FlagSuffixWorkspaceInitLanguage))
+	if len(language) == 0 {
+		language = "not set"
 	}
 	if ctx.IsTerminalOutput() {
 		printer.Println(fmt.Sprintf("endpoints.zap: %s", zapEndpoint))
 		printer.Println(fmt.Sprintf("endpoints.pap: %s", papEndpoint))
 		printer.Println(fmt.Sprintf("endpoints.pdp: %s", pdpEndpoint))
-		printer.Println(fmt.Sprintf("authz.language: %s", authzLanguage))
+		printer.Println(fmt.Sprintf("language: %s", language))
 	} else if ctx.IsJSONOutput() {
 		output := map[string]any{
 			"endpoints": map[string]any{
@@ -63,9 +63,7 @@ func runECommandForConfigShow(deps cli.DependenciesProvider, cmd *cobra.Command,
 				"pap": papEndpoint,
 				"pdp": pdpEndpoint,
 			},
-			"authz": map[string]any{
-				"language": authzLanguage,
-			},
+			"language": language,
 		}
 		printer.PrintlnMap(output)
 	}

@@ -35,10 +35,12 @@ const (
 	commandNameForWorkspaceInit = "workspace-init"
 	// commandNameForWorkspacesInitName is name of the workspace to initialize.
 	commandNameForWorkspacesInitName = "name"
-	// commandNameForWorkspacesInitAuthzLanguage is the authz language of the workspace to initialize.
-	commandNameForWorkspacesInitAuthzLanguage = "authz-language"
-	// commandNameForWorkspacesInitAuthzTemplate is the authz template of the workspace to initialize.
-	commandNameForWorkspacesInitAuthzTemplate = "authz-template"
+	// commandNameForWorkspacesInitManifest is the flag to create a manifest file.
+	commandNameForWorkspacesInitManifest = "manifest"
+	// commandNameForWorkspacesInitLanguage is the language of the workspace to initialize.
+	commandNameForWorkspacesInitLanguage = "language"
+	// commandNameForWorkspacesInitTemplate is the template of the workspace to initialize.
+	commandNameForWorkspacesInitTemplate = "template"
 )
 
 // runECommandForInitWorkspace runs the command for creating an workspace.
@@ -50,26 +52,38 @@ func runECommandForInitWorkspace(deps cli.DependenciesProvider, cmd *cobra.Comma
 	}
 	absLangFact, err := deps.LanguageFactory()
 	if err != nil {
-		color.Red(fmt.Sprintf("%s", err))
+		if ctx.IsJSONOutput() {
+			printer.Error(err)
+		} else {
+			color.Red(fmt.Sprintf("%s", err))
+		}
 		return common.ErrCommandSilent
 	}
 	wksMgr, err := workspace.NewInternalManager(ctx, absLangFact)
 	if err != nil {
-		color.Red(fmt.Sprintf("%s", err))
+		if ctx.IsJSONOutput() {
+			printer.Error(err)
+		} else {
+			color.Red(fmt.Sprintf("%s", err))
+		}
 		return common.ErrCommandSilent
 	}
 
-	name := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName))
-	authzLanguage := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzLanguage))
-	authzTemplate := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzTemplate))
-	zoneID := v.GetInt64(options.FlagName(commandNameForWorkspaceInit, common.FlagCommonZoneID))
-	ledgerID := v.GetString(options.FlagName(commandNameForWorkspaceInit, common.FlagCommonLedgerID))
-	initParams := &workspace.InitParms{
-		Name:          name,
-		AuthZLanguage: authzLanguage,
-		AuthZTemplate: authzTemplate,
-		ZoneID:        zoneID,
-		LedgerID:      ledgerID,
+	var initParams *workspace.InitParms
+	createManifest := v.GetBool(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitManifest))
+	if createManifest {
+		name := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName))
+		language := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitLanguage))
+		template := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitTemplate))
+		zoneID := v.GetInt64(options.FlagName(commandNameForWorkspaceInit, common.FlagCommonZoneID))
+		ledgerID := v.GetString(options.FlagName(commandNameForWorkspaceInit, common.FlagCommonLedgerID))
+		initParams = &workspace.InitParms{
+			Name:     name,
+			Language: language,
+			Template: template,
+			ZoneID:   zoneID,
+			LedgerID: ledgerID,
+		}
 	}
 	output, err := wksMgr.ExecInitWorkspace(initParams, outFunc(ctx, printer))
 	if err != nil {
@@ -78,9 +92,12 @@ func runECommandForInitWorkspace(deps cli.DependenciesProvider, cmd *cobra.Comma
 		}
 		return common.ErrCommandSilent
 	}
-	_ = options.OverrideViperFromConfig(v, map[string]interface{}{
-		options.FlagName(common.FlagPrefixWorkspaceInit, common.FlagSuffixWorkspaceInitAuthzLanguage): authzLanguage,
-	})
+	if createManifest {
+		language := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitLanguage))
+		_ = options.OverrideViperFromConfig(v, map[string]interface{}{
+			options.FlagName(common.FlagPrefixWorkspaceInit, common.FlagSuffixWorkspaceInitLanguage): language,
+		})
+	}
 	if ctx.IsJSONOutput() {
 		printer.PrintlnMap(output)
 	}
@@ -110,11 +127,14 @@ Examples:
 	command.Flags().String(commandNameForWorkspacesInitName, "", "specify the name of the workspace to initialize")
 	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName), command.Flags().Lookup(commandNameForWorkspacesInitName))
 
-	command.Flags().String(commandNameForWorkspacesInitAuthzLanguage, "", "specify the authz language of the workspace to initialize")
-	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzLanguage), command.Flags().Lookup(commandNameForWorkspacesInitAuthzLanguage))
+	command.Flags().Bool(commandNameForWorkspacesInitManifest, false, "create a manifest file for the workspace")
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitManifest), command.Flags().Lookup(commandNameForWorkspacesInitManifest))
 
-	command.Flags().String(commandNameForWorkspacesInitAuthzTemplate, "", "specify the authz template of the workspace to initialize")
-	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitAuthzTemplate), command.Flags().Lookup(commandNameForWorkspacesInitAuthzTemplate))
+	command.Flags().String(commandNameForWorkspacesInitLanguage, "", "specify the language of the workspace to initialize")
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitLanguage), command.Flags().Lookup(commandNameForWorkspacesInitLanguage))
+
+	command.Flags().String(commandNameForWorkspacesInitTemplate, "", "specify the template of the workspace to initialize")
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitTemplate), command.Flags().Lookup(commandNameForWorkspacesInitTemplate))
 
 	command.Flags().Int64(common.FlagCommonZoneID, 0, "specify the zone id")
 	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))

@@ -38,12 +38,20 @@ func runECommandForHistoryWorkspace(deps cli.DependenciesProvider, cmd *cobra.Co
 	}
 	absLangFact, err := deps.LanguageFactory()
 	if err != nil {
-		color.Red(fmt.Sprintf("%s", err))
+		if ctx.IsJSONOutput() {
+			printer.Error(err)
+		} else {
+			color.Red(fmt.Sprintf("%s", err))
+		}
 		return common.ErrCommandSilent
 	}
 	wksMgr, err := workspace.NewInternalManager(ctx, absLangFact)
 	if err != nil {
-		color.Red(fmt.Sprintf("%s", err))
+		if ctx.IsJSONOutput() {
+			printer.Error(err)
+		} else {
+			color.Red(fmt.Sprintf("%s", err))
+		}
 		return common.ErrCommandSilent
 	}
 	output, err := wksMgr.ExecHistory(outFunc(ctx, printer))

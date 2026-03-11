@@ -46,10 +46,10 @@ func (m *Manager) ExecPrintContext(output map[string]any, out common.PrinterOutF
 type InitParms struct {
 	// Name of the workspace to be used in the manifest.
 	Name string
-	// AuthZLanguage the authz language.
-	AuthZLanguage string
-	// AuthZTemplate the authz template.
-	AuthZTemplate string
+	// Language the language.
+	Language string
+	// Template the template.
+	Template string
 	// ZoneID the zone id.
 	ZoneID int64
 	// LedgerID the ledger id.
@@ -79,11 +79,11 @@ func (m *Manager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOut
 		if len(strings.ReplaceAll(name, " ", "")) == 0 {
 			name = ids.GenerateID()
 		}
-		authzLang := strings.ToLower(strings.TrimSpace(initParams.AuthZLanguage))
+		authzLang := strings.ToLower(strings.TrimSpace(initParams.Language))
 		if len(authzLang) == 0 {
-			return fail(nil, errors.New("cli: authz language is required"))
+			return fail(nil, errors.New("cli: language is required"))
 		}
-		authzTemplate := strings.ToLower(initParams.AuthZTemplate)
+		authzTemplate := strings.ToLower(initParams.Template)
 
 		var requirement *azmanifests.Requirement
 		requirement, err = azmanifests.ParseRequirement(authzLang)
@@ -113,9 +113,13 @@ func (m *Manager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOut
 			return fail(nil, err)
 		}
 
-		_, err = m.persMgr.WriteFileIfNotExists(persistence.WorkspaceDir, azmanifests.ManifestFileName, manifestData, 0o644, false)
+		var created bool
+		created, err = m.persMgr.WriteFileIfNotExists(persistence.WorkspaceDir, azmanifests.ManifestFileName, manifestData, 0o644, false)
 		if err != nil {
 			return fail(nil, err)
+		}
+		if !created {
+			return fail(nil, errors.New("cli: manifest file already exists"))
 		}
 	}
 

@@ -40,36 +40,35 @@ const (
 
 // runECommandForCloneWorkspace runs the command for creating an workspace.
 func runECommandForCloneWorkspace(args []string, deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	// Parse and validate arguments before creating context.
+	var validationErr error
+	var ledgerURI, folder, ledgerFolder string
 	if len(args) < 1 {
-		color.Red("Invalid arguments")
-		return common.ErrCommandSilent
+		validationErr = errors.New("cli: invalid arguments")
+	} else {
+		ledgerURI = strings.ToLower(args[0])
+		if !strings.HasPrefix(ledgerURI, "permguard@") {
+			validationErr = errors.New("cli: invalid arguments")
+		} else {
+			ledger := strings.TrimPrefix(ledgerURI, "permguard@")
+			elements := strings.Split(ledger, "/")
+			if len(elements) < 3 {
+				validationErr = errors.New("cli: invalid arguments")
+			} else {
+				folder = elements[2]
+			}
+		}
 	}
-	ledgerURI := strings.ToLower(args[0])
-	if !strings.HasPrefix(ledgerURI, "permguard@") {
-		color.Red("Invalid arguments")
-		return common.ErrCommandSilent
-	}
-	ledger := strings.TrimPrefix(ledgerURI, "permguard@")
-	elements := strings.Split(ledger, "/")
-	if len(elements) < 3 {
-		color.Red("Invalid arguments")
-		return common.ErrCommandSilent
-	}
-	folder := elements[2]
-	workDir, err := cmd.Flags().GetString(common.FlagWorkingDirectory)
-	if err != nil {
-		color.Red(fmt.Sprintf("%s", err))
-		return common.ErrCommandSilent
-	}
-	ledgerFolder := filepath.Join(workDir, folder)
-	_ = cmd.Flags().Set(common.FlagWorkingDirectory, ledgerFolder)
-	if ok, _ := files.CheckPathIfExists(ledgerFolder); ok {
-		color.Red(fmt.Sprintf("The ledger %s already exists", ledgerFolder))
-		return common.ErrCommandSilent
-	}
-	if _, err := files.CreateDirIfNotExists(ledgerFolder); err != nil {
-		color.Red(fmt.Sprintf("%s", err))
-		return common.ErrCommandSilent
+
+	// Set up working directory if validation passed.
+	if validationErr == nil {
+		workDir, err := cmd.Flags().GetString(common.FlagWorkingDirectory)
+		if err != nil {
+			validationErr = err
+		} else {
+			ledgerFolder = filepath.Join(workDir, folder)
+			_ = cmd.Flags().Set(common.FlagWorkingDirectory, ledgerFolder)
+		}
 	}
 
 	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
@@ -77,7 +76,7 @@ func runECommandForCloneWorkspace(args []string, deps cli.DependenciesProvider, 
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	if len(args) < 1 {
+	fail := func(err error) error {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to clone the workspace.")
 		}
@@ -86,27 +85,30 @@ func runECommandForCloneWorkspace(args []string, deps cli.DependenciesProvider, 
 		}
 		return common.ErrCommandSilent
 	}
+
+	if validationErr != nil {
+		return fail(validationErr)
+	}
+	if ok, _ := files.CheckPathIfExists(ledgerFolder); ok {
+		return fail(fmt.Errorf("cli: the ledger %s already exists", ledgerFolder))
+	}
+	if _, err := files.CreateDirIfNotExists(ledgerFolder); err != nil {
+		return fail(err)
+	}
+
 	langFct, err := deps.LanguageFactory()
 	if err != nil {
-		color.Red(fmt.Sprintf("%s", err))
-		return common.ErrCommandSilent
+		return fail(err)
 	}
 	wksMgr, err := workspace.NewInternalManager(ctx, langFct)
 	if err != nil {
-		color.Red(fmt.Sprintf("%s", err))
-		return common.ErrCommandSilent
+		return fail(err)
 	}
 	zapPort := v.GetInt(options.FlagName(commandNameForWorkspacesClone, flagZAP))
 	papPort := v.GetInt(options.FlagName(commandNameForWorkspacesClone, flagPAP))
 	output, err := wksMgr.ExecCloneLedger(ledgerURI, zapPort, papPort, outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to clone the workspace.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to clone the workspace"), err))
-		}
-		return common.ErrCommandSilent
+		return fail(err)
 	}
 	if ctx.IsJSONOutput() {
 		printer.PrintlnMap(output)
