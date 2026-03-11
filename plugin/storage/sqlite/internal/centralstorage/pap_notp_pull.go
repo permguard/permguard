@@ -190,6 +190,14 @@ func (s SQLiteCentralStoragePAP) PullObjects(ctx context.Context, req *pap.PullO
 	if err != nil {
 		return nil, err
 	}
+	// Validate transfer rate limits for response.
+	var totalSize int64
+	for _, obj := range objs {
+		totalSize += int64(len(obj.Content))
+	}
+	if err := objects.ValidateTransferLimits(len(objs), totalSize, 0, 0); err != nil {
+		return nil, fmt.Errorf("storage: response exceeds transfer limits: %w", err)
+	}
 	return &pap.PullObjectsResponse{
 		Objects: objs,
 	}, nil

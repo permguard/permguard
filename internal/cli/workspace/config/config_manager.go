@@ -110,6 +110,28 @@ func (m *Manager) LedgerInfo(ledgerURI string) (*azwkscommon.RefInfo, error) {
 	return azwkscommon.BuildRefInfoFromLedgerID(refInfo, cfgLedger.LedgerID)
 }
 
+// AuthstarMaxObjectSize returns the configured authstar maximum object size in bytes, or 0 if not set.
+func (m *Manager) AuthstarMaxObjectSize() int {
+	cfg, err := m.readConfig()
+	if err != nil {
+		return 0
+	}
+	return cfg.Core.AuthstarMaxObjectSize
+}
+
+// SetAuthstarMaxObjectSize sets the authstar maximum object size in bytes.
+func (m *Manager) SetAuthstarMaxObjectSize(size int) error {
+	if size <= 0 {
+		return errors.New("cli: authstar-max-object-size must be a positive integer")
+	}
+	cfg, err := m.readConfig()
+	if err != nil {
+		return err
+	}
+	cfg.Core.AuthstarMaxObjectSize = size
+	return m.saveConfig(true, cfg)
+}
+
 // CheckLedgerIfExists checks if a ledger exists.
 func (m *Manager) CheckLedgerIfExists(ledgerURI string) bool {
 	ledgerURI, _ = azwkscommon.SanitizeLedger(ledgerURI)

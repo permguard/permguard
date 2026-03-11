@@ -22,6 +22,7 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
+	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
 // PullResult holds the result of a pull operation.
@@ -107,10 +108,22 @@ func (m *Manager) execRemotePull(headCtx *currentHeadContext, out common.Printer
 			return nil, fmt.Errorf("cli: pull objects failed for commit %s: %w", commitID, err)
 		}
 		for _, obj := range objResp.Objects {
+			if err := objects.VerifyOID(obj.OID, obj.Content); err != nil {
+				return nil, fmt.Errorf("cli: received corrupted object %s: %w", obj.OID, err)
+			}
+			if err := objects.ValidateObjectSize(obj.Content, objects.DefaultMaxObjectSize); err != nil {
+				return nil, fmt.Errorf("cli: received oversized object %s: %w", obj.OID, err)
+			}
 			_, err = m.cospMgr.SaveObject(obj.OID, obj.Content)
 			if err != nil {
 				return nil, fmt.Errorf("cli: failed to save object %s: %w", obj.OID, err)
 			}
+		}
+		// Verify commit graph integrity: commit → tree → all blobs must exist.
+		if err := m.objMar.VerifyCommitGraphIntegrity(commitID, func(oid string) (*objects.Object, error) {
+			return m.cospMgr.ReadObject(oid)
+		}); err != nil {
+			return nil, fmt.Errorf("cli: graph integrity check failed for commit %s: %w", commitID, err)
 		}
 		localCommitCount++
 	}

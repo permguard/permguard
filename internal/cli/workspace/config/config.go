@@ -25,7 +25,8 @@ type config struct {
 
 // coreConfig represents the configuration for the core.
 type coreConfig struct {
-	ClientVersion string `toml:"client-version"`
+	ClientVersion         string `toml:"client-version"`
+	AuthstarMaxObjectSize int    `toml:"authstar-max-object-size,omitempty"`
 }
 
 // remoteConfig represents the configuration for the remote.

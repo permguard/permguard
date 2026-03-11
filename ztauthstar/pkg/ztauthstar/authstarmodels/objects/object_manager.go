@@ -41,7 +41,11 @@ func NewObjectManager() (*ObjectManager, error) {
 	if err != nil {
 		return nil, fmt.Errorf("objects: failed to create cbor encoder: %w", err)
 	}
-	decMode, err := cbor.DecOptions{}.DecMode()
+	decMode, err := cbor.DecOptions{
+		MaxArrayElements: DefaultMaxTreeEntries,
+		MaxMapPairs:      DefaultMaxTreeEntries,
+		MaxNestedLevels:  DefaultMaxCBORNestedLevels,
+	}.DecMode()
 	if err != nil {
 		return nil, fmt.Errorf("objects: failed to create cbor decoder: %w", err)
 	}

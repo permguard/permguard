@@ -127,8 +127,9 @@ func WriteFileIfNotExists(name string, data []byte, perm os.FileMode, compressed
 	}
 }
 
-// WriteFile writes a file.
+// WriteFile writes a file atomically using a temporary file and rename.
 func WriteFile(name string, data []byte, perm os.FileMode, compressed bool) (bool, error) {
+	var writeData []byte
 	if compressed {
 		var buf bytes.Buffer
 		zlibWriter := zlib.NewWriter(&buf)
@@ -140,15 +141,32 @@ func WriteFile(name string, data []byte, perm os.FileMode, compressed bool) (boo
 		if err != nil {
 			return false, errors.New("core: failed to close zlib writer")
 		}
-		err = os.WriteFile(name, buf.Bytes(), perm)
-		if err != nil {
-			return false, errors.New("core: failed to write compressed file")
-		}
-		return true, nil
+		writeData = buf.Bytes()
+	} else {
+		writeData = data
 	}
-	err := os.WriteFile(name, data, perm)
+	dir := filepath.Dir(name)
+	tmpFile, err := os.CreateTemp(dir, ".tmp-*")
 	if err != nil {
-		return false, errors.New("core: failed to write file")
+		return false, fmt.Errorf("core: failed to create temporary file: %w", err)
+	}
+	tmpName := tmpFile.Name()
+	if _, err := tmpFile.Write(writeData); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpName)
+		return false, errors.New("core: failed to write temporary file")
+	}
+	if err := tmpFile.Close(); err != nil {
+		os.Remove(tmpName)
+		return false, errors.New("core: failed to close temporary file")
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
+		os.Remove(tmpName)
+		return false, errors.New("core: failed to set file permissions")
+	}
+	if err := os.Rename(tmpName, name); err != nil {
+		os.Remove(tmpName)
+		return false, errors.New("core: failed to rename temporary file")
 	}
 	return true, nil
 }
