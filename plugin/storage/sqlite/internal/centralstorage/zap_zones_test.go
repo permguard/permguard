@@ -60,6 +60,7 @@ func TestCreateZoneWithErrors(t *testing.T) {
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
 			mockSQLRepo.On("UpsertZone", mock.Anything, true, mock.Anything).Return(nil, errors.New(testcase))
+			mockSQLDB.ExpectRollback()
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
@@ -148,6 +149,7 @@ func TestUpdateZoneWithErrors(t *testing.T) {
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
 			mockSQLRepo.On("UpsertZone", mock.Anything, false, mock.Anything).Return(nil, errors.New(testcase))
+			mockSQLDB.ExpectRollback()
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
@@ -228,6 +230,7 @@ func TestDeleteZoneWithErrors(t *testing.T) {
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
 			mockSQLRepo.On("DeleteZone", mock.Anything, mock.Anything).Return(nil, errors.New(testcase))
+			mockSQLDB.ExpectRollback()
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
