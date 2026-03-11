@@ -354,10 +354,7 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 			if err != nil {
 				return fail(err)
 			}
-			fileName, err := files.GenerateUniqueFile(CodeGenFileName, ext)
-			if err != nil {
-				return fail(err)
-			}
+			fileName := files.GenerateUniqueFile(CodeGenFileName, ext, codeBlock)
 			fileBase := strings.TrimPrefix(partition, "/")
 			fileName = path.Join(fileBase, fileName)
 			if _, err := m.persMgr.WriteFile(persistence.WorkspaceDir, fileName, codeBlock, 0o644, false); err != nil {

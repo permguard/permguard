@@ -46,10 +46,10 @@ func Run(cliInitializer cli.Initializer) {
 	// Create the command.
 	v, err := options.NewViperFromConfig(func(_ *viper.Viper) map[string]any {
 		mapValues := map[string]any{
-			options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPEndpoint):                          "grpc://localhost:9091",
-			options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPEndpoint):                          "grpc://localhost:9092",
-			options.FlagName(common.FlagPrefixPDP, common.FlagSuffixPDPEndpoint):                          "grpc://localhost:9094",
-			options.FlagName(common.FlagPrefixWorkspaceInit, common.FlagSuffixWorkspaceInitAuthzLanguage): "cedar",
+			options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPEndpoint):                     "grpc://localhost:9091",
+			options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPEndpoint):                     "grpc://localhost:9092",
+			options.FlagName(common.FlagPrefixPDP, common.FlagSuffixPDPEndpoint):                     "grpc://localhost:9094",
+			options.FlagName(common.FlagPrefixWorkspaceInit, common.FlagSuffixWorkspaceInitLanguage): "cedar",
 		}
 		return mapValues
 	})

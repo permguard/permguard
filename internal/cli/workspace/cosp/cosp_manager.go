@@ -19,6 +19,7 @@ package cosp
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -230,6 +231,9 @@ func (m *Manager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 	}
 	err := m.persMgr.ReadCSVStream(persistence.PermguardDir, path, nil, recordFunc, true)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return []CodeFile{}, nil
+		}
 		return nil, errors.Join(errors.New("cli: failed to read code map"), err)
 	}
 
@@ -385,6 +389,9 @@ func (m *Manager) readCodeObjectStates(path string) ([]CodeObjectState, error) {
 	}
 	err := m.persMgr.ReadCSVStream(persistence.PermguardDir, path, nil, recordFunc, true)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return []CodeObjectState{}, nil
+		}
 		return nil, errors.Join(errors.New("cli: failed to read code state"), err)
 	}
 	return codeObjects, nil

@@ -19,7 +19,7 @@ package files
 import (
 	"bytes"
 	"compress/zlib"
-	"crypto/rand"
+	"crypto/sha256"
 	"encoding/csv"
 	"encoding/hex"
 	"errors"
@@ -29,7 +29,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
-	"time"
 
 	"github.com/pelletier/go-toml"
 )
@@ -81,17 +80,12 @@ func CreateDirIfNotExists(name string) (bool, error) {
 
 // Files
 
-// GenerateUniqueFile generates a unique file name.
-func GenerateUniqueFile(prefix string, extension string) (string, error) {
-	timestamp := time.Now().Unix() % 1000000
-	randomBytes := make([]byte, 4)
-	_, err := rand.Read(randomBytes)
-	if err != nil {
-		return "", fmt.Errorf("core: failed to generate an unique file name %v", err)
-	}
-	randomString := hex.EncodeToString(randomBytes)
-	fileName := fmt.Sprintf("%s-%d-%s.%s", prefix, timestamp, randomString, extension)
-	return fileName, nil
+// GenerateUniqueFile generates a unique file name based on content hash.
+func GenerateUniqueFile(prefix string, extension string, content []byte) string {
+	hash := sha256.Sum256(content)
+	hashString := hex.EncodeToString(hash[:4])
+	fileName := fmt.Sprintf("%s-%s.%s", prefix, hashString, extension)
+	return fileName
 }
 
 // CreateFileIfNotExists creates a file if it does not exist.
