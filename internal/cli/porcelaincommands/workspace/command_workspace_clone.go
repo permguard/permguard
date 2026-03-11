@@ -38,7 +38,7 @@ const (
 	commandNameForWorkspacesClone = "workspaces-clone"
 )
 
-// runECommandForCloneWorkspace runs the command for creating an workspace.
+// runECommandForCloneWorkspace runs the command for cloning a workspace.
 func runECommandForCloneWorkspace(args []string, deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
 	// Parse and validate arguments before creating context.
 	var validationErr error
@@ -116,7 +116,7 @@ func runECommandForCloneWorkspace(args []string, deps cli.DependenciesProvider, 
 	return nil
 }
 
-// CreateCommandForWorkspaceClone creates a command for cloneializing a permguard workspace.
+// CreateCommandForWorkspaceClone creates a command for cloning a workspace.
 func CreateCommandForWorkspaceClone(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "clone",

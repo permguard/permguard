@@ -40,7 +40,8 @@ func groupCodeFiles(codeFiles []cosp.CodeFile) map[string][]cosp.CodeFile {
 	return grouped
 }
 
-// cleanupLocalArea cleans up the local area.
+// cleanupLocalArea cleans up the local area by removing all code source objects and state files.
+// Post-condition: after a successful call, the code source directory does not exist.
 func (m *Manager) cleanupLocalArea() (bool, error) {
 	return m.cospMgr.CleanCodeSource()
 }
@@ -236,6 +237,8 @@ func (m *Manager) buildCodeFileFromSection(secObj *objects.SectionObject, inputF
 
 // blobifyLocal processes source files and converts them into blobs, handling both code and schema types.
 // It ensures that only one schema file exists per partition and constructs a tree object to represent the structure.
+// Pre-condition: the code source area must be clean before calling this function.
+// Post-condition: on success, the code source area contains all blob objects, the codemap, codestate and tree config.
 func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLanguageProvider) (string, []cosp.CodeFile, error) {
 	blobifiedCodeFiles := []cosp.CodeFile{}
 	partitionSchemas := map[string]int{}

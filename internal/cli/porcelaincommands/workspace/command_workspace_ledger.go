@@ -70,7 +70,7 @@ func runECommandForLedgerWorkspace(deps cli.DependenciesProvider, cmd *cobra.Com
 	return nil
 }
 
-// CreateCommandForWorkspaceLedger creates a command for ledgerializing a permguard workspace.
+// CreateCommandForWorkspaceLedger creates a command for managing workspace ledgers.
 func CreateCommandForWorkspaceLedger(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "ledger",

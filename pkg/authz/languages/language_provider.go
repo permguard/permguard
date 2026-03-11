@@ -18,6 +18,6 @@ package languages
 
 // LanguageFactory is the interface for the language factory.
 type LanguageFactory interface {
-	// LanguageAbastraction creates a language abstraction.
-	LanguageAbastraction(language, version string) (LanguageAbastraction, error)
+	// LanguageAbstraction creates a language abstraction.
+	LanguageAbstraction(language, version string) (LanguageAbstraction, error)
 }

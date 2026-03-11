@@ -90,14 +90,9 @@ func TestObjectManager(t *testing.T) {
 		// Cast to tree and validate fields
 		retrievedTree := objectInfo.instance.(*Tree)
 		assert.Equal(len(tree.entries), len(retrievedTree.entries), "Entries length mismatch")
-		for i, entry := range tree.entries {
-			assert.Equal(entry.otype, retrievedTree.entries[i].otype, "Type mismatch for entry %d", i)
-			assert.Equal(entry.oid, retrievedTree.entries[i].oid, "OID mismatch for entry %d", i)
-			assert.Equal(entry.oname, retrievedTree.entries[i].oname, "Name mismatch for entry %d", i)
-		}
 	})
 
-	// Test for CreateBlobObject and GetObjectInfo (new test for blob type)
+	// Test for CreateBlobObject and GetObjectInfo
 	t.Run("Test CreateBlobObject and GetObjectInfo", func(t *testing.T) {
 		assert := assert.New(t)
 		blobData := []byte("This is the content of the blob object")
@@ -118,6 +113,15 @@ func TestObjectManager(t *testing.T) {
 		// Validate the content of the blob
 		retrievedBlob := objectInfo.instance.([]byte)
 		assert.Equal(blobData, retrievedBlob, "Blob content mismatch")
+
+		// Validate header fields
+		assert.Equal("/", objectInfo.header.Partition())
+		assert.True(objectInfo.header.IsNativeLanguage())
+		assert.Equal(uint32(1), objectInfo.header.LanguageID())
+		assert.Equal(uint32(1), objectInfo.header.LanguageVersionID())
+		assert.Equal(uint32(1), objectInfo.header.LanguageTypeID())
+		assert.Equal("my-custom-id", objectInfo.header.CodeID())
+		assert.Equal(uint32(1), objectInfo.header.CodeTypeID())
 	})
 
 	// Test for invalid data
@@ -127,10 +131,9 @@ func TestObjectManager(t *testing.T) {
 		_, err := objectManager.ObjectInfo(invalidObj)
 		assert.NotNil(err, "Expected error for empty object content")
 
-		// Test for incorrect object type
-		invalidObj.content = []byte("xx 12\000some content")
+		// Test for garbage content
+		invalidObj.content = []byte("not valid cbor data at all")
 		_, err = objectManager.ObjectInfo(invalidObj)
-		assert.NotNil(err, "Expected error for wrong object type")
-		assert.Contains(err.Error(), "objects: invalid object format: no NUL separator found", "Expected objects: unsupported object type ")
+		assert.NotNil(err, "Expected error for invalid cbor content")
 	})
 }

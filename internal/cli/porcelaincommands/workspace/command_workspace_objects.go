@@ -106,7 +106,7 @@ func runECommandForObjectsWorkspace(deps cli.DependenciesProvider, cmd *cobra.Co
 	return nil
 }
 
-// CreateCommandForWorkspaceObjects creates a command for diffializing a permguard workspace.
+// CreateCommandForWorkspaceObjects creates a command for managing workspace objects.
 func CreateCommandForWorkspaceObjects(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "objects",

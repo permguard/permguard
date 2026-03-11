@@ -22,8 +22,8 @@ import (
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
-// LanguageAbastraction is the interface for the language abstraction.
-type LanguageAbastraction interface {
+// LanguageAbstraction is the interface for the language abstraction.
+type LanguageAbstraction interface {
 	// BuildManifest builds the manifest.
 	BuildManifest(manifest *azmanifests.Manifest, template string) (*azmanifests.Manifest, error)
 	// ValidateManifest validates the manifest.

@@ -185,7 +185,7 @@ func (m *Manager) hasValidManifestWorkspaceDir() (*azmanifests.Manifest, error) 
 	}
 	for _, runtime := range manifest.Runtimes {
 		lang := runtime.Language
-		absLang, err := m.langFct.LanguageAbastraction(lang.Name, lang.Version)
+		absLang, err := m.langFct.LanguageAbstraction(lang.Name, lang.Version)
 		if err != nil {
 			return nil, errors.Join(manifestErr, err)
 		}

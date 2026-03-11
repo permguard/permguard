@@ -206,7 +206,7 @@ func (m *Manager) execMapObjectContent(langPvd *ManifestLanguageProvider, oid st
 				return errors.New("cli: object header s nil")
 			}
 
-			var absLang languages.LanguageAbastraction
+			var absLang languages.LanguageAbstraction
 			absLang, err = langPvd.AbstractLanguage(header.Partition())
 			if err != nil {
 				return err
