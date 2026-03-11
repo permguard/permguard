@@ -133,13 +133,16 @@ func (m *Manager) SaveCodeSourceObject(oid string, content []byte) (bool, error)
 	return m.persMgr.WriteFile(persistence.PermguardDir, path, content, 0o644, true)
 }
 
-// ReadCodeSourceObject reads the object from the code source.
+// ReadCodeSourceObject reads the object from the code source and verifies OID integrity.
 func (m *Manager) ReadCodeSourceObject(oid string) (*objects.Object, error) {
 	folder, name := m.codeSourceObjectDir(oid, m.codeSourceDir())
 	path := filepath.Join(folder, name)
 	data, _, err := m.persMgr.ReadFile(persistence.PermguardDir, path, true)
 	if err != nil {
 		return nil, err
+	}
+	if err := objects.VerifyOID(oid, data); err != nil {
+		return nil, fmt.Errorf("cli: corrupted code source object %s: %w", oid, err)
 	}
 	return m.objMgr.DeserializeObjectFromBytes(data)
 }
@@ -471,7 +474,7 @@ func (m *Manager) SaveObject(oid string, content []byte) (bool, error) {
 	return m.persMgr.WriteFile(persistence.PermguardDir, path, content, 0o644, true)
 }
 
-// ReadObject reads the object from the objs store.
+// ReadObject reads the object from the objs store and verifies OID integrity.
 func (m *Manager) ReadObject(oid string) (*objects.Object, error) {
 	folder, name := m.codeSourceObjectDir(oid, "")
 	path := filepath.Join(folder, name)
@@ -479,7 +482,67 @@ func (m *Manager) ReadObject(oid string) (*objects.Object, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := objects.VerifyOID(oid, data); err != nil {
+		return nil, fmt.Errorf("cli: corrupted object %s: %w", oid, err)
+	}
 	return m.objMgr.DeserializeObjectFromBytes(data)
+}
+
+// CollectGarbage removes orphaned objects from the object store that are not reachable from the given commit.
+// It walks the commit → tree → blob graph and deletes any objects not in the reachable set.
+func (m *Manager) CollectGarbage(commitID string) (int, error) {
+	if commitID == "" || commitID == objects.ZeroOID {
+		return 0, nil
+	}
+	reachable := map[string]bool{}
+	currentID := commitID
+	for currentID != objects.ZeroOID {
+		obj, err := m.ReadObject(currentID)
+		if err != nil || obj == nil {
+			break
+		}
+		reachable[obj.OID()] = true
+		objInfo, err := m.objMgr.ObjectInfo(obj)
+		if err != nil {
+			break
+		}
+		commit, ok := objInfo.Instance().(*objects.Commit)
+		if !ok {
+			break
+		}
+		treeObj, err := m.ReadObject(commit.Tree())
+		if err != nil || treeObj == nil {
+			break
+		}
+		reachable[treeObj.OID()] = true
+		treeInfo, err := m.objMgr.ObjectInfo(treeObj)
+		if err != nil {
+			break
+		}
+		tree, ok := treeInfo.Instance().(*objects.Tree)
+		if !ok {
+			break
+		}
+		for _, entry := range tree.Entries() {
+			reachable[entry.OID()] = true
+		}
+		currentID = commit.Parent()
+	}
+	allObjs, err := m.objects(m.objectsDir(), true)
+	if err != nil {
+		return 0, err
+	}
+	removed := 0
+	for _, obj := range allObjs {
+		if !reachable[obj.OID()] {
+			folder, name := m.codeSourceObjectDir(obj.OID(), "")
+			path := filepath.Join(folder, name)
+			if _, err := m.persMgr.DeletePath(persistence.PermguardDir, path); err == nil {
+				removed++
+			}
+		}
+	}
+	return removed, nil
 }
 
 // GetObjects returns the objs.

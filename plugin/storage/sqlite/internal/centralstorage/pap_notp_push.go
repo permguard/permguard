@@ -84,6 +84,14 @@ func (s SQLiteCentralStoragePAP) PushTransfer(ctx context.Context, req *pap.Push
 	if req.ZoneID <= 0 {
 		return nil, fmt.Errorf("storage: invalid zone id: %w", azstorage.ErrInvalidInput)
 	}
+	// Validate transfer rate limits.
+	var totalSize int64
+	for _, obj := range req.Objects {
+		totalSize += int64(len(obj.Content))
+	}
+	if err := objects.ValidateTransferLimits(len(req.Objects), totalSize, 0, 0); err != nil {
+		return nil, fmt.Errorf("storage: %w", err)
+	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azrepos.WrapSqliteError(errorMessageCannotConnect, err)
@@ -93,6 +101,14 @@ func (s SQLiteCentralStoragePAP) PushTransfer(ctx context.Context, req *pap.Push
 		return nil, azrepos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
 	for _, obj := range req.Objects {
+		if err := objects.VerifyOID(obj.OID, obj.Content); err != nil {
+			_ = tx.Rollback()
+			return nil, fmt.Errorf("storage: received corrupted object %s: %w", obj.OID, err)
+		}
+		if err := objects.ValidateObjectSize(obj.Content, objects.DefaultMaxObjectSize); err != nil {
+			_ = tx.Rollback()
+			return nil, fmt.Errorf("storage: received oversized object %s: %w", obj.OID, err)
+		}
 		keyValue := &azrepos.KeyValue{
 			ZoneID: req.ZoneID,
 			Key:    obj.OID,
@@ -109,6 +125,18 @@ func (s SQLiteCentralStoragePAP) PushTransfer(ctx context.Context, req *pap.Push
 		if req.ExpectedServerCommit == "" {
 			_ = tx.Rollback()
 			return nil, fmt.Errorf("storage: expected server commit is required for final transfer: %w", azstorage.ErrInvalidInput)
+		}
+		// Verify graph integrity of the final commit before updating the ledger ref.
+		objMng, err := objects.NewObjectManager()
+		if err != nil {
+			_ = tx.Rollback()
+			return nil, err
+		}
+		if err := objMng.VerifyCommitGraphIntegrity(req.RemoteCommitID, func(oid string) (*objects.Object, error) {
+			return s.readObject(ctx, db, req.ZoneID, oid)
+		}); err != nil {
+			_ = tx.Rollback()
+			return nil, fmt.Errorf("storage: graph integrity check failed: %w", err)
 		}
 		err = s.sqlRepo.UpdateLedgerRef(ctx, tx, req.ZoneID, req.LedgerID, req.ExpectedServerCommit, req.RemoteCommitID)
 		if err != nil {
