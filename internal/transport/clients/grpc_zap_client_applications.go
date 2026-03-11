@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	zapv1 "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
+	azzapv1 "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
 )
 
 // GrpcZAPClient is a gRPC client for the ZAP service.
@@ -40,11 +40,11 @@ func NewGrpcZAPClient(endpoint string) (*GrpcZAPClient, error) {
 }
 
 // createGRPCClient creates a new gRPC client.
-func (c *GrpcZAPClient) createGRPCClient() (zapv1.V1ZAPServiceClient, *grpc.ClientConn, error) {
+func (c *GrpcZAPClient) createGRPCClient() (azzapv1.V1ZAPServiceClient, *grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(c.endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, nil, err
 	}
-	client := zapv1.NewV1ZAPServiceClient(conn)
+	client := azzapv1.NewV1ZAPServiceClient(conn)
 	return client, conn, nil
 }

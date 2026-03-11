@@ -69,13 +69,7 @@ message LedgerResponse {
 
 // Pack Objects
 
-// Ledger stream request.
-message LedgerStreamRequest {
-  int64 ZoneID = 1;
-  string LedgerID = 2;
-}
-
-// PackMessage is a pack message.
+// PackMessage is a pack message containing JSON-encoded request/response data.
 message PackMessage {
   bytes data = 1;
 }
@@ -90,8 +84,14 @@ service V1PAPService {
   rpc DeleteLedger(LedgerDeleteRequest) returns (LedgerResponse) {}
   // Fetch ledgers.
   rpc FetchLedgers(LedgerFetchRequest) returns (stream LedgerResponse) {}
-  // ReceivePack receives objects from the client.
-  rpc ReceivePack(stream PackMessage) returns (stream PackMessage) {}
-  // NOTPStream handles bidirectional stream using the NOTP protocol.
-  rpc NOTPStream(stream PackMessage) returns (stream PackMessage) {}
+  // PushAdvertise handles the push advertise step.
+  rpc PushAdvertise(PackMessage) returns (PackMessage) {}
+  // PushTransfer handles the push transfer step.
+  rpc PushTransfer(PackMessage) returns (PackMessage) {}
+  // PullState handles the pull state step.
+  rpc PullState(PackMessage) returns (PackMessage) {}
+  // PullNegotiate handles the pull negotiate step.
+  rpc PullNegotiate(PackMessage) returns (PackMessage) {}
+  // PullObjects handles the pull objects step.
+  rpc PullObjects(PackMessage) returns (PackMessage) {}
 }

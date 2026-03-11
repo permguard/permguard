@@ -27,7 +27,7 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
 	"github.com/permguard/permguard/pkg/authz/languages"
-	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	azmanifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 )
 
 // ExecPrintContext prints the context.
@@ -85,8 +85,8 @@ func (m *Manager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOut
 		}
 		authzTemplate := strings.ToLower(initParams.AuthZTemplate)
 
-		var requirement *manifests.Requirement
-		requirement, err = manifests.ParseRequirement(authzLang)
+		var requirement *azmanifests.Requirement
+		requirement, err = azmanifests.ParseRequirement(authzLang)
 		if err != nil {
 			return fail(nil, err)
 		}
@@ -97,8 +97,8 @@ func (m *Manager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOut
 			return fail(nil, err)
 		}
 
-		var manifest *manifests.Manifest
-		manifest, err = manifests.NewManifest(name, "")
+		var manifest *azmanifests.Manifest
+		manifest, err = azmanifests.NewManifest(name, "")
 		if err != nil {
 			return fail(nil, err)
 		}
@@ -108,12 +108,12 @@ func (m *Manager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOut
 		}
 
 		var manifestData []byte
-		manifestData, err = manifests.ConvertManifestToBytes(manifest, true)
+		manifestData, err = azmanifests.ConvertManifestToBytes(manifest, true)
 		if err != nil {
 			return fail(nil, err)
 		}
 
-		_, err = m.persMgr.WriteFileIfNotExists(persistence.WorkspaceDir, manifests.ManifestFileName, manifestData, 0o644, false)
+		_, err = m.persMgr.WriteFileIfNotExists(persistence.WorkspaceDir, azmanifests.ManifestFileName, manifestData, 0o644, false)
 		if err != nil {
 			return fail(nil, err)
 		}

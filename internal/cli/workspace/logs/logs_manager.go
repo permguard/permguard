@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	azwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
 	"github.com/permguard/permguard/pkg/core/validators"
 )
@@ -63,7 +63,7 @@ func (c *Manager) logsDir() string {
 }
 
 // Log an entry
-func (c *Manager) Log(refInfo *wkscommon.RefInfo, origin string, target string, action LogAction, actionStatus bool, actionDetail string) (bool, error) {
+func (c *Manager) Log(refInfo *azwkscommon.RefInfo, origin string, target string, action LogAction, actionStatus bool, actionDetail string) (bool, error) {
 	if refInfo == nil {
 		return false, errors.New("invalid ref info")
 	}

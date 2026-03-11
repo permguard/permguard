@@ -25,7 +25,7 @@ import (
 	"github.com/pelletier/go-toml"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	azwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
 
@@ -62,7 +62,7 @@ func (m *Manager) headFile() string {
 
 // refFile returns the ref file.
 func (m *Manager) refFile(ref string) (string, error) {
-	refInfo, err := wkscommon.ConvertStringWithLedgerIDToRefInfo(ref)
+	refInfo, err := azwkscommon.ConvertStringWithLedgerIDToRefInfo(ref)
 	if err != nil {
 		return "", err
 	}
@@ -84,8 +84,8 @@ func (m *Manager) ensureRefFileExists(ref string) error {
 
 // GenerateRef generates the ref.
 func (m *Manager) GenerateRef(remote string, zoneID int64, ledgerID string) string {
-	refInfo, _ := wkscommon.NewRefInfoFromLedgerName(remote, zoneID, ledgerID)
-	ref := wkscommon.ConvertRefInfoToString(refInfo)
+	refInfo, _ := azwkscommon.NewRefInfoFromLedgerName(remote, zoneID, ledgerID)
+	ref := azwkscommon.ConvertRefInfoToString(refInfo)
 	return ref
 }
 
@@ -208,12 +208,12 @@ func (m *Manager) RefCommit(ref string) (string, error) {
 }
 
 // CurrentHead gets the current head.
-func (m *Manager) CurrentHead() (*wkscommon.HeadInfo, error) {
+func (m *Manager) CurrentHead() (*azwkscommon.HeadInfo, error) {
 	cfgHead, err := m.readHeadConfig()
 	if err != nil {
 		return nil, err
 	}
-	return wkscommon.NewHeadInfo(cfgHead.Reference.Ref)
+	return azwkscommon.NewHeadInfo(cfgHead.Reference.Ref)
 }
 
 // CurrentHeadRef gets the current head ref.
@@ -244,15 +244,15 @@ func (m *Manager) CurrentHeadCommit() (string, error) {
 }
 
 // RefInfo gets the ref information.
-func (m *Manager) RefInfo(ref string) (*wkscommon.RefInfo, error) {
+func (m *Manager) RefInfo(ref string) (*azwkscommon.RefInfo, error) {
 	if len(ref) == 0 {
 		return nil, errors.New("cli: invalid ref")
 	}
-	return wkscommon.ConvertStringWithLedgerIDToRefInfo(ref)
+	return azwkscommon.ConvertStringWithLedgerIDToRefInfo(ref)
 }
 
 // CurrentHeadRefInfo gets the current head ref information.
-func (m *Manager) CurrentHeadRefInfo() (*wkscommon.RefInfo, error) {
+func (m *Manager) CurrentHeadRefInfo() (*azwkscommon.RefInfo, error) {
 	headInfo, err := m.CurrentHead()
 	if err != nil {
 		return nil, err

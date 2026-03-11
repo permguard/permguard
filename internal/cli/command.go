@@ -24,7 +24,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	commoncmds "github.com/permguard/permguard/internal/cli/commoncommands"
+	azcmds "github.com/permguard/permguard/internal/cli/commoncommands"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
 )
@@ -84,7 +84,7 @@ func Run(cliInitializer cli.Initializer) {
 	command.PersistentFlags().StringP(common.FlagOutput, common.FlagOutputShort, "terminal", "output format")
 	command.PersistentFlags().BoolP(common.FlagVerbose, common.FlagVerboseShort, false, "true for verbose output")
 
-	command.AddCommand(commoncmds.CreateCommandForVersion(depsProvider, v))
+	command.AddCommand(azcmds.CreateCommandForVersion(depsProvider, v))
 
 	// Add sub commands.
 	for _, subCommand := range commands {

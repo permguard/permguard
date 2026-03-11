@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strings"
 
-	storage "github.com/permguard/permguard/pkg/agents/storage"
+	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 )
 
 // SQLite error wrapping constants.
@@ -38,7 +38,7 @@ func WrapSqliteError(msg string, err error) error {
 // WrapSqliteErrorWithParams wraps a sqlite error with parameters.
 func WrapSqliteErrorWithParams(msg string, err error, _ map[string]string) error {
 	if err == nil {
-		return fmt.Errorf("storage: %s: %w", msg, storage.ErrInternal)
+		return fmt.Errorf("storage: %s: %w", msg, azstorage.ErrInternal)
 	}
 
 	sentinel := classifyError(err)
@@ -48,18 +48,18 @@ func WrapSqliteErrorWithParams(msg string, err error, _ map[string]string) error
 // classifyError maps a raw error to the appropriate sentinel error.
 func classifyError(err error) error {
 	if errors.Is(err, sql.ErrNoRows) {
-		return storage.ErrNotFound
+		return azstorage.ErrNotFound
 	}
 
 	errMsg := err.Error()
 	switch {
 	case strings.Contains(errMsg, "UNIQUE constraint"):
-		return storage.ErrAlreadyExists
+		return azstorage.ErrAlreadyExists
 	case strings.Contains(errMsg, "FOREIGN KEY constraint"):
-		return storage.ErrConflict
+		return azstorage.ErrConflict
 	case strings.Contains(errMsg, "NOT NULL constraint"):
-		return storage.ErrInvalidInput
+		return azstorage.ErrInvalidInput
 	default:
-		return storage.ErrInternal
+		return azstorage.ErrInternal
 	}
 }

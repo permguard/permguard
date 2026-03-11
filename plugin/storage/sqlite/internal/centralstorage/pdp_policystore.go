@@ -22,8 +22,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	storage "github.com/permguard/permguard/pkg/agents/storage"
-	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
@@ -32,17 +32,17 @@ import (
 // authorizationCheckReadBytes reads the key value for the authorization check.
 func authorizationCheckReadKeyValue(ctx context.Context, s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *objects.ObjectManager, zoneID int64, key string) ([]byte, error) {
 	if db == nil {
-		return nil, fmt.Errorf("storage: invalid database: %w", storage.ErrInternal)
+		return nil, fmt.Errorf("storage: invalid database: %w", azstorage.ErrInternal)
 	}
 	if objMng == nil {
-		return nil, fmt.Errorf("storage: invalid object manager: %w", storage.ErrInternal)
+		return nil, fmt.Errorf("storage: invalid object manager: %w", azstorage.ErrInternal)
 	}
 	keyValue, err := s.sqlRepo.KeyValue(ctx, db, zoneID, key)
 	if err != nil {
 		return nil, err
 	}
 	if keyValue == nil {
-		return nil, fmt.Errorf("storage: key value is nil: %w", storage.ErrNotFound)
+		return nil, fmt.Errorf("storage: key value is nil: %w", azstorage.ErrNotFound)
 	}
 	return keyValue.Value, nil
 }
@@ -82,7 +82,7 @@ func authorizationCheckReadTree(ctx context.Context, s *SQLiteCentralStoragePDP,
 func (s SQLiteCentralStoragePDP) LoadPolicyStore(ctx context.Context, zoneID int64, storeID string) (*authzen.PolicyStore, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
+		return nil, azrepos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
 
 	dbLedgers, err := s.sqlRepo.FetchLedgers(ctx, db, 1, 2, zoneID, &storeID, nil)
@@ -90,12 +90,12 @@ func (s SQLiteCentralStoragePDP) LoadPolicyStore(ctx context.Context, zoneID int
 		return nil, fmt.Errorf("storage: bad request for either zone id or policy store id: %w", err)
 	}
 	if len(dbLedgers) != 1 {
-		return nil, fmt.Errorf("storage: bad request for either zone id or policy store id: %w", storage.ErrNotFound)
+		return nil, fmt.Errorf("storage: bad request for either zone id or policy store id: %w", azstorage.ErrNotFound)
 	}
 	ledger := dbLedgers[0]
 	ledgerRef := ledger.Ref
 	if ledgerRef == objects.ZeroOID {
-		return nil, fmt.Errorf("storage: server couldn't validate the ledger reference: %w", storage.ErrInvalidInput)
+		return nil, fmt.Errorf("storage: server couldn't validate the ledger reference: %w", azstorage.ErrInvalidInput)
 	}
 
 	authzPolicyStore := &authzen.PolicyStore{}
@@ -103,7 +103,7 @@ func (s SQLiteCentralStoragePDP) LoadPolicyStore(ctx context.Context, zoneID int
 
 	objMng, err := objects.NewObjectManager()
 	if err != nil {
-		return nil, fmt.Errorf("storage: server couldn't create the object manager: %w", storage.ErrInternal)
+		return nil, fmt.Errorf("storage: server couldn't create the object manager: %w", azstorage.ErrInternal)
 	}
 	treeObj, err := authorizationCheckReadTree(ctx, &s, db, objMng, zoneID, ledgerRef)
 	if err != nil {
@@ -131,7 +131,7 @@ func (s SQLiteCentralStoragePDP) LoadPolicyStore(ctx context.Context, zoneID int
 		case types.ClassTypePolicyID:
 			authzPolicyStore.AddPolicy(oid, objInfo)
 		default:
-			return nil, fmt.Errorf("storage: server couldn't process the code type id: %w", storage.ErrInternal)
+			return nil, fmt.Errorf("storage: server couldn't process the code type id: %w", azstorage.ErrInternal)
 		}
 	}
 	return authzPolicyStore, nil

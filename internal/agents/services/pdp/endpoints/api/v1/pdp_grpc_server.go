@@ -25,7 +25,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/permguard/permguard/pkg/agents/services"
-	storage "github.com/permguard/permguard/pkg/agents/storage"
+	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 	"go.uber.org/zap"
@@ -37,13 +37,13 @@ func mapStorageError(err error) error {
 		return nil
 	}
 	switch {
-	case errors.Is(err, storage.ErrNotFound):
+	case errors.Is(err, azstorage.ErrNotFound):
 		return status.Errorf(codes.NotFound, "%v", err)
-	case errors.Is(err, storage.ErrAlreadyExists):
+	case errors.Is(err, azstorage.ErrAlreadyExists):
 		return status.Errorf(codes.AlreadyExists, "%v", err)
-	case errors.Is(err, storage.ErrConflict):
+	case errors.Is(err, azstorage.ErrConflict):
 		return status.Errorf(codes.Aborted, "%v", err)
-	case errors.Is(err, storage.ErrInvalidInput):
+	case errors.Is(err, azstorage.ErrInvalidInput):
 		return status.Errorf(codes.InvalidArgument, "%v", err)
 	default:
 		return status.Errorf(codes.Internal, "%v", err)

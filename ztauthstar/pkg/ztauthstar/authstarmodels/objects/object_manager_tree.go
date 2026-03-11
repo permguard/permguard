@@ -50,9 +50,12 @@ func (m *ObjectManager) DeserializeTree(data []byte) (*Tree, error) {
 	if data == nil {
 		return nil, fmt.Errorf("objects: data is nil")
 	}
-	inputStr := string(data)
-	lines := strings.Split(strings.TrimSpace(inputStr), "\n")
+	inputStr := strings.TrimSpace(string(data))
 	tree := &Tree{}
+	if inputStr == "" {
+		return tree, nil
+	}
+	lines := strings.Split(inputStr, "\n")
 	for _, line := range lines {
 		parts := strings.SplitN(line, " ", 9)
 		if len(parts) != 9 {

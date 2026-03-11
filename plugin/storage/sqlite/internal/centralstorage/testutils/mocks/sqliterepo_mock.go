@@ -23,7 +23,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	mock "github.com/stretchr/testify/mock"
 
-	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // MockSqliteRepo sqlite ledger mock
@@ -37,40 +37,40 @@ func NewMockSqliteRepo() *MockSqliteRepo {
 }
 
 // UpsertZone creates or updates a zone.
-func (m *MockSqliteRepo) UpsertZone(_ context.Context, tx *sql.Tx, isCreate bool, zone *repos.Zone) (*repos.Zone, error) {
+func (m *MockSqliteRepo) UpsertZone(_ context.Context, tx *sql.Tx, isCreate bool, zone *azrepos.Zone) (*azrepos.Zone, error) {
 	args := m.Called(tx, isCreate, zone)
-	var r0 *repos.Zone
-	if val, ok := args.Get(0).(*repos.Zone); ok {
+	var r0 *azrepos.Zone
+	if val, ok := args.Get(0).(*azrepos.Zone); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
 // DeleteZone deletes a zone.
-func (m *MockSqliteRepo) DeleteZone(_ context.Context, tx *sql.Tx, zoneID int64) (*repos.Zone, error) {
+func (m *MockSqliteRepo) DeleteZone(_ context.Context, tx *sql.Tx, zoneID int64) (*azrepos.Zone, error) {
 	args := m.Called(tx, zoneID)
-	var r0 *repos.Zone
-	if val, ok := args.Get(0).(*repos.Zone); ok {
+	var r0 *azrepos.Zone
+	if val, ok := args.Get(0).(*azrepos.Zone); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
 // FetchZones fetches zones.
-func (m *MockSqliteRepo) FetchZones(_ context.Context, db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]repos.Zone, error) {
+func (m *MockSqliteRepo) FetchZones(_ context.Context, db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]azrepos.Zone, error) {
 	args := m.Called(db, page, pageSize, filterID, filterName)
-	var r0 []repos.Zone
-	if val, ok := args.Get(0).([]repos.Zone); ok {
+	var r0 []azrepos.Zone
+	if val, ok := args.Get(0).([]azrepos.Zone); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
 // UpsertLedger creates or updates a ledger.
-func (m *MockSqliteRepo) UpsertLedger(_ context.Context, tx *sql.Tx, isCreate bool, ledger *repos.Ledger) (*repos.Ledger, error) {
+func (m *MockSqliteRepo) UpsertLedger(_ context.Context, tx *sql.Tx, isCreate bool, ledger *azrepos.Ledger) (*azrepos.Ledger, error) {
 	args := m.Called(tx, isCreate, ledger)
-	var r0 *repos.Ledger
-	if val, ok := args.Get(0).(*repos.Ledger); ok {
+	var r0 *azrepos.Ledger
+	if val, ok := args.Get(0).(*azrepos.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
@@ -83,40 +83,40 @@ func (m *MockSqliteRepo) UpdateLedgerRef(_ context.Context, tx *sql.Tx, zoneID i
 }
 
 // DeleteLedger deletes a ledger.
-func (m *MockSqliteRepo) DeleteLedger(_ context.Context, tx *sql.Tx, zoneID int64, ledgerID string) (*repos.Ledger, error) {
+func (m *MockSqliteRepo) DeleteLedger(_ context.Context, tx *sql.Tx, zoneID int64, ledgerID string) (*azrepos.Ledger, error) {
 	args := m.Called(tx, zoneID, ledgerID)
-	var r0 *repos.Ledger
-	if val, ok := args.Get(0).(*repos.Ledger); ok {
+	var r0 *azrepos.Ledger
+	if val, ok := args.Get(0).(*azrepos.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
 // FetchLedgers fetches ledgers.
-func (m *MockSqliteRepo) FetchLedgers(_ context.Context, db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]repos.Ledger, error) {
+func (m *MockSqliteRepo) FetchLedgers(_ context.Context, db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]azrepos.Ledger, error) {
 	args := m.Called(db, page, pageSize, zoneID, filterID, filterName)
-	var r0 []repos.Ledger
-	if val, ok := args.Get(0).([]repos.Ledger); ok {
+	var r0 []azrepos.Ledger
+	if val, ok := args.Get(0).([]azrepos.Ledger); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
 // UpsertKeyValue creates or updates a key-value pair.
-func (m *MockSqliteRepo) UpsertKeyValue(_ context.Context, tx *sql.Tx, keyValue *repos.KeyValue) (*repos.KeyValue, error) {
+func (m *MockSqliteRepo) UpsertKeyValue(_ context.Context, tx *sql.Tx, keyValue *azrepos.KeyValue) (*azrepos.KeyValue, error) {
 	args := m.Called(tx, keyValue)
-	var r0 *repos.KeyValue
-	if val, ok := args.Get(0).(*repos.KeyValue); ok {
+	var r0 *azrepos.KeyValue
+	if val, ok := args.Get(0).(*azrepos.KeyValue); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
 // KeyValue retrieves a key-value pair by key.
-func (m *MockSqliteRepo) KeyValue(_ context.Context, db *sqlx.DB, zoneID int64, key string) (*repos.KeyValue, error) {
+func (m *MockSqliteRepo) KeyValue(_ context.Context, db *sqlx.DB, zoneID int64, key string) (*azrepos.KeyValue, error) {
 	args := m.Called(db, zoneID, key)
-	var r0 *repos.KeyValue
-	if val, ok := args.Get(0).(*repos.KeyValue); ok {
+	var r0 *azrepos.KeyValue
+	if val, ok := args.Get(0).(*azrepos.KeyValue); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)

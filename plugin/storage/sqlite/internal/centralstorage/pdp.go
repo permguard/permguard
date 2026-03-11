@@ -20,7 +20,7 @@ import (
 	"errors"
 
 	"github.com/permguard/permguard/pkg/agents/storage"
-	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 	"github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
@@ -39,7 +39,7 @@ func newSQLitePDPCentralStorage(storageContext *storage.Context, sqliteConnector
 		return nil, errors.New("storage: storageContext is nil")
 	}
 	if ledger == nil {
-		ledger = &repos.Repository{}
+		ledger = &azrepos.Repository{}
 	}
 	if sqlExec == nil {
 		sqlExec = &SqliteExec{}

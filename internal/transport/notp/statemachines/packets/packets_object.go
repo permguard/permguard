@@ -17,7 +17,7 @@
 package packets
 
 import (
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	aznotppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
 )
 
 // ObjectStatePacket is object state description packet.
@@ -32,29 +32,29 @@ type ObjectStatePacket struct {
 
 // Type returns the type of the packet.
 func (p *ObjectStatePacket) Type() uint64 {
-	return notppackets.CombineUint32toUint64(ObjectStatePacketType, 0)
+	return aznotppackets.CombineUint32toUint64(ObjectStatePacketType, 0)
 }
 
 // Serialize serializes the packet.
 func (p *ObjectStatePacket) Serialize() ([]byte, error) {
-	data := notppackets.SerializeString(nil, p.OID, notppackets.PacketNullByte)
-	data = notppackets.SerializeString(data, p.OType, notppackets.PacketNullByte)
-	data = notppackets.SerializeBytes(data, p.Content, notppackets.PacketNullByte)
+	data := aznotppackets.SerializeString(nil, p.OID, aznotppackets.PacketNullByte)
+	data = aznotppackets.SerializeString(data, p.OType, aznotppackets.PacketNullByte)
+	data = aznotppackets.SerializeBytes(data, p.Content, aznotppackets.PacketNullByte)
 	return data, nil
 }
 
 // Deserialize deserializes the packet.
 func (p *ObjectStatePacket) Deserialize(data []byte) error {
 	var err error
-	p.OID, data, err = notppackets.DeserializeString(data, notppackets.PacketNullByte)
+	p.OID, data, err = aznotppackets.DeserializeString(data, aznotppackets.PacketNullByte)
 	if err != nil {
 		return err
 	}
-	p.OType, data, err = notppackets.DeserializeString(data, notppackets.PacketNullByte)
+	p.OType, data, err = aznotppackets.DeserializeString(data, aznotppackets.PacketNullByte)
 	if err != nil {
 		return err
 	}
-	p.Content, _, err = notppackets.DeserializeBytes(data, notppackets.PacketNullByte)
+	p.Content, _, err = aznotppackets.DeserializeBytes(data, aznotppackets.PacketNullByte)
 	if err != nil {
 		return err
 	}

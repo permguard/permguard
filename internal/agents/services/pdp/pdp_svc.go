@@ -19,8 +19,8 @@ package pdp
 import (
 	"google.golang.org/grpc"
 
-	pdpctrl "github.com/permguard/permguard/internal/agents/services/pdp/controllers"
-	pdpv1 "github.com/permguard/permguard/internal/agents/services/pdp/endpoints/api/v1"
+	azpdpctrl "github.com/permguard/permguard/internal/agents/services/pdp/controllers"
+	azpdpv1 "github.com/permguard/permguard/internal/agents/services/pdp/endpoints/api/v1"
 	"github.com/permguard/permguard/pkg/agents/runtime"
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
@@ -64,7 +64,7 @@ func (f *Service) Endpoints() ([]services.EndpointInitializer, error) {
 			if err != nil {
 				return err
 			}
-			controller, err := pdpctrl.NewPDPController(srvCtx, pdpCentralStorage)
+			controller, err := azpdpctrl.NewPDPController(srvCtx, pdpCentralStorage)
 			if err != nil {
 				return nil
 			}
@@ -72,8 +72,8 @@ func (f *Service) Endpoints() ([]services.EndpointInitializer, error) {
 			if err != nil {
 				return err
 			}
-			pdpServer, err := pdpv1.NewPDPServer(endptCtx, controller)
-			pdpv1.RegisterV1PDPServiceServer(grpcServer, pdpServer)
+			pdpServer, err := azpdpv1.NewPDPServer(endptCtx, controller)
+			azpdpv1.RegisterV1PDPServiceServer(grpcServer, pdpServer)
 			return err
 		})
 	if err != nil {

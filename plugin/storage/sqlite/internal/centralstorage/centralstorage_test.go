@@ -28,7 +28,7 @@ import (
 
 	"github.com/permguard/permguard/pkg/agents/runtime/mocks"
 	"github.com/permguard/permguard/pkg/agents/storage"
-	testutilsmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/testutils/mocks"
+	azmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/testutils/mocks"
 )
 
 // TestSqliteExecutor tests the sqlite executor.
@@ -38,7 +38,7 @@ func TestSqliteExecutor(t *testing.T) {
 	{
 		mockRuntimeCtx := mocks.NewRuntimeContextMock(nil, nil)
 		mockStorageCtx, _ := storage.NewStorageContext(mockRuntimeCtx, storage.StorageSQLite)
-		mockConnector := testutilsmocks.NewMockSQLiteConnector()
+		mockConnector := azmocks.NewMockSQLiteConnector()
 
 		sqliteExec := &SqliteExec{}
 
@@ -52,7 +52,7 @@ func TestSqliteExecutor(t *testing.T) {
 	{
 		mockRuntimeCtx := mocks.NewRuntimeContextMock(nil, nil)
 		mockStorageCtx, _ := storage.NewStorageContext(mockRuntimeCtx, storage.StorageSQLite)
-		mockConnector := testutilsmocks.NewMockSQLiteConnector()
+		mockConnector := azmocks.NewMockSQLiteConnector()
 
 		sqlDB, _, _ := sqlmock.New()
 		sqlxDB := sqlx.NewDb(sqlDB, "sqlite")
@@ -75,7 +75,7 @@ func TestNewSQLiteCentralStorage(t *testing.T) {
 	{
 		mockRuntimeCtx := mocks.NewRuntimeContextMock(nil, nil)
 		mockStorageCtx, _ := storage.NewStorageContext(mockRuntimeCtx, storage.StorageSQLite)
-		mockConnector := testutilsmocks.NewMockSQLiteConnector()
+		mockConnector := azmocks.NewMockSQLiteConnector()
 
 		sqliteExec, err := NewSQLiteCentralStorage(mockStorageCtx, mockConnector)
 		require.NoError(t, err)

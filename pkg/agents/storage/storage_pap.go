@@ -19,44 +19,27 @@ package storage
 import (
 	"context"
 
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
-	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
-	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
-	azmodelspap "github.com/permguard/permguard/pkg/transport/models/pap"
+	azmpap "github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
 // PAPCentralStorage is the interface for the PAP central storage.
 type PAPCentralStorage interface {
 	// CreateLedger creates a new ledger.
-	CreateLedger(ctx context.Context, ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error)
+	CreateLedger(ctx context.Context, ledger *azmpap.Ledger) (*azmpap.Ledger, error)
 	// UpdateLedger updates an ledger.
-	UpdateLedger(ctx context.Context, ledger *azmodelspap.Ledger) (*azmodelspap.Ledger, error)
+	UpdateLedger(ctx context.Context, ledger *azmpap.Ledger) (*azmpap.Ledger, error)
 	// DeleteLedger deletes an ledger.
-	DeleteLedger(ctx context.Context, zoneID int64, ledgerID string) (*azmodelspap.Ledger, error)
+	DeleteLedger(ctx context.Context, zoneID int64, ledgerID string) (*azmpap.Ledger, error)
 	// FetchLedgers gets all ledgers.
-	FetchLedgers(ctx context.Context, page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmodelspap.Ledger, error)
-	// OnPullHandleRequestCurrentState handles the request for the current state.
-	OnPullHandleRequestCurrentState(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	// OnPullSendNotifyCurrentStateResponse notifies the current state.
-	OnPullSendNotifyCurrentStateResponse(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	// OnPullSendNegotiationRequest sends the negotiation request.
-	OnPullSendNegotiationRequest(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	// OnPullHandleNegotiationResponse handles the negotiation response.
-	OnPullHandleNegotiationResponse(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	// OnPullHandleExchangeDataStream exchanges the data stream.
-	OnPullHandleExchangeDataStream(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	// OnPullHandleCommit handles the commit.
-	OnPullHandleCommit(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	// OnPushHandleNotifyCurrentState notifies the current state.
-	OnPushHandleNotifyCurrentState(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	// OnPushSendNotifyCurrentStateResponse handles the current state response.
-	OnPushSendNotifyCurrentStateResponse(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	// OnPushSendNegotiationRequest sends the negotiation request.
-	OnPushSendNegotiationRequest(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	// OnPushHandleNegotiationResponse handles the negotiation response.
-	OnPushHandleNegotiationResponse(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	// OnPushHandleExchangeDataStream exchanges the data stream.
-	OnPushHandleExchangeDataStream(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	// OnPushSendCommit sends the commit.
-	OnPushSendCommit(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
+	FetchLedgers(ctx context.Context, page int32, pageSize int32, zoneID int64, fields map[string]any) ([]azmpap.Ledger, error)
+	// PushAdvertise handles the push advertise step.
+	PushAdvertise(ctx context.Context, req *azmpap.PushAdvertiseRequest) (*azmpap.PushAdvertiseResponse, error)
+	// PushTransfer handles the push transfer step (receives objects and optionally commits).
+	PushTransfer(ctx context.Context, req *azmpap.PushTransferRequest) (*azmpap.PushTransferResponse, error)
+	// PullState handles the pull state step.
+	PullState(ctx context.Context, req *azmpap.PullStateRequest) (*azmpap.PullStateResponse, error)
+	// PullNegotiate handles the pull negotiate step (computes diff commit IDs).
+	PullNegotiate(ctx context.Context, req *azmpap.PullNegotiateRequest) (*azmpap.PullNegotiateResponse, error)
+	// PullObjects handles the pull objects step (returns objects for a commit).
+	PullObjects(ctx context.Context, req *azmpap.PullObjectsRequest) (*azmpap.PullObjectsResponse, error)
 }

@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	azwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
 
@@ -43,12 +43,12 @@ func (m *Manager) ExecCheckoutRefFilesForRemote(remote string, zoneID int64, _ s
 	if output == nil {
 		output = map[string]any{}
 	}
-	remoteRef := wkscommon.GenerateRemoteRef(remote, zoneID, ledgerID)
+	remoteRef := azwkscommon.GenerateRemoteRef(remote, zoneID, ledgerID)
 	err := m.SaveRefConfig(ledgerID, remoteRef, commit)
 	if err != nil {
 		return "", "", output, err
 	}
-	headRef := wkscommon.GenerateHeadRef(zoneID, ledgerID)
+	headRef := azwkscommon.GenerateHeadRef(zoneID, ledgerID)
 	err = m.SaveRefWithRemoteConfig(ledgerID, headRef, remoteRef, commit)
 	if err != nil {
 		return "", "", output, err
@@ -57,7 +57,7 @@ func (m *Manager) ExecCheckoutRefFilesForRemote(remote string, zoneID int64, _ s
 }
 
 // ExecCheckoutHead checks out the head.
-func (m *Manager) ExecCheckoutHead(ref string, output map[string]any, out common.PrinterOutFunc) (*wkscommon.HeadInfo, map[string]any, error) {
+func (m *Manager) ExecCheckoutHead(ref string, output map[string]any, out common.PrinterOutFunc) (*azwkscommon.HeadInfo, map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}

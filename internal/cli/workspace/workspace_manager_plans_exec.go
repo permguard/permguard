@@ -17,6 +17,7 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -284,7 +285,7 @@ func (m *Manager) execInternalApply(internal bool, out common.PrinterOutFunc) (m
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", fmt.Sprintf("The tree has been created with id: %s.", common.IDText(treeObj.OID())), nil, true)
 	}
-	commit, commitObj, err := m.buildPlanCommit(treeObj.OID(), headCtx.remoteCommitID)
+	_, commitObj, err := m.buildPlanCommit(treeObj.OID(), headCtx.remoteCommitID)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "apply", "Failed to build the commit.", nil, true)
@@ -296,27 +297,22 @@ func (m *Manager) execInternalApply(internal bool, out common.PrinterOutFunc) (m
 		out(nil, "apply", fmt.Sprintf("The commit has been created with id: %s.", common.IDText(commitObj.OID())), nil, true)
 	}
 
-	bag := map[string]any{
-		OutFuncKey: func(key string, output string, newLine bool) {
-			out(nil, key, output, nil, newLine)
-		},
-		LocalCodeTreeObjectKey:   treeObj,
-		LocalCodeCommitKey:       commit,
-		LocalCodeCommitObjectKey: commitObj,
-		HeadContextKey:           headCtx,
+	// Execute the synchronous push
+	pushResult, err := m.execPush(headCtx, commitObj, out)
+	if err != nil {
+		_, logErr := m.logsMgr.Log(headCtx.headRefInfo, headCtx.remoteCommitID, commitObj.OID(), logs.LogActionPush, false, headCtx.LedgerURI())
+		if logErr != nil {
+			return fail(nil, fmt.Errorf("cli: push failed: %w (also failed to log: %v)", err, logErr))
+		}
+		return fail(nil, err)
 	}
 
-	ctx, err := m.rmSrvtMgr.NOTPPush(headCtx.Server(), headCtx.ServerPAPPort(), headCtx.ZoneID(), headCtx.LedgerID(), bag, m)
+	_, err = m.logsMgr.Log(headCtx.headRefInfo, headCtx.remoteCommitID, commitObj.OID(), logs.LogActionPush, pushResult.Committed, headCtx.LedgerURI())
 	if err != nil {
 		return fail(nil, err)
 	}
-	committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
-	_, err = m.logsMgr.Log(headCtx.headRefInfo, headCtx.remoteCommitID, commitObj.OID(), logs.LogActionPush, committed, headCtx.LedgerURI())
-	if err != nil {
-		return fail(nil, err)
-	}
-	if !committed {
-		return fail(nil, err)
+	if !pushResult.Committed {
+		return fail(nil, errors.New("cli: push was not committed by the server"))
 	}
 
 	_, err = m.execInternalPull(true, out)

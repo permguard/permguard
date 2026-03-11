@@ -26,7 +26,7 @@ import (
 	"github.com/pelletier/go-toml"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	azwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
@@ -535,15 +535,15 @@ func (m *Manager) Commit(commitID string) (*objects.Commit, error) {
 }
 
 // History gets the commit history.
-func (m *Manager) History(commitID string) ([]wkscommon.CommitInfo, error) {
-	var commits []wkscommon.CommitInfo
+func (m *Manager) History(commitID string) ([]azwkscommon.CommitInfo, error) {
+	var commits []azwkscommon.CommitInfo
 	commit, err := m.Commit(commitID)
 	if err != nil {
 		return nil, err
 	}
 
 	for commit != nil {
-		commitInfo, err := wkscommon.NewCommitInfo(commitID, commit)
+		commitInfo, err := azwkscommon.NewCommitInfo(commitID, commit)
 		if err != nil {
 			return nil, err
 		}

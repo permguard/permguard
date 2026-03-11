@@ -20,35 +20,24 @@ import (
 	"context"
 	"fmt"
 
-	storage "github.com/permguard/permguard/pkg/agents/storage"
-	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/transport/models/pap"
+	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
-
-	notptransportsm "github.com/permguard/permguard/internal/transport/notp/statemachines"
-	notpagpackets "github.com/permguard/permguard/internal/transport/notp/statemachines/packets"
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
-	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
-	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
 )
 
-// OnPullHandleRequestCurrentState handles the request for the current state.
-func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-	zoneID, ok := getFromHandlerContext[int64](handlerCtx, notptransportsm.ZoneIDKey)
-	if !ok || zoneID <= 0 {
-		return nil, fmt.Errorf("storage: invalid input zone id: %w", storage.ErrInvalidInput)
+// PullState handles the pull state step.
+func (s SQLiteCentralStoragePAP) PullState(ctx context.Context, req *pap.PullStateRequest) (*pap.PullStateResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("storage: nil request: %w", azstorage.ErrInvalidInput)
 	}
-	if len(packets) == 0 {
-		return nil, fmt.Errorf("storage: invalid input packets for notify current state: %w", storage.ErrInvalidInput)
+	if req.ZoneID <= 0 {
+		return nil, fmt.Errorf("storage: invalid zone id: %w", azstorage.ErrInvalidInput)
 	}
-	remoteRefSPacket := &notpagpackets.RemoteRefStatePacket{}
-	err := notppackets.ConvertPacketable(packets[0], remoteRefSPacket)
-	if err != nil {
-		return nil, err
+	if req.RefCommit == "" || req.RefPrevCommit == "" {
+		return nil, fmt.Errorf("storage: invalid ref commit: %w", azstorage.ErrInvalidInput)
 	}
-	if remoteRefSPacket.RefCommit == "" || remoteRefSPacket.RefPrevCommit == "" {
-		return nil, fmt.Errorf("storage: invalid remote ref state packet: %w", storage.ErrInvalidInput)
-	}
-	ledger, err := s.readLedgerFromHandlerContext(ctx, handlerCtx)
+	ledger, err := s.readLedger(ctx, req.ZoneID, req.LedgerID)
 	if err != nil {
 		return nil, err
 	}
@@ -56,85 +45,68 @@ func (s SQLiteCentralStoragePAP) OnPullHandleRequestCurrentState(ctx context.Con
 	hasConflicts := false
 	isUpToDate := false
 	objMng, err := objects.NewObjectManager()
-	if headCommitID != objects.ZeroOID && headCommitID != remoteRefSPacket.RefPrevCommit {
+	if err != nil {
+		return nil, err
+	}
+	if headCommitID != objects.ZeroOID && headCommitID != req.RefPrevCommit {
+		db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 		if err != nil {
-			return nil, err
+			return nil, azrepos.WrapSqliteError(errorMessageCannotConnect, err)
 		}
-		db, err1 := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
-		if err1 != nil {
-			return nil, repos.WrapSqliteError(errorMessageCannotConnect, err1)
-		}
-		hasMatch, history, err2 := objMng.BuildCommitHistory(remoteRefSPacket.RefPrevCommit, headCommitID, false, func(oid string) (*objects.Object, error) {
-			keyValue, errK := s.sqlRepo.KeyValue(ctx, db, zoneID, oid)
+		hasMatch, history, err := objMng.BuildCommitHistory(req.RefPrevCommit, headCommitID, false, func(oid string) (*objects.Object, error) {
+			keyValue, errK := s.sqlRepo.KeyValue(ctx, db, req.ZoneID, oid)
 			if errK != nil || keyValue == nil || keyValue.Value == nil {
 				return nil, nil
 			}
 			return objects.NewObject(keyValue.Value)
 		})
-		if err2 != nil {
-			return nil, fmt.Errorf("storage: failed to build commit history: %w", err2)
+		if err != nil {
+			return nil, fmt.Errorf("storage: failed to build commit history: %w", err)
 		}
 		hasConflicts = hasMatch && len(history) > 1
-		if headCommitID == objects.ZeroOID && remoteRefSPacket.RefPrevCommit != objects.ZeroOID {
+		if headCommitID == objects.ZeroOID && req.RefPrevCommit != objects.ZeroOID {
 			hasConflicts = true
 		}
-		isUpToDate = headCommitID == remoteRefSPacket.RefCommit
+		isUpToDate = headCommitID == req.RefCommit
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
+		return nil, azrepos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	_, commits, err := objMng.BuildCommitHistory(headCommitID, remoteRefSPacket.RefCommit, true, func(oid string) (*objects.Object, error) {
-		return s.readObject(ctx, db, zoneID, oid)
+	_, commits, err := objMng.BuildCommitHistory(headCommitID, req.RefCommit, true, func(oid string) (*objects.Object, error) {
+		return s.readObject(ctx, db, req.ZoneID, oid)
 	})
 	if err != nil {
 		return nil, err
 	}
-	packet := &notpagpackets.LocalRefStatePacket{
-		RefCommit:       headCommitID,
+	return &pap.PullStateResponse{
+		ServerCommit:    headCommitID,
 		NumberOfCommits: uint32(len(commits)),
 		HasConflicts:    hasConflicts,
 		IsUpToDate:      isUpToDate,
-	}
-	handlerCtx.SetValue(LocalCommitIDKey, headCommitID)
-	handlerCtx.SetValue(RemoteCommitIDKey, remoteRefSPacket.RefCommit)
-	handlerReturn := &notpstatemachines.HostHandlerReturn{
-		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
-		Packetables:  []notppackets.Packetable{packet},
-	}
-	handlerCtx.SetValue(TerminationKey, isUpToDate)
-	return handlerReturn, nil
+	}, nil
 }
 
-// OnPullSendNotifyCurrentStateResponse notifies the current state.
-func (s SQLiteCentralStoragePAP) OnPullSendNotifyCurrentStateResponse(_ context.Context, _ *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-	handlerReturn := &notpstatemachines.HostHandlerReturn{
-		Packetables: packets,
+// PullNegotiate handles the pull negotiate step.
+func (s SQLiteCentralStoragePAP) PullNegotiate(ctx context.Context, req *pap.PullNegotiateRequest) (*pap.PullNegotiateResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("storage: nil request: %w", azstorage.ErrInvalidInput)
 	}
-	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
-	return handlerReturn, nil
-}
-
-// OnPullSendNegotiationRequest sends the negotiation request.
-func (s SQLiteCentralStoragePAP) OnPullSendNegotiationRequest(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-	zoneID, ok := getFromHandlerContext[int64](handlerCtx, notptransportsm.ZoneIDKey)
-	if !ok || zoneID <= 0 {
-		return nil, fmt.Errorf("storage: invalid input zone id: %w", storage.ErrInvalidInput)
+	if req.ZoneID <= 0 {
+		return nil, fmt.Errorf("storage: invalid zone id: %w", azstorage.ErrInvalidInput)
 	}
-	localCommitID, _ := getFromHandlerContext[string](handlerCtx, LocalCommitIDKey)
-	remoteCommitID, _ := getFromHandlerContext[string](handlerCtx, RemoteCommitIDKey)
 	commitIDs := []string{}
-	if localCommitID != remoteCommitID {
+	if req.LocalCommitID != req.RemoteCommitID {
 		objMng, err := objects.NewObjectManager()
 		if err != nil {
 			return nil, err
 		}
 		db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 		if err != nil {
-			return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
+			return nil, azrepos.WrapSqliteError(errorMessageCannotConnect, err)
 		}
-		_, history, err := objMng.BuildCommitHistory(localCommitID, remoteCommitID, true, func(oid string) (*objects.Object, error) {
-			return s.readObject(ctx, db, zoneID, oid)
+		_, history, err := objMng.BuildCommitHistory(req.RemoteCommitID, req.LocalCommitID, true, func(oid string) (*objects.Object, error) {
+			return s.readObject(ctx, db, req.ZoneID, oid)
 		})
 		if err != nil {
 			return nil, err
@@ -147,35 +119,22 @@ func (s SQLiteCentralStoragePAP) OnPullSendNegotiationRequest(ctx context.Contex
 			commitIDs = append(commitIDs, obj.OID())
 		}
 	}
-	handlerCtx.SetValue(DiffCommitIDsKey, commitIDs)
-	handlerCtx.SetValue(DiffCommitIDCursorKey, -1)
-	handlerReturn := &notpstatemachines.HostHandlerReturn{
-		Packetables: packets,
-	}
-	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
-	return handlerReturn, nil
+	return &pap.PullNegotiateResponse{
+		CommitIDs: commitIDs,
+	}, nil
 }
 
-// OnPullHandleNegotiationResponse handles the negotiation response.
-func (s SQLiteCentralStoragePAP) OnPullHandleNegotiationResponse(_ context.Context, _ *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-	handlerReturn := &notpstatemachines.HostHandlerReturn{
-		Packetables: packets,
-	}
-	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
-	return handlerReturn, nil
-}
-
-// buildPushPacketablesForCommit builds the push packetables for the tree.
-func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(ctx context.Context, zoneID int64, commitID string) ([]notppackets.Packetable, error) {
+// collectObjectsForCommit collects all objects for a given commit.
+func (s SQLiteCentralStoragePAP) collectObjectsForCommit(ctx context.Context, zoneID int64, commitID string) ([]pap.ObjectState, error) {
 	objMng, err := objects.NewObjectManager()
 	if err != nil {
 		return nil, err
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, repos.WrapSqliteError(errorMessageCannotConnect, err)
+		return nil, azrepos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	packetable := []notppackets.Packetable{}
+	result := []pap.ObjectState{}
 
 	commitObj, err := s.readObject(ctx, db, zoneID, commitID)
 	if err != nil {
@@ -185,12 +144,11 @@ func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(ctx context.Conte
 	if err != nil {
 		return nil, err
 	}
-	packetCommit := &notpagpackets.ObjectStatePacket{
+	result = append(result, pap.ObjectState{
 		OID:     commitObj.OID(),
 		OType:   objects.ObjectTypeCommit,
 		Content: commitObj.Content(),
-	}
-	packetable = append(packetable, packetCommit)
+	})
 
 	treeObj, err := s.readObject(ctx, db, zoneID, commit.Tree())
 	if err != nil {
@@ -200,67 +158,39 @@ func (s SQLiteCentralStoragePAP) buildPushPacketablesForCommit(ctx context.Conte
 	if err != nil {
 		return nil, err
 	}
-
-	packetTree := &notpagpackets.ObjectStatePacket{
+	result = append(result, pap.ObjectState{
 		OID:     treeObj.OID(),
 		OType:   objects.ObjectTypeTree,
 		Content: treeObj.Content(),
-	}
-	packetable = append(packetable, packetTree)
+	})
 
 	for _, entry := range tree.Entries() {
-		oid := entry.OID()
-		oType := entry.Type()
-		obj, err := s.readObject(ctx, db, zoneID, oid)
+		obj, err := s.readObject(ctx, db, zoneID, entry.OID())
 		if err != nil {
 			return nil, err
 		}
-		packet := &notpagpackets.ObjectStatePacket{
-			OID:     oid,
-			OType:   oType,
+		result = append(result, pap.ObjectState{
+			OID:     entry.OID(),
+			OType:   entry.Type(),
 			Content: obj.Content(),
-		}
-		packetable = append(packetable, packet)
+		})
 	}
-	return packetable, nil
+	return result, nil
 }
 
-// OnPullHandleExchangeDataStream exchanges the data stream.
-func (s SQLiteCentralStoragePAP) OnPullHandleExchangeDataStream(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-	zoneID, ok := getFromHandlerContext[int64](handlerCtx, notptransportsm.ZoneIDKey)
-	if !ok || zoneID <= 0 {
-		return nil, fmt.Errorf("storage: invalid input zone id: %w", storage.ErrInvalidInput)
+// PullObjects handles the pull objects step.
+func (s SQLiteCentralStoragePAP) PullObjects(ctx context.Context, req *pap.PullObjectsRequest) (*pap.PullObjectsResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("storage: nil request: %w", azstorage.ErrInvalidInput)
 	}
-	handlerReturn := &notpstatemachines.HostHandlerReturn{
-		Packetables: packets,
+	if req.ZoneID <= 0 {
+		return nil, fmt.Errorf("storage: invalid zone id: %w", azstorage.ErrInvalidInput)
 	}
-	commitIDs, _ := getFromHandlerContext[[]string](handlerCtx, DiffCommitIDsKey)
-	commitIDCursor, _ := getFromHandlerContext[int](handlerCtx, DiffCommitIDCursorKey)
-	commitIDCursor++
-	handlerCtx.SetValue(DiffCommitIDCursorKey, commitIDCursor)
-	if commitIDCursor < len(commitIDs) {
-		commitID := commitIDs[commitIDCursor]
-		packetables, err := s.buildPushPacketablesForCommit(ctx, zoneID, commitID)
-		if err != nil {
-			return nil, err
-		}
-		handlerReturn.Packetables = packetables
-		if commitIDCursor == len(commitIDs)-1 {
-			handlerReturn.HasMore = false
-			handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.CompletedDataStreamValue)
-		} else {
-			handlerReturn.HasMore = true
-			handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.ActiveDataStreamValue)
-		}
+	objs, err := s.collectObjectsForCommit(ctx, req.ZoneID, req.CommitID)
+	if err != nil {
+		return nil, err
 	}
-	return handlerReturn, nil
-}
-
-// OnPullHandleCommit handles the commit.
-func (s SQLiteCentralStoragePAP) OnPullHandleCommit(_ context.Context, _ *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-	handlerReturn := &notpstatemachines.HostHandlerReturn{
-		Packetables: packets,
-	}
-	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
-	return handlerReturn, nil
+	return &pap.PullObjectsResponse{
+		Objects: objs,
+	}, nil
 }

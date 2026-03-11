@@ -23,58 +23,58 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
-	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
-	notptransport "github.com/permguard/permguard/notp-protocol/pkg/notp/transport"
+	aznotppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	aznotpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
+	aznotptransport "github.com/permguard/permguard/notp-protocol/pkg/notp/transport"
 )
 
 // stateMachinesInfo represents the state machines and their respective packet logs.
 type stateMachinesInfo struct {
 	follower         *StateMachine
-	followerSent     []notppackets.Packet
-	followerReceived []notppackets.Packet
+	followerSent     []aznotppackets.Packet
+	followerReceived []aznotppackets.Packet
 
 	leader         *StateMachine
-	leaderSent     []notppackets.Packet
-	leaderReceived []notppackets.Packet
+	leaderSent     []aznotppackets.Packet
+	leaderReceived []aznotppackets.Packet
 }
 
 // buildCommitStateMachines initializes and returns the follower and leader state machines.
 func buildCommitStateMachines(assert *assert.Assertions, followerHandler HostHandler, leaderHandler HostHandler) *stateMachinesInfo {
 	sMInfo := &stateMachinesInfo{
-		followerSent:     []notppackets.Packet{},
-		followerReceived: []notppackets.Packet{},
-		leaderSent:       []notppackets.Packet{},
-		leaderReceived:   []notppackets.Packet{},
+		followerSent:     []aznotppackets.Packet{},
+		followerReceived: []aznotppackets.Packet{},
+		leaderSent:       []aznotppackets.Packet{},
+		leaderReceived:   []aznotppackets.Packet{},
 	}
 
-	onFollowerSent := func(packet *notppackets.Packet) {
+	onFollowerSent := func(packet *aznotppackets.Packet) {
 		sMInfo.followerSent = append(sMInfo.followerSent, *packet)
 	}
-	onFollowerReceived := func(packet *notppackets.Packet) {
+	onFollowerReceived := func(packet *aznotppackets.Packet) {
 		sMInfo.followerReceived = append(sMInfo.followerReceived, *packet)
 	}
 
-	onLeaderSent := func(packet *notppackets.Packet) {
+	onLeaderSent := func(packet *aznotppackets.Packet) {
 		sMInfo.leaderSent = append(sMInfo.leaderSent, *packet)
 	}
-	onLeaderReceived := func(packet *notppackets.Packet) {
+	onLeaderReceived := func(packet *aznotppackets.Packet) {
 		sMInfo.leaderReceived = append(sMInfo.leaderReceived, *packet)
 	}
 
-	followerStream, err := notptransport.NewInMemoryStream(5 * time.Second)
+	followerStream, err := aznotptransport.NewInMemoryStream(5 * time.Second)
 	assert.Nil(err, "Failed to initialize the follower transport stream")
-	leaderStream, err := notptransport.NewInMemoryStream(5 * time.Second)
+	leaderStream, err := aznotptransport.NewInMemoryStream(5 * time.Second)
 	assert.Nil(err, "Failed to initialize the leader transport stream")
 
-	followerPacketLogger, err := notptransport.NewPacketInspector(onFollowerSent, onFollowerReceived)
+	followerPacketLogger, err := aznotptransport.NewPacketInspector(onFollowerSent, onFollowerReceived)
 	assert.Nil(err, "Failed to initialize the follower packet logger")
-	followerTransport, err := notptransport.NewTransportLayer(leaderStream.TransmitPacket, followerStream.ReceivePacket, followerPacketLogger)
+	followerTransport, err := aznotptransport.NewTransportLayer(leaderStream.TransmitPacket, followerStream.ReceivePacket, followerPacketLogger)
 	assert.Nil(err, "Failed to initialize the follower transport layer")
 
-	leaderPacketLogger, err := notptransport.NewPacketInspector(onLeaderSent, onLeaderReceived)
+	leaderPacketLogger, err := aznotptransport.NewPacketInspector(onLeaderSent, onLeaderReceived)
 	assert.Nil(err, "Failed to initialize the leader packet logger")
-	leaderTransport, err := notptransport.NewTransportLayer(followerStream.TransmitPacket, leaderStream.ReceivePacket, leaderPacketLogger)
+	leaderTransport, err := aznotptransport.NewTransportLayer(followerStream.TransmitPacket, leaderStream.ReceivePacket, leaderPacketLogger)
 	assert.Nil(err, "Failed to initialize the leader transport layer")
 
 	followerSMachine, err := NewFollowerStateMachine(followerHandler, followerTransport)
@@ -174,33 +174,33 @@ func TestPullProtocolExecution(t *testing.T) {
 			leaderIDs := []uint16{}
 
 			streamSize := 3
-			followerHandler := func(handlerCtx *HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*HostHandlerReturn, error) {
+			followerHandler := func(handlerCtx *HandlerContext, statePacket *aznotpsmpackets.StatePacket, packets []aznotppackets.Packetable) (*HostHandlerReturn, error) {
 				currentStateID := handlerCtx.CurrentStateID()
 				followerIDs = append(followerIDs, currentStateID)
-				packet := &notppackets.Packet{
+				packet := &aznotppackets.Packet{
 					Data: []byte("sample data"),
 				}
 				handlerReturn := &HostHandlerReturn{
-					Packetables: []notppackets.Packetable{packet},
+					Packetables: []aznotppackets.Packetable{packet},
 				}
 				if handlerCtx.CurrentStateID() == PublisherDataStreamStateID && handlerCtx.FlowType() == PushFlowType {
 					if streamSize > 0 {
-						handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.ActiveDataStreamValue)
+						handlerReturn.MessageValue = aznotppackets.CombineUint32toUint64(aznotpsmpackets.AcknowledgedValue, aznotpsmpackets.ActiveDataStreamValue)
 						handlerReturn.HasMore = true
 					} else {
-						handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.CompletedDataStreamValue)
+						handlerReturn.MessageValue = aznotppackets.CombineUint32toUint64(aznotpsmpackets.AcknowledgedValue, aznotpsmpackets.CompletedDataStreamValue)
 						handlerReturn.HasMore = false
 					}
 					streamSize--
 				} else if handlerCtx.CurrentStateID() == SubscriberDataStreamStateID && handlerCtx.FlowType() == PullFlowType {
 					handlerReturn.MessageValue = statePacket.MessageValue
 				} else {
-					handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
+					handlerReturn.MessageValue = aznotppackets.CombineUint32toUint64(aznotpsmpackets.AcknowledgedValue, aznotpsmpackets.UnknownValue)
 				}
 				return handlerReturn, nil
 			}
 
-			leaderHandler := func(handlerCtx *HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*HostHandlerReturn, error) {
+			leaderHandler := func(handlerCtx *HandlerContext, statePacket *aznotpsmpackets.StatePacket, packets []aznotppackets.Packetable) (*HostHandlerReturn, error) {
 				currentStateID := handlerCtx.CurrentStateID()
 				leaderIDs = append(leaderIDs, currentStateID)
 				handlerReturn := &HostHandlerReturn{
@@ -210,16 +210,16 @@ func TestPullProtocolExecution(t *testing.T) {
 					handlerReturn.MessageValue = statePacket.MessageValue
 				} else if handlerCtx.CurrentStateID() == PublisherDataStreamStateID && handlerCtx.FlowType() == PullFlowType {
 					if streamSize > 0 {
-						handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.ActiveDataStreamValue)
+						handlerReturn.MessageValue = aznotppackets.CombineUint32toUint64(aznotpsmpackets.AcknowledgedValue, aznotpsmpackets.ActiveDataStreamValue)
 						handlerReturn.HasMore = true
 					} else {
-						handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.CompletedDataStreamValue)
+						handlerReturn.MessageValue = aznotppackets.CombineUint32toUint64(aznotpsmpackets.AcknowledgedValue, aznotpsmpackets.CompletedDataStreamValue)
 						handlerReturn.HasMore = false
 					}
 					streamSize--
 
 				} else {
-					handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
+					handlerReturn.MessageValue = aznotppackets.CombineUint32toUint64(aznotpsmpackets.AcknowledgedValue, aznotpsmpackets.UnknownValue)
 				}
 				return handlerReturn, nil
 			}

@@ -25,16 +25,16 @@ import (
 
 	"github.com/permguard/permguard/pkg/agents/runtime/mocks"
 	"github.com/permguard/permguard/pkg/agents/storage"
-	csmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/testutils/mocks"
+	azmocks "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/testutils/mocks"
 )
 
 // createSQLiteZAPCentralStorageWithMocks creates a new SQLiteCentralStorageZAP with mocks.
-func createSQLiteZAPCentralStorageWithMocks() (*SQLiteCentralStorageZAP, *storage.Context, *csmocks.MockSQLiteConnector, *csmocks.MockSqliteRepo, *csmocks.MockSqliteExecutor, *sqlx.DB, sqlmock.Sqlmock) {
+func createSQLiteZAPCentralStorageWithMocks() (*SQLiteCentralStorageZAP, *storage.Context, *azmocks.MockSQLiteConnector, *azmocks.MockSqliteRepo, *azmocks.MockSqliteExecutor, *sqlx.DB, sqlmock.Sqlmock) {
 	mockRuntimeCtx := mocks.NewRuntimeContextMock(nil, nil)
 	mockStorageCtx, _ := storage.NewStorageContext(mockRuntimeCtx, storage.StorageSQLite)
-	mockConnector := csmocks.NewMockSQLiteConnector()
-	mockSQLRepo := csmocks.NewMockSqliteRepo()
-	mockSQLExec := csmocks.NewMockSqliteExecutor()
+	mockConnector := azmocks.NewMockSQLiteConnector()
+	mockSQLRepo := azmocks.NewMockSqliteRepo()
+	mockSQLExec := azmocks.NewMockSqliteExecutor()
 	storage, _ := newSQLiteZAPCentralStorage(mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec)
 	sqlDB, sqlMock, _ := sqlmock.New()
 	sqlxDB := sqlx.NewDb(sqlDB, "sqlite")

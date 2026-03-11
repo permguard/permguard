@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	azwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 )
 
 // ExecInitialize initializes the config resources.
@@ -42,11 +42,11 @@ func (m *Manager) ExecAddRemote(remote string, server string, zap int, pap int, 
 	if output == nil {
 		output = map[string]any{}
 	}
-	remote, err := wkscommon.SanitizeRemote(remote)
+	remote, err := azwkscommon.SanitizeRemote(remote)
 	if err != nil {
 		return output, err
 	}
-	if wkscommon.IsReservedKeyword(remote) {
+	if azwkscommon.IsReservedKeyword(remote) {
 		return output, fmt.Errorf("cli: remote %s is a reserved keyword", remote)
 	}
 	server = strings.ToLower(server)
@@ -90,7 +90,7 @@ func (m *Manager) ExecRemoveRemote(remote string, output map[string]any, out com
 	if output == nil {
 		output = map[string]any{}
 	}
-	remote, err := wkscommon.SanitizeRemote(remote)
+	remote, err := azwkscommon.SanitizeRemote(remote)
 	if err != nil {
 		return output, err
 	}

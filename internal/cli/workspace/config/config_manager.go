@@ -23,7 +23,7 @@ import (
 	"github.com/pelletier/go-toml"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	azwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
 )
 
@@ -77,8 +77,8 @@ func (m *Manager) saveConfig(override bool, cfg *config) error {
 }
 
 // RemoteInfo gets the remote info.
-func (m *Manager) RemoteInfo(remote string) (*wkscommon.RemoteInfo, error) {
-	remote, err := wkscommon.SanitizeRemote(remote)
+func (m *Manager) RemoteInfo(remote string) (*azwkscommon.RemoteInfo, error) {
+	remote, err := azwkscommon.SanitizeRemote(remote)
 	if err != nil {
 		return nil, err
 	}
@@ -90,11 +90,11 @@ func (m *Manager) RemoteInfo(remote string) (*wkscommon.RemoteInfo, error) {
 		return nil, fmt.Errorf("cli: remote %s does not exist", remote)
 	}
 	cfgRemote := cfg.Remotes[remote]
-	return wkscommon.NewRemoteInfo(cfgRemote.Server, cfgRemote.ZAPPort, cfgRemote.PAPPort)
+	return azwkscommon.NewRemoteInfo(cfgRemote.Server, cfgRemote.ZAPPort, cfgRemote.PAPPort)
 }
 
 // LedgerInfo gets the ref info.
-func (m *Manager) LedgerInfo(ledgerURI string) (*wkscommon.RefInfo, error) {
+func (m *Manager) LedgerInfo(ledgerURI string) (*azwkscommon.RefInfo, error) {
 	cfg, err := m.readConfig()
 	if err != nil {
 		return nil, err
@@ -103,16 +103,16 @@ func (m *Manager) LedgerInfo(ledgerURI string) (*wkscommon.RefInfo, error) {
 		return nil, fmt.Errorf("cli: remote %s does not exist", ledgerURI)
 	}
 	cfgLedger := cfg.Ledgers[ledgerURI]
-	refInfo, err := wkscommon.NewRefInfoFromLedgerName(cfgLedger.Remote, cfgLedger.ZoneID, cfgLedger.LedgerName)
+	refInfo, err := azwkscommon.NewRefInfoFromLedgerName(cfgLedger.Remote, cfgLedger.ZoneID, cfgLedger.LedgerName)
 	if err != nil {
 		return nil, err
 	}
-	return wkscommon.BuildRefInfoFromLedgerID(refInfo, cfgLedger.LedgerID)
+	return azwkscommon.BuildRefInfoFromLedgerID(refInfo, cfgLedger.LedgerID)
 }
 
 // CheckLedgerIfExists checks if a ledger exists.
 func (m *Manager) CheckLedgerIfExists(ledgerURI string) bool {
-	ledgerURI, _ = wkscommon.SanitizeLedger(ledgerURI)
+	ledgerURI, _ = azwkscommon.SanitizeLedger(ledgerURI)
 	cfg, err := m.readConfig()
 	if err != nil {
 		return false
