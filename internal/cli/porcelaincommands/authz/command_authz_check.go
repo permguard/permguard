@@ -30,6 +30,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/internal/cli/workspace"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
@@ -81,6 +82,47 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 	err = json.Unmarshal([]byte(jsonString), &authzReq)
 	if err != nil {
 		return handleInputError(ctx, printer, err, "Invalid input for the authz check.")
+	}
+
+	// Apply --current-workspace override (medium priority).
+	currentWorkspace := v.GetBool(options.FlagName(commandNameForCheck, common.FlagCommonCurrentWorkspace))
+	if currentWorkspace {
+		langFct, langErr := deps.LanguageFactory()
+		if langErr == nil {
+			wksMgr, wksErr := workspace.NewInternalManager(ctx, langFct)
+			if wksErr == nil {
+				zoneID, ledgerID, headErr := wksMgr.CurrentHeadZoneIDAndLedgerID()
+				if headErr == nil {
+					if authzReq.AuthorizationModel == nil {
+						authzReq.AuthorizationModel = &pdp.AuthorizationModelRequest{}
+					}
+					authzReq.AuthorizationModel.ZoneID = zoneID
+					if authzReq.AuthorizationModel.PolicyStore == nil {
+						authzReq.AuthorizationModel.PolicyStore = &pdp.PolicyStore{}
+					}
+					authzReq.AuthorizationModel.PolicyStore.ID = ledgerID
+				}
+			}
+		}
+	}
+
+	// Apply --zone-id and --policy-store-id overrides (highest priority).
+	flagZoneID := v.GetInt64(options.FlagName(commandNameForCheck, common.FlagCommonZoneID))
+	if flagZoneID != 0 {
+		if authzReq.AuthorizationModel == nil {
+			authzReq.AuthorizationModel = &pdp.AuthorizationModelRequest{}
+		}
+		authzReq.AuthorizationModel.ZoneID = flagZoneID
+	}
+	flagPolicyStoreID := v.GetString(options.FlagName(commandNameForCheck, common.FlagCommonPolicyStoreID))
+	if flagPolicyStoreID != "" {
+		if authzReq.AuthorizationModel == nil {
+			authzReq.AuthorizationModel = &pdp.AuthorizationModelRequest{}
+		}
+		if authzReq.AuthorizationModel.PolicyStore == nil {
+			authzReq.AuthorizationModel.PolicyStore = &pdp.PolicyStore{}
+		}
+		authzReq.AuthorizationModel.PolicyStore.ID = flagPolicyStoreID
 	}
 
 	pdpEndpoint, err := ctx.PDPEndpoint()
@@ -180,8 +222,14 @@ Examples:
 		},
 	}
 
-	command.PersistentFlags().Int64(common.FlagCommonZoneID, 0, "zone id")
+	command.PersistentFlags().Int64(common.FlagCommonZoneID, 0, "override authorization_model.zone_id")
 	_ = v.BindPFlag(options.FlagName(commandNameForCheck, common.FlagCommonZoneID), command.PersistentFlags().Lookup(common.FlagCommonZoneID))
+
+	command.PersistentFlags().String(common.FlagCommonPolicyStoreID, "", "override authorization_model.policy_store.id")
+	_ = v.BindPFlag(options.FlagName(commandNameForCheck, common.FlagCommonPolicyStoreID), command.PersistentFlags().Lookup(common.FlagCommonPolicyStoreID))
+
+	command.PersistentFlags().Bool(common.FlagCommonCurrentWorkspace, false, "resolve zone-id and policy-store-id from the current workspace")
+	_ = v.BindPFlag(options.FlagName(commandNameForCheck, common.FlagCommonCurrentWorkspace), command.PersistentFlags().Lookup(common.FlagCommonCurrentWorkspace))
 
 	return command
 }

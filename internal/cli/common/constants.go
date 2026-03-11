@@ -50,6 +50,8 @@ const (
 	FlagSuffixPDPEndpoint                = "endpoint"
 	FlagPrefixWorkspaceInit              = "workspace-init"
 	FlagSuffixWorkspaceInitAuthzLanguage = "authz-language"
+	FlagCommonPolicyStoreID              = "policy-store-id"
+	FlagCommonCurrentWorkspace           = "current-workspace"
 )
 
 //go:embed "art.txt"

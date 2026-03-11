@@ -17,6 +17,8 @@
 package workspace
 
 import (
+	"fmt"
+
 	"github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
@@ -76,6 +78,22 @@ func (m *Manager) currentHeadContext() (*currentHeadContext, error) {
 	headCtx.remoteCommitID = commit
 
 	return headCtx, nil
+}
+
+// CurrentHeadZoneIDAndLedgerID returns the zone ID and ledger ID from the current head ref.
+// It returns an error if the current directory is not a valid workspace or if no head ref is set.
+func (m *Manager) CurrentHeadZoneIDAndLedgerID() (int64, string, error) {
+	if !m.isWorkspaceDir() {
+		return 0, "", fmt.Errorf("cli: not a permguard workspace directory")
+	}
+	refInfo, err := m.rfsMgr.CurrentHeadRefInfo()
+	if err != nil {
+		return 0, "", err
+	}
+	if refInfo == nil {
+		return 0, "", fmt.Errorf("cli: no current head ref")
+	}
+	return refInfo.ZoneID(), refInfo.LedgerID(), nil
 }
 
 // CurrentHeadCommit gets the current head commit.
