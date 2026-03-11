@@ -51,11 +51,17 @@ func runECommandForConfigShow(deps cli.DependenciesProvider, cmd *cobra.Command,
 	if len(language) == 0 {
 		language = "not set"
 	}
+	authstarMaxObjectSize, err := ctx.AuthstarMaxObjectSize()
+	authstarMaxObjectSizeStr := "not set"
+	if err == nil {
+		authstarMaxObjectSizeStr = fmt.Sprintf("%d", authstarMaxObjectSize)
+	}
 	if ctx.IsTerminalOutput() {
 		printer.Println(fmt.Sprintf("endpoints.zap: %s", zapEndpoint))
 		printer.Println(fmt.Sprintf("endpoints.pap: %s", papEndpoint))
 		printer.Println(fmt.Sprintf("endpoints.pdp: %s", pdpEndpoint))
 		printer.Println(fmt.Sprintf("language: %s", language))
+		printer.Println(fmt.Sprintf("authstar.max-object-size: %s", authstarMaxObjectSizeStr))
 	} else if ctx.IsJSONOutput() {
 		output := map[string]any{
 			"endpoints": map[string]any{
@@ -64,6 +70,9 @@ func runECommandForConfigShow(deps cli.DependenciesProvider, cmd *cobra.Command,
 				"pdp": pdpEndpoint,
 			},
 			"language": language,
+			"authstar": map[string]any{
+				"max_object_size": authstarMaxObjectSize,
+			},
 		}
 		printer.PrintlnMap(output)
 	}

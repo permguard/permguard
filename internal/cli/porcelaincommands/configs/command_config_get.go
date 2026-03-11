@@ -130,6 +130,40 @@ func createCommandForConfigPDPGet(deps cli.DependenciesProvider, v *viper.Viper)
 	return command
 }
 
+// runECommandForAuthstarMaxObjectSizeGet runs the command for getting the authstar max object size.
+func runECommandForAuthstarMaxObjectSizeGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return common.ErrCommandSilent
+	}
+	maxObjectSize, err := ctx.AuthstarMaxObjectSize()
+	if err != nil {
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to get the authstar max object size.")
+		}
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			printer.Error(errors.Join(errors.New("cli: failed to get the authstar max object size"), err))
+		}
+		return common.ErrCommandSilent
+	}
+	printer.PrintlnMap(map[string]any{"authstar_max_object_size": maxObjectSize})
+	return nil
+}
+
+// createCommandForConfigAuthstarMaxObjectSizeGet creates the command for getting the authstar max object size.
+func createCommandForConfigAuthstarMaxObjectSizeGet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+	command := &cobra.Command{
+		Use:   "authstar-max-object-size",
+		Short: "Get the authstar max object size",
+		Long:  common.BuildCliLongTemplate(`This command gets the authstar max object size in bytes.`),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runECommandForAuthstarMaxObjectSizeGet(deps, cmd, v)
+		},
+	}
+	return command
+}
+
 func createCommandForConfigGet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "get",
@@ -142,5 +176,6 @@ func createCommandForConfigGet(deps cli.DependenciesProvider, v *viper.Viper) *c
 	command.AddCommand(createCommandForConfigZAPGet(deps, v))
 	command.AddCommand(createCommandForConfigPAPGet(deps, v))
 	command.AddCommand(createCommandForConfigPDPGet(deps, v))
+	command.AddCommand(createCommandForConfigAuthstarMaxObjectSizeGet(deps, v))
 	return command
 }

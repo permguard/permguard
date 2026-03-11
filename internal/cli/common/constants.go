@@ -52,6 +52,8 @@ const (
 	FlagSuffixWorkspaceInitLanguage = "language"
 	FlagCommonPolicyStoreID         = "policy-store-id"
 	FlagCommonCurrentWorkspace      = "current-workspace"
+	FlagPrefixAuthstar              = "authstar"
+	FlagSuffixAuthstarMaxObjectSize = "max-object-size"
 )
 
 //go:embed "art.txt"
