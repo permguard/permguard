@@ -17,7 +17,7 @@
 package workspace
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
@@ -84,14 +84,14 @@ func (m *Manager) currentHeadContext() (*currentHeadContext, error) {
 // It returns an error if the current directory is not a valid workspace or if no head ref is set.
 func (m *Manager) CurrentHeadZoneIDAndLedgerID() (int64, string, error) {
 	if !m.isWorkspaceDir() {
-		return 0, "", fmt.Errorf("cli: not a permguard workspace directory")
+		return 0, "", errors.New("cli: not a permguard workspace directory")
 	}
 	refInfo, err := m.rfsMgr.CurrentHeadRefInfo()
 	if err != nil {
 		return 0, "", err
 	}
 	if refInfo == nil {
-		return 0, "", fmt.Errorf("cli: no current head ref")
+		return 0, "", errors.New("cli: no current head ref")
 	}
 	return refInfo.ZoneID(), refInfo.LedgerID(), nil
 }
