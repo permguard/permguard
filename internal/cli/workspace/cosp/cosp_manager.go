@@ -212,7 +212,7 @@ func (m *Manager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 	path := filepath.Join(m.codeSourceDir(), hiddenCodeMapFile)
 	var codeFiles []CodeFile
 	recordFunc := func(record []string) error {
-		if len(record) < 12 {
+		if len(record) < 13 {
 			return errors.New("invalid record format")
 		}
 		mode64, err := strconv.ParseUint(record[9], 10, 32)
@@ -495,33 +495,45 @@ func (m *Manager) CollectGarbage(commitID string) (int, error) {
 		return 0, nil
 	}
 	reachable := map[string]bool{}
+	visited := map[string]bool{}
 	currentID := commitID
-	for currentID != objects.ZeroOID {
+	const maxWalkIterations = 100000
+	for i := 0; currentID != objects.ZeroOID && i < maxWalkIterations; i++ {
+		if visited[currentID] {
+			return 0, fmt.Errorf("cli: cycle detected in commit chain at %s", currentID)
+		}
+		visited[currentID] = true
 		obj, err := m.ReadObject(currentID)
-		if err != nil || obj == nil {
-			break
+		if err != nil {
+			return 0, fmt.Errorf("cli: gc aborted, failed to read commit %s: %w", currentID, err)
+		}
+		if obj == nil {
+			return 0, fmt.Errorf("cli: gc aborted, missing commit %s", currentID)
 		}
 		reachable[obj.OID()] = true
 		objInfo, err := m.objMgr.ObjectInfo(obj)
 		if err != nil {
-			break
+			return 0, fmt.Errorf("cli: gc aborted, failed to get object info for %s: %w", currentID, err)
 		}
 		commit, ok := objInfo.Instance().(*objects.Commit)
 		if !ok {
-			break
+			return 0, fmt.Errorf("cli: gc aborted, oid %s is not a commit", currentID)
 		}
 		treeObj, err := m.ReadObject(commit.Tree())
-		if err != nil || treeObj == nil {
-			break
+		if err != nil {
+			return 0, fmt.Errorf("cli: gc aborted, failed to read tree %s: %w", commit.Tree(), err)
+		}
+		if treeObj == nil {
+			return 0, fmt.Errorf("cli: gc aborted, missing tree %s", commit.Tree())
 		}
 		reachable[treeObj.OID()] = true
 		treeInfo, err := m.objMgr.ObjectInfo(treeObj)
 		if err != nil {
-			break
+			return 0, fmt.Errorf("cli: gc aborted, failed to get tree info for %s: %w", commit.Tree(), err)
 		}
 		tree, ok := treeInfo.Instance().(*objects.Tree)
 		if !ok {
-			break
+			return 0, fmt.Errorf("cli: gc aborted, oid %s is not a tree", commit.Tree())
 		}
 		for _, entry := range tree.Entries() {
 			reachable[entry.OID()] = true
@@ -625,8 +637,13 @@ func (m *Manager) History(commitID string) ([]azwkscommon.CommitInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	for commit != nil {
+	visited := map[string]bool{}
+	const maxHistoryIterations = 100000
+	for i := 0; commit != nil && i < maxHistoryIterations; i++ {
+		if visited[commitID] {
+			return nil, fmt.Errorf("cli: cycle detected in commit history at %s", commitID)
+		}
+		visited[commitID] = true
 		commitInfo, err := azwkscommon.NewCommitInfo(commitID, commit)
 		if err != nil {
 			return nil, err

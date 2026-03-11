@@ -18,6 +18,8 @@ package centralstorage
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
@@ -25,6 +27,14 @@ import (
 	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
+
+// rollback attempts to rollback a transaction and joins any rollback error with the original error.
+func rollback(tx *sql.Tx, origErr error) error {
+	if rbErr := tx.Rollback(); rbErr != nil {
+		return errors.Join(origErr, fmt.Errorf("storage: rollback failed: %w", rbErr))
+	}
+	return origErr
+}
 
 // PushAdvertise handles the push advertise step.
 func (s SQLiteCentralStoragePAP) PushAdvertise(ctx context.Context, req *pap.PushAdvertiseRequest) (*pap.PushAdvertiseResponse, error) {
@@ -102,12 +112,10 @@ func (s SQLiteCentralStoragePAP) PushTransfer(ctx context.Context, req *pap.Push
 	}
 	for _, obj := range req.Objects {
 		if err := objects.VerifyOID(obj.OID, obj.Content); err != nil {
-			_ = tx.Rollback()
-			return nil, fmt.Errorf("storage: received corrupted object %s: %w", obj.OID, err)
+			return nil, rollback(tx, fmt.Errorf("storage: received corrupted object %s: %w", obj.OID, err))
 		}
 		if err := objects.ValidateObjectSize(obj.Content, objects.DefaultMaxObjectSize); err != nil {
-			_ = tx.Rollback()
-			return nil, fmt.Errorf("storage: received oversized object %s: %w", obj.OID, err)
+			return nil, rollback(tx, fmt.Errorf("storage: received oversized object %s: %w", obj.OID, err))
 		}
 		keyValue := &azrepos.KeyValue{
 			ZoneID: req.ZoneID,
@@ -116,32 +124,27 @@ func (s SQLiteCentralStoragePAP) PushTransfer(ctx context.Context, req *pap.Push
 		}
 		_, err = s.sqlRepo.UpsertKeyValue(ctx, tx, keyValue)
 		if err != nil {
-			_ = tx.Rollback()
-			return nil, err
+			return nil, rollback(tx, err)
 		}
 	}
 	committed := false
 	if req.IsLast {
 		if req.ExpectedServerCommit == "" {
-			_ = tx.Rollback()
-			return nil, fmt.Errorf("storage: expected server commit is required for final transfer: %w", azstorage.ErrInvalidInput)
+			return nil, rollback(tx, fmt.Errorf("storage: expected server commit is required for final transfer: %w", azstorage.ErrInvalidInput))
 		}
 		// Verify graph integrity of the final commit before updating the ledger ref.
 		objMng, err := objects.NewObjectManager()
 		if err != nil {
-			_ = tx.Rollback()
-			return nil, err
+			return nil, rollback(tx, err)
 		}
 		if err := objMng.VerifyCommitGraphIntegrity(req.RemoteCommitID, func(oid string) (*objects.Object, error) {
 			return s.readObject(ctx, db, req.ZoneID, oid)
 		}); err != nil {
-			_ = tx.Rollback()
-			return nil, fmt.Errorf("storage: graph integrity check failed: %w", err)
+			return nil, rollback(tx, fmt.Errorf("storage: graph integrity check failed: %w", err))
 		}
 		err = s.sqlRepo.UpdateLedgerRef(ctx, tx, req.ZoneID, req.LedgerID, req.ExpectedServerCommit, req.RemoteCommitID)
 		if err != nil {
-			_ = tx.Rollback()
-			return nil, azrepos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
+			return nil, rollback(tx, azrepos.WrapSqliteError(errorMessageCannotCommitTransaction, err))
 		}
 		if err := tx.Commit(); err != nil {
 			return nil, azrepos.WrapSqliteError(errorMessageCannotCommitTransaction, err)

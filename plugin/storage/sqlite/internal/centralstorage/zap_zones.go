@@ -53,8 +53,7 @@ func (s SQLiteCentralStorageZAP) CreateZone(ctx context.Context, zone *zap.Zone)
 		}
 	}
 	if err != nil {
-		_ = tx.Rollback()
-		return nil, err
+		return nil, rollback(tx, err)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, azrepos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
@@ -81,8 +80,7 @@ func (s SQLiteCentralStorageZAP) UpdateZone(ctx context.Context, zone *zap.Zone)
 	}
 	dbOutzone, err := s.sqlRepo.UpsertZone(ctx, tx, false, dbInZone)
 	if err != nil {
-		_ = tx.Rollback()
-		return nil, err
+		return nil, rollback(tx, err)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, azrepos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
@@ -102,8 +100,7 @@ func (s SQLiteCentralStorageZAP) DeleteZone(ctx context.Context, zoneID int64) (
 	}
 	dbOutzone, err := s.sqlRepo.DeleteZone(ctx, tx, zoneID)
 	if err != nil {
-		_ = tx.Rollback()
-		return nil, err
+		return nil, rollback(tx, err)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, azrepos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
