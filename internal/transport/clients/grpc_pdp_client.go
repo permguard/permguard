@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	pdpv1 "github.com/permguard/permguard/internal/agents/services/pdp/endpoints/api/v1"
+	azpdpv1 "github.com/permguard/permguard/internal/agents/services/pdp/endpoints/api/v1"
 )
 
 // GrpcPDPClient is a gRPC client for the PDP service.
@@ -40,11 +40,11 @@ func NewGrpcPDPClient(endpoint string) (*GrpcPDPClient, error) {
 }
 
 // createGRPCClient creates a new gRPC client.
-func (c *GrpcPDPClient) createGRPCClient() (pdpv1.V1PDPServiceClient, *grpc.ClientConn, error) {
+func (c *GrpcPDPClient) createGRPCClient() (azpdpv1.V1PDPServiceClient, *grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(c.endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, nil, err
 	}
-	client := pdpv1.NewV1PDPServiceClient(conn)
+	client := azpdpv1.NewV1PDPServiceClient(conn)
 	return client, conn, nil
 }

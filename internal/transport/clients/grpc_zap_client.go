@@ -17,11 +17,10 @@
 package clients
 
 import (
-	"context"
 	"errors"
 	"io"
 
-	zapv1 "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
+	azzapv1 "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
@@ -32,11 +31,13 @@ func (c *GrpcZAPClient) CreateZone(name string) (*zap.Zone, error) {
 		return nil, err
 	}
 	defer conn.Close()
-	zone, err := client.CreateZone(context.Background(), &zapv1.ZoneCreateRequest{Name: name})
+	ctx, cancel := grpcContext()
+	defer cancel()
+	zone, err := client.CreateZone(ctx, &azzapv1.ZoneCreateRequest{Name: name})
 	if err != nil {
 		return nil, err
 	}
-	return zapv1.MapGrpcZoneResponseToAgentZone(zone)
+	return azzapv1.MapGrpcZoneResponseToAgentZone(zone)
 }
 
 // UpdateZone updates a zone.
@@ -49,14 +50,16 @@ func (c *GrpcZAPClient) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
 		return nil, err
 	}
 	defer conn.Close()
-	updatedZone, err := client.UpdateZone(context.Background(), &zapv1.ZoneUpdateRequest{
+	ctx, cancel := grpcContext()
+	defer cancel()
+	updatedZone, err := client.UpdateZone(ctx, &azzapv1.ZoneUpdateRequest{
 		ZoneID: zone.ZoneID,
 		Name:   zone.Name,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return zapv1.MapGrpcZoneResponseToAgentZone(updatedZone)
+	return azzapv1.MapGrpcZoneResponseToAgentZone(updatedZone)
 }
 
 // DeleteZone deletes a zone.
@@ -66,11 +69,13 @@ func (c *GrpcZAPClient) DeleteZone(zoneID int64) (*zap.Zone, error) {
 		return nil, err
 	}
 	defer conn.Close()
-	zone, err := client.DeleteZone(context.Background(), &zapv1.ZoneDeleteRequest{ZoneID: zoneID})
+	ctx, cancel := grpcContext()
+	defer cancel()
+	zone, err := client.DeleteZone(ctx, &azzapv1.ZoneDeleteRequest{ZoneID: zoneID})
 	if err != nil {
 		return nil, err
 	}
-	return zapv1.MapGrpcZoneResponseToAgentZone(zone)
+	return azzapv1.MapGrpcZoneResponseToAgentZone(zone)
 }
 
 // FetchZones returns all zones.
@@ -95,7 +100,7 @@ func (c *GrpcZAPClient) FetchZonesBy(page int32, pageSize int32, zoneID int64, n
 		return nil, err
 	}
 	defer conn.Close()
-	zoneFetchRequest := &zapv1.ZoneFetchRequest{}
+	zoneFetchRequest := &azzapv1.ZoneFetchRequest{}
 	zoneFetchRequest.Page = &page
 	zoneFetchRequest.PageSize = &pageSize
 	if zoneID > 0 {
@@ -104,7 +109,9 @@ func (c *GrpcZAPClient) FetchZonesBy(page int32, pageSize int32, zoneID int64, n
 	if name != "" {
 		zoneFetchRequest.Name = &name
 	}
-	stream, err := client.FetchZones(context.Background(), zoneFetchRequest)
+	ctx, cancel := grpcContext()
+	defer cancel()
+	stream, err := client.FetchZones(ctx, zoneFetchRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +124,7 @@ func (c *GrpcZAPClient) FetchZonesBy(page int32, pageSize int32, zoneID int64, n
 		if err != nil {
 			return nil, err
 		}
-		zone, err := zapv1.MapGrpcZoneResponseToAgentZone(response)
+		zone, err := azzapv1.MapGrpcZoneResponseToAgentZone(response)
 		if err != nil {
 			return nil, err
 		}

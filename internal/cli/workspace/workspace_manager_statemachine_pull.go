@@ -18,123 +18,112 @@ package workspace
 
 import (
 	"errors"
+	"fmt"
 
-	notpagpackets "github.com/permguard/permguard/internal/transport/notp/statemachines/packets"
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
-	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
-	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
+	"github.com/permguard/permguard/internal/cli/common"
+	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
-// OnPullSendRequestCurrentState sends the current state request.
-func (m *Manager) OnPullSendRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, _ []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-	wksCtx := createWorkspaceHandlerContext(handlerCtx)
-	if m.ctx.IsVerboseTerminalOutput() {
-		wksCtx.outFunc("notp-pull", "Advertising - Initiating request for ledger state.", true)
-	}
-	handlerCtx.SetValue(CommittedKey, false)
-	packet := &notpagpackets.RemoteRefStatePacket{
-		RefPrevCommit: wksCtx.ctx.remoteCommitID,
-		RefCommit:     wksCtx.ctx.remoteCommitID,
-	}
-	handlerReturn := &notpstatemachines.HostHandlerReturn{
-		Packetables: []notppackets.Packetable{packet},
-	}
-	handlerCtx.SetValue(LocalCodeCommitIDKey, wksCtx.ctx.remoteCommitID)
-	return handlerReturn, nil
+// PullResult holds the result of a pull operation.
+type PullResult struct {
+	LocalCommitID     string
+	RemoteCommitID    string
+	LocalCommitCount  uint32
+	RemoteCommitCount uint32
+	Committed         bool
 }
 
-// OnPullHandleRequestCurrentStateResponse handles the current state response.
-func (m *Manager) OnPullHandleRequestCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-	wksCtx := createWorkspaceHandlerContext(handlerCtx)
+// execRemotePull performs a synchronous pull from the remote server.
+func (m *Manager) execRemotePull(headCtx *currentHeadContext, out common.PrinterOutFunc) (*PullResult, error) {
 	if m.ctx.IsVerboseTerminalOutput() {
-		wksCtx.outFunc("notp-pull", "Advertising - Processing response for ledger state request.", true)
+		out(nil, "pull", "Advertising - Initiating request for ledger state.", nil, true)
 	}
-	localRefSPacket := &notpagpackets.LocalRefStatePacket{}
-	err := notppackets.ConvertPacketable(packets[0], localRefSPacket)
+
+	papClient, err := m.rmSrvtMgr.NewPAPClientSession(headCtx.Server(), headCtx.ServerPAPPort())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cli: failed to create PAP client: %w", err)
 	}
-	handlerCtx.SetValue(RemoteCommitIDKey, localRefSPacket.RefCommit)
-	handlerReturn := &notpstatemachines.HostHandlerReturn{
-		Packetables: packets,
+	defer papClient.Close()
+
+	localCommitID := headCtx.remoteCommitID
+
+	// Step 1: PullState
+	stateResp, err := papClient.PullState(&pap.PullStateRequest{
+		ZoneID:        headCtx.ZoneID(),
+		LedgerID:      headCtx.LedgerID(),
+		RefCommit:     localCommitID,
+		RefPrevCommit: localCommitID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cli: pull state failed: %w", err)
 	}
-	if localRefSPacket.IsUpToDate {
-		handlerReturn.Terminate = true
-		return handlerReturn, nil
+
+	remoteCommitID := stateResp.ServerCommit
+
+	if stateResp.IsUpToDate {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "pull", "Already up to date.", nil, true)
+		}
+		return &PullResult{
+			LocalCommitID:     localCommitID,
+			RemoteCommitID:    remoteCommitID,
+			LocalCommitCount:  0,
+			RemoteCommitCount: stateResp.NumberOfCommits,
+			Committed:         false,
+		}, nil
 	}
-	if localRefSPacket.HasConflicts {
+	if stateResp.HasConflicts {
 		return nil, errors.New("cli: conflicts detected in the remote ledger")
 	}
-	handlerCtx.SetValue(RemoteCommitIDKey, localRefSPacket.RefCommit)
-	handlerCtx.SetValue(RemoteCommitsCountKey, localRefSPacket.NumberOfCommits)
-	handlerCtx.SetValue(LocalCommitsCountKey, uint32(0))
-	handlerReturn.MessageValue = notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
-	return handlerReturn, nil
-}
 
-// OnPullSendNegotiationRequest sends the negotiation request.
-func (m *Manager) OnPullSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
-		wksCtx.outFunc("notp-pull", "Negotiation - Sending negotiation request.", true)
+		out(nil, "pull", "Negotiation - Requesting commit list.", nil, true)
 	}
-	handlerReturn := &notpstatemachines.HostHandlerReturn{
-		Packetables:  packets,
-		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
-	}
-	return handlerReturn, nil
-}
 
-// OnPullHandleNegotiationResponse handle the negotiation response.
-func (m *Manager) OnPullHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-	wksCtx := createWorkspaceHandlerContext(handlerCtx)
-	if m.ctx.IsVerboseTerminalOutput() {
-		wksCtx.outFunc("notp-pull", "Negotiation - Processing response to negotiation request.", true)
+	// Step 2: PullNegotiate
+	negResp, err := papClient.PullNegotiate(&pap.PullNegotiateRequest{
+		ZoneID:         headCtx.ZoneID(),
+		LedgerID:       headCtx.LedgerID(),
+		LocalCommitID:  localCommitID,
+		RemoteCommitID: remoteCommitID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cli: pull negotiate failed: %w", err)
 	}
-	handlerReturn := &notpstatemachines.HostHandlerReturn{
-		Packetables:  packets,
-		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
-	}
-	return handlerReturn, nil
-}
 
-// OnPullHandleExchangeDataStream handles the data exchange.
-func (m *Manager) OnPullHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
-		wksCtx.outFunc("notp-pull", "Data Exchange - Managing data exchange.", true)
+		out(nil, "pull", fmt.Sprintf("Data Exchange - Pulling %d commit(s).", len(negResp.CommitIDs)), nil, true)
 	}
-	for _, packet := range packets {
-		objStatePacket := &notpagpackets.ObjectStatePacket{}
-		err := notppackets.ConvertPacketable(packet, objStatePacket)
+
+	// Step 3: PullObjects for each commit
+	localCommitCount := uint32(0)
+	for _, commitID := range negResp.CommitIDs {
+		objResp, err := papClient.PullObjects(&pap.PullObjectsRequest{
+			ZoneID:   headCtx.ZoneID(),
+			LedgerID: headCtx.LedgerID(),
+			CommitID: commitID,
+		})
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("cli: pull objects failed for commit %s: %w", commitID, err)
 		}
-		_, err = m.cospMgr.SaveObject(objStatePacket.OID, objStatePacket.Content)
-		if err != nil {
-			return nil, err
+		for _, obj := range objResp.Objects {
+			_, err = m.cospMgr.SaveObject(obj.OID, obj.Content)
+			if err != nil {
+				return nil, fmt.Errorf("cli: failed to save object %s: %w", obj.OID, err)
+			}
 		}
+		localCommitCount++
 	}
-	commitsCount, _ := getFromHandlerContext[uint32](handlerCtx, LocalCommitsCountKey)
-	commitsCount++
-	handlerCtx.SetValue(LocalCommitsCountKey, commitsCount)
-	handlerReturn := &notpstatemachines.HostHandlerReturn{
-		Packetables:  []notppackets.Packetable{},
-		MessageValue: statePacket.MessageValue,
-	}
-	return handlerReturn, nil
-}
 
-// OnPullSendCommit handles the commit response.
-func (m *Manager) OnPullSendCommit(handlerCtx *notpstatemachines.HandlerContext, _ *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-	wksCtx := createWorkspaceHandlerContext(handlerCtx)
 	if m.ctx.IsVerboseTerminalOutput() {
-		wksCtx.outFunc("notp-commit", "Commit - Sending commit request.", true)
+		out(nil, "pull", "Commit - Pull completed successfully.", nil, true)
 	}
-	handlerReturn := &notpstatemachines.HostHandlerReturn{
-		Packetables:  packets,
-		MessageValue: notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue),
-	}
-	handlerCtx.SetValue(CommittedKey, true)
-	return handlerReturn, nil
+
+	return &PullResult{
+		LocalCommitID:     localCommitID,
+		RemoteCommitID:    remoteCommitID,
+		LocalCommitCount:  localCommitCount,
+		RemoteCommitCount: stateResp.NumberOfCommits,
+		Committed:         true,
+	}, nil
 }

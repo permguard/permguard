@@ -28,7 +28,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite" // SQLite driver
 
-	storage "github.com/permguard/permguard/pkg/agents/storage"
+	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/core/validators"
 )
 
@@ -49,13 +49,13 @@ func GenerateZoneID() int64 {
 // UpsertZone creates or updates a zone.
 func (r *Repository) UpsertZone(ctx context.Context, tx *sql.Tx, isCreate bool, zone *Zone) (*Zone, error) {
 	if zone == nil {
-		return nil, fmt.Errorf("storage: invalid client input - zone data is missing or malformed (%s): %w", LogZoneEntry(zone), storage.ErrInvalidInput)
+		return nil, fmt.Errorf("storage: invalid client input - zone data is missing or malformed (%s): %w", LogZoneEntry(zone), azstorage.ErrInvalidInput)
 	}
 	if !isCreate && validators.ValidateCodeID("zone", zone.ZoneID) != nil {
-		return nil, fmt.Errorf("storage: invalid client input - zone id is not valid (%s): %w", LogZoneEntry(zone), storage.ErrInvalidInput)
+		return nil, fmt.Errorf("storage: invalid client input - zone id is not valid (%s): %w", LogZoneEntry(zone), azstorage.ErrInvalidInput)
 	}
 	if err := validators.ValidateName("zone", zone.Name); err != nil {
-		return nil, fmt.Errorf("invalid client input - zone name is not valid (%s): %w", LogZoneEntry(zone), storage.ErrInvalidInput)
+		return nil, fmt.Errorf("invalid client input - zone name is not valid (%s): %w", LogZoneEntry(zone), azstorage.ErrInvalidInput)
 	}
 
 	zoneID := zone.ZoneID
@@ -92,7 +92,7 @@ func (r *Repository) UpsertZone(ctx context.Context, tx *sql.Tx, isCreate bool, 
 // DeleteZone deletes a zone.
 func (r *Repository) DeleteZone(ctx context.Context, tx *sql.Tx, zoneID int64) (*Zone, error) {
 	if err := validators.ValidateCodeID("zone", zoneID); err != nil {
-		return nil, fmt.Errorf("storage: invalid client input - zone id is not valid (id: %d): %w", zoneID, storage.ErrInvalidInput)
+		return nil, fmt.Errorf("storage: invalid client input - zone id is not valid (id: %d): %w", zoneID, azstorage.ErrInvalidInput)
 	}
 
 	var dbZone Zone
@@ -119,7 +119,7 @@ func (r *Repository) DeleteZone(ctx context.Context, tx *sql.Tx, zoneID int64) (
 // FetchZones retrieves zones.
 func (r *Repository) FetchZones(ctx context.Context, db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]Zone, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid: %w", page, pageSize, storage.ErrInvalidInput)
+		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid: %w", page, pageSize, azstorage.ErrInvalidInput)
 	}
 	var dbZones []Zone
 
@@ -130,7 +130,7 @@ func (r *Repository) FetchZones(ctx context.Context, db *sqlx.DB, page int32, pa
 	if filterID != nil {
 		zoneID := *filterID
 		if err := validators.ValidateCodeID("zone", zoneID); err != nil {
-			return nil, fmt.Errorf("storage: invalid client input - zone id is not valid (id: %d): %w", zoneID, storage.ErrInvalidInput)
+			return nil, fmt.Errorf("storage: invalid client input - zone id is not valid (id: %d): %w", zoneID, azstorage.ErrInvalidInput)
 		}
 		conditions = append(conditions, "zone_id = ?")
 		args = append(args, zoneID)
@@ -139,7 +139,7 @@ func (r *Repository) FetchZones(ctx context.Context, db *sqlx.DB, page int32, pa
 	if filterName != nil {
 		zoneName := *filterName
 		if err := validators.ValidateName("zone", zoneName); err != nil {
-			return nil, fmt.Errorf("invalid client input - zone name is not valid (name: %s): %w", zoneName, storage.ErrInvalidInput)
+			return nil, fmt.Errorf("invalid client input - zone name is not valid (name: %s): %w", zoneName, azstorage.ErrInvalidInput)
 		}
 		zoneName = "%" + zoneName + "%"
 		conditions = append(conditions, "name LIKE ?")

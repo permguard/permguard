@@ -26,7 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/permguard/permguard/pkg/transport/models/zap"
-	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // TestCreateZoneWithErrors tests the CreateZone function with errors.
@@ -63,7 +63,7 @@ func TestCreateZoneWithErrors(t *testing.T) {
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			zone := &repos.Zone{
+			zone := &azrepos.Zone{
 				ZoneID:    232956849236,
 				Name:      "rent-a-car1",
 				CreatedAt: time.Now(),
@@ -94,7 +94,7 @@ func TestCreateZoneWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutZone := &repos.Zone{
+	dbOutZone := &azrepos.Zone{
 		ZoneID:    232956849236,
 		Name:      "rent-a-car1",
 		CreatedAt: time.Now(),
@@ -151,7 +151,7 @@ func TestUpdateZoneWithErrors(t *testing.T) {
 		case "COMMIT-ERROR":
 			mockSQLExec.On("Connect", mockStorageCtx, mockConnector).Return(sqlDB, nil)
 			mockSQLDB.ExpectBegin()
-			zone := &repos.Zone{
+			zone := &azrepos.Zone{
 				ZoneID:    232956849236,
 				Name:      "rent-a-car1",
 				CreatedAt: time.Now(),
@@ -182,7 +182,7 @@ func TestUpdateZoneWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutZone := &repos.Zone{
+	dbOutZone := &azrepos.Zone{
 		ZoneID:    232956849236,
 		Name:      "rent-a-car1",
 		CreatedAt: time.Now(),
@@ -255,7 +255,7 @@ func TestDeleteZoneWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, mockSQLDB := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutZone := &repos.Zone{
+	dbOutZone := &azrepos.Zone{
 		ZoneID:    232956849236,
 		Name:      "rent-a-car1",
 		CreatedAt: time.Now(),
@@ -337,7 +337,7 @@ func TestFetchZoneWithSuccess(t *testing.T) {
 
 	storage, mockStorageCtx, mockConnector, mockSQLRepo, mockSQLExec, sqlDB, _ := createSQLiteZAPCentralStorageWithMocks()
 
-	dbOutZones := []repos.Zone{
+	dbOutZones := []azrepos.Zone{
 		{
 			ZoneID:    232956849236,
 			Name:      "rent-a-car1",

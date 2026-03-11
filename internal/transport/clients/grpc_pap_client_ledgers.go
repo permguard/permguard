@@ -17,26 +17,27 @@
 package clients
 
 import (
-	"context"
 	"errors"
 	"io"
 
-	papv1 "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
+	azpapv1 "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
 // CreateLedger creates a new ledger.
 func (c *GrpcPAPClient) CreateLedger(zoneID int64, kind string, name string) (*pap.Ledger, error) {
 	client, conn, err := c.createGRPCClient()
+	if err != nil {
+		return nil, err
+	}
 	defer conn.Close()
+	ctx, cancel := grpcContext()
+	defer cancel()
+	ledger, err := client.CreateLedger(ctx, &azpapv1.LedgerCreateRequest{ZoneID: zoneID, Name: name, Kind: kind})
 	if err != nil {
 		return nil, err
 	}
-	ledger, err := client.CreateLedger(context.Background(), &papv1.LedgerCreateRequest{ZoneID: zoneID, Name: name, Kind: kind})
-	if err != nil {
-		return nil, err
-	}
-	return papv1.MapGrpcLedgerResponseToAgentLedger(ledger)
+	return azpapv1.MapGrpcLedgerResponseToAgentLedger(ledger)
 }
 
 // UpdateLedger updates an ledger.
@@ -45,11 +46,13 @@ func (c *GrpcPAPClient) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, error) {
 		return nil, errors.New("client: invalid ledger instance")
 	}
 	client, conn, err := c.createGRPCClient()
-	defer conn.Close()
 	if err != nil {
 		return nil, err
 	}
-	updatedLedger, err := client.UpdateLedger(context.Background(), &papv1.LedgerUpdateRequest{
+	defer conn.Close()
+	ctx, cancel := grpcContext()
+	defer cancel()
+	updatedLedger, err := client.UpdateLedger(ctx, &azpapv1.LedgerUpdateRequest{
 		LedgerID: ledger.LedgerID,
 		ZoneID:   ledger.ZoneID,
 		Kind:     ledger.Kind,
@@ -58,21 +61,23 @@ func (c *GrpcPAPClient) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, error) {
 	if err != nil {
 		return nil, err
 	}
-	return papv1.MapGrpcLedgerResponseToAgentLedger(updatedLedger)
+	return azpapv1.MapGrpcLedgerResponseToAgentLedger(updatedLedger)
 }
 
 // DeleteLedger deletes an ledger.
 func (c *GrpcPAPClient) DeleteLedger(zoneID int64, ledgerID string) (*pap.Ledger, error) {
 	client, conn, err := c.createGRPCClient()
+	if err != nil {
+		return nil, err
+	}
 	defer conn.Close()
+	ctx, cancel := grpcContext()
+	defer cancel()
+	ledger, err := client.DeleteLedger(ctx, &azpapv1.LedgerDeleteRequest{ZoneID: zoneID, LedgerID: ledgerID})
 	if err != nil {
 		return nil, err
 	}
-	ledger, err := client.DeleteLedger(context.Background(), &papv1.LedgerDeleteRequest{ZoneID: zoneID, LedgerID: ledgerID})
-	if err != nil {
-		return nil, err
-	}
-	return papv1.MapGrpcLedgerResponseToAgentLedger(ledger)
+	return azpapv1.MapGrpcLedgerResponseToAgentLedger(ledger)
 }
 
 // FetchLedgers returns all ledgers.
@@ -93,11 +98,11 @@ func (c *GrpcPAPClient) FetchLedgersByName(page int32, pageSize int32, zoneID in
 // FetchLedgersBy returns all ledgers filtering by ledger id and name.
 func (c *GrpcPAPClient) FetchLedgersBy(page int32, pageSize int32, zoneID int64, ledgerID string, kind string, name string) ([]pap.Ledger, error) {
 	client, conn, err := c.createGRPCClient()
-	defer conn.Close()
 	if err != nil {
 		return nil, err
 	}
-	ledgerFetchRequest := &papv1.LedgerFetchRequest{}
+	defer conn.Close()
+	ledgerFetchRequest := &azpapv1.LedgerFetchRequest{}
 	ledgerFetchRequest.Page = &page
 	ledgerFetchRequest.PageSize = &pageSize
 	if zoneID > 0 {
@@ -112,7 +117,9 @@ func (c *GrpcPAPClient) FetchLedgersBy(page int32, pageSize int32, zoneID int64,
 	if ledgerID != "" {
 		ledgerFetchRequest.LedgerID = &ledgerID
 	}
-	stream, err := client.FetchLedgers(context.Background(), ledgerFetchRequest)
+	ctx, cancel := grpcContext()
+	defer cancel()
+	stream, err := client.FetchLedgers(ctx, ledgerFetchRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +132,7 @@ func (c *GrpcPAPClient) FetchLedgersBy(page int32, pageSize int32, zoneID int64,
 		if err != nil {
 			return nil, err
 		}
-		ledger, err := papv1.MapGrpcLedgerResponseToAgentLedger(response)
+		ledger, err := azpapv1.MapGrpcLedgerResponseToAgentLedger(response)
 		if err != nil {
 			return nil, err
 		}

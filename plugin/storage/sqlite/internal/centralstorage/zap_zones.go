@@ -20,32 +20,32 @@ import (
 	"context"
 	"fmt"
 
-	storage "github.com/permguard/permguard/pkg/agents/storage"
+	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
-	repo "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // CreateZone creates a new zone.
 func (s SQLiteCentralStorageZAP) CreateZone(ctx context.Context, zone *zap.Zone) (*zap.Zone, error) {
 	if zone == nil {
-		return nil, fmt.Errorf("storage: invalid client input - zone is nil: %w", storage.ErrInvalidInput)
+		return nil, fmt.Errorf("storage: invalid client input - zone is nil: %w", azstorage.ErrInvalidInput)
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, repo.WrapSqliteError(errorMessageCannotConnect, err)
+		return nil, azrepos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, repo.WrapSqliteError(errorMessageCannotBeginTransaction, err)
+		return nil, azrepos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
-	dbInZone := &repo.Zone{
+	dbInZone := &azrepos.Zone{
 		ZoneID: zone.ZoneID,
 		Name:   zone.Name,
 	}
 	dbOutZone, err := s.sqlRepo.UpsertZone(ctx, tx, true, dbInZone)
 	if s.config.EnabledDefaultCreation() {
 		if err == nil {
-			ledger := &repo.Ledger{
+			ledger := &azrepos.Ledger{
 				ZoneID: dbOutZone.ZoneID,
 				Name:   LedgerDefaultName,
 			}
@@ -57,7 +57,7 @@ func (s SQLiteCentralStorageZAP) CreateZone(ctx context.Context, zone *zap.Zone)
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, repo.WrapSqliteError(errorMessageCannotCommitTransaction, err)
+		return nil, azrepos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
 	}
 	return mapZoneToAgentZone(dbOutZone)
 }
@@ -65,17 +65,17 @@ func (s SQLiteCentralStorageZAP) CreateZone(ctx context.Context, zone *zap.Zone)
 // UpdateZone updates a zone.
 func (s SQLiteCentralStorageZAP) UpdateZone(ctx context.Context, zone *zap.Zone) (*zap.Zone, error) {
 	if zone == nil {
-		return nil, fmt.Errorf("storage: invalid client input - zone is nil: %w", storage.ErrInvalidInput)
+		return nil, fmt.Errorf("storage: invalid client input - zone is nil: %w", azstorage.ErrInvalidInput)
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, repo.WrapSqliteError(errorMessageCannotConnect, err)
+		return nil, azrepos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, repo.WrapSqliteError(errorMessageCannotBeginTransaction, err)
+		return nil, azrepos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
-	dbInZone := &repo.Zone{
+	dbInZone := &azrepos.Zone{
 		ZoneID: zone.ZoneID,
 		Name:   zone.Name,
 	}
@@ -85,7 +85,7 @@ func (s SQLiteCentralStorageZAP) UpdateZone(ctx context.Context, zone *zap.Zone)
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, repo.WrapSqliteError(errorMessageCannotCommitTransaction, err)
+		return nil, azrepos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
 	}
 	return mapZoneToAgentZone(dbOutzone)
 }
@@ -94,11 +94,11 @@ func (s SQLiteCentralStorageZAP) UpdateZone(ctx context.Context, zone *zap.Zone)
 func (s SQLiteCentralStorageZAP) DeleteZone(ctx context.Context, zoneID int64) (*zap.Zone, error) {
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, repo.WrapSqliteError(errorMessageCannotConnect, err)
+		return nil, azrepos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, repo.WrapSqliteError(errorMessageCannotBeginTransaction, err)
+		return nil, azrepos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
 	dbOutzone, err := s.sqlRepo.DeleteZone(ctx, tx, zoneID)
 	if err != nil {
@@ -106,7 +106,7 @@ func (s SQLiteCentralStorageZAP) DeleteZone(ctx context.Context, zoneID int64) (
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, repo.WrapSqliteError(errorMessageCannotCommitTransaction, err)
+		return nil, azrepos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
 	}
 	return mapZoneToAgentZone(dbOutzone)
 }
@@ -114,7 +114,7 @@ func (s SQLiteCentralStorageZAP) DeleteZone(ctx context.Context, zoneID int64) (
 // FetchZones returns all zones.
 func (s SQLiteCentralStorageZAP) FetchZones(ctx context.Context, page int32, pageSize int32, fields map[string]any) ([]zap.Zone, error) {
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.DataFetchMaxPageSize() {
-		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid: %w", page, pageSize, storage.ErrInvalidInput)
+		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid: %w", page, pageSize, azstorage.ErrInvalidInput)
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -124,7 +124,7 @@ func (s SQLiteCentralStorageZAP) FetchZones(ctx context.Context, page int32, pag
 	if _, ok := fields[zap.FieldZoneZoneID]; ok {
 		zoneID, ok := fields[zap.FieldZoneZoneID].(int64)
 		if !ok {
-			return nil, fmt.Errorf("storage: invalid client input - zone id is not valid (zone id: %d): %w", zoneID, storage.ErrInvalidInput)
+			return nil, fmt.Errorf("storage: invalid client input - zone id is not valid (zone id: %d): %w", zoneID, azstorage.ErrInvalidInput)
 		}
 		filterID = &zoneID
 	}
@@ -132,7 +132,7 @@ func (s SQLiteCentralStorageZAP) FetchZones(ctx context.Context, page int32, pag
 	if _, ok := fields[zap.FieldZoneName]; ok {
 		zoneName, ok := fields[zap.FieldZoneName].(string)
 		if !ok {
-			return nil, fmt.Errorf("storage: invalid client input - zone name is not valid (zone name: %s): %w", zoneName, storage.ErrInvalidInput)
+			return nil, fmt.Errorf("storage: invalid client input - zone name is not valid (zone name: %s): %w", zoneName, azstorage.ErrInvalidInput)
 		}
 		filterName = &zoneName
 	}
@@ -144,7 +144,7 @@ func (s SQLiteCentralStorageZAP) FetchZones(ctx context.Context, page int32, pag
 	for i, a := range dbZones {
 		zone, err := mapZoneToAgentZone(&a)
 		if err != nil {
-			return nil, fmt.Errorf("storage: failed to convert zone entity (%s): %w", repo.LogZoneEntry(&a), storage.ErrInternal)
+			return nil, fmt.Errorf("storage: failed to convert zone entity (%s): %w", azrepos.LogZoneEntry(&a), azstorage.ErrInternal)
 		}
 		zones[i] = *zone
 	}

@@ -23,32 +23,32 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/permguard/permguard/pkg/agents/storage"
-	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 	"github.com/permguard/permguard/plugin/storage/sqlite/internal/extensions/db"
 )
 
 // SqliteRepo is the interface for sqlite repository operations.
 type SqliteRepo interface {
 	// UpsertZone creates or updates a zone.
-	UpsertZone(ctx context.Context, tx *sql.Tx, isCreate bool, zone *repos.Zone) (*repos.Zone, error)
+	UpsertZone(ctx context.Context, tx *sql.Tx, isCreate bool, zone *azrepos.Zone) (*azrepos.Zone, error)
 	// DeleteZone deletes a zone.
-	DeleteZone(ctx context.Context, tx *sql.Tx, zoneID int64) (*repos.Zone, error)
+	DeleteZone(ctx context.Context, tx *sql.Tx, zoneID int64) (*azrepos.Zone, error)
 	// FetchZone fetches a zone.
-	FetchZones(ctx context.Context, db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]repos.Zone, error)
+	FetchZones(ctx context.Context, db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]azrepos.Zone, error)
 
 	// UpsertLedger creates or updates a ledger.
-	UpsertLedger(ctx context.Context, tx *sql.Tx, isCreate bool, ledger *repos.Ledger) (*repos.Ledger, error)
+	UpsertLedger(ctx context.Context, tx *sql.Tx, isCreate bool, ledger *azrepos.Ledger) (*azrepos.Ledger, error)
 	// DeleteLedger deletes a ledger.
-	DeleteLedger(ctx context.Context, tx *sql.Tx, zoneID int64, ledgerID string) (*repos.Ledger, error)
+	DeleteLedger(ctx context.Context, tx *sql.Tx, zoneID int64, ledgerID string) (*azrepos.Ledger, error)
 	// FetchLedgers fetches ledgers.
-	FetchLedgers(ctx context.Context, db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]repos.Ledger, error)
+	FetchLedgers(ctx context.Context, db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]azrepos.Ledger, error)
 	// UpdateLedgerRef updates the ledger ref.
 	UpdateLedgerRef(ctx context.Context, tx *sql.Tx, zoneID int64, ledgerID, currentRef, newRef string) error
 
 	// UpsertKeyValue creates or updates a key value.
-	UpsertKeyValue(ctx context.Context, tx *sql.Tx, keyValue *repos.KeyValue) (*repos.KeyValue, error)
+	UpsertKeyValue(ctx context.Context, tx *sql.Tx, keyValue *azrepos.KeyValue) (*azrepos.KeyValue, error)
 	// DeleteKeyValue deletes a key value.
-	KeyValue(ctx context.Context, db *sqlx.DB, zoneID int64, key string) (*repos.KeyValue, error)
+	KeyValue(ctx context.Context, db *sqlx.DB, zoneID int64, key string) (*azrepos.KeyValue, error)
 }
 
 // SqliteExecutor is the interface for executing sqlite commands.
@@ -65,7 +65,7 @@ func (s SqliteExec) Connect(ctx *storage.Context, sqliteConnector db.SQLiteConne
 	logger := ctx.Logger()
 	db, err := sqliteConnector.Connect(logger, ctx)
 	if err != nil {
-		return nil, repos.WrapSqliteError("cannot connect to sqlite", err)
+		return nil, azrepos.WrapSqliteError("cannot connect to sqlite", err)
 	}
 	return db, nil
 }

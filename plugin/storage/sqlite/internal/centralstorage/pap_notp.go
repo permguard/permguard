@@ -19,62 +19,13 @@ package centralstorage
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	"github.com/jmoiron/sqlx"
 
-	storage "github.com/permguard/permguard/pkg/agents/storage"
+	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
-
-	notpagstatemachines "github.com/permguard/permguard/internal/transport/notp/statemachines"
-	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
 )
-
-const (
-	// LocalCommitIDKey is the local commit id key.
-	LocalCommitIDKey = "local-commit-id"
-	// RemoteCommitIDKey is the remote commit id key.
-	RemoteCommitIDKey = "remote-commit-id"
-	// TerminationKey is the termination key.
-	TerminationKey = "termination"
-	// DiffCommitIDsKey represents the diff commit ids key.
-	DiffCommitIDsKey = "diff-commit-ids"
-	// DiffCommitIDCursorKey represents the diff commit id cursor key.
-	DiffCommitIDCursorKey = "diff-commit-id-cursor"
-)
-
-// getFromHandlerContext gets the value from the handler context.
-func getFromHandlerContext[T any](ctx *notpstatemachines.HandlerContext, key string) (T, bool) {
-	value, ok := ctx.Value(key)
-	if !ok {
-		var zero T
-		return zero, false
-	}
-
-	switch v := value.(type) {
-	case string:
-		var zero T
-		switch any(zero).(type) {
-		case int:
-			if num, err := strconv.Atoi(v); err == nil {
-				return any(num).(T), true
-			}
-		case int64:
-			if num, err := strconv.ParseInt(v, 10, 64); err == nil {
-				return any(num).(T), true
-			}
-		default:
-			if any(zero) == "" {
-				return any(v).(T), true
-			}
-		}
-	case T:
-		return v, true
-	}
-	var zero T
-	return zero, false
-}
 
 // GetObjectForType gets the object for the type.
 func GetObjectForType[T any](objMng *objects.ObjectManager, obj *objects.Object) (*T, error) {
@@ -85,7 +36,7 @@ func GetObjectForType[T any](objMng *objects.ObjectManager, obj *objects.Object)
 	instance := objInfo.Instance()
 	value, ok := instance.(*T)
 	if !ok {
-		return nil, fmt.Errorf("storage: invalid object type: %w", storage.ErrInternal)
+		return nil, fmt.Errorf("storage: invalid object type: %w", azstorage.ErrInternal)
 	}
 	return value, nil
 }
@@ -103,20 +54,8 @@ func (s SQLiteCentralStoragePAP) readObject(ctx context.Context, db *sqlx.DB, zo
 	return obj, nil
 }
 
-// extractMetaData extracts the meta data.
-func (s SQLiteCentralStoragePAP) extractMetaData(ctx *notpstatemachines.HandlerContext) (int64, string) {
-	zoneIDStr, _ := getFromHandlerContext[string](ctx, notpagstatemachines.ZoneIDKey)
-	zoneID, err := strconv.ParseInt(zoneIDStr, 10, 64)
-	if err != nil {
-		return 0, ""
-	}
-	ledgerID, _ := getFromHandlerContext[string](ctx, notpagstatemachines.LedgerIDKey)
-	return zoneID, ledgerID
-}
-
-// readLedgerFromHandlerContext reads the ledger from the handler context.
-func (s SQLiteCentralStoragePAP) readLedgerFromHandlerContext(ctx context.Context, handlerCtx *notpstatemachines.HandlerContext) (*pap.Ledger, error) {
-	zoneID, ledgerID := s.extractMetaData(handlerCtx)
+// readLedger reads the ledger by zone ID and ledger ID.
+func (s SQLiteCentralStoragePAP) readLedger(ctx context.Context, zoneID int64, ledgerID string) (*pap.Ledger, error) {
 	fields := map[string]any{
 		pap.FieldLedgerLedgerID: ledgerID,
 	}
@@ -125,7 +64,7 @@ func (s SQLiteCentralStoragePAP) readLedgerFromHandlerContext(ctx context.Contex
 		return nil, err
 	}
 	if len(ledgers) == 0 {
-		return nil, fmt.Errorf("storage: ledger not found: %w", storage.ErrNotFound)
+		return nil, fmt.Errorf("storage: ledger not found: %w", azstorage.ErrNotFound)
 	}
 	return &ledgers[0], nil
 }

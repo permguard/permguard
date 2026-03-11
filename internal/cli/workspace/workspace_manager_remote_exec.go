@@ -17,16 +17,14 @@
 package workspace
 
 import (
-	// "encoding/json"
 	"errors"
 	"fmt"
 	"path"
 	"strings"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	azwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/internal/cli/workspace/logs"
-	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
@@ -56,15 +54,15 @@ func (m *Manager) execInternalCheckoutLedger(internal bool, ledgerURI string, ou
 
 	// Verifies the ledger URI and check if it already exists
 	var err error
-	var ledgerInfo *wkscommon.LedgerInfo
-	ledgerInfo, err = wkscommon.GetLedgerInfoFromURI(ledgerURI)
+	var ledgerInfo *azwkscommon.LedgerInfo
+	ledgerInfo, err = azwkscommon.GetLedgerInfoFromURI(ledgerURI)
 	if err != nil {
 		return fail(nil, err)
 	}
 	var output map[string]any
 	if ok := m.cfgMgr.CheckLedgerIfExists(ledgerURI); !ok {
 		// Retrieves the remote information
-		var remoteInfo *wkscommon.RemoteInfo
+		var remoteInfo *azwkscommon.RemoteInfo
 		remoteInfo, err = m.cfgMgr.RemoteInfo(ledgerInfo.Remote())
 		if err != nil {
 			return fail(nil, err)
@@ -100,7 +98,7 @@ func (m *Manager) execInternalCheckoutLedger(internal bool, ledgerURI string, ou
 			return fail(nil, err)
 		}
 		// Read current remote ref info
-		var remoteRefInfo *wkscommon.RefInfo
+		var remoteRefInfo *azwkscommon.RefInfo
 		remoteRefInfo, err = m.rfsMgr.RefInfo(remoteRef)
 		if err != nil {
 			return fail(nil, err)
@@ -110,7 +108,7 @@ func (m *Manager) execInternalCheckoutLedger(internal bool, ledgerURI string, ou
 			return fail(nil, err)
 		}
 		// Read current head ref info
-		var headRefInfo *wkscommon.RefInfo
+		var headRefInfo *azwkscommon.RefInfo
 		headRefInfo, err = m.rfsMgr.RefInfo(headRef)
 		if err != nil {
 			return fail(nil, err)
@@ -125,7 +123,7 @@ func (m *Manager) execInternalCheckoutLedger(internal bool, ledgerURI string, ou
 	if err != nil {
 		return fail(nil, err)
 	}
-	remoteRef := wkscommon.GenerateHeadRef(refInfo.ZoneID(), refInfo.Ledger())
+	remoteRef := azwkscommon.GenerateHeadRef(refInfo.ZoneID(), refInfo.Ledger())
 	_, output, err = m.rfsMgr.ExecCheckoutHead(remoteRef, output, out)
 	if err != nil {
 		return fail(nil, err)
@@ -168,7 +166,12 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 		return nil, err
 	}
 
-	_, _ = m.execInternalRefresh(true, out)
+	_, refreshErr := m.execInternalRefresh(true, out)
+	if refreshErr != nil {
+		if m.ctx.IsVerboseTerminalOutput() {
+			out(nil, "pull", fmt.Sprintf("Warning: refresh failed: %v", refreshErr), nil, true)
+		}
+	}
 
 	output := map[string]any{}
 
@@ -186,30 +189,20 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 		out(nil, "pull", "Preparing to pull changes from the remote ledger.", nil, true)
 	}
 
-	bag := map[string]any{
-		OutFuncKey: func(key string, output string, newLine bool) {
-			out(nil, key, output, nil, newLine)
-		},
-		LocalCodeCommitIDKey: headCtx.remoteCommitID,
-		HeadContextKey:       headCtx,
-	}
-
-	var ctx *notpstatemachines.StateMachineRuntimeContext
-	ctx, err = m.rmSrvtMgr.NOTPPull(headCtx.Server(), headCtx.ServerPAPPort(), headCtx.ZoneID(), headCtx.LedgerID(), bag, m)
+	// Execute synchronous pull
+	pullResult, err := m.execRemotePull(headCtx, out)
 	if err != nil {
 		return fail(err)
 	}
 
-	localCommitID, _ := getFromRuntimeContext[string](ctx, LocalCodeCommitIDKey)
+	localCommitID := pullResult.LocalCommitID
+	remoteCommitID := pullResult.RemoteCommitID
+	localCommitsCount := pullResult.LocalCommitCount
+	remoteCommitCount := pullResult.RemoteCommitCount
+
 	output["local_commit_oid"] = localCommitID
-
-	localCommitsCount, _ := getFromRuntimeContext[uint32](ctx, LocalCommitsCountKey)
 	output["local_commits_count"] = localCommitsCount
-
-	remoteCommitID, _ := getFromRuntimeContext[string](ctx, RemoteCommitIDKey)
 	output["remote_commit_oid"] = remoteCommitID
-
-	remoteCommitCount, _ := getFromRuntimeContext[uint32](ctx, RemoteCommitsCountKey)
 	output["remote_commits_count"] = remoteCommitCount
 
 	switch {
@@ -223,30 +216,29 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 		}
 		return fail(errors.New("cli: not all commits were successfully pulled"))
 	default:
-		committed, _ := getFromRuntimeContext[bool](ctx, CommittedKey)
-		if !committed || localCommitID == "" || remoteCommitID == "" {
+		if !pullResult.Committed {
 			if localCommitID != "" && remoteCommitID != "" {
-				_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.LedgerURI())
-				if err != nil {
-					return fail(err)
+				_, logErr := m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.LedgerURI())
+				if logErr != nil {
+					return fail(fmt.Errorf("cli: pull not committed and failed to log: %w", logErr))
 				}
 			}
+			return fail(errors.New("cli: pull was not committed"))
 		}
+
+		if remoteCommitID == "" {
+			return fail(errors.New("cli: remote commit ID is empty after pull"))
+		}
+
 		err = m.rfsMgr.SaveRefConfig(remoteRefInfo.LedgerID(), remoteRefInfo.Ref(), remoteCommitID)
 		if err != nil {
-			_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.LedgerURI())
-			if err != nil {
-				return fail(err)
-			}
-			return fail(err)
+			_, _ = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.LedgerURI())
+			return fail(fmt.Errorf("cli: failed to save remote ref config: %w", err))
 		}
 		err = m.rfsMgr.SaveRefWithRemoteConfig(headRefInfo.LedgerID(), headRefInfo.Ref(), remoteRefInfo.Ref(), remoteCommitID)
 		if err != nil {
-			_, err = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.LedgerURI())
-			if err != nil {
-				return fail(err)
-			}
-			return fail(err)
+			_, _ = m.logsMgr.Log(headRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, false, remoteRefInfo.LedgerURI())
+			return fail(fmt.Errorf("cli: failed to save head ref config: %w", err))
 		}
 		_, err = m.logsMgr.Log(remoteRefInfo, localCommitID, remoteCommitID, logs.LogActionPull, true, remoteRefInfo.LedgerURI())
 		if err != nil {
@@ -257,7 +249,7 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 			return fail(err)
 		}
 	}
-	if remoteCommitID != objects.ZeroOID {
+	if remoteCommitID != objects.ZeroOID && remoteCommitID != "" {
 		langPvd, err := m.buildManifestLanguageProvider()
 		if err != nil {
 			return fail(err)
@@ -316,11 +308,11 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 				}
 				objInfo, err := m.objMar.ObjectInfo(entryObj)
 				if err != nil {
-					return nil, err
+					return fail(err)
 				}
 				header := objInfo.Header()
 				if header == nil {
-					return nil, errors.New("cli: object header is nil")
+					return fail(errors.New("cli: object header is nil"))
 				}
 				switch classType {
 				case types.ClassTypeSchemaID:

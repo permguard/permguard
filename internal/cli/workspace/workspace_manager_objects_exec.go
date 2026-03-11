@@ -23,7 +23,7 @@ import (
 	"strings"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	azwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/pkg/authz/languages"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
@@ -375,7 +375,7 @@ func (m *Manager) ExecHistory(out common.PrinterOutFunc) (map[string]any, error)
 	}
 
 	// Load commit history from head
-	var commitInfos []wkscommon.CommitInfo
+	var commitInfos []azwkscommon.CommitInfo
 	headCommit := headCtx.RemoteCommitID()
 	if headCommit != objects.ZeroOID {
 		commitInfos, err = m.history(headCommit)

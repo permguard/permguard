@@ -29,7 +29,7 @@ import (
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/validators"
-	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	azmanifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
@@ -50,12 +50,12 @@ func NewCedarLanguageAbstraction() (*LanguageAbstraction, error) {
 }
 
 // BuildManifest builds the manifest.
-func (abs *LanguageAbstraction) BuildManifest(manifest *manifests.Manifest, template string) (*manifests.Manifest, error) {
+func (abs *LanguageAbstraction) BuildManifest(manifest *azmanifests.Manifest, template string) (*azmanifests.Manifest, error) {
 	return cedarlang.BuildManifest(manifest, template, engines.EngineName, engines.EngineVersion, engines.EngineDist, false)
 }
 
 // ValidateManifest validates the manifest.
-func (abs *LanguageAbstraction) ValidateManifest(manifest *manifests.Manifest) (bool, error) {
+func (abs *LanguageAbstraction) ValidateManifest(manifest *azmanifests.Manifest) (bool, error) {
 	return cedarlang.ValidateManifest(manifest)
 }
 
@@ -85,7 +85,7 @@ func (abs *LanguageAbstraction) PolicyFileExtensions() []string {
 }
 
 // CreatePolicyBlobObjects creates multi sections policy blob objects.
-func (abs *LanguageAbstraction) CreatePolicyBlobObjects(mfestLang *manifests.Language, partition string, filePath string, data []byte) (*objects.MultiSectionsObject, error) {
+func (abs *LanguageAbstraction) CreatePolicyBlobObjects(mfestLang *azmanifests.Language, partition string, filePath string, data []byte) (*objects.MultiSectionsObject, error) {
 	if mfestLang.Name != cedarlang.LanguageCedar {
 		return nil, errors.New("cedar: unsupported frontend language")
 	}
@@ -167,7 +167,7 @@ func (abs *LanguageAbstraction) CreatePolicyBlobObjects(mfestLang *manifests.Lan
 }
 
 // CreatePolicyContentBytes creates a multi policy content bytes.
-func (abs *LanguageAbstraction) CreatePolicyContentBytes(_ *manifests.Language, blocks [][]byte) ([]byte, string, error) {
+func (abs *LanguageAbstraction) CreatePolicyContentBytes(_ *azmanifests.Language, blocks [][]byte) ([]byte, string, error) {
 	var sb strings.Builder
 	for i, block := range blocks {
 		if i > 0 {
@@ -184,7 +184,7 @@ func (abs *LanguageAbstraction) SchemaFileNames() []string {
 }
 
 // CreateSchemaBlobObjects creates multi sections schema blob objects.
-func (abs *LanguageAbstraction) CreateSchemaBlobObjects(mfestLang *manifests.Language, partition string, path string, data []byte) (*objects.MultiSectionsObject, error) {
+func (abs *LanguageAbstraction) CreateSchemaBlobObjects(mfestLang *azmanifests.Language, partition string, path string, data []byte) (*objects.MultiSectionsObject, error) {
 	if mfestLang.Name != cedarlang.LanguageCedar {
 		return nil, errors.New("cedar: unsupported frontend language")
 	}
@@ -233,7 +233,7 @@ func (abs *LanguageAbstraction) CreateSchemaBlobObjects(mfestLang *manifests.Lan
 }
 
 // CreateSchemaContentBytes creates a schema content bytes.
-func (abs *LanguageAbstraction) CreateSchemaContentBytes(_ *manifests.Language, blocks []byte) ([]byte, string, error) {
+func (abs *LanguageAbstraction) CreateSchemaContentBytes(_ *azmanifests.Language, blocks []byte) ([]byte, string, error) {
 	if len(blocks) == 0 {
 		return nil, "", errors.New("cedar: schema cannot be empty")
 	}
@@ -241,7 +241,7 @@ func (abs *LanguageAbstraction) CreateSchemaContentBytes(_ *manifests.Language, 
 }
 
 // ConvertBytesToFrontendLanguage converts bytes to the frontend language.
-func (abs *LanguageAbstraction) ConvertBytesToFrontendLanguage(_ *manifests.Language, langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error) {
+func (abs *LanguageAbstraction) ConvertBytesToFrontendLanguage(_ *azmanifests.Language, langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error) {
 	if cedarlang.LanguageCedarJSONID != langID {
 		return nil, errors.New("cedar: invalid backend language")
 	}
@@ -266,7 +266,7 @@ func (abs *LanguageAbstraction) ConvertBytesToFrontendLanguage(_ *manifests.Lang
 }
 
 // AuthorizationCheck checks the authorization.
-func (abs *LanguageAbstraction) AuthorizationCheck(_ *manifests.Language, contextID string, policyStore *authzen.PolicyStore, authzCtx *authzen.AuthorizationModel) (*authzen.AuthorizationDecision, error) {
+func (abs *LanguageAbstraction) AuthorizationCheck(_ *azmanifests.Language, contextID string, policyStore *authzen.PolicyStore, authzCtx *authzen.AuthorizationModel) (*authzen.AuthorizationDecision, error) {
 	// Creates a new policy set.
 	ps := cedar.NewPolicySet()
 	for _, policy := range policyStore.Policies() {

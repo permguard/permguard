@@ -20,17 +20,17 @@ import (
 	"errors"
 
 	"github.com/permguard/permguard/pkg/authz/languages"
-	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	azmanifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 )
 
 type languageInfo struct {
-	lang    *manifests.Language
+	lang    *azmanifests.Language
 	langAbs languages.LanguageAbastraction
 }
 
 // ManifestLanguageProvider manifest language provider.
 type ManifestLanguageProvider struct {
-	manifest  *manifests.Manifest
+	manifest  *azmanifests.Manifest
 	langInfos map[string]languageInfo
 }
 
@@ -44,7 +44,7 @@ func (p *ManifestLanguageProvider) Partitions() []string {
 }
 
 // Language gets the language for the input partition.
-func (p *ManifestLanguageProvider) Language(partition string) (*manifests.Language, error) {
+func (p *ManifestLanguageProvider) Language(partition string) (*azmanifests.Language, error) {
 	if p.langInfos == nil {
 		return nil, errors.New("cli: parition doens't exists")
 	}

@@ -25,7 +25,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite" // SQLite driver
 
-	storage "github.com/permguard/permguard/pkg/agents/storage"
+	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/core/validators"
 )
 
@@ -51,7 +51,7 @@ func ConvertLedgerKindToID(kind string) (int16, error) {
 	cKey := strings.ToLower(kind)
 	value, ok := ledgersMap[cKey]
 	if !ok {
-		return 0, fmt.Errorf("invalid client input - ledger kind %s is not valid: %w", kind, storage.ErrInvalidInput)
+		return 0, fmt.Errorf("invalid client input - ledger kind %s is not valid: %w", kind, azstorage.ErrInvalidInput)
 	}
 	return value, nil
 }
@@ -69,16 +69,16 @@ func ConvertLedgerKindToString(id int16) (string, error) {
 // UpsertLedger creates or updates a ledger.
 func (r *Repository) UpsertLedger(ctx context.Context, tx *sql.Tx, isCreate bool, ledger *Ledger) (*Ledger, error) {
 	if ledger == nil {
-		return nil, fmt.Errorf("storage: invalid client input - ledger data is missing or malformed (%s): %w", LogLedgerEntry(ledger), storage.ErrInvalidInput)
+		return nil, fmt.Errorf("storage: invalid client input - ledger data is missing or malformed (%s): %w", LogLedgerEntry(ledger), azstorage.ErrInvalidInput)
 	}
 	if err := validators.ValidateCodeID(LedgerType, ledger.ZoneID); err != nil {
-		return nil, fmt.Errorf(errorMessageLedgerInvalidZoneID+": %w", ledger.ZoneID, storage.ErrInvalidInput)
+		return nil, fmt.Errorf(errorMessageLedgerInvalidZoneID+": %w", ledger.ZoneID, azstorage.ErrInvalidInput)
 	}
 	if !isCreate && validators.ValidateUUID(LedgerType, ledger.LedgerID) != nil {
-		return nil, fmt.Errorf("storage: invalid client input - ledger id is not valid (%s): %w", LogLedgerEntry(ledger), storage.ErrInvalidInput)
+		return nil, fmt.Errorf("storage: invalid client input - ledger id is not valid (%s): %w", LogLedgerEntry(ledger), azstorage.ErrInvalidInput)
 	}
 	if err := validators.ValidateName(LedgerType, ledger.Name); err != nil {
-		return nil, fmt.Errorf("invalid client input - ledger name is not valid (%s): %w", LogLedgerEntry(ledger), storage.ErrInvalidInput)
+		return nil, fmt.Errorf("invalid client input - ledger name is not valid (%s): %w", LogLedgerEntry(ledger), azstorage.ErrInvalidInput)
 	}
 
 	zoneID := ledger.ZoneID
@@ -121,29 +121,29 @@ func (r *Repository) UpsertLedger(ctx context.Context, tx *sql.Tx, isCreate bool
 // UpdateLedgerRef updates the ref of a ledger.
 func (r *Repository) UpdateLedgerRef(ctx context.Context, tx *sql.Tx, zoneID int64, ledgerID, currentRef, newRef string) error {
 	if err := validators.ValidateCodeID(LedgerType, zoneID); err != nil {
-		return fmt.Errorf(errorMessageLedgerInvalidZoneID+": %w", zoneID, storage.ErrInvalidInput)
+		return fmt.Errorf(errorMessageLedgerInvalidZoneID+": %w", zoneID, azstorage.ErrInvalidInput)
 	}
 	if err := validators.ValidateUUID(LedgerType, ledgerID); err != nil {
-		return fmt.Errorf("storage: invalid client input - ledger id is not valid (id: %s): %w", ledgerID, storage.ErrInvalidInput)
+		return fmt.Errorf("storage: invalid client input - ledger id is not valid (id: %s): %w", ledgerID, azstorage.ErrInvalidInput)
 	}
 	if err := validators.ValidateSHA256(LedgerType, currentRef); err != nil {
-		return fmt.Errorf("storage: invalid client input - current ref is not valid (ref: %s): %w", currentRef, storage.ErrInvalidInput)
+		return fmt.Errorf("storage: invalid client input - current ref is not valid (ref: %s): %w", currentRef, azstorage.ErrInvalidInput)
 	}
 	if err := validators.ValidateSHA256(LedgerType, newRef); err != nil {
-		return fmt.Errorf("storage: invalid client input - new ref is not valid (ref: %s): %w", newRef, storage.ErrInvalidInput)
+		return fmt.Errorf("storage: invalid client input - new ref is not valid (ref: %s): %w", newRef, azstorage.ErrInvalidInput)
 	}
 
 	var dbCurrentRef string
 	err := tx.QueryRowContext(ctx, "SELECT ref FROM ledgers WHERE zone_id = ? AND ledger_id = ?", zoneID, ledgerID).Scan(&dbCurrentRef)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return fmt.Errorf("storage: ledger not found (zone_id: %d, ledger_id: %s): %w", zoneID, ledgerID, storage.ErrNotFound)
+			return fmt.Errorf("storage: ledger not found (zone_id: %d, ledger_id: %s): %w", zoneID, ledgerID, azstorage.ErrNotFound)
 		}
 		return WrapSqliteError("failed to retrieve current ref for ledger", err)
 	}
 
 	if dbCurrentRef != currentRef {
-		return fmt.Errorf("current ref mismatch (expected: %s, got: %s): %w", dbCurrentRef, currentRef, storage.ErrConflict)
+		return fmt.Errorf("current ref mismatch (expected: %s, got: %s): %w", dbCurrentRef, currentRef, azstorage.ErrConflict)
 	}
 
 	result, err := tx.ExecContext(ctx, "UPDATE ledgers SET ref = ? WHERE zone_id = ? AND ledger_id = ?", newRef, zoneID, ledgerID)
@@ -156,7 +156,7 @@ func (r *Repository) UpdateLedgerRef(ctx context.Context, tx *sql.Tx, zoneID int
 		return WrapSqliteError("failed to get rows affected for update ref", err)
 	}
 	if rows != 1 {
-		return fmt.Errorf("update failed, no rows affected (zone_id: %d, ledger_id: %s): %w", zoneID, ledgerID, storage.ErrNotFound)
+		return fmt.Errorf("update failed, no rows affected (zone_id: %d, ledger_id: %s): %w", zoneID, ledgerID, azstorage.ErrNotFound)
 	}
 	return nil
 }
@@ -164,10 +164,10 @@ func (r *Repository) UpdateLedgerRef(ctx context.Context, tx *sql.Tx, zoneID int
 // DeleteLedger deletes a ledger.
 func (r *Repository) DeleteLedger(ctx context.Context, tx *sql.Tx, zoneID int64, ledgerID string) (*Ledger, error) {
 	if err := validators.ValidateCodeID(LedgerType, zoneID); err != nil {
-		return nil, fmt.Errorf(errorMessageLedgerInvalidZoneID+": %w", zoneID, storage.ErrInvalidInput)
+		return nil, fmt.Errorf(errorMessageLedgerInvalidZoneID+": %w", zoneID, azstorage.ErrInvalidInput)
 	}
 	if err := validators.ValidateUUID(LedgerType, ledgerID); err != nil {
-		return nil, fmt.Errorf("storage: invalid client input - ledger id is not valid (id: %s): %w", ledgerID, storage.ErrInvalidInput)
+		return nil, fmt.Errorf("storage: invalid client input - ledger id is not valid (id: %s): %w", ledgerID, azstorage.ErrInvalidInput)
 	}
 
 	var dbLedger Ledger
@@ -197,10 +197,10 @@ func (r *Repository) DeleteLedger(ctx context.Context, tx *sql.Tx, zoneID int64,
 // FetchLedgers retrieves ledgers.
 func (r *Repository) FetchLedgers(ctx context.Context, db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]Ledger, error) {
 	if page <= 0 || pageSize <= 0 {
-		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid: %w", page, pageSize, storage.ErrInvalidInput)
+		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid: %w", page, pageSize, azstorage.ErrInvalidInput)
 	}
 	if err := validators.ValidateCodeID(LedgerType, zoneID); err != nil {
-		return nil, fmt.Errorf(errorMessageLedgerInvalidZoneID+": %w", zoneID, storage.ErrInvalidInput)
+		return nil, fmt.Errorf(errorMessageLedgerInvalidZoneID+": %w", zoneID, azstorage.ErrInvalidInput)
 	}
 
 	var dbLedgers []Ledger
@@ -215,7 +215,7 @@ func (r *Repository) FetchLedgers(ctx context.Context, db *sqlx.DB, page int32, 
 	if filterID != nil {
 		ledgerID := *filterID
 		if err := validators.ValidateUUID(LedgerType, ledgerID); err != nil {
-			return nil, fmt.Errorf("storage: invalid client input - ledger id is not valid (id: %s): %w", ledgerID, storage.ErrInvalidInput)
+			return nil, fmt.Errorf("storage: invalid client input - ledger id is not valid (id: %s): %w", ledgerID, azstorage.ErrInvalidInput)
 		}
 		conditions = append(conditions, "ledger_id = ?")
 		args = append(args, ledgerID)
@@ -224,7 +224,7 @@ func (r *Repository) FetchLedgers(ctx context.Context, db *sqlx.DB, page int32, 
 	if filterName != nil {
 		ledgerName := *filterName
 		if err := validators.ValidateName(LedgerType, ledgerName); err != nil {
-			return nil, fmt.Errorf("storage: invalid client input - ledger name is not valid (name: %s): %w", ledgerName, storage.ErrInvalidInput)
+			return nil, fmt.Errorf("storage: invalid client input - ledger name is not valid (name: %s): %w", ledgerName, azstorage.ErrInvalidInput)
 		}
 		ledgerName = "%" + ledgerName + "%"
 		conditions = append(conditions, "name LIKE ?")

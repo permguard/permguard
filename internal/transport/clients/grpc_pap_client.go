@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	papv1 "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
+	azpapv1 "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
 )
 
 // GrpcPAPClient is a gRPC client for the PAP service.
@@ -40,11 +40,31 @@ func NewGrpcPAPClient(endpoint string) (*GrpcPAPClient, error) {
 }
 
 // createGRPCClient creates a new gRPC client.
-func (c *GrpcPAPClient) createGRPCClient() (papv1.V1PAPServiceClient, *grpc.ClientConn, error) {
+func (c *GrpcPAPClient) createGRPCClient() (azpapv1.V1PAPServiceClient, *grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(c.endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, nil, err
 	}
-	client := papv1.NewV1PAPServiceClient(conn)
+	client := azpapv1.NewV1PAPServiceClient(conn)
 	return client, conn, nil
+}
+
+// GrpcPAPClientSession holds a reusable gRPC connection and client for multiple calls.
+type GrpcPAPClientSession struct {
+	client azpapv1.V1PAPServiceClient
+	conn   *grpc.ClientConn
+}
+
+// Connect creates a new session with a reusable gRPC connection.
+func (c *GrpcPAPClient) Connect() (*GrpcPAPClientSession, error) {
+	client, conn, err := c.createGRPCClient()
+	if err != nil {
+		return nil, err
+	}
+	return &GrpcPAPClientSession{client: client, conn: conn}, nil
+}
+
+// Close closes the session's gRPC connection.
+func (s *GrpcPAPClientSession) Close() error {
+	return s.conn.Close()
 }

@@ -19,8 +19,8 @@ package pap
 import (
 	"google.golang.org/grpc"
 
-	papctrl "github.com/permguard/permguard/internal/agents/services/pap/controllers"
-	papv1 "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
+	azpapctrl "github.com/permguard/permguard/internal/agents/services/pap/controllers"
+	azpapv1 "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
 	"github.com/permguard/permguard/pkg/agents/runtime"
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
@@ -64,7 +64,7 @@ func (f *Service) Endpoints() ([]services.EndpointInitializer, error) {
 			if err != nil {
 				return err
 			}
-			controller, err := papctrl.NewPAPController(srvCtx, papCentralStorage)
+			controller, err := azpapctrl.NewPAPController(srvCtx, papCentralStorage)
 			if err != nil {
 				return nil
 			}
@@ -72,8 +72,8 @@ func (f *Service) Endpoints() ([]services.EndpointInitializer, error) {
 			if err != nil {
 				return err
 			}
-			papServer, err := papv1.NewPAPServer(endptCtx, controller)
-			papv1.RegisterV1PAPServiceServer(grpcServer, papServer)
+			papServer, err := azpapv1.NewPAPServer(endptCtx, controller)
+			azpapv1.RegisterV1PAPServiceServer(grpcServer, papServer)
 			return err
 		})
 	if err != nil {

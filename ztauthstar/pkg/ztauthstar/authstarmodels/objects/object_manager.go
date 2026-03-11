@@ -65,9 +65,6 @@ func (m *ObjectManager) CreateTreeObject(tree *Tree) (*Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(treeBytes) == 0 {
-		return nil, errors.New("objects: data is empty")
-	}
 	return m.createOject(ObjectTypeTree, treeBytes)
 }
 

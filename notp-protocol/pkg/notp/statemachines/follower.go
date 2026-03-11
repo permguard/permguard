@@ -19,11 +19,11 @@ package statemachines
 import (
 	"fmt"
 
-	notptransport "github.com/permguard/permguard/notp-protocol/pkg/notp/transport"
+	aznotptransport "github.com/permguard/permguard/notp-protocol/pkg/notp/transport"
 )
 
 // NewFollowerStateMachine creates and configures a new follower state machine for the given operation.
-func NewFollowerStateMachine(hostHandler HostHandler, transportLayer *notptransport.TransportLayer) (*StateMachine, error) {
+func NewFollowerStateMachine(hostHandler HostHandler, transportLayer *aznotptransport.TransportLayer) (*StateMachine, error) {
 	stateMachine, err := NewStateMachine(defaultStateMap, StartFlowStateID, hostHandler, transportLayer)
 	if err != nil {
 		return nil, fmt.Errorf("notp: failed to create follower state machine: %w", err)

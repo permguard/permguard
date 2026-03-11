@@ -21,7 +21,7 @@ import (
 	"errors"
 
 	"github.com/permguard/permguard/common/pkg/extensions/data"
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	aznotppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
 )
 
 // TransportLayer represents the transport layer responsible for packet transmission in the NOTP protocol.
@@ -32,19 +32,19 @@ type TransportLayer struct {
 }
 
 // TransmitPacket sends a packet through the transport layer.
-func (t *TransportLayer) TransmitPacket(packetables []notppackets.Packetable) error {
+func (t *TransportLayer) TransmitPacket(packetables []aznotppackets.Packetable) error {
 	if t.packetSender == nil {
 		return errors.New("notp: transport layer does not have a defined packet sender")
 	}
 	if len(packetables) == 0 {
 		return errors.New("notp: cannot send an empty packet")
 	}
-	packet := notppackets.Packet{}
-	writer, err := notppackets.NewPacketWriter(&packet)
+	packet := aznotppackets.Packet{}
+	writer, err := aznotppackets.NewPacketWriter(&packet)
 	if err != nil {
 		return err
 	}
-	writer.WriteProtocol(&notppackets.ProtocolPacket{Version: 1})
+	writer.WriteProtocol(&aznotppackets.ProtocolPacket{Version: 1})
 	for _, packetable := range packetables {
 		err := writer.AppendDataPacket(packetable)
 		if err != nil {
@@ -67,7 +67,7 @@ func (t *TransportLayer) TransmitPacket(packetables []notppackets.Packetable) er
 }
 
 // ReceivePacket retrieves a packet from the transport layer.
-func (t *TransportLayer) ReceivePacket() ([]notppackets.Packetable, error) {
+func (t *TransportLayer) ReceivePacket() ([]aznotppackets.Packetable, error) {
 	if t.packetReceiver == nil {
 		return nil, errors.New("notp: transport layer does not have a defined packet receiver")
 	}
@@ -86,7 +86,7 @@ func (t *TransportLayer) ReceivePacket() ([]notppackets.Packetable, error) {
 	if t.inspector != nil {
 		t.inspector.InspectReceived(packet)
 	}
-	reader, err := notppackets.NewPacketReader(packet)
+	reader, err := aznotppackets.NewPacketReader(packet)
 	if err != nil {
 		return nil, err
 	}
@@ -97,15 +97,15 @@ func (t *TransportLayer) ReceivePacket() ([]notppackets.Packetable, error) {
 	if protocol.Version != 1 {
 		return nil, errors.New("notp: unsupported protocol version")
 	}
-	packetables := []notppackets.Packetable{}
-	var state *notppackets.DataPacketState
+	packetables := []aznotppackets.Packetable{}
+	var state *aznotppackets.DataPacketState
 	for {
 		var data []byte
 		data, state, err = reader.ReadNextDataPacket(state)
 		if err != nil {
 			return nil, err
 		}
-		packetable := &notppackets.Packet{
+		packetable := &aznotppackets.Packet{
 			Data: data,
 		}
 		packetables = append(packetables, packetable)

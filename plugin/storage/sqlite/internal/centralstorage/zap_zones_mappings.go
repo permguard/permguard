@@ -18,11 +18,11 @@ package centralstorage
 
 import (
 	"github.com/permguard/permguard/pkg/transport/models/zap"
-	repos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
+	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // mapZoneToAgentZone maps a zone to a model Zone.
-func mapZoneToAgentZone(zone *repos.Zone) (*zap.Zone, error) {
+func mapZoneToAgentZone(zone *azrepos.Zone) (*zap.Zone, error) {
 	return &zap.Zone{
 		ZoneID:    zone.ZoneID,
 		CreatedAt: zone.CreatedAt,

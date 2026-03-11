@@ -26,7 +26,7 @@ import (
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	azwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 )
 
 // objectsInfos retrieves and filters object metadata based on object type.
@@ -77,7 +77,7 @@ func (m *Manager) objectsInfos(includeStorage, includeCode, filterCommits, filte
 }
 
 // history gets the commit history.
-func (m *Manager) history(commit string) ([]wkscommon.CommitInfo, error) {
+func (m *Manager) history(commit string) ([]azwkscommon.CommitInfo, error) {
 	commitHistory, err := m.cospMgr.History(commit)
 	if err != nil {
 		return nil, err

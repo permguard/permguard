@@ -29,10 +29,10 @@ import (
 	"github.com/permguard/permguard/internal/cli/workspace/cosp"
 	"github.com/permguard/permguard/internal/cli/workspace/logs"
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
-	refs "github.com/permguard/permguard/internal/cli/workspace/refs"
+	azrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
 	"github.com/permguard/permguard/internal/cli/workspace/remoteserver"
 	"github.com/permguard/permguard/pkg/authz/languages"
-	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	azmanifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
@@ -59,7 +59,7 @@ type Manager struct {
 	rmSrvtMgr *remoteserver.Manager
 	cfgMgr    *config.Manager
 	logsMgr   *logs.Manager
-	rfsMgr    *refs.Manager
+	rfsMgr    *azrefs.Manager
 	cospMgr   *cosp.Manager
 }
 
@@ -86,7 +86,7 @@ func NewInternalManager(ctx *common.CliCommandContext, langFct languages.Languag
 	if err != nil {
 		return nil, err
 	}
-	rfsMgr, err := refs.NewManager(ctx, persMgr)
+	rfsMgr, err := azrefs.NewManager(ctx, persMgr)
 	if err != nil {
 		return nil, err
 	}
@@ -166,17 +166,17 @@ func (m *Manager) raiseWrongWorkspaceDirError(out common.PrinterOutFunc) error {
 }
 
 // hasValidManifestWorkspaceDir checks if the directory is a valid workspace directory.
-func (m *Manager) hasValidManifestWorkspaceDir() (*manifests.Manifest, error) {
-	manifestData, _, err := m.persMgr.ReadFile(persistence.WorkspaceDir, manifests.ManifestFileName, false)
+func (m *Manager) hasValidManifestWorkspaceDir() (*azmanifests.Manifest, error) {
+	manifestData, _, err := m.persMgr.ReadFile(persistence.WorkspaceDir, azmanifests.ManifestFileName, false)
 	if err != nil {
 		return nil, errors.Join(errors.New("cli: could not read the manifest file in the workspace directory"), err)
 	}
-	manifest, err := manifests.ConvertBytesToManifest(manifestData)
+	manifest, err := azmanifests.ConvertBytesToManifest(manifestData)
 	manifestErr := errors.New("cli: invalid manifest in the workspace directory")
 	if err != nil {
 		return nil, errors.Join(manifestErr, err)
 	}
-	ok, err := manifests.ValidateManifest(manifest)
+	ok, err := azmanifests.ValidateManifest(manifest)
 	if err != nil {
 		return nil, errors.Join(manifestErr, err)
 	}

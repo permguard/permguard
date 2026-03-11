@@ -17,7 +17,7 @@
 package common
 
 import (
-	iclients "github.com/permguard/permguard/internal/transport/clients"
+	azclients "github.com/permguard/permguard/internal/transport/clients"
 	"github.com/permguard/permguard/pkg/authz/languages"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/transport/clients"
@@ -36,17 +36,17 @@ func (c *cliDependencies) CreatePrinter(verbose bool, output string) (cli.Printe
 
 // CreateGrpcZAPClient creates a new gRPC client for the ZAP service.
 func (c *cliDependencies) CreateGrpcZAPClient(zapEndpoint string) (clients.GrpcZAPClient, error) {
-	return iclients.NewGrpcZAPClient(zapEndpoint)
+	return azclients.NewGrpcZAPClient(zapEndpoint)
 }
 
 // CreateGrpcPAPClient creates a new gRPC client for the PAP service.
 func (c *cliDependencies) CreateGrpcPAPClient(papEndpoint string) (clients.GrpcPAPClient, error) {
-	return iclients.NewGrpcPAPClient(papEndpoint)
+	return azclients.NewGrpcPAPClient(papEndpoint)
 }
 
 // CreateGrpcPDPClient creates a new gRPC client for the PDP service.
 func (c *cliDependencies) CreateGrpcPDPClient(pdpEndpoint string) (clients.GrpcPDPClient, error) {
-	return iclients.NewGrpcPDPClient(pdpEndpoint)
+	return azclients.NewGrpcPDPClient(pdpEndpoint)
 }
 
 // LanguageFactory creates a new gRPC client for the PAP service.

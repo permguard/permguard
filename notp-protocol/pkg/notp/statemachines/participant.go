@@ -21,8 +21,8 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
-	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
+	aznotppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	aznotpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
 )
 
 // FlowType represents the type of operation that the NOTP protocol is performing.
@@ -103,19 +103,19 @@ func terminateWithFinal(runtime *StateMachineRuntimeContext) (*StateTransitionIn
 // startFlowState state to start the flow.
 func startFlowState(runtime *StateMachineRuntimeContext) (*StateTransitionInfo, error) {
 	flowID := generateFlowID()
-	flowPacket := &notpsmpackets.StatePacket{
-		MessageCode:  notpsmpackets.FlowIDValue,
+	flowPacket := &aznotpsmpackets.StatePacket{
+		MessageCode:  aznotpsmpackets.FlowIDValue,
 		MessageValue: flowID,
 	}
 	runtime.SetValue(FlowIDKey, flowID)
-	_, terminate, err := createAndHandleAndStreamStatePacketWithValue(runtime, notpsmpackets.StartFlowMessage, uint64(runtime.flowType), []notppackets.Packetable{flowPacket})
+	_, terminate, err := createAndHandleAndStreamStatePacketWithValue(runtime, aznotpsmpackets.StartFlowMessage, uint64(runtime.flowType), []aznotppackets.Packetable{flowPacket})
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("notp: start flow failed to create and handle start flow packet: %w", err)
 	}
-	statePacket, _, terminate, err := receiveAndHandleStatePacket(runtime, notpsmpackets.ActionResponseMessage)
+	statePacket, _, terminate, err := receiveAndHandleStatePacket(runtime, aznotpsmpackets.ActionResponseMessage)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
@@ -142,25 +142,25 @@ func startFlowState(runtime *StateMachineRuntimeContext) (*StateTransitionInfo, 
 
 // processStartFlowState state to process the start flow.
 func processStartFlowState(runtime *StateMachineRuntimeContext) (*StateTransitionInfo, error) {
-	statePacket, packetables, terminate, err := receiveAndHandleStatePacket(runtime, notpsmpackets.StartFlowMessage)
+	statePacket, packetables, terminate, err := receiveAndHandleStatePacket(runtime, aznotpsmpackets.StartFlowMessage)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("notp: process start flow failed to receive and handle start flow packet: %w", err)
 	}
-	flowPacket := &notpsmpackets.StatePacket{}
+	flowPacket := &aznotpsmpackets.StatePacket{}
 	data, err := packetables[0].Serialize()
 	if err != nil {
 		return nil, err
 	}
 	flowPacket.Deserialize(data)
-	if flowPacket.MessageCode != notpsmpackets.FlowIDValue {
+	if flowPacket.MessageCode != aznotpsmpackets.FlowIDValue {
 		return nil, fmt.Errorf("notp: process start flow failed to deserialize flow packet")
 	}
 	runtime.SetValue(FlowIDKey, flowPacket.MessageValue)
-	messageValue := notppackets.CombineUint32toUint64(notpsmpackets.AcknowledgedValue, notpsmpackets.UnknownValue)
-	_, terminate, err = createAndHandleAndStreamStatePacketWithValue(runtime, notpsmpackets.ActionResponseMessage, messageValue, packetables)
+	messageValue := aznotppackets.CombineUint32toUint64(aznotpsmpackets.AcknowledgedValue, aznotpsmpackets.UnknownValue)
+	_, terminate, err = createAndHandleAndStreamStatePacketWithValue(runtime, aznotpsmpackets.ActionResponseMessage, messageValue, packetables)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
@@ -186,14 +186,14 @@ func processStartFlowState(runtime *StateMachineRuntimeContext) (*StateTransitio
 
 // requestObjectsState state to request the current state.
 func requestObjectsState(runtime *StateMachineRuntimeContext) (*StateTransitionInfo, error) {
-	_, terminate, err := createAndHandleAndStreamStatePacket(runtime, notpsmpackets.RequestCurrentObjectsStateMessage, nil)
+	_, terminate, err := createAndHandleAndStreamStatePacket(runtime, aznotpsmpackets.RequestCurrentObjectsStateMessage, nil)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("notp: request object failed to create and handle request current state packet: %w", err)
 	}
-	_, _, terminate, err = receiveAndHandleStatePacket(runtime, notpsmpackets.RespondCurrentStateMessage)
+	_, _, terminate, err = receiveAndHandleStatePacket(runtime, aznotpsmpackets.RespondCurrentStateMessage)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
@@ -215,14 +215,14 @@ func requestObjectsState(runtime *StateMachineRuntimeContext) (*StateTransitionI
 
 // processRequestObjectsState state to process the request for the current state.
 func processRequestObjectsState(runtime *StateMachineRuntimeContext) (*StateTransitionInfo, error) {
-	_, packetables, terminate, err := receiveAndHandleStatePacket(runtime, notpsmpackets.RequestCurrentObjectsStateMessage)
+	_, packetables, terminate, err := receiveAndHandleStatePacket(runtime, aznotpsmpackets.RequestCurrentObjectsStateMessage)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("notp: process request failed to receive and handle request current state packet: %w", err)
 	}
-	_, terminate, err = createAndHandleAndStreamStatePacket(runtime, notpsmpackets.RespondCurrentStateMessage, packetables)
+	_, terminate, err = createAndHandleAndStreamStatePacket(runtime, aznotpsmpackets.RespondCurrentStateMessage, packetables)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
@@ -244,14 +244,14 @@ func processRequestObjectsState(runtime *StateMachineRuntimeContext) (*StateTran
 
 // notifyObjectsState state to send the current state notification.
 func notifyObjectsState(runtime *StateMachineRuntimeContext) (*StateTransitionInfo, error) {
-	_, terminate, err := createAndHandleAndStreamStatePacket(runtime, notpsmpackets.NotifyCurrentObjectStatesMessage, nil)
+	_, terminate, err := createAndHandleAndStreamStatePacket(runtime, aznotpsmpackets.NotifyCurrentObjectStatesMessage, nil)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("notp: notify object failed to create and handle notify current state packet: %w", err)
 	}
-	_, _, terminate, err = receiveAndHandleStatePacket(runtime, notpsmpackets.RespondCurrentStateMessage)
+	_, _, terminate, err = receiveAndHandleStatePacket(runtime, aznotpsmpackets.RespondCurrentStateMessage)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
@@ -273,14 +273,14 @@ func notifyObjectsState(runtime *StateMachineRuntimeContext) (*StateTransitionIn
 
 // processNotifyObjectsState state to process the current state notification.
 func processNotifyObjectsState(runtime *StateMachineRuntimeContext) (*StateTransitionInfo, error) {
-	_, packetables, terminate, err := receiveAndHandleStatePacket(runtime, notpsmpackets.NotifyCurrentObjectStatesMessage)
+	_, packetables, terminate, err := receiveAndHandleStatePacket(runtime, aznotpsmpackets.NotifyCurrentObjectStatesMessage)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("notp: process notify failed to receive and handle notify current state packet: %w", err)
 	}
-	_, terminate, err = createAndHandleAndStreamStatePacket(runtime, notpsmpackets.RespondCurrentStateMessage, packetables)
+	_, terminate, err = createAndHandleAndStreamStatePacket(runtime, aznotpsmpackets.RespondCurrentStateMessage, packetables)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
@@ -302,14 +302,14 @@ func processNotifyObjectsState(runtime *StateMachineRuntimeContext) (*StateTrans
 
 // submitNegotiationResponse state to submit negotiation response.
 func subscriberNegotiationState(runtime *StateMachineRuntimeContext) (*StateTransitionInfo, error) {
-	_, terminate, err := createAndHandleAndStreamStatePacket(runtime, notpsmpackets.NegotiationRequestMessage, nil)
+	_, terminate, err := createAndHandleAndStreamStatePacket(runtime, aznotpsmpackets.NegotiationRequestMessage, nil)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("notp: subscribe negotiation failed to create and handle notify current state packet: %w", err)
 	}
-	statePacket, _, terminate, err := receiveAndHandleStatePacket(runtime, notpsmpackets.RespondNegotiationRequestMessage)
+	statePacket, _, terminate, err := receiveAndHandleStatePacket(runtime, aznotpsmpackets.RespondNegotiationRequestMessage)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
@@ -328,14 +328,14 @@ func subscriberNegotiationState(runtime *StateMachineRuntimeContext) (*StateTran
 
 // submitNegotiationResponse state to submit negotiation response.
 func publisherNegotiationState(runtime *StateMachineRuntimeContext) (*StateTransitionInfo, error) {
-	_, packetables, terminate, err := receiveAndHandleStatePacket(runtime, notpsmpackets.NegotiationRequestMessage)
+	_, packetables, terminate, err := receiveAndHandleStatePacket(runtime, aznotpsmpackets.NegotiationRequestMessage)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("notp: publisher negotiation failed to receive and handle notify current state packet: %w", err)
 	}
-	_, terminate, err = createAndHandleAndStreamStatePacket(runtime, notpsmpackets.RespondNegotiationRequestMessage, packetables)
+	_, terminate, err = createAndHandleAndStreamStatePacket(runtime, aznotpsmpackets.RespondNegotiationRequestMessage, packetables)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
@@ -353,7 +353,7 @@ func publisherNegotiationState(runtime *StateMachineRuntimeContext) (*StateTrans
 func subscriberDataStreamState(runtime *StateMachineRuntimeContext) (*StateTransitionInfo, error) {
 	hasStream := true
 	for hasStream {
-		statePacket, _, terminate, err := receiveAndHandleStatePacket(runtime, notpsmpackets.ExchangeDataStreamMessage)
+		statePacket, _, terminate, err := receiveAndHandleStatePacket(runtime, aznotpsmpackets.ExchangeDataStreamMessage)
 		if terminate {
 			return terminateWithFinal(runtime)
 		}
@@ -370,7 +370,7 @@ func subscriberDataStreamState(runtime *StateMachineRuntimeContext) (*StateTrans
 
 // publisherDataStreamState state to send data stream.
 func publisherDataStreamState(runtime *StateMachineRuntimeContext) (*StateTransitionInfo, error) {
-	_, terminate, err := createAndHandleAndStreamStatePacket(runtime, notpsmpackets.ExchangeDataStreamMessage, nil)
+	_, terminate, err := createAndHandleAndStreamStatePacket(runtime, aznotpsmpackets.ExchangeDataStreamMessage, nil)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
@@ -385,7 +385,7 @@ func publisherDataStreamState(runtime *StateMachineRuntimeContext) (*StateTransi
 
 // subscriberCommitState state to commit the current state.
 func subscriberCommitState(runtime *StateMachineRuntimeContext) (*StateTransitionInfo, error) {
-	_, terminate, err := createAndHandleAndStreamStatePacket(runtime, notpsmpackets.CommitMessage, nil)
+	_, terminate, err := createAndHandleAndStreamStatePacket(runtime, aznotpsmpackets.CommitMessage, nil)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}
@@ -400,7 +400,7 @@ func subscriberCommitState(runtime *StateMachineRuntimeContext) (*StateTransitio
 
 // publisherCommitState state to commit the current state.
 func publisherCommitState(runtime *StateMachineRuntimeContext) (*StateTransitionInfo, error) {
-	_, _, terminate, err := receiveAndHandleStatePacket(runtime, notpsmpackets.CommitMessage)
+	_, _, terminate, err := receiveAndHandleStatePacket(runtime, aznotpsmpackets.CommitMessage)
 	if terminate {
 		return terminateWithFinal(runtime)
 	}

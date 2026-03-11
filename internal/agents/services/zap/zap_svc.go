@@ -19,8 +19,8 @@ package zap
 import (
 	"google.golang.org/grpc"
 
-	zapctrl "github.com/permguard/permguard/internal/agents/services/zap/controllers"
-	zapv1 "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
+	azzapctrl "github.com/permguard/permguard/internal/agents/services/zap/controllers"
+	azzapv1 "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
 	"github.com/permguard/permguard/pkg/agents/runtime"
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
@@ -64,7 +64,7 @@ func (f *Service) Endpoints() ([]services.EndpointInitializer, error) {
 			if err != nil {
 				return err
 			}
-			controller, err := zapctrl.NewZAPController(srvCtx, zapCentralStorage)
+			controller, err := azzapctrl.NewZAPController(srvCtx, zapCentralStorage)
 			if err != nil {
 				return nil
 			}
@@ -72,8 +72,8 @@ func (f *Service) Endpoints() ([]services.EndpointInitializer, error) {
 			if err != nil {
 				return err
 			}
-			zapServer, err := zapv1.NewZAPServer(endptCtx, controller)
-			zapv1.RegisterV1ZAPServiceServer(grpcServer, zapServer)
+			zapServer, err := azzapv1.NewZAPServer(endptCtx, controller)
+			azzapv1.RegisterV1ZAPServiceServer(grpcServer, zapServer)
 			return err
 		})
 	if err != nil {

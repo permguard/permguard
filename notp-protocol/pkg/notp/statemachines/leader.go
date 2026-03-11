@@ -19,11 +19,11 @@ package statemachines
 import (
 	"fmt"
 
-	notptransport "github.com/permguard/permguard/notp-protocol/pkg/notp/transport"
+	aznotptransport "github.com/permguard/permguard/notp-protocol/pkg/notp/transport"
 )
 
 // NewLeaderStateMachine creates and configures a new leader state machine for the given operation.
-func NewLeaderStateMachine(hostHandler HostHandler, transportLayer *notptransport.TransportLayer) (*StateMachine, error) {
+func NewLeaderStateMachine(hostHandler HostHandler, transportLayer *aznotptransport.TransportLayer) (*StateMachine, error) {
 	stateMachine, err := NewStateMachine(defaultStateMap, ProcessStartFlowStateID, hostHandler, transportLayer)
 	if err != nil {
 		return nil, fmt.Errorf("notp: failed to create leader state machine: %w", err)

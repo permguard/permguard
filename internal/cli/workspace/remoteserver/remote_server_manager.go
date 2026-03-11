@@ -21,13 +21,9 @@ import (
 	"fmt"
 
 	"github.com/permguard/permguard/internal/cli/common"
-	wkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
+	azwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/internal/transport/clients"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
-
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
-	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
-	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
 )
 
 // Manager implements the internal manager for the remote file.
@@ -43,7 +39,7 @@ func NewManager(ctx *common.CliCommandContext) (*Manager, error) {
 }
 
 // ServerRemoteLedger gets the remote ledger from the server.
-func (m *Manager) ServerRemoteLedger(remoteInfo *wkscommon.RemoteInfo, ledgerInfo *wkscommon.LedgerInfo) (*pap.Ledger, error) {
+func (m *Manager) ServerRemoteLedger(remoteInfo *azwkscommon.RemoteInfo, ledgerInfo *azwkscommon.LedgerInfo) (*pap.Ledger, error) {
 	if remoteInfo == nil {
 		return nil, errors.New("cli: remote info is nil")
 	}
@@ -76,121 +72,12 @@ func (m *Manager) ServerRemoteLedger(remoteInfo *wkscommon.RemoteInfo, ledgerInf
 	return &srvLedger[0], nil
 }
 
-// NOTPClient is the interface for the NOTP client.
-type NOTPClient interface {
-	OnPushSendNotifyCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	OnPushHandleNotifyCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	OnPushHandleNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	OnPushSendNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	OnPushExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	OnPushHandleCommitResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-
-	OnPullSendRequestCurrentState(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	OnPullHandleRequestCurrentStateResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	OnPullSendNegotiationRequest(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	OnPullHandleNegotiationResponse(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	OnPullHandleExchangeDataStream(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-	OnPullSendCommit(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error)
-}
-
-// NOTPPush push objects using the NOTP protocol.
-func (m *Manager) NOTPPush(server string, papPort int, zoneID int64, ledgerID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
+// NewPAPClientSession creates a new gRPC PAP client session with a reusable connection.
+func (m *Manager) NewPAPClientSession(server string, papPort int) (*clients.GrpcPAPClientSession, error) {
 	pppServer := fmt.Sprintf("grpc://%s:%d", server, papPort)
 	papClient, err := clients.NewGrpcPAPClient(pppServer)
 	if err != nil {
 		return nil, err
 	}
-	var hostHandler notpstatemachines.HostHandler = func(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-		switch handlerCtx.CurrentStateID() {
-		case notpstatemachines.NotifyObjectsStateID:
-			switch statePacket.MessageCode {
-			case notpsmpackets.NotifyCurrentObjectStatesMessage:
-				return clientProvider.OnPushSendNotifyCurrentState(handlerCtx, statePacket, packets)
-			case notpsmpackets.RespondCurrentStateMessage:
-				return clientProvider.OnPushHandleNotifyCurrentStateResponse(handlerCtx, statePacket, packets)
-			default:
-				return nil, fmt.Errorf("cli: invalid message code %d", statePacket.MessageCode)
-			}
-
-		case notpstatemachines.PublisherNegotiationStateID:
-			switch statePacket.MessageCode {
-			case notpsmpackets.NegotiationRequestMessage:
-				return clientProvider.OnPushHandleNegotiationRequest(handlerCtx, statePacket, packets)
-			case notpsmpackets.RespondNegotiationRequestMessage:
-				return clientProvider.OnPushSendNegotiationResponse(handlerCtx, statePacket, packets)
-			default:
-				return nil, fmt.Errorf("cli: invalid message code %d", statePacket.MessageCode)
-			}
-
-		case notpstatemachines.PublisherDataStreamStateID:
-			switch statePacket.MessageCode {
-			case notpsmpackets.ExchangeDataStreamMessage:
-				return clientProvider.OnPushExchangeDataStream(handlerCtx, statePacket, packets)
-			default:
-				return nil, fmt.Errorf("cli: invalid message code %d", statePacket.MessageCode)
-			}
-
-		case notpstatemachines.PublisherCommitStateID:
-			switch statePacket.MessageCode {
-			case notpsmpackets.CommitMessage:
-				return clientProvider.OnPushHandleCommitResponse(handlerCtx, statePacket, packets)
-			default:
-				return nil, fmt.Errorf("cli: invalid message code %d", statePacket.MessageCode)
-			}
-		default:
-			return nil, fmt.Errorf("cli: invalid state %d", handlerCtx.CurrentStateID())
-		}
-	}
-	return papClient.NOTPStream(hostHandler, zoneID, ledgerID, bag, notpstatemachines.PushFlowType)
-}
-
-// NOTPPull pull objects using the NOTP protocol.
-func (m *Manager) NOTPPull(server string, papPort int, zoneID int64, ledgerID string, bag map[string]any, clientProvider NOTPClient) (*notpstatemachines.StateMachineRuntimeContext, error) {
-	pppServer := fmt.Sprintf("grpc://%s:%d", server, papPort)
-	papClient, err := clients.NewGrpcPAPClient(pppServer)
-	if err != nil {
-		return nil, err
-	}
-	var hostHandler notpstatemachines.HostHandler = func(handlerCtx *notpstatemachines.HandlerContext, statePacket *notpsmpackets.StatePacket, packets []notppackets.Packetable) (*notpstatemachines.HostHandlerReturn, error) {
-		switch handlerCtx.CurrentStateID() {
-		case notpstatemachines.RequestObjectsStateID:
-			switch statePacket.MessageCode {
-			case notpsmpackets.RequestCurrentObjectsStateMessage:
-				return clientProvider.OnPullSendRequestCurrentState(handlerCtx, statePacket, packets)
-			case notpsmpackets.RespondCurrentStateMessage:
-				return clientProvider.OnPullHandleRequestCurrentStateResponse(handlerCtx, statePacket, packets)
-			default:
-				return nil, fmt.Errorf("cli: invalid message code %d", statePacket.MessageCode)
-			}
-
-		case notpstatemachines.SubscriberNegotiationStateID:
-			switch statePacket.MessageCode {
-			case notpsmpackets.NegotiationRequestMessage:
-				return clientProvider.OnPullSendNegotiationRequest(handlerCtx, statePacket, packets)
-			case notpsmpackets.RespondNegotiationRequestMessage:
-				return clientProvider.OnPullHandleNegotiationResponse(handlerCtx, statePacket, packets)
-			default:
-				return nil, fmt.Errorf("cli: invalid message code %d", statePacket.MessageCode)
-			}
-
-		case notpstatemachines.SubscriberDataStreamStateID:
-			switch statePacket.MessageCode {
-			case notpsmpackets.ExchangeDataStreamMessage:
-				return clientProvider.OnPullHandleExchangeDataStream(handlerCtx, statePacket, packets)
-			default:
-				return nil, fmt.Errorf("cli: invalid message code %d", statePacket.MessageCode)
-			}
-
-		case notpstatemachines.SubscriberCommitStateID:
-			switch statePacket.MessageCode {
-			case notpsmpackets.CommitMessage:
-				return clientProvider.OnPullSendCommit(handlerCtx, statePacket, packets)
-			default:
-				return nil, fmt.Errorf("cli: invalid message code %d", statePacket.MessageCode)
-			}
-		default:
-			return nil, fmt.Errorf("cli: invalid state %d", handlerCtx.CurrentStateID())
-		}
-	}
-	return papClient.NOTPStream(hostHandler, zoneID, ledgerID, bag, notpstatemachines.PullFlowType)
+	return papClient.Connect()
 }

@@ -24,19 +24,19 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite" // SQLite driver
 
-	storage "github.com/permguard/permguard/pkg/agents/storage"
+	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 )
 
 // UpsertKeyValue creates or updates a key-value pair.
 func (r *Repository) UpsertKeyValue(ctx context.Context, tx *sql.Tx, keyValue *KeyValue) (*KeyValue, error) {
 	if keyValue == nil {
-		return nil, fmt.Errorf("storage: invalid client input - key-value data is missing or malformed: %w", storage.ErrInvalidInput)
+		return nil, fmt.Errorf("storage: invalid client input - key-value data is missing or malformed: %w", azstorage.ErrInvalidInput)
 	}
 	if keyValue.ZoneID <= 0 {
-		return nil, fmt.Errorf("storage: invalid client input - zone id is missing or empty: %w", storage.ErrInvalidInput)
+		return nil, fmt.Errorf("storage: invalid client input - zone id is missing or empty: %w", azstorage.ErrInvalidInput)
 	}
 	if keyValue.Key == "" {
-		return nil, fmt.Errorf("storage: invalid client input - key is missing or empty: %w", storage.ErrInvalidInput)
+		return nil, fmt.Errorf("storage: invalid client input - key is missing or empty: %w", azstorage.ErrInvalidInput)
 	}
 
 	zoneID := keyValue.ZoneID
@@ -73,7 +73,7 @@ func (r *Repository) UpsertKeyValue(ctx context.Context, tx *sql.Tx, keyValue *K
 // KeyValue retrieves the value for a given key from the key-value store.
 func (r *Repository) KeyValue(ctx context.Context, db *sqlx.DB, zoneID int64, key string) (*KeyValue, error) {
 	if key == "" {
-		return nil, fmt.Errorf("storage: invalid client input - key is missing or empty: %w", storage.ErrInvalidInput)
+		return nil, fmt.Errorf("storage: invalid client input - key is missing or empty: %w", azstorage.ErrInvalidInput)
 	}
 
 	var dbKeyValue KeyValue
@@ -84,7 +84,7 @@ func (r *Repository) KeyValue(ctx context.Context, db *sqlx.DB, zoneID int64, ke
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("no value found for key (%s): %w", key, storage.ErrNotFound)
+			return nil, fmt.Errorf("no value found for key (%s): %w", key, azstorage.ErrNotFound)
 		}
 		return nil, WrapSqliteError(fmt.Sprintf("failed to retrieve key-value pair - operation 'retrieve-key-value' encountered an issue (key: %s)", key), err)
 	}

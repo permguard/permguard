@@ -17,26 +17,26 @@
 package clients
 
 import (
-	"context"
-
-	pdpv1 "github.com/permguard/permguard/internal/agents/services/pdp/endpoints/api/v1"
+	azpdpv1 "github.com/permguard/permguard/internal/agents/services/pdp/endpoints/api/v1"
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
 )
 
 // AuthorizationCheck checks the authorization request.
 func (c *GrpcPDPClient) AuthorizationCheck(request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error) {
 	client, conn, err := c.createGRPCClient()
+	if err != nil {
+		return nil, err
+	}
 	defer conn.Close()
+	req, err := azpdpv1.MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest(request)
 	if err != nil {
 		return nil, err
 	}
-	req, err := pdpv1.MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest(request)
+	ctx, cancel := grpcContext()
+	defer cancel()
+	response, err := client.AuthorizationCheck(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	response, err := client.AuthorizationCheck(context.Background(), req)
-	if err != nil {
-		return nil, err
-	}
-	return pdpv1.MapGrpcAuthorizationCheckResponseToAgentAuthorizationCheckResponse(response)
+	return azpdpv1.MapGrpcAuthorizationCheckResponseToAgentAuthorizationCheckResponse(response)
 }

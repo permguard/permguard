@@ -20,17 +20,17 @@ package transport
 import (
 	"errors"
 
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	aznotppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
 )
 
 // PacketHandler defines a function type for handling packets.
-type PacketHandler func(packet *notppackets.Packet)
+type PacketHandler func(packet *aznotppackets.Packet)
 
 // PacketSender defines a function type for sending packets over the transport layer.
-type PacketSender func(packet *notppackets.Packet) error
+type PacketSender func(packet *aznotppackets.Packet) error
 
 // PacketReceiver defines a function type for receiving packets from the transport layer.
-type PacketReceiver func() (*notppackets.Packet, error)
+type PacketReceiver func() (*aznotppackets.Packet, error)
 
 // PacketInspector provides functionality to inspect sent and received packets using the provided handlers.
 type PacketInspector struct {
@@ -39,14 +39,14 @@ type PacketInspector struct {
 }
 
 // InspectSent calls the handler to process the sent packet.
-func (p *PacketInspector) InspectSent(packet *notppackets.Packet) {
+func (p *PacketInspector) InspectSent(packet *aznotppackets.Packet) {
 	if p.sentPacketHandler != nil {
 		p.sentPacketHandler(packet)
 	}
 }
 
 // InspectReceived calls the handler to process the received packet.
-func (p *PacketInspector) InspectReceived(packet *notppackets.Packet) {
+func (p *PacketInspector) InspectReceived(packet *aznotppackets.Packet) {
 	if p.receivedPacketHandler != nil {
 		p.receivedPacketHandler(packet)
 	}

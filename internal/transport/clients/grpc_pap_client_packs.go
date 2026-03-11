@@ -18,72 +18,113 @@ package clients
 
 import (
 	"context"
-	"strconv"
+	"encoding/json"
+	"fmt"
 	"time"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
-
-	papv1 "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
-
-	notptransportsm "github.com/permguard/permguard/internal/transport/notp/statemachines"
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
-	notpstatemachines "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines"
-	notptransport "github.com/permguard/permguard/notp-protocol/pkg/notp/transport"
+	azpapv1 "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
+	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
 const (
-	// DefaultTimeout is the default timeout for the wired state machine.
-	DefaultTimeout = 30 * time.Second
+	// grpcCallTimeout is the default timeout for gRPC unary calls.
+	grpcCallTimeout = 30 * time.Second
 )
 
-// createWiredStateMachine creates a wired state machine.
-func (c *GrpcPAPClient) createWiredStateMachine(stream grpc.BidiStreamingClient[papv1.PackMessage, papv1.PackMessage], hostHandler notpstatemachines.HostHandler) (*notpstatemachines.StateMachine, error) {
-	var sender notptransport.WireSendFunc = func(packet *notppackets.Packet) error {
-		pack := &papv1.PackMessage{
-			Data: packet.Data,
-		}
-		return stream.Send(pack)
-	}
-	var receiver notptransport.WireRecvFunc = func() (*notppackets.Packet, error) {
-		pack, err := stream.Recv()
-		if err != nil {
-			return nil, err
-		}
-		return &notppackets.Packet{Data: pack.Data}, nil
-	}
-	transportStream, err := notptransport.NewWireStream(sender, receiver, DefaultTimeout)
-	if err != nil {
-		return nil, err
-	}
-	transportLayer, err := notptransport.NewTransportLayer(transportStream.TransmitPacket, transportStream.ReceivePacket, nil)
-	if err != nil {
-		return nil, err
-	}
-	stateMachine, err := notpstatemachines.NewFollowerStateMachine(hostHandler, transportLayer)
-	if err != nil {
-		return nil, err
-	}
-	return stateMachine, nil
+// grpcContext returns a context with the default gRPC call timeout.
+func grpcContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), grpcCallTimeout)
 }
 
-// NOTPStream handles bidirectional stream using the NOTP protocol.
-func (c *GrpcPAPClient) NOTPStream(hostHandler notpstatemachines.HostHandler, zoneID int64, ledgerID string, bag map[string]any, flowType notpstatemachines.FlowType) (*notpstatemachines.StateMachineRuntimeContext, error) {
-	client, conn, err := c.createGRPCClient()
-	defer conn.Close()
+// marshalPackMessage marshals a request into a PackMessage.
+func marshalPackMessage(req any) (*azpapv1.PackMessage, error) {
+	data, err := json.Marshal(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("client: failed to marshal request: %w", err)
 	}
-	ctx := metadata.AppendToOutgoingContext(context.Background(), notptransportsm.ZoneIDKey, strconv.FormatInt(zoneID, 10), notptransportsm.LedgerIDKey, ledgerID)
-	stream, err := client.NOTPStream(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = stream.CloseSend() }()
+	return &azpapv1.PackMessage{Data: data}, nil
+}
 
-	stateMachine, err := c.createWiredStateMachine(stream, hostHandler)
+// unmarshalPackMessage unmarshals a PackMessage into a response.
+func unmarshalPackMessage[T any](msg *azpapv1.PackMessage) (*T, error) {
+	var resp T
+	if err := json.Unmarshal(msg.Data, &resp); err != nil {
+		return nil, fmt.Errorf("client: failed to unmarshal response: %w", err)
+	}
+	return &resp, nil
+}
+
+// PushAdvertise calls the PushAdvertise unary RPC.
+func (s *GrpcPAPClientSession) PushAdvertise(req *pap.PushAdvertiseRequest) (*pap.PushAdvertiseResponse, error) {
+	ctx, cancel := grpcContext()
+	defer cancel()
+	in, err := marshalPackMessage(req)
 	if err != nil {
 		return nil, err
 	}
-	return stateMachine.Run(bag, flowType)
+	out, err := s.client.PushAdvertise(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	return unmarshalPackMessage[pap.PushAdvertiseResponse](out)
+}
+
+// PushTransfer calls the PushTransfer unary RPC.
+func (s *GrpcPAPClientSession) PushTransfer(req *pap.PushTransferRequest) (*pap.PushTransferResponse, error) {
+	ctx, cancel := grpcContext()
+	defer cancel()
+	in, err := marshalPackMessage(req)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.client.PushTransfer(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	return unmarshalPackMessage[pap.PushTransferResponse](out)
+}
+
+// PullState calls the PullState unary RPC.
+func (s *GrpcPAPClientSession) PullState(req *pap.PullStateRequest) (*pap.PullStateResponse, error) {
+	ctx, cancel := grpcContext()
+	defer cancel()
+	in, err := marshalPackMessage(req)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.client.PullState(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	return unmarshalPackMessage[pap.PullStateResponse](out)
+}
+
+// PullNegotiate calls the PullNegotiate unary RPC.
+func (s *GrpcPAPClientSession) PullNegotiate(req *pap.PullNegotiateRequest) (*pap.PullNegotiateResponse, error) {
+	ctx, cancel := grpcContext()
+	defer cancel()
+	in, err := marshalPackMessage(req)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.client.PullNegotiate(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	return unmarshalPackMessage[pap.PullNegotiateResponse](out)
+}
+
+// PullObjects calls the PullObjects unary RPC.
+func (s *GrpcPAPClientSession) PullObjects(req *pap.PullObjectsRequest) (*pap.PullObjectsResponse, error) {
+	ctx, cancel := grpcContext()
+	defer cancel()
+	in, err := marshalPackMessage(req)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.client.PullObjects(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	return unmarshalPackMessage[pap.PullObjectsResponse](out)
 }

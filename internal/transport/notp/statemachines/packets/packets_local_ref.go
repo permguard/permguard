@@ -17,7 +17,7 @@
 package packets
 
 import (
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	aznotppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
 )
 
 // LocalRefStatePacket is the packet to advertise the local ref state.
@@ -36,39 +36,39 @@ type LocalRefStatePacket struct {
 
 // Type returns the type of the packet.
 func (p *LocalRefStatePacket) Type() uint64 {
-	return notppackets.CombineUint32toUint64(LocalRefStatePacketType, 0)
+	return aznotppackets.CombineUint32toUint64(LocalRefStatePacketType, 0)
 }
 
 // Serialize serializes the packet.
 func (p *LocalRefStatePacket) Serialize() ([]byte, error) {
-	data := notppackets.SerializeString(nil, p.RefCommit, notppackets.PacketNullByte)
-	data = notppackets.SerializeBool(data, p.HasConflicts, notppackets.PacketNullByte)
-	data = notppackets.SerializeBool(data, p.IsUpToDate, notppackets.PacketNullByte)
-	data = notppackets.SerializeUint32(data, p.NumberOfCommits, notppackets.PacketNullByte)
-	data = notppackets.SerializeUint16(data, p.OpCode, notppackets.PacketNullByte)
+	data := aznotppackets.SerializeString(nil, p.RefCommit, aznotppackets.PacketNullByte)
+	data = aznotppackets.SerializeBool(data, p.HasConflicts, aznotppackets.PacketNullByte)
+	data = aznotppackets.SerializeBool(data, p.IsUpToDate, aznotppackets.PacketNullByte)
+	data = aznotppackets.SerializeUint32(data, p.NumberOfCommits, aznotppackets.PacketNullByte)
+	data = aznotppackets.SerializeUint16(data, p.OpCode, aznotppackets.PacketNullByte)
 	return data, nil
 }
 
 // Deserialize deserializes the packet.
 func (p *LocalRefStatePacket) Deserialize(data []byte) error {
 	var err error
-	p.RefCommit, data, err = notppackets.DeserializeString(data, notppackets.PacketNullByte)
+	p.RefCommit, data, err = aznotppackets.DeserializeString(data, aznotppackets.PacketNullByte)
 	if err != nil {
 		return err
 	}
-	p.HasConflicts, data, err = notppackets.DeserializeBool(data, notppackets.PacketNullByte)
+	p.HasConflicts, data, err = aznotppackets.DeserializeBool(data, aznotppackets.PacketNullByte)
 	if err != nil {
 		return err
 	}
-	p.IsUpToDate, data, err = notppackets.DeserializeBool(data, notppackets.PacketNullByte)
+	p.IsUpToDate, data, err = aznotppackets.DeserializeBool(data, aznotppackets.PacketNullByte)
 	if err != nil {
 		return err
 	}
-	p.NumberOfCommits, data, err = notppackets.DeserializeUint32(data, notppackets.PacketNullByte)
+	p.NumberOfCommits, data, err = aznotppackets.DeserializeUint32(data, aznotppackets.PacketNullByte)
 	if err != nil {
 		return err
 	}
-	p.OpCode, _, err = notppackets.DeserializeUint16(data, notppackets.PacketNullByte)
+	p.OpCode, _, err = aznotppackets.DeserializeUint16(data, aznotppackets.PacketNullByte)
 	if err != nil {
 		return err
 	}

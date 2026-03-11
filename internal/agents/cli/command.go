@@ -28,7 +28,7 @@ import (
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 
-	iservers "github.com/permguard/permguard/internal/agents/servers"
+	azservers "github.com/permguard/permguard/internal/agents/servers"
 	"github.com/permguard/permguard/pkg/agents/servers"
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
@@ -60,7 +60,7 @@ func addFlagsForCentralStorage(flagSet *flag.FlagSet) error {
 }
 
 // addFlagsForServerInitializer adds the flags for the server initializer.
-func addFlagsForServerInitializer(serverInitializer servers.ServerInitializer, v *viper.Viper, command *cobra.Command, serverFactoryCfg *iservers.ServerFactoryConfig, funcs []func(*flag.FlagSet) error) {
+func addFlagsForServerInitializer(serverInitializer servers.ServerInitializer, v *viper.Viper, command *cobra.Command, serverFactoryCfg *azservers.ServerFactoryConfig, funcs []func(*flag.FlagSet) error) {
 	var err error
 	msgErrorOnAddFlags := "Bootstrapper cannot add flags %s\n"
 
@@ -93,7 +93,7 @@ func addFlagsForServerInitializer(serverInitializer servers.ServerInitializer, v
 }
 
 // runECommand runs the command.
-func runECommand(cmdInfo *services.HostInfo, serverFactoryCfg *iservers.ServerFactoryConfig, v *viper.Viper, startup func(*zap.Logger), shutdown func(*zap.Logger)) error {
+func runECommand(cmdInfo *services.HostInfo, serverFactoryCfg *azservers.ServerFactoryConfig, v *viper.Viper, startup func(*zap.Logger), shutdown func(*zap.Logger)) error {
 	if Version == "" {
 		Version = "none"
 	}
@@ -113,7 +113,7 @@ func runECommand(cmdInfo *services.HostInfo, serverFactoryCfg *iservers.ServerFa
 		fmt.Printf("Bootstrapper failed initializing server factory configuration %s\n", err)
 		os.Exit(1)
 	}
-	serverFactory, err := iservers.NewServerFactory(serverFactoryCfg)
+	serverFactory, err := azservers.NewServerFactory(serverFactoryCfg)
 	if err != nil {
 		fmt.Printf("Bootstrapper failed creating factory for %s\n", cmdInfo.Name)
 		os.Exit(1)
@@ -170,7 +170,7 @@ func Run(serverInitializer servers.ServerInitializer, startup func(*zap.Logger),
 		}
 	}
 
-	serverFactoryCfg, err := iservers.NewServerFactoryConfig(serverInitializer, centralStorageEngine)
+	serverFactoryCfg, err := azservers.NewServerFactoryConfig(serverInitializer, centralStorageEngine)
 	if err != nil {
 		fmt.Printf("Bootstrapper cannot initialize the server factory config %s\n", err.Error())
 		os.Exit(1)

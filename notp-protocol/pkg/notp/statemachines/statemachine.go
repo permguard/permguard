@@ -19,9 +19,9 @@ package statemachines
 import (
 	"errors"
 
-	notppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
-	notpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
-	notptransport "github.com/permguard/permguard/notp-protocol/pkg/notp/transport"
+	aznotppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+	aznotpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
+	aznotptransport "github.com/permguard/permguard/notp-protocol/pkg/notp/transport"
 )
 
 const (
@@ -64,19 +64,19 @@ func (h *HandlerContext) Value(key string) (any, bool) {
 }
 
 // PacketCreatorFunc is a function that creates a packet.
-type PacketCreatorFunc func(*notpsmpackets.StatePacket) notppackets.Packetable
+type PacketCreatorFunc func(*aznotpsmpackets.StatePacket) aznotppackets.Packetable
 
 // HostHandlerReturn holds the return value of the host handler.
 type HostHandlerReturn struct {
 	HasMore      bool
 	MessageValue uint64
 	ErrorCode    uint16
-	Packetables  []notppackets.Packetable
+	Packetables  []aznotppackets.Packetable
 	Terminate    bool
 }
 
 // HostHandler defines a function type for handling packet.
-type HostHandler func(*HandlerContext, *notpsmpackets.StatePacket, []notppackets.Packetable) (*HostHandlerReturn, error)
+type HostHandler func(*HandlerContext, *aznotpsmpackets.StatePacket, []aznotppackets.Packetable) (*HostHandlerReturn, error)
 
 // StateTransitionInfo holds the information about the state transition.
 type StateTransitionInfo struct {
@@ -108,7 +108,7 @@ type StateMachineRuntimeContext struct {
 	inputValue     uint64
 	isFinal        bool
 	flowType       FlowType
-	transportLayer *notptransport.TransportLayer
+	transportLayer *aznotptransport.TransportLayer
 	statemap       map[uint16]StateTransitionFunc
 	initialStateID uint16
 	currentStateID uint16
@@ -209,17 +209,17 @@ func (t *StateMachineRuntimeContext) Value(key string) (any, bool) {
 }
 
 // Send sends a packet through the transport layer.
-func (t *StateMachineRuntimeContext) Send(packetable notppackets.Packetable) error {
-	return t.SendStream([]notppackets.Packetable{packetable})
+func (t *StateMachineRuntimeContext) Send(packetable aznotppackets.Packetable) error {
+	return t.SendStream([]aznotppackets.Packetable{packetable})
 }
 
 // SendStream sends a packets through the transport layer.
-func (t *StateMachineRuntimeContext) SendStream(packetables []notppackets.Packetable) error {
+func (t *StateMachineRuntimeContext) SendStream(packetables []aznotppackets.Packetable) error {
 	return t.transportLayer.TransmitPacket(packetables)
 }
 
 // Receive retrieves a packet from the transport layer.
-func (t *StateMachineRuntimeContext) Receive() (notppackets.Packetable, error) {
+func (t *StateMachineRuntimeContext) Receive() (aznotppackets.Packetable, error) {
 	packets, err := t.ReceiveStream()
 	if err != nil {
 		return nil, err
@@ -233,19 +233,19 @@ func (t *StateMachineRuntimeContext) Receive() (notppackets.Packetable, error) {
 }
 
 // ReceiveStream retrieves packets from the transport layer.
-func (t *StateMachineRuntimeContext) ReceiveStream() ([]notppackets.Packetable, error) {
+func (t *StateMachineRuntimeContext) ReceiveStream() ([]aznotppackets.Packetable, error) {
 	return t.transportLayer.ReceivePacket()
 }
 
 // Handle handles the packet for the state machine.
-func (t *StateMachineRuntimeContext) Handle(handlerCtx *HandlerContext, statePacket *notpsmpackets.StatePacket) (*HostHandlerReturn, error) {
+func (t *StateMachineRuntimeContext) Handle(handlerCtx *HandlerContext, statePacket *aznotpsmpackets.StatePacket) (*HostHandlerReturn, error) {
 	return t.HandleStream(handlerCtx, statePacket, nil)
 }
 
 // HandleStream handles a packet stream for the state machine.
-func (t *StateMachineRuntimeContext) HandleStream(handlerCtx *HandlerContext, statePacket *notpsmpackets.StatePacket, packetables []notppackets.Packetable) (*HostHandlerReturn, error) {
+func (t *StateMachineRuntimeContext) HandleStream(handlerCtx *HandlerContext, statePacket *aznotpsmpackets.StatePacket, packetables []aznotppackets.Packetable) (*HostHandlerReturn, error) {
 	if packetables == nil {
-		packetables = []notppackets.Packetable{}
+		packetables = []aznotppackets.Packetable{}
 	}
 	return t.hostHandler(handlerCtx, statePacket, packetables)
 }
@@ -281,7 +281,7 @@ func (m *StateMachine) Run(bag map[string]any, inputValue FlowType) (*StateMachi
 }
 
 // NewStateMachine creates and initializes a new state machine with the given initial state and transport layer.
-func NewStateMachine(statemap map[uint16]StateTransitionFunc, initialStateID uint16, hostHandler HostHandler, transportLayer *notptransport.TransportLayer) (*StateMachine, error) {
+func NewStateMachine(statemap map[uint16]StateTransitionFunc, initialStateID uint16, hostHandler HostHandler, transportLayer *aznotptransport.TransportLayer) (*StateMachine, error) {
 	if statemap == nil {
 		return nil, errors.New("notp: state map cannot be nil")
 	}

@@ -20,7 +20,7 @@ import (
 	"errors"
 	"strings"
 
-	manifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
+	azmanifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 )
 
 const (
@@ -28,7 +28,7 @@ const (
 )
 
 // BuildManifest builds the manifest.
-func BuildManifest(manifest *manifests.Manifest, template string, engineName, engineVersion, engineDist string, schema bool) (*manifests.Manifest, error) {
+func BuildManifest(manifest *azmanifests.Manifest, template string, engineName, engineVersion, engineDist string, schema bool) (*azmanifests.Manifest, error) {
 	if manifest == nil {
 		return nil, errors.New("[cedar] manifest is nil")
 	}
@@ -42,24 +42,24 @@ func BuildManifest(manifest *manifests.Manifest, template string, engineName, en
 		return nil, errors.New("[cedar] engine distribution is not valid")
 	}
 	if manifest.Runtimes == nil {
-		manifest.Runtimes = map[string]manifests.Runtime{}
+		manifest.Runtimes = map[string]azmanifests.Runtime{}
 	}
 	if len(manifest.BizPolicies) == 0 {
-		manifest.BizPolicies = []manifests.BizPolicy{{Partitions: map[string]manifests.Partition{}}}
+		manifest.BizPolicies = []azmanifests.BizPolicy{{Partitions: map[string]azmanifests.Partition{}}}
 	}
 	if manifest.BizPolicies[0].Partitions == nil {
-		manifest.BizPolicies[0] = manifests.BizPolicy{Partitions: map[string]manifests.Partition{}}
+		manifest.BizPolicies[0] = azmanifests.BizPolicy{Partitions: map[string]azmanifests.Partition{}}
 	}
 	runtimeKey := RuntimeKey
 	_, ok := manifest.Runtimes[runtimeKey]
 	if !ok {
-		runtime := manifests.Runtime{
-			Engine: manifests.Engine{
+		runtime := azmanifests.Runtime{
+			Engine: azmanifests.Engine{
 				Name:         engineName,
 				Version:      engineVersion,
 				Distribution: engineDist,
 			},
-			Language: manifests.Language{
+			Language: azmanifests.Language{
 				Name:    LanguageCedar,
 				Version: LanguageManifestVersion,
 			},
@@ -67,7 +67,7 @@ func BuildManifest(manifest *manifests.Manifest, template string, engineName, en
 		manifest.Runtimes[runtimeKey] = runtime
 	}
 	if _, ok = manifest.BizPolicies[0].Partitions[partitionKey]; !ok {
-		manifest.BizPolicies[0].Partitions[partitionKey] = manifests.Partition{
+		manifest.BizPolicies[0].Partitions[partitionKey] = azmanifests.Partition{
 			Runtime: runtimeKey,
 			Schema:  schema,
 		}
@@ -76,7 +76,7 @@ func BuildManifest(manifest *manifests.Manifest, template string, engineName, en
 }
 
 // ValidateManifest validates the manifest.
-func ValidateManifest(manifest *manifests.Manifest) (bool, error) {
+func ValidateManifest(manifest *azmanifests.Manifest) (bool, error) {
 	if manifest == nil {
 		return false, errors.New("[cedar] manifest is nil")
 	}
