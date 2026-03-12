@@ -83,6 +83,9 @@ func readStreamDataPacket(offset int, data []byte) ([]byte, int, int, uint64, ui
 	if err != nil {
 		return nil, -1, -1, 0, 0, err
 	}
+	if offset+size > len(data) {
+		return nil, -1, -1, 0, 0, errors.New("notp: payload size exceeds packet data bounds")
+	}
 	payload := data[offset : offset+size]
 	return payload, offset, size, packetType, packetStream, nil
 }
@@ -116,6 +119,9 @@ func readDataPacket(offset int, data []byte) ([]byte, int, int, uint64, error) {
 	offset, size, packetType, err := indexDataPacket(offset, data)
 	if err != nil {
 		return nil, -1, -1, 0, err
+	}
+	if offset+size > len(data) {
+		return nil, -1, -1, 0, errors.New("notp: payload size exceeds packet data bounds")
 	}
 	payload := data[offset : offset+size]
 	return payload, offset, size, packetType, nil

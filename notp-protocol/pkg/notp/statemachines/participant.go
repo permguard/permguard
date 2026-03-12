@@ -86,10 +86,12 @@ var defaultStateMap = map[uint16]StateTransitionFunc{
 }
 
 // generateFlowID generates a flow ID.
-func generateFlowID() uint64 {
+func generateFlowID() (uint64, error) {
 	var n uint64
-	binary.Read(rand.Reader, binary.BigEndian, &n)
-	return n
+	if err := binary.Read(rand.Reader, binary.BigEndian, &n); err != nil {
+		return 0, fmt.Errorf("notp: failed to generate flow ID: %w", err)
+	}
+	return n, nil
 }
 
 // terminateWithFinal terminates the state machine with a final state.
@@ -102,7 +104,10 @@ func terminateWithFinal(runtime *StateMachineRuntimeContext) (*StateTransitionIn
 
 // startFlowState state to start the flow.
 func startFlowState(runtime *StateMachineRuntimeContext) (*StateTransitionInfo, error) {
-	flowID := generateFlowID()
+	flowID, err := generateFlowID()
+	if err != nil {
+		return nil, err
+	}
 	flowPacket := &aznotpsmpackets.StatePacket{
 		MessageCode:  aznotpsmpackets.FlowIDValue,
 		MessageValue: flowID,
@@ -154,7 +159,9 @@ func processStartFlowState(runtime *StateMachineRuntimeContext) (*StateTransitio
 	if err != nil {
 		return nil, err
 	}
-	flowPacket.Deserialize(data)
+	if err = flowPacket.Deserialize(data); err != nil {
+		return nil, fmt.Errorf("notp: process start flow failed to deserialize flow packet: %w", err)
+	}
 	if flowPacket.MessageCode != aznotpsmpackets.FlowIDValue {
 		return nil, fmt.Errorf("notp: process start flow failed to deserialize flow packet")
 	}

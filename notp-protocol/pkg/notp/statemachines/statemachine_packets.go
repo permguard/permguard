@@ -125,6 +125,9 @@ func receiveAndHandleStatePacket(runtime *StateMachineRuntimeContext, expectedMe
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("notp: failed to receive packets: %w", err)
 	}
+	if len(packetsStream) == 0 {
+		return nil, nil, false, fmt.Errorf("notp: received empty packet stream")
+	}
 	statePacket := &aznotpsmpackets.StatePacket{}
 	data, err := packetsStream[0].Serialize()
 	if err != nil {
