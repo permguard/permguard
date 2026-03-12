@@ -69,12 +69,12 @@ func buildCommitStateMachines(assert *assert.Assertions, followerHandler HostHan
 
 	followerPacketLogger, err := aznotptransport.NewPacketInspector(onFollowerSent, onFollowerReceived)
 	assert.Nil(err, "Failed to initialize the follower packet logger")
-	followerTransport, err := aznotptransport.NewTransportLayer(leaderStream.TransmitPacket, followerStream.ReceivePacket, followerPacketLogger)
+	followerTransport, err := aznotptransport.NewTransportLayer(0, leaderStream.TransmitPacket, followerStream.ReceivePacket, followerPacketLogger)
 	assert.Nil(err, "Failed to initialize the follower transport layer")
 
 	leaderPacketLogger, err := aznotptransport.NewPacketInspector(onLeaderSent, onLeaderReceived)
 	assert.Nil(err, "Failed to initialize the leader packet logger")
-	leaderTransport, err := aznotptransport.NewTransportLayer(followerStream.TransmitPacket, leaderStream.ReceivePacket, leaderPacketLogger)
+	leaderTransport, err := aznotptransport.NewTransportLayer(0, followerStream.TransmitPacket, leaderStream.ReceivePacket, leaderPacketLogger)
 	assert.Nil(err, "Failed to initialize the leader transport layer")
 
 	followerSMachine, err := NewFollowerStateMachine(followerHandler, followerTransport)

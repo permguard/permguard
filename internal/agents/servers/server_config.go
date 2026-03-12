@@ -30,8 +30,9 @@ import (
 )
 
 const (
-	flagPrefixServer  = "server"
-	flagSuffixAppData = "appdata"
+	flagPrefixServer            = "server"
+	flagSuffixAppData           = "appdata"
+	flagSuffixNOTPMaxPacketSize = "notp-max-packet-size"
 )
 
 // ServerConfig holds the configuration for the server.
@@ -40,6 +41,7 @@ type ServerConfig struct {
 	debug                bool
 	logLevel             string
 	appData              string
+	notpMaxPacketSize    int
 	centralStorageEngine storage.Kind
 	storages             []storage.Kind
 	storagesFactories    map[storage.Kind]storage.FactoryProvider
@@ -97,6 +99,11 @@ func (c *ServerConfig) AppData() string {
 	return c.appData
 }
 
+// NOTPMaxPacketSize returns the notp maximum packet size in bytes.
+func (c *ServerConfig) NOTPMaxPacketSize() int {
+	return c.notpMaxPacketSize
+}
+
 // AddFlags adds flags.
 func (c *ServerConfig) AddFlags(flagSet *flag.FlagSet) error {
 	err := options.AddFlagsForCommon(flagSet)
@@ -104,6 +111,7 @@ func (c *ServerConfig) AddFlags(flagSet *flag.FlagSet) error {
 		return err
 	}
 	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixAppData), "./", "directory to be used as zone data")
+	flagSet.Int(options.FlagName(flagPrefixServer, flagSuffixNOTPMaxPacketSize), 16777216, "notp maximum packet size in bytes (default 16MB)")
 	for _, fcty := range c.storagesFactories {
 		config, _ := fcty.FactoryConfig()
 		err = config.AddFlags(flagSet)
@@ -132,6 +140,10 @@ func (c *ServerConfig) InitFromViper(v *viper.Viper) error {
 	c.appData = v.GetString(options.FlagName(flagPrefixServer, flagSuffixAppData))
 	if !validators.IsValidPath(c.appData) {
 		return errors.New("server: invalid app data directory")
+	}
+	c.notpMaxPacketSize = v.GetInt(options.FlagName(flagPrefixServer, flagSuffixNOTPMaxPacketSize))
+	if c.notpMaxPacketSize <= 0 {
+		return errors.New("server: invalid notp max packet size")
 	}
 	for _, fcty := range c.storagesFactories {
 		config, err := fcty.FactoryConfig()
