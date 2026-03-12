@@ -19,9 +19,15 @@ package transport
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/permguard/permguard/common/pkg/extensions/data"
 	aznotppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
+)
+
+const (
+	// MaxPacketSize is the maximum allowed packet size in bytes (16 MB).
+	MaxPacketSize = 16 * 1024 * 1024
 )
 
 // TransportLayer represents the transport layer responsible for packet transmission in the NOTP protocol.
@@ -56,6 +62,9 @@ func (t *TransportLayer) TransmitPacket(packetables []aznotppackets.Packetable) 
 		return err
 	}
 	packet.Data = compressedData
+	if len(packet.Data) > MaxPacketSize {
+		return fmt.Errorf("notp: packet size %d exceeds maximum allowed size %d", len(packet.Data), MaxPacketSize)
+	}
 	err = t.packetSender(&packet)
 	if err != nil {
 		return err
@@ -77,6 +86,9 @@ func (t *TransportLayer) ReceivePacket() ([]aznotppackets.Packetable, error) {
 	}
 	if packet == nil {
 		return nil, errors.New("notp: received a nil packet")
+	}
+	if len(packet.Data) > MaxPacketSize {
+		return nil, fmt.Errorf("notp: received packet size %d exceeds maximum allowed size %d", len(packet.Data), MaxPacketSize)
 	}
 	decompressedData, err := data.DecompressData(packet.Data)
 	if err != nil {

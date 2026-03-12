@@ -164,6 +164,40 @@ func createCommandForConfigAuthstarMaxObjectSizeGet(deps cli.DependenciesProvide
 	return command
 }
 
+// runECommandForNOTPMaxPacketSizeGet runs the command for getting the notp max packet size.
+func runECommandForNOTPMaxPacketSizeGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return common.ErrCommandSilent
+	}
+	maxPacketSize, err := ctx.NOTPMaxPacketSize()
+	if err != nil {
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to get the notp max packet size.")
+		}
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			printer.Error(errors.Join(errors.New("cli: failed to get the notp max packet size"), err))
+		}
+		return common.ErrCommandSilent
+	}
+	printer.PrintlnMap(map[string]any{"notp_max_packet_size": maxPacketSize})
+	return nil
+}
+
+// createCommandForConfigNOTPMaxPacketSizeGet creates the command for getting the notp max packet size.
+func createCommandForConfigNOTPMaxPacketSizeGet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+	command := &cobra.Command{
+		Use:   "notp-max-packet-size",
+		Short: "Get the notp max packet size",
+		Long:  common.BuildCliLongTemplate(`This command gets the notp max packet size in bytes.`),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runECommandForNOTPMaxPacketSizeGet(deps, cmd, v)
+		},
+	}
+	return command
+}
+
 func createCommandForConfigGet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "get",
@@ -177,5 +211,6 @@ func createCommandForConfigGet(deps cli.DependenciesProvider, v *viper.Viper) *c
 	command.AddCommand(createCommandForConfigPAPGet(deps, v))
 	command.AddCommand(createCommandForConfigPDPGet(deps, v))
 	command.AddCommand(createCommandForConfigAuthstarMaxObjectSizeGet(deps, v))
+	command.AddCommand(createCommandForConfigNOTPMaxPacketSizeGet(deps, v))
 	return command
 }

@@ -17,18 +17,17 @@
 package packets
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
-	"unsafe"
 )
 
 const (
-	// PacketNullByte is the null byte used to separate data in the packet.
-	PacketNullByte = 0xFF
+	// uint64Size is the size in bytes of a uint64 value.
+	uint64Size = 8
 )
 
 // writeStreamDataPacket writes a stream data packet to the buffer.
+// Format: [packetStream:8][packetType:8][size:8][payload:size]
 func writeStreamDataPacket(data []byte, packetType uint64, packetStream *uint64, payload []byte) ([]byte, error) {
 	size := uint64(len(payload))
 	values := []uint64{}
@@ -36,45 +35,34 @@ func writeStreamDataPacket(data []byte, packetType uint64, packetStream *uint64,
 		values = append(values, *packetStream)
 	}
 	values = append(values, packetType, size)
-	idSize := int(unsafe.Sizeof(uint64(0)))
 	for _, value := range values {
-		bufData := make([]byte, idSize)
+		bufData := make([]byte, uint64Size)
 		binary.BigEndian.PutUint64(bufData, value)
 		data = append(data, bufData...)
 	}
-	data = append(data, PacketNullByte)
 	data = append(data, payload...)
 	return data, nil
 }
 
 // writeDataPacket writes a data packet to the buffer.
+// Format: [packetType:8][size:8][payload:size]
 func writeDataPacket(data []byte, packetType uint64, payload []byte) ([]byte, error) {
 	return writeStreamDataPacket(data, packetType, nil, payload)
 }
 
 // indexDataStreamPacket indexes a stream data packet in the buffer.
+// Expects a fixed 24-byte header: [packetStream:8][packetType:8][size:8]
 func indexDataStreamPacket(offset int, data []byte) (int, int, uint64, uint64, error) {
-	data = data[offset:]
-	delimiterIndex := bytes.IndexByte(data, PacketNullByte)
-	if delimiterIndex == -1 {
-		return -1, -1, 0, 0, errors.New("notp: delimiter not found")
+	headerSize := uint64Size * 3
+	if offset+headerSize > len(data) {
+		return -1, -1, 0, 0, errors.New("notp: insufficient data for stream packet header")
 	}
-	headerData := data[:delimiterIndex]
-	idSize := int(unsafe.Sizeof(uint64(0)))
-	if len(headerData) != idSize*3 {
-		return -1, -1, 0, 0, errors.New("notp: invalid data: missing or invalid header")
-	}
-	dataOffset := delimiterIndex + 1
-	values := []uint64{0, 0, 0}
-	for count := range values {
-		start := idSize * count
-		end := (idSize * count) + idSize
-		values[count] = uint64(binary.BigEndian.Uint64(headerData[start:end]))
-	}
-	packetStream := values[0]
-	packetType := values[1]
-	size := int(values[2])
-	return offset + dataOffset, size, packetType, packetStream, nil
+	headerData := data[offset : offset+headerSize]
+	packetStream := binary.BigEndian.Uint64(headerData[0:uint64Size])
+	packetType := binary.BigEndian.Uint64(headerData[uint64Size : uint64Size*2])
+	size := int(binary.BigEndian.Uint64(headerData[uint64Size*2 : uint64Size*3]))
+	dataOffset := offset + headerSize
+	return dataOffset, size, packetType, packetStream, nil
 }
 
 // readStreamDataPacket reads a stream data packet from the buffer.
@@ -91,27 +79,17 @@ func readStreamDataPacket(offset int, data []byte) ([]byte, int, int, uint64, ui
 }
 
 // indexDataPacket indexes a data packet in the buffer.
+// Expects a fixed 16-byte header: [packetType:8][size:8]
 func indexDataPacket(offset int, data []byte) (int, int, uint64, error) {
-	data = data[offset:]
-	delimiterIndex := bytes.IndexByte(data, PacketNullByte)
-	if delimiterIndex == -1 {
-		return -1, -1, 0, errors.New("notp: delimiter not found")
+	headerSize := uint64Size * 2
+	if offset+headerSize > len(data) {
+		return -1, -1, 0, errors.New("notp: insufficient data for packet header")
 	}
-	headerData := data[:delimiterIndex]
-	idSize := int(unsafe.Sizeof(uint64(0)))
-	if len(headerData) != idSize*2 {
-		return -1, -1, 0, errors.New("notp: invalid data: missing or invalid header")
-	}
-	dataOffset := delimiterIndex + 1
-	values := []uint64{0, 0}
-	for count := range values {
-		start := idSize * count
-		end := (idSize * count) + idSize
-		values[count] = uint64(binary.BigEndian.Uint64(headerData[start:end]))
-	}
-	packetType := values[0]
-	size := int(values[1])
-	return offset + dataOffset, size, packetType, nil
+	headerData := data[offset : offset+headerSize]
+	packetType := binary.BigEndian.Uint64(headerData[0:uint64Size])
+	size := int(binary.BigEndian.Uint64(headerData[uint64Size : uint64Size*2]))
+	dataOffset := offset + headerSize
+	return dataOffset, size, packetType, nil
 }
 
 // readDataPacket reads a data packet from the buffer.

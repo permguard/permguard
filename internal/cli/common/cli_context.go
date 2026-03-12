@@ -195,3 +195,22 @@ func (c *CliCommandContext) AuthstarMaxObjectSize() (int, error) {
 		return 0, fmt.Errorf("cli: authstar-max-object-size has invalid type %T", val)
 	}
 }
+
+// NOTPMaxPacketSize returns the notp max packet size.
+func (c *CliCommandContext) NOTPMaxPacketSize() (int, error) {
+	key := options.FlagName(FlagPrefixNOTP, FlagSuffixNOTPMaxPacketSize)
+	val := c.v.Get(key)
+	if val == nil {
+		return 0, errors.New("cli: notp-max-packet-size is not set")
+	}
+	switch v := val.(type) {
+	case int:
+		return v, nil
+	case int64:
+		return int(v), nil
+	case float64:
+		return int(v), nil
+	default:
+		return 0, fmt.Errorf("cli: notp-max-packet-size has invalid type %T", val)
+	}
+}
