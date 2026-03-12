@@ -115,7 +115,7 @@ func (s SQLiteCentralStorageZAP) FetchZones(ctx context.Context, page int32, pag
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, err
+		return nil, azrepos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
 	var filterID *int64
 	if _, ok := fields[zap.FieldZoneZoneID]; ok {

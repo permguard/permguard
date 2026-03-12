@@ -70,7 +70,7 @@ func (f *Service) Endpoints() ([]services.EndpointInitializer, error) {
 			}
 			controller, err := azpapctrl.NewPAPController(srvCtx, papCentralStorage)
 			if err != nil {
-				return nil
+				return err
 			}
 			err = controller.Setup()
 			if err != nil {

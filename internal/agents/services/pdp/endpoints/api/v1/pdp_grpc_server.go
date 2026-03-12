@@ -84,5 +84,9 @@ func (s *PDPServer) AuthorizationCheck(ctx context.Context, request *Authorizati
 			authzResponse.Context = firstEval.Context
 		}
 	}
-	return MapAgentAuthorizationCheckResponseToGrpcAuthorizationCheckResponse(authzResponse)
+	resp, err := MapAgentAuthorizationCheckResponseToGrpcAuthorizationCheckResponse(authzResponse)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "pdp-endpoint: failed to map authorization check response: %v", err)
+	}
+	return resp, nil
 }
