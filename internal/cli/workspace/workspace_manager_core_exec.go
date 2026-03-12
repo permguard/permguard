@@ -113,13 +113,9 @@ func (m *Manager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOut
 			return fail(nil, err)
 		}
 
-		var created bool
-		created, err = m.persMgr.WriteFileIfNotExists(persistence.WorkspaceDir, azmanifests.ManifestFileName, manifestData, 0o644, false)
+		_, err = m.persMgr.WriteFileIfNotExists(persistence.WorkspaceDir, azmanifests.ManifestFileName, manifestData, 0o644, false)
 		if err != nil {
 			return fail(nil, err)
-		}
-		if !created {
-			return fail(nil, errors.New("cli: manifest file already exists"))
 		}
 	}
 

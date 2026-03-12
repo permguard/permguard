@@ -50,15 +50,70 @@ tasks:
       - brew install staticcheck
       - brew install gofumpt
 
+  local:playground-init:
+    desc: Initialize the playground directory with default files
+    cmds:
+      - mkdir -p ./playground/volume
+      - |
+        if [ ! -f ./playground/platform-policies.cedar ]; then
+          cat << 'EOD' > ./playground/platform-policies.cedar
+        @id("branch-administration")
+        permit(
+          principal == Permguard::Identity::Attribute::"role/platform-admin",
+          action in [ PharmaGovFlow::Platform::Action::"view", PharmaGovFlow::Platform::Action::"create",
+            PharmaGovFlow::Platform::Action::"update", PharmaGovFlow::Platform::Action::"delete"],
+          resource is PharmaGovFlow::Platform::Branch
+        );
+
+        @id("branch-team-management")
+        permit(
+          principal == Permguard::Identity::Attribute::"role/branch-owner",
+          action == PharmaGovFlow::Platform::Action::"assign-role",
+          resource is PharmaGovFlow::Platform::Branch
+        );
+        EOD
+        fi
+      - |
+        if [ ! -f ./playground/request.json ]; then
+          cat << 'EOD' > ./playground/request.json
+        {
+          "authorization_model": {
+            "zone_id": 0,
+            "policy_store": {
+              "kind": "ledger",
+              "id": "00000000000000000000000000000000"
+            },
+            "principal": {
+              "type": "workload",
+              "id": "spiffe://edge.example.com/workload/64ad91fec7b0403eaf5d37e56c14ba42",
+              "source": "spire"
+            }
+          },
+          "request_id": "1f12378d138e4c75b70d7cfa32345d39",
+          "subject": {
+            "type": "attribute",
+            "id": "role/branch-owner"
+          },
+          "resource": {
+            "type": "PharmaGovFlow::Platform::Branch",
+            "id": "fb008a600df04b21841c4fb5ad27ddf7"
+          },
+          "action": {
+            "name": "PharmaGovFlow::Platform::Action::assign-role"
+          }
+        }
+        EOD
+        fi
   local:up:
     desc: Start local environment
     cmds:
-      - go run ./cmd/provisioner-db-sqlite/main.go --up --dbdir ./samples/volume --debug
+      - task: local:playground-init
+      - go run ./cmd/provisioner-db-sqlite/main.go --up --dbdir ./playground/volume --debug
 
   local:down:
     desc: Stop local environment
     cmds:
-      - go run ./cmd/provisioner-db-sqlite/main.go --down  --dbdir ./samples/volume --debug
+      - go run ./cmd/provisioner-db-sqlite/main.go --down  --dbdir ./playground/volume --debug
 
   local:docker:
     desc: Start local environment using Docker
@@ -92,7 +147,7 @@ tasks:
     cmds:
       - >
         docker run --rm -it
-        -v ./samples/volume:/opt/permguard/volume
+        -v ./playground/volume:/opt/permguard/volume
         -p 9092:9092 -p 9091:9091 -p 9094:9094
         -e PERMGUARD_DEBUG="TRUE"
         permguard/all-in-one:{{.VERSION}}-{{.LOCAL_ARCH}}
@@ -334,7 +389,7 @@ tasks:
     cmds:
       - >
         docker run --rm -it
-        -v ./samples/volume:/opt/permguard/volume
+        -v ./playground/volume:/opt/permguard/volume
         -p 9092:9092 -p 9091:9091 -p 9094:9094
         -e PERMGUARD_DEBUG="TRUE"
         permguard/all-in-one:latest
@@ -344,7 +399,7 @@ tasks:
     cmds:
       - >
         docker run --rm -it
-        -v ./samples/volume:/opt/permguard/volume
+        -v ./playground/volume:/opt/permguard/volume
         -p 9091:9091 -p 9092:9092
         -e PERMGUARD_DEBUG="TRUE"
         permguard/control-plane:latest
@@ -354,7 +409,7 @@ tasks:
     cmds:
       - >
         docker run --rm -it
-        -v ./samples/volume:/opt/permguard/volume
+        -v ./playground/volume:/opt/permguard/volume
         -p 9094:9094
         -e PERMGUARD_DEBUG="TRUE"
         permguard/data-plane:latest
