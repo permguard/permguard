@@ -51,7 +51,7 @@ func Run(cliInitializer cli.Initializer) {
 			options.FlagName(common.FlagPrefixPDP, common.FlagSuffixPDPEndpoint):                     "grpc://localhost:9094",
 			options.FlagName(common.FlagPrefixWorkspaceInit, common.FlagSuffixWorkspaceInitLanguage): "cedar",
 			options.FlagName(common.FlagPrefixAuthstar, common.FlagSuffixAuthstarMaxObjectSize):      5242880,
-			options.FlagName(common.FlagPrefixNOTP, common.FlagSuffixNOTPMaxPacketSize):               16777216,
+			options.FlagName(common.FlagPrefixNOTP, common.FlagSuffixNOTPMaxPacketSize):              16777216,
 		}
 		return mapValues
 	})

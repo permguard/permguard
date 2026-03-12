@@ -22,15 +22,16 @@ import (
 	"runtime/debug"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
 	"github.com/permguard/permguard/pkg/agents/services"
 )
 
-// withServerUnaryInterceptor returns a grpc.ServerOption that adds a unary interceptor to the server.
-func withServerUnaryInterceptor(serviceCtx *services.EndpointContext) grpc.ServerOption {
-	return grpc.UnaryInterceptor(func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+// serverUnaryInterceptor returns a unary interceptor for logging and panic recovery.
+func serverUnaryInterceptor(serviceCtx *services.EndpointContext) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		logger := serviceCtx.Logger()
 		defer func() {
 			if err := recover(); err != nil {
@@ -45,12 +46,12 @@ func withServerUnaryInterceptor(serviceCtx *services.EndpointContext) grpc.Serve
 			logger.Debug(serviceCtx.LogMessage(fmt.Sprintf("Request - method:%s duration:%s", info.FullMethod, time.Since(start))), zap.Duration("duration", time.Since(start)))
 		}
 		return h, err
-	})
+	}
 }
 
-// withServerStreamInterceptor returns a grpc.ServerOption that adds a stream interceptor to the server.
-func withServerStreamInterceptor(serviceCtx *services.EndpointContext) grpc.ServerOption {
-	return grpc.StreamInterceptor(func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+// serverStreamInterceptor returns a stream interceptor for logging and panic recovery.
+func serverStreamInterceptor(serviceCtx *services.EndpointContext) grpc.StreamServerInterceptor {
+	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		logger := serviceCtx.Logger()
 		defer func() {
 			if err := recover(); err != nil {
@@ -65,5 +66,14 @@ func withServerStreamInterceptor(serviceCtx *services.EndpointContext) grpc.Serv
 			logger.Debug(serviceCtx.LogMessage(fmt.Sprintf("Stream request - method:%s duration:%s", info.FullMethod, time.Since(start))), zap.Duration("duration", time.Since(start)))
 		}
 		return err
-	})
+	}
+}
+
+// grpcServerOptions returns gRPC server options with OTel and custom interceptors chained.
+func grpcServerOptions(serviceCtx *services.EndpointContext) []grpc.ServerOption {
+	return []grpc.ServerOption{
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
+		grpc.ChainUnaryInterceptor(serverUnaryInterceptor(serviceCtx)),
+		grpc.ChainStreamInterceptor(serverStreamInterceptor(serviceCtx)),
+	}
 }

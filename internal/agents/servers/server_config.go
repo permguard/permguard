@@ -33,6 +33,9 @@ const (
 	flagPrefixServer            = "server"
 	flagSuffixAppData           = "appdata"
 	flagSuffixNOTPMaxPacketSize = "notp-max-packet-size"
+	flagSuffixOTelEnabled       = "otel-enabled"
+	flagSuffixOTelEndpoint      = "otel-endpoint"
+	flagSuffixOTelSampleRate    = "otel-sample-rate"
 )
 
 // ServerConfig holds the configuration for the server.
@@ -42,6 +45,9 @@ type ServerConfig struct {
 	logLevel             string
 	appData              string
 	notpMaxPacketSize    int
+	otelEnabled          bool
+	otelEndpoint         string
+	otelSampleRate       float64
 	centralStorageEngine storage.Kind
 	storages             []storage.Kind
 	storagesFactories    map[storage.Kind]storage.FactoryProvider
@@ -104,6 +110,21 @@ func (c *ServerConfig) NOTPMaxPacketSize() int {
 	return c.notpMaxPacketSize
 }
 
+// OTelEnabled returns whether OpenTelemetry is enabled.
+func (c *ServerConfig) OTelEnabled() bool {
+	return c.otelEnabled
+}
+
+// OTelEndpoint returns the OpenTelemetry collector endpoint.
+func (c *ServerConfig) OTelEndpoint() string {
+	return c.otelEndpoint
+}
+
+// OTelSampleRate returns the OpenTelemetry trace sample rate.
+func (c *ServerConfig) OTelSampleRate() float64 {
+	return c.otelSampleRate
+}
+
 // AddFlags adds flags.
 func (c *ServerConfig) AddFlags(flagSet *flag.FlagSet) error {
 	err := options.AddFlagsForCommon(flagSet)
@@ -112,6 +133,9 @@ func (c *ServerConfig) AddFlags(flagSet *flag.FlagSet) error {
 	}
 	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixAppData), "./", "directory to be used as zone data")
 	flagSet.Int(options.FlagName(flagPrefixServer, flagSuffixNOTPMaxPacketSize), 16777216, "notp maximum packet size in bytes (default 16MB)")
+	flagSet.Bool(options.FlagName(flagPrefixServer, flagSuffixOTelEnabled), false, "enable OpenTelemetry tracing and metrics")
+	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixOTelEndpoint), "localhost:4317", "OpenTelemetry collector gRPC endpoint")
+	flagSet.Float64(options.FlagName(flagPrefixServer, flagSuffixOTelSampleRate), 0.1, "OpenTelemetry trace sample rate (0.0 to 1.0)")
 	for _, fcty := range c.storagesFactories {
 		config, _ := fcty.FactoryConfig()
 		err = config.AddFlags(flagSet)
@@ -144,6 +168,15 @@ func (c *ServerConfig) InitFromViper(v *viper.Viper) error {
 	c.notpMaxPacketSize = v.GetInt(options.FlagName(flagPrefixServer, flagSuffixNOTPMaxPacketSize))
 	if c.notpMaxPacketSize <= 0 {
 		return errors.New("server: invalid notp max packet size")
+	}
+	c.otelEnabled = v.GetBool(options.FlagName(flagPrefixServer, flagSuffixOTelEnabled))
+	c.otelEndpoint = v.GetString(options.FlagName(flagPrefixServer, flagSuffixOTelEndpoint))
+	if c.otelEnabled && len(c.otelEndpoint) == 0 {
+		return errors.New("server: otel endpoint must be set when otel is enabled")
+	}
+	c.otelSampleRate = v.GetFloat64(options.FlagName(flagPrefixServer, flagSuffixOTelSampleRate))
+	if c.otelSampleRate < 0 || c.otelSampleRate > 1 {
+		return errors.New("server: otel sample rate must be between 0.0 and 1.0")
 	}
 	for _, fcty := range c.storagesFactories {
 		config, err := fcty.FactoryConfig()
