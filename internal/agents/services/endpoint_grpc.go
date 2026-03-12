@@ -24,6 +24,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/permguard/permguard/pkg/agents/services"
 )
@@ -83,10 +84,14 @@ func serverStreamInterceptor(serviceCtx *services.EndpointContext) grpc.StreamSe
 }
 
 // grpcServerOptions returns gRPC server options with OTel and custom interceptors chained.
-func grpcServerOptions(serviceCtx *services.EndpointContext) []grpc.ServerOption {
-	return []grpc.ServerOption{
+func grpcServerOptions(serviceCtx *services.EndpointContext, creds credentials.TransportCredentials) []grpc.ServerOption {
+	opts := []grpc.ServerOption{
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		grpc.ChainUnaryInterceptor(serverUnaryInterceptor(serviceCtx)),
 		grpc.ChainStreamInterceptor(serverStreamInterceptor(serviceCtx)),
 	}
+	if creds != nil {
+		opts = append(opts, grpc.Creds(creds))
+	}
+	return opts
 }

@@ -75,7 +75,7 @@ func TestCliLedgersCreateWithError(t *testing.T) {
 		printerMock.On("Error", mock.Anything).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
-		depsMocks.On("CreateGrpcPAPClient", mock.Anything).Return(papClient, nil)
+		depsMocks.On("CreateGrpcPAPClient", mock.Anything, mock.Anything).Return(papClient, nil)
 
 		testutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
 		if test.HasError {
@@ -129,7 +129,7 @@ func TestCliLedgersCreateWithSuccess(t *testing.T) {
 		printerMock.On("PrintlnMap", outputPrinter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
-		depsMocks.On("CreateGrpcPAPClient", mock.Anything).Return(papClient, nil)
+		depsMocks.On("CreateGrpcPAPClient", mock.Anything, mock.Anything).Return(papClient, nil)
 
 		testutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)
 		printerMock.AssertCalled(t, "PrintlnMap", outputPrinter)

@@ -135,7 +135,8 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 		}
 		return common.ErrCommandSilent
 	}
-	client, err := deps.CreateGrpcPDPClient(pdpEndpoint)
+	tlsCfg := ctx.TLSClientConfig()
+	client, err := deps.CreateGrpcPDPClient(pdpEndpoint, tlsCfg)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to check the authorization request.")

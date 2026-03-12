@@ -63,7 +63,8 @@ func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 		}
 		return common.ErrCommandSilent
 	}
-	client, err := deps.CreateGrpcPAPClient(papEndpoint)
+	tlsCfg := ctx.TLSClientConfig()
+	client, err := deps.CreateGrpcPAPClient(papEndpoint, tlsCfg)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))

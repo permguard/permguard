@@ -27,6 +27,7 @@ import (
 	"github.com/permguard/permguard/common/pkg/extensions/validators"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/pkg/transport/grpctls"
 )
 
 // Build information variables.
@@ -212,5 +213,15 @@ func (c *CliCommandContext) NOTPMaxPacketSize() (int, error) {
 		return int(v), nil
 	default:
 		return 0, fmt.Errorf("cli: notp-max-packet-size has invalid type %T", val)
+	}
+}
+
+// TLSClientConfig returns the TLS client configuration from CLI flags.
+func (c *CliCommandContext) TLSClientConfig() *grpctls.ClientConfig {
+	return &grpctls.ClientConfig{
+		CAFile:     c.v.GetString(options.FlagName(FlagPrefixTLS, FlagSuffixTLSCAFile)),
+		CertFile:   c.v.GetString(options.FlagName(FlagPrefixTLS, FlagSuffixTLSCertFile)),
+		KeyFile:    c.v.GetString(options.FlagName(FlagPrefixTLS, FlagSuffixTLSKeyFile)),
+		SkipVerify: c.v.GetBool(options.FlagName(FlagPrefixTLS, FlagSuffixTLSSkipVerify)),
 	}
 }

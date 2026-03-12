@@ -46,14 +46,15 @@ func (m *Manager) ServerRemoteLedger(remoteInfo *azwkscommon.RemoteInfo, ledgerI
 	if ledgerInfo == nil {
 		return nil, errors.New("cli: ledger info is nil")
 	}
+	tlsCfg := m.ctx.TLSClientConfig()
 	zoneerver := fmt.Sprintf("grpc://%s:%d", remoteInfo.Server(), remoteInfo.ZAPPort())
-	zapClient, err := clients.NewGrpcZAPClient(zoneerver)
+	zapClient, err := clients.NewGrpcZAPClient(zoneerver, tlsCfg)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = zapClient.Close() }()
 	pppServer := fmt.Sprintf("grpc://%s:%d", remoteInfo.Server(), remoteInfo.PAPPort())
-	papClient, err := clients.NewGrpcPAPClient(pppServer)
+	papClient, err := clients.NewGrpcPAPClient(pppServer, tlsCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -76,8 +77,9 @@ func (m *Manager) ServerRemoteLedger(remoteInfo *azwkscommon.RemoteInfo, ledgerI
 
 // NewPAPClientSession creates a new gRPC PAP client session with a reusable connection.
 func (m *Manager) NewPAPClientSession(server string, papPort int) (*clients.GrpcPAPClientSession, error) {
+	tlsCfg := m.ctx.TLSClientConfig()
 	pppServer := fmt.Sprintf("grpc://%s:%d", server, papPort)
-	papClient, err := clients.NewGrpcPAPClient(pppServer)
+	papClient, err := clients.NewGrpcPAPClient(pppServer, tlsCfg)
 	if err != nil {
 		return nil, err
 	}

@@ -24,6 +24,7 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
@@ -39,16 +40,18 @@ type EndpointConfig struct {
 	service          services.ServiceKind
 	port             int
 	registration     func(*grpc.Server, *services.ServiceContext, *services.EndpointContext, *storage.Connector) error
+	grpcCreds        credentials.TransportCredentials
 }
 
 // newEndpointConfig creates a new endpoint configuration.
-func newEndpointConfig(hostable services.Hostable, service services.ServiceKind, storageConnector *storage.Connector, port int, registration func(*grpc.Server, *services.ServiceContext, *services.EndpointContext, *storage.Connector) error) *EndpointConfig {
+func newEndpointConfig(hostable services.Hostable, service services.ServiceKind, storageConnector *storage.Connector, port int, registration func(*grpc.Server, *services.ServiceContext, *services.EndpointContext, *storage.Connector) error, grpcCreds credentials.TransportCredentials) *EndpointConfig {
 	return &EndpointConfig{
 		hostable:         hostable,
 		storageConnector: storageConnector,
 		service:          service,
 		port:             port,
 		registration:     registration,
+		grpcCreds:        grpcCreds,
 	}
 }
 
@@ -105,7 +108,7 @@ func (e *Endpoint) logger() *zap.Logger {
 func (e *Endpoint) Serve(ctx context.Context, serviceCtx *services.ServiceContext) (bool, error) {
 	logger := e.logger()
 	logger.Debug("Endpoint is starting")
-	grpcServer := grpc.NewServer(grpcServerOptions(e.ctx)...)
+	grpcServer := grpc.NewServer(grpcServerOptions(e.ctx, e.config.grpcCreds)...)
 	e.grpcServer = grpcServer
 	port := e.config.Port()
 

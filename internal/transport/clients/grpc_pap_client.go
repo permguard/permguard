@@ -20,27 +20,38 @@ import (
 	"sync"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
 	azpapv1 "github.com/permguard/permguard/internal/agents/services/pap/endpoints/api/v1"
+	"github.com/permguard/permguard/pkg/transport/grpctls"
 )
 
 // GrpcPAPClient is a gRPC client for the PAP service.
 type GrpcPAPClient struct {
 	endpoint string
+	creds    credentials.TransportCredentials
 	mu       sync.Mutex
 	conn     *grpc.ClientConn
 	client   azpapv1.V1PAPServiceClient
 }
 
 // NewGrpcPAPClient creates a new gRPC client for the PAP service.
-func NewGrpcPAPClient(endpoint string) (*GrpcPAPClient, error) {
-	hostPort, err := parseGrpcEndpoint(endpoint)
+func NewGrpcPAPClient(endpoint string, tlsCfg *grpctls.ClientConfig) (*GrpcPAPClient, error) {
+	hostPort, useTLS, err := parseGrpcEndpoint(endpoint)
 	if err != nil {
 		return nil, err
 	}
+	var creds credentials.TransportCredentials
+	if useTLS || tlsCfg.HasTLS() {
+		creds, err = grpctls.NewClientCredentials(tlsCfg)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &GrpcPAPClient{
 		endpoint: hostPort,
+		creds:    creds,
 	}, nil
 }
 
@@ -51,7 +62,13 @@ func (c *GrpcPAPClient) getClient() (azpapv1.V1PAPServiceClient, error) {
 	if c.conn != nil {
 		return c.client, nil
 	}
-	conn, err := grpc.NewClient(c.endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	var dialOpt grpc.DialOption
+	if c.creds != nil {
+		dialOpt = grpc.WithTransportCredentials(c.creds)
+	} else {
+		dialOpt = grpc.WithTransportCredentials(insecure.NewCredentials())
+	}
+	conn, err := grpc.NewClient(c.endpoint, dialOpt)
 	if err != nil {
 		return nil, err
 	}

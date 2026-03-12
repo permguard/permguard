@@ -56,6 +56,11 @@ const (
 	FlagSuffixAuthstarMaxObjectSize = "max-object-size"
 	FlagPrefixNOTP                  = "notp"
 	FlagSuffixNOTPMaxPacketSize     = "max-packet-size"
+	FlagPrefixTLS                   = "tls"
+	FlagSuffixTLSCAFile             = "ca-file"
+	FlagSuffixTLSCertFile           = "cert-file"
+	FlagSuffixTLSKeyFile            = "key-file"
+	FlagSuffixTLSSkipVerify         = "skip-verify"
 )
 
 //go:embed "art.txt"
