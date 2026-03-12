@@ -53,3 +53,61 @@ func TestComputeStringSHA256(t *testing.T) {
 	result = ComputeStringSHA256(data)
 	assert.Equal(expectedHash, result)
 }
+
+func TestComputeCID(t *testing.T) {
+	assert := assert.New(t)
+
+	// Test 1: CID of empty data
+	result, err := ComputeCID([]byte(""))
+	assert.NoError(err)
+	assert.Equal("bafyreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", result)
+
+	// Test 2: CID of specific data
+	result, err = ComputeCID([]byte("Hello, World!"))
+	assert.NoError(err)
+	assert.Equal("bafyreig77vqcdozl2wyk6z3cscaj5q5fggi53aoh64fewkdiri3cdauyn4", result)
+
+	// Test 3: Same content always produces the same CID
+	result1, _ := ComputeCID([]byte("test"))
+	result2, _ := ComputeCID([]byte("test"))
+	assert.Equal(result1, result2)
+}
+
+func TestComputeStringCID(t *testing.T) {
+	assert := assert.New(t)
+
+	result, err := ComputeStringCID("Hello, World!")
+	assert.NoError(err)
+	expected, _ := ComputeCID([]byte("Hello, World!"))
+	assert.Equal(expected, result)
+}
+
+func TestVerifyCID(t *testing.T) {
+	assert := assert.New(t)
+
+	data := []byte("Hello, World!")
+	validCID, err := ComputeCID(data)
+	assert.NoError(err)
+
+	// Test 1: Verification succeeds with correct content
+	err = VerifyCID(validCID, data)
+	assert.NoError(err)
+
+	// Test 2: Verification fails with wrong content
+	err = VerifyCID(validCID, []byte("wrong data"))
+	assert.Error(err)
+	assert.Contains(err.Error(), "CID mismatch")
+
+	// Test 3: Verification fails with invalid CID string
+	err = VerifyCID("invalid-cid", data)
+	assert.Error(err)
+	assert.Contains(err.Error(), "failed to decode CID")
+}
+
+func TestZeroCID(t *testing.T) {
+	assert := assert.New(t)
+
+	// ZeroCID should be a valid, non-empty CID string
+	assert.NotEmpty(ZeroCID)
+	assert.Equal("bafyreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ZeroCID)
+}

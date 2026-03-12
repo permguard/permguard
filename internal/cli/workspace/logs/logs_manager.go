@@ -67,11 +67,11 @@ func (c *Manager) Log(refInfo *azwkscommon.RefInfo, origin string, target string
 	if refInfo == nil {
 		return false, errors.New("invalid ref info")
 	}
-	if err := validators.ValidateSHA256("logs", origin); err != nil {
-		return false, errors.New("invalid origin sha256")
+	if err := validators.ValidateOID("logs", origin); err != nil {
+		return false, errors.New("invalid origin OID")
 	}
-	if err := validators.ValidateSHA256("logs", target); err != nil {
-		return false, errors.New("invalid target sha256")
+	if err := validators.ValidateOID("logs", target); err != nil {
+		return false, errors.New("invalid target OID")
 	}
 	if strings.TrimSpace(string(action)) == "" {
 		return false, errors.New("invalid action")

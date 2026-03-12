@@ -95,11 +95,13 @@ func (m *Manager) codeSourceConfigFile() string {
 }
 
 // codeSourceObjectDir returns the code source object directory.
+// It shards objects into subdirectories using the last two characters of the OID
+// to ensure even distribution regardless of the OID format (hex SHA256 or CID).
 func (m *Manager) codeSourceObjectDir(oid string, basePath string) (string, string) {
 	basePath = filepath.Join(basePath, m.objectsDir())
-	folder := oid[:2]
+	folder := oid[len(oid)-2:]
 	folder = filepath.Join(basePath, folder)
-	name := oid[2:]
+	name := oid[:len(oid)-2]
 	return folder, name
 }
 
@@ -576,7 +578,7 @@ func (m *Manager) objects(path string, isStore bool) ([]objects.Object, error) {
 			return nil, err
 		}
 		for _, file := range files {
-			oid := fmt.Sprintf("%s%s", dir, file)
+			oid := fmt.Sprintf("%s%s", file, dir)
 			var obj *objects.Object
 			if isStore {
 				obj, err = m.ReadObject(oid)

@@ -36,12 +36,9 @@ const (
 )
 
 // VerifyOID verifies that the content matches the expected OID.
+// It supports CID-based verification by parsing the hash algorithm from the CID itself.
 func VerifyOID(expectedOID string, content []byte) error {
-	computedOID := crypto.ComputeSHA256(content)
-	if computedOID != expectedOID {
-		return fmt.Errorf("objects: OID mismatch: expected %s, computed %s", expectedOID, computedOID)
-	}
-	return nil
+	return crypto.VerifyCID(expectedOID, content)
 }
 
 // ValidateObjectSize validates the object size against the given limit.

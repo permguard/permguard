@@ -126,10 +126,10 @@ func (r *Repository) UpdateLedgerRef(ctx context.Context, tx *sql.Tx, zoneID int
 	if err := validators.ValidateUUID(LedgerType, ledgerID); err != nil {
 		return fmt.Errorf("storage: invalid client input - ledger id is not valid (id: %s): %w", ledgerID, azstorage.ErrInvalidInput)
 	}
-	if err := validators.ValidateSHA256(LedgerType, currentRef); err != nil {
+	if err := validators.ValidateOID(LedgerType, currentRef); err != nil {
 		return fmt.Errorf("storage: invalid client input - current ref is not valid (ref: %s): %w", currentRef, azstorage.ErrInvalidInput)
 	}
-	if err := validators.ValidateSHA256(LedgerType, newRef); err != nil {
+	if err := validators.ValidateOID(LedgerType, newRef); err != nil {
 		return fmt.Errorf("storage: invalid client input - new ref is not valid (ref: %s): %w", newRef, azstorage.ErrInvalidInput)
 	}
 

@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"strings"
 
+	cid "github.com/ipfs/go-cid"
+
 	"github.com/permguard/permguard/common/pkg/extensions/validators"
 )
 
@@ -62,6 +64,18 @@ func ValidateSHA256(entity string, hash string) error {
 		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 			return fmt.Errorf("validators: %s hash %s contains invalid characters", entity, hash)
 		}
+	}
+	return nil
+}
+
+// ValidateOID validates an object identifier in CID format.
+func ValidateOID(entity string, oid string) error {
+	if strings.TrimSpace(oid) == "" {
+		return fmt.Errorf("validators: %s OID is empty", entity)
+	}
+	_, err := cid.Decode(oid)
+	if err != nil {
+		return fmt.Errorf("validators: %s OID %s is not a valid CID", entity, oid)
 	}
 	return nil
 }
