@@ -20,27 +20,38 @@ import (
 	"sync"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
 	azzapv1 "github.com/permguard/permguard/internal/agents/services/zap/endpoints/api/v1"
+	"github.com/permguard/permguard/pkg/transport/grpctls"
 )
 
 // GrpcZAPClient is a gRPC client for the ZAP service.
 type GrpcZAPClient struct {
 	endpoint string
+	creds    credentials.TransportCredentials
 	mu       sync.Mutex
 	conn     *grpc.ClientConn
 	client   azzapv1.V1ZAPServiceClient
 }
 
 // NewGrpcZAPClient creates a new gRPC client for the ZAP service.
-func NewGrpcZAPClient(endpoint string) (*GrpcZAPClient, error) {
-	hostPort, err := parseGrpcEndpoint(endpoint)
+func NewGrpcZAPClient(endpoint string, tlsCfg *grpctls.ClientConfig) (*GrpcZAPClient, error) {
+	hostPort, useTLS, err := parseGrpcEndpoint(endpoint)
 	if err != nil {
 		return nil, err
 	}
+	var creds credentials.TransportCredentials
+	if useTLS || tlsCfg.HasTLS() {
+		creds, err = grpctls.NewClientCredentials(tlsCfg)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &GrpcZAPClient{
 		endpoint: hostPort,
+		creds:    creds,
 	}, nil
 }
 
@@ -51,7 +62,13 @@ func (c *GrpcZAPClient) getClient() (azzapv1.V1ZAPServiceClient, error) {
 	if c.conn != nil {
 		return c.client, nil
 	}
-	conn, err := grpc.NewClient(c.endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	var dialOpt grpc.DialOption
+	if c.creds != nil {
+		dialOpt = grpc.WithTransportCredentials(c.creds)
+	} else {
+		dialOpt = grpc.WithTransportCredentials(insecure.NewCredentials())
+	}
+	conn, err := grpc.NewClient(c.endpoint, dialOpt)
 	if err != nil {
 		return nil, err
 	}

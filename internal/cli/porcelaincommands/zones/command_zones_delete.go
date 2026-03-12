@@ -53,7 +53,8 @@ func runECommandForDeleteZone(deps cli.DependenciesProvider, cmd *cobra.Command,
 		}
 		return common.ErrCommandSilent
 	}
-	client, err := deps.CreateGrpcZAPClient(zapEndpoint)
+	tlsCfg := ctx.TLSClientConfig()
+	client, err := deps.CreateGrpcZAPClient(zapEndpoint, tlsCfg)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to delete the zone.")

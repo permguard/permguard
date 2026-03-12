@@ -85,6 +85,11 @@ func Run(cliInitializer cli.Initializer) {
 	command.PersistentFlags().StringP(common.FlagWorkingDirectory, common.FlagWorkingDirectoryShort, ".", "workdir")
 	command.PersistentFlags().StringP(common.FlagOutput, common.FlagOutputShort, "terminal", "output format")
 	command.PersistentFlags().BoolP(common.FlagVerbose, common.FlagVerboseShort, false, "true for verbose output")
+	command.PersistentFlags().String(options.FlagName(common.FlagPrefixTLS, common.FlagSuffixTLSCAFile), "", "path to CA certificate for server verification (PEM)")
+	command.PersistentFlags().String(options.FlagName(common.FlagPrefixTLS, common.FlagSuffixTLSCertFile), "", "path to client certificate for mTLS (PEM)")
+	command.PersistentFlags().String(options.FlagName(common.FlagPrefixTLS, common.FlagSuffixTLSKeyFile), "", "path to client private key for mTLS (PEM)")
+	command.PersistentFlags().Bool(options.FlagName(common.FlagPrefixTLS, common.FlagSuffixTLSSkipVerify), false, "skip server certificate verification (insecure, dev only)")
+	_ = v.BindPFlags(command.PersistentFlags())
 
 	command.AddCommand(azcmds.CreateCommandForVersion(depsProvider, v))
 

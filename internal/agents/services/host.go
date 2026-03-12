@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/permguard/permguard/common/pkg/extensions/copier"
 	"github.com/permguard/permguard/pkg/agents/services"
@@ -35,11 +36,13 @@ type HostConfig struct {
 	services          []services.ServiceKind
 	servicesFactories map[services.ServiceKind]services.ServiceFactoryProvider
 	appData           string
+	grpcCreds         credentials.TransportCredentials
 }
 
 // NewHostConfig creates a new host configuration.
 func NewHostConfig(displayName string, hostable services.Hostable, storageConnector *storage.Connector,
 	services []services.ServiceKind, servicesFactories map[services.ServiceKind]services.ServiceFactoryProvider, logger *zap.Logger, appData string,
+	grpcCreds credentials.TransportCredentials,
 ) (*HostConfig, error) {
 	return &HostConfig{
 		logger:            logger,
@@ -49,7 +52,13 @@ func NewHostConfig(displayName string, hostable services.Hostable, storageConnec
 		services:          services,
 		servicesFactories: servicesFactories,
 		appData:           appData,
+		grpcCreds:         grpcCreds,
 	}, nil
+}
+
+// GrpcCreds returns the gRPC transport credentials.
+func (h *HostConfig) GrpcCreds() credentials.TransportCredentials {
+	return h.grpcCreds
 }
 
 // Hostable returns the hostable.
@@ -106,7 +115,7 @@ func buildServicesForServe(h *Host, factories []services.ServiceFactory, logger 
 			logger.Error("Error creating the service from the factory", zap.Error(err))
 			return nil, true, err
 		}
-		serviceCfg := newServiceConfig(h.config.Hostable(), h.config.Connector(), svcable)
+		serviceCfg := newServiceConfig(h.config.Hostable(), h.config.Connector(), svcable, h.config.GrpcCreds())
 		service, err := newService(serviceCfg, h.ctx)
 		if err != nil {
 			logger.Error("Error creating service", zap.Error(err))

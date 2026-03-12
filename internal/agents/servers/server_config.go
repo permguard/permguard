@@ -27,6 +27,7 @@ import (
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/pkg/transport/grpctls"
 )
 
 const (
@@ -36,6 +37,11 @@ const (
 	flagSuffixOTelEnabled       = "otel-enabled"
 	flagSuffixOTelEndpoint      = "otel-endpoint"
 	flagSuffixOTelSampleRate    = "otel-sample-rate"
+	flagSuffixTLSMode           = "tls-mode"
+	flagSuffixTLSCertFile       = "tls-cert-file"
+	flagSuffixTLSKeyFile        = "tls-key-file"
+	flagSuffixTLSCAFile         = "tls-ca-file"
+	flagSuffixTLSAutoCertDir    = "tls-auto-cert-dir"
 )
 
 // ServerConfig holds the configuration for the server.
@@ -48,6 +54,11 @@ type ServerConfig struct {
 	otelEnabled          bool
 	otelEndpoint         string
 	otelSampleRate       float64
+	tlsMode              string
+	tlsCertFile          string
+	tlsKeyFile           string
+	tlsCAFile            string
+	tlsAutoCertDir       string
 	centralStorageEngine storage.Kind
 	storages             []storage.Kind
 	storagesFactories    map[storage.Kind]storage.FactoryProvider
@@ -125,6 +136,18 @@ func (c *ServerConfig) OTelSampleRate() float64 {
 	return c.otelSampleRate
 }
 
+// TLSConfig returns the TLS server configuration.
+func (c *ServerConfig) TLSConfig() *grpctls.ServerConfig {
+	mode, _ := grpctls.ParseMode(c.tlsMode)
+	return &grpctls.ServerConfig{
+		Mode:        mode,
+		CertFile:    c.tlsCertFile,
+		KeyFile:     c.tlsKeyFile,
+		CAFile:      c.tlsCAFile,
+		AutoCertDir: c.tlsAutoCertDir,
+	}
+}
+
 // AddFlags adds flags.
 func (c *ServerConfig) AddFlags(flagSet *flag.FlagSet) error {
 	err := options.AddFlagsForCommon(flagSet)
@@ -136,6 +159,11 @@ func (c *ServerConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Bool(options.FlagName(flagPrefixServer, flagSuffixOTelEnabled), false, "enable OpenTelemetry tracing and metrics")
 	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixOTelEndpoint), "localhost:4317", "OpenTelemetry collector gRPC endpoint")
 	flagSet.Float64(options.FlagName(flagPrefixServer, flagSuffixOTelSampleRate), 0.1, "OpenTelemetry trace sample rate (0.0 to 1.0)")
+	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixTLSMode), "none", "TLS mode: none, tls, mtls, external")
+	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixTLSCertFile), "", "path to TLS server certificate file (PEM)")
+	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixTLSKeyFile), "", "path to TLS server private key file (PEM)")
+	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixTLSCAFile), "", "path to CA certificate for client verification (PEM)")
+	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixTLSAutoCertDir), "", "directory for auto-generated TLS certificates (mode=tls only)")
 	for _, fcty := range c.storagesFactories {
 		config, _ := fcty.FactoryConfig()
 		err = config.AddFlags(flagSet)
@@ -177,6 +205,17 @@ func (c *ServerConfig) InitFromViper(v *viper.Viper) error {
 	c.otelSampleRate = v.GetFloat64(options.FlagName(flagPrefixServer, flagSuffixOTelSampleRate))
 	if c.otelSampleRate < 0 || c.otelSampleRate > 1 {
 		return errors.New("server: otel sample rate must be between 0.0 and 1.0")
+	}
+	c.tlsMode = v.GetString(options.FlagName(flagPrefixServer, flagSuffixTLSMode))
+	if _, err := grpctls.ParseMode(c.tlsMode); err != nil {
+		return err
+	}
+	c.tlsCertFile = v.GetString(options.FlagName(flagPrefixServer, flagSuffixTLSCertFile))
+	c.tlsKeyFile = v.GetString(options.FlagName(flagPrefixServer, flagSuffixTLSKeyFile))
+	c.tlsCAFile = v.GetString(options.FlagName(flagPrefixServer, flagSuffixTLSCAFile))
+	c.tlsAutoCertDir = v.GetString(options.FlagName(flagPrefixServer, flagSuffixTLSAutoCertDir))
+	if err := c.TLSConfig().Validate(); err != nil {
+		return err
 	}
 	for _, fcty := range c.storagesFactories {
 		config, err := fcty.FactoryConfig()

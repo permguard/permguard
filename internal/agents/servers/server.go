@@ -28,6 +28,7 @@ import (
 	azservices "github.com/permguard/permguard/internal/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/pkg/transport/grpctls"
 )
 
 // Server represents the applicative server.
@@ -113,7 +114,20 @@ func (s *Server) Serve(ctx context.Context, onShutdown func()) (bool, error) {
 		s.startLock.Unlock()
 		return false, err
 	}
-	hostCfg, err := azservices.NewHostConfig(s.config.DisplayName(), s, storageConnector, s.config.Services(), s.config.ServicesFactories(), logger, s.config.AppData())
+
+	tlsCfg := s.config.TLSConfig()
+	grpcCreds, err := grpctls.NewServerCredentials(tlsCfg)
+	if err != nil {
+		logger.Error("Bootstrapper cannot initialize TLS credentials", zap.Error(err))
+		shutdownOTelProviders(ctx, otelProviders, logger)
+		s.startLock.Unlock()
+		return false, err
+	}
+	if tlsCfg.Mode != grpctls.ModeNone {
+		logger.Info("TLS enabled", zap.String("mode", string(tlsCfg.Mode)))
+	}
+
+	hostCfg, err := azservices.NewHostConfig(s.config.DisplayName(), s, storageConnector, s.config.Services(), s.config.ServicesFactories(), logger, s.config.AppData(), grpcCreds)
 	if err != nil {
 		logger.Error("Bootstrapper cannot create the host config", zap.Error(err))
 		s.startLock.Unlock()

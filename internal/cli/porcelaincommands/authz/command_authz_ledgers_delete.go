@@ -51,7 +51,8 @@ func runECommandForDeleteLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 			printer.Error(errors.Join(errors.New("cli: failed to delete the ledger"), err))
 		}
 	}
-	client, err := deps.CreateGrpcPAPClient(papEndpoint)
+	tlsCfg := ctx.TLSClientConfig()
+	client, err := deps.CreateGrpcPAPClient(papEndpoint, tlsCfg)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to delete the ledger.")

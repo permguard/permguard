@@ -21,6 +21,7 @@ import (
 	"errors"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
@@ -31,15 +32,22 @@ type ServiceConfig struct {
 	hostable         services.Hostable
 	storageConnector *storage.Connector
 	serviceable      services.Serviceable
+	grpcCreds        credentials.TransportCredentials
 }
 
-// NewServiceConfig creates a new service configuration.
-func newServiceConfig(hostable services.Hostable, storageConnector *storage.Connector, serviceable services.Serviceable) *ServiceConfig {
+// newServiceConfig creates a new service configuration.
+func newServiceConfig(hostable services.Hostable, storageConnector *storage.Connector, serviceable services.Serviceable, grpcCreds credentials.TransportCredentials) *ServiceConfig {
 	return &ServiceConfig{
 		hostable:         hostable,
 		storageConnector: storageConnector,
 		serviceable:      serviceable,
+		grpcCreds:        grpcCreds,
 	}
+}
+
+// GrpcCreds returns the gRPC transport credentials.
+func (c *ServiceConfig) GrpcCreds() credentials.TransportCredentials {
+	return c.grpcCreds
 }
 
 // Hostable returns the hostable.
@@ -97,7 +105,7 @@ func (s *Service) Serve(ctx context.Context) (bool, error) {
 	}
 	endpoints := make([]*Endpoint, 0, len(edpts))
 	for _, edpt := range edpts {
-		endpointCfg := newEndpointConfig(s.config.Hostable(), edpt.Service(), s.config.Connector(), edpt.Port(), edpt.Registration())
+		endpointCfg := newEndpointConfig(s.config.Hostable(), edpt.Service(), s.config.Connector(), edpt.Port(), edpt.Registration(), s.config.GrpcCreds())
 		endpoint, err := newEndpoint(endpointCfg, s.ctx)
 		if err != nil {
 			logger.Error("Service cannot create endpoint", zap.Error(err))

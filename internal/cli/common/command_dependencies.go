@@ -21,6 +21,7 @@ import (
 	"github.com/permguard/permguard/pkg/authz/languages"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/transport/clients"
+	"github.com/permguard/permguard/pkg/transport/grpctls"
 )
 
 // cliDependencies implements the Cli dependencies.
@@ -35,18 +36,18 @@ func (c *cliDependencies) CreatePrinter(verbose bool, output string) (cli.Printe
 }
 
 // CreateGrpcZAPClient creates a new gRPC client for the ZAP service.
-func (c *cliDependencies) CreateGrpcZAPClient(zapEndpoint string) (clients.GrpcZAPClient, error) {
-	return azclients.NewGrpcZAPClient(zapEndpoint)
+func (c *cliDependencies) CreateGrpcZAPClient(zapEndpoint string, tlsCfg *grpctls.ClientConfig) (clients.GrpcZAPClient, error) {
+	return azclients.NewGrpcZAPClient(zapEndpoint, tlsCfg)
 }
 
 // CreateGrpcPAPClient creates a new gRPC client for the PAP service.
-func (c *cliDependencies) CreateGrpcPAPClient(papEndpoint string) (clients.GrpcPAPClient, error) {
-	return azclients.NewGrpcPAPClient(papEndpoint)
+func (c *cliDependencies) CreateGrpcPAPClient(papEndpoint string, tlsCfg *grpctls.ClientConfig) (clients.GrpcPAPClient, error) {
+	return azclients.NewGrpcPAPClient(papEndpoint, tlsCfg)
 }
 
 // CreateGrpcPDPClient creates a new gRPC client for the PDP service.
-func (c *cliDependencies) CreateGrpcPDPClient(pdpEndpoint string) (clients.GrpcPDPClient, error) {
-	return azclients.NewGrpcPDPClient(pdpEndpoint)
+func (c *cliDependencies) CreateGrpcPDPClient(pdpEndpoint string, tlsCfg *grpctls.ClientConfig) (clients.GrpcPDPClient, error) {
+	return azclients.NewGrpcPDPClient(pdpEndpoint, tlsCfg)
 }
 
 // LanguageFactory creates a new gRPC client for the PAP service.

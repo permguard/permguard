@@ -64,7 +64,7 @@ func IsValidEndpoint(value string) bool {
 	if value == "" {
 		return false
 	}
-	allowedSchemes := []string{"grpc://", "http://", "https://"}
+	allowedSchemes := []string{"grpc://", "grpcs://", "http://", "https://"}
 	var hostPort string
 	matched := false
 	for _, scheme := range allowedSchemes {

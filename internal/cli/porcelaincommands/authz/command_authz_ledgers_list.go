@@ -51,7 +51,8 @@ func runECommandForListLedgers(deps cli.DependenciesProvider, cmd *cobra.Command
 		}
 		return common.ErrCommandSilent
 	}
-	client, err := deps.CreateGrpcPAPClient(papEndpoint)
+	tlsCfg := ctx.TLSClientConfig()
+	client, err := deps.CreateGrpcPAPClient(papEndpoint, tlsCfg)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to list ledgers.")

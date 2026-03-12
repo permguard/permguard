@@ -22,6 +22,7 @@ import (
 
 	"github.com/permguard/permguard/pkg/authz/languages"
 	"github.com/permguard/permguard/pkg/transport/clients"
+	"github.com/permguard/permguard/pkg/transport/grpctls"
 )
 
 // DependenciesProvider is the cli dependencies provider.
@@ -29,11 +30,11 @@ type DependenciesProvider interface {
 	// CreatePrinter creates a new printer.
 	CreatePrinter(verbose bool, output string) (Printer, error)
 	// CreateGrpcZAPClient creates a new gRPC client for the ZAP service.
-	CreateGrpcZAPClient(zapEndpoint string) (clients.GrpcZAPClient, error)
+	CreateGrpcZAPClient(zapEndpoint string, tlsCfg *grpctls.ClientConfig) (clients.GrpcZAPClient, error)
 	// CreateGrpcPAPClient creates a new gRPC client for the PAP service.
-	CreateGrpcPAPClient(papEndpoint string) (clients.GrpcPAPClient, error)
+	CreateGrpcPAPClient(papEndpoint string, tlsCfg *grpctls.ClientConfig) (clients.GrpcPAPClient, error)
 	// CreateGrpcPDPClient creates a new gRPC client for the PDP service.
-	CreateGrpcPDPClient(pdpEndpoint string) (clients.GrpcPDPClient, error)
+	CreateGrpcPDPClient(pdpEndpoint string, tlsCfg *grpctls.ClientConfig) (clients.GrpcPDPClient, error)
 	// LanguageFactory returns the language factory.
 	LanguageFactory() (languages.LanguageFactory, error)
 }
