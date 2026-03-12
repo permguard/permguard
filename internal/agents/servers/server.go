@@ -99,9 +99,17 @@ func (s *Server) Serve(ctx context.Context, onShutdown func()) (bool, error) {
 		return false, nil
 	}
 
+	otelProviders, err := initOTelProviders(ctx, s.config.DisplayName(), s.config, logger)
+	if err != nil {
+		logger.Error("Bootstrapper cannot initialize OpenTelemetry", zap.Error(err))
+		s.startLock.Unlock()
+		return false, err
+	}
+
 	storageConnector, err := storage.NewStorageConnector(s.config.CentralStorageEngine(), s.config.StoragesFactories())
 	if err != nil {
 		logger.Error("Bootstrapper cannot create the storage connector", zap.Error(err))
+		shutdownOTelProviders(ctx, otelProviders, logger)
 		s.startLock.Unlock()
 		return false, err
 	}
@@ -131,6 +139,7 @@ func (s *Server) Serve(ctx context.Context, onShutdown func()) (bool, error) {
 	}
 
 	stop := func() {
+		shutdownOTelProviders(ctx, otelProviders, logger)
 		serveExecStop(ctx, logger, hasStarted, host, onShutdown, s)
 	}
 

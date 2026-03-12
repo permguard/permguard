@@ -105,10 +105,7 @@ func (e *Endpoint) logger() *zap.Logger {
 func (e *Endpoint) Serve(ctx context.Context, serviceCtx *services.ServiceContext) (bool, error) {
 	logger := e.logger()
 	logger.Debug("Endpoint is starting")
-	grpcServer := grpc.NewServer(
-		withServerUnaryInterceptor(e.ctx),
-		withServerStreamInterceptor(e.ctx),
-	)
+	grpcServer := grpc.NewServer(grpcServerOptions(e.ctx)...)
 	e.grpcServer = grpcServer
 	port := e.config.Port()
 
