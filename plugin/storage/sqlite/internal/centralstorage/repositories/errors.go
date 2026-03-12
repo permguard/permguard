@@ -36,12 +36,19 @@ func WrapSqliteError(msg string, err error) error {
 }
 
 // WrapSqliteErrorWithParams wraps a sqlite error with parameters.
-func WrapSqliteErrorWithParams(msg string, err error, _ map[string]string) error {
+func WrapSqliteErrorWithParams(msg string, err error, params map[string]string) error {
 	if err == nil {
 		return fmt.Errorf("storage: %s: %w", msg, azstorage.ErrInternal)
 	}
 
 	sentinel := classifyError(err)
+	if len(params) > 0 {
+		var parts []string
+		for k, v := range params {
+			parts = append(parts, k+"="+v)
+		}
+		return fmt.Errorf("storage: %s (%s): %w: %w", msg, strings.Join(parts, ", "), sentinel, err)
+	}
 	return fmt.Errorf("storage: %s: %w: %w", msg, sentinel, err)
 }
 

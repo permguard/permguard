@@ -129,10 +129,10 @@ func (s *ZAPServer) FetchZones(zoneRequest *ZoneFetchRequest, stream grpc.Server
 	for _, zone := range zones {
 		cvtedZone, err := MapAgentZoneToGrpcZoneResponse(&zone)
 		if err != nil {
-			return err
+			return status.Errorf(codes.Internal, "failed to map zone response: %v", err)
 		}
 		if err := stream.SendMsg(cvtedZone); err != nil {
-			return err
+			return status.Errorf(codes.Internal, "failed to send zone response: %v", err)
 		}
 	}
 	return nil

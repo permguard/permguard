@@ -22,6 +22,8 @@ import (
 	"errors"
 	"fmt"
 
+	"go.uber.org/zap"
+
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
@@ -105,7 +107,10 @@ func (s SQLiteCentralStoragePAP) PushAdvertise(ctx context.Context, req *pap.Pus
 			return nil, azrepos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
 		}
 		logger := s.ctx.Logger()
-		logger.Info(fmt.Sprintf("Push session started (txid: %s, ledger: %s, zone: %d)", txid, req.LedgerID, req.ZoneID))
+		logger.Info("Push session started",
+			zap.String("txid", txid),
+			zap.String("ledger_id", req.LedgerID),
+			zap.Int64("zone_id", req.ZoneID))
 	}
 
 	return &pap.PushAdvertiseResponse{
@@ -121,13 +126,22 @@ func (s SQLiteCentralStoragePAP) markTxFailed(ctx context.Context, txid string) 
 	if txid == "" {
 		return
 	}
+	logger := s.ctx.Logger()
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
+		logger.Warn("Failed to connect for marking transaction as failed",
+			zap.String("txid", txid),
+			zap.Error(err))
 		return
 	}
-	_ = s.sqlRepo.UpdateTransactionStatusNoTx(ctx, db, txid, azrepos.TxStatusFailed)
-	logger := s.ctx.Logger()
-	logger.Info(fmt.Sprintf("Transaction failed (txid: %s)", txid))
+	if err := s.sqlRepo.UpdateTransactionStatusNoTx(ctx, db, txid, azrepos.TxStatusFailed); err != nil {
+		logger.Warn("Failed to mark transaction as failed",
+			zap.String("txid", txid),
+			zap.Error(err))
+		return
+	}
+	logger.Warn("Transaction marked as failed",
+		zap.String("txid", txid))
 }
 
 // PushTransfer handles the push transfer step.
@@ -225,7 +239,10 @@ func (s SQLiteCentralStoragePAP) PushTransfer(ctx context.Context, req *pap.Push
 		}
 		committed = true
 		logger := s.ctx.Logger()
-		logger.Info(fmt.Sprintf("Push session committed (txid: %s, ledger: %s, zone: %d)", req.TxID, req.LedgerID, req.ZoneID))
+		logger.Info("Push session committed",
+			zap.String("txid", req.TxID),
+			zap.String("ledger_id", req.LedgerID),
+			zap.Int64("zone_id", req.ZoneID))
 	} else {
 		if err := tx.Commit(); err != nil {
 			s.markTxFailed(ctx, req.TxID)

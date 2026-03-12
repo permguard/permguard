@@ -18,7 +18,6 @@ package pap
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"go.uber.org/zap"
@@ -116,7 +115,9 @@ func (f *Service) Jobs() ([]services.JobInitializer, error) {
 					return
 				}
 				if cleaned > 0 {
-					logger.Info(fmt.Sprintf("Transaction cleanup: cleaned %d stale session(s), deleted %d object(s)", cleaned, deleted))
+					logger.Info("Transaction cleanup completed",
+						zap.Int("cleaned", cleaned),
+						zap.Int64("deleted", deleted))
 				}
 			}
 			// Run immediately on startup.

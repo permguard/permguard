@@ -143,10 +143,10 @@ func (s *PAPServer) FetchLedgers(ledgerRequest *LedgerFetchRequest, stream grpc.
 	for _, ledger := range ledgers {
 		cvtedLedger, err := MapAgentLedgerToGrpcLedgerResponse(&ledger)
 		if err != nil {
-			return err
+			return status.Errorf(codes.Internal, "failed to map ledger response: %v", err)
 		}
 		if err := stream.SendMsg(cvtedLedger); err != nil {
-			return err
+			return status.Errorf(codes.Internal, "failed to send ledger response: %v", err)
 		}
 	}
 	return nil

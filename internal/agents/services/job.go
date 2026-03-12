@@ -18,7 +18,6 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"go.uber.org/zap"
@@ -68,32 +67,36 @@ func newJob(jobCfg *JobConfig, logger *zap.Logger) *Job {
 func (j *Job) Serve(ctx context.Context, serviceCtx *services.ServiceContext) (bool, error) {
 	jobCtx, cancel := context.WithCancel(ctx)
 	j.cancel = cancel
-	j.logger.Debug(fmt.Sprintf("Job '%s' is starting", j.config.name))
+	j.logger.Debug("Job is starting", zap.String("job_name", j.config.name))
 	go func() {
 		defer func() {
 			close(j.done)
 			if r := recover(); r != nil {
-				j.logger.Error(fmt.Sprintf("Job '%s' generated a panic", j.config.name), zap.Any("panic", r))
+				j.logger.Error("Job generated a panic",
+					zap.String("job_name", j.config.name),
+					zap.Any("panic", r))
 				shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer shutdownCancel()
 				j.config.hostable.Shutdown(shutdownCtx)
 			}
 		}()
 		if err := j.config.run(jobCtx, serviceCtx, j.config.storageConnector); err != nil {
-			j.logger.Error(fmt.Sprintf("Job '%s' failed", j.config.name), zap.Error(err))
+			j.logger.Error("Job failed",
+				zap.String("job_name", j.config.name),
+				zap.Error(err))
 		}
 	}()
-	j.logger.Debug(fmt.Sprintf("Job '%s' has started", j.config.name))
+	j.logger.Debug("Job has started", zap.String("job_name", j.config.name))
 	return true, nil
 }
 
 // GracefulStop stops the job.
 func (j *Job) GracefulStop(_ context.Context) (bool, error) {
-	j.logger.Debug(fmt.Sprintf("Job '%s' is stopping", j.config.name))
+	j.logger.Debug("Job is stopping", zap.String("job_name", j.config.name))
 	if j.cancel != nil {
 		j.cancel()
 	}
 	<-j.done
-	j.logger.Debug(fmt.Sprintf("Job '%s' has stopped", j.config.name))
+	j.logger.Debug("Job has stopped", zap.String("job_name", j.config.name))
 	return true, nil
 }

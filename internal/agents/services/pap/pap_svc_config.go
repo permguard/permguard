@@ -90,7 +90,7 @@ func (c *ServiceConfig) InitFromViper(v *viper.Viper) error {
 	centralStorageEngine := v.GetString(flagName)
 	storageCEng, err := storage.NewStorageKindFromString(centralStorageEngine)
 	if err != nil {
-		return errors.Join(errors.New("pap-service: invalid central sotrage engine"), err)
+		return errors.Join(errors.New("pap-service: invalid central storage engine"), err)
 	}
 	c.config[flagCentralEngine] = storageCEng
 	c.storageCentralEngine = storageCEng

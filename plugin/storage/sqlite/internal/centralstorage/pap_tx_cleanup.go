@@ -18,8 +18,9 @@ package centralstorage
 
 import (
 	"context"
-	"fmt"
 	"time"
+
+	"go.uber.org/zap"
 
 	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
@@ -50,18 +51,27 @@ func (s SQLiteCentralStoragePAP) CleanupStaleTransactions(ctx context.Context, m
 		if err != nil {
 			_ = tx.Rollback()
 			logger := s.ctx.Logger()
-			logger.Error(fmt.Sprintf("Cleanup: failed to delete objects for txid %s: %v", staleTx.TxID, err))
+			logger.Error("Cleanup: failed to delete objects",
+				zap.String("txid", staleTx.TxID),
+				zap.Int64("zone_id", staleTx.ZoneID),
+				zap.Error(err))
 			continue
 		}
 		if err := s.sqlRepo.UpdateTransactionStatus(ctx, tx, staleTx.TxID, azrepos.TxStatusFailed); err != nil {
 			_ = tx.Rollback()
 			logger := s.ctx.Logger()
-			logger.Error(fmt.Sprintf("Cleanup: failed to mark transaction %s as failed: %v", staleTx.TxID, err))
+			logger.Error("Cleanup: failed to mark transaction as failed",
+				zap.String("txid", staleTx.TxID),
+				zap.Int64("zone_id", staleTx.ZoneID),
+				zap.Error(err))
 			continue
 		}
 		if err := tx.Commit(); err != nil {
 			logger := s.ctx.Logger()
-			logger.Error(fmt.Sprintf("Cleanup: failed to commit cleanup for txid %s: %v", staleTx.TxID, err))
+			logger.Error("Cleanup: failed to commit cleanup",
+				zap.String("txid", staleTx.TxID),
+				zap.Int64("zone_id", staleTx.ZoneID),
+				zap.Error(err))
 			continue
 		}
 		cleaned++
