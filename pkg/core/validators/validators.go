@@ -55,19 +55,6 @@ func formatAsUUID(s string) string {
 	)
 }
 
-// ValidateSHA256 validates a SHA256 hash.
-func ValidateSHA256(entity string, hash string) error {
-	if len(hash) != 64 {
-		return fmt.Errorf("validators: %s hash %s is not valid", entity, hash)
-	}
-	for _, c := range hash {
-		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
-			return fmt.Errorf("validators: %s hash %s contains invalid characters", entity, hash)
-		}
-	}
-	return nil
-}
-
 // ValidateOID validates an object identifier in CID format.
 func ValidateOID(entity string, oid string) error {
 	if strings.TrimSpace(oid) == "" {

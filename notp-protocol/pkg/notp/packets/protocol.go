@@ -18,7 +18,7 @@ package packets
 
 // ProtocolPacket represents a protocol packet.
 type ProtocolPacket struct {
-	Version uint32
+	Version uint32 `cbor:"1,keyasint"`
 }
 
 // Type returns the type of the packet.
@@ -28,16 +28,10 @@ func (p *ProtocolPacket) Type() uint64 {
 
 // Serialize serializes the packet.
 func (p *ProtocolPacket) Serialize() ([]byte, error) {
-	data := SerializeUint32(nil, p.Version, PacketNullByte)
-	return data, nil
+	return SerializeCBOR(p)
 }
 
 // Deserialize deserializes the packet.
 func (p *ProtocolPacket) Deserialize(data []byte) error {
-	var err error
-	p.Version, _, err = DeserializeUint32(data, PacketNullByte)
-	if err != nil {
-		return err
-	}
-	return nil
+	return DeserializeCBOR(data, p)
 }
