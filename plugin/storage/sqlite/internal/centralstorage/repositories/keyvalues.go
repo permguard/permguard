@@ -91,3 +91,25 @@ func (r *Repository) KeyValue(ctx context.Context, db *sqlx.DB, zoneID int64, ke
 
 	return &dbKeyValue, nil
 }
+
+// KeyValueTx retrieves the value for a given key from the key-value store within a transaction.
+func (r *Repository) KeyValueTx(ctx context.Context, tx *sql.Tx, zoneID int64, key string) (*KeyValue, error) {
+	if key == "" {
+		return nil, fmt.Errorf("storage: invalid client input - key is missing or empty: %w", azstorage.ErrInvalidInput)
+	}
+
+	var dbKeyValue KeyValue
+	err := tx.QueryRowContext(ctx, "SELECT zone_id, kv_key, kv_value FROM key_values WHERE zone_id = ? and kv_key = ?", zoneID, key).Scan(
+		&dbKeyValue.ZoneID,
+		&dbKeyValue.Key,
+		&dbKeyValue.Value,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("no value found for key (%s): %w", key, azstorage.ErrNotFound)
+		}
+		return nil, WrapSqliteError(fmt.Sprintf("failed to retrieve key-value pair - operation 'retrieve-key-value' encountered an issue (key: %s)", key), err)
+	}
+
+	return &dbKeyValue, nil
+}
